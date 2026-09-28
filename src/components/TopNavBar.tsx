@@ -10,6 +10,8 @@ import {
   Globe,
   Download,
   LogOut,
+  Sparkles,
+  RefreshCw,
 } from 'lucide-react'
 import { useGameStore } from '../store/useGameStore'
 import { useMapStore } from '../store/useMapStore'
@@ -23,15 +25,19 @@ import { STATUS_META } from '../types/game'
 
 interface Props {
   onOpenAvatarModal: () => void
-  onOpenUpdateModal?: () => void
+  onApplyUpdate?: () => void
   hasUpdate?: boolean
+  isUpdateReady?: boolean
+  isUpdating?: boolean
   onDisconnect?: () => void
 }
 
 export const TopNavBar: React.FC<Props> = ({
   onOpenAvatarModal,
-  onOpenUpdateModal,
+  onApplyUpdate,
   hasUpdate,
+  isUpdateReady,
+  isUpdating,
   onDisconnect,
 }) => {
   // Granular selectors: subscribing to whole localPlayer/remotePlayers would
@@ -257,14 +263,25 @@ export const TopNavBar: React.FC<Props> = ({
           )}
         </button>
 
-        {/* Available Update Notification Download Icon */}
-        {hasUpdate && onOpenUpdateModal && (
+        {/* Available Update Notification Button */}
+        {hasUpdate && isUpdateReady && onApplyUpdate && (
           <button
-            onClick={onOpenUpdateModal}
-            className="p-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 hover:text-emerald-300 transition-all hover:scale-105 shadow-sm shadow-emerald-500/20"
-            title="Nova atualização disponível! Clique para baixar e atualizar"
+            onClick={onApplyUpdate}
+            disabled={isUpdating}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-extrabold text-xs border border-emerald-300/50 shadow-lg shadow-emerald-500/30 hover:scale-105 active:scale-95 transition-all animate-pulse disabled:opacity-75 cursor-pointer"
+            title="Nova versão pronta! Clique para atualizar agora"
           >
-            <Download className="w-4 h-4" />
+            {isUpdating ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+                <span>Atualizando...</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-3.5 h-3.5 text-white" />
+                <span>Atualizar Agora</span>
+              </>
+            )}
           </button>
         )}
 

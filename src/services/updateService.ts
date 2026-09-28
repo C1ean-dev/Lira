@@ -19,6 +19,10 @@ declare global {
     electronAPI?: {
       isElectron: boolean
       checkForUpdates: () => Promise<UpdateInfo>
+      downloadUpdate?: (downloadUrl: string) => Promise<boolean>
+      applyUpdate?: () => Promise<boolean>
+      isUpdateDownloaded?: () => Promise<boolean>
+      onUpdateDownloaded?: (callback: () => void) => () => void
       downloadAndInstallUpdate: (downloadUrl: string) => Promise<boolean>
       onUpdateProgress: (callback: (progress: UpdateProgress) => void) => () => void
       openExternal: (url: string) => Promise<void>
@@ -118,6 +122,77 @@ export class UpdateService {
         releaseUrl: `https://github.com/${GITHUB_REPO}/releases`,
       }
     }
+  }
+
+  /**
+   * Download update in background
+   */
+  static async downloadUpdate(downloadUrl: string | null): Promise<boolean> {
+    if (
+      typeof window !== 'undefined' &&
+      window.electronAPI &&
+      downloadUrl &&
+      typeof window.electronAPI.downloadUpdate === 'function'
+    ) {
+      return await window.electronAPI.downloadUpdate(downloadUrl)
+    }
+    // Web fallback: return true so web can proceed to prompt
+    return true
+  }
+
+  /**
+   * Apply already downloaded update (restarts app) or open browser in web mode
+   */
+  static async applyUpdate(releaseUrl?: string): Promise<boolean> {
+    if (
+      typeof window !== 'undefined' &&
+      window.electronAPI &&
+      typeof window.electronAPI.applyUpdate === 'function'
+    ) {
+      return await window.electronAPI.applyUpdate()
+    }
+
+    // Web / browser fallback
+    if (releaseUrl) {
+      if (
+        typeof window !== 'undefined' &&
+        window.electronAPI &&
+        typeof window.electronAPI.openExternal === 'function'
+      ) {
+        await window.electronAPI.openExternal(releaseUrl)
+      } else if (typeof window !== 'undefined') {
+        window.open(releaseUrl, '_blank')
+      }
+    }
+    return true
+  }
+
+  /**
+   * Check if update installer is already downloaded locally
+   */
+  static async isUpdateDownloaded(): Promise<boolean> {
+    if (
+      typeof window !== 'undefined' &&
+      window.electronAPI &&
+      typeof window.electronAPI.isUpdateDownloaded === 'function'
+    ) {
+      return await window.electronAPI.isUpdateDownloaded()
+    }
+    return false
+  }
+
+  /**
+   * Listen for update download completion
+   */
+  static onUpdateDownloaded(callback: () => void): () => void {
+    if (
+      typeof window !== 'undefined' &&
+      window.electronAPI &&
+      typeof window.electronAPI.onUpdateDownloaded === 'function'
+    ) {
+      return window.electronAPI.onUpdateDownloaded(callback)
+    }
+    return () => {}
   }
 
   /**

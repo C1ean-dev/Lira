@@ -3,6 +3,7 @@ import { MapData } from '../types/map'
 import { createEmptyWorkspace } from '../editor/templates'
 import nativeSpacesData from '../data/nativeSpaces.json'
 import { generateUUID } from '../utils/uuid'
+import { hydrateMapData, compressMapDataForStorage } from '../utils/mapSerialization'
 
 export interface SavedSpace {
   id: string
@@ -18,13 +19,21 @@ export interface SavedSpace {
 const STORAGE_KEY = 'gather_v2_saved_spaces'
 const ACTIVE_SPACE_ID_KEY = 'gather_v2_active_space_id'
 
+const serializeSpacesForStorage = (spaces: SavedSpace[]) => {
+  return spaces.map((s) => ({
+    ...s,
+    mapData: compressMapDataForStorage(s.mapData),
+  }))
+}
+
 const syncSpacesToNativeFile = async (spaces: SavedSpace[]): Promise<boolean> => {
   try {
     if (typeof window === 'undefined') return false
+    const serialized = serializeSpacesForStorage(spaces)
     let saved = false
     if ((window as any).electronAPI?.saveNativeSpaces) {
       try {
-        saved = await (window as any).electronAPI.saveNativeSpaces(spaces)
+        saved = await (window as any).electronAPI.saveNativeSpaces(serialized)
       } catch (err) {
         console.warn('[useSavedSpacesStore] Electron save error:', err)
       }
@@ -34,7 +43,7 @@ const syncSpacesToNativeFile = async (spaces: SavedSpace[]): Promise<boolean> =>
         const res = await fetch('/api/save-native-spaces', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(spaces, null, 2),
+          body: JSON.stringify(serialized, null, 2),
         })
         if (res.ok) {
           saved = true
@@ -52,6 +61,7 @@ const loadSavedSpaces = (): SavedSpace[] => {
   const nativeSpaces: SavedSpace[] = ((nativeSpacesData as any[]) || []).map((s: any) => ({
     ...s,
     roomCode: s.roomCode || generateUUID(),
+    mapData: hydrateMapData(s.mapData),
   }))
   let savedSpaces: SavedSpace[] = []
   try {
@@ -63,15 +73,7 @@ const loadSavedSpaces = (): SavedSpace[] => {
           savedSpaces = parsed
             .filter((s: any) => s && typeof s === 'object' && s.id !== 'space-default' && s.name !== 'Meu Espaço Principal')
             .map((s: any) => {
-              const base = createEmptyWorkspace()
-              const mapData =
-                s.mapData &&
-                Array.isArray(s.mapData.floors) &&
-                s.mapData.floors.length > 0 &&
-                Array.isArray(s.mapData.floors[0]) &&
-                s.mapData.floors[0].length > 0
-                  ? s.mapData
-                  : base
+              const mapData = hydrateMapData(s.mapData)
 
               return {
                 id: s.id || 'space-' + Math.random().toString(36).substring(2, 9),
@@ -101,7 +103,8 @@ const loadSavedSpaces = (): SavedSpace[] => {
 const persistSpaces = (spaces: SavedSpace[]) => {
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(spaces))
+      const serialized = serializeSpacesForStorage(spaces)
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(serialized))
     }
   } catch (e) {
     console.error('Failed to save spaces:', e)

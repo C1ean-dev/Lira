@@ -113,30 +113,45 @@ export class TrayManager {
     return this.isQuitting
   }
 
+  private wasMaximizedBeforeHide = false
+
   public showAndFocusWindow() {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return
-    if (this.mainWindow.isMinimized()) {
-      this.mainWindow.restore()
-    }
+
+    const shouldMaximize = this.wasMaximizedBeforeHide || this.mainWindow.isMaximized()
+
     if (!this.mainWindow.isVisible()) {
       this.mainWindow.show()
     }
+    if (this.mainWindow.isMinimized()) {
+      this.mainWindow.restore()
+    }
+
+    if (shouldMaximize) {
+      // On Windows DWM, restoring a hidden window that was maximized can cause Chromium's viewport
+      // to remain stuck at default unmaximized dimensions (leaving a large black rectangle on the right).
+      // Re-triggering maximize forces Windows and Chromium to recalculate the client viewport.
+      if (!this.mainWindow.isMaximized()) {
+        this.mainWindow.maximize()
+      } else {
+        this.mainWindow.unmaximize()
+        this.mainWindow.maximize()
+      }
+    }
+
     this.mainWindow.focus()
   }
 
   public hideWindowToTray() {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return
+    this.wasMaximizedBeforeHide = this.mainWindow.isMaximized()
     this.mainWindow.hide()
   }
 
   public toggleWindowVisibility() {
     if (!this.mainWindow || this.mainWindow.isDestroyed()) return
-    if (this.mainWindow.isVisible()) {
-      if (this.mainWindow.isFocused()) {
-        this.mainWindow.hide()
-      } else {
-        this.mainWindow.focus()
-      }
+    if (this.mainWindow.isVisible() && !this.mainWindow.isMinimized()) {
+      this.hideWindowToTray()
     } else {
       this.showAndFocusWindow()
     }
@@ -175,6 +190,7 @@ export class TrayManager {
     win.on('close', (event) => {
       if (!this.isQuitting && this.settings.closeToTray) {
         event.preventDefault()
+        this.wasMaximizedBeforeHide = win.isMaximized()
         win.hide()
         this.notifyHiddenToTray()
       }
@@ -183,6 +199,7 @@ export class TrayManager {
     // Intercept minimize if minimizeToTray is enabled
     win.on('minimize', () => {
       if (this.settings.minimizeToTray) {
+        this.wasMaximizedBeforeHide = win.isMaximized()
         win.hide()
       }
     })
@@ -193,12 +210,13 @@ export class TrayManager {
       this.tray = new Tray(icon)
       this.tray.setToolTip(this.instanceTitle)
 
-      // Handle single click (toggle window visibility)
+      // On Windows, clicking or double-clicking the tray icon should ALWAYS restore & focus the app.
+      // Having 'click' toggle visibility causes race conditions when double-clicking (show -> hide -> show),
+      // which freezes the DWM compositor and renderer event loop.
       this.tray.on('click', () => {
-        this.toggleWindowVisibility()
+        this.showAndFocusWindow()
       })
 
-      // Handle double click (always show & focus)
       this.tray.on('double-click', () => {
         this.showAndFocusWindow()
       })

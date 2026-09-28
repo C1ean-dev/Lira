@@ -21,7 +21,7 @@ describe('Independent Review Fixes & Hardening Tests', () => {
     useMapStore.setState({
       mapData: baseMap,
       selectedFurnitureDefId: '',
-      selectedFloor: 'habbo_parquet',
+      selectedFloor: 'wood_parquet',
     })
 
     useGameStore.setState({
@@ -118,7 +118,7 @@ describe('Independent Review Fixes & Hardening Tests', () => {
         height: 6,
         color: '#ff0000',
         hasWalls: true,
-        wallType: 'habbo_hotel_gold',
+        wallType: 'drywall_white',
         isLocked: false,
       })
 
@@ -228,17 +228,19 @@ describe('Independent Review Fixes & Hardening Tests', () => {
       } as unknown as CanvasRenderingContext2D
 
       const floors = [
-        'habbo_hc_carpet',
-        'habbo_checker_red',
-        'habbo_pool_water',
-        'habbo_disco_dance',
-        'habbo_executive_rug',
+        'wood_parquet',
+        'wood_light',
         'wood_dark',
         'carpet_blue',
         'carpet_gray',
+        'carpet_purple',
         'tile_white',
+        'tile_checker',
         'grass',
         'concrete',
+        'forge_cobblestone',
+        'forge_soot_stone',
+        'forge_iron_plates',
         'habbo_parquet',
       ]
 

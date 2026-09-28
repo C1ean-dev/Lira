@@ -46,6 +46,10 @@ export interface IElectronAPI {
   onProcessAudioStatus: (callback: (event: { status: 'started' | 'stopped' | 'error'; detail?: string }) => void) => () => void
   isElectron: boolean
   checkForUpdates: () => Promise<UpdateInfo>
+  downloadUpdate: (downloadUrl: string) => Promise<boolean>
+  applyUpdate: () => Promise<boolean>
+  isUpdateDownloaded: () => Promise<boolean>
+  onUpdateDownloaded: (callback: () => void) => () => void
   downloadAndInstallUpdate: (downloadUrl: string) => Promise<boolean>
   onUpdateProgress: (callback: (progress: UpdateProgress) => void) => () => void
   openExternal: (url: string) => Promise<void>
@@ -110,6 +114,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   isElectron: true,
   checkForUpdates: () => ipcRenderer.invoke('check-update'),
+  downloadUpdate: (downloadUrl: string) => ipcRenderer.invoke('download-update', downloadUrl),
+  applyUpdate: () => ipcRenderer.invoke('apply-update'),
+  isUpdateDownloaded: () => ipcRenderer.invoke('is-update-downloaded'),
+  onUpdateDownloaded: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('update-download-complete', handler)
+    return () => {
+      ipcRenderer.removeListener('update-download-complete', handler)
+    }
+  },
   downloadAndInstallUpdate: (downloadUrl: string) => ipcRenderer.invoke('download-and-install-update', downloadUrl),
   onUpdateProgress: (callback: (progress: UpdateProgress) => void) => {
     const handler = (_event: any, data: UpdateProgress) => callback(data)

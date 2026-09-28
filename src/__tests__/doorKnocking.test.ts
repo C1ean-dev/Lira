@@ -30,7 +30,7 @@ describe('Door Knocking & Room Locking System', () => {
     height: 40,
     tileSize: 32,
     spawnPoint: { x: 5, y: 5 },
-    floors: Array(40).fill(null).map(() => Array(40).fill('habbo_parquet')),
+    floors: Array(40).fill(null).map(() => Array(40).fill('wood_parquet')),
     walls: Array(40).fill(null).map(() => Array(40).fill(null)),
     furniture: [],
     zones: [testZone],

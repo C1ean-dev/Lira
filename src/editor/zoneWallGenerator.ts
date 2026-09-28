@@ -114,7 +114,7 @@ export function generateWallsAndDoorsForZones(
   zones: PrivateZone[],
   width: number,
   height: number,
-  wallType: WallType = 'habbo_hotel_gold'
+  wallType: WallType = 'drywall_white'
 ): (WallType | null)[][] {
   // 1. Initialize wall matrix
   const walls: (WallType | null)[][] = []

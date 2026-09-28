@@ -9,7 +9,6 @@ import { AvatarCustomizerModal } from './components/AvatarCustomizerModal'
 import { CustomElementModal } from './editor/CustomElementModal'
 import { LobbyModal } from './components/LobbyModal'
 import { AudioSettingsModal } from './components/AudioSettingsModal'
-import { UpdateModal } from './components/UpdateModal'
 import { OnlineUsersMenu } from './components/OnlineUsersMenu'
 import { ConfirmModal } from './components/ConfirmModal'
 import { DoorKnockNotification } from './components/DoorKnockNotification'
@@ -18,7 +17,7 @@ import { useGameStore } from './store/useGameStore'
 import { useMediaStore } from './store/useMediaStore'
 import { useChatStore } from './store/useChatStore'
 import { useMapStore } from './store/useMapStore'
-import { UpdateService, UpdateInfo } from './services/updateService'
+import { useUpdateStore } from './store/useUpdateStore'
 import { idleManager } from './services/idleManager'
 import { PeerManager } from './p2p/PeerManager'
 import { MediaManager } from './media/MediaManager'
@@ -26,8 +25,6 @@ import { MediaManager } from './media/MediaManager'
 export const App: React.FC = () => {
   const [inLobby, setInLobby] = useState(true)
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false)
-  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
-  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false)
   const [isDisconnectModalOpen, setIsDisconnectModalOpen] = useState(false)
 
   // Selectors (not whole-store) so 60Hz position updates don't re-render App.
@@ -39,29 +36,19 @@ export const App: React.FC = () => {
   const { toggleChat } = useChatStore()
   const toggleEditor = useMapStore((s) => s.toggleEditor)
 
-  // 1. Check for updates on startup automatically (only if not dismissed in this session)
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      try {
-        const info = await UpdateService.checkForUpdates()
-        if (info.hasUpdate) {
-          setUpdateInfo(info)
-          let isDismissed = false
-          try {
-            isDismissed = sessionStorage.getItem('gather_v2_update_dismissed') === 'true'
-          } catch (e) {}
+  const updateInfo = useUpdateStore((s) => s.updateInfo)
+  const updateStatus = useUpdateStore((s) => s.status)
+  const checkForUpdatesAndDownload = useUpdateStore((s) => s.checkForUpdatesAndDownload)
+  const applyUpdate = useUpdateStore((s) => s.applyUpdate)
 
-          if (!isDismissed) {
-            setIsUpdateModalOpen(true)
-          }
-        }
-      } catch (err) {
-        console.error('Error checking updates on startup:', err)
-      }
+  // Check for updates on startup: downloads silently in background
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      checkForUpdatesAndDownload()
     }, 1500)
 
     return () => clearTimeout(timer)
-  }, [])
+  }, [checkForUpdatesAndDownload])
 
   // 2. Global Keyboard Shortcuts (M for Mic, V for Video, C for Chat)
   useEffect(() => {
@@ -121,8 +108,10 @@ export const App: React.FC = () => {
       {/* Top Bar */}
       <TopNavBar
         onOpenAvatarModal={() => setIsAvatarModalOpen(true)}
-        onOpenUpdateModal={updateInfo?.hasUpdate ? () => setIsUpdateModalOpen(true) : undefined}
+        onApplyUpdate={applyUpdate}
         hasUpdate={!!updateInfo?.hasUpdate}
+        isUpdateReady={updateStatus === 'ready'}
+        isUpdating={updateStatus === 'installing'}
         onDisconnect={() => setIsDisconnectModalOpen(true)}
       />
 
@@ -153,13 +142,6 @@ export const App: React.FC = () => {
       {/* Custom Element Studio & Hand-Drawing Modal */}
       <CustomElementModal />
 
-      {/* Automatic Update Modal */}
-      <UpdateModal
-        updateInfo={updateInfo}
-        isOpen={isUpdateModalOpen}
-        onClose={() => setIsUpdateModalOpen(false)}
-      />
-
       {/* Disconnect Confirmation Modal */}
       <ConfirmModal
         isOpen={isDisconnectModalOpen}
@@ -181,6 +163,9 @@ export const App: React.FC = () => {
         <LobbyModal
           onJoined={() => setInLobby(false)}
           onOpenAvatarCustomizer={() => setIsAvatarModalOpen(true)}
+          onApplyUpdate={applyUpdate}
+          isUpdateReady={updateStatus === 'ready'}
+          isUpdating={updateStatus === 'installing'}
         />
       )}
     </div>

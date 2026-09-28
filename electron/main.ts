@@ -359,6 +359,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
+      backgroundThrottling: false,
     },
     autoHideMenuBar: true,
   })
@@ -708,43 +709,125 @@ function downloadFileWithRedirects(
   })
 }
 
-// 3. IPC handler to Download and Run the new installer
-ipcMain.handle('download-and-install-update', async (event, downloadUrl: string) => {
+let downloadedInstallerPath: string | null = null
+let isDownloadingUpdate = false
+let updateDownloadPromise: Promise<boolean> | null = null
+
+async function performDownloadUpdate(downloadUrl: string): Promise<boolean> {
+  if (!downloadUrl) {
+    throw new Error('No download URL provided')
+  }
+
+  const tempDir = app.getPath('temp')
+  const installerPath = path.join(tempDir, 'GatherClone-Update-Setup.exe')
+  const tempInstallerPath = path.join(tempDir, 'GatherClone-Update-Setup.exe.tmp')
+
+  if (downloadedInstallerPath && fs.existsSync(downloadedInstallerPath)) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('update-download-progress', { percent: 100, downloaded: 1, total: 1 })
+      mainWindow.webContents.send('update-download-complete', { installerPath: downloadedInstallerPath })
+    }
+    return true
+  }
+
+  if (isDownloadingUpdate && updateDownloadPromise) {
+    return await updateDownloadPromise
+  }
+
+  isDownloadingUpdate = true
+  updateDownloadPromise = (async () => {
+    try {
+      if (fs.existsSync(tempInstallerPath)) {
+        try { fs.unlinkSync(tempInstallerPath) } catch {}
+      }
+
+      await downloadFileWithRedirects(downloadUrl, tempInstallerPath, (percent, downloaded, total) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('update-download-progress', { percent, downloaded, total })
+        }
+      })
+
+      if (fs.existsSync(installerPath)) {
+        try { fs.unlinkSync(installerPath) } catch {}
+      }
+      fs.renameSync(tempInstallerPath, installerPath)
+
+      downloadedInstallerPath = installerPath
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('update-download-progress', { percent: 100, downloaded: 1, total: 1 })
+        mainWindow.webContents.send('update-download-complete', { installerPath })
+      }
+      return true
+    } catch (err) {
+      console.error('[Updater] Error during background download:', err)
+      return false
+    } finally {
+      isDownloadingUpdate = false
+      updateDownloadPromise = null
+    }
+  })()
+
+  return await updateDownloadPromise
+}
+
+async function performApplyUpdate(): Promise<boolean> {
   try {
-    if (!downloadUrl) {
-      throw new Error('No download URL provided')
+    const tempDir = app.getPath('temp')
+    const installerPath = downloadedInstallerPath || path.join(tempDir, 'GatherClone-Update-Setup.exe')
+    if (!fs.existsSync(installerPath)) {
+      console.warn('[Updater] Installer file not found:', installerPath)
+      return false
     }
 
-    const tempDir = app.getPath('temp')
-    const installerPath = path.join(tempDir, 'GatherClone-Update-Setup.exe')
-
-    await downloadFileWithRedirects(downloadUrl, installerPath, (percent, downloaded, total) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('update-download-progress', { percent, downloaded, total })
-      }
-    })
-
-    // Execute downloaded installer and close current application
     setTimeout(() => {
       try {
-        const subprocess = spawn(installerPath, [], {
+        const installerArgs = ['/S', '--updated', '--force-run']
+        console.log('[Updater] Spawning silent installer:', installerPath, installerArgs)
+        const subprocess = spawn(installerPath, installerArgs, {
           detached: true,
           stdio: 'ignore',
         })
         subprocess.unref()
-        app.quit()
+        app.exit(0)
       } catch (err) {
-        // Fallback: open via shell
+        console.error('[Updater] Failed to spawn silent installer:', err)
         shell.openPath(installerPath)
-        app.quit()
+        app.exit(0)
       }
-    }, 1000)
+    }, 400)
 
     return true
   } catch (err) {
-    console.error('Error downloading and installing update:', err)
+    console.error('[Updater] Failed to apply update:', err)
     return false
   }
+}
+
+function checkIsUpdateDownloaded(): boolean {
+  const tempDir = app.getPath('temp')
+  const installerPath = downloadedInstallerPath || path.join(tempDir, 'GatherClone-Update-Setup.exe')
+  return !!(installerPath && fs.existsSync(installerPath))
+}
+
+// 3. IPC handlers for Download and Run installer
+ipcMain.handle('download-update', async (_event, downloadUrl: string) => {
+  return await performDownloadUpdate(downloadUrl)
+})
+
+ipcMain.handle('apply-update', async () => {
+  return await performApplyUpdate()
+})
+
+ipcMain.handle('is-update-downloaded', () => {
+  return checkIsUpdateDownloaded()
+})
+
+ipcMain.handle('download-and-install-update', async (_event, downloadUrl: string) => {
+  const ok = await performDownloadUpdate(downloadUrl)
+  if (ok) {
+    return await performApplyUpdate()
+  }
+  return false
 })
 
 // 4. IPC handler to open URL externally

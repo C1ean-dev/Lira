@@ -13,7 +13,7 @@ export function createEmptyWorkspace(): MapData {
   for (let y = 0; y < height; y++) {
     const row: FloorType[] = []
     for (let x = 0; x < width; x++) {
-      row.push('habbo_parquet')
+      row.push('wood_parquet')
     }
     floors.push(row)
   }

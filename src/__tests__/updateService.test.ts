@@ -57,4 +57,36 @@ describe('Update Service & Version Checker', () => {
 
     expect(updateInfo.hasUpdate).toBe(false)
   })
+
+  it('delegates downloadUpdate to window.electronAPI when running in Electron', async () => {
+    const downloadMock = vi.fn().mockResolvedValue(true)
+    ;(globalThis as any).window = {
+      electronAPI: {
+        isElectron: true,
+        downloadUpdate: downloadMock,
+      },
+    }
+
+    const res = await UpdateService.downloadUpdate('https://example.com/update.exe')
+    expect(res).toBe(true)
+    expect(downloadMock).toHaveBeenCalledWith('https://example.com/update.exe')
+
+    delete (globalThis as any).window
+  })
+
+  it('delegates applyUpdate to window.electronAPI when running in Electron', async () => {
+    const applyMock = vi.fn().mockResolvedValue(true)
+    ;(globalThis as any).window = {
+      electronAPI: {
+        isElectron: true,
+        applyUpdate: applyMock,
+      },
+    }
+
+    const res = await UpdateService.applyUpdate('https://github.com/release')
+    expect(res).toBe(true)
+    expect(applyMock).toHaveBeenCalled()
+
+    delete (globalThis as any).window
+  })
 })

@@ -1,10 +1,5 @@
 export type FloorType = 
-  | 'habbo_parquet'
-  | 'habbo_hc_carpet'
-  | 'habbo_checker_red'
-  | 'habbo_pool_water'
-  | 'habbo_disco_dance'
-  | 'habbo_executive_rug'
+  | 'wood_parquet'
   | 'wood_light' 
   | 'wood_dark' 
   | 'carpet_blue' 
@@ -19,18 +14,15 @@ export type FloorType =
   | 'forge_iron_plates'
 
 export type WallType = 
-  | 'habbo_hotel_gold'
-  | 'habbo_brick_classic'
-  | 'habbo_nightclub_dark'
-  | 'brick_red' 
   | 'drywall_white' 
+  | 'brick_red' 
   | 'wood_panel' 
   | 'glass_modern' 
   | 'stone_dark'
   | 'forge_stone_wall'
   | 'forge_dark_brick'
 
-export type FurnitureCategory = 'Geral' | 'habbo' | 'blacksmith' | 'walls_windows' | 'desks' | 'chairs' | 'tech' | 'lounge' | 'decor' | 'meeting' | string
+export type FurnitureCategory = 'Geral' | 'blacksmith' | 'walls_windows' | 'desks' | 'chairs' | 'tech' | 'lounge' | 'decor' | 'meeting' | string
 
 export interface FurnitureDefinition {
   id: string
@@ -86,6 +78,17 @@ export interface MapData {
   walls: (WallType | null)[][] // 2D array [y][x]
   furniture: PlacedFurniture[]
   zones: PrivateZone[]
+  defaultFloor?: FloorType
+  floorOverrides?: Record<string, FloorType>
+  wallOverrides?: Record<string, WallType | null>
+}
+
+export interface StoredMapData extends Omit<MapData, 'floors' | 'walls'> {
+  floors?: FloorType[][]
+  walls?: (WallType | null)[][]
+  defaultFloor?: FloorType
+  floorOverrides?: Record<string, FloorType>
+  wallOverrides?: Record<string, WallType | null>
 }
 
 export type EditorTool = 

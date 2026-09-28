@@ -93,7 +93,7 @@ describe('Storage Persistence - Expected Behaviors', () => {
     
     const furn = {
       id: 'furn-test-1',
-      defId: 'habbo_dragon_lamp',
+      defId: 'custom_lamp',
       x: 10,
       y: 8,
     }

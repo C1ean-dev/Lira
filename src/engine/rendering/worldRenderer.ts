@@ -116,7 +116,7 @@ export class WorldRenderer {
 
         for (let y = startY; y < endY; y++) {
           for (let x = startX; x < endX; x++) {
-            const floor = map.floors?.[y]?.[x] || 'habbo_parquet'
+            const floor = map.floors?.[y]?.[x] || 'wood_parquet'
             PixelArtRenderer.drawFloor(ctx, floor, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, x, y, map.floors)
           }
         }

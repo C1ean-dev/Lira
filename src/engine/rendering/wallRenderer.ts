@@ -29,15 +29,6 @@ export function getZoneWallTheme(wallType: WallType | string = 'drywall_white'):
 
 function buildZoneWallTheme(wallType: WallType | string = 'drywall_white'): ZoneWallTheme {
   switch (wallType) {
-    case 'habbo_hotel_gold':
-      return {
-        wallBody: '#eab308',
-        trimColor: '#fef08a',
-        bevelColor: '#ca8a04',
-        shadowLine: '#854d0e',
-        baseboard: '#713f12',
-      }
-    case 'habbo_brick_classic':
     case 'brick_red':
       return {
         wallBody: '#991b1b',
@@ -46,14 +37,6 @@ function buildZoneWallTheme(wallType: WallType | string = 'drywall_white'): Zone
         shadowLine: '#450a0a',
         baseboard: '#57534e',
         isBrick: true,
-      }
-    case 'habbo_nightclub_dark':
-      return {
-        wallBody: '#1e1b4b',
-        trimColor: '#818cf8',
-        bevelColor: '#312e81',
-        shadowLine: '#0f172a',
-        baseboard: '#4f46e5',
       }
     case 'wood_panel':
       return {
@@ -195,35 +178,6 @@ export class WallRenderer {
         ctx.fillRect(px + size / 2, py + 9, 2, 9)
         break
 
-      case 'habbo_hotel_gold':
-        ctx.fillStyle = '#d4af37'
-        ctx.fillRect(px, py, size, size)
-        ctx.fillStyle = '#f3e5ab'
-        ctx.fillRect(px + 2, py + 2, size - 4, 4)
-        ctx.fillStyle = '#aa820a'
-        ctx.fillRect(px + 2, py + size - 4, size - 4, 3)
-        break
-
-      case 'habbo_brick_classic':
-        ctx.fillStyle = '#c92a2a'
-        ctx.fillRect(px, py, size, size)
-        ctx.fillStyle = '#e03131'
-        ctx.fillRect(px + 1, py + 2, size - 2, 6)
-        ctx.fillRect(px + 1, py + 10, size / 2 - 2, 6)
-        ctx.fillRect(px + size / 2 + 1, py + 10, size / 2 - 2, 6)
-        ctx.fillStyle = '#f8f9fa'
-        ctx.fillRect(px, py + 8, size, 2)
-        ctx.fillRect(px, py + 16, size, 2)
-        break
-
-      case 'habbo_nightclub_dark':
-        ctx.fillStyle = '#1e1b4b'
-        ctx.fillRect(px, py, size, size)
-        ctx.fillStyle = '#4338ca'
-        ctx.fillRect(px + 2, py + 2, size - 4, size - 4)
-        ctx.fillStyle = '#818cf8'
-        ctx.fillRect(px + 4, py + size / 2, size - 8, 2)
-        break
 
       case 'brick_red':
         ctx.fillStyle = '#8b0000'

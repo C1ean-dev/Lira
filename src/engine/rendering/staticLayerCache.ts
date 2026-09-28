@@ -103,7 +103,7 @@ export function getStaticLayer(map: MapData): StaticLayer | null {
   for (let y = 0; y < mapH; y++) {
     const row = map.floors?.[y]
     for (let x = 0; x < mapW; x++) {
-      const floor = row?.[x] || 'habbo_parquet'
+      const floor = row?.[x] || 'wood_parquet'
       const custom = assetById.get(floor)
       if (isAnimatedAsset(custom)) {
         animatedFloorTiles.push({ x, y, type: floor })

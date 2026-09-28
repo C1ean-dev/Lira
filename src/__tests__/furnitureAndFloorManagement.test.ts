@@ -31,7 +31,7 @@ describe('Furniture & Floor Management (Edit and Delete)', () => {
     useMapStore.setState({
       mapData: baseMap,
       selectedFurnitureDefId: '',
-      selectedFloor: 'habbo_parquet',
+      selectedFloor: 'wood_parquet',
     })
   })
 
@@ -106,14 +106,14 @@ describe('Furniture & Floor Management (Edit and Delete)', () => {
     })
     expect(useCustomAssetsStore.getState().getAssetById('floor_lava_tiles')?.name).toBe('Piso de Magma Ardente')
 
-    // 4. Delete custom floor and replace on map with default 'habbo_parquet'
+    // 4. Delete custom floor and replace on map with default 'wood_parquet'
     assetStore.deleteCustomAsset('floor_lava_tiles')
-    useMapStore.getState().replaceFloorGlobally('floor_lava_tiles', 'habbo_parquet')
+    useMapStore.getState().replaceFloorGlobally('floor_lava_tiles', 'wood_parquet')
 
     expect(useCustomAssetsStore.getState().getAssetById('floor_lava_tiles')).toBeUndefined()
     // Verify tiles were safely replaced with default floor
-    expect(useMapStore.getState().mapData.floors[0][0]).toBe('habbo_parquet')
-    expect(useMapStore.getState().mapData.floors[1][0]).toBe('habbo_parquet')
+    expect(useMapStore.getState().mapData.floors[0][0]).toBe('wood_parquet')
+    expect(useMapStore.getState().mapData.floors[1][0]).toBe('wood_parquet')
   })
 
   it('should support multi-tile floor creation and footprint stamping (e.g. 2x1, 4x4)', () => {
@@ -196,7 +196,7 @@ describe('Furniture & Floor Management (Edit and Delete)', () => {
       height: 6,
     })
 
-    mapStore.setFloorTile(3, 3, 'habbo_parquet' as any)
+    mapStore.setFloorTile(3, 3, 'wood_parquet' as any)
     mapStore.setFloorTile(4, 4, 'custom_carpet' as any)
 
     mapStore.addFurniture({
@@ -233,8 +233,8 @@ describe('Furniture & Floor Management (Edit and Delete)', () => {
     })
 
     // Erasing floor at (4,4) only resets the floor! Furniture and zone are preserved.
-    mapStore.setFloorTile(4, 4, 'habbo_parquet')
-    expect(useMapStore.getState().mapData.floors[4][4]).toBe('habbo_parquet')
+    mapStore.setFloorTile(4, 4, 'wood_parquet')
+    expect(useMapStore.getState().mapData.floors[4][4]).toBe('wood_parquet')
     expect(useMapStore.getState().mapData.furniture.some((f) => f.id === 'chair_2')).toBe(true)
     expect(useMapStore.getState().mapData.zones.some((z) => z.id === 'test_zone_1')).toBe(true)
 

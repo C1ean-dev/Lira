@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
-import { DoorOpen, Globe, LayoutGrid, Users, MessageSquare } from 'lucide-react'
+import { DoorOpen, Globe, LayoutGrid, Users, MessageSquare, Download, RefreshCw } from 'lucide-react'
 import { useGameStore } from '../store/useGameStore'
 import { useChatStore } from '../store/useChatStore'
 import { useMapStore } from '../store/useMapStore'
@@ -24,6 +24,9 @@ import { LiraLogo } from './LiraLogo'
 interface Props {
   onJoined: () => void
   onOpenAvatarCustomizer: () => void
+  onApplyUpdate?: () => void
+  isUpdateReady?: boolean
+  isUpdating?: boolean
 }
 
 function generateUUID(): string {
@@ -37,7 +40,13 @@ function generateUUID(): string {
   })
 }
 
-export const LobbyModal: React.FC<Props> = ({ onJoined, onOpenAvatarCustomizer }) => {
+export const LobbyModal: React.FC<Props> = ({
+  onJoined,
+  onOpenAvatarCustomizer,
+  onApplyUpdate,
+  isUpdateReady,
+  isUpdating,
+}) => {
   const { localPlayer, setLocalPlayer, friends, friendProfiles } = useGameStore()
   const {
     savedSpaces,
@@ -529,6 +538,27 @@ export const LobbyModal: React.FC<Props> = ({ onJoined, onOpenAvatarCustomizer }
         {/* Banner Header */}
         <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 p-5 text-center relative overflow-hidden shrink-0">
           <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full bg-white/10 blur-2xl" />
+          {isUpdateReady && onApplyUpdate && (
+            <button
+              type="button"
+              onClick={onApplyUpdate}
+              disabled={isUpdating}
+              className="absolute top-4 right-4 z-20 flex items-center gap-2 px-4 py-2 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white text-xs sm:text-sm font-extrabold transition-all shadow-xl shadow-emerald-500/40 border border-emerald-300/50 hover:scale-105 active:scale-95 ring-2 ring-emerald-400/50 animate-pulse cursor-pointer disabled:opacity-75 disabled:pointer-events-none"
+              title="Nova versão pronta para instalar! Clique para atualizar agora."
+            >
+              {isUpdating ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                  <span>Atualizando...</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4 text-white" />
+                  <span>Atualizar Agora</span>
+                </>
+              )}
+            </button>
+          )}
           <div className="relative z-10 flex flex-col items-center">
             <div className="mb-2">
               <LiraLogo size={52} />

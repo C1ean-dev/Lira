@@ -268,7 +268,7 @@ describe('subTileAndLayerFit - Layer Auto-Fit & Sub-Tile Placement Math', () => 
       const map: MapData = {
         width: 20,
         height: 20,
-        tiles: Array(20).fill(null).map(() => Array(20).fill('habbo_parquet')),
+        tiles: Array(20).fill(null).map(() => Array(20).fill('wood_parquet')),
         furniture: [
           {
             id: 'f1',
