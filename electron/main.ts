@@ -845,7 +845,7 @@ async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
       // 3. Immediately relaunches the updated Lira executable
       const cleanInstaller = installerPath.replace(/'/g, "''")
       const cleanAppExe = appExePath.replace(/'/g, "''")
-      const psCommand = `Start-Sleep -Seconds 2; $installer = Start-Process -FilePath '${cleanInstaller}' -ArgumentList '/S' -PassThru -Wait; Start-Sleep -Seconds 1; if (Test-Path '${cleanAppExe}') { Start-Process -FilePath '${cleanAppExe}' } else { $defaultPath = "$env:LOCALAPPDATA\\Programs\\gather-v2-clone\\Lira.exe"; if (Test-Path $defaultPath) { Start-Process -FilePath $defaultPath } }`
+      const psCommand = `Start-Sleep -Seconds 2; $proc = Start-Process -FilePath '${cleanInstaller}' -ArgumentList '/S', '--force-run' -PassThru; $instName = [System.IO.Path]::GetFileNameWithoutExtension('${cleanInstaller}'); $proc | Wait-Process -ErrorAction SilentlyContinue; while (Get-Process -Name $instName -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 500 }; Start-Sleep -Seconds 1; if (-not (Get-Process -Name 'Lira' -ErrorAction SilentlyContinue)) { if (Test-Path '${cleanAppExe}' -and '${cleanAppExe}' -notlike '*electron.exe*') { Start-Process -FilePath '${cleanAppExe}' } else { $p1 = "$env:LOCALAPPDATA\\Programs\\gather-v2-clone\\Lira.exe"; $p2 = "$env:LOCALAPPDATA\\Programs\\Lira\\Lira.exe"; if (Test-Path $p1) { Start-Process -FilePath $p1 } elseif (Test-Path $p2) { Start-Process -FilePath $p2 } } }`
 
       const child = spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', psCommand], {
         detached: true,
