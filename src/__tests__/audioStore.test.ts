@@ -42,6 +42,7 @@ describe('Audio & Media Store - Expected Behaviors', () => {
     expect(state.duckingEnabled).toBe(true)
     expect(state.isMuted).toBe(true)
     expect(state.isCameraOff).toBe(true)
+    expect(state.audioProcessorMode).toBe('rnnoise')
   })
 
   it('should update input volume (microphone gain) correctly', () => {

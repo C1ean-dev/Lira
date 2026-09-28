@@ -84,7 +84,19 @@ describe('useUpdateStore - Silent Background Download & Direct Button Update Flo
 
     const success = await useUpdateStore.getState().applyUpdate()
     expect(success).toBe(true)
-    expect(applySpy).toHaveBeenCalledWith('https://github.com/example/release')
+    expect(applySpy).toHaveBeenCalledWith('https://github.com/example/release', '1.0.5')
     expect(useUpdateStore.getState().status).toBe('installing')
+    expect(useUpdateStore.getState().isUpdateScreenOpen).toBe(true)
+  })
+
+  it('opens interactive update screen with progress when startInteractiveUpdate is called', async () => {
+    useUpdateStore.setState({
+      status: 'downloading',
+      isUpdateScreenOpen: false,
+      progress: { percent: 45, downloaded: 45000000, total: 100000000 },
+    })
+
+    await useUpdateStore.getState().startInteractiveUpdate()
+    expect(useUpdateStore.getState().isUpdateScreenOpen).toBe(true)
   })
 })

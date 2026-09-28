@@ -653,7 +653,14 @@ function downloadFileWithRedirects(
   onProgress: (percent: number, downloaded: number, total: number) => void
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    let redirectCount = 0
+    const maxRedirects = 10
+
     const makeRequest = (currentUrl: string) => {
+      if (redirectCount++ > maxRedirects) {
+        return reject(new Error('Too many redirects while downloading update'))
+      }
+
       const client = currentUrl.startsWith('https') ? https : http
       client
         .get(
@@ -664,17 +671,20 @@ function downloadFileWithRedirects(
             },
           },
           (response) => {
-            // Handle redirects (301, 302, 307, 308)
+            // Handle redirects (301, 302, 303, 307, 308)
             if (
               response.statusCode &&
               response.statusCode >= 300 &&
               response.statusCode < 400 &&
               response.headers.location
             ) {
-              return makeRequest(response.headers.location)
+              response.resume()
+              const nextUrl = new URL(response.headers.location, currentUrl).toString()
+              return makeRequest(nextUrl)
             }
 
             if (response.statusCode !== 200) {
+              response.resume()
               return reject(new Error(`Failed to download file, status code: ${response.statusCode}`))
             }
 
@@ -688,8 +698,6 @@ function downloadFileWithRedirects(
               const percent = total > 0 ? Math.floor((downloaded / total) * 100) : 0
               onProgress(percent, downloaded, total)
             })
-
-            response.pipe(fileStream)
 
             fileStream.on('finish', () => {
               fileStream.close(() => resolve())
@@ -710,22 +718,66 @@ function downloadFileWithRedirects(
 }
 
 let downloadedInstallerPath: string | null = null
+let downloadedInstallerVersion: string | null = null
 let isDownloadingUpdate = false
 let updateDownloadPromise: Promise<boolean> | null = null
 
-async function performDownloadUpdate(downloadUrl: string): Promise<boolean> {
+function getInstallerPath(version?: string): string {
+  const tempDir = app.getPath('temp')
+  const cleanVer = (version || 'latest').replace(/^v/i, '').replace(/[^a-zA-Z0-9._-]/g, '')
+  return path.join(tempDir, `Lira-Update-Setup-${cleanVer}.exe`)
+}
+
+function cleanupOldInstallers(currentInstallerPath?: string): void {
+  try {
+    const tempDir = app.getPath('temp')
+    const files = fs.readdirSync(tempDir)
+    for (const f of files) {
+      if ((f.startsWith('GatherClone-Update-Setup') || f.startsWith('Lira-Update-Setup')) && (f.endsWith('.exe') || f.endsWith('.tmp'))) {
+        const fullPath = path.join(tempDir, f)
+        if (!currentInstallerPath || fullPath !== currentInstallerPath) {
+          try {
+            fs.unlinkSync(fullPath)
+            console.log('[Updater] Cleaned up older installer file:', fullPath)
+          } catch {}
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Updater] Could not cleanup older installers:', err)
+  }
+}
+
+function checkIsUpdateDownloaded(targetVersion?: string): boolean {
+  const installerPath = targetVersion ? getInstallerPath(targetVersion) : downloadedInstallerPath
+  if (!installerPath || !fs.existsSync(installerPath)) return false
+  try {
+    const stats = fs.statSync(installerPath)
+    // A complete Lira installer is ~80MB, definitely > 10MB
+    return stats.size > 10 * 1024 * 1024
+  } catch {
+    return false
+  }
+}
+
+async function performDownloadUpdate(downloadUrl: string, targetVersion?: string): Promise<boolean> {
   if (!downloadUrl) {
     throw new Error('No download URL provided')
   }
 
-  const tempDir = app.getPath('temp')
-  const installerPath = path.join(tempDir, 'GatherClone-Update-Setup.exe')
-  const tempInstallerPath = path.join(tempDir, 'GatherClone-Update-Setup.exe.tmp')
+  const ver = targetVersion || 'latest'
+  const installerPath = getInstallerPath(ver)
+  const tempInstallerPath = `${installerPath}.tmp`
 
-  if (downloadedInstallerPath && fs.existsSync(downloadedInstallerPath)) {
+  // Clean up older installer versions from temp
+  cleanupOldInstallers(installerPath)
+
+  if (checkIsUpdateDownloaded(ver)) {
+    downloadedInstallerPath = installerPath
+    downloadedInstallerVersion = ver
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('update-download-progress', { percent: 100, downloaded: 1, total: 1 })
-      mainWindow.webContents.send('update-download-complete', { installerPath: downloadedInstallerPath })
+      mainWindow.webContents.send('update-download-complete', { installerPath, version: ver })
     }
     return true
   }
@@ -753,13 +805,17 @@ async function performDownloadUpdate(downloadUrl: string): Promise<boolean> {
       fs.renameSync(tempInstallerPath, installerPath)
 
       downloadedInstallerPath = installerPath
+      downloadedInstallerVersion = ver
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('update-download-progress', { percent: 100, downloaded: 1, total: 1 })
-        mainWindow.webContents.send('update-download-complete', { installerPath })
+        mainWindow.webContents.send('update-download-complete', { installerPath, version: ver })
       }
       return true
     } catch (err) {
       console.error('[Updater] Error during background download:', err)
+      try {
+        if (fs.existsSync(tempInstallerPath)) fs.unlinkSync(tempInstallerPath)
+      } catch {}
       return false
     } finally {
       isDownloadingUpdate = false
@@ -770,31 +826,40 @@ async function performDownloadUpdate(downloadUrl: string): Promise<boolean> {
   return await updateDownloadPromise
 }
 
-async function performApplyUpdate(): Promise<boolean> {
+async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
   try {
-    const tempDir = app.getPath('temp')
-    const installerPath = downloadedInstallerPath || path.join(tempDir, 'GatherClone-Update-Setup.exe')
-    if (!fs.existsSync(installerPath)) {
+    const installerPath = (targetVersion && !targetVersion.startsWith('http') ? getInstallerPath(targetVersion) : null) || downloadedInstallerPath
+    if (!installerPath || !fs.existsSync(installerPath)) {
       console.warn('[Updater] Installer file not found:', installerPath)
       return false
     }
 
+    const appExePath = process.execPath
+    const isWindows = process.platform === 'win32'
+    console.log('[Updater] Applying update. Installer:', installerPath, 'Current App:', appExePath)
+
+    if (isWindows) {
+      // Create a background detached PowerShell script that:
+      // 1. Waits 2s for this current Electron process to fully exit and release file locks
+      // 2. Runs the NSIS installer silently (/S) and waits for completion
+      // 3. Immediately relaunches the updated Lira executable
+      const cleanInstaller = installerPath.replace(/'/g, "''")
+      const cleanAppExe = appExePath.replace(/'/g, "''")
+      const psCommand = `Start-Sleep -Seconds 2; $installer = Start-Process -FilePath '${cleanInstaller}' -ArgumentList '/S' -PassThru -Wait; Start-Sleep -Seconds 1; if (Test-Path '${cleanAppExe}') { Start-Process -FilePath '${cleanAppExe}' } else { $defaultPath = "$env:LOCALAPPDATA\\Programs\\gather-v2-clone\\Lira.exe"; if (Test-Path $defaultPath) { Start-Process -FilePath $defaultPath } }`
+
+      const child = spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', psCommand], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      })
+      child.unref()
+    } else {
+      shell.openPath(installerPath)
+    }
+
     setTimeout(() => {
-      try {
-        const installerArgs = ['/S', '--updated', '--force-run']
-        console.log('[Updater] Spawning silent installer:', installerPath, installerArgs)
-        const subprocess = spawn(installerPath, installerArgs, {
-          detached: true,
-          stdio: 'ignore',
-        })
-        subprocess.unref()
-        app.exit(0)
-      } catch (err) {
-        console.error('[Updater] Failed to spawn silent installer:', err)
-        shell.openPath(installerPath)
-        app.exit(0)
-      }
-    }, 400)
+      app.exit(0)
+    }, 600)
 
     return true
   } catch (err) {
@@ -803,29 +868,23 @@ async function performApplyUpdate(): Promise<boolean> {
   }
 }
 
-function checkIsUpdateDownloaded(): boolean {
-  const tempDir = app.getPath('temp')
-  const installerPath = downloadedInstallerPath || path.join(tempDir, 'GatherClone-Update-Setup.exe')
-  return !!(installerPath && fs.existsSync(installerPath))
-}
-
 // 3. IPC handlers for Download and Run installer
-ipcMain.handle('download-update', async (_event, downloadUrl: string) => {
-  return await performDownloadUpdate(downloadUrl)
+ipcMain.handle('download-update', async (_event, downloadUrl: string, targetVersion?: string) => {
+  return await performDownloadUpdate(downloadUrl, targetVersion)
 })
 
-ipcMain.handle('apply-update', async () => {
-  return await performApplyUpdate()
+ipcMain.handle('apply-update', async (_event, targetVersion?: string) => {
+  return await performApplyUpdate(targetVersion)
 })
 
-ipcMain.handle('is-update-downloaded', () => {
-  return checkIsUpdateDownloaded()
+ipcMain.handle('is-update-downloaded', (_event, targetVersion?: string) => {
+  return checkIsUpdateDownloaded(targetVersion)
 })
 
-ipcMain.handle('download-and-install-update', async (_event, downloadUrl: string) => {
-  const ok = await performDownloadUpdate(downloadUrl)
+ipcMain.handle('download-and-install-update', async (_event, downloadUrl: string, targetVersion?: string) => {
+  const ok = await performDownloadUpdate(downloadUrl, targetVersion)
   if (ok) {
-    return await performApplyUpdate()
+    return await performApplyUpdate(targetVersion)
   }
   return false
 })

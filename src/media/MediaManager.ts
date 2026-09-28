@@ -68,7 +68,7 @@ export class MediaManager {
   private screenGainNode: GainNode | null = null
   private screenDuckInterval: number | null = null
   private callAudioIsolator: CallAudioIsolator | null = null
-  private currentProcessorMode: AudioProcessorMode = 'classic'
+  private currentProcessorMode: AudioProcessorMode = 'rnnoise'
 
   private processAudioCapture: ProcessAudioCapture | null = null
 
@@ -124,7 +124,7 @@ export class MediaManager {
     *      always wins.
     *   2. Otherwise we look for a stored calibration for the current input
     *      device and use its recommendedMode.
-    *   3. If neither exists we fall back to 'classic' (the original default).
+    *   3. If neither exists we fall back to 'rnnoise' (the default).
     */
   private selectEngine(): AudioEngine {
     const state = useMediaStore.getState()
@@ -132,7 +132,7 @@ export class MediaManager {
     const cal = state.micCalibrations[state.selectedAudioInput]
     const mode: AudioProcessorMode = manual
       ? state.audioProcessorMode
-      : cal?.recommendedMode ?? state.audioProcessorMode ?? 'classic'
+      : cal?.recommendedMode ?? state.audioProcessorMode ?? 'rnnoise'
     this.currentProcessorMode = mode
     if (mode === 'rnnoise') return this.rnnoiseEngine
     if (mode === 'soft') return this.softEngine

@@ -18,6 +18,7 @@ import { useMediaStore } from './store/useMediaStore'
 import { useChatStore } from './store/useChatStore'
 import { useMapStore } from './store/useMapStore'
 import { useUpdateStore } from './store/useUpdateStore'
+import { AppUpdateScreen } from './components/AppUpdateScreen'
 import { idleManager } from './services/idleManager'
 import { PeerManager } from './p2p/PeerManager'
 import { MediaManager } from './media/MediaManager'
@@ -38,8 +39,9 @@ export const App: React.FC = () => {
 
   const updateInfo = useUpdateStore((s) => s.updateInfo)
   const updateStatus = useUpdateStore((s) => s.status)
+  const isUpdateScreenOpen = useUpdateStore((s) => s.isUpdateScreenOpen)
   const checkForUpdatesAndDownload = useUpdateStore((s) => s.checkForUpdatesAndDownload)
-  const applyUpdate = useUpdateStore((s) => s.applyUpdate)
+  const startInteractiveUpdate = useUpdateStore((s) => s.startInteractiveUpdate)
 
   // Check for updates on startup: downloads silently in background
   useEffect(() => {
@@ -108,7 +110,7 @@ export const App: React.FC = () => {
       {/* Top Bar */}
       <TopNavBar
         onOpenAvatarModal={() => setIsAvatarModalOpen(true)}
-        onApplyUpdate={applyUpdate}
+        onApplyUpdate={startInteractiveUpdate}
         hasUpdate={!!updateInfo?.hasUpdate}
         isUpdateReady={updateStatus === 'ready'}
         isUpdating={updateStatus === 'installing'}
@@ -163,10 +165,15 @@ export const App: React.FC = () => {
         <LobbyModal
           onJoined={() => setInLobby(false)}
           onOpenAvatarCustomizer={() => setIsAvatarModalOpen(true)}
-          onApplyUpdate={applyUpdate}
+          onApplyUpdate={startInteractiveUpdate}
           isUpdateReady={updateStatus === 'ready'}
           isUpdating={updateStatus === 'installing'}
         />
+      )}
+
+      {/* Fullscreen Dedicated App Update Screen with centered icon and progress bar */}
+      {(isUpdateScreenOpen || updateStatus === 'installing') && (
+        <AppUpdateScreen />
       )}
     </div>
   )

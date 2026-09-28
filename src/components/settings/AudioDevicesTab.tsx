@@ -6,7 +6,6 @@ import {
   Activity,
   Radio,
   CheckCircle2,
-  Sparkles,
   Video,
   VideoOff,
   Info,
@@ -532,12 +531,9 @@ export const AudioDevicesTab: React.FC<Props> = ({
         ) : (
           <div className="text-[11px] text-emerald-300/90 bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-xl space-y-1.5">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>
-                  O sistema detecta dinamicamente os barulhos da sua sala e calibra o corte automaticamente.
-                </span>
-              </div>
+              <span>
+                O sistema detecta dinamicamente os barulhos da sua sala e calibra o corte automaticamente.
+              </span>
               {autoThresholdPercent > 0 && (
                 <span
                   className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-mono font-bold border border-emerald-500/30 shrink-0"

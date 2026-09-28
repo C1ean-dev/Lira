@@ -239,7 +239,7 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   manualSensitivityThreshold: saved.manualSensitivityThreshold !== undefined ? saved.manualSensitivityThreshold : 20,
   echoCancellation: saved.echoCancellation !== undefined ? saved.echoCancellation : true,
   autoGainControl: saved.autoGainControl !== undefined ? saved.autoGainControl : true,
-  audioProcessorMode: isValidMode(saved.audioProcessorMode) ? saved.audioProcessorMode : 'classic',
+  audioProcessorMode: isValidMode(saved.audioProcessorMode) ? saved.audioProcessorMode : 'rnnoise',
   // Default false: on first launch MediaManager is allowed to apply the
   // calibrated recommendation (if any) to pick the initial engine.
   hasUserChosenProcessorMode: saved.hasUserChosenProcessorMode === true,

@@ -8,16 +8,19 @@ export interface UpdateStore {
   status: UpdateStatus
   progress: UpdateProgress
   error: string | null
+  isUpdateScreenOpen: boolean
 
   // State setters
   setUpdateInfo: (info: UpdateInfo | null) => void
   setStatus: (status: UpdateStatus) => void
   setProgress: (progress: UpdateProgress) => void
   setError: (error: string | null) => void
+  setIsUpdateScreenOpen: (open: boolean) => void
 
   // Flows
   checkForUpdatesAndDownload: (inLobbyGetter?: () => boolean) => Promise<void>
   applyUpdate: () => Promise<boolean>
+  startInteractiveUpdate: () => Promise<void>
 }
 
 let unsubProgress: (() => void) | null = null
@@ -28,11 +31,13 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
   status: 'idle',
   progress: { percent: 0, downloaded: 0, total: 0 },
   error: null,
+  isUpdateScreenOpen: false,
 
   setUpdateInfo: (info) => set({ updateInfo: info }),
   setStatus: (status) => set({ status }),
   setProgress: (progress) => set({ progress }),
   setError: (error) => set({ error }),
+  setIsUpdateScreenOpen: (open) => set({ isUpdateScreenOpen: open }),
 
   checkForUpdatesAndDownload: async () => {
     const currentStatus = get().status
@@ -51,8 +56,8 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
 
       set({ updateInfo: info })
 
-      // Check if update was already downloaded
-      const alreadyDownloaded = await UpdateService.isUpdateDownloaded()
+      // Check if update was already downloaded for this specific version
+      const alreadyDownloaded = await UpdateService.isUpdateDownloaded(info.latestVersion)
       if (alreadyDownloaded) {
         set({
           status: 'ready',
@@ -61,7 +66,7 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
         return
       }
 
-      // Automatically download in background when detected (no modal)
+      // Automatically download in background when detected (silent)
       set({
         status: 'downloading',
         progress: { percent: 0, downloaded: 0, total: 0 },
@@ -72,6 +77,9 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
         set({ progress: p })
         if (p.percent >= 100) {
           set({ status: 'ready' })
+          if (get().isUpdateScreenOpen) {
+            get().applyUpdate()
+          }
         }
       })
 
@@ -81,14 +89,20 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
           status: 'ready',
           progress: { percent: 100, downloaded: 1, total: 1 },
         })
+        if (get().isUpdateScreenOpen) {
+          get().applyUpdate()
+        }
       })
 
-      const success = await UpdateService.downloadUpdate(info.downloadUrl)
+      const success = await UpdateService.downloadUpdate(info.downloadUrl, info.latestVersion)
       if (success) {
         set({
           status: 'ready',
           progress: { percent: 100, downloaded: 1, total: 1 },
         })
+        if (get().isUpdateScreenOpen) {
+          get().applyUpdate()
+        }
       } else {
         set({
           status: 'error',
@@ -105,10 +119,12 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
   },
 
   applyUpdate: async () => {
-    set({ status: 'installing' })
+    set({ status: 'installing', isUpdateScreenOpen: true })
     const info = get().updateInfo
     try {
-      const success = await UpdateService.applyUpdate(info?.releaseUrl)
+      // Keep UI visible for a brief moment so user sees the progress screen before app closes
+      await new Promise((r) => setTimeout(r, 1200))
+      const success = await UpdateService.applyUpdate(info?.releaseUrl, info?.latestVersion)
       if (!success) {
         set({
           status: 'error',
@@ -123,6 +139,23 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
         error: err?.message || 'Falha ao aplicar atualização.',
       })
       return false
+    }
+  },
+
+  startInteractiveUpdate: async () => {
+    set({ isUpdateScreenOpen: true })
+    const currentStatus = get().status
+    const info = get().updateInfo
+
+    if (currentStatus === 'ready') {
+      await get().applyUpdate()
+    } else if (currentStatus === 'downloading') {
+      // Screen is already opened with progress bar; will auto-apply when finished
+    } else if (info?.hasUpdate) {
+      await get().checkForUpdatesAndDownload()
+      if (get().status === 'ready') {
+        await get().applyUpdate()
+      }
     }
   },
 }))

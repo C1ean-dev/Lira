@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Sparkles, Mic, RotateCw, Check, Volume2 } from 'lucide-react'
+import { Mic, RotateCw, Check, Volume2 } from 'lucide-react'
 import { useMediaStore } from '../../store/useMediaStore'
 import { MediaManager } from '../../media/MediaManager'
 import { AudioProcessorMode } from '../../types/audio'
@@ -506,8 +506,7 @@ export const AdvancedAudioTab: React.FC = () => {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+              <div className="text-xs font-semibold text-slate-200">
                 <span>Motor de Supressão de Ruído</span>
               </div>
               <div className="text-[10px] text-slate-400">
