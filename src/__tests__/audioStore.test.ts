@@ -14,7 +14,7 @@ describe('Audio & Media Store - Expected Behaviors', () => {
       echoCancellation: true,
       autoGainControl: true,
       isNoiseSuppressionEnabled: true,
-      screenShareAudioVolume: 50,
+      screenShareAudioVolume: 100,
       duckingEnabled: true,
       isMuted: true,
       isCameraOff: true,
@@ -38,7 +38,7 @@ describe('Audio & Media Store - Expected Behaviors', () => {
     expect(state.echoCancellation).toBe(true)
     expect(state.autoGainControl).toBe(true)
     expect(state.isNoiseSuppressionEnabled).toBe(true)
-    expect(state.screenShareAudioVolume).toBe(50)
+    expect(state.screenShareAudioVolume).toBe(100)
     expect(state.duckingEnabled).toBe(true)
     expect(state.isMuted).toBe(true)
     expect(state.isCameraOff).toBe(true)
@@ -136,13 +136,15 @@ describe('Audio & Media Store - Expected Behaviors', () => {
   it('should update real-time local audio level and gate open status', () => {
     const { setLocalAudioLevel } = useMediaStore.getState()
     
-    setLocalAudioLevel(0.42, true)
+    setLocalAudioLevel(0.42, true, 18)
     expect(useMediaStore.getState().localAudioLevel).toBe(0.42)
     expect(useMediaStore.getState().isGateOpen).toBe(true)
+    expect(useMediaStore.getState().autoThresholdPercent).toBe(18)
 
-    setLocalAudioLevel(0.01, false)
+    setLocalAudioLevel(0.01, false, 12)
     expect(useMediaStore.getState().localAudioLevel).toBe(0.01)
     expect(useMediaStore.getState().isGateOpen).toBe(false)
+    expect(useMediaStore.getState().autoThresholdPercent).toBe(12)
   })
 
   it('should handle microphone test mode toggle', () => {

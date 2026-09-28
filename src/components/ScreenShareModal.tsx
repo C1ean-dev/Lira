@@ -41,6 +41,8 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const isScreenSharing = useMediaStore((s) => s.isScreenSharing)
   const screenShareAudioVolume = useMediaStore((s) => s.screenShareAudioVolume)
   const setScreenShareAudioVolume = useMediaStore((s) => s.setScreenShareAudioVolume)
+  const duckingEnabled = useMediaStore((s) => s.duckingEnabled)
+  const setDuckingEnabled = useMediaStore((s) => s.setDuckingEnabled)
   const isHardwareAccelerationEnabled = useMediaStore((s) => s.isHardwareAccelerationEnabled)
   const toggleHardwareAcceleration = useMediaStore((s) => s.toggleHardwareAcceleration)
 
@@ -472,9 +474,9 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
               </div>
             </div>
 
-            {/* Volume Control */}
+            {/* Volume Control & Smart Ducking */}
             <div className="pt-2 border-t border-[#2a3142]/60">
-              <div className="bg-[#1b202c] p-3.5 rounded-xl border border-[#2a3142]">
+              <div className="bg-[#1b202c] p-3.5 rounded-xl border border-[#2a3142] space-y-3">
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between text-[11px] text-slate-300">
                     <div className="flex items-center gap-1.5 font-semibold">
@@ -496,6 +498,25 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                     }}
                     className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
                   />
+                </div>
+
+                {/* Ducking de Voz Inteligente */}
+                <div className="flex items-center justify-between pt-2.5 border-t border-[#2a3142]/70">
+                  <div className="space-y-0.5 pr-2">
+                    <div className="text-xs font-semibold text-slate-200">Ducking de Voz Inteligente</div>
+                    <div className="text-[10px] text-slate-400 leading-tight">
+                      Reduz automaticamente o áudio da tela em 75% enquanto você estiver falando
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={duckingEnabled}
+                      onChange={(e) => setDuckingEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                  </label>
                 </div>
               </div>
             </div>

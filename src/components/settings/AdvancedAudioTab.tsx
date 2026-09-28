@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Shield, Sparkles, Mic, RotateCw, Check, Volume2 } from 'lucide-react'
+import { Sparkles, Mic, RotateCw, Check, Volume2 } from 'lucide-react'
 import { useMediaStore } from '../../store/useMediaStore'
 import { MediaManager } from '../../media/MediaManager'
 import { AudioProcessorMode } from '../../types/audio'
@@ -13,8 +13,6 @@ export const AdvancedAudioTab: React.FC = () => {
   const echoCancellation = useMediaStore((s) => s.echoCancellation)
   const autoGainControl = useMediaStore((s) => s.autoGainControl)
   const isNoiseSuppressionEnabled = useMediaStore((s) => s.isNoiseSuppressionEnabled)
-  const screenShareAudioVolume = useMediaStore((s) => s.screenShareAudioVolume)
-  const duckingEnabled = useMediaStore((s) => s.duckingEnabled)
   const audioProcessorMode = useMediaStore((s) => s.audioProcessorMode)
   const selectedAudioInput = useMediaStore((s) => s.selectedAudioInput)
   const micCalibrations = useMediaStore((s) => s.micCalibrations)
@@ -25,8 +23,6 @@ export const AdvancedAudioTab: React.FC = () => {
   const setEchoCancellation = useMediaStore((s) => s.setEchoCancellation)
   const setAutoGainControl = useMediaStore((s) => s.setAutoGainControl)
   const toggleNoiseSuppression = useMediaStore((s) => s.toggleNoiseSuppression)
-  const setScreenShareAudioVolume = useMediaStore((s) => s.setScreenShareAudioVolume)
-  const setDuckingEnabled = useMediaStore((s) => s.setDuckingEnabled)
   const setAudioProcessorMode = useMediaStore((s) => s.setAudioProcessorMode)
   const setManualSensitivityThreshold = useMediaStore((s) => s.setManualSensitivityThreshold)
   const setSensitivityMode = useMediaStore((s) => s.setSensitivityMode)
@@ -174,11 +170,6 @@ export const AdvancedAudioTab: React.FC = () => {
       ? 'Calibrado automaticamente'
       : 'Padrão'
 
-  const handleScreenVolumeChange = (vol: number) => {
-    setScreenShareAudioVolume(vol)
-    MediaManager.getInstance().updateScreenShareAudioVolume(vol)
-  }
-
   const engineModeLabel = (mode: AudioProcessorMode): string => {
     if (mode === 'rnnoise') return 'RNNoise Neural'
     if (mode === 'soft') return 'DSP Suave'
@@ -218,56 +209,7 @@ export const AdvancedAudioTab: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* 1. Compartilhamento de Tela & Correção de Reverberação */}
-      <div className="bg-[#12151d]/70 rounded-2xl p-4 border border-[#2a3142] space-y-4">
-        <div className="flex items-center gap-2">
-          <Shield className="w-4 h-4 text-emerald-400" />
-          <span className="text-xs font-bold text-slate-200">
-            Áudio de Compartilhamento de Tela (Anti-Reverberação)
-          </span>
-        </div>
-
-        <div className="text-xs text-slate-400 leading-relaxed bg-[#1b202c] p-3 rounded-xl border border-[#2a3142]">
-          <strong className="text-slate-200">Como funciona o isolamento anti-eco:</strong> Quando você transmite o áudio do seu computador junto com a tela, nosso motor aplica atenuação e ducking automático, impedindo que a voz dos outros participantes volte para a chamada em forma de eco ensurdecedor.
-        </div>
-
-        {/* Volume do Áudio da Tela */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-xs text-slate-300">
-            <span>Volume Padrão da Transmissão da Tela</span>
-            <span className="font-bold text-indigo-400">{screenShareAudioVolume}%</span>
-          </div>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={screenShareAudioVolume}
-            onChange={(e) => handleScreenVolumeChange(Number(e.target.value))}
-            className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-          />
-        </div>
-
-        {/* Ducking Inteligente Toggle */}
-        <div className="flex items-center justify-between pt-2 border-t border-[#2a3142]">
-          <div>
-            <div className="text-xs font-semibold text-slate-200">Ducking de Voz Inteligente</div>
-            <div className="text-[10px] text-slate-400">
-              Reduz automaticamente o áudio da tela em 75% enquanto você estiver falando
-            </div>
-          </div>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={duckingEnabled}
-              onChange={(e) => setDuckingEnabled(e.target.checked)}
-              className="sr-only peer"
-            />
-            <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-          </label>
-        </div>
-      </div>
-
-      {/* 2. Processamento DSP & Cancelamento */}
+      {/* 1. Processamento DSP & Cancelamento */}
       <div className="bg-[#12151d]/70 rounded-2xl p-4 border border-[#2a3142] space-y-3">
         <div className="text-xs font-bold text-slate-200 mb-2">Processamento de Voz & Filtros</div>
 

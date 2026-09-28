@@ -13,7 +13,7 @@ export class NoiseSuppressor {
   private testGainNode: GainNode | null = null
 
   private animationFrameId: number | null = null
-  private onLevelCallback: ((level: number, gateOpen: boolean, rawRms: number) => void) | null = null
+  private onLevelCallback: ((level: number, gateOpen: boolean, rawRms: number, dynamicThresholdPercent?: number) => void) | null = null
 
   // Sensitivity & Gate Parameters
   private sensitivityMode: SensitivityMode = 'auto'
@@ -22,6 +22,12 @@ export class NoiseSuppressor {
   private dynamicNoiseFloor: number = 0.005 // Auto tracker
   private isGateOpen: boolean = false
   private isSuppressionActive: boolean = true
+
+  // Hold Time & Speech Protection against continuous voice noise floor elevation
+  private holdTimeMs: number = 220
+  private lastSpeechTime: number = 0
+  private quietMs: number = 0
+  private static readonly HOLD_MS_FOR_NOISE_FLOOR_INCREASE: number = 1500
 
   constructor() {}
 
@@ -34,7 +40,7 @@ export class NoiseSuppressor {
     initialInputVolume: number = 100,
     sensitivityMode: SensitivityMode = 'auto',
     manualThresholdPercent: number = 20,
-    onAudioLevel?: (level: number, gateOpen: boolean, rawRms: number) => void
+    onAudioLevel?: (level: number, gateOpen: boolean, rawRms: number, dynamicThresholdPercent?: number) => void
   ): MediaStream {
     try {
       this.dispose() // Clean up any previous context
@@ -161,20 +167,29 @@ export class NoiseSuppressor {
       }
       const rms = Math.sqrt(sum / buffer.length)
 
-      // Auto tracker for ambient noise floor
+      // Auto tracker for ambient noise floor with continuous speech protection
       if (this.sensitivityMode === 'auto') {
+        const quietLimit = this.currentThreshold * 0.7
         if (rms < this.dynamicNoiseFloor || this.dynamicNoiseFloor === 0) {
           this.dynamicNoiseFloor = this.dynamicNoiseFloor * 0.95 + rms * 0.05
+          this.updateCalculatedThreshold()
+        } else if (rms < quietLimit) {
+          // In quiet periods, allow gentle upward creep only after sustained silence (>1.5s)
+          this.quietMs += 1000 / 60
+          if (this.quietMs > NoiseSuppressor.HOLD_MS_FOR_NOISE_FLOOR_INCREASE) {
+            this.dynamicNoiseFloor = this.dynamicNoiseFloor * 0.999 + rms * 0.001
+            this.updateCalculatedThreshold()
+          }
         } else {
-          this.dynamicNoiseFloor = this.dynamicNoiseFloor * 0.999 + rms * 0.001
+          // Active speech detected: reset quiet timer so user speech does NOT raise ambient floor
+          this.quietMs = 0
         }
-        this.updateCalculatedThreshold()
       }
 
       // Normalized level for UI VU Meter (0.0 to 1.0)
       const normalizedLevel = Math.min(1, rms * 6)
 
-      // Gate Logic with hysteresis
+      // Gate Logic with hysteresis and Hold Time (Hangover)
       if (this.gateGain && this.isSuppressionActive) {
         const now = this.audioCtx.currentTime
         let shouldOpen = false
@@ -207,11 +222,19 @@ export class NoiseSuppressor {
           }
         }
 
-        if (!this.isGateOpen && shouldOpen) {
+        // Hold Time tracking: keep gate open during natural micro-pauses in human speech
+        if (shouldOpen) {
+          this.lastSpeechTime = now
+        }
+        const isWithinHold = (now - this.lastSpeechTime) < (this.holdTimeMs / 1000)
+        const isMutedManual = this.sensitivityMode === 'manual' && this.manualThresholdPercent >= 100
+        const effectiveOpen = (shouldOpen || isWithinHold) && !isMutedManual
+
+        if (!this.isGateOpen && effectiveOpen) {
           this.gateGain.gain.cancelScheduledValues(now)
           this.gateGain.gain.setTargetAtTime(1.0, now, 0.01) // 10ms fast attack
           this.isGateOpen = true
-        } else if (this.isGateOpen && !shouldOpen) {
+        } else if (this.isGateOpen && !effectiveOpen) {
           this.gateGain.gain.cancelScheduledValues(now)
           this.gateGain.gain.setTargetAtTime(0.0, now, 0.15) // 150ms smooth release to 0.0
           this.isGateOpen = false
@@ -220,9 +243,15 @@ export class NoiseSuppressor {
         this.isGateOpen = true
       }
 
+      // Dynamic threshold percent for VU meter alignment (0 - 100%)
+      const dynamicThresholdPercent =
+        this.sensitivityMode === 'manual'
+          ? this.manualThresholdPercent
+          : Math.min(100, Math.max(0, Math.round(this.currentThreshold * 6 * 100)))
+
       // Notify callback for visual VU Meter & Speaker Aura
       if (this.onLevelCallback) {
-        this.onLevelCallback(normalizedLevel, this.isGateOpen, rms)
+        this.onLevelCallback(normalizedLevel, this.isGateOpen, rms, dynamicThresholdPercent)
       }
 
       this.animationFrameId = requestAnimationFrame(process)
@@ -291,5 +320,15 @@ export class NoiseSuppressor {
     this.destination = null
     this.testGainNode = null
     this.audioCtx = null
+    this.lastSpeechTime = 0
+    this.quietMs = 0
+  }
+
+  public getHoldTimeMs(): number {
+    return this.holdTimeMs
+  }
+
+  public getDynamicNoiseFloor(): number {
+    return this.dynamicNoiseFloor
   }
 }
