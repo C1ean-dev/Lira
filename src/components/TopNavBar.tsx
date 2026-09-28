@@ -10,7 +10,6 @@ import {
   Globe,
   Download,
   LogOut,
-  Sparkles,
   RefreshCw,
 } from 'lucide-react'
 import { useGameStore } from '../store/useGameStore'
@@ -19,6 +18,8 @@ import { useChatStore } from '../store/useChatStore'
 import { useMediaStore } from '../store/useMediaStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { LiraLogo } from './LiraLogo'
+import { useUpdateStore } from '../store/useUpdateStore'
+import { CURRENT_APP_VERSION } from '../services/updateService'
 import { NetworkSignalIcon } from './NetworkSignalIcon'
 import { useNetworkQualityStore } from '../store/useNetworkQualityStore'
 import { STATUS_META } from '../types/game'
@@ -48,6 +49,9 @@ export const TopNavBar: React.FC<Props> = ({
   const localPlayerStatusText = useGameStore((s) => s.localPlayer.statusText)
   const localPlayerCurrentZoneId = useGameStore((s) => s.localPlayer.currentZoneId)
   const roomId = useGameStore((s) => s.roomId)
+  const updateInfo = useUpdateStore((s) => s.updateInfo)
+  const rawVersion = updateInfo?.currentVersion || CURRENT_APP_VERSION
+  const currentVersion = rawVersion.startsWith('v') ? rawVersion : `v${rawVersion}`
   const isOwner = useGameStore((s) => s.isOwner)
   const isRoomPublic = useGameStore((s) => s.isRoomPublic)
   const toggleRoomPrivacy = useGameStore((s) => s.toggleRoomPrivacy)
@@ -263,8 +267,8 @@ export const TopNavBar: React.FC<Props> = ({
           )}
         </button>
 
-        {/* Available Update Notification Button */}
-        {hasUpdate && isUpdateReady && onApplyUpdate && (
+        {/* Available Update Notification Button OR Current Version Badge */}
+        {hasUpdate && isUpdateReady && onApplyUpdate ? (
           <button
             onClick={onApplyUpdate}
             disabled={isUpdating}
@@ -283,6 +287,14 @@ export const TopNavBar: React.FC<Props> = ({
               </>
             )}
           </button>
+        ) : (
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#1b202c] border border-[#2a3142] text-slate-300 text-xs font-semibold select-none"
+            title={`Versão atual do Lira: ${currentVersion}`}
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            <span className="font-mono text-[11px] text-slate-400">{currentVersion}</span>
+          </div>
         )}
 
         {/* Real-time Network Quality Indicator */}
