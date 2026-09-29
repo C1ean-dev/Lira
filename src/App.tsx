@@ -166,6 +166,7 @@ export const App: React.FC = () => {
           onJoined={() => setInLobby(false)}
           onOpenAvatarCustomizer={() => setIsAvatarModalOpen(true)}
           onApplyUpdate={startInteractiveUpdate}
+          hasUpdate={!!updateInfo?.hasUpdate}
           isUpdateReady={updateStatus === 'ready'}
           isUpdating={updateStatus === 'installing'}
         />

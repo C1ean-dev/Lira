@@ -267,24 +267,18 @@ export const TopNavBar: React.FC<Props> = ({
           )}
         </button>
 
-        {/* Available Update Notification Button OR Current Version Badge */}
-        {hasUpdate && isUpdateReady && onApplyUpdate ? (
+        {/* Available Update Notification Download Icon OR Current Version Badge */}
+        {hasUpdate && onApplyUpdate ? (
           <button
             onClick={onApplyUpdate}
             disabled={isUpdating}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-extrabold text-xs border border-emerald-300/50 shadow-lg shadow-emerald-500/30 hover:scale-105 active:scale-95 transition-all animate-pulse disabled:opacity-75 cursor-pointer"
-            title="Nova versão pronta! Clique para atualizar agora"
+            className="p-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 hover:text-emerald-300 transition-all hover:scale-105 shadow-sm shadow-emerald-500/20 disabled:opacity-75 cursor-pointer"
+            title="Nova atualização disponível! Clique para atualizar agora."
           >
             {isUpdating ? (
-              <>
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
-                <span>Atualizando...</span>
-              </>
+              <RefreshCw className="w-4 h-4 animate-spin" />
             ) : (
-              <>
-                <Download className="w-3.5 h-3.5 text-white" />
-                <span>Atualizar Agora</span>
-              </>
+              <Download className="w-4 h-4" />
             )}
           </button>
         ) : (

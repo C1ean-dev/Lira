@@ -34,7 +34,7 @@ let pendingScreenCapture: { sourceId: string | null; withAudio: boolean; capture
 let lastSelectedSourceId: string | null = null
 let lastSelectedSourceTime = 0
 
-const GITHUB_REPO = 'C1ean-dev/gather-clone'
+const GITHUB_REPO = 'C1ean-dev/Lira'
 const CURRENT_VERSION = app.getVersion() || '1.0.0'
 
 type ProcessAudioCaptureResult = { ok: true } | { ok: false; error: string }
@@ -668,6 +668,7 @@ function downloadFileWithRedirects(
           {
             headers: {
               'User-Agent': 'gather-v2-clone-updater',
+              Accept: 'application/octet-stream',
             },
           },
           (response) => {
@@ -693,10 +694,18 @@ function downloadFileWithRedirects(
 
             const fileStream = fs.createWriteStream(destPath)
 
-            response.on('data', (chunk) => {
+            response.on('data', (chunk: Buffer) => {
               downloaded += chunk.length
               const percent = total > 0 ? Math.floor((downloaded / total) * 100) : 0
               onProgress(percent, downloaded, total)
+            })
+
+            response.pipe(fileStream)
+
+            response.on('error', (err) => {
+              fileStream.destroy()
+              fs.unlink(destPath, () => {})
+              reject(err)
             })
 
             fileStream.on('finish', () => {
@@ -728,12 +737,60 @@ function getInstallerPath(version?: string): string {
   return path.join(tempDir, `Lira-Update-Setup-${cleanVer}.exe`)
 }
 
+function findExistingInstaller(version?: string): string | null {
+  const tempDir = app.getPath('temp')
+  const cleanVer = (version || '').replace(/^v/i, '').replace(/[^a-zA-Z0-9._-]/g, '')
+
+  const candidates: string[] = []
+  if (cleanVer) {
+    candidates.push(
+      path.join(tempDir, `Lira-Update-Setup-${cleanVer}.exe`),
+      path.join(tempDir, `Lira.Setup.${cleanVer}.exe`),
+      path.join(tempDir, `Lira-Setup-${cleanVer}.exe`),
+      path.join(tempDir, `GatherClone-Update-Setup-${cleanVer}.exe`)
+    )
+  }
+  if (downloadedInstallerPath && fs.existsSync(downloadedInstallerPath)) {
+    candidates.push(downloadedInstallerPath)
+  }
+  candidates.push(getInstallerPath(version))
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      try {
+        const stats = fs.statSync(candidate)
+        if (stats.size > 10 * 1024 * 1024) {
+          return candidate
+        }
+      } catch {}
+    }
+  }
+
+  // Fallback: check temp directory for any valid installer matching the version
+  try {
+    const files = fs.readdirSync(tempDir)
+    for (const file of files) {
+      if ((file.startsWith('Lira') || file.startsWith('GatherClone')) && file.endsWith('.exe')) {
+        if (!cleanVer || file.includes(cleanVer)) {
+          const full = path.join(tempDir, file)
+          const stats = fs.statSync(full)
+          if (stats.size > 10 * 1024 * 1024) {
+            return full
+          }
+        }
+      }
+    }
+  } catch {}
+
+  return null
+}
+
 function cleanupOldInstallers(currentInstallerPath?: string): void {
   try {
     const tempDir = app.getPath('temp')
     const files = fs.readdirSync(tempDir)
     for (const f of files) {
-      if ((f.startsWith('GatherClone-Update-Setup') || f.startsWith('Lira-Update-Setup')) && (f.endsWith('.exe') || f.endsWith('.tmp'))) {
+      if ((f.startsWith('GatherClone-Update-Setup') || f.startsWith('Lira-Update-Setup') || f.startsWith('Lira.Setup')) && (f.endsWith('.exe') || f.endsWith('.tmp'))) {
         const fullPath = path.join(tempDir, f)
         if (!currentInstallerPath || fullPath !== currentInstallerPath) {
           try {
@@ -749,12 +806,17 @@ function cleanupOldInstallers(currentInstallerPath?: string): void {
 }
 
 function checkIsUpdateDownloaded(targetVersion?: string): boolean {
-  const installerPath = targetVersion ? getInstallerPath(targetVersion) : downloadedInstallerPath
+  const installerPath = findExistingInstaller(targetVersion) || (targetVersion ? getInstallerPath(targetVersion) : downloadedInstallerPath)
   if (!installerPath || !fs.existsSync(installerPath)) return false
   try {
     const stats = fs.statSync(installerPath)
     // A complete Lira installer is ~80MB, definitely > 10MB
-    return stats.size > 10 * 1024 * 1024
+    const valid = stats.size > 10 * 1024 * 1024
+    if (valid) {
+      downloadedInstallerPath = installerPath
+      downloadedInstallerVersion = targetVersion || null
+    }
+    return valid
   } catch {
     return false
   }
@@ -773,11 +835,12 @@ async function performDownloadUpdate(downloadUrl: string, targetVersion?: string
   cleanupOldInstallers(installerPath)
 
   if (checkIsUpdateDownloaded(ver)) {
-    downloadedInstallerPath = installerPath
+    const existing = findExistingInstaller(ver) || installerPath
+    downloadedInstallerPath = existing
     downloadedInstallerVersion = ver
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('update-download-progress', { percent: 100, downloaded: 1, total: 1 })
-      mainWindow.webContents.send('update-download-complete', { installerPath, version: ver })
+      mainWindow.webContents.send('update-download-complete', { installerPath: existing, version: ver })
     }
     return true
   }
@@ -828,7 +891,7 @@ async function performDownloadUpdate(downloadUrl: string, targetVersion?: string
 
 async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
   try {
-    const installerPath = (targetVersion && !targetVersion.startsWith('http') ? getInstallerPath(targetVersion) : null) || downloadedInstallerPath
+    const installerPath = findExistingInstaller(targetVersion) || downloadedInstallerPath
     if (!installerPath || !fs.existsSync(installerPath)) {
       console.warn('[Updater] Installer file not found:', installerPath)
       return false
@@ -845,7 +908,7 @@ async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
       // 3. Immediately relaunches the updated Lira executable
       const cleanInstaller = installerPath.replace(/'/g, "''")
       const cleanAppExe = appExePath.replace(/'/g, "''")
-      const psCommand = `Start-Sleep -Seconds 2; $proc = Start-Process -FilePath '${cleanInstaller}' -ArgumentList '/S', '--force-run' -PassThru; $instName = [System.IO.Path]::GetFileNameWithoutExtension('${cleanInstaller}'); $proc | Wait-Process -ErrorAction SilentlyContinue; while (Get-Process -Name $instName -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 500 }; Start-Sleep -Seconds 1; if (-not (Get-Process -Name 'Lira' -ErrorAction SilentlyContinue)) { if (Test-Path '${cleanAppExe}' -and '${cleanAppExe}' -notlike '*electron.exe*') { Start-Process -FilePath '${cleanAppExe}' } else { $p1 = "$env:LOCALAPPDATA\\Programs\\gather-v2-clone\\Lira.exe"; $p2 = "$env:LOCALAPPDATA\\Programs\\Lira\\Lira.exe"; if (Test-Path $p1) { Start-Process -FilePath $p1 } elseif (Test-Path $p2) { Start-Process -FilePath $p2 } } }`
+      const psCommand = `Start-Sleep -Seconds 2; $proc = Start-Process -FilePath '${cleanInstaller}' -ArgumentList '/S', '--force-run' -PassThru; $instName = [System.IO.Path]::GetFileNameWithoutExtension('${cleanInstaller}'); $proc | Wait-Process -ErrorAction SilentlyContinue; while (Get-Process -Name $instName -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 500 }; Start-Sleep -Seconds 2; if (-not (Get-Process -Name 'Lira' -ErrorAction SilentlyContinue)) { if (Test-Path '${cleanAppExe}' -and '${cleanAppExe}' -notlike '*electron.exe*') { Start-Process -FilePath '${cleanAppExe}' } else { $p1 = "$env:LOCALAPPDATA\\Programs\\gather-v2-clone\\Lira.exe"; $p2 = "$env:LOCALAPPDATA\\Programs\\Lira\\Lira.exe"; if (Test-Path $p1) { Start-Process -FilePath $p1 } elseif (Test-Path $p2) { Start-Process -FilePath $p2 } } }`
 
       const child = spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', psCommand], {
         detached: true,

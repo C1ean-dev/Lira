@@ -77,7 +77,7 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
         set({ progress: p })
         if (p.percent >= 100) {
           set({ status: 'ready' })
-          if (get().isUpdateScreenOpen) {
+          if (get().isUpdateScreenOpen && get().status !== 'installing') {
             get().applyUpdate()
           }
         }
@@ -89,7 +89,7 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
           status: 'ready',
           progress: { percent: 100, downloaded: 1, total: 1 },
         })
-        if (get().isUpdateScreenOpen) {
+        if (get().isUpdateScreenOpen && get().status !== 'installing') {
           get().applyUpdate()
         }
       })
@@ -100,7 +100,7 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
           status: 'ready',
           progress: { percent: 100, downloaded: 1, total: 1 },
         })
-        if (get().isUpdateScreenOpen) {
+        if (get().isUpdateScreenOpen && get().status !== 'installing') {
           get().applyUpdate()
         }
       } else {
@@ -119,12 +119,32 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
   },
 
   applyUpdate: async () => {
-    set({ status: 'installing', isUpdateScreenOpen: true })
+    if (get().status === 'installing') {
+      return false
+    }
+
     const info = get().updateInfo
+    const targetVer = info?.latestVersion
+
+    // If update installer is not yet downloaded locally, download it first
+    const isDownloaded = await UpdateService.isUpdateDownloaded(targetVer)
+    if (!isDownloaded) {
+      set({ status: 'downloading', isUpdateScreenOpen: true, error: null })
+      const downloaded = await UpdateService.downloadUpdate(info?.downloadUrl || null, targetVer)
+      if (!downloaded) {
+        set({
+          status: 'error',
+          error: 'Falha ao baixar o instalador da atualização.',
+        })
+        return false
+      }
+    }
+
+    set({ status: 'installing', isUpdateScreenOpen: true, error: null })
     try {
       // Keep UI visible for a brief moment so user sees the progress screen before app closes
       await new Promise((r) => setTimeout(r, 1200))
-      const success = await UpdateService.applyUpdate(info?.releaseUrl, info?.latestVersion)
+      const success = await UpdateService.applyUpdate(info?.releaseUrl, targetVer)
       if (!success) {
         set({
           status: 'error',
@@ -143,9 +163,13 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
   },
 
   startInteractiveUpdate: async () => {
-    set({ isUpdateScreenOpen: true })
+    set({ isUpdateScreenOpen: true, error: null })
     const currentStatus = get().status
     const info = get().updateInfo
+
+    if (currentStatus === 'installing') {
+      return
+    }
 
     if (currentStatus === 'ready') {
       await get().applyUpdate()
@@ -153,9 +177,11 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
       // Screen is already opened with progress bar; will auto-apply when finished
     } else if (info?.hasUpdate) {
       await get().checkForUpdatesAndDownload()
-      if (get().status === 'ready') {
+      if (get().status === 'ready' && get().status !== 'installing') {
         await get().applyUpdate()
       }
+    } else {
+      await get().checkForUpdatesAndDownload()
     }
   },
 }))

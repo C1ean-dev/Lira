@@ -35,7 +35,7 @@ declare global {
 
 declare const __APP_VERSION__: string | undefined
 
-export const GITHUB_REPO = 'C1ean-dev/gather-clone'
+export const GITHUB_REPO = 'C1ean-dev/Lira'
 export const CURRENT_APP_VERSION =
   typeof __APP_VERSION__ !== 'undefined'
     ? __APP_VERSION__
@@ -145,10 +145,12 @@ export class UpdateService {
   /**
    * Apply already downloaded update (restarts app) or open browser in web mode
    */
-  static async applyUpdate(targetVersionOrReleaseUrl?: string, fallbackUrl?: string): Promise<boolean> {
-    const isUrl = targetVersionOrReleaseUrl?.startsWith('http')
-    const targetVersion = isUrl ? undefined : targetVersionOrReleaseUrl
-    const releaseUrl = isUrl ? targetVersionOrReleaseUrl : fallbackUrl
+  static async applyUpdate(targetVersionOrReleaseUrl?: string, fallbackUrlOrVersion?: string): Promise<boolean> {
+    const isFirstUrl = targetVersionOrReleaseUrl?.startsWith('http')
+    const isSecondUrl = fallbackUrlOrVersion?.startsWith('http')
+
+    const targetVersion = isFirstUrl ? (isSecondUrl ? undefined : fallbackUrlOrVersion) : targetVersionOrReleaseUrl
+    const releaseUrl = isFirstUrl ? targetVersionOrReleaseUrl : (isSecondUrl ? fallbackUrlOrVersion : undefined)
 
     if (
       typeof window !== 'undefined' &&

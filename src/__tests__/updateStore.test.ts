@@ -99,4 +99,29 @@ describe('useUpdateStore - Silent Background Download & Direct Button Update Flo
     await useUpdateStore.getState().startInteractiveUpdate()
     expect(useUpdateStore.getState().isUpdateScreenOpen).toBe(true)
   })
+
+  it('automatically triggers download if applyUpdate is called when not downloaded yet', async () => {
+    useUpdateStore.setState({
+      status: 'idle',
+      updateInfo: {
+        hasUpdate: true,
+        currentVersion: '1.0.0',
+        latestVersion: '1.0.5',
+        releaseName: 'Release v1.0.5',
+        releaseNotes: 'Performance improvements',
+        downloadUrl: 'https://example.com/setup.exe',
+        releaseUrl: 'https://github.com/example/release',
+      },
+    })
+
+    vi.spyOn(UpdateService, 'isUpdateDownloaded').mockResolvedValue(false)
+    const downloadSpy = vi.spyOn(UpdateService, 'downloadUpdate').mockResolvedValue(true)
+    const applySpy = vi.spyOn(UpdateService, 'applyUpdate').mockResolvedValue(true)
+
+    const success = await useUpdateStore.getState().applyUpdate()
+    expect(success).toBe(true)
+    expect(downloadSpy).toHaveBeenCalledWith('https://example.com/setup.exe', '1.0.5')
+    expect(applySpy).toHaveBeenCalledWith('https://github.com/example/release', '1.0.5')
+    expect(useUpdateStore.getState().status).toBe('installing')
+  })
 })

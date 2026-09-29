@@ -27,6 +27,7 @@ interface Props {
   onJoined: () => void
   onOpenAvatarCustomizer: () => void
   onApplyUpdate?: () => void
+  hasUpdate?: boolean
   isUpdateReady?: boolean
   isUpdating?: boolean
 }
@@ -46,10 +47,12 @@ export const LobbyModal: React.FC<Props> = ({
   onJoined,
   onOpenAvatarCustomizer,
   onApplyUpdate,
+  hasUpdate: hasUpdateProp,
   isUpdateReady,
   isUpdating,
 }) => {
   const updateInfo = useUpdateStore((s) => s.updateInfo)
+  const hasUpdate = hasUpdateProp ?? !!updateInfo?.hasUpdate
   const rawVersion = updateInfo?.currentVersion || CURRENT_APP_VERSION
   const currentVersion = rawVersion.startsWith('v') ? rawVersion : `v${rawVersion}`
 
@@ -544,24 +547,18 @@ export const LobbyModal: React.FC<Props> = ({
         {/* Banner Header */}
         <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 p-5 text-center relative overflow-hidden shrink-0">
           <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full bg-white/10 blur-2xl" />
-          {isUpdateReady && onApplyUpdate ? (
+          {hasUpdate && onApplyUpdate ? (
             <button
               type="button"
               onClick={onApplyUpdate}
               disabled={isUpdating}
-              className="absolute top-4 right-4 z-20 flex items-center gap-2 px-4 py-2 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white text-xs sm:text-sm font-extrabold transition-all shadow-xl shadow-emerald-500/40 border border-emerald-300/50 hover:scale-105 active:scale-95 ring-2 ring-emerald-400/50 animate-pulse cursor-pointer disabled:opacity-75 disabled:pointer-events-none"
-              title="Nova versão pronta para instalar! Clique para atualizar agora."
+              className="absolute top-4 right-4 z-20 p-2.5 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-300 hover:text-white transition-all hover:scale-105 active:scale-95 shadow-lg shadow-emerald-500/20 cursor-pointer disabled:opacity-75 disabled:pointer-events-none"
+              title="Nova versão disponível! Clique para atualizar agora."
             >
               {isUpdating ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin text-white" />
-                  <span>Atualizando...</span>
-                </>
+                <RefreshCw className="w-4 h-4 animate-spin" />
               ) : (
-                <>
-                  <Download className="w-4 h-4 text-white" />
-                  <span>Atualizar Agora</span>
-                </>
+                <Download className="w-4 h-4" />
               )}
             </button>
           ) : (
