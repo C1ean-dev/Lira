@@ -10,6 +10,7 @@ import { GridParticipantTile, ParticipantData } from './grid/GridParticipantTile
 import { FullScreenLiveOverlay } from './grid/FullScreenLiveOverlay'
 import { CallControlsBar } from './grid/CallControlsBar'
 import { ParticipantContextMenu } from './grid/ParticipantContextMenu'
+import { getAvatarSnapshot } from '../utils/avatarSnapshot'
 
 /**
  * Outer gate: subscribes ONLY to isGridCallOpen so 60Hz position updates
@@ -90,6 +91,7 @@ const FullScreenGridInner: React.FC = () => {
         isScreenSharing: localPlayer.isScreenSharing,
         isSpeaking: isLocalSpeaking,
         shirtColor: localPlayer.avatar.shirtColor,
+        profileImage: localPlayer.profileImage || localPlayer.avatar?.profileImage || getAvatarSnapshot(localPlayer.avatar, localPlayer.name),
         statusEmoji: localPlayer.statusEmoji,
       },
       ...peersInSameZone.map((p) => ({
@@ -106,6 +108,7 @@ const FullScreenGridInner: React.FC = () => {
         isScreenSharing: p.isScreenSharing,
         isSpeaking: false,
         shirtColor: p.avatar.shirtColor,
+        profileImage: p.profileImage || p.avatar?.profileImage || getAvatarSnapshot(p.avatar, p.name),
         statusEmoji: p.statusEmoji,
         callState: callStates[p.id] || p.callState || 'idle',
         onRetryCall: () => PeerManager.getInstance().retryZoneCall(p.id),

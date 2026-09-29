@@ -18,6 +18,7 @@ import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import { CustomAsset } from '../types/customAsset'
 import { saveAssetFileToDisk, savePetAtlasToDisk } from '../utils/diskAssetPersistence'
 import { resolveUniquePlayerName } from '../utils/playerName'
+import { getAvatarSnapshot } from '../utils/avatarSnapshot'
 
 import { DEFAULT_AVATAR } from '../engine/Constants'
 
@@ -33,6 +34,7 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const [activeCategory, setActiveCategory] = useState<CategoryKey>('other')
   const [name, setName] = useState(localPlayer.name || 'Player')
   const [profileImage, setProfileImage] = useState<string | undefined>(localPlayer.profileImage)
+  const [hasCustomPhoto, setHasCustomPhoto] = useState<boolean>(() => Boolean(localPlayer.hasCustomPhoto && localPlayer.profileImage))
   const [status, setStatus] = useState<PresenceStatus>(localPlayer.status || 'available')
   const [avatar, setAvatar] = useState<AvatarConfig>({
     ...DEFAULT_AVATAR,
@@ -57,6 +59,7 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     if (isOpen) {
       setName(localPlayer.name || 'Player')
       setProfileImage(localPlayer.profileImage)
+      setHasCustomPhoto(Boolean(localPlayer.hasCustomPhoto && localPlayer.profileImage))
       setStatus(localPlayer.status || 'available')
       setAvatar({
         ...localPlayer.avatar,
@@ -229,13 +232,19 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     const statusMeta = STATUS_META[status]
     const chosenStatusText = statusMeta?.label || 'Disponível'
 
+    const effectiveProfileImage = hasCustomPhoto && profileImage
+      ? profileImage
+      : (getAvatarSnapshot(avatar, finalName) || profileImage)
+
     idleManager.cancelAutoAway()
     setLocalPlayer({
       name: finalName,
-      profileImage,
+      profileImage: effectiveProfileImage,
+      hasCustomPhoto,
       avatar: {
         ...avatar,
-        profileImage,
+        profileImage: effectiveProfileImage,
+        hasCustomPhoto,
       },
       status,
       statusText: chosenStatusText,
@@ -248,10 +257,12 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     })
     PeerManager.getInstance().sendPlayerUpdate({
       name: finalName,
-      profileImage,
+      profileImage: effectiveProfileImage,
+      hasCustomPhoto,
       avatar: {
         ...avatar,
-        profileImage,
+        profileImage: effectiveProfileImage,
+        hasCustomPhoto,
       },
       status,
       statusText: chosenStatusText,
@@ -338,7 +349,11 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 name={name}
                 onChangeName={setName}
                 profileImage={profileImage}
-                onChangeProfileImage={setProfileImage}
+                hasCustomPhoto={hasCustomPhoto}
+                onChangeProfileImage={(img, isCustom) => {
+                  setProfileImage(img)
+                  setHasCustomPhoto(Boolean(isCustom && img))
+                }}
                 avatar={avatar}
                 status={status}
               />

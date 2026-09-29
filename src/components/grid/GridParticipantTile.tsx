@@ -19,6 +19,7 @@ export interface ParticipantData {
   isScreenSharing?: boolean
   isSpeaking?: boolean
   shirtColor?: string
+  profileImage?: string
   statusEmoji?: string
   callState?: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed'
   onRetryCall?: () => void
@@ -148,12 +149,20 @@ export const GridParticipantTile: React.FC<Props> = ({
               }`}
             />
             {user.isCameraOff && (
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-md border border-white/20"
-                style={{ backgroundColor: user.shirtColor || '#4c6ef5' }}
-              >
-                {user.name.charAt(0).toUpperCase()}
-              </div>
+              user.profileImage ? (
+                <img
+                  src={user.profileImage}
+                  alt={user.name}
+                  className="w-8 h-8 rounded-full object-cover shadow-md border border-white/20"
+                />
+              ) : (
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-md border border-white/20"
+                  style={{ backgroundColor: user.shirtColor || '#4c6ef5' }}
+                >
+                  {user.name.charAt(0).toUpperCase()}
+                </div>
+              )
             )}
           </>
         )}
@@ -276,12 +285,20 @@ export const GridParticipantTile: React.FC<Props> = ({
           {/* Camera Off Avatar Screen */}
           {user.isCameraOff && (
             <div className="flex flex-col items-center gap-3">
-              <div
-                className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-extrabold text-white shadow-2xl border-2 border-white/20"
-                style={{ backgroundColor: user.shirtColor || '#4c6ef5' }}
-              >
-                {user.name.charAt(0).toUpperCase()}
-              </div>
+              {user.profileImage ? (
+                <img
+                  src={user.profileImage}
+                  alt={user.name}
+                  className="w-20 h-20 rounded-full object-cover shadow-2xl border-2 border-white/20"
+                />
+              ) : (
+                <div
+                  className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-extrabold text-white shadow-2xl border-2 border-white/20"
+                  style={{ backgroundColor: user.shirtColor || '#4c6ef5' }}
+                >
+                  {user.name.charAt(0).toUpperCase()}
+                </div>
+              )}
               <div className="text-sm font-semibold text-slate-300 flex items-center gap-1.5">
                 <span>{user.name}</span>
               </div>

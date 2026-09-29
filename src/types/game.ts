@@ -114,6 +114,7 @@ export interface AvatarConfig {
   customAvatarId?: string
   customComponents?: Partial<Record<AvatarComponentSlot, string | Partial<Record<Direction, string | string[]>>>>
   profileImage?: string
+  hasCustomPhoto?: boolean
 
   // 1. Skin & Face Details
   skinTone: string
@@ -191,6 +192,7 @@ export interface Player {
   isMoving: boolean
   avatar: AvatarConfig
   profileImage?: string
+  hasCustomPhoto?: boolean
   status: PresenceStatus
   statusText?: string
   statusEmoji?: string
@@ -277,6 +279,7 @@ export interface FriendProfile {
   name: string
   avatar?: AvatarConfig
   profileImage?: string
+  hasCustomPhoto?: boolean
   gameId?: string
   actualUserId?: string
   status?: PresenceStatus

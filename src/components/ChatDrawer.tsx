@@ -28,6 +28,7 @@ import { useMediaStore } from '../store/useMediaStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { ChatMessage, ChatAttachment } from '../types/chat'
 import { FriendRequestCard } from './chat/FriendRequestCard'
+import { getAvatarSnapshot } from '../utils/avatarSnapshot'
 
 function formatFileSize(bytes: number): string {
   if (!bytes || bytes < 1024) return `${bytes || 0} B`
@@ -465,20 +466,26 @@ const ChatDrawerInner: React.FC = () => {
                   >
                     <div className="flex items-center gap-2 truncate">
                       <div className="relative shrink-0">
-                        {player.profileImage || player.avatar?.profileImage ? (
-                          <img
-                            src={player.profileImage || player.avatar?.profileImage}
-                            alt={player.name}
-                            className="w-5 h-5 rounded-full object-cover border border-white/20 shadow-sm"
-                          />
-                        ) : (
-                          <div
-                            className="w-5 h-5 rounded-full border border-white/20 flex items-center justify-center text-[10px] font-bold text-white shadow-sm"
-                            style={{ backgroundColor: player.avatar?.shirtColor || player.avatar?.topColor || '#4c6ef5' }}
-                          >
-                            {player.name.charAt(0).toUpperCase()}
-                          </div>
-                        )}
+                        {(() => {
+                          const playerProfileImg =
+                            player.profileImage ||
+                            player.avatar?.profileImage ||
+                            getAvatarSnapshot(player.avatar, player.name)
+                          return playerProfileImg ? (
+                            <img
+                              src={playerProfileImg}
+                              alt={player.name}
+                              className="w-5 h-5 rounded-full object-cover border border-white/20 shadow-sm"
+                            />
+                          ) : (
+                            <div
+                              className="w-5 h-5 rounded-full border border-white/20 flex items-center justify-center text-[10px] font-bold text-white shadow-sm"
+                              style={{ backgroundColor: player.avatar?.shirtColor || player.avatar?.topColor || '#4c6ef5' }}
+                            >
+                              {player.name.charAt(0).toUpperCase()}
+                            </div>
+                          )
+                        })()}
                         <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 ring-1 ring-[#0d1017]" />
                       </div>
                       <span className="truncate text-xs">{player.name}</span>

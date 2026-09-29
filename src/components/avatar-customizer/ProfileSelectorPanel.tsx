@@ -1,13 +1,14 @@
 import React, { useRef, useState } from 'react'
-import { User, Camera, Upload, Trash2, Sparkles, AlertCircle, Check } from 'lucide-react'
-import { AvatarConfig, Player, PresenceStatus, STATUS_META } from '../../types/game'
-import { AvatarRenderer } from '../../engine/AvatarRenderer'
+import { User, Upload, Trash2, AlertCircle, Check } from 'lucide-react'
+import { AvatarConfig, PresenceStatus, STATUS_META } from '../../types/game'
+import { getAvatarSnapshot } from '../../utils/avatarSnapshot'
 
 interface Props {
   name: string
   onChangeName: (name: string) => void
   profileImage?: string
-  onChangeProfileImage: (image?: string) => void
+  hasCustomPhoto?: boolean
+  onChangeProfileImage: (image: string | undefined, isCustom: boolean) => void
   avatar: AvatarConfig
   status?: PresenceStatus
 }
@@ -16,6 +17,7 @@ export const ProfileSelectorPanel: React.FC<Props> = ({
   name,
   onChangeName,
   profileImage,
+  hasCustomPhoto = false,
   onChangeProfileImage,
   avatar,
   status = 'available',
@@ -62,8 +64,8 @@ export const ProfileSelectorPanel: React.FC<Props> = ({
           canvas.height = maxDim
           const ctx = canvas.getContext('2d')
           if (!ctx) {
-            onChangeProfileImage(reader.result as string)
-            showToast('Foto de perfil atualizada!')
+            onChangeProfileImage(reader.result as string, true)
+            showToast('Foto de perfil atualizada com sucesso!')
             return
           }
 
@@ -77,10 +79,10 @@ export const ProfileSelectorPanel: React.FC<Props> = ({
           ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, maxDim, maxDim)
 
           const dataUrl = canvas.toDataURL('image/jpeg', 0.9)
-          onChangeProfileImage(dataUrl)
+          onChangeProfileImage(dataUrl, true)
           showToast('Foto de perfil carregada com sucesso!')
         } catch {
-          onChangeProfileImage(reader.result as string)
+          onChangeProfileImage(reader.result as string, true)
           showToast('Foto de perfil carregada!')
         }
       }
@@ -98,69 +100,15 @@ export const ProfileSelectorPanel: React.FC<Props> = ({
     if (e.target) e.target.value = ''
   }
 
-  // Generate 2D Avatar snapshot as profile image
-  const handleCaptureAvatarSnapshot = () => {
-    try {
-      const size = 128
-      const canvas = document.createElement('canvas')
-      canvas.width = size
-      canvas.height = size
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-
-      // Aesthetic subtle dark gradient background
-      const grad = ctx.createLinearGradient(0, 0, size, size)
-      grad.addColorStop(0, '#1f2430')
-      grad.addColorStop(1, '#12151d')
-      ctx.fillStyle = grad
-      ctx.fillRect(0, 0, size, size)
-
-      // Circular accent ring
-      ctx.beginPath()
-      ctx.arc(size / 2, size / 2, size * 0.42, 0, Math.PI * 2)
-      ctx.fillStyle = 'rgba(99, 102, 241, 0.12)'
-      ctx.fill()
-      ctx.strokeStyle = 'rgba(99, 102, 241, 0.25)'
-      ctx.lineWidth = 1.5
-      ctx.stroke()
-
-      // Render player avatar at 2x scale in center
-      const dummyPlayer: Player = {
-        id: 'snapshot',
-        name: name || 'Player',
-        x: 0,
-        y: 0,
-        direction: 'down',
-        isMoving: false,
-        avatar,
-        status,
-        lastUpdated: Date.now(),
-      }
-
-      ctx.save()
-      ctx.imageSmoothingEnabled = false
-      // Center the 32x32 avatar scaled to 64x64
-      ctx.translate((size - 64) / 2, (size - 64) / 2)
-      ctx.scale(2, 2)
-      AvatarRenderer.drawPlayer(ctx, dummyPlayer, true, 0, 32, false)
-      ctx.restore()
-
-      const dataUrl = canvas.toDataURL('image/png')
-      onChangeProfileImage(dataUrl)
-      showToast('Avatar capturado como foto de perfil!')
-    } catch (err) {
-      console.warn('Could not generate avatar snapshot:', err)
-      showToast('Não foi possível gerar foto a partir do avatar.', true)
-    }
-  }
-
   const handleRemovePhoto = () => {
-    onChangeProfileImage(undefined)
-    showToast('Foto de perfil removida.')
+    onChangeProfileImage(undefined, false)
+    showToast('Foto de perfil removida. O avatar atual foi restaurado como padrão.')
   }
 
+  const isUsingCustomPhoto = Boolean(hasCustomPhoto && profileImage)
+  const avatarSnapshot = getAvatarSnapshot(avatar, name)
+  const displayedImage = isUsingCustomPhoto ? profileImage : avatarSnapshot
   const initialLetter = (name.trim().charAt(0) || 'P').toUpperCase()
-  const avatarColor = avatar.shirtColor || avatar.topColor || '#4c6ef5'
   const statusMeta = STATUS_META[status] || STATUS_META.available
 
   return (
@@ -172,7 +120,7 @@ export const ProfileSelectorPanel: React.FC<Props> = ({
           <span>Nome e Imagem de Perfil</span>
         </h3>
         <p className="text-xs text-slate-400 mt-1">
-          Defina seu nome de exibição no espaço e sua foto visível para outros participantes no chat, chamadas e menu de usuários.
+          Defina seu nome de exibição no espaço. Por padrão, o seu avatar configurado é exibido como imagem de perfil nos menus, chat e chamadas de vídeo. Se desejar, você pode carregar uma foto personalizada do seu computador.
         </p>
       </div>
 
@@ -226,7 +174,9 @@ export const ProfileSelectorPanel: React.FC<Props> = ({
             Foto de Perfil
           </label>
           <p className="text-[11px] text-slate-400 mt-0.5">
-            Faça upload de uma imagem do seu computador ou use o visual do seu avatar 2D.
+            {isUsingCustomPhoto
+              ? 'Você está usando uma foto personalizada do seu computador.'
+              : 'O visual do seu avatar atual está ativo por padrão como foto de perfil.'}
           </p>
         </div>
 
@@ -234,12 +184,11 @@ export const ProfileSelectorPanel: React.FC<Props> = ({
           {/* Avatar Picture Preview */}
           <div className="relative shrink-0 group">
             <div
-              className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-white/20 shadow-md flex items-center justify-center transition-all group-hover:border-blue-400/60"
-              style={{ backgroundColor: avatarColor }}
+              className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-white/20 shadow-md flex items-center justify-center transition-all group-hover:border-blue-400/60 bg-[#12151d]"
             >
-              {profileImage ? (
+              {displayedImage ? (
                 <img
-                  src={profileImage}
+                  src={displayedImage}
                   alt={name}
                   className="w-full h-full object-cover"
                 />
@@ -274,34 +223,26 @@ export const ProfileSelectorPanel: React.FC<Props> = ({
                 className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer"
               >
                 <Upload className="w-3.5 h-3.5" />
-                <span>Carregar Foto</span>
+                <span>{isUsingCustomPhoto ? 'Trocar Foto' : 'Carregar Foto'}</span>
               </button>
 
-              <button
-                type="button"
-                onClick={handleCaptureAvatarSnapshot}
-                className="px-3 py-2 rounded-xl bg-[#2b2d31] hover:bg-[#383a40] text-slate-200 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-all border border-[#383a40] active:scale-95 cursor-pointer"
-                title="Cria uma foto de perfil capturando o visual 2D do seu avatar atual"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                <span>Usar Avatar Atual</span>
-              </button>
-
-              {profileImage && (
+              {isUsingCustomPhoto && (
                 <button
                   type="button"
                   onClick={handleRemovePhoto}
-                  className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 text-xs font-semibold flex items-center gap-1 transition-all border border-rose-500/20 cursor-pointer"
-                  title="Remover foto e voltar para inicial do nome"
+                  className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 text-xs font-semibold flex items-center gap-1.5 transition-all border border-rose-500/20 cursor-pointer active:scale-95"
+                  title="Remover foto do computador e voltar a usar o avatar atual"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span className="sr-only">Remover Foto</span>
+                  <span>Remover Foto (Usar Avatar)</span>
                 </button>
               )}
             </div>
 
             <p className="text-[10px] text-slate-400">
-              Formatos aceitos: PNG, JPG, WebP ou GIF (máx. 5 MB).
+              {isUsingCustomPhoto
+                ? 'Para voltar ao avatar padrão, clique em "Remover Foto".'
+                : 'Formatos aceitos: PNG, JPG, WebP ou GIF (máx. 5 MB).'}
             </p>
           </div>
         </div>

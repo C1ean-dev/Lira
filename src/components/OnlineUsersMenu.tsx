@@ -35,6 +35,7 @@ import { NetworkSignalIcon } from './NetworkSignalIcon'
 import { ConfirmModal } from './ConfirmModal'
 import { Player, UserRole } from '../types/game'
 import { knockOnLockedDoor } from '../utils/doorKnockHelper'
+import { getAvatarSnapshot } from '../utils/avatarSnapshot'
 
 /**
  * Outer gate: subscribes ONLY to isOnlineUsersOpen so 60Hz position updates
@@ -268,20 +269,26 @@ const OnlineUsersMenuInner: React.FC = () => {
                   <div className="flex items-center gap-2.5 min-w-0">
                     {/* Avatar Icon */}
                     <div className="relative shrink-0">
-                      {player.profileImage || player.avatar?.profileImage ? (
-                        <img
-                          src={player.profileImage || player.avatar?.profileImage}
-                          alt={player.name}
-                          className="w-9 h-9 rounded-xl object-cover border border-white/20 shadow-sm"
-                        />
-                      ) : (
-                        <div
-                          className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs text-white border border-white/20 shadow-sm"
-                          style={{ backgroundColor: player.avatar?.shirtColor || player.avatar?.topColor || '#4c6ef5' }}
-                        >
-                          {player.name.charAt(0).toUpperCase()}
-                        </div>
-                      )}
+                      {(() => {
+                        const playerProfileImg =
+                          player.profileImage ||
+                          player.avatar?.profileImage ||
+                          getAvatarSnapshot(player.avatar, player.name)
+                        return playerProfileImg ? (
+                          <img
+                            src={playerProfileImg}
+                            alt={player.name}
+                            className="w-9 h-9 rounded-xl object-cover border border-white/20 shadow-sm"
+                          />
+                        ) : (
+                          <div
+                            className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs text-white border border-white/20 shadow-sm"
+                            style={{ backgroundColor: player.avatar?.shirtColor || player.avatar?.topColor || '#4c6ef5' }}
+                          >
+                            {player.name.charAt(0).toUpperCase()}
+                          </div>
+                        )
+                      })()}
                       <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#12151d]" />
                     </div>
 

@@ -38,6 +38,7 @@ import { ParticipantContextMenu } from './grid/ParticipantContextMenu'
 import { ParticipantData } from './grid/GridParticipantTile'
 import { NetworkSignalIcon } from './NetworkSignalIcon'
 import { useUserNetworkQuality } from '../store/useNetworkQualityStore'
+import { getAvatarSnapshot } from '../utils/avatarSnapshot'
 
 interface VideoTileProps {
   id?: string
@@ -51,6 +52,7 @@ interface VideoTileProps {
   isScreenSharing?: boolean
   isScreenTrack?: boolean
   color?: string
+  profileImage?: string
   callState?: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed'
   onRetryCall?: () => void
   onClick?: () => void
@@ -70,6 +72,7 @@ const VideoTile: React.FC<VideoTileProps> = ({
   isScreenSharing,
   isScreenTrack,
   color,
+  profileImage,
   callState,
   onRetryCall,
   onClick,
@@ -145,12 +148,20 @@ const VideoTile: React.FC<VideoTileProps> = ({
 
       {/* Camera Off Avatar Fallback */}
       {isCameraOff && !isScreenSharing && !isScreenTrack && (
-        <div
-          className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shadow-md border border-white/20"
-          style={{ backgroundColor: color || '#4c6ef5' }}
-        >
-          {name.charAt(0).toUpperCase()}
-        </div>
+        profileImage ? (
+          <img
+            src={profileImage}
+            alt={name}
+            className="w-10 h-10 rounded-full object-cover shadow-md border border-white/20"
+          />
+        ) : (
+          <div
+            className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shadow-md border border-white/20"
+            style={{ backgroundColor: color || '#4c6ef5' }}
+          >
+            {name.charAt(0).toUpperCase()}
+          </div>
+        )
       )}
 
       {/* Top Live Badge */}
@@ -654,6 +665,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               isScreenSharing={false}
               suppressAudio={suppressAudio}
               color={localPlayer.avatar.shirtColor}
+              profileImage={localPlayer.profileImage || localPlayer.avatar?.profileImage || getAvatarSnapshot(localPlayer.avatar, localPlayer.name)}
               onClick={() => setGridCallOpen(true)}
               onContextMenu={(e) => {
                 setContextMenuState({
@@ -704,6 +716,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                 isScreenTrack={peer.isScreenSharing}
                 suppressAudio={suppressAudio}
                 color={peer.avatar.shirtColor}
+                profileImage={peer.profileImage || peer.avatar?.profileImage || getAvatarSnapshot(peer.avatar, peer.name)}
                 callState={callStates[peer.id] || peer.callState || 'idle'}
                 onRetryCall={() => PeerManager.getInstance().retryZoneCall(peer.id)}
                 onClick={() => setGridCallOpen(true)}

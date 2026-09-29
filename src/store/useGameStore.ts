@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { Player, PresenceStatus, PresenceInfo, sanitizePresence, STATUS_META, ReactionItem, AvatarConfig, UserRole, PlayerPermissions, ConnectionStatus, RoomKnockRequest, KnockStatus, FriendProfile } from '../types/game'
 import { DEFAULT_AVATAR } from '../engine/Constants'
 import { PublicRoomsService } from '../services/publicRoomsService'
+import { getAvatarSnapshot } from '../utils/avatarSnapshot'
 
 const PROFILE_STORAGE_KEY = 'gather_v2_user_profile'
 const AVAILABLE_ROOMS_KEY = 'gather_v2_available_rooms'
@@ -16,6 +17,7 @@ interface SavedProfile {
   statusText?: string
   statusEmoji?: string
   profileImage?: string
+  hasCustomPhoto?: boolean
 }
 
 const getStorage = () => {
@@ -89,6 +91,12 @@ const syncPublicRoomRegistration = (roomId: string | null, isPublic: boolean, ro
 }
 
 const saved = loadSavedProfile() || {}
+const initialAvatar = saved.avatar ? { ...DEFAULT_AVATAR, ...saved.avatar } : { ...DEFAULT_AVATAR }
+const initialName = saved.name || 'Player'
+const initialHasCustomPhoto = Boolean(saved.hasCustomPhoto && saved.profileImage)
+const initialProfileImage = initialHasCustomPhoto
+  ? saved.profileImage
+  : (saved.profileImage || getAvatarSnapshot(initialAvatar, initialName))
 
 interface RoomSessionOptions {
   roomName?: string
@@ -405,8 +413,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
       canMuteOthers: false,
       canKick: false,
     },
-    avatar: saved.avatar ? { ...DEFAULT_AVATAR, ...saved.avatar } : { ...DEFAULT_AVATAR },
-    profileImage: saved.profileImage,
+    avatar: initialAvatar,
+    profileImage: initialProfileImage,
+    hasCustomPhoto: initialHasCustomPhoto,
     ...sanitizePresence(saved, { allowManualAway: true }),
     currentZoneId: null,
     lastUpdated: Date.now(),
@@ -416,16 +425,44 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   setLocalPlayer: (data) => {
-    if (data.name !== undefined || data.avatar !== undefined || data.profileImage !== undefined) {
+    if (
+      data.name !== undefined ||
+      data.avatar !== undefined ||
+      data.profileImage !== undefined ||
+      data.hasCustomPhoto !== undefined
+    ) {
       saveProfile({
         name: data.name,
         avatar: data.avatar,
         profileImage: data.profileImage,
+        hasCustomPhoto: data.hasCustomPhoto,
       })
     }
-    set((state) => ({
-      localPlayer: { ...state.localPlayer, ...data, lastUpdated: Date.now() },
-    }))
+    set((state) => {
+      const nextAvatar = data.avatar ? { ...state.localPlayer.avatar, ...data.avatar } : state.localPlayer.avatar
+      const nextName = data.name !== undefined ? data.name : state.localPlayer.name
+      const nextHasCustom = data.hasCustomPhoto !== undefined ? data.hasCustomPhoto : state.localPlayer.hasCustomPhoto
+
+      let nextProfileImage = data.profileImage !== undefined ? data.profileImage : state.localPlayer.profileImage
+      if (!nextHasCustom && (data.avatar !== undefined || data.profileImage === undefined)) {
+        const autoSnap = getAvatarSnapshot(nextAvatar, nextName)
+        if (autoSnap) {
+          nextProfileImage = autoSnap
+        }
+      }
+
+      return {
+        localPlayer: {
+          ...state.localPlayer,
+          ...data,
+          avatar: nextAvatar,
+          name: nextName,
+          hasCustomPhoto: nextHasCustom,
+          profileImage: nextProfileImage,
+          lastUpdated: Date.now(),
+        },
+      }
+    })
   },
 
   setLocalPosition: (x, y, direction, isMoving) =>

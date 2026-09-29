@@ -23,6 +23,7 @@ import { CURRENT_APP_VERSION } from '../services/updateService'
 import { NetworkSignalIcon } from './NetworkSignalIcon'
 import { useNetworkQualityStore } from '../store/useNetworkQualityStore'
 import { STATUS_META } from '../types/game'
+import { getAvatarSnapshot } from '../utils/avatarSnapshot'
 
 interface Props {
   onOpenAvatarModal: () => void
@@ -44,8 +45,10 @@ export const TopNavBar: React.FC<Props> = ({
   // Granular selectors: subscribing to whole localPlayer/remotePlayers would
   // re-render this bar at 60Hz on every movement frame. Select only UI fields.
   const localPlayerName = useGameStore((s) => s.localPlayer.name)
+  const localPlayerAvatar = useGameStore((s) => s.localPlayer.avatar)
   const localPlayerAvatarColor = useGameStore((s) => s.localPlayer.avatar?.shirtColor)
   const localPlayerProfileImage = useGameStore((s) => s.localPlayer.profileImage || s.localPlayer.avatar?.profileImage)
+  const effectiveProfileImage = localPlayerProfileImage || getAvatarSnapshot(localPlayerAvatar, localPlayerName)
   const localPlayerStatus = useGameStore((s) => s.localPlayer.status)
   const localPlayerStatusText = useGameStore((s) => s.localPlayer.statusText)
   const localPlayerCurrentZoneId = useGameStore((s) => s.localPlayer.currentZoneId)
@@ -321,9 +324,9 @@ export const TopNavBar: React.FC<Props> = ({
           className="flex items-center gap-2 pl-2 pr-3 py-1 bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] rounded-xl transition-all group"
         >
           <div className="relative shrink-0">
-            {localPlayerProfileImage ? (
+            {effectiveProfileImage ? (
               <img
-                src={localPlayerProfileImage}
+                src={effectiveProfileImage}
                 alt={localPlayerName}
                 className="w-7 h-7 rounded-lg object-cover border border-white/20 shadow-sm"
               />
