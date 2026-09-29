@@ -51,6 +51,7 @@ interface VideoTileProps {
   isScreenSharing?: boolean
   isScreenTrack?: boolean
   color?: string
+  profilePhoto?: string
   callState?: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed'
   onRetryCall?: () => void
   onClick?: () => void
@@ -70,6 +71,7 @@ const VideoTile: React.FC<VideoTileProps> = ({
   isScreenSharing,
   isScreenTrack,
   color,
+  profilePhoto,
   callState,
   onRetryCall,
   onClick,
@@ -146,10 +148,14 @@ const VideoTile: React.FC<VideoTileProps> = ({
       {/* Camera Off Avatar Fallback */}
       {isCameraOff && !isScreenSharing && !isScreenTrack && (
         <div
-          className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shadow-md border border-white/20"
+          className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shadow-md border border-white/20 overflow-hidden"
           style={{ backgroundColor: color || '#4c6ef5' }}
         >
-          {name.charAt(0).toUpperCase()}
+          {profilePhoto ? (
+            <img src={profilePhoto} alt={name} className="w-full h-full object-cover" />
+          ) : (
+            name.charAt(0).toUpperCase()
+          )}
         </div>
       )}
 
@@ -653,7 +659,8 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               isLocal={true}
               isScreenSharing={false}
               suppressAudio={suppressAudio}
-              color={localPlayer.avatar.shirtColor}
+              color={localPlayer.avatar?.shirtColor}
+              profilePhoto={localPlayer.profilePhoto || localPlayer.avatar?.profilePhoto}
               onClick={() => setGridCallOpen(true)}
               onContextMenu={(e) => {
                 setContextMenuState({
@@ -666,7 +673,8 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                     isMuted,
                     isMutedByAdmin: localPlayer.isMutedByAdmin,
                     isDeafened,
-                    shirtColor: localPlayer.avatar.shirtColor,
+                    shirtColor: localPlayer.avatar?.shirtColor,
+                    profilePhoto: localPlayer.profilePhoto || localPlayer.avatar?.profilePhoto,
                     statusEmoji: localPlayer.statusEmoji,
                   },
                   x: e.clientX,
@@ -703,7 +711,8 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                 isScreenSharing={peer.isScreenSharing}
                 isScreenTrack={peer.isScreenSharing}
                 suppressAudio={suppressAudio}
-                color={peer.avatar.shirtColor}
+                color={peer.avatar?.shirtColor}
+                profilePhoto={peer.profilePhoto || peer.avatar?.profilePhoto}
                 callState={callStates[peer.id] || peer.callState || 'idle'}
                 onRetryCall={() => PeerManager.getInstance().retryZoneCall(peer.id)}
                 onClick={() => setGridCallOpen(true)}
@@ -718,7 +727,8 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                       isMuted: peer.isMuted,
                       isMutedByAdmin: peer.isMutedByAdmin,
                       isDeafened: peer.isDeafened,
-                      shirtColor: peer.avatar.shirtColor,
+                      shirtColor: peer.avatar?.shirtColor,
+                      profilePhoto: peer.profilePhoto || peer.avatar?.profilePhoto,
                       statusEmoji: peer.statusEmoji,
                     },
                     x: e.clientX,

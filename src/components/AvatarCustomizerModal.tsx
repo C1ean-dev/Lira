@@ -10,6 +10,7 @@ import { PetRenderer } from '../engine/pet/PetRenderer'
 import { CategoryKey, CategoryTabs } from './avatar-customizer/CategoryTabs'
 import { OptionSelectorGrid } from './avatar-customizer/OptionSelectorGrid'
 import { PetSelectorPanel } from './avatar-customizer/PetSelectorPanel'
+import { ProfilePhotoPanel } from './avatar-customizer/ProfilePhotoPanel'
 import { AvatarPreviewCanvas } from './avatar-customizer/AvatarPreviewCanvas'
 import { AvatarPixelArtModal } from '../editor/avatar/AvatarPixelArtModal'
 import { bakeAllAvatarDirections, cropContentDataUrl } from '../engine/avatar/avatarBakeService'
@@ -29,12 +30,16 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const { localPlayer, setLocalPlayer, setLocalStatus } = useGameStore()
   const { showNameTags, setShowNameTags } = useSettingsStore()
 
-  const [activeCategory, setActiveCategory] = useState<CategoryKey>('other')
+  const [activeCategory, setActiveCategory] = useState<CategoryKey>('profile')
   const [name, setName] = useState(localPlayer.name || 'Player')
   const [status, setStatus] = useState<PresenceStatus>(localPlayer.status || 'available')
+  const [profilePhoto, setProfilePhoto] = useState<string | undefined>(
+    localPlayer.profilePhoto || localPlayer.avatar?.profilePhoto
+  )
   const [avatar, setAvatar] = useState<AvatarConfig>({
     ...DEFAULT_AVATAR,
     ...localPlayer.avatar,
+    profilePhoto: localPlayer.profilePhoto || localPlayer.avatar?.profilePhoto,
     pet: localPlayer.avatar?.pet || { type: 'none' },
     customSkinUrl: localPlayer.avatar?.customSkinUrl,
     customAvatarId: localPlayer.avatar?.customAvatarId,
@@ -55,8 +60,11 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     if (isOpen) {
       setName(localPlayer.name || 'Player')
       setStatus(localPlayer.status || 'available')
+      const photo = localPlayer.profilePhoto || localPlayer.avatar?.profilePhoto
+      setProfilePhoto(photo)
       setAvatar({
         ...localPlayer.avatar,
+        profilePhoto: photo,
         pet: localPlayer.avatar?.pet || { type: 'none' },
         customSkinUrl: localPlayer.avatar?.customSkinUrl,
         customAvatarId: localPlayer.avatar?.customAvatarId,
@@ -199,6 +207,7 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     if (category === 'pet') {
       updatedAvatar = {
         ...avatar,
+        profilePhoto,
         pet: {
           type: 'custom',
           customAssetId: savedAssetId,
@@ -209,6 +218,7 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     } else {
       updatedAvatar = {
         ...avatar,
+        profilePhoto,
         customComponents: {
           ...avatar.customComponents,
           [category]: directionalFrames,
@@ -226,10 +236,16 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     const statusMeta = STATUS_META[status]
     const chosenStatusText = statusMeta?.label || 'Disponível'
 
+    const updatedAvatar: AvatarConfig = {
+      ...avatar,
+      profilePhoto,
+    }
+
     idleManager.cancelAutoAway()
     setLocalPlayer({
       name: finalName,
-      avatar,
+      avatar: updatedAvatar,
+      profilePhoto,
       status,
       statusText: chosenStatusText,
       statusEmoji: '',
@@ -241,7 +257,8 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     })
     PeerManager.getInstance().sendPlayerUpdate({
       name: finalName,
-      avatar,
+      avatar: updatedAvatar,
+      profilePhoto,
       status,
       statusText: chosenStatusText,
       statusEmoji: '',
@@ -271,12 +288,32 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-200 select-none">
-      <div className="bg-[#1e1f22] border border-[#2b2d31] rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col h-[600px] max-h-[92vh]">
+      <div className="bg-[#1e1f22] border border-[#2b2d31] rounded-3xl w-full max-w-5xl overflow-hidden shadow-2xl flex flex-col h-[640px] max-h-[94vh]">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-3 border-b border-[#2b2d31] bg-[#18191c]">
           <div className="flex items-center gap-3">
-            <h2 className="text-base font-extrabold text-slate-100 tracking-tight">Editar Avatar</h2>
+            <h2 className="text-base font-extrabold text-slate-100 tracking-tight">Editar Perfil & Avatar</h2>
             <div className="h-4 w-px bg-[#2b2d31]" />
+
+            {/* Quick Profile Photo Preview & Shortcut */}
+            <button
+              type="button"
+              onClick={() => setActiveCategory('profile')}
+              className={`relative w-7 h-7 rounded-lg overflow-hidden border border-white/20 shrink-0 transition-all hover:scale-105 ${
+                activeCategory === 'profile' ? 'ring-2 ring-indigo-400' : ''
+              }`}
+              style={{ backgroundColor: avatar.shirtColor || avatar.topColor || '#4c6ef5' }}
+              title="Clique para editar a Foto de Perfil"
+            >
+              {profilePhoto ? (
+                <img src={profilePhoto} alt={name} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-white text-xs font-bold flex items-center justify-center h-full">
+                  {name.charAt(0).toUpperCase()}
+                </span>
+              )}
+            </button>
+
             <div className="flex items-center gap-1.5 bg-[#2b2d31] px-2.5 py-1 rounded-xl border border-[#383a40]">
               <span className="text-[11px] font-semibold text-slate-400">Nome:</span>
               <input
@@ -326,7 +363,16 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
           {/* 2. MIDDLE COLUMN: OPTIONS GRID */}
           <div className="flex-1 bg-[#2b2d31] flex flex-col justify-between p-5 overflow-hidden">
-            {activeCategory === 'pet' ? (
+            {activeCategory === 'profile' ? (
+              <ProfilePhotoPanel
+                profilePhoto={profilePhoto}
+                onChangePhoto={setProfilePhoto}
+                avatar={avatar}
+                name={name}
+                onChangeName={setName}
+                status={status}
+              />
+            ) : activeCategory === 'pet' ? (
               <PetSelectorPanel
                 avatar={avatar}
                 onChangeAvatar={setAvatar}

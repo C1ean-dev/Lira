@@ -1,10 +1,11 @@
-import React from 'react'
 import {
   UserCircle,
   Cat,
+  User,
 } from 'lucide-react'
 
 export type CategoryKey =
+  | 'profile'
   | 'other'
   | 'pet'
 
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export const CATEGORIES = [
+  { id: 'profile', label: 'Perfil', icon: User },
   { id: 'other', label: 'Personagem', icon: UserCircle },
   { id: 'pet', label: 'Pet / Mascote', icon: Cat },
 ]

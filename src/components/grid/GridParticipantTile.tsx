@@ -19,6 +19,7 @@ export interface ParticipantData {
   isScreenSharing?: boolean
   isSpeaking?: boolean
   shirtColor?: string
+  profilePhoto?: string
   statusEmoji?: string
   callState?: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed'
   onRetryCall?: () => void
@@ -149,10 +150,14 @@ export const GridParticipantTile: React.FC<Props> = ({
             />
             {user.isCameraOff && (
               <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-md border border-white/20"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-md border border-white/20 overflow-hidden"
                 style={{ backgroundColor: user.shirtColor || '#4c6ef5' }}
               >
-                {user.name.charAt(0).toUpperCase()}
+                {user.profilePhoto ? (
+                  <img src={user.profilePhoto} alt={user.name} className="w-full h-full object-cover" />
+                ) : (
+                  user.name.charAt(0).toUpperCase()
+                )}
               </div>
             )}
           </>
@@ -277,10 +282,14 @@ export const GridParticipantTile: React.FC<Props> = ({
           {user.isCameraOff && (
             <div className="flex flex-col items-center gap-3">
               <div
-                className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-extrabold text-white shadow-2xl border-2 border-white/20"
+                className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-extrabold text-white shadow-2xl border-2 border-white/20 overflow-hidden"
                 style={{ backgroundColor: user.shirtColor || '#4c6ef5' }}
               >
-                {user.name.charAt(0).toUpperCase()}
+                {user.profilePhoto ? (
+                  <img src={user.profilePhoto} alt={user.name} className="w-full h-full object-cover" />
+                ) : (
+                  user.name.charAt(0).toUpperCase()
+                )}
               </div>
               <div className="text-sm font-semibold text-slate-300 flex items-center gap-1.5">
                 <span>{user.name}</span>

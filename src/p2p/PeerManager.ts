@@ -1080,6 +1080,34 @@ export class PeerManager {
   }
 
   /**
+   * Broadcast Custom Channel Creation
+   */
+  public sendCreateChannel(channel: any) {
+    if (!this.peer) return
+    const msg: NetworkMessage = {
+      type: 'CHANNEL_CREATE',
+      senderId: this.peer.id,
+      payload: { channel },
+      timestamp: Date.now(),
+    }
+    this.broadcast(msg)
+  }
+
+  /**
+   * Broadcast Custom Channel Deletion
+   */
+  public sendDeleteChannel(channelId: string) {
+    if (!this.peer) return
+    const msg: NetworkMessage = {
+      type: 'CHANNEL_DELETE',
+      senderId: this.peer.id,
+      payload: { channelId },
+      timestamp: Date.now(),
+    }
+    this.broadcast(msg)
+  }
+
+  /**
    * Broadcast Reaction
    */
   public sendReaction(reaction: any) {

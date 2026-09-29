@@ -269,10 +269,18 @@ const OnlineUsersMenuInner: React.FC = () => {
                     {/* Avatar Icon */}
                     <div className="relative shrink-0">
                       <div
-                        className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs text-white border border-white/20 shadow-sm"
+                        className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs text-white border border-white/20 shadow-sm overflow-hidden"
                         style={{ backgroundColor: player.avatar?.shirtColor || player.avatar?.topColor || '#4c6ef5' }}
                       >
-                        {player.name.charAt(0).toUpperCase()}
+                        {(player.profilePhoto || player.avatar?.profilePhoto) ? (
+                          <img
+                            src={player.profilePhoto || player.avatar?.profilePhoto}
+                            alt={player.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          player.name.charAt(0).toUpperCase()
+                        )}
                       </div>
                       <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#12151d]" />
                     </div>

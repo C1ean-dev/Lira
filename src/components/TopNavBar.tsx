@@ -38,6 +38,7 @@ export const TopNavBar: React.FC<Props> = ({
   // re-render this bar at 60Hz on every movement frame. Select only UI fields.
   const localPlayerName = useGameStore((s) => s.localPlayer.name)
   const localPlayerAvatarColor = useGameStore((s) => s.localPlayer.avatar?.shirtColor)
+  const localPlayerProfilePhoto = useGameStore((s) => s.localPlayer.profilePhoto || s.localPlayer.avatar?.profilePhoto)
   const localPlayerStatus = useGameStore((s) => s.localPlayer.status)
   const localPlayerStatusText = useGameStore((s) => s.localPlayer.statusText)
   const localPlayerCurrentZoneId = useGameStore((s) => s.localPlayer.currentZoneId)
@@ -298,10 +299,14 @@ export const TopNavBar: React.FC<Props> = ({
         >
           <div className="relative">
             <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs text-white border border-white/20"
+              className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs text-white border border-white/20 overflow-hidden"
               style={{ backgroundColor: localPlayerAvatarColor || '#4c6ef5' }}
             >
-              {localPlayerName.charAt(0).toUpperCase()}
+              {localPlayerProfilePhoto ? (
+                <img src={localPlayerProfilePhoto} alt={localPlayerName} className="w-full h-full object-cover" />
+              ) : (
+                localPlayerName.charAt(0).toUpperCase()
+              )}
             </div>
             <div
               className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-[#12151d] ${
