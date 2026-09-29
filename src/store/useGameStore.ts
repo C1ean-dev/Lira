@@ -96,7 +96,7 @@ const initialName = saved.name || 'Player'
 const initialHasCustomPhoto = Boolean(saved.hasCustomPhoto && saved.profileImage)
 const initialProfileImage = initialHasCustomPhoto
   ? saved.profileImage
-  : (saved.profileImage || getAvatarSnapshot(initialAvatar, initialName))
+  : (getAvatarSnapshot(initialAvatar, initialName) || saved.profileImage)
 
 interface RoomSessionOptions {
   roomName?: string

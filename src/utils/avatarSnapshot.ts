@@ -8,6 +8,7 @@ const snapshotCache = new Map<string, string>()
  */
 function getAvatarCacheKey(avatar: AvatarConfig, name?: string, size: number = 128): string {
   return [
+    'v2',
     avatar.customAvatarId || '',
     avatar.customSkinUrl || '',
     avatar.otherType || '',
@@ -86,8 +87,20 @@ export function generateAvatarSnapshot(
       ctx.imageSmoothingEnabled = false
       // Scale 32x32 avatar proportionally inside the canvas
       const targetScale = Math.max(1, Math.round(size / 48))
-      const scaledDim = 32 * targetScale
-      ctx.translate((size - scaledDim) / 2, (size - scaledDim) / 2)
+
+      // RPG sprites in 32x32 bounding boxes have their feet anchored near the ground (Y ≈ 29..31)
+      // and head starting at Y ≈ 4..6.
+      // - Retro character bounds: X ∈ [2, 28] (center 15.0), Y ∈ [5, 30] (center 17.5).
+      // - Procedural character bounds: center X = 16.0, Y ∈ [5, 30] (center 17.5).
+      const isProcedural = avatar.otherType === 'none' && !avatar.customAvatarId && !avatar.customComponents?.other
+      const visualCenterX = (isProcedural ? 16.0 : 15.0) * targetScale
+      const visualCenterY = 17.5 * targetScale
+
+      // Align visual center of sprite exactly with canvas center (size / 2, size / 2)
+      const posX = Math.round(size / 2 - visualCenterX)
+      const posY = Math.round(size / 2 - visualCenterY)
+
+      ctx.translate(posX, posY)
       ctx.scale(targetScale, targetScale)
       AvatarRenderer.drawPlayer(ctx, dummyPlayer, true, 0, 32, false)
       ctx.restore()
