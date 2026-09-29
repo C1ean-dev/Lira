@@ -82,7 +82,7 @@ export const FloorsTab: React.FC<Props> = ({
       <div className="grid grid-cols-3 gap-2 max-h-80 overflow-y-auto p-0.5">
         {floors.map((floor) => {
           const isSelected = selectedFloor === floor.id && activeTool === 'paint_floor'
-          const isDefaultFloor = floor.id === 'habbo_parquet'
+          const isDefaultFloor = floor.id === 'wood_parquet' || floor.id === 'habbo_parquet' || !floor.isCustom
           return (
             <div
               key={floor.id}
@@ -196,7 +196,7 @@ export const FloorsTab: React.FC<Props> = ({
               onDeleteFloor(assetToDelete.id)
             }
             if (selectedFloor === assetToDelete.id) {
-              setSelectedFloor('habbo_parquet')
+              setSelectedFloor('wood_parquet')
             }
             setAssetToDelete(null)
           }

@@ -103,7 +103,7 @@ export const AssetPalette: React.FC = () => {
   })
 
   const baseFloors: { id: FloorType | string; name: string; isCustom?: boolean }[] = [
-    { id: 'habbo_parquet', name: 'Piso Padrão (Madeira)' },
+    { id: 'wood_parquet', name: 'Piso Padrão (Madeira)' },
   ]
   const customFloors = customAssets
     .filter((a) => a.type === 'floor')
@@ -506,7 +506,7 @@ export const AssetPalette: React.FC = () => {
               deleteCustomAsset={deleteCustomAsset}
               openEditModal={openEditModal}
               onDeleteFloor={(floorId) => {
-                replaceFloorGlobally(floorId, 'habbo_parquet')
+                replaceFloorGlobally(floorId, 'wood_parquet')
               }}
               onOpenStudioCreate={() => openStudioForCreate('floor')}
               onOpenStudioEdit={(id) => openStudioForEdit(id, 'floor')}

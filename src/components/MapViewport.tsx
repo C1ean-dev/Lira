@@ -159,6 +159,18 @@ export const MapViewport: React.FC = () => {
 
     applySize()
     window.addEventListener('resize', handleResize)
+
+    // Re-check canvas dimensions and repaint when the window regains focus or visibility (e.g. restoring from system tray)
+    const handleFocusOrVisibility = () => {
+      applySize()
+      setTimeout(() => {
+        applySize()
+        engine.fitToScreen(0.95)
+      }, 50)
+    }
+    window.addEventListener('focus', handleFocusOrVisibility)
+    document.addEventListener('visibilitychange', handleFocusOrVisibility)
+
     engine.start()
 
     // Auto-fit on initial render
@@ -168,6 +180,8 @@ export const MapViewport: React.FC = () => {
 
     return () => {
       window.removeEventListener('resize', handleResize)
+      window.removeEventListener('focus', handleFocusOrVisibility)
+      document.removeEventListener('visibilitychange', handleFocusOrVisibility)
       if (resizeRaf) cancelAnimationFrame(resizeRaf)
       if (resizeTimer) clearTimeout(resizeTimer)
       engine.dispose()
@@ -384,8 +398,8 @@ export const MapViewport: React.FC = () => {
             PeerManager.getInstance().sendMapEdit('remove_furniture', { x: tile.x, y: tile.y })
           }
         } else if (eraserTarget === 'floor') {
-          setFloorTile(tile.x, tile.y, 'habbo_parquet')
-          PeerManager.getInstance().sendMapEdit('set_floor', { x: tile.x, y: tile.y, floor: 'habbo_parquet' })
+          setFloorTile(tile.x, tile.y, 'wood_parquet')
+          PeerManager.getInstance().sendMapEdit('set_floor', { x: tile.x, y: tile.y, floor: 'wood_parquet' })
         } else if (eraserTarget === 'zone') {
           removeZoneAt(tile.x, tile.y)
         } else if (eraserTarget === 'wall') {
@@ -498,8 +512,8 @@ export const MapViewport: React.FC = () => {
               PeerManager.getInstance().sendMapEdit('remove_furniture', { x: tile.x, y: tile.y })
             }
           } else if (eraserTarget === 'floor') {
-            setFloorTile(tile.x, tile.y, 'habbo_parquet')
-            PeerManager.getInstance().sendMapEdit('set_floor', { x: tile.x, y: tile.y, floor: 'habbo_parquet' })
+            setFloorTile(tile.x, tile.y, 'wood_parquet')
+            PeerManager.getInstance().sendMapEdit('set_floor', { x: tile.x, y: tile.y, floor: 'wood_parquet' })
           } else if (eraserTarget === 'zone') {
             removeZoneAt(tile.x, tile.y)
           } else if (eraserTarget === 'wall') {

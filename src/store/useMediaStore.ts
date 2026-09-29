@@ -70,7 +70,7 @@ interface MediaStore {
    * the default engine on startup.
    */
   hasUserChosenProcessorMode: boolean
-  screenShareAudioVolume: number // 0 to 100 (percentage, default 50)
+  screenShareAudioVolume: number // 0 to 100 (percentage, default 100)
   duckingEnabled: boolean // Auto-reduce screen sound when user talks
   screenShareIsolateCallAudio: boolean // Isolate call audio: prevent remote peers' voices from leaking into screen share
   screenShareTargetTitle: string | null // Name of target window/app being shared
@@ -118,7 +118,8 @@ interface MediaStore {
   localAudioLevel: number
   isGateOpen: boolean
   isTestingMic: boolean
-  setLocalAudioLevel: (level: number, gateOpen?: boolean) => void
+  autoThresholdPercent: number
+  setLocalAudioLevel: (level: number, gateOpen?: boolean, autoThresholdPercent?: number) => void
   setIsTestingMic: (testing: boolean) => void
 
   // Remote Streams map: peerId -> MediaStream
@@ -238,11 +239,11 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   manualSensitivityThreshold: saved.manualSensitivityThreshold !== undefined ? saved.manualSensitivityThreshold : 20,
   echoCancellation: saved.echoCancellation !== undefined ? saved.echoCancellation : true,
   autoGainControl: saved.autoGainControl !== undefined ? saved.autoGainControl : true,
-  audioProcessorMode: isValidMode(saved.audioProcessorMode) ? saved.audioProcessorMode : 'classic',
+  audioProcessorMode: isValidMode(saved.audioProcessorMode) ? saved.audioProcessorMode : 'rnnoise',
   // Default false: on first launch MediaManager is allowed to apply the
   // calibrated recommendation (if any) to pick the initial engine.
   hasUserChosenProcessorMode: saved.hasUserChosenProcessorMode === true,
-  screenShareAudioVolume: saved.screenShareAudioVolume !== undefined ? saved.screenShareAudioVolume : 50,
+  screenShareAudioVolume: saved.screenShareAudioVolume !== undefined ? saved.screenShareAudioVolume : 100,
   duckingEnabled: saved.duckingEnabled !== undefined ? saved.duckingEnabled : true,
   screenShareIsolateCallAudio: saved.screenShareIsolateCallAudio !== undefined ? saved.screenShareIsolateCallAudio : true,
   screenShareTargetTitle: null,
@@ -667,16 +668,25 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   localAudioLevel: 0,
   isGateOpen: false,
   isTestingMic: false,
-  setLocalAudioLevel: (localAudioLevel, isGateOpen = false) => {
+  autoThresholdPercent: 0,
+  setLocalAudioLevel: (localAudioLevel, isGateOpen = false, autoThresholdPercent?: number) => {
     const prev = get()
     // Guard: DSP engines report the level at ~60Hz (rAF). Skip the zustand
     // notify when nothing perceptible changed — every set() re-renders all
     // media-store subscribers (grid, tiles, overlays).
     const gate = isGateOpen ?? prev.isGateOpen
-    if (gate === prev.isGateOpen && Math.abs(localAudioLevel - prev.localAudioLevel) < 0.005) {
+    const threshold = typeof autoThresholdPercent === 'number'
+      ? Math.round(autoThresholdPercent)
+      : prev.autoThresholdPercent
+
+    if (
+      gate === prev.isGateOpen &&
+      Math.abs(localAudioLevel - prev.localAudioLevel) < 0.005 &&
+      threshold === prev.autoThresholdPercent
+    ) {
       return
     }
-    set({ localAudioLevel, isGateOpen: gate })
+    set({ localAudioLevel, isGateOpen: gate, autoThresholdPercent: threshold })
   },
   setIsTestingMic: (isTestingMic) => set({ isTestingMic }),
 }))

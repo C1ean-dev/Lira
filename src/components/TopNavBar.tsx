@@ -10,6 +10,7 @@ import {
   Globe,
   Download,
   LogOut,
+  RefreshCw,
 } from 'lucide-react'
 import { useGameStore } from '../store/useGameStore'
 import { useMapStore } from '../store/useMapStore'
@@ -17,21 +18,27 @@ import { useChatStore } from '../store/useChatStore'
 import { useMediaStore } from '../store/useMediaStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { LiraLogo } from './LiraLogo'
+import { useUpdateStore } from '../store/useUpdateStore'
+import { CURRENT_APP_VERSION } from '../services/updateService'
 import { NetworkSignalIcon } from './NetworkSignalIcon'
 import { useNetworkQualityStore } from '../store/useNetworkQualityStore'
 import { STATUS_META } from '../types/game'
 
 interface Props {
   onOpenAvatarModal: () => void
-  onOpenUpdateModal?: () => void
+  onApplyUpdate?: () => void
   hasUpdate?: boolean
+  isUpdateReady?: boolean
+  isUpdating?: boolean
   onDisconnect?: () => void
 }
 
 export const TopNavBar: React.FC<Props> = ({
   onOpenAvatarModal,
-  onOpenUpdateModal,
+  onApplyUpdate,
   hasUpdate,
+  isUpdateReady,
+  isUpdating,
   onDisconnect,
 }) => {
   // Granular selectors: subscribing to whole localPlayer/remotePlayers would
@@ -43,6 +50,9 @@ export const TopNavBar: React.FC<Props> = ({
   const localPlayerStatusText = useGameStore((s) => s.localPlayer.statusText)
   const localPlayerCurrentZoneId = useGameStore((s) => s.localPlayer.currentZoneId)
   const roomId = useGameStore((s) => s.roomId)
+  const updateInfo = useUpdateStore((s) => s.updateInfo)
+  const rawVersion = updateInfo?.currentVersion || CURRENT_APP_VERSION
+  const currentVersion = rawVersion.startsWith('v') ? rawVersion : `v${rawVersion}`
   const isOwner = useGameStore((s) => s.isOwner)
   const isRoomPublic = useGameStore((s) => s.isRoomPublic)
   const toggleRoomPrivacy = useGameStore((s) => s.toggleRoomPrivacy)
@@ -258,15 +268,28 @@ export const TopNavBar: React.FC<Props> = ({
           )}
         </button>
 
-        {/* Available Update Notification Download Icon */}
-        {hasUpdate && onOpenUpdateModal && (
+        {/* Available Update Notification Download Icon OR Current Version Badge */}
+        {hasUpdate && onApplyUpdate ? (
           <button
-            onClick={onOpenUpdateModal}
-            className="p-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 hover:text-emerald-300 transition-all hover:scale-105 shadow-sm shadow-emerald-500/20"
-            title="Nova atualização disponível! Clique para baixar e atualizar"
+            onClick={onApplyUpdate}
+            disabled={isUpdating}
+            className="p-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 hover:text-emerald-300 transition-all hover:scale-105 shadow-sm shadow-emerald-500/20 disabled:opacity-75 cursor-pointer"
+            title="Nova atualização disponível! Clique para atualizar agora."
           >
-            <Download className="w-4 h-4" />
+            {isUpdating ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
           </button>
+        ) : (
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#1b202c] border border-[#2a3142] text-slate-300 text-xs font-semibold select-none"
+            title={`Versão atual do Lira: ${currentVersion}`}
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            <span className="font-mono text-[11px] text-slate-400">{currentVersion}</span>
+          </div>
         )}
 
         {/* Real-time Network Quality Indicator */}

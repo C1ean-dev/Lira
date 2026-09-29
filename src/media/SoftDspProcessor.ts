@@ -34,7 +34,7 @@ export class SoftDspProcessor {
 
   private animationFrameId: number | null = null
   private onLevelCallback:
-    | ((level: number, gateOpen: boolean, rawRms: number) => void)
+    | ((level: number, gateOpen: boolean, rawRms: number, dynamicThresholdPercent?: number) => void)
     | null = null
 
   private sensitivityMode: SensitivityMode = 'auto'
@@ -43,6 +43,10 @@ export class SoftDspProcessor {
   private dynamicNoiseFloor = 0.005
   private isExpanderActive = false
   private isSuppressionActive = true
+
+  // Hold Time tracking
+  private holdTimeMs = 220
+  private lastSpeechTime = 0
 
   private readonly openRatio = 1.0
   private readonly closeRatio = 0.55
@@ -57,7 +61,7 @@ export class SoftDspProcessor {
     initialInputVolume: number = 100,
     sensitivityMode: SensitivityMode = 'auto',
     manualThresholdPercent: number = 20,
-    onAudioLevel?: (level: number, gateOpen: boolean, rawRms: number) => void
+    onAudioLevel?: (level: number, gateOpen: boolean, rawRms: number, dynamicThresholdPercent?: number) => void
   ): MediaStream {
     try {
       this.dispose()
@@ -224,11 +228,19 @@ export class SoftDspProcessor {
           }
         }
 
-        if (!this.isExpanderActive && shouldOpen) {
+        // Hold Time tracking: keep expander open during natural micro-pauses in speech
+        if (shouldOpen) {
+          this.lastSpeechTime = now
+        }
+        const isWithinHold = (now - this.lastSpeechTime) < (this.holdTimeMs / 1000)
+        const isMutedManual = this.sensitivityMode === 'manual' && this.manualThresholdPercent >= 100
+        const effectiveOpen = (shouldOpen || isWithinHold) && !isMutedManual
+
+        if (!this.isExpanderActive && effectiveOpen) {
           this.expanderGain.gain.cancelScheduledValues(now)
           this.expanderGain.gain.setTargetAtTime(1.0, now, 0.008)
           this.isExpanderActive = true
-        } else if (this.isExpanderActive && !shouldOpen) {
+        } else if (this.isExpanderActive && !effectiveOpen) {
           this.expanderGain.gain.cancelScheduledValues(now)
           this.expanderGain.gain.setTargetAtTime(this.expanderFloor, now, this.expanderRelease)
           this.isExpanderActive = false
@@ -237,8 +249,14 @@ export class SoftDspProcessor {
         this.isExpanderActive = true
       }
 
+      // Dynamic threshold percent for VU meter alignment (0 - 100%)
+      const dynamicThresholdPercent =
+        this.sensitivityMode === 'manual'
+          ? this.manualThresholdPercent
+          : Math.min(100, Math.max(0, Math.round(this.currentThreshold * 6 * 100)))
+
       if (this.onLevelCallback) {
-        this.onLevelCallback(normalizedLevel, this.isExpanderActive, rms)
+        this.onLevelCallback(normalizedLevel, this.isExpanderActive, rms, dynamicThresholdPercent)
       }
       this.animationFrameId = requestAnimationFrame(tick)
     }
@@ -305,5 +323,10 @@ export class SoftDspProcessor {
     this.destination = null
     this.testGainNode = null
     this.audioCtx = null
+    this.lastSpeechTime = 0
+  }
+
+  public getHoldTimeMs(): number {
+    return this.holdTimeMs
   }
 }

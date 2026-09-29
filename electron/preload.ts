@@ -46,7 +46,11 @@ export interface IElectronAPI {
   onProcessAudioStatus: (callback: (event: { status: 'started' | 'stopped' | 'error'; detail?: string }) => void) => () => void
   isElectron: boolean
   checkForUpdates: () => Promise<UpdateInfo>
-  downloadAndInstallUpdate: (downloadUrl: string) => Promise<boolean>
+  downloadUpdate: (downloadUrl: string, targetVersion?: string) => Promise<boolean>
+  applyUpdate: (targetVersion?: string) => Promise<boolean>
+  isUpdateDownloaded: (targetVersion?: string) => Promise<boolean>
+  onUpdateDownloaded: (callback: (payload?: { installerPath?: string; version?: string }) => void) => () => void
+  downloadAndInstallUpdate: (downloadUrl: string, targetVersion?: string) => Promise<boolean>
   onUpdateProgress: (callback: (progress: UpdateProgress) => void) => () => void
   openExternal: (url: string) => Promise<void>
   saveNativeAssets: (data: { categories: string[]; assets: any[] }) => Promise<boolean>
@@ -110,7 +114,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   isElectron: true,
   checkForUpdates: () => ipcRenderer.invoke('check-update'),
-  downloadAndInstallUpdate: (downloadUrl: string) => ipcRenderer.invoke('download-and-install-update', downloadUrl),
+  downloadUpdate: (downloadUrl: string, targetVersion?: string) => ipcRenderer.invoke('download-update', downloadUrl, targetVersion),
+  applyUpdate: (targetVersion?: string) => ipcRenderer.invoke('apply-update', targetVersion),
+  isUpdateDownloaded: (targetVersion?: string) => ipcRenderer.invoke('is-update-downloaded', targetVersion),
+  onUpdateDownloaded: (callback: (payload?: { installerPath?: string; version?: string }) => void) => {
+    const handler = (_event: any, payload: any) => callback(payload)
+    ipcRenderer.on('update-download-complete', handler)
+    return () => {
+      ipcRenderer.removeListener('update-download-complete', handler)
+    }
+  },
+  downloadAndInstallUpdate: (downloadUrl: string, targetVersion?: string) => ipcRenderer.invoke('download-and-install-update', downloadUrl, targetVersion),
   onUpdateProgress: (callback: (progress: UpdateProgress) => void) => {
     const handler = (_event: any, data: UpdateProgress) => callback(data)
     ipcRenderer.on('update-download-progress', handler)

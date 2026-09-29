@@ -19,7 +19,11 @@ declare global {
     electronAPI?: {
       isElectron: boolean
       checkForUpdates: () => Promise<UpdateInfo>
-      downloadAndInstallUpdate: (downloadUrl: string) => Promise<boolean>
+      downloadUpdate?: (downloadUrl: string, targetVersion?: string) => Promise<boolean>
+      applyUpdate?: (targetVersion?: string) => Promise<boolean>
+      isUpdateDownloaded?: (targetVersion?: string) => Promise<boolean>
+      onUpdateDownloaded?: (callback: (payload?: { installerPath?: string; version?: string }) => void) => () => void
+      downloadAndInstallUpdate: (downloadUrl: string, targetVersion?: string) => Promise<boolean>
       onUpdateProgress: (callback: (progress: UpdateProgress) => void) => () => void
       openExternal: (url: string) => Promise<void>
       getSources: () => Promise<any[]>
@@ -31,7 +35,7 @@ declare global {
 
 declare const __APP_VERSION__: string | undefined
 
-export const GITHUB_REPO = 'C1ean-dev/gather-clone'
+export const GITHUB_REPO = 'C1ean-dev/Lira'
 export const CURRENT_APP_VERSION =
   typeof __APP_VERSION__ !== 'undefined'
     ? __APP_VERSION__
@@ -121,16 +125,95 @@ export class UpdateService {
   }
 
   /**
+   * Download update in background
+   */
+  static async downloadUpdate(downloadUrl: string | null, targetVersion?: string): Promise<boolean> {
+    if (
+      typeof window !== 'undefined' &&
+      window.electronAPI &&
+      downloadUrl &&
+      typeof window.electronAPI.downloadUpdate === 'function'
+    ) {
+      return targetVersion !== undefined
+        ? await window.electronAPI.downloadUpdate(downloadUrl, targetVersion)
+        : await window.electronAPI.downloadUpdate(downloadUrl)
+    }
+    // Web fallback: return true so web can proceed to prompt
+    return true
+  }
+
+  /**
+   * Apply already downloaded update (restarts app) or open browser in web mode
+   */
+  static async applyUpdate(targetVersionOrReleaseUrl?: string, fallbackUrlOrVersion?: string): Promise<boolean> {
+    const isFirstUrl = targetVersionOrReleaseUrl?.startsWith('http')
+    const isSecondUrl = fallbackUrlOrVersion?.startsWith('http')
+
+    const targetVersion = isFirstUrl ? (isSecondUrl ? undefined : fallbackUrlOrVersion) : targetVersionOrReleaseUrl
+    const releaseUrl = isFirstUrl ? targetVersionOrReleaseUrl : (isSecondUrl ? fallbackUrlOrVersion : undefined)
+
+    if (
+      typeof window !== 'undefined' &&
+      window.electronAPI &&
+      typeof window.electronAPI.applyUpdate === 'function'
+    ) {
+      return await window.electronAPI.applyUpdate(targetVersion)
+    }
+
+    // Web / browser fallback
+    if (releaseUrl) {
+      if (
+        typeof window !== 'undefined' &&
+        window.electronAPI &&
+        typeof window.electronAPI.openExternal === 'function'
+      ) {
+        await window.electronAPI.openExternal(releaseUrl)
+      } else if (typeof window !== 'undefined') {
+        window.open(releaseUrl, '_blank')
+      }
+    }
+    return true
+  }
+
+  /**
+   * Check if update installer is already downloaded locally
+   */
+  static async isUpdateDownloaded(targetVersion?: string): Promise<boolean> {
+    if (
+      typeof window !== 'undefined' &&
+      window.electronAPI &&
+      typeof window.electronAPI.isUpdateDownloaded === 'function'
+    ) {
+      return await window.electronAPI.isUpdateDownloaded(targetVersion)
+    }
+    return false
+  }
+
+  /**
+   * Listen for update download completion
+   */
+  static onUpdateDownloaded(callback: (payload?: { installerPath?: string; version?: string }) => void): () => void {
+    if (
+      typeof window !== 'undefined' &&
+      window.electronAPI &&
+      typeof window.electronAPI.onUpdateDownloaded === 'function'
+    ) {
+      return window.electronAPI.onUpdateDownloaded(callback)
+    }
+    return () => {}
+  }
+
+  /**
    * Download and run update installer or open browser
    */
-  static async installUpdate(downloadUrl: string | null, releaseUrl: string): Promise<boolean> {
+  static async installUpdate(downloadUrl: string | null, releaseUrl: string, targetVersion?: string): Promise<boolean> {
     if (
       typeof window !== 'undefined' &&
       window.electronAPI &&
       downloadUrl &&
       typeof window.electronAPI.downloadAndInstallUpdate === 'function'
     ) {
-      return await window.electronAPI.downloadAndInstallUpdate(downloadUrl)
+      return await window.electronAPI.downloadAndInstallUpdate(downloadUrl, targetVersion)
     }
 
     // Web / external fallback

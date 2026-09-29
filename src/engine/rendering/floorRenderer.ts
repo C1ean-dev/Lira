@@ -137,7 +137,8 @@ export class FloorRenderer {
         ctx.fillRect(px + size - 5, py + size - 5, 2, 2)
         break
 
-      case 'habbo_parquet':
+      case 'wood_parquet':
+      case 'habbo_parquet': // retrocompatibilidade com mapas salvos
       case 'wood_light':
         // Soft, elegant Gather Wood Plank Floor (seamless without harsh grid borders)
         ctx.fillStyle = '#f6e7d2'
@@ -150,55 +151,6 @@ export class FloorRenderer {
         ctx.fillRect(px + 16, py, 1, 8)
         ctx.fillRect(px + 8, py + 8, 1, 16)
         ctx.fillRect(px + 24, py + 24, 1, 8)
-        break
-
-      case 'habbo_hc_carpet':
-        ctx.fillStyle = '#1b5e20'
-        ctx.fillRect(px, py, s, s)
-        ctx.fillStyle = '#2e7d32'
-        ctx.fillRect(px + 2, py + 2, size - 4, size - 4)
-        ctx.fillStyle = '#f59f00'
-        ctx.strokeRect(px + 2.5, py + 2.5, size - 5, size - 5)
-        ctx.fillStyle = '#ffd43b'
-        ctx.fillRect(px + size / 2 - 1, py + size / 2 - 1, 3, 3)
-        break
-
-      case 'habbo_checker_red':
-        ctx.fillStyle = '#f1f3f5'
-        ctx.fillRect(px, py, s, s)
-        ctx.fillStyle = '#c92a2a'
-        ctx.fillRect(px, py, size / 2, size / 2)
-        ctx.fillRect(px + size / 2, py + size / 2, size / 2, size / 2)
-        break
-
-      case 'habbo_pool_water':
-        ctx.fillStyle = '#22b8cf'
-        ctx.fillRect(px, py, s, s)
-        ctx.fillStyle = '#15aabf'
-        ctx.fillRect(px + 2, py + 2, size - 4, size - 4)
-        ctx.fillStyle = '#66d9e8'
-        ctx.fillRect(px + 4, py + 6, 8, 2)
-        ctx.fillRect(px + 18, py + 16, 10, 2)
-        break
-
-      case 'habbo_disco_dance': {
-        const discoColors = ['#e64980', '#7950f2', '#12b886', '#fab005', '#228be6']
-        const colorIdx = (Math.floor(px / size) + Math.floor(py / size)) % discoColors.length
-        ctx.fillStyle = discoColors[colorIdx]
-        ctx.fillRect(px, py, s, s)
-        ctx.fillStyle = 'rgba(255,255,255,0.4)'
-        ctx.fillRect(px + 2, py + 2, size - 4, size - 4)
-        break
-      }
-
-      case 'habbo_executive_rug':
-        ctx.fillStyle = '#800020'
-        ctx.fillRect(px, py, s, s)
-        ctx.fillStyle = '#a01030'
-        ctx.fillRect(px + 4, py + 4, size - 8, size - 8)
-        ctx.fillStyle = '#fcc419'
-        ctx.fillRect(px, py, size, 2)
-        ctx.fillRect(px, py + size - 2, size, 2)
         break
 
       case 'wood_dark':

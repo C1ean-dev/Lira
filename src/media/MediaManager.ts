@@ -36,13 +36,14 @@ export interface ScreenShareConfig {
   * Common interface implemented by every audio cleanup engine so
   * MediaManager can swap between them without knowing the internals.
   */
-interface AudioEngine {  processStream(
+interface AudioEngine {
+  processStream(
     inputStream: MediaStream,
     enableSuppression: boolean,
     initialInputVolume: number,
     sensitivityMode: SensitivityMode,
     manualThresholdPercent: number,
-    onAudioLevel?: (level: number, gateOpen: boolean, rawRms: number) => void
+    onAudioLevel?: (level: number, gateOpen: boolean, rawRms: number, dynamicThresholdPercent?: number) => void
   ): MediaStream | Promise<MediaStream>
   setInputVolume(percentage: number): void
   setSensitivity(mode: SensitivityMode, manualThresholdPercent: number): void
@@ -67,7 +68,7 @@ export class MediaManager {
   private screenGainNode: GainNode | null = null
   private screenDuckInterval: number | null = null
   private callAudioIsolator: CallAudioIsolator | null = null
-  private currentProcessorMode: AudioProcessorMode = 'classic'
+  private currentProcessorMode: AudioProcessorMode = 'rnnoise'
 
   private processAudioCapture: ProcessAudioCapture | null = null
 
@@ -83,7 +84,12 @@ export class MediaManager {
    * Shared level forwarder for all engines (startMedia / changeAudioInput /
    * reprocessStream). Throttled — see field comment above.
    */
-  private handleEngineLevel = (level: number, isGateOpen: boolean) => {
+  private handleEngineLevel = (
+    level: number,
+    isGateOpen: boolean,
+    _rawRms?: number,
+    dynamicThresholdPercent?: number
+  ) => {
     const now = performance.now()
     const gateChanged = isGateOpen !== this.levelForwardLastGate
     if (
@@ -94,7 +100,7 @@ export class MediaManager {
     }
     this.levelForwardLastSent = now
     this.levelForwardLastGate = isGateOpen
-    useMediaStore.getState().setLocalAudioLevel(level, isGateOpen)
+    useMediaStore.getState().setLocalAudioLevel(level, isGateOpen, dynamicThresholdPercent)
   }
 
   private constructor() {
@@ -118,7 +124,7 @@ export class MediaManager {
     *      always wins.
     *   2. Otherwise we look for a stored calibration for the current input
     *      device and use its recommendedMode.
-    *   3. If neither exists we fall back to 'classic' (the original default).
+    *   3. If neither exists we fall back to 'rnnoise' (the default).
     */
   private selectEngine(): AudioEngine {
     const state = useMediaStore.getState()
@@ -126,7 +132,7 @@ export class MediaManager {
     const cal = state.micCalibrations[state.selectedAudioInput]
     const mode: AudioProcessorMode = manual
       ? state.audioProcessorMode
-      : cal?.recommendedMode ?? state.audioProcessorMode ?? 'classic'
+      : cal?.recommendedMode ?? state.audioProcessorMode ?? 'rnnoise'
     this.currentProcessorMode = mode
     if (mode === 'rnnoise') return this.rnnoiseEngine
     if (mode === 'soft') return this.softEngine
@@ -218,7 +224,7 @@ export class MediaManager {
 
   private async runEngine(
     inputStream: MediaStream,
-    levelCallback: (level: number, isGateOpen: boolean) => void
+    levelCallback: (level: number, isGateOpen: boolean, rawRms?: number, dynamicThresholdPercent?: number) => void
   ): Promise<MediaStream> {
     const prev = this.runQueue
     let release!: () => void
@@ -233,7 +239,7 @@ export class MediaManager {
 
   private async doRunEngine(
     inputStream: MediaStream,
-    levelCallback: (level: number, isGateOpen: boolean) => void
+    levelCallback: (level: number, isGateOpen: boolean, rawRms?: number, dynamicThresholdPercent?: number) => void
   ): Promise<MediaStream> {
     const state = useMediaStore.getState()
     const nextEngine = this.selectEngine()
@@ -262,7 +268,8 @@ export class MediaManager {
       state.inputVolume,
       state.sensitivityMode,
       state.manualSensitivityThreshold,
-      (level, gateOpen) => levelCallback(level, gateOpen)
+      (level, gateOpen, rawRms, dynamicThresholdPercent) =>
+        levelCallback(level, gateOpen, rawRms, dynamicThresholdPercent)
     )
 
     const processed = result instanceof Promise ? await result : result

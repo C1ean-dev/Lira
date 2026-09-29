@@ -92,12 +92,18 @@ export class RnnoiseProcessor {
   private testGainNode: GainNode | null = null
   private animationFrameId: number | null = null
   private onLevelCallback:
-    | ((level: number, gateOpen: boolean, rawRms: number) => void)
+    | ((level: number, gateOpen: boolean, rawRms: number, dynamicThresholdPercent?: number) => void)
     | null = null
   private isSuppressionActive = true
   private isGateOpen = true
   private sensitivityMode: 'auto' | 'manual' = 'auto'
   private manualThresholdPercent = 20
+
+  // Hold Time & Dynamic noise tracking
+  private holdTimeMs = 220
+  private lastSpeechTime = 0
+  private dynamicNoiseFloor = 0.005
+
   private workletReady = false
   private workletError: string | null = null
   private lastVad = 0
@@ -121,7 +127,7 @@ export class RnnoiseProcessor {
     initialInputVolume: number = 100,
     sensitivityMode: 'auto' | 'manual' = 'auto',
     manualThresholdPercent: number = 20,
-    onAudioLevel?: (level: number, gateOpen: boolean, rawRms: number) => void
+    onAudioLevel?: (level: number, gateOpen: boolean, rawRms: number, dynamicThresholdPercent?: number) => void
   ): Promise<MediaStream> {
     try {
       this.dispose()
@@ -392,22 +398,54 @@ export class RnnoiseProcessor {
       } else {
         // Auto mode: combine neural VAD probability with audio level
         const speechProb = this.workletReady ? this.lastVad : 0
-        if (speechProb > 0.35 || level > 0.08) {
-          shouldOpen = true
-        } else if (speechProb < 0.15 && level < 0.04) {
-          shouldOpen = false
+        if (this.workletReady) {
+          // Neural VAD is operational:
+          // 1. Definite speech (prob >= 0.35): open immediately
+          // 2. Probable speech with volume (prob >= 0.15 && level > 0.06): open
+          // 3. Loud shout / scream safety valve (level > 0.70): open
+          // 4. Clearly non-speech (prob < 0.15): do NOT open for typing or desk knocks
+          if (speechProb >= 0.35 || (speechProb >= 0.15 && level > 0.06) || level > 0.70) {
+            shouldOpen = true
+          } else if (speechProb < 0.15 && level < 0.05) {
+            shouldOpen = false
+          } else {
+            shouldOpen = this.isGateOpen
+          }
         } else {
-          shouldOpen = this.isGateOpen
+          // Fallback before worklet is ready: rely on volume level
+          if (level > 0.08) {
+            shouldOpen = true
+          } else if (level < 0.04) {
+            shouldOpen = false
+          } else {
+            shouldOpen = this.isGateOpen
+          }
+        }
+
+        // Track ambient noise floor dynamically in auto mode
+        if (rms < this.dynamicNoiseFloor || this.dynamicNoiseFloor === 0) {
+          this.dynamicNoiseFloor = this.dynamicNoiseFloor * 0.95 + rms * 0.05
+        } else if (!shouldOpen) {
+          this.dynamicNoiseFloor = this.dynamicNoiseFloor * 0.999 + rms * 0.001
         }
       }
 
+      const now = this.audioCtx.currentTime
+
+      // Hold Time tracking: keep gate open during natural micro-pauses in human speech
+      if (shouldOpen) {
+        this.lastSpeechTime = now
+      }
+      const isWithinHold = (now - this.lastSpeechTime) < (this.holdTimeMs / 1000)
+      const isMutedManual = this.sensitivityMode === 'manual' && this.manualThresholdPercent >= 100
+      const effectiveOpen = (shouldOpen || isWithinHold) && !isMutedManual
+
       if (this.gateGainNode && this.isSuppressionActive) {
-        const now = this.audioCtx.currentTime
-        if (!this.isGateOpen && shouldOpen) {
+        if (!this.isGateOpen && effectiveOpen) {
           this.gateGainNode.gain.cancelScheduledValues(now)
           this.gateGainNode.gain.setTargetAtTime(1.0, now, 0.008) // 8ms fast attack
           this.isGateOpen = true
-        } else if (this.isGateOpen && !shouldOpen) {
+        } else if (this.isGateOpen && !effectiveOpen) {
           this.gateGainNode.gain.cancelScheduledValues(now)
           this.gateGainNode.gain.setTargetAtTime(0.0, now, 0.12) // 120ms smooth release to 0.0
           this.isGateOpen = false
@@ -416,8 +454,14 @@ export class RnnoiseProcessor {
         this.isGateOpen = true
       }
 
+      // Dynamic threshold percent for VU meter alignment (0 - 100%)
+      const dynamicThresholdPercent =
+        this.sensitivityMode === 'manual'
+          ? this.manualThresholdPercent
+          : Math.min(100, Math.max(8, Math.round(this.dynamicNoiseFloor * 6 * 100 * 1.8)))
+
       if (this.onLevelCallback) {
-        this.onLevelCallback(level, this.isGateOpen, rms)
+        this.onLevelCallback(level, this.isGateOpen, rms, dynamicThresholdPercent)
       }
       this.animationFrameId = requestAnimationFrame(tick)
     }
@@ -512,5 +556,10 @@ export class RnnoiseProcessor {
     this.workletReady = false
     this.lastVad = 0
     this.lastMetricsLogAt = 0
+    this.lastSpeechTime = 0
+  }
+
+  public getHoldTimeMs(): number {
+    return this.holdTimeMs
   }
 }

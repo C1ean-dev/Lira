@@ -6,7 +6,6 @@ import {
   Activity,
   Radio,
   CheckCircle2,
-  Sparkles,
   Video,
   VideoOff,
   Info,
@@ -14,6 +13,7 @@ import {
 } from 'lucide-react'
 import { useMediaStore } from '../../store/useMediaStore'
 import { MediaManager } from '../../media/MediaManager'
+import { attachStreamToVideo } from '../../media/attachVideoElement'
 import { AudioDeviceInfo, SensitivityMode } from '../../types/audio'
 import { CustomDropdown, DropdownOption } from '../common/CustomDropdown'
 
@@ -60,6 +60,7 @@ export const AudioDevicesTab: React.FC<Props> = ({
   const outputVolume = useMediaStore((s) => s.outputVolume)
   const sensitivityMode = useMediaStore((s) => s.sensitivityMode)
   const manualSensitivityThreshold = useMediaStore((s) => s.manualSensitivityThreshold)
+  const autoThresholdPercent = useMediaStore((s) => s.autoThresholdPercent)
   const localAudioLevel = useMediaStore((s) => s.localAudioLevel)
   const isGateOpen = useMediaStore((s) => s.isGateOpen)
   const isTestingMic = useMediaStore((s) => s.isTestingMic)
@@ -71,18 +72,23 @@ export const AudioDevicesTab: React.FC<Props> = ({
   const currentCalibration = micCalibrations[selectedAudioInput]
 
   const [isTestingCamera, setIsTestingCamera] = useState(false)
+  const [cameraTestStream, setCameraTestStream] = useState<MediaStream | null>(null)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const videoPreviewRef = useRef<HTMLVideoElement | null>(null)
   const cameraTestStreamRef = useRef<MediaStream | null>(null)
+  const isBorrowedRef = useRef(false)
 
   const stopCameraTest = () => {
     if (cameraTestStreamRef.current) {
-      cameraTestStreamRef.current.getTracks().forEach((t) => t.stop())
+      if (!isBorrowedRef.current) {
+        cameraTestStreamRef.current.getTracks().forEach((t) => t.stop())
+      }
       cameraTestStreamRef.current = null
     }
     if (videoPreviewRef.current) {
       videoPreviewRef.current.srcObject = null
     }
+    setCameraTestStream(null)
     setIsTestingCamera(false)
   }
 
@@ -92,24 +98,78 @@ export const AudioDevicesTab: React.FC<Props> = ({
     const targetId = deviceId || (selectedVideoInput !== 'default' ? selectedVideoInput : undefined)
 
     try {
-      const constraints: MediaStreamConstraints = {
-        video: targetId
-          ? { deviceId: { exact: targetId }, width: { ideal: 640 }, height: { ideal: 480 } }
-          : { width: { ideal: 640 }, height: { ideal: 480 } },
+      const localStream = useMediaStore.getState().localStream
+      const isCameraOff = useMediaStore.getState().isCameraOff
+
+      // Se a câmera já estiver ligada na chamada, reusamos o track ativo para evitar
+      // conflito de exclusividade do hardware no Windows (DirectShow/MediaFoundation)
+      const existingLiveTrack =
+        !isCameraOff &&
+        localStream?.getVideoTracks().find((t) => !(t as any).__isDummy && t.readyState === 'live')
+
+      let stream: MediaStream | null = null
+      let isBorrowed = false
+
+      if (existingLiveTrack) {
+        const trackSettings = existingLiveTrack.getSettings ? existingLiveTrack.getSettings() : {}
+        const matchesDevice =
+          !targetId ||
+          targetId === 'default' ||
+          !trackSettings.deviceId ||
+          trackSettings.deviceId === targetId
+
+        if (matchesDevice) {
+          stream = new MediaStream([existingLiveTrack])
+          isBorrowed = true
+        }
       }
-      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+
+      if (!stream) {
+        try {
+          const constraints: MediaStreamConstraints = {
+            video: targetId && targetId !== 'default'
+              ? { deviceId: { exact: targetId }, width: { ideal: 640 }, height: { ideal: 480 } }
+              : { width: { ideal: 640 }, height: { ideal: 480 } },
+          }
+          stream = await navigator.mediaDevices.getUserMedia(constraints)
+        } catch {
+          try {
+            const fallbackConstraints: MediaStreamConstraints = {
+              video: targetId && targetId !== 'default'
+                ? { deviceId: { ideal: targetId }, width: { ideal: 640 }, height: { ideal: 480 } }
+                : true,
+            }
+            stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints)
+          } catch {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true })
+          }
+        }
+        isBorrowed = false
+      }
+
+      isBorrowedRef.current = isBorrowed
       cameraTestStreamRef.current = stream
+      setCameraTestStream(stream)
       setIsTestingCamera(true)
-      if (videoPreviewRef.current) {
-        videoPreviewRef.current.srcObject = stream
-        videoPreviewRef.current.play().catch(() => {})
-      }
     } catch (err: any) {
       console.warn('[AudioDevicesTab] Failed to test camera:', err)
       setCameraError('Não foi possível inicializar a prévia da câmera. Verifique permissões ou selecione outro dispositivo.')
       setIsTestingCamera(false)
     }
   }
+
+  // Acopla o stream de teste ao elemento de vídeo de forma reativa e segura
+  useEffect(() => {
+    if (isTestingCamera && cameraTestStream && videoPreviewRef.current) {
+      const cleanup = attachStreamToVideo(videoPreviewRef.current, cameraTestStream, {
+        tile: 'camera-preview',
+        peer: 'local-preview',
+        isLocal: true,
+        muted: true,
+      })
+      return cleanup
+    }
+  }, [isTestingCamera, cameraTestStream])
 
   const handleVideoInputChange = async (deviceId: string) => {
     await MediaManager.getInstance().changeVideoInput(deviceId)
@@ -222,7 +282,17 @@ export const AudioDevicesTab: React.FC<Props> = ({
         {isTestingCamera && (
           <div className="relative w-full aspect-video max-h-56 bg-black rounded-xl overflow-hidden border border-[#2a3142] shadow-inner flex items-center justify-center">
             <video
-              ref={videoPreviewRef}
+              ref={(el) => {
+                videoPreviewRef.current = el
+                if (el && cameraTestStream) {
+                  attachStreamToVideo(el, cameraTestStream, {
+                    tile: 'camera-preview',
+                    peer: 'local-preview',
+                    isLocal: true,
+                    muted: true,
+                  })
+                }
+              }}
               autoPlay
               playsInline
               muted
@@ -371,9 +441,20 @@ export const AudioDevicesTab: React.FC<Props> = ({
               <div
                 className="absolute top-0 bottom-0 w-1 bg-amber-400 z-10 shadow-md pointer-events-none"
                 style={{ left: `${manualSensitivityThreshold}%` }}
-                title={`Limiar de Sensibilidade: ${manualSensitivityThreshold}%`}
+                title={`Limiar de Sensibilidade Manual: ${manualSensitivityThreshold}%`}
               >
                 <div className="w-2.5 h-2.5 bg-amber-400 rotate-45 -translate-x-1/3 -translate-y-1/3 rounded-xs" />
+              </div>
+            )}
+
+            {/* Dynamic Adaptive Sensitivity Marker Overlay (Auto mode - Discord style) */}
+            {sensitivityMode === 'auto' && autoThresholdPercent > 0 && (
+              <div
+                className="absolute top-0 bottom-0 w-1 bg-emerald-400/90 z-10 shadow-md transition-all duration-150 pointer-events-none"
+                style={{ left: `${autoThresholdPercent}%` }}
+                title={`Limiar Adaptativo Atual: ${autoThresholdPercent}%`}
+              >
+                <div className="w-2.5 h-2.5 bg-emerald-400 rotate-45 -translate-x-1/3 -translate-y-1/3 rounded-xs opacity-90 shadow-sm" />
               </div>
             )}
           </div>
@@ -448,12 +529,19 @@ export const AudioDevicesTab: React.FC<Props> = ({
             </p>
           </div>
         ) : (
-          <div className="text-[11px] text-emerald-300/90 bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-xl space-y-1">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+          <div className="text-[11px] text-emerald-300/90 bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-xl space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
               <span>
                 O sistema detecta dinamicamente os barulhos da sua sala e calibra o corte automaticamente.
               </span>
+              {autoThresholdPercent > 0 && (
+                <span
+                  className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-mono font-bold border border-emerald-500/30 shrink-0"
+                  title="Limiar adaptativo calculado em tempo real para o ruído da sala"
+                >
+                  Corte atual: ~{autoThresholdPercent}%
+                </span>
+              )}
             </div>
             {currentCalibration && (
               <div className="text-[10px] text-slate-400 pl-6 flex items-center gap-1.5">

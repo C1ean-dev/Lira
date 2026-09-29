@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
-import { DoorOpen, Globe, LayoutGrid, Users, MessageSquare } from 'lucide-react'
+import { DoorOpen, Globe, LayoutGrid, Users, MessageSquare, Download, RefreshCw } from 'lucide-react'
 import { useGameStore } from '../store/useGameStore'
 import { useChatStore } from '../store/useChatStore'
 import { useMapStore } from '../store/useMapStore'
@@ -20,10 +20,16 @@ import { SavedSpacesTab } from './lobby/SavedSpacesTab'
 import { FriendsTab } from './lobby/FriendsTab'
 import { LobbyChatModal } from './lobby/LobbyChatModal'
 import { LiraLogo } from './LiraLogo'
+import { useUpdateStore } from '../store/useUpdateStore'
+import { CURRENT_APP_VERSION } from '../services/updateService'
 
 interface Props {
   onJoined: () => void
   onOpenAvatarCustomizer: () => void
+  onApplyUpdate?: () => void
+  hasUpdate?: boolean
+  isUpdateReady?: boolean
+  isUpdating?: boolean
 }
 
 function generateUUID(): string {
@@ -37,7 +43,19 @@ function generateUUID(): string {
   })
 }
 
-export const LobbyModal: React.FC<Props> = ({ onJoined, onOpenAvatarCustomizer }) => {
+export const LobbyModal: React.FC<Props> = ({
+  onJoined,
+  onOpenAvatarCustomizer,
+  onApplyUpdate,
+  hasUpdate: hasUpdateProp,
+  isUpdateReady,
+  isUpdating,
+}) => {
+  const updateInfo = useUpdateStore((s) => s.updateInfo)
+  const hasUpdate = hasUpdateProp ?? !!updateInfo?.hasUpdate
+  const rawVersion = updateInfo?.currentVersion || CURRENT_APP_VERSION
+  const currentVersion = rawVersion.startsWith('v') ? rawVersion : `v${rawVersion}`
+
   const { localPlayer, setLocalPlayer, friends, friendProfiles } = useGameStore()
   const {
     savedSpaces,
@@ -529,6 +547,29 @@ export const LobbyModal: React.FC<Props> = ({ onJoined, onOpenAvatarCustomizer }
         {/* Banner Header */}
         <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 p-5 text-center relative overflow-hidden shrink-0">
           <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full bg-white/10 blur-2xl" />
+          {hasUpdate && onApplyUpdate ? (
+            <button
+              type="button"
+              onClick={onApplyUpdate}
+              disabled={isUpdating}
+              className="absolute top-4 right-4 z-20 p-2.5 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-300 hover:text-white transition-all hover:scale-105 active:scale-95 shadow-lg shadow-emerald-500/20 cursor-pointer disabled:opacity-75 disabled:pointer-events-none"
+              title="Nova versão disponível! Clique para atualizar agora."
+            >
+              {isUpdating ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+            </button>
+          ) : (
+            <div
+              className="absolute top-4 right-4 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/20 text-white/90 text-xs font-bold shadow-sm transition-all"
+              title={`Versão atual do Lira: ${currentVersion}`}
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+              <span className="font-mono">{currentVersion}</span>
+            </div>
+          )}
           <div className="relative z-10 flex flex-col items-center">
             <div className="mb-2">
               <LiraLogo size={52} />

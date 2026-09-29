@@ -22,6 +22,7 @@ describe('RnnoiseProcessor - Shape & Sensitivity lifecycle', () => {
 
   it('should safely dispose without crashing and be idempotent', () => {
     const p = new RnnoiseProcessor()
+    expect(p.getHoldTimeMs()).toBe(220)
     expect(() => p.dispose()).not.toThrow()
     expect(() => p.dispose()).not.toThrow()
   })

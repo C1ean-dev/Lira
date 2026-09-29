@@ -7,6 +7,7 @@ import { getZoneWallTheme } from '../engine/rendering/wallRenderer'
 import { generateWallsAndDoorsForZones } from '../editor/zoneWallGenerator'
 import { useMapStore } from '../store/useMapStore'
 import { useGameStore } from '../store/useGameStore'
+import { hydrateMapData } from '../utils/mapSerialization'
 
 function buildStackedZones(options?: { isTopLocked?: boolean; isBottomLocked?: boolean }): {
   map: MapData
@@ -223,7 +224,7 @@ describe('Vertical Room Connection (topNeighbor / bottomNeighbor)', () => {
       // Space was modified or replaced by runtime dev server session; safely skip
       return
     }
-    const map = space.mapData
+    const map = hydrateMapData(space.mapData)
     useMapStore.setState({ mapData: map })
 
     // 1. Vertical Doorway between purple room (zone-rz8kj, y=9..15) and yellow room (zone-4runi, y=15..23)

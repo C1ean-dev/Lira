@@ -9,6 +9,7 @@ import { useSavedSpacesStore } from './useSavedSpacesStore'
 import { useGameStore } from './useGameStore'
 import { useCustomAssetsStore } from './useCustomAssetsStore'
 import { PeerManager } from '../p2p/PeerManager'
+import { hydrateMapData, compressMapDataForStorage } from '../utils/mapSerialization'
 
 const MAP_STORAGE_KEY = 'gather_v2_custom_map'
 
@@ -29,29 +30,11 @@ const loadSavedMap = (): MapData | null => {
       const raw = storage.getItem(MAP_STORAGE_KEY)
       if (raw) {
         const parsed = JSON.parse(raw)
-        if (
-          parsed &&
-          Array.isArray(parsed.floors) &&
-          parsed.floors.length > 0 &&
-          Array.isArray(parsed.floors[0]) &&
-          parsed.floors[0].length > 0
-        ) {
+        if (parsed && typeof parsed === 'object') {
           if (parsed.id === 'blacksmith_workshop') {
             return createEmptyWorkspace()
           }
-          const defaultEmpty = createEmptyWorkspace()
-          return {
-            id: parsed.id || 'custom_map',
-            name: parsed.name || 'Espaço de Trabalho',
-            width: parsed.width || parsed.floors[0].length || 68,
-            height: parsed.height || parsed.floors.length || 40,
-            tileSize: parsed.tileSize || 32,
-            spawnPoint: parsed.spawnPoint || { x: 34, y: 20 },
-            floors: parsed.floors,
-            walls: Array.isArray(parsed.walls) && parsed.walls.length > 0 ? parsed.walls : defaultEmpty.walls,
-            furniture: Array.isArray(parsed.furniture) ? parsed.furniture : [],
-            zones: Array.isArray(parsed.zones) ? parsed.zones : [],
-          }
+          return hydrateMapData(parsed)
         }
       }
     }
@@ -65,7 +48,7 @@ const saveMap = (mapData: MapData) => {
   try {
     const storage = getStorage()
     if (storage) {
-      storage.setItem(MAP_STORAGE_KEY, JSON.stringify(mapData))
+      storage.setItem(MAP_STORAGE_KEY, JSON.stringify(compressMapDataForStorage(mapData)))
     }
   } catch (e) {
     // Ignore in non-browser env
@@ -207,7 +190,7 @@ export const useMapStore = create<MapStore>((set, get) => ({
       return { activeTool: tool, eraserTarget: target }
     }),
 
-  selectedFloor: 'habbo_parquet',
+  selectedFloor: 'wood_parquet',
   setSelectedFloor: (floor) => set({ selectedFloor: floor, activeTool: 'paint_floor', eraserTarget: 'floor' }),
 
   selectedWall: 'drywall_white',
@@ -394,7 +377,7 @@ export const useMapStore = create<MapStore>((set, get) => ({
     })
   },
 
-  replaceFloorGlobally: (oldFloorId, replacementFloorId = 'habbo_parquet') => {
+  replaceFloorGlobally: (oldFloorId, replacementFloorId = 'wood_parquet') => {
     set((state) => {
       let changed = false
       const floors = state.mapData.floors.map((row) =>
@@ -464,7 +447,7 @@ export const useMapStore = create<MapStore>((set, get) => ({
         updatedZones,
         state.mapData.width,
         state.mapData.height,
-        state.selectedWall || 'habbo_hotel_gold'
+        state.selectedWall || 'drywall_white'
       )
 
       const updatedMap = {
@@ -676,7 +659,7 @@ export const useMapStore = create<MapStore>((set, get) => ({
         updatedZones,
         state.mapData.width,
         state.mapData.height,
-        state.selectedWall || 'habbo_hotel_gold'
+        state.selectedWall || 'drywall_white'
       )
 
       const updatedMap = {
