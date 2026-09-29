@@ -10,6 +10,7 @@ import { PetRenderer } from '../engine/pet/PetRenderer'
 import { CategoryKey, CategoryTabs } from './avatar-customizer/CategoryTabs'
 import { OptionSelectorGrid } from './avatar-customizer/OptionSelectorGrid'
 import { PetSelectorPanel } from './avatar-customizer/PetSelectorPanel'
+import { ProfileSelectorPanel } from './avatar-customizer/ProfileSelectorPanel'
 import { AvatarPreviewCanvas } from './avatar-customizer/AvatarPreviewCanvas'
 import { AvatarPixelArtModal } from '../editor/avatar/AvatarPixelArtModal'
 import { bakeAllAvatarDirections, cropContentDataUrl } from '../engine/avatar/avatarBakeService'
@@ -31,6 +32,7 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
   const [activeCategory, setActiveCategory] = useState<CategoryKey>('other')
   const [name, setName] = useState(localPlayer.name || 'Player')
+  const [profileImage, setProfileImage] = useState<string | undefined>(localPlayer.profileImage)
   const [status, setStatus] = useState<PresenceStatus>(localPlayer.status || 'available')
   const [avatar, setAvatar] = useState<AvatarConfig>({
     ...DEFAULT_AVATAR,
@@ -54,6 +56,7 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
   useEffect(() => {
     if (isOpen) {
       setName(localPlayer.name || 'Player')
+      setProfileImage(localPlayer.profileImage)
       setStatus(localPlayer.status || 'available')
       setAvatar({
         ...localPlayer.avatar,
@@ -229,7 +232,11 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     idleManager.cancelAutoAway()
     setLocalPlayer({
       name: finalName,
-      avatar,
+      profileImage,
+      avatar: {
+        ...avatar,
+        profileImage,
+      },
       status,
       statusText: chosenStatusText,
       statusEmoji: '',
@@ -241,7 +248,11 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     })
     PeerManager.getInstance().sendPlayerUpdate({
       name: finalName,
-      avatar,
+      profileImage,
+      avatar: {
+        ...avatar,
+        profileImage,
+      },
       status,
       statusText: chosenStatusText,
       statusEmoji: '',
@@ -277,17 +288,6 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
           <div className="flex items-center gap-3">
             <h2 className="text-base font-extrabold text-slate-100 tracking-tight">Editar Avatar</h2>
             <div className="h-4 w-px bg-[#2b2d31]" />
-            <div className="flex items-center gap-1.5 bg-[#2b2d31] px-2.5 py-1 rounded-xl border border-[#383a40]">
-              <span className="text-[11px] font-semibold text-slate-400">Nome:</span>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Seu Nickname"
-                maxLength={16}
-                className="bg-transparent text-xs font-bold text-slate-100 focus:outline-none focus:text-white w-28"
-              />
-            </div>
 
             {/* Current Status Selector */}
             <CustomDropdown<PresenceStatus>
@@ -332,6 +332,15 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 onChangeAvatar={setAvatar}
                 onEditPreset={handleOpenEditPreset}
                 onCreatePreset={handleOpenCreatePreset}
+              />
+            ) : activeCategory === 'profile' ? (
+              <ProfileSelectorPanel
+                name={name}
+                onChangeName={setName}
+                profileImage={profileImage}
+                onChangeProfileImage={setProfileImage}
+                avatar={avatar}
+                status={status}
               />
             ) : (
               <OptionSelectorGrid

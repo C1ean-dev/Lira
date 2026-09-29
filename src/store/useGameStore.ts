@@ -15,6 +15,7 @@ interface SavedProfile {
   status?: PresenceStatus
   statusText?: string
   statusEmoji?: string
+  profileImage?: string
 }
 
 const getStorage = () => {
@@ -405,6 +406,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       canKick: false,
     },
     avatar: saved.avatar ? { ...DEFAULT_AVATAR, ...saved.avatar } : { ...DEFAULT_AVATAR },
+    profileImage: saved.profileImage,
     ...sanitizePresence(saved, { allowManualAway: true }),
     currentZoneId: null,
     lastUpdated: Date.now(),
@@ -414,10 +416,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   setLocalPlayer: (data) => {
-    if (data.name !== undefined || data.avatar !== undefined) {
+    if (data.name !== undefined || data.avatar !== undefined || data.profileImage !== undefined) {
       saveProfile({
         name: data.name,
         avatar: data.avatar,
+        profileImage: data.profileImage,
       })
     }
     set((state) => ({

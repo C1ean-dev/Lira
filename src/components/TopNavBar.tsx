@@ -45,6 +45,7 @@ export const TopNavBar: React.FC<Props> = ({
   // re-render this bar at 60Hz on every movement frame. Select only UI fields.
   const localPlayerName = useGameStore((s) => s.localPlayer.name)
   const localPlayerAvatarColor = useGameStore((s) => s.localPlayer.avatar?.shirtColor)
+  const localPlayerProfileImage = useGameStore((s) => s.localPlayer.profileImage || s.localPlayer.avatar?.profileImage)
   const localPlayerStatus = useGameStore((s) => s.localPlayer.status)
   const localPlayerStatusText = useGameStore((s) => s.localPlayer.statusText)
   const localPlayerCurrentZoneId = useGameStore((s) => s.localPlayer.currentZoneId)
@@ -319,13 +320,21 @@ export const TopNavBar: React.FC<Props> = ({
           onClick={onOpenAvatarModal}
           className="flex items-center gap-2 pl-2 pr-3 py-1 bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] rounded-xl transition-all group"
         >
-          <div className="relative">
-            <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs text-white border border-white/20"
-              style={{ backgroundColor: localPlayerAvatarColor || '#4c6ef5' }}
-            >
-              {localPlayerName.charAt(0).toUpperCase()}
-            </div>
+          <div className="relative shrink-0">
+            {localPlayerProfileImage ? (
+              <img
+                src={localPlayerProfileImage}
+                alt={localPlayerName}
+                className="w-7 h-7 rounded-lg object-cover border border-white/20 shadow-sm"
+              />
+            ) : (
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs text-white border border-white/20"
+                style={{ backgroundColor: localPlayerAvatarColor || '#4c6ef5' }}
+              >
+                {localPlayerName.charAt(0).toUpperCase()}
+              </div>
+            )}
             <div
               className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-[#12151d] ${
                 STATUS_META[localPlayerStatus || 'available'].dotColor
