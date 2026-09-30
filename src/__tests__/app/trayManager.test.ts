@@ -4,7 +4,7 @@ import {
   parseAppSettings,
   mergeAppSettings,
   AppSettings,
-} from '../../../electron/traySettings'
+} from '../../../electron/tray/traySettings'
 
 describe('traySettings model and parsing', () => {
   it('returns default settings when json is null, empty or undefined', () => {

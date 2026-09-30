@@ -8,7 +8,7 @@ import dgram from 'dgram'
 import { spawn, exec } from 'child_process'
 import { release as getOsRelease } from 'os'
 import { setupSingleInstanceLock } from './singleInstance'
-import { TrayManager, AppSettings } from './trayManager'
+import { TrayManager, AppSettings } from './tray/trayManager'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
