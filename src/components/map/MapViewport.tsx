@@ -11,7 +11,7 @@ import { Direction } from '../../types/game'
 import { PlacedFurniture, PrivateZone, FloorType } from '../../types/map'
 import { MapControlsWidget } from './MapControlsWidget'
 import { SimplifiedMapView } from './SimplifiedMapView'
-import { FurnitureContextMenu } from '../../editor/FurnitureContextMenu'
+import { FurnitureContextMenu } from '../../editor/furniture/FurnitureContextMenu'
 
 export const MapViewport: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)

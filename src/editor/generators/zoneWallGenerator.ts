@@ -1,4 +1,4 @@
-import { MapData, PrivateZone, WallType } from '../types/map'
+import { MapData, PrivateZone, WallType } from '../../types/map'
 
 /**
  * Snaps and aligns a newly drawn or updated zone with adjacent zones:

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Plus, Trash2, Pencil, Scissors, FolderInput, Download, Sparkles } from 'lucide-react'
-import { PixelArtThumbnail } from '../../PixelArtThumbnail'
+import { PixelArtThumbnail } from '../PixelArtThumbnail'
 import { ConfirmModal } from '../../../components/common/ConfirmModal'
 
 interface FurnitureTabItem {

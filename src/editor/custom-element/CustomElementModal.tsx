@@ -6,19 +6,19 @@ import {
   Check,
   RotateCcw,
 } from 'lucide-react'
-import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
-import { useMapStore } from '../store/useMapStore'
-import { useGameStore } from '../store/useGameStore'
-import { PeerManager } from '../p2p/PeerManager'
-import { CustomAsset, CustomAssetType, DirectionalDimension } from '../types/customAsset'
-import { Direction } from '../types/game'
+import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
+import { useMapStore } from '../../store/useMapStore'
+import { useGameStore } from '../../store/useGameStore'
+import { PeerManager } from '../../p2p/PeerManager'
+import { CustomAsset, CustomAssetType, DirectionalDimension } from '../../types/customAsset'
+import { Direction } from '../../types/game'
 import {
   cropImage,
   applyBackgroundRemoval,
   getTrimmedBounds,
   RGBColor,
   PRESET_BG_COLORS,
-} from '../utils/imageTransparency'
+} from '../../utils/imageTransparency'
 import {
   resizeImageToTarget,
   calculateFitDimensions,
@@ -27,14 +27,14 @@ import {
   calculateHighFidelityBakeScale,
   bakeLayersToDataUrl,
   bakeLayersToDataUrlSync,
-} from '../utils/imageResize'
-import { CropStudio, CroppedClip } from './custom-element/CropStudio'
-import { CompositionStudio, CompositeLayer } from './custom-element/CompositionStudio'
-import { CroppedClipsList } from './custom-element/CroppedClipsList'
-import { LayerManager } from './custom-element/LayerManager'
-import { AnimationTimeline } from './custom-element/AnimationTimeline'
-import { TransparencyControls } from './custom-element/TransparencyControls'
-import { AssetPropertiesForm } from './custom-element/AssetPropertiesForm'
+} from '../../utils/imageResize'
+import { CropStudio, CroppedClip } from './CropStudio'
+import { CompositionStudio, CompositeLayer } from './CompositionStudio'
+import { CroppedClipsList } from './CroppedClipsList'
+import { LayerManager } from './LayerManager'
+import { AnimationTimeline } from './AnimationTimeline'
+import { TransparencyControls } from './TransparencyControls'
+import { AssetPropertiesForm } from './AssetPropertiesForm'
 
 export const CustomElementModal: React.FC = () => {
   const {

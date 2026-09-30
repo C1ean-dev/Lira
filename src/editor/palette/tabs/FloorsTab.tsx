@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Trash2, Pencil, ShieldCheck, Scissors, FolderInput, Download } from 'lucide-react'
-import { PixelArtThumbnail } from '../../PixelArtThumbnail'
+import { PixelArtThumbnail } from '../PixelArtThumbnail'
 import { FloorType } from '../../../types/map'
 import { ConfirmModal } from '../../../components/common/ConfirmModal'
 

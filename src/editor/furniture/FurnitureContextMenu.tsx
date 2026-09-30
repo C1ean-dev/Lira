@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { Move, Trash2, Palette, X, Check, Pencil, RotateCw } from 'lucide-react'
-import { useMapStore } from '../store/useMapStore'
-import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
-import { FURNITURE_CATALOG } from '../engine/Constants'
-import { PeerManager } from '../p2p/PeerManager'
-import { Direction } from '../types/game'
+import { useMapStore } from '../../store/useMapStore'
+import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
+import { FURNITURE_CATALOG } from '../../engine/Constants'
+import { PeerManager } from '../../p2p/PeerManager'
+import { Direction } from '../../types/game'
 
 const TINT_PALETTE = [
   { name: 'Original', color: undefined },

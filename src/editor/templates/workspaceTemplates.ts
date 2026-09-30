@@ -1,5 +1,5 @@
-import { MapData, FloorType, WallType } from '../types/map'
-import { TILE_SIZE } from '../engine/Constants'
+import { MapData, FloorType, WallType } from '../../types/map'
+import { TILE_SIZE } from '../../engine/Constants'
 
 /**
  * Espaço em Branco / Workspace Vazio para Edição Livre
