@@ -20,6 +20,7 @@ export interface ParticipantData {
   isSpeaking?: boolean
   shirtColor?: string
   profileImage?: string
+  profilePhoto?: string
   statusEmoji?: string
   callState?: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed'
   onRetryCall?: () => void
@@ -149,9 +150,9 @@ export const GridParticipantTile: React.FC<Props> = ({
               }`}
             />
             {user.isCameraOff && (
-              user.profileImage ? (
+              (user.profileImage || user.profilePhoto) ? (
                 <img
-                  src={user.profileImage}
+                  src={user.profileImage || user.profilePhoto}
                   alt={user.name}
                   className="w-8 h-8 rounded-full object-cover shadow-md border border-white/20"
                 />
@@ -285,9 +286,9 @@ export const GridParticipantTile: React.FC<Props> = ({
           {/* Camera Off Avatar Screen */}
           {user.isCameraOff && (
             <div className="flex flex-col items-center gap-3">
-              {user.profileImage ? (
+              {(user.profileImage || user.profilePhoto) ? (
                 <img
-                  src={user.profileImage}
+                  src={user.profileImage || user.profilePhoto}
                   alt={user.name}
                   className="w-20 h-20 rounded-full object-cover shadow-2xl border-2 border-white/20"
                 />

@@ -13,6 +13,7 @@ interface SavedProfile {
   id?: string
   name?: string
   avatar?: AvatarConfig
+  profilePhoto?: string
   status?: PresenceStatus
   statusText?: string
   statusEmoji?: string
@@ -91,12 +92,15 @@ const syncPublicRoomRegistration = (roomId: string | null, isPublic: boolean, ro
 }
 
 const saved = loadSavedProfile() || {}
-const initialAvatar = saved.avatar ? { ...DEFAULT_AVATAR, ...saved.avatar } : { ...DEFAULT_AVATAR }
+const savedPhoto = saved.profileImage || saved.profilePhoto || saved.avatar?.profilePhoto || saved.avatar?.profileImage
+const initialAvatar = saved.avatar
+  ? { ...DEFAULT_AVATAR, ...saved.avatar, profilePhoto: savedPhoto, profileImage: savedPhoto }
+  : { ...DEFAULT_AVATAR, profilePhoto: savedPhoto, profileImage: savedPhoto }
 const initialName = saved.name || 'Player'
-const initialHasCustomPhoto = Boolean(saved.hasCustomPhoto && saved.profileImage)
+const initialHasCustomPhoto = Boolean(saved.hasCustomPhoto && savedPhoto)
 const initialProfileImage = initialHasCustomPhoto
-  ? saved.profileImage
-  : (getAvatarSnapshot(initialAvatar, initialName) || saved.profileImage)
+  ? savedPhoto
+  : (getAvatarSnapshot(initialAvatar, initialName) || savedPhoto)
 
 interface RoomSessionOptions {
   roomName?: string
@@ -413,8 +417,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
       canMuteOthers: false,
       canKick: false,
     },
-    avatar: initialAvatar,
+    avatar: {
+      ...initialAvatar,
+      profileImage: initialProfileImage,
+      profilePhoto: initialProfileImage,
+    },
     profileImage: initialProfileImage,
+    profilePhoto: initialProfileImage,
     hasCustomPhoto: initialHasCustomPhoto,
     ...sanitizePresence(saved, { allowManualAway: true }),
     currentZoneId: null,
@@ -425,16 +434,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   setLocalPlayer: (data) => {
+    const hasPhotoField = 'profilePhoto' in data || 'profileImage' in data
+    const explicitPhoto = 'profilePhoto' in data ? data.profilePhoto : data.profileImage
+    const effectivePhoto = explicitPhoto !== undefined
+      ? explicitPhoto
+      : (data.avatar?.profilePhoto || data.avatar?.profileImage)
+
     if (
       data.name !== undefined ||
       data.avatar !== undefined ||
-      data.profileImage !== undefined ||
+      hasPhotoField ||
       data.hasCustomPhoto !== undefined
     ) {
       saveProfile({
         name: data.name,
         avatar: data.avatar,
-        profileImage: data.profileImage,
+        profileImage: hasPhotoField ? explicitPhoto : undefined,
+        profilePhoto: hasPhotoField ? explicitPhoto : data.avatar?.profilePhoto,
         hasCustomPhoto: data.hasCustomPhoto,
       })
     }
@@ -443,22 +459,29 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const nextName = data.name !== undefined ? data.name : state.localPlayer.name
       const nextHasCustom = data.hasCustomPhoto !== undefined ? data.hasCustomPhoto : state.localPlayer.hasCustomPhoto
 
-      let nextProfileImage = data.profileImage !== undefined ? data.profileImage : state.localPlayer.profileImage
-      if (!nextHasCustom && (data.avatar !== undefined || data.profileImage === undefined)) {
+      let nextProfileImage = effectivePhoto !== undefined ? effectivePhoto : (state.localPlayer.profileImage || state.localPlayer.profilePhoto)
+      if (!nextHasCustom && (data.avatar !== undefined || (!('profileImage' in data) && !('profilePhoto' in data)))) {
         const autoSnap = getAvatarSnapshot(nextAvatar, nextName)
         if (autoSnap) {
           nextProfileImage = autoSnap
         }
       }
 
+      const finalProfilePhoto = 'profilePhoto' in data ? data.profilePhoto : nextProfileImage
+
       return {
         localPlayer: {
           ...state.localPlayer,
           ...data,
-          avatar: nextAvatar,
+          avatar: {
+            ...nextAvatar,
+            profileImage: nextProfileImage,
+            profilePhoto: finalProfilePhoto,
+          },
           name: nextName,
           hasCustomPhoto: nextHasCustom,
           profileImage: nextProfileImage,
+          profilePhoto: finalProfilePhoto,
           lastUpdated: Date.now(),
         },
       }

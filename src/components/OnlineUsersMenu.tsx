@@ -272,7 +272,9 @@ const OnlineUsersMenuInner: React.FC = () => {
                       {(() => {
                         const playerProfileImg =
                           player.profileImage ||
+                          player.profilePhoto ||
                           player.avatar?.profileImage ||
+                          player.avatar?.profilePhoto ||
                           getAvatarSnapshot(player.avatar, player.name)
                         return playerProfileImg ? (
                           <img

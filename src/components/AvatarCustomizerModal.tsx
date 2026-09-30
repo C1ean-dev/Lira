@@ -31,14 +31,18 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const { localPlayer, setLocalPlayer, setLocalStatus } = useGameStore()
   const { showNameTags, setShowNameTags } = useSettingsStore()
 
-  const [activeCategory, setActiveCategory] = useState<CategoryKey>('other')
+  const [activeCategory, setActiveCategory] = useState<CategoryKey>('profile')
   const [name, setName] = useState(localPlayer.name || 'Player')
   const [profileImage, setProfileImage] = useState<string | undefined>(localPlayer.profileImage)
   const [hasCustomPhoto, setHasCustomPhoto] = useState<boolean>(() => Boolean(localPlayer.hasCustomPhoto && localPlayer.profileImage))
   const [status, setStatus] = useState<PresenceStatus>(localPlayer.status || 'available')
+  const [profilePhoto, setProfilePhoto] = useState<string | undefined>(
+    localPlayer.profilePhoto || localPlayer.avatar?.profilePhoto
+  )
   const [avatar, setAvatar] = useState<AvatarConfig>({
     ...DEFAULT_AVATAR,
     ...localPlayer.avatar,
+    profilePhoto: localPlayer.profilePhoto || localPlayer.avatar?.profilePhoto,
     pet: localPlayer.avatar?.pet || { type: 'none' },
     customSkinUrl: localPlayer.avatar?.customSkinUrl,
     customAvatarId: localPlayer.avatar?.customAvatarId,
@@ -61,8 +65,11 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
       setProfileImage(localPlayer.profileImage)
       setHasCustomPhoto(Boolean(localPlayer.hasCustomPhoto && localPlayer.profileImage))
       setStatus(localPlayer.status || 'available')
+      const photo = localPlayer.profilePhoto || localPlayer.avatar?.profilePhoto
+      setProfilePhoto(photo)
       setAvatar({
         ...localPlayer.avatar,
+        profilePhoto: photo,
         pet: localPlayer.avatar?.pet || { type: 'none' },
         customSkinUrl: localPlayer.avatar?.customSkinUrl,
         customAvatarId: localPlayer.avatar?.customAvatarId,
@@ -205,6 +212,7 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     if (category === 'pet') {
       updatedAvatar = {
         ...avatar,
+        profilePhoto,
         pet: {
           type: 'custom',
           customAssetId: savedAssetId,
@@ -215,6 +223,7 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     } else {
       updatedAvatar = {
         ...avatar,
+        profilePhoto,
         customComponents: {
           ...avatar.customComponents,
           [category]: directionalFrames,
@@ -234,18 +243,22 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
     const effectiveProfileImage = hasCustomPhoto && profileImage
       ? profileImage
-      : (getAvatarSnapshot(avatar, finalName) || profileImage)
+      : (getAvatarSnapshot(avatar, finalName) || profileImage || profilePhoto)
+
+    const updatedAvatar: AvatarConfig = {
+      ...avatar,
+      profileImage: effectiveProfileImage,
+      profilePhoto: effectiveProfileImage,
+      hasCustomPhoto,
+    }
 
     idleManager.cancelAutoAway()
     setLocalPlayer({
       name: finalName,
       profileImage: effectiveProfileImage,
+      profilePhoto: effectiveProfileImage,
       hasCustomPhoto,
-      avatar: {
-        ...avatar,
-        profileImage: effectiveProfileImage,
-        hasCustomPhoto,
-      },
+      avatar: updatedAvatar,
       status,
       statusText: chosenStatusText,
       statusEmoji: '',
@@ -258,12 +271,9 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     PeerManager.getInstance().sendPlayerUpdate({
       name: finalName,
       profileImage: effectiveProfileImage,
+      profilePhoto: effectiveProfileImage,
       hasCustomPhoto,
-      avatar: {
-        ...avatar,
-        profileImage: effectiveProfileImage,
-        hasCustomPhoto,
-      },
+      avatar: updatedAvatar,
       status,
       statusText: chosenStatusText,
       statusEmoji: '',
@@ -293,12 +303,13 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-200 select-none">
-      <div className="bg-[#1e1f22] border border-[#2b2d31] rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col h-[600px] max-h-[92vh]">
+      <div className="bg-[#1e1f22] border border-[#2b2d31] rounded-3xl w-full max-w-5xl overflow-hidden shadow-2xl flex flex-col h-[640px] max-h-[94vh]">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-3 border-b border-[#2b2d31] bg-[#18191c]">
           <div className="flex items-center gap-3">
-            <h2 className="text-base font-extrabold text-slate-100 tracking-tight">Editar Avatar</h2>
+            <h2 className="text-base font-extrabold text-slate-100 tracking-tight">Editar Perfil & Avatar</h2>
             <div className="h-4 w-px bg-[#2b2d31]" />
+
 
             {/* Current Status Selector */}
             <CustomDropdown<PresenceStatus>

@@ -109,6 +109,9 @@ export interface AvatarConfig {
   // Companion Pet
   pet?: PetConfig
 
+  // Custom Profile Picture (Data URL or Image URL)
+  profilePhoto?: string
+
   // Custom Hand-Drawn Avatar Full Skin or Specific Component Layers
   customSkinUrl?: string
   customAvatarId?: string
@@ -192,6 +195,7 @@ export interface Player {
   isMoving: boolean
   avatar: AvatarConfig
   profileImage?: string
+  profilePhoto?: string
   hasCustomPhoto?: boolean
   status: PresenceStatus
   statusText?: string
@@ -279,6 +283,7 @@ export interface FriendProfile {
   name: string
   avatar?: AvatarConfig
   profileImage?: string
+  profilePhoto?: string
   hasCustomPhoto?: boolean
   gameId?: string
   actualUserId?: string

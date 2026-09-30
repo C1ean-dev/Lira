@@ -13,6 +13,8 @@ import {
   Minimize2,
   AlertCircle,
   GripVertical,
+  Plus,
+  Trash2,
 } from 'lucide-react'
 
 const DEFAULT_DRAWER_WIDTH = 440
@@ -76,9 +78,11 @@ const ChatDrawerInner: React.FC = () => {
     addMessage,
     addReactionToMessage,
     respondToFriendRequest,
+    createChannel,
+    removeChannel,
   } = useChatStore()
 
-  const { localPlayer, remotePlayers } = useGameStore()
+  const { localPlayer, remotePlayers, friendProfiles } = useGameStore()
   const isGridCallOpen = useMediaStore((s) => s.isGridCallOpen)
 
   const [inputMessage, setInputMessage] = useState('')
@@ -86,6 +90,9 @@ const ChatDrawerInner: React.FC = () => {
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [lightboxImage, setLightboxImage] = useState<{ url: string; name: string } | null>(null)
+  const [isCreatingChannel, setIsCreatingChannel] = useState(false)
+  const [newChannelName, setNewChannelName] = useState('')
+  const [newChannelDesc, setNewChannelDesc] = useState('')
 
   const [drawerWidth, setDrawerWidth] = useState<number>(() => {
     try {
@@ -396,35 +403,133 @@ const ChatDrawerInner: React.FC = () => {
           <div className="space-y-1">
             <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 py-1 flex items-center justify-between">
               <span>Canais</span>
-              <ChevronDown className="w-3 h-3" />
+              <button
+                type="button"
+                onClick={() => setIsCreatingChannel((prev) => !prev)}
+                className={`p-1 rounded transition-colors ${
+                  isCreatingChannel
+                    ? 'bg-indigo-600 text-white'
+                    : 'hover:bg-slate-800 text-slate-400 hover:text-indigo-300'
+                }`}
+                title="Criar novo canal"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
             </div>
+
+            {/* Inline Channel Creation Form */}
+            {isCreatingChannel && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  if (!newChannelName.trim()) return
+                  createChannel(newChannelName, newChannelDesc)
+                  setNewChannelName('')
+                  setNewChannelDesc('')
+                  setIsCreatingChannel(false)
+                }}
+                className="p-2 mb-2 bg-[#161a24] border border-indigo-500/40 rounded-xl space-y-2 animate-in fade-in duration-150"
+              >
+                <div className="flex items-center justify-between text-[11px] font-bold text-slate-200">
+                  <span>Novo Canal</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCreatingChannel(false)
+                      setNewChannelName('')
+                      setNewChannelDesc('')
+                    }}
+                    className="text-slate-400 hover:text-slate-200 p-0.5 rounded"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-2 top-1.5 text-xs text-slate-500">#</span>
+                  <input
+                    type="text"
+                    value={newChannelName}
+                    onChange={(e) => setNewChannelName(e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, '-'))}
+                    placeholder="nome-do-canal"
+                    autoFocus
+                    maxLength={24}
+                    className="w-full bg-[#0d1017] border border-[#2a3142] focus:border-indigo-500 rounded-lg pl-5 pr-2 py-1 text-xs text-slate-200 outline-none placeholder:text-slate-500"
+                  />
+                </div>
+                <input
+                  type="text"
+                  value={newChannelDesc}
+                  onChange={(e) => setNewChannelDesc(e.target.value)}
+                  placeholder="Descrição (opcional)"
+                  maxLength={60}
+                  className="w-full bg-[#0d1017] border border-[#2a3142] focus:border-indigo-500 rounded-lg px-2 py-1 text-[11px] text-slate-200 outline-none placeholder:text-slate-500"
+                />
+                <div className="flex gap-1 justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCreatingChannel(false)
+                      setNewChannelName('')
+                      setNewChannelDesc('')
+                    }}
+                    className="px-2 py-0.5 text-[10px] text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!newChannelName.trim()}
+                    className="px-2.5 py-0.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-[10px] font-bold rounded shadow transition-all"
+                  >
+                    Criar
+                  </button>
+                </div>
+              </form>
+            )}
 
             {channels.filter((c) => c.type !== 'dm').map((ch) => {
               const isCurrent = ch.id === activeChannelId
+              const isCustom = ch.isCustom || ch.type === 'custom'
               return (
-                <button
-                  key={ch.id}
-                  onClick={() => setActiveChannel(ch.id)}
-                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    isCurrent
-                      ? 'bg-indigo-600/30 text-indigo-400 font-semibold'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5 truncate">
-                    {ch.type === 'zone' ? (
-                      <Lock className="w-3 h-3 text-emerald-400 shrink-0" />
-                    ) : (
-                      <Hash className="w-3 h-3 shrink-0" />
+                <div key={ch.id} className="group relative flex items-center">
+                  <button
+                    onClick={() => setActiveChannel(ch.id)}
+                    className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      isCurrent
+                        ? 'bg-indigo-600/30 text-indigo-400 font-semibold'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 truncate">
+                      {ch.type === 'zone' ? (
+                        <Lock className="w-3 h-3 text-emerald-400 shrink-0" />
+                      ) : (
+                        <Hash className="w-3 h-3 shrink-0" />
+                      )}
+                      <span className="truncate">{ch.name}</span>
+                    </div>
+                    {ch.unreadCount > 0 && (
+                      <span className="bg-indigo-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                        {ch.unreadCount}
+                      </span>
                     )}
-                    <span className="truncate">{ch.name}</span>
-                  </div>
-                  {ch.unreadCount > 0 && (
-                    <span className="bg-indigo-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-                      {ch.unreadCount}
-                    </span>
+                  </button>
+                  {isCustom && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (window.confirm(`Excluir o canal #${ch.name}?`)) {
+                          removeChannel(ch.id)
+                        }
+                      }}
+                      className="absolute right-1 opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-all"
+                      title="Excluir canal"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
                   )}
-                </button>
+                </div>
               )
             })}
           </div>
@@ -469,7 +574,9 @@ const ChatDrawerInner: React.FC = () => {
                         {(() => {
                           const playerProfileImg =
                             player.profileImage ||
+                            player.profilePhoto ||
                             player.avatar?.profileImage ||
+                            player.avatar?.profilePhoto ||
                             getAvatarSnapshot(player.avatar, player.name)
                           return playerProfileImg ? (
                             <img
@@ -514,6 +621,12 @@ const ChatDrawerInner: React.FC = () => {
               )
               .map((dm) => {
                 const isCurrent = activeChannelId === dm.id
+                const offlineProfile = Object.values(friendProfiles).find(
+                  (fp) =>
+                    (dm.recipientId && (fp.id === dm.recipientId || fp.actualUserId === dm.recipientId)) ||
+                    (fp.name && fp.name.toLowerCase() === dm.name.toLowerCase())
+                )
+                const offlinePhoto = offlineProfile?.profilePhoto || offlineProfile?.avatar?.profilePhoto
                 return (
                   <button
                     key={dm.id}
@@ -527,8 +640,12 @@ const ChatDrawerInner: React.FC = () => {
                   >
                     <div className="flex items-center gap-2 truncate">
                       <div className="relative shrink-0">
-                        <div className="w-5 h-5 rounded-full bg-slate-700 border border-white/10 flex items-center justify-center text-[10px] font-bold text-slate-300">
-                          {dm.name.charAt(0).toUpperCase()}
+                        <div className="w-5 h-5 rounded-full bg-slate-700 border border-white/10 flex items-center justify-center text-[10px] font-bold text-slate-300 overflow-hidden">
+                          {offlinePhoto ? (
+                            <img src={offlinePhoto} alt={dm.name} className="w-full h-full object-cover" />
+                          ) : (
+                            dm.name.charAt(0).toUpperCase()
+                          )}
                         </div>
                         <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-slate-500 ring-1 ring-[#0d1017]" />
                       </div>
@@ -615,6 +732,42 @@ const ChatDrawerInner: React.FC = () => {
                   (localPlayer.gameId && msg.senderId === localPlayer.gameId)
                 const hasAttachment = !!msg.attachment
                 const isImage = hasAttachment && isImageAttachment(msg.attachment!)
+                const remoteSender = remotePlayers[msg.senderId]
+                const friendSender = Object.values(friendProfiles).find(
+                  (fp) =>
+                    fp.id === msg.senderId ||
+                    fp.actualUserId === msg.senderId ||
+                    (fp.name && fp.name.toLowerCase() === msg.senderName.toLowerCase())
+                )
+                const senderPhoto = isMine
+                  ? (localPlayer.profilePhoto || localPlayer.avatar?.profilePhoto)
+                  : (msg.avatarConfig?.profilePhoto || remoteSender?.profilePhoto || remoteSender?.avatar?.profilePhoto || friendSender?.profilePhoto || friendSender?.avatar?.profilePhoto)
+                const senderColor = isMine
+                  ? (localPlayer.avatar?.shirtColor || '#4c6ef5')
+                  : (msg.avatarConfig?.shirtColor || remoteSender?.avatar?.shirtColor || friendSender?.avatar?.shirtColor || '#6366f1')
+
+                const renderAuthorHeader = () => (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <div
+                        className="w-4 h-4 rounded-full border border-white/20 flex items-center justify-center text-[9px] font-bold text-white shadow-sm overflow-hidden shrink-0"
+                        style={{ backgroundColor: senderColor }}
+                      >
+                        {senderPhoto ? (
+                          <img src={senderPhoto} alt={msg.senderName} className="w-full h-full object-cover" />
+                        ) : (
+                          msg.senderName.charAt(0).toUpperCase()
+                        )}
+                      </div>
+                      <span className={`text-xs font-semibold truncate ${isMine ? 'text-indigo-400' : 'text-slate-300'}`}>
+                        {msg.senderName}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-400 shrink-0">
+                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                )
 
                 if (msg.friendRequest) {
                   const rId = msg.friendRequest.requestId
@@ -622,14 +775,7 @@ const ChatDrawerInner: React.FC = () => {
                     if (!msg.content) return null
                     return (
                       <div key={msg.id} className="group relative flex flex-col space-y-1">
-                        <div className="flex items-baseline justify-between">
-                          <span className={`text-xs font-semibold ${isMine ? 'text-indigo-400' : 'text-slate-300'}`}>
-                            {msg.senderName}
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
+                        {renderAuthorHeader()}
                         <div className="text-xs text-slate-200 bg-[#1b202c] p-2.5 rounded-xl border border-[#2a3142]/60 break-words">
                           {msg.content}
                         </div>
@@ -640,14 +786,7 @@ const ChatDrawerInner: React.FC = () => {
 
                   return (
                     <div key={msg.id} className="group relative flex flex-col space-y-1">
-                      <div className="flex items-baseline justify-between">
-                        <span className={`text-xs font-semibold ${isMine ? 'text-indigo-400' : 'text-slate-300'}`}>
-                          {msg.senderName}
-                        </span>
-                        <span className="text-[10px] text-slate-400">
-                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
+                      {renderAuthorHeader()}
                       <FriendRequestCard
                         message={msg}
                         onAccept={(reqId) => respondToFriendRequest(reqId, 'accepted')}
@@ -659,14 +798,7 @@ const ChatDrawerInner: React.FC = () => {
 
                 return (
                   <div key={msg.id} className="group relative flex flex-col space-y-1">
-                    <div className="flex items-baseline justify-between">
-                      <span className={`text-xs font-semibold ${isMine ? 'text-indigo-400' : 'text-slate-300'}`}>
-                        {msg.senderName}
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
+                    {renderAuthorHeader()}
 
                     <div className="text-xs text-slate-200 bg-[#1b202c] p-2.5 rounded-xl border border-[#2a3142]/60 break-words space-y-2">
                       {/* Text content if present */}

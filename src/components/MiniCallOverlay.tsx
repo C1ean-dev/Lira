@@ -53,6 +53,7 @@ interface VideoTileProps {
   isScreenTrack?: boolean
   color?: string
   profileImage?: string
+  profilePhoto?: string
   callState?: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed'
   onRetryCall?: () => void
   onClick?: () => void
@@ -73,6 +74,7 @@ const VideoTile: React.FC<VideoTileProps> = ({
   isScreenTrack,
   color,
   profileImage,
+  profilePhoto,
   callState,
   onRetryCall,
   onClick,
@@ -148,9 +150,9 @@ const VideoTile: React.FC<VideoTileProps> = ({
 
       {/* Camera Off Avatar Fallback */}
       {isCameraOff && !isScreenSharing && !isScreenTrack && (
-        profileImage ? (
+        (profileImage || profilePhoto) ? (
           <img
-            src={profileImage}
+            src={profileImage || profilePhoto}
             alt={name}
             className="w-10 h-10 rounded-full object-cover shadow-md border border-white/20"
           />
@@ -664,8 +666,9 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               isLocal={true}
               isScreenSharing={false}
               suppressAudio={suppressAudio}
-              color={localPlayer.avatar.shirtColor}
-              profileImage={localPlayer.profileImage || localPlayer.avatar?.profileImage || getAvatarSnapshot(localPlayer.avatar, localPlayer.name)}
+              color={localPlayer.avatar?.shirtColor}
+              profileImage={localPlayer.profileImage || localPlayer.profilePhoto || localPlayer.avatar?.profileImage || localPlayer.avatar?.profilePhoto || getAvatarSnapshot(localPlayer.avatar, localPlayer.name)}
+              profilePhoto={localPlayer.profileImage || localPlayer.profilePhoto || localPlayer.avatar?.profileImage || localPlayer.avatar?.profilePhoto || getAvatarSnapshot(localPlayer.avatar, localPlayer.name)}
               onClick={() => setGridCallOpen(true)}
               onContextMenu={(e) => {
                 setContextMenuState({
@@ -678,7 +681,9 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                     isMuted,
                     isMutedByAdmin: localPlayer.isMutedByAdmin,
                     isDeafened,
-                    shirtColor: localPlayer.avatar.shirtColor,
+                    shirtColor: localPlayer.avatar?.shirtColor,
+                    profilePhoto: localPlayer.profileImage || localPlayer.profilePhoto || localPlayer.avatar?.profileImage || localPlayer.avatar?.profilePhoto || getAvatarSnapshot(localPlayer.avatar, localPlayer.name),
+                    profileImage: localPlayer.profileImage || localPlayer.profilePhoto || localPlayer.avatar?.profileImage || localPlayer.avatar?.profilePhoto || getAvatarSnapshot(localPlayer.avatar, localPlayer.name),
                     statusEmoji: localPlayer.statusEmoji,
                   },
                   x: e.clientX,
@@ -715,8 +720,9 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                 isScreenSharing={peer.isScreenSharing}
                 isScreenTrack={peer.isScreenSharing}
                 suppressAudio={suppressAudio}
-                color={peer.avatar.shirtColor}
-                profileImage={peer.profileImage || peer.avatar?.profileImage || getAvatarSnapshot(peer.avatar, peer.name)}
+                color={peer.avatar?.shirtColor}
+                profileImage={peer.profileImage || peer.profilePhoto || peer.avatar?.profileImage || peer.avatar?.profilePhoto || getAvatarSnapshot(peer.avatar, peer.name)}
+                profilePhoto={peer.profileImage || peer.profilePhoto || peer.avatar?.profileImage || peer.avatar?.profilePhoto || getAvatarSnapshot(peer.avatar, peer.name)}
                 callState={callStates[peer.id] || peer.callState || 'idle'}
                 onRetryCall={() => PeerManager.getInstance().retryZoneCall(peer.id)}
                 onClick={() => setGridCallOpen(true)}
@@ -731,7 +737,9 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                       isMuted: peer.isMuted,
                       isMutedByAdmin: peer.isMutedByAdmin,
                       isDeafened: peer.isDeafened,
-                      shirtColor: peer.avatar.shirtColor,
+                      shirtColor: peer.avatar?.shirtColor,
+                      profilePhoto: peer.profileImage || peer.profilePhoto || peer.avatar?.profileImage || peer.avatar?.profilePhoto || getAvatarSnapshot(peer.avatar, peer.name),
+                      profileImage: peer.profileImage || peer.profilePhoto || peer.avatar?.profileImage || peer.avatar?.profilePhoto || getAvatarSnapshot(peer.avatar, peer.name),
                       statusEmoji: peer.statusEmoji,
                     },
                     x: e.clientX,
