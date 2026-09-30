@@ -18,7 +18,7 @@ import { useGameStore } from '../../store/useGameStore'
 import { useMapStore } from '../../store/useMapStore'
 import { MediaManager } from '../../media/MediaManager'
 import { useChatStore } from '../../store/useChatStore'
-import { RoomSettingsModal } from '../RoomSettingsModal'
+import { RoomSettingsModal } from '../room/RoomSettingsModal'
 
 interface Props {
   onToggleScreenShare: () => void

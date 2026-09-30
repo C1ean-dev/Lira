@@ -4,8 +4,8 @@ import { PixelArtThumbnail } from '../../PixelArtThumbnail'
 import { WallType, PrivateZone, MapData } from '../../../types/map'
 import { useMapStore } from '../../../store/useMapStore'
 import { PeerManager } from '../../../p2p/PeerManager'
-import { RoomSettingsModal } from '../../../components/RoomSettingsModal'
-import { ConfirmModal } from '../../../components/ConfirmModal'
+import { RoomSettingsModal } from '../../../components/room/RoomSettingsModal'
+import { ConfirmModal } from '../../../components/common/ConfirmModal'
 
 interface Props {
   activeTool: string

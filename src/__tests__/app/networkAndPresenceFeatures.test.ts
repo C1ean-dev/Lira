@@ -306,7 +306,7 @@ describe('Garantia Anti-Loop de Renderização (Zustand Referential Stability & 
   it('scans codebase to assert that no component contains inline object fallbacks inside useNetworkQualityStore selectors', () => {
     // Eagerly load all component and store source files as raw text strings via Vite
     const sourceModules = import.meta.glob<string>(
-      ['../components/**/*.{ts,tsx}'],
+      ['../../components/**/*.{ts,tsx}'],
       { query: '?raw', import: 'default', eager: true }
     )
 

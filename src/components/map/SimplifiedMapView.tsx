@@ -13,14 +13,14 @@ import {
   Crown,
   Shield,
 } from 'lucide-react'
-import { useGameStore } from '../store/useGameStore'
-import { useMapStore } from '../store/useMapStore'
-import { useMediaStore } from '../store/useMediaStore'
-import { MediaManager } from '../media/MediaManager'
-import { PeerManager } from '../p2p/PeerManager'
-import { PrivateZone } from '../types/map'
-import { Player } from '../types/game'
-import { knockOnLockedDoor } from '../utils/doorKnockHelper'
+import { useGameStore } from '../../store/useGameStore'
+import { useMapStore } from '../../store/useMapStore'
+import { useMediaStore } from '../../store/useMediaStore'
+import { MediaManager } from '../../media/MediaManager'
+import { PeerManager } from '../../p2p/PeerManager'
+import { PrivateZone } from '../../types/map'
+import { Player } from '../../types/game'
+import { knockOnLockedDoor } from '../../utils/doorKnockHelper'
 
 export const SimplifiedMapView: React.FC = () => {
   const { localPlayer, remotePlayers, setLocalPlayer } = useGameStore()

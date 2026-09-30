@@ -15,10 +15,10 @@ import {
   Palette,
   BellRing,
 } from 'lucide-react'
-import { PrivateZone, WallType } from '../types/map'
-import { useMapStore, autoSaveCurrentSpace } from '../store/useMapStore'
-import { useGameStore } from '../store/useGameStore'
-import { PeerManager } from '../p2p/PeerManager'
+import { PrivateZone, WallType } from '../../types/map'
+import { useMapStore, autoSaveCurrentSpace } from '../../store/useMapStore'
+import { useGameStore } from '../../store/useGameStore'
+import { PeerManager } from '../../p2p/PeerManager'
 
 interface Props {
   zone: PrivateZone

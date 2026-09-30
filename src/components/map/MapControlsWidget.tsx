@@ -11,7 +11,7 @@ import {
   Sparkles,
   Laptop,
 } from 'lucide-react'
-import { useGameStore } from '../store/useGameStore'
+import { useGameStore } from '../../store/useGameStore'
 
 interface MapControlsWidgetProps {
   onZoomIn: () => void

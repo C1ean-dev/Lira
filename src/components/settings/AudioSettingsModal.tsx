@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import { X, Sliders, Mic, Sparkles, CheckCircle2, Download, Monitor } from 'lucide-react'
-import { useMediaStore } from '../store/useMediaStore'
-import { MediaManager } from '../media/MediaManager'
-import { exportDiagLogs } from '../utils/diagnosticLogger'
-import { AudioDeviceInfo } from '../types/audio'
-import { AudioDevicesTab } from './settings/AudioDevicesTab'
-import { AdvancedAudioTab } from './settings/AdvancedAudioTab'
-import { SystemSettingsTab } from './settings/SystemSettingsTab'
+import { useMediaStore } from '../../store/useMediaStore'
+import { MediaManager } from '../../media/MediaManager'
+import { exportDiagLogs } from '../../utils/diagnosticLogger'
+import { AudioDeviceInfo } from '../../types/audio'
+import { AudioDevicesTab } from './AudioDevicesTab'
+import { AdvancedAudioTab } from './AdvancedAudioTab'
+import { SystemSettingsTab } from './SystemSettingsTab'
 
 export const AudioSettingsModal: React.FC = () => {
   // Selectors only — whole-store would re-render this modal (and enumerate

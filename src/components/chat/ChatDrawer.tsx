@@ -24,13 +24,13 @@ const MIN_CHANNELS_WIDTH = 110
 
 const DRAWER_STORAGE_KEY = 'gather_chat_drawer_width'
 const CHANNELS_STORAGE_KEY = 'gather_chat_channels_width'
-import { useChatStore, getDmChannelId } from '../store/useChatStore'
-import { useGameStore } from '../store/useGameStore'
-import { useMediaStore } from '../store/useMediaStore'
-import { PeerManager } from '../p2p/PeerManager'
-import { ChatMessage, ChatAttachment } from '../types/chat'
-import { FriendRequestCard } from './chat/FriendRequestCard'
-import { getAvatarSnapshot } from '../utils/avatarSnapshot'
+import { useChatStore, getDmChannelId } from '../../store/useChatStore'
+import { useGameStore } from '../../store/useGameStore'
+import { useMediaStore } from '../../store/useMediaStore'
+import { PeerManager } from '../../p2p/PeerManager'
+import { ChatMessage, ChatAttachment } from '../../types/chat'
+import { FriendRequestCard } from './FriendRequestCard'
+import { getAvatarSnapshot } from '../../utils/avatarSnapshot'
 
 function formatFileSize(bytes: number): string {
   if (!bytes || bytes < 1024) return `${bytes || 0} B`

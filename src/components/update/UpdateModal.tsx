@@ -6,8 +6,8 @@ import {
   RefreshCw,
   Rocket,
 } from 'lucide-react'
-import { UpdateInfo, UpdateService, UpdateProgress } from '../services/updateService'
-import { UpdateStatus } from '../store/useUpdateStore'
+import { UpdateInfo, UpdateService, UpdateProgress } from '../../services/updateService'
+import { UpdateStatus } from '../../store/useUpdateStore'
 
 interface Props {
   updateInfo: UpdateInfo | null

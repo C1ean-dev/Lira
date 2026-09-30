@@ -1,5 +1,5 @@
 import React from 'react'
-import { NetworkRating } from '../store/useNetworkQualityStore'
+import { NetworkRating } from '../../store/useNetworkQualityStore'
 
 interface NetworkSignalIconProps {
   rating: NetworkRating

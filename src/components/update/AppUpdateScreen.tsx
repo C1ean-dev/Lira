@@ -1,6 +1,6 @@
 import React from 'react'
-import { LiraLogo } from './LiraLogo'
-import { useUpdateStore } from '../store/useUpdateStore'
+import { LiraLogo } from '../common/LiraLogo'
+import { useUpdateStore } from '../../store/useUpdateStore'
 import { AlertCircle, RotateCcw, X } from 'lucide-react'
 
 export const AppUpdateScreen: React.FC = () => {

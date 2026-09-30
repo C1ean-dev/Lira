@@ -10,8 +10,8 @@ import {
   RefreshCw,
   StopCircle,
 } from 'lucide-react'
-import { MediaManager, ScreenShareConfig } from '../media/MediaManager'
-import { useMediaStore } from '../store/useMediaStore'
+import { MediaManager, ScreenShareConfig } from '../../media/MediaManager'
+import { useMediaStore } from '../../store/useMediaStore'
 
 interface DesktopSource {
   id: string

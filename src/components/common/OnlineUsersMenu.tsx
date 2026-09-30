@@ -26,16 +26,16 @@ import {
   Activity,
   Clock,
 } from 'lucide-react'
-import { useGameStore } from '../store/useGameStore'
-import { useMapStore } from '../store/useMapStore'
-import { useChatStore } from '../store/useChatStore'
-import { useMediaStore } from '../store/useMediaStore'
-import { useNetworkQualityStore, DEFAULT_NETWORK_QUALITY } from '../store/useNetworkQualityStore'
+import { useGameStore } from '../../store/useGameStore'
+import { useMapStore } from '../../store/useMapStore'
+import { useChatStore } from '../../store/useChatStore'
+import { useMediaStore } from '../../store/useMediaStore'
+import { useNetworkQualityStore, DEFAULT_NETWORK_QUALITY } from '../../store/useNetworkQualityStore'
 import { NetworkSignalIcon } from './NetworkSignalIcon'
 import { ConfirmModal } from './ConfirmModal'
-import { Player, UserRole } from '../types/game'
-import { knockOnLockedDoor } from '../utils/doorKnockHelper'
-import { getAvatarSnapshot } from '../utils/avatarSnapshot'
+import { Player, UserRole } from '../../types/game'
+import { knockOnLockedDoor } from '../../utils/doorKnockHelper'
+import { getAvatarSnapshot } from '../../utils/avatarSnapshot'
 
 /**
  * Outer gate: subscribes ONLY to isOnlineUsersOpen so 60Hz position updates

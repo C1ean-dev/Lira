@@ -1,10 +1,10 @@
 import React, { useEffect, useRef } from 'react'
 import { Bell, Check, X, Lock } from 'lucide-react'
-import { useGameStore } from '../store/useGameStore'
-import { useMapStore } from '../store/useMapStore'
-import { PeerManager } from '../p2p/PeerManager'
-import { RoomKnockRequest } from '../types/game'
-import { sendNotification } from '../services/notificationService'
+import { useGameStore } from '../../store/useGameStore'
+import { useMapStore } from '../../store/useMapStore'
+import { PeerManager } from '../../p2p/PeerManager'
+import { RoomKnockRequest } from '../../types/game'
+import { sendNotification } from '../../services/notificationService'
 
 function playKnockSound() {
   try {

@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react'
 import { Lock, Loader2, CheckCircle2, XCircle, Hand } from 'lucide-react'
-import { useGameStore } from '../store/useGameStore'
-import { useMapStore } from '../store/useMapStore'
-import { PeerManager } from '../p2p/PeerManager'
-import { RoomKnockRequest } from '../types/game'
+import { useGameStore } from '../../store/useGameStore'
+import { useMapStore } from '../../store/useMapStore'
+import { PeerManager } from '../../p2p/PeerManager'
+import { RoomKnockRequest } from '../../types/game'
 
 export const DoorKnockPrompt: React.FC = () => {
   const localPlayer = useGameStore((s) => s.localPlayer)

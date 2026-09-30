@@ -12,18 +12,18 @@ import {
   LogOut,
   RefreshCw,
 } from 'lucide-react'
-import { useGameStore } from '../store/useGameStore'
-import { useMapStore } from '../store/useMapStore'
-import { useChatStore } from '../store/useChatStore'
-import { useMediaStore } from '../store/useMediaStore'
-import { PeerManager } from '../p2p/PeerManager'
-import { LiraLogo } from './LiraLogo'
-import { useUpdateStore } from '../store/useUpdateStore'
-import { CURRENT_APP_VERSION } from '../services/updateService'
-import { NetworkSignalIcon } from './NetworkSignalIcon'
-import { useNetworkQualityStore } from '../store/useNetworkQualityStore'
-import { STATUS_META } from '../types/game'
-import { getAvatarSnapshot } from '../utils/avatarSnapshot'
+import { useGameStore } from '../../store/useGameStore'
+import { useMapStore } from '../../store/useMapStore'
+import { useChatStore } from '../../store/useChatStore'
+import { useMediaStore } from '../../store/useMediaStore'
+import { PeerManager } from '../../p2p/PeerManager'
+import { LiraLogo } from '../common/LiraLogo'
+import { useUpdateStore } from '../../store/useUpdateStore'
+import { CURRENT_APP_VERSION } from '../../services/updateService'
+import { NetworkSignalIcon } from '../common/NetworkSignalIcon'
+import { useNetworkQualityStore } from '../../store/useNetworkQualityStore'
+import { STATUS_META } from '../../types/game'
+import { getAvatarSnapshot } from '../../utils/avatarSnapshot'
 
 interface Props {
   onOpenAvatarModal: () => void

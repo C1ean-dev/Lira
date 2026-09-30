@@ -25,20 +25,20 @@ import {
   Sliders,
   StopCircle,
 } from 'lucide-react'
-import { useMediaStore } from '../store/useMediaStore'
-import { useGameStore } from '../store/useGameStore'
-import { useMapStore } from '../store/useMapStore'
-import { useChatStore } from '../store/useChatStore'
-import { MediaManager } from '../media/MediaManager'
-import { PeerManager } from '../p2p/PeerManager'
+import { useMediaStore } from '../../store/useMediaStore'
+import { useGameStore } from '../../store/useGameStore'
+import { useMapStore } from '../../store/useMapStore'
+import { useChatStore } from '../../store/useChatStore'
+import { MediaManager } from '../../media/MediaManager'
+import { PeerManager } from '../../p2p/PeerManager'
 import { ScreenShareModal } from './ScreenShareModal'
-import { RoomSettingsModal } from './RoomSettingsModal'
-import { attachStreamToVideo } from '../media/attachVideoElement'
-import { ParticipantContextMenu } from './grid/ParticipantContextMenu'
-import { ParticipantData } from './grid/GridParticipantTile'
-import { NetworkSignalIcon } from './NetworkSignalIcon'
-import { useUserNetworkQuality } from '../store/useNetworkQualityStore'
-import { getAvatarSnapshot } from '../utils/avatarSnapshot'
+import { RoomSettingsModal } from '../room/RoomSettingsModal'
+import { attachStreamToVideo } from '../../media/attachVideoElement'
+import { ParticipantContextMenu } from './ParticipantContextMenu'
+import { ParticipantData } from './GridParticipantTile'
+import { NetworkSignalIcon } from '../common/NetworkSignalIcon'
+import { useUserNetworkQuality } from '../../store/useNetworkQualityStore'
+import { getAvatarSnapshot } from '../../utils/avatarSnapshot'
 
 interface VideoTileProps {
   id?: string

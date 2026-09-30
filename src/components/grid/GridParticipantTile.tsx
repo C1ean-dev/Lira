@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react'
 import { Radio, MicOff, Maximize, Pin, Maximize2, Volume2, Volume1, VolumeX, Headphones } from 'lucide-react'
 import { useMediaStore } from '../../store/useMediaStore'
 import { useUserNetworkQuality } from '../../store/useNetworkQualityStore'
-import { NetworkSignalIcon } from '../NetworkSignalIcon'
+import { NetworkSignalIcon } from '../common/NetworkSignalIcon'
 import { attachStreamToVideo } from '../../media/attachVideoElement'
 
 export interface ParticipantData {
