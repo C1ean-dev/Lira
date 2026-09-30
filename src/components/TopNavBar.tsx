@@ -47,8 +47,11 @@ export const TopNavBar: React.FC<Props> = ({
   const localPlayerName = useGameStore((s) => s.localPlayer.name)
   const localPlayerAvatar = useGameStore((s) => s.localPlayer.avatar)
   const localPlayerAvatarColor = useGameStore((s) => s.localPlayer.avatar?.shirtColor)
-  const localPlayerProfilePhoto = useGameStore((s) => s.localPlayer.profileImage || s.localPlayer.profilePhoto || s.localPlayer.avatar?.profileImage || s.localPlayer.avatar?.profilePhoto)
-  const effectiveProfileImage = localPlayerProfilePhoto || getAvatarSnapshot(localPlayerAvatar, localPlayerName)
+  const localPlayerHasCustom = useGameStore((s) => s.localPlayer.hasCustomPhoto)
+  const localPlayerCustomPhoto = useGameStore((s) => s.localPlayer.profileImage || s.localPlayer.profilePhoto)
+  const effectiveProfileImage = localPlayerHasCustom && localPlayerCustomPhoto
+    ? localPlayerCustomPhoto
+    : (getAvatarSnapshot(localPlayerAvatar, localPlayerName) || (localPlayerHasCustom ? localPlayerCustomPhoto : undefined))
   const localPlayerStatus = useGameStore((s) => s.localPlayer.status)
   const localPlayerStatusText = useGameStore((s) => s.localPlayer.statusText)
   const localPlayerCurrentZoneId = useGameStore((s) => s.localPlayer.currentZoneId)

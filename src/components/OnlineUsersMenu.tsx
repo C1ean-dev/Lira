@@ -270,12 +270,10 @@ const OnlineUsersMenuInner: React.FC = () => {
                     {/* Avatar Icon */}
                     <div className="relative shrink-0">
                       {(() => {
-                        const playerProfileImg =
-                          player.profileImage ||
-                          player.profilePhoto ||
-                          player.avatar?.profileImage ||
-                          player.avatar?.profilePhoto ||
-                          getAvatarSnapshot(player.avatar, player.name)
+                        const isCustom = player.hasCustomPhoto
+                        const playerProfileImg = isCustom && (player.profileImage || player.profilePhoto)
+                          ? (player.profileImage || player.profilePhoto)
+                          : (getAvatarSnapshot(player.avatar, player.name) || (player.hasCustomPhoto ? (player.profileImage || player.profilePhoto) : undefined))
                         return playerProfileImg ? (
                           <img
                             src={playerProfileImg}

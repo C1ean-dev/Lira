@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { Player, PresenceStatus, PresenceInfo, sanitizePresence, STATUS_META, ReactionItem, AvatarConfig, UserRole, PlayerPermissions, ConnectionStatus, RoomKnockRequest, KnockStatus, FriendProfile } from '../types/game'
 import { DEFAULT_AVATAR } from '../engine/Constants'
 import { PublicRoomsService } from '../services/publicRoomsService'
-import { getAvatarSnapshot } from '../utils/avatarSnapshot'
+import { getAvatarSnapshot, onAssetLoaded } from '../utils/avatarSnapshot'
 
 const PROFILE_STORAGE_KEY = 'gather_v2_user_profile'
 const AVAILABLE_ROOMS_KEY = 'gather_v2_available_rooms'
@@ -51,7 +51,18 @@ const saveProfile = (data: Partial<SavedProfile>) => {
     const storage = getStorage()
     if (storage) {
       const current = loadSavedProfile() || {}
-      storage.setItem(PROFILE_STORAGE_KEY, JSON.stringify({ ...current, ...data }))
+      const merged: SavedProfile = { ...current }
+      for (const [key, value] of Object.entries(data)) {
+        if (value !== undefined) {
+          (merged as any)[key] = value
+        }
+      }
+      // If photo was explicitly cleared
+      if (data.profileImage === null || data.profilePhoto === null || (data.hasCustomPhoto === false && data.profileImage === undefined)) {
+        delete merged.profileImage
+        delete merged.profilePhoto
+      }
+      storage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(merged))
     }
   } catch (e) {
     // Ignore in non-browser env
@@ -92,15 +103,16 @@ const syncPublicRoomRegistration = (roomId: string | null, isPublic: boolean, ro
 }
 
 const saved = loadSavedProfile() || {}
-const savedPhoto = saved.profileImage || saved.profilePhoto || saved.avatar?.profilePhoto || saved.avatar?.profileImage
+const initialHasCustomPhoto = Boolean(
+  saved.hasCustomPhoto ?? Boolean(saved.profileImage || saved.profilePhoto)
+)
+const savedCustomPhoto = initialHasCustomPhoto ? (saved.profilePhoto || saved.profileImage) : undefined
 const initialAvatar = saved.avatar
-  ? { ...DEFAULT_AVATAR, ...saved.avatar, profilePhoto: savedPhoto, profileImage: savedPhoto }
-  : { ...DEFAULT_AVATAR, profilePhoto: savedPhoto, profileImage: savedPhoto }
+  ? { ...DEFAULT_AVATAR, ...saved.avatar, profilePhoto: savedCustomPhoto, profileImage: savedCustomPhoto }
+  : { ...DEFAULT_AVATAR, profilePhoto: savedCustomPhoto, profileImage: savedCustomPhoto }
 const initialName = saved.name || 'Player'
-const initialHasCustomPhoto = Boolean(saved.hasCustomPhoto && savedPhoto)
-const initialProfileImage = initialHasCustomPhoto
-  ? savedPhoto
-  : (getAvatarSnapshot(initialAvatar, initialName) || savedPhoto)
+const initialSnapshot = getAvatarSnapshot(initialAvatar, initialName)
+const initialProfileImage = savedCustomPhoto || initialSnapshot
 
 interface RoomSessionOptions {
   roomName?: string
@@ -420,10 +432,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     avatar: {
       ...initialAvatar,
       profileImage: initialProfileImage,
-      profilePhoto: initialProfileImage,
+      profilePhoto: savedCustomPhoto,
     },
     profileImage: initialProfileImage,
-    profilePhoto: initialProfileImage,
+    profilePhoto: savedCustomPhoto,
     hasCustomPhoto: initialHasCustomPhoto,
     ...sanitizePresence(saved, { allowManualAway: true }),
     currentZoneId: null,
@@ -435,39 +447,50 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setLocalPlayer: (data) => {
     const hasPhotoField = 'profilePhoto' in data || 'profileImage' in data
-    const explicitPhoto = 'profilePhoto' in data ? data.profilePhoto : data.profileImage
-    const effectivePhoto = explicitPhoto !== undefined
-      ? explicitPhoto
-      : (data.avatar?.profilePhoto || data.avatar?.profileImage)
+    const explicitPhoto = ('profilePhoto' in data ? data.profilePhoto : data.profileImage) ?? data.avatar?.profilePhoto ?? data.avatar?.profileImage
 
-    if (
-      data.name !== undefined ||
-      data.avatar !== undefined ||
-      hasPhotoField ||
-      data.hasCustomPhoto !== undefined
-    ) {
-      saveProfile({
-        name: data.name,
-        avatar: data.avatar,
-        profileImage: hasPhotoField ? explicitPhoto : undefined,
-        profilePhoto: hasPhotoField ? explicitPhoto : data.avatar?.profilePhoto,
-        hasCustomPhoto: data.hasCustomPhoto,
-      })
+    // Safely collect only defined fields to persist without wiping existing values
+    const profileUpdate: Partial<SavedProfile> = {}
+    if (data.name !== undefined) profileUpdate.name = data.name
+    if (data.avatar !== undefined) profileUpdate.avatar = data.avatar
+    if (data.hasCustomPhoto !== undefined) {
+      profileUpdate.hasCustomPhoto = data.hasCustomPhoto
     }
+    if (hasPhotoField) {
+      if (explicitPhoto) {
+        profileUpdate.profileImage = explicitPhoto
+        profileUpdate.profilePhoto = explicitPhoto
+        if (data.hasCustomPhoto === undefined) {
+          profileUpdate.hasCustomPhoto = true
+        }
+      } else {
+        profileUpdate.profileImage = null as any
+        profileUpdate.profilePhoto = null as any
+        profileUpdate.hasCustomPhoto = false
+      }
+    }
+
+    if (Object.keys(profileUpdate).length > 0) {
+      saveProfile(profileUpdate)
+    }
+
     set((state) => {
       const nextAvatar = data.avatar ? { ...state.localPlayer.avatar, ...data.avatar } : state.localPlayer.avatar
       const nextName = data.name !== undefined ? data.name : state.localPlayer.name
-      const nextHasCustom = data.hasCustomPhoto !== undefined ? data.hasCustomPhoto : state.localPlayer.hasCustomPhoto
+      const nextHasCustom = data.hasCustomPhoto !== undefined
+        ? data.hasCustomPhoto
+        : (explicitPhoto ? true : (hasPhotoField && explicitPhoto === undefined ? false : state.localPlayer.hasCustomPhoto))
 
-      let nextProfileImage = effectivePhoto !== undefined ? effectivePhoto : (state.localPlayer.profileImage || state.localPlayer.profilePhoto)
-      if (!nextHasCustom && (data.avatar !== undefined || (!('profileImage' in data) && !('profilePhoto' in data)))) {
-        const autoSnap = getAvatarSnapshot(nextAvatar, nextName)
-        if (autoSnap) {
-          nextProfileImage = autoSnap
-        }
+      let nextProfileImage: string | undefined
+      let finalProfilePhoto: string | undefined
+
+      if (nextHasCustom) {
+        finalProfilePhoto = explicitPhoto !== undefined ? explicitPhoto : (state.localPlayer.profilePhoto || state.localPlayer.profileImage)
+        nextProfileImage = finalProfilePhoto
+      } else {
+        finalProfilePhoto = undefined
+        nextProfileImage = getAvatarSnapshot(nextAvatar, nextName) || (hasPhotoField ? undefined : state.localPlayer.profileImage)
       }
-
-      const finalProfilePhoto = 'profilePhoto' in data ? data.profilePhoto : nextProfileImage
 
       return {
         localPlayer: {
@@ -808,3 +831,27 @@ export const useGameStore = create<GameStore>((set, get) => ({
       },
     })),
 }))
+
+// Automatically update avatar snapshot as soon as custom assets finish decoding in memory
+if (typeof window !== 'undefined') {
+  onAssetLoaded(() => {
+    const state = useGameStore.getState()
+    if (!state.localPlayer.hasCustomPhoto) {
+      const snap = getAvatarSnapshot(state.localPlayer.avatar, state.localPlayer.name)
+      if (snap && snap !== state.localPlayer.profileImage) {
+        useGameStore.setState((s) => ({
+          localPlayer: {
+            ...s.localPlayer,
+            profileImage: snap,
+            profilePhoto: snap,
+            avatar: {
+              ...s.localPlayer.avatar,
+              profileImage: snap,
+              profilePhoto: snap,
+            },
+          },
+        }))
+      }
+    }
+  })
+}

@@ -249,7 +249,7 @@ export const LobbyModal: React.FC<Props> = ({
       await Promise.all([
         MediaManager.getInstance().startMedia(true, true),
         PeerManager.getInstance().joinRoom(room.code, {
-          ...localPlayer,
+          ...useGameStore.getState().localPlayer,
           name: userName.trim(),
         }),
       ])
@@ -279,7 +279,7 @@ export const LobbyModal: React.FC<Props> = ({
       await Promise.all([
         MediaManager.getInstance().startMedia(true, true),
         PeerManager.getInstance().joinRoom(code, {
-          ...localPlayer,
+          ...useGameStore.getState().localPlayer,
           name: userName.trim(),
         }),
       ])

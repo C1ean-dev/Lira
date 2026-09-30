@@ -667,10 +667,17 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               isScreenSharing={false}
               suppressAudio={suppressAudio}
               color={localPlayer.avatar?.shirtColor}
-              profileImage={localPlayer.profileImage || localPlayer.profilePhoto || localPlayer.avatar?.profileImage || localPlayer.avatar?.profilePhoto || getAvatarSnapshot(localPlayer.avatar, localPlayer.name)}
-              profilePhoto={localPlayer.profileImage || localPlayer.profilePhoto || localPlayer.avatar?.profileImage || localPlayer.avatar?.profilePhoto || getAvatarSnapshot(localPlayer.avatar, localPlayer.name)}
+              profileImage={localPlayer.hasCustomPhoto && (localPlayer.profileImage || localPlayer.profilePhoto)
+                ? (localPlayer.profileImage || localPlayer.profilePhoto)
+                : (getAvatarSnapshot(localPlayer.avatar, localPlayer.name) || (localPlayer.hasCustomPhoto ? (localPlayer.profileImage || localPlayer.profilePhoto) : undefined))}
+              profilePhoto={localPlayer.hasCustomPhoto && (localPlayer.profileImage || localPlayer.profilePhoto)
+                ? (localPlayer.profileImage || localPlayer.profilePhoto)
+                : (getAvatarSnapshot(localPlayer.avatar, localPlayer.name) || (localPlayer.hasCustomPhoto ? (localPlayer.profileImage || localPlayer.profilePhoto) : undefined))}
               onClick={() => setGridCallOpen(true)}
               onContextMenu={(e) => {
+                const effectiveLocalPhoto = localPlayer.hasCustomPhoto && (localPlayer.profileImage || localPlayer.profilePhoto)
+                  ? (localPlayer.profileImage || localPlayer.profilePhoto)
+                  : (getAvatarSnapshot(localPlayer.avatar, localPlayer.name) || (localPlayer.hasCustomPhoto ? (localPlayer.profileImage || localPlayer.profilePhoto) : undefined))
                 setContextMenuState({
                   user: {
                     id: localPlayer.id,
@@ -682,8 +689,8 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                     isMutedByAdmin: localPlayer.isMutedByAdmin,
                     isDeafened,
                     shirtColor: localPlayer.avatar?.shirtColor,
-                    profilePhoto: localPlayer.profileImage || localPlayer.profilePhoto || localPlayer.avatar?.profileImage || localPlayer.avatar?.profilePhoto || getAvatarSnapshot(localPlayer.avatar, localPlayer.name),
-                    profileImage: localPlayer.profileImage || localPlayer.profilePhoto || localPlayer.avatar?.profileImage || localPlayer.avatar?.profilePhoto || getAvatarSnapshot(localPlayer.avatar, localPlayer.name),
+                    profilePhoto: effectiveLocalPhoto,
+                    profileImage: effectiveLocalPhoto,
                     statusEmoji: localPlayer.statusEmoji,
                   },
                   x: e.clientX,
@@ -706,48 +713,53 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
             )}
 
             {/* Remote Peers in Zone */}
-            {peersInSameZone.map((peer) => (
-              <VideoTile
-                key={peer.id}
-                id={peer.id}
-                stream={peerStreams[peer.id] || null}
-                name={peer.name}
-                isMuted={peer.isMuted}
-                isMutedByAdmin={peer.isMutedByAdmin}
-                isDeafened={peer.isDeafened}
-                isCameraOff={peer.isCameraOff}
-                isLocal={false}
-                isScreenSharing={peer.isScreenSharing}
-                isScreenTrack={peer.isScreenSharing}
-                suppressAudio={suppressAudio}
-                color={peer.avatar?.shirtColor}
-                profileImage={peer.profileImage || peer.profilePhoto || peer.avatar?.profileImage || peer.avatar?.profilePhoto || getAvatarSnapshot(peer.avatar, peer.name)}
-                profilePhoto={peer.profileImage || peer.profilePhoto || peer.avatar?.profileImage || peer.avatar?.profilePhoto || getAvatarSnapshot(peer.avatar, peer.name)}
-                callState={callStates[peer.id] || peer.callState || 'idle'}
-                onRetryCall={() => PeerManager.getInstance().retryZoneCall(peer.id)}
-                onClick={() => setGridCallOpen(true)}
-                onContextMenu={(e) => {
-                  setContextMenuState({
-                    user: {
-                      id: peer.id,
-                      gameId: peer.gameId || peer.id,
-                      name: peer.name,
-                      stream: peerStreams[peer.id] || null,
-                      isLocal: false,
-                      isMuted: peer.isMuted,
-                      isMutedByAdmin: peer.isMutedByAdmin,
-                      isDeafened: peer.isDeafened,
-                      shirtColor: peer.avatar?.shirtColor,
-                      profilePhoto: peer.profileImage || peer.profilePhoto || peer.avatar?.profileImage || peer.avatar?.profilePhoto || getAvatarSnapshot(peer.avatar, peer.name),
-                      profileImage: peer.profileImage || peer.profilePhoto || peer.avatar?.profileImage || peer.avatar?.profilePhoto || getAvatarSnapshot(peer.avatar, peer.name),
-                      statusEmoji: peer.statusEmoji,
-                    },
+            {peersInSameZone.map((peer) => {
+              const effectivePeerPhoto = peer.hasCustomPhoto && (peer.profileImage || peer.profilePhoto)
+                ? (peer.profileImage || peer.profilePhoto)
+                : (getAvatarSnapshot(peer.avatar, peer.name) || (peer.hasCustomPhoto ? (peer.profileImage || peer.profilePhoto) : undefined))
+              return (
+                <VideoTile
+                  key={peer.id}
+                  id={peer.id}
+                  stream={peerStreams[peer.id] || null}
+                  name={peer.name}
+                  isMuted={peer.isMuted}
+                  isMutedByAdmin={peer.isMutedByAdmin}
+                  isDeafened={peer.isDeafened}
+                  isCameraOff={peer.isCameraOff}
+                  isLocal={false}
+                  isScreenSharing={peer.isScreenSharing}
+                  isScreenTrack={peer.isScreenSharing}
+                  suppressAudio={suppressAudio}
+                  color={peer.avatar?.shirtColor}
+                  profileImage={effectivePeerPhoto}
+                  profilePhoto={effectivePeerPhoto}
+                  callState={callStates[peer.id] || peer.callState || 'idle'}
+                  onRetryCall={() => PeerManager.getInstance().retryZoneCall(peer.id)}
+                  onClick={() => setGridCallOpen(true)}
+                  onContextMenu={(e) => {
+                    setContextMenuState({
+                      user: {
+                        id: peer.id,
+                        gameId: peer.gameId || peer.id,
+                        name: peer.name,
+                        stream: peerStreams[peer.id] || null,
+                        isLocal: false,
+                        isMuted: peer.isMuted,
+                        isMutedByAdmin: peer.isMutedByAdmin,
+                        isDeafened: peer.isDeafened,
+                        shirtColor: peer.avatar?.shirtColor,
+                        profilePhoto: effectivePeerPhoto,
+                        profileImage: effectivePeerPhoto,
+                        statusEmoji: peer.statusEmoji,
+                      },
                     x: e.clientX,
                     y: e.clientY,
                   })
                 }}
               />
-            ))}
+              );
+            })}
           </div>
 
           {/* Quick Controls Bar */}

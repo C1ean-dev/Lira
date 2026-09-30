@@ -91,8 +91,12 @@ const FullScreenGridInner: React.FC = () => {
         isScreenSharing: localPlayer.isScreenSharing,
         isSpeaking: isLocalSpeaking,
         shirtColor: localPlayer.avatar?.shirtColor,
-        profileImage: localPlayer.profileImage || localPlayer.profilePhoto || localPlayer.avatar?.profileImage || localPlayer.avatar?.profilePhoto || getAvatarSnapshot(localPlayer.avatar, localPlayer.name),
-        profilePhoto: localPlayer.profileImage || localPlayer.profilePhoto || localPlayer.avatar?.profileImage || localPlayer.avatar?.profilePhoto || getAvatarSnapshot(localPlayer.avatar, localPlayer.name),
+        profileImage: localPlayer.hasCustomPhoto && (localPlayer.profileImage || localPlayer.profilePhoto)
+          ? (localPlayer.profileImage || localPlayer.profilePhoto)
+          : (getAvatarSnapshot(localPlayer.avatar, localPlayer.name) || (localPlayer.hasCustomPhoto ? (localPlayer.profileImage || localPlayer.profilePhoto) : undefined)),
+        profilePhoto: localPlayer.hasCustomPhoto && (localPlayer.profileImage || localPlayer.profilePhoto)
+          ? (localPlayer.profileImage || localPlayer.profilePhoto)
+          : (getAvatarSnapshot(localPlayer.avatar, localPlayer.name) || (localPlayer.hasCustomPhoto ? (localPlayer.profileImage || localPlayer.profilePhoto) : undefined)),
         statusEmoji: localPlayer.statusEmoji,
       },
       ...peersInSameZone.map((p) => ({
@@ -109,8 +113,12 @@ const FullScreenGridInner: React.FC = () => {
         isScreenSharing: p.isScreenSharing,
         isSpeaking: false,
         shirtColor: p.avatar?.shirtColor,
-        profileImage: p.profileImage || p.profilePhoto || p.avatar?.profileImage || p.avatar?.profilePhoto || getAvatarSnapshot(p.avatar, p.name),
-        profilePhoto: p.profileImage || p.profilePhoto || p.avatar?.profileImage || p.avatar?.profilePhoto || getAvatarSnapshot(p.avatar, p.name),
+        profileImage: p.hasCustomPhoto && (p.profileImage || p.profilePhoto)
+          ? (p.profileImage || p.profilePhoto)
+          : (getAvatarSnapshot(p.avatar, p.name) || (p.hasCustomPhoto ? (p.profileImage || p.profilePhoto) : undefined)),
+        profilePhoto: p.hasCustomPhoto && (p.profileImage || p.profilePhoto)
+          ? (p.profileImage || p.profilePhoto)
+          : (getAvatarSnapshot(p.avatar, p.name) || (p.hasCustomPhoto ? (p.profileImage || p.profilePhoto) : undefined)),
         statusEmoji: p.statusEmoji,
         callState: callStates[p.id] || p.callState || 'idle',
         onRetryCall: () => PeerManager.getInstance().retryZoneCall(p.id),
