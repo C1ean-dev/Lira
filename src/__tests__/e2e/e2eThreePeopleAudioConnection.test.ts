@@ -207,13 +207,6 @@ class SimulatedClient {
       if (p && p.id !== this.peerId) {
         this.remotePlayers[p.id] = p
       }
-    } else if (msg.type === 'ROOM_STATE') {
-      const players = (msg.payload?.players || {}) as Record<string, Player>
-      for (const [id, p] of Object.entries(players)) {
-        if (id !== this.peerId) {
-          this.remotePlayers[id] = p
-        }
-      }
     } else if (msg.type === 'PLAYER_UPDATE') {
       const p = this.remotePlayers[msg.senderId]
       if (p) {
@@ -260,14 +253,14 @@ describe('End-to-End Test: Sound & Connection Between 3 People (Alice, Bob, Char
       }
       alice.receiveMessage(bobJoinMsg, bob.peerId)
 
-      // Alice sends ROOM_STATE back to Bob
-      const aliceRoomStateMsg: NetworkMessage = {
-        type: 'ROOM_STATE',
+      // Alice (Host) responds by sending her own PLAYER_JOIN to Bob
+      const aliceJoinMsg: NetworkMessage = {
+        type: 'PLAYER_JOIN',
         senderId: alice.peerId,
-        payload: { players: { [alice.peerId]: alice.player } },
+        payload: { player: alice.player },
         timestamp: Date.now(),
       }
-      bob.receiveMessage(aliceRoomStateMsg, alice.peerId)
+      bob.receiveMessage(aliceJoinMsg, alice.peerId)
 
       // Verify Alice & Bob see each other
       expect(alice.remotePlayers['peer-bob']).toBeDefined()
@@ -282,19 +275,9 @@ describe('End-to-End Test: Sound & Connection Between 3 People (Alice, Bob, Char
       }
       alice.receiveMessage(charlieJoinMsg, charlie.peerId)
 
-      // Alice (Host) sends full ROOM_STATE to Charlie (containing Alice and Bob)
-      const fullRoomStateMsg: NetworkMessage = {
-        type: 'ROOM_STATE',
-        senderId: alice.peerId,
-        payload: {
-          players: {
-            [alice.peerId]: alice.player,
-            [bob.peerId]: bob.player,
-          },
-        },
-        timestamp: Date.now(),
-      }
-      charlie.receiveMessage(fullRoomStateMsg, alice.peerId)
+      // Alice (Host) responds to Charlie by sending PLAYER_JOIN for existing players (Alice and Bob)
+      charlie.receiveMessage(aliceJoinMsg, alice.peerId)
+      charlie.receiveMessage(bobJoinMsg, alice.peerId)
 
       // Alice (Host) relays Charlie's join to Bob
       bob.receiveMessage(charlieJoinMsg, alice.peerId)
