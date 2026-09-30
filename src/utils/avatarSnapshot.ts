@@ -1,6 +1,6 @@
 import { AvatarConfig, Player } from '../types/game'
-import { AvatarRenderer } from '../engine/AvatarRenderer'
-import { DEFAULT_AVATAR } from '../engine/Constants'
+import { AvatarRenderer } from '../engine/avatar/AvatarRenderer'
+import { DEFAULT_AVATAR } from '../engine/core/Constants'
 
 const snapshotCache = new Map<string, string>()
 const assetLoadedListeners = new Set<() => void>()

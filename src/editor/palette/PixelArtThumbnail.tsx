@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react'
-import { PixelArtRenderer } from '../../engine/PixelArtRenderer'
+import { PixelArtRenderer } from '../../engine/rendering/PixelArtRenderer'
 import { FURNITURE_CATALOG, TILE_SIZE } from '../../engine/Constants'
 import { FloorType, WallType, PlacedFurniture } from '../../types/map'
 import { useCustomAssetsStore, getCustomAssetImage } from '../../store/useCustomAssetsStore'

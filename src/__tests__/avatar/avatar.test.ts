@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { DEFAULT_AVATAR } from '../../engine/Constants'
-import { AvatarRenderer } from '../../engine/AvatarRenderer'
+import { DEFAULT_AVATAR } from '../../engine/core/Constants'
+import { AvatarRenderer } from '../../engine/avatar/AvatarRenderer'
 import { Player } from '../../types/game'
 
 describe('Avatar Customizer & Pixel Art Renderer - Expected Behaviors', () => {

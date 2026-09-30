@@ -2,7 +2,7 @@ import React from 'react'
 import { Sparkles, Armchair, Trash2, X } from 'lucide-react'
 import { PixelArtThumbnail } from './PixelArtThumbnail'
 import { FloorType, WallType } from '../../types/map'
-import { FurnitureDef } from '../../engine/PixelArtRenderer'
+import { FurnitureDef } from '../../engine/rendering/PixelArtRenderer'
 
 import { useMapStore } from '../../store/useMapStore'
 

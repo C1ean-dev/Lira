@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { Download, Dices } from 'lucide-react'
 import { AvatarConfig, Player, PresenceStatus } from '../../types/game'
-import { AvatarRenderer } from '../../engine/AvatarRenderer'
+import { AvatarRenderer } from '../../engine/avatar/AvatarRenderer'
 import { PetRenderer } from '../../engine/pet/PetRenderer'
 import { PetState } from '../../engine/pet/PetManager'
 
