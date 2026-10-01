@@ -11,6 +11,23 @@ export class CameraManager {
     const local = useGameStore.getState().localPlayer
     this.x = (local?.x ?? 34) * TILE_SIZE
     this.y = (local?.y ?? 20) * TILE_SIZE
+    // Restaura o zoom do usuário (ex.: remontagem do viewport) em vez de
+    // voltar ao 1.6 padrão. null = primeiro acesso → fit inicial decide.
+    const savedZoom = useGameStore.getState().cameraZoom
+    if (savedZoom !== null && savedZoom !== undefined) {
+      this.zoom = savedZoom
+    }
+  }
+
+  /**
+   * Único ponto de escrita do zoom pelo usuário/código: aplica clamp e
+   * persiste na store para sobreviver a focus/resize/remontagem.
+   */
+  public setZoom(value: number) {
+    this.zoom = Math.max(0.4, Math.min(4.0, Number(value.toFixed(2))))
+    try {
+      useGameStore.getState().setCameraZoom(this.zoom)
+    } catch (e) {}
   }
 
   public handleWheel = (e: WheelEvent) => {
@@ -22,13 +39,13 @@ export class CameraManager {
     if (store.mapViewMode === 'simplified') {
       // Se adicionar zoom (scroll para cima) e o usuário NÃO ativou pelo botão manual:
       if (zoomDelta > 0 && !store.isManualSimplified) {
-        this.zoom = 0.6
+        this.setZoom(0.6)
         store.setMapViewMode('immersive', false)
       }
       return
     }
 
-    this.zoom = Math.max(0.4, Math.min(4.0, Number((this.zoom + zoomDelta).toFixed(2))))
+    this.setZoom(this.zoom + zoomDelta)
 
     // Quando o usuário der zoom no mínimo (<= 0.4), altera de imersivo para simplificado (automático via zoom)
     if (this.zoom <= 0.4 && store.mapViewMode === 'immersive') {
@@ -62,7 +79,7 @@ export class CameraManager {
     const targetZoomY = (canvas.height * percentage) / mapPixelHeight
     const optimalZoom = Math.min(targetZoomX, targetZoomY)
 
-    this.zoom = Math.max(0.4, Math.min(3.2, optimalZoom))
+    this.setZoom(Math.max(0.4, Math.min(3.2, optimalZoom)))
     const local = useGameStore.getState().localPlayer
     this.x = (local?.x ?? 34) * TILE_SIZE
     this.y = (local?.y ?? 20) * TILE_SIZE

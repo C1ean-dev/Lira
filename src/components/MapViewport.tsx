@@ -13,6 +13,20 @@ import { MapControlsWidget } from './MapControlsWidget'
 import { SimplifiedMapView } from './SimplifiedMapView'
 import { FurnitureContextMenu } from '../editor/FurnitureContextMenu'
 
+/**
+ * Enquadramento inicial / restauração: usa o zoom persistido do usuário
+ * quando existir; só faz fit automático (reset) quando nunca houve zoom
+ * (primeiro acesso). Redimensionamentos (resize/focus) NÃO devem resetar.
+ */
+function restoreZoomOrFit(engine: CanvasEngine) {
+  const saved = useGameStore.getState().cameraZoom
+  if (saved !== null && saved !== undefined) {
+    engine.camera.setZoom(saved)
+  } else {
+    engine.fitToScreen(0.95)
+  }
+}
+
 export const MapViewport: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const engineRef = useRef<CanvasEngine | null>(null)
@@ -127,6 +141,8 @@ export const MapViewport: React.FC = () => {
     // Cap the backing store (~2MP, e.g. 1920×1080) — full 4K canvases cost
     // ~4× fill-rate per frame with zero visual gain for 32px pixel art.
     // CSS (w-full h-full) upscales; imageSmoothingEnabled=false keeps it crisp.
+    // NOTA: só dimensiona o canvas — NUNCA mexe no zoom aqui. Reset de zoom
+    // em resize/focus era o bug "câmera volta ao estado inicial toda hora".
     const MAX_CANVAS_PIXELS = 1920 * 1080
     const applySize = () => {
       let w = canvas.parentElement?.clientWidth || window.innerWidth
@@ -141,41 +157,43 @@ export const MapViewport: React.FC = () => {
         canvas.width = w
         canvas.height = h
       }
-      engine.fitToScreen(0.95)
     }
 
     let resizeRaf = 0
-    let resizeTimer: ReturnType<typeof setTimeout> | null = null
     const handleResize = () => {
-      // rAF-throttle the hot path + trailing debounce for fitToScreen.
+      // rAF-throttle the hot path. Apenas redimensiona: o zoom do usuário
+      // é preservado (sem fitToScreen aqui).
       if (resizeRaf) return
       resizeRaf = requestAnimationFrame(() => {
         resizeRaf = 0
         applySize()
-        if (resizeTimer) clearTimeout(resizeTimer)
-        resizeTimer = setTimeout(() => engine.fitToScreen(0.95), 150)
       })
     }
 
     applySize()
+    restoreZoomOrFit(engine)
     window.addEventListener('resize', handleResize)
 
-    // Re-check canvas dimensions and repaint when the window regains focus or visibility (e.g. restoring from system tray)
+    // Re-check canvas dimensions and repaint when the window regains focus or visibility (e.g. restoring from system tray).
+    // Apenas redimensiona — sem fitToScreen (preserva zoom/posição do usuário).
     const handleFocusOrVisibility = () => {
       applySize()
-      setTimeout(() => {
-        applySize()
-        engine.fitToScreen(0.95)
-      }, 50)
     }
     window.addEventListener('focus', handleFocusOrVisibility)
     document.addEventListener('visibilitychange', handleFocusOrVisibility)
 
     engine.start()
 
-    // Auto-fit on initial render
+    // Auto-fit tardio caso o layout ainda estivesse se assentando na montagem.
+    // Restaura o zoom persistido quando existir (sem reset).
     setTimeout(() => {
-      engine.fitToScreen(0.95)
+      if (!engineRef.current) return
+      const parentW = canvas.parentElement?.clientWidth || 0
+      const parentH = canvas.parentElement?.clientHeight || 0
+      if (parentW !== canvas.width || parentH !== canvas.height) {
+        applySize()
+      }
+      restoreZoomOrFit(engine)
     }, 50)
 
     return () => {
@@ -183,7 +201,6 @@ export const MapViewport: React.FC = () => {
       window.removeEventListener('focus', handleFocusOrVisibility)
       document.removeEventListener('visibilitychange', handleFocusOrVisibility)
       if (resizeRaf) cancelAnimationFrame(resizeRaf)
-      if (resizeTimer) clearTimeout(resizeTimer)
       engine.dispose()
     }
   }, [])
@@ -209,7 +226,8 @@ export const MapViewport: React.FC = () => {
     }
   }, [mapData.width, mapData.height])
 
-  // Re-adjust camera and resize canvas when switching back to Immersive mode
+  // Re-adjust canvas size when switching back to Immersive mode.
+  // Recentraliza no jogador mas RESTAURA o zoom do usuário (sem reset).
   useEffect(() => {
     if (mapViewMode === 'immersive' && engineRef.current && canvasRef.current) {
       const canvas = canvasRef.current
@@ -226,7 +244,7 @@ export const MapViewport: React.FC = () => {
       const local = useGameStore.getState().localPlayer
       engineRef.current.camera.x = (local?.x ?? 34) * 32
       engineRef.current.camera.y = (local?.y ?? 20) * 32
-      engineRef.current.fitToScreen(0.95)
+      restoreZoomOrFit(engineRef.current)
     }
   }, [mapViewMode])
 
@@ -644,7 +662,7 @@ export const MapViewport: React.FC = () => {
       // Se adicionar zoom (delta > 0) e NÃO foi ativado manualmente pelo botão:
       if (delta > 0 && !isManualSimplified) {
         if (engineRef.current) {
-          engineRef.current.camera.zoom = 0.6
+          engineRef.current.camera.setZoom(0.6)
         }
         setMapViewMode('immersive', false)
       }
@@ -652,11 +670,13 @@ export const MapViewport: React.FC = () => {
     }
 
     if (!engineRef.current) return
-    const newZoom = Math.max(0.4, Math.min(4.0, Number((engineRef.current.camera.zoom + delta).toFixed(2))))
-    engineRef.current.camera.zoom = newZoom
+    // setZoom aplica clamp e persiste (sobrevive a focus/resize/remontagem).
+    engineRef.current.camera.setZoom(
+      Number((engineRef.current.camera.zoom + delta).toFixed(2))
+    )
 
     // Quando o usuário der zoom no mínimo (<= 0.4), altera de imersivo para simplificado (automático via zoom)
-    if (newZoom <= 0.4 && mapViewMode === 'immersive') {
+    if (engineRef.current.camera.zoom <= 0.4 && mapViewMode === 'immersive') {
       setMapViewMode('simplified', false)
     }
   }

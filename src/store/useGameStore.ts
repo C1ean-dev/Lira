@@ -168,6 +168,12 @@ interface GameStore {
   isManualSimplified: boolean
   setMapViewMode: (mode: 'immersive' | 'simplified', isManual?: boolean) => void
 
+  // Camera zoom persistido: o zoom mora no engine (memória) e era zerado
+  // por todo fitToScreen (focus/resize/troca de modo). Persistido aqui para
+  // restaurar em vez de resetar. null = nunca ajustado → faz fit inicial.
+  cameraZoom: number | null
+  setCameraZoom: (zoom: number | null) => void
+
   // Door Knocking System
   pendingKnocks: RoomKnockRequest[]
   addKnockRequest: (request: RoomKnockRequest) => void
@@ -177,6 +183,25 @@ interface GameStore {
 }
 
 const MAP_VIEW_STORAGE_KEY = 'gather_v2_map_view_mode'
+const CAMERA_ZOOM_STORAGE_KEY = 'gather_v2_camera_zoom'
+const MIN_CAMERA_ZOOM = 0.4
+const MAX_CAMERA_ZOOM = 4.0
+
+const loadSavedCameraZoom = (): number | null => {
+  try {
+    const storage = getStorage()
+    if (storage) {
+      const raw = storage.getItem(CAMERA_ZOOM_STORAGE_KEY)
+      if (raw !== null) {
+        const parsed = Number(raw)
+        if (Number.isFinite(parsed) && parsed >= MIN_CAMERA_ZOOM && parsed <= MAX_CAMERA_ZOOM) {
+          return Math.round(parsed * 100) / 100
+        }
+      }
+    }
+  } catch (e) {}
+  return null
+}
 
 const loadSavedMapViewMode = (): 'immersive' | 'simplified' => {
   try {
@@ -223,6 +248,24 @@ export const useGameStore = create<GameStore>((set, get) => ({
       mapViewMode,
       isManualSimplified: mapViewMode === 'simplified' ? (isManual ?? false) : false,
     })
+  },
+  cameraZoom: loadSavedCameraZoom(),
+  setCameraZoom: (cameraZoom) => {
+    const normalized =
+      cameraZoom === null
+        ? null
+        : (() => {
+            const clamped = Math.max(MIN_CAMERA_ZOOM, Math.min(MAX_CAMERA_ZOOM, cameraZoom))
+            return Math.round(clamped * 100) / 100
+          })()
+    try {
+      const storage = getStorage()
+      if (storage) {
+        if (normalized === null) storage.removeItem(CAMERA_ZOOM_STORAGE_KEY)
+        else storage.setItem(CAMERA_ZOOM_STORAGE_KEY, String(normalized))
+      }
+    } catch (e) {}
+    set({ cameraZoom: normalized })
   },
   isOnlineUsersOpen: false,
   setOnlineUsersOpen: (isOnlineUsersOpen) => set({ isOnlineUsersOpen }),
