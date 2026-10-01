@@ -31,7 +31,7 @@ describe('NoiseSuppressor - Expected DSP Behaviors', () => {
   it('should use dynamic baseline threshold in automatic mode', () => {
     const suppressor = new NoiseSuppressor()
     suppressor.setSensitivity('auto', 20)
-    expect(suppressor.getCurrentThreshold()).toBeGreaterThanOrEqual(0.012)
+    expect(suppressor.getCurrentThreshold()).toBeGreaterThanOrEqual(0.0045)
   })
 
   it('should safely handle dispose and reset without crashing', () => {

@@ -12,6 +12,7 @@ import { MediaCallHandler, ICE_CONNECT_TIMEOUT_MS, SHARED_RTC_CONFIG, resolveCal
 import { prioritizeH264HardwareCodec } from '../media/hardwareCodec'
 import { DynamicBufferManager } from '../services/DynamicBufferManager'
 import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
+import { sanitizeRoomCode } from '../utils/roomCode'
 
 export class PeerManager {
   private static instance: PeerManager
@@ -28,7 +29,7 @@ export class PeerManager {
   private signalingReconnectAttempts = 0
 
   private constructor() {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       window.addEventListener('gather:live-buffer-changed', (e: any) => {
         const ms = e.detail || MediaCallHandler.DEFAULT_LIVE_BUFFER_MS
         // Legacy single-number slider event: apply ONLY to video; audio
@@ -70,7 +71,7 @@ export class PeerManager {
     },
     retryCount: number = 0
   ): Promise<string> {
-    this.roomCode = roomCode.trim().toUpperCase()
+    this.roomCode = sanitizeRoomCode(roomCode) || 'DEFAULT'
     this.isHost = true
     this.isIntentionalDisconnect = false
     const hostPeerId = `gather-v2-${this.roomCode}-host`
@@ -229,7 +230,7 @@ export class PeerManager {
    * Join an existing Room (with Smart Auto-Host Fallback if unhosted)
    */
   public async joinRoom(roomCode: string, localPlayer: Player, retryCount: number = 0): Promise<void> {
-    this.roomCode = roomCode.trim().toUpperCase()
+    this.roomCode = sanitizeRoomCode(roomCode) || 'DEFAULT'
     this.isHost = false
     this.isIntentionalDisconnect = false
     const clientPeerId = `gather-v2-${this.roomCode}-peer-${Math.random().toString(36).substring(2, 7)}`
@@ -969,6 +970,24 @@ export class PeerManager {
    */
   public replaceAudioTrack(newTrack: MediaStreamTrack | null) {
     MediaCallHandler.replaceAudioTrack(this.mediaCalls, newTrack)
+  }
+
+  /**
+   * Explicitly synchronize the enabled state on all WebRTC audio senders across active calls.
+   */
+  public syncSenderTracksMuteState(enabled: boolean): void {
+    this.mediaCalls.forEach((call) => {
+      try {
+        const pc = (call as any).peerConnection as RTCPeerConnection | undefined
+        if (pc && typeof pc.getSenders === 'function') {
+          pc.getSenders().forEach((sender) => {
+            if (sender.track && sender.track.kind === 'audio') {
+              sender.track.enabled = enabled
+            }
+          })
+        }
+      } catch {}
+    })
   }
 
   /**

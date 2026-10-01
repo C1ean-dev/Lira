@@ -22,6 +22,7 @@ import { LobbyChatModal } from './LobbyChatModal'
 import { LiraLogo } from '../common/LiraLogo'
 import { useUpdateStore } from '../../store/useUpdateStore'
 import { CURRENT_APP_VERSION } from '../../services/updateService'
+import { sanitizeRoomCode } from '../../utils/roomCode'
 
 interface Props {
   onJoined: () => void
@@ -246,8 +247,12 @@ export const LobbyModal: React.FC<Props> = ({
       // Parallel: mic/camera warm-up must NOT block the P2P handshake.
       // MediaManager.startMedia re-triggers zone-call eligibility when the
       // stream lands, so calls missed while the mic was initializing heal.
+      const mediaReady = MediaManager.getInstance().startMedia(true, true).catch((e) => {
+        console.warn('startMedia failed during join, continuing in mute state:', e)
+        return null
+      })
       await Promise.all([
-        MediaManager.getInstance().startMedia(true, true),
+        mediaReady,
         PeerManager.getInstance().joinRoom(room.code, {
           ...useGameStore.getState().localPlayer,
           name: userName.trim(),
@@ -256,17 +261,22 @@ export const LobbyModal: React.FC<Props> = ({
       onJoined()
     } catch (err: any) {
       console.error(err)
-      setError(`Não foi possível conectar à sala "${room.name}". O host pode ter fechado o app.`)
+      setError(err?.message || `Não foi possível conectar à sala "${room.name}". O host pode ter fechado o app.`)
     } finally {
       enterGuardRef.current.release()
       setLoading(false)
     }
   }
 
-  const handleJoinByCode = async (code: string) => {
+  const handleJoinByCode = async (rawCode: string) => {
+    const code = sanitizeRoomCode(rawCode)
     if (!userName.trim()) {
       setError('Por favor, informe seu nickname antes de entrar na sala.')
       setActiveTab('connect')
+      return
+    }
+    if (!code) {
+      setError('Por favor, insira um código de sala válido.')
       return
     }
     if (!enterGuardRef.current.tryEnter()) return
@@ -276,8 +286,12 @@ export const LobbyModal: React.FC<Props> = ({
 
     try {
       setLocalPlayer({ name: userName.trim() })
+      const mediaReady = MediaManager.getInstance().startMedia(true, true).catch((e) => {
+        console.warn('startMedia failed during join, continuing in mute state:', e)
+        return null
+      })
       await Promise.all([
-        MediaManager.getInstance().startMedia(true, true),
+        mediaReady,
         PeerManager.getInstance().joinRoom(code, {
           ...useGameStore.getState().localPlayer,
           name: userName.trim(),
@@ -286,7 +300,7 @@ export const LobbyModal: React.FC<Props> = ({
       onJoined()
     } catch (err: any) {
       console.error(err)
-      setError(`Não foi possível conectar à sala (${code}). O host pode ter fechado o app.`)
+      setError(err?.message || `Não foi possível conectar à sala (${code}). O host pode ter fechado o app.`)
     } finally {
       enterGuardRef.current.release()
       setLoading(false)
@@ -299,6 +313,15 @@ export const LobbyModal: React.FC<Props> = ({
       setError('Por favor, informe seu nickname.')
       return
     }
+
+    const cleanCode = sanitizeRoomCode(roomInput)
+    // Validate BEFORE touching hardware so a typo'd code doesn't pop a
+    // mic-permission prompt for nothing.
+    if (mode === 'join' && !cleanCode) {
+      setError('Por favor, insira o código da sala.')
+      return
+    }
+
     if (!enterGuardRef.current.tryEnter()) return
 
     setLoading(true)
@@ -309,17 +332,12 @@ export const LobbyModal: React.FC<Props> = ({
       useMediaStore.getState().setMuted(true)
       useMediaStore.getState().setCameraOff(true)
 
-      // Validate BEFORE touching hardware so a typo'd code doesn't pop a
-      // mic-permission prompt for nothing.
-      if (mode === 'join' && !roomInput.trim()) {
-        setError('Por favor, insira o código da sala.')
-        setLoading(false)
-        return
-      }
-
       // Warm up mic/camera in parallel with everything below — the P2P
       // handshake no longer waits for getUserMedia / RNNoise WASM init.
-      const mediaReady = MediaManager.getInstance().startMedia(true, true)
+      const mediaReady = MediaManager.getInstance().startMedia(true, true).catch((e) => {
+        console.warn('startMedia failed during join, continuing in mute state:', e)
+        return null
+      })
 
       if (mode === 'create') {
         const roomTitle = createRoomName.trim() || `Espaço de ${userName.trim()}`
@@ -379,7 +397,7 @@ export const LobbyModal: React.FC<Props> = ({
         }
 
         const matchingSpace = savedSpaces.find(
-          (s) => s.roomCode?.toUpperCase() === roomInput.trim().toUpperCase()
+          (s) => sanitizeRoomCode(s.roomCode) === cleanCode
         )
         if (matchingSpace) {
           useMapStore.getState().setMapData(matchingSpace.mapData)
@@ -393,14 +411,14 @@ export const LobbyModal: React.FC<Props> = ({
 
         await Promise.all([
           mediaReady,
-          PeerManager.getInstance().joinRoom(roomInput.trim(), playerPayload),
+          PeerManager.getInstance().joinRoom(cleanCode, playerPayload),
         ])
       }
 
       onJoined()
     } catch (err: any) {
       console.error(err)
-      setError('Não foi possível conectar. Verifique o código da sala e tente novamente.')
+      setError(err?.message || 'Não foi possível conectar. Verifique o código da sala e tente novamente.')
     } finally {
       enterGuardRef.current.release()
       setLoading(false)

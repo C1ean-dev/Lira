@@ -475,6 +475,14 @@ export class MediaManager {
       isCameraOff,
     })
 
+    // Ensure active P2P calls replace their audio track with the freshly initialized engine track
+    const newAudioTrack = processedStream.getAudioTracks()[0]
+    if (newAudioTrack) {
+      try {
+        PeerManager.getInstance().replaceAudioTrack(newAudioTrack)
+      } catch (e) {}
+    }
+
     // The room-join path runs startMedia IN PARALLEL with the P2P handshake
     // (see LobbyModal) so mic-permission latency (or the 5s RNNoise WASM
     // init) doesn't block entering the room. PLAYER_JOIN messages that
@@ -758,6 +766,18 @@ export class MediaManager {
         track.enabled = !isMuted
       })
     }
+    // Synchronize underlying WebRTC sender tracks directly to guarantee peer transmission
+    try {
+      PeerManager.getInstance().syncSenderTracksMuteState(!isMuted)
+    } catch {}
+
+    // Wake suspended AudioContext if unmuting
+    if (!isMuted && this.activeEngine) {
+      try {
+        ;(this.activeEngine as any).resumeContext?.()
+      } catch {}
+    }
+
     const nextMutedByAdmin = isMutedByAdmin !== undefined ? isMutedByAdmin : false
     try {
       useGameStore.getState().setLocalPlayer({ isMuted, isMutedByAdmin: nextMutedByAdmin })

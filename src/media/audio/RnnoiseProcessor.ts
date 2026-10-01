@@ -91,6 +91,7 @@ export class RnnoiseProcessor {
   private destination: MediaStreamAudioDestinationNode | null = null
   private testGainNode: GainNode | null = null
   private animationFrameId: number | null = null
+  private levelIntervalId: ReturnType<typeof setInterval> | null = null
   private onLevelCallback:
     | ((level: number, gateOpen: boolean, rawRms: number, dynamicThresholdPercent?: number) => void)
     | null = null
@@ -146,8 +147,7 @@ export class RnnoiseProcessor {
       store.setRnnoiseStatus('loading', null)
       store.setRnnoiseStage('start')
 
-      const AudioContextClass =
-        window.AudioContext || (window as any).webkitAudioContext
+      const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext
       this.audioCtx = new AudioContextClass({ sampleRate: 48000 })
       if (this.audioCtx.state === 'suspended') {
         await this.audioCtx.resume().catch(() => {})
@@ -366,7 +366,12 @@ export class RnnoiseProcessor {
     if (!this.analyser || !this.audioCtx) return
     const buffer = new Float32Array(this.analyser.fftSize)
 
+    let lastTick = 0
     const tick = () => {
+      const nowMs = performance.now()
+      if (nowMs - lastTick < 12) return
+      lastTick = nowMs
+
       if (!this.analyser || !this.audioCtx) return
       this.analyser.getFloatTimeDomainData(buffer)
       let sum = 0
@@ -400,22 +405,29 @@ export class RnnoiseProcessor {
         const speechProb = this.workletReady ? this.lastVad : 0
         if (this.workletReady) {
           // Neural VAD is operational:
-          // 1. Definite speech (prob >= 0.35): open immediately
-          // 2. Probable speech with volume (prob >= 0.15 && level > 0.06): open
-          // 3. Loud shout / scream safety valve (level > 0.70): open
-          // 4. Clearly non-speech (prob < 0.15): do NOT open for typing or desk knocks
-          if (speechProb >= 0.35 || (speechProb >= 0.15 && level > 0.06) || level > 0.70) {
+          // 1. Definite speech (prob >= 0.20): open immediately
+          // 2. Soft speech with slight energy (prob >= 0.08 && level > 0.015): open
+          // 3. Clear audio level above quiet ambient floor (level > 0.025, i.e. RMS > 0.004): open
+          // 4. Loud sound safety valve (level > 0.40): open
+          if (
+            speechProb >= 0.20 ||
+            (speechProb >= 0.08 && level > 0.015) ||
+            level > 0.025 ||
+            level > 0.40
+          ) {
             shouldOpen = true
-          } else if (speechProb < 0.15 && level < 0.05) {
+          } else if (speechProb < 0.05 && level < 0.012) {
+            // True ambient silence: allow gate to close
             shouldOpen = false
           } else {
+            // Maintain active gate state across conversational pauses
             shouldOpen = this.isGateOpen
           }
         } else {
           // Fallback before worklet is ready: rely on volume level
-          if (level > 0.08) {
+          if (level > 0.025) {
             shouldOpen = true
-          } else if (level < 0.04) {
+          } else if (level < 0.012) {
             shouldOpen = false
           } else {
             shouldOpen = this.isGateOpen
@@ -463,9 +475,17 @@ export class RnnoiseProcessor {
       if (this.onLevelCallback) {
         this.onLevelCallback(level, this.isGateOpen, rms, dynamicThresholdPercent)
       }
-      this.animationFrameId = requestAnimationFrame(tick)
     }
-    tick()
+
+    // Hybrid loop: requestAnimationFrame for 60fps foreground UI,
+    // plus setInterval to guarantee the audio gate never freezes when
+    // the tab/window is minimized or backgrounded.
+    const rafLoop = () => {
+      tick()
+      this.animationFrameId = requestAnimationFrame(rafLoop)
+    }
+    this.animationFrameId = requestAnimationFrame(rafLoop)
+    this.levelIntervalId = setInterval(tick, 30)
   }
 
   public setInputVolume(percentage: number) {
@@ -527,6 +547,10 @@ export class RnnoiseProcessor {
       cancelAnimationFrame(this.animationFrameId)
       this.animationFrameId = null
     }
+    if (this.levelIntervalId) {
+      clearInterval(this.levelIntervalId)
+      this.levelIntervalId = null
+    }
     this.readySettler = null
     if (this.workletBlobUrl) {
       try {
@@ -557,6 +581,14 @@ export class RnnoiseProcessor {
     this.lastVad = 0
     this.lastMetricsLogAt = 0
     this.lastSpeechTime = 0
+  }
+
+  public async resumeContext(): Promise<void> {
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      try {
+        await this.audioCtx.resume()
+      } catch {}
+    }
   }
 
   public getHoldTimeMs(): number {
