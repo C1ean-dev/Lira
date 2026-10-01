@@ -1037,6 +1037,24 @@ export class PeerManager {
   }
 
   /**
+   * Explicitly synchronize the enabled state on all WebRTC audio senders across active calls.
+   */
+  public syncSenderTracksMuteState(enabled: boolean): void {
+    this.mediaCalls.forEach((call) => {
+      try {
+        const pc = (call as any).peerConnection as RTCPeerConnection | undefined
+        if (pc && typeof pc.getSenders === 'function') {
+          pc.getSenders().forEach((sender) => {
+            if (sender.track && sender.track.kind === 'audio') {
+              sender.track.enabled = enabled
+            }
+          })
+        }
+      } catch {}
+    })
+  }
+
+  /**
    * Broadcast Local Movement
    */
   public sendPlayerMove(x: number, y: number, direction: 'up' | 'down' | 'left' | 'right', isMoving: boolean) {

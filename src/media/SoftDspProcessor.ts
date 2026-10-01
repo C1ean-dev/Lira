@@ -33,6 +33,7 @@ export class SoftDspProcessor {
   private testGainNode: GainNode | null = null
 
   private animationFrameId: number | null = null
+  private levelIntervalId: ReturnType<typeof setInterval> | null = null
   private onLevelCallback:
     | ((level: number, gateOpen: boolean, rawRms: number, dynamicThresholdPercent?: number) => void)
     | null = null
@@ -74,8 +75,7 @@ export class SoftDspProcessor {
       this.manualThresholdPercent = manualThresholdPercent
       this.isSuppressionActive = enableSuppression
 
-      const AudioContextClass =
-        window.AudioContext || (window as any).webkitAudioContext
+      const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext
       this.audioCtx = new AudioContextClass({ sampleRate: 48000 })
       if (this.audioCtx.state === 'suspended') {
         this.audioCtx.resume().catch(() => {})
@@ -138,7 +138,9 @@ export class SoftDspProcessor {
       this.startExpanderProcessing()
 
       const outputStream = this.destination.stream
-      inputStream.getVideoTracks().forEach((vTrack) => outputStream.addTrack(vTrack))
+      if (typeof inputStream.getVideoTracks === 'function') {
+        inputStream.getVideoTracks().forEach((vTrack) => outputStream.addTrack(vTrack))
+      }
       return outputStream
     } catch (err) {
       console.warn('Soft DSP fallback to raw stream:', err)
@@ -153,8 +155,8 @@ export class SoftDspProcessor {
       this.currentThreshold =
         minRMS + (this.manualThresholdPercent / 100) * (maxRMS - minRMS)
     } else {
-      // Multiplier 1.6 (was 2.2) — more headroom for soft voices.
-      this.currentThreshold = Math.max(0.010, this.dynamicNoiseFloor * 1.6)
+      // Responsive baseline for soft voices down to 0.0035 RMS (was rigid 0.010 which cut off normal voices)
+      this.currentThreshold = Math.max(0.0035, this.dynamicNoiseFloor * 1.4)
     }
   }
 
@@ -164,7 +166,11 @@ export class SoftDspProcessor {
     let quietMs = 0
     const holdMs = 1500
 
+    let lastTick = 0
     const tick = () => {
+      const nowMs = performance.now()
+      if (nowMs - lastTick < 12) return
+      lastTick = nowMs
       if (!this.analyser || !this.audioCtx) return
       this.analyser.getFloatTimeDomainData(buffer)
 
@@ -258,9 +264,14 @@ export class SoftDspProcessor {
       if (this.onLevelCallback) {
         this.onLevelCallback(normalizedLevel, this.isExpanderActive, rms, dynamicThresholdPercent)
       }
-      this.animationFrameId = requestAnimationFrame(tick)
     }
-    tick()
+
+    const rafLoop = () => {
+      tick()
+      this.animationFrameId = requestAnimationFrame(rafLoop)
+    }
+    this.animationFrameId = requestAnimationFrame(rafLoop)
+    this.levelIntervalId = setInterval(tick, 30)
   }
 
   public setInputVolume(percentage: number) {
@@ -310,6 +321,10 @@ export class SoftDspProcessor {
       cancelAnimationFrame(this.animationFrameId)
       this.animationFrameId = null
     }
+    if (this.levelIntervalId) {
+      clearInterval(this.levelIntervalId)
+      this.levelIntervalId = null
+    }
     if (this.audioCtx && this.audioCtx.state !== 'closed') {
       this.audioCtx.close().catch(() => {})
     }
@@ -324,6 +339,14 @@ export class SoftDspProcessor {
     this.testGainNode = null
     this.audioCtx = null
     this.lastSpeechTime = 0
+  }
+
+  public async resumeContext(): Promise<void> {
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      try {
+        await this.audioCtx.resume()
+      } catch {}
+    }
   }
 
   public getHoldTimeMs(): number {
