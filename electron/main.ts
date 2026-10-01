@@ -460,6 +460,14 @@ function createWindow() {
     }
   })
 
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[Electron] Failed to load ${validatedURL}: ${errorDescription} (${errorCode})`)
+  })
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error(`[Electron] Render process gone: ${details.reason} (exitCode: ${details.exitCode})`)
+  })
+
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
   } else {
@@ -918,36 +926,43 @@ async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
       // replaces the application files cleanly, and automatically triggers
       // ExecShell "" "$appExe" upon completion.
       let launched = false
+      // Prefer spawn with detached and unref so Windows launches the installer independent of Electron
       try {
-        const err = await shell.openPath(installerPath)
-        if (!err) {
-          launched = true
-        } else {
-          console.warn('[Updater] shell.openPath reported error:', err)
-        }
+        const child = spawn(installerPath, [], {
+          detached: true,
+          stdio: 'ignore',
+        })
+        child.unref()
+        launched = true
+        console.log('[Updater] Spawned installer process detached:', installerPath)
       } catch (err) {
-        console.warn('[Updater] shell.openPath threw:', err)
+        console.warn('[Updater] spawn failed, falling back to shell.openPath:', err)
+        try {
+          const openErr = await shell.openPath(installerPath)
+          if (!openErr) {
+            launched = true
+          } else {
+            console.warn('[Updater] shell.openPath reported error:', openErr)
+          }
+        } catch (e) {
+          console.error('[Updater] shell.openPath threw:', e)
+        }
       }
 
       if (!launched) {
-        try {
-          const child = spawn(installerPath, [], {
-            detached: true,
-            stdio: 'ignore',
-          })
-          child.unref()
-          launched = true
-        } catch (err) {
-          console.error('[Updater] spawn fallback failed:', err)
-        }
+        console.error('[Updater] Não foi possível iniciar o executável do instalador:', installerPath)
+        return false
       }
     } else {
       shell.openPath(installerPath)
     }
 
+    // Fecha o aplicativo atual imediatamente (após 500ms para o SO criar o processo desanexado).
+    // Isso libera o singleton do Chromium (process_singleton_win), GPUCache e portas,
+    // evitando conflito de instâncias (erro 32) e tela preta na inicialização da nova versão.
     setTimeout(() => {
       app.exit(0)
-    }, 600)
+    }, 500)
 
     return true
   } catch (err) {

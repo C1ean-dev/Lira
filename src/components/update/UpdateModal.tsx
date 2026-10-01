@@ -129,10 +129,10 @@ export const UpdateModal: React.FC<Props> = ({
             <div className="p-4 rounded-2xl bg-[#12151d] border border-indigo-500/40 text-center space-y-2">
               <RefreshCw className="w-6 h-6 animate-spin text-indigo-400 mx-auto" />
               <div className="text-xs font-bold text-slate-200">
-                Iniciando instalador e reiniciando aplicativo...
+                Iniciando instalador da atualização...
               </div>
               <p className="text-[11px] text-slate-400">
-                Aguarde um momento enquanto a nova versão é iniciada.
+                O instalador fechará o programa, aplicará a atualização e abrirá o aplicativo atualizado.
               </p>
             </div>
           )}
@@ -158,7 +158,7 @@ export const UpdateModal: React.FC<Props> = ({
               </button>
             ) : (
               <div className="text-center text-[11px] text-slate-400 py-1">
-                O aplicativo será reiniciado automaticamente com a nova versão.
+                O instalador atualizará os arquivos e reiniciará o aplicativo automaticamente.
               </div>
             )}
 

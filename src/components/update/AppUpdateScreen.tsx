@@ -63,10 +63,10 @@ export const AppUpdateScreen: React.FC = () => {
           {isInstalling && (
             <>
               <p className="text-sm font-semibold text-emerald-300 animate-pulse">
-                Instalando nova versão...
+                Iniciando instalador da nova versão...
               </p>
               <p className="text-xs text-slate-400 mt-0.5">
-                O aplicativo será reiniciado automaticamente em instantes.
+                O instalador fechará o programa, aplicará a atualização e abrirá o aplicativo atualizado.
               </p>
             </>
           )}
