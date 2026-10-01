@@ -12,6 +12,7 @@ import { MediaCallHandler, ICE_CONNECT_TIMEOUT_MS, SHARED_RTC_CONFIG, resolveCal
 import { prioritizeH264HardwareCodec } from '../media/hardwareCodec'
 import { DynamicBufferManager } from '../services/DynamicBufferManager'
 import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
+import { sanitizeRoomCode } from '../utils/roomCode'
 
 export class PeerManager {
   private static instance: PeerManager
@@ -70,7 +71,7 @@ export class PeerManager {
     },
     retryCount: number = 0
   ): Promise<string> {
-    this.roomCode = roomCode.trim().toUpperCase()
+    this.roomCode = sanitizeRoomCode(roomCode)
     this.isHost = true
     this.isIntentionalDisconnect = false
     const hostPeerId = `gather-v2-${this.roomCode}-host`
@@ -211,6 +212,26 @@ export class PeerManager {
           } catch (joinErr) {
             reject(joinErr)
           }
+        } else if (
+          (err?.type === 'network' || err?.type === 'socket-error' || err?.type === 'socket-closed') &&
+          retryCount < 2
+        ) {
+          resolved = true
+          console.warn(`[P2P Host] Transient network error (${err?.type}) while creating room. Retrying attempt ${retryCount + 1}...`)
+          try {
+            if (this.peer) {
+              try {
+                this.peer.destroy()
+              } catch (e) {}
+              this.peer = null
+            }
+          } catch (e) {}
+          const backoff = 600 * (retryCount + 1)
+          setTimeout(() => {
+            this.createRoom(this.roomCode!, localPlayer, options, retryCount + 1)
+              .then(resolve)
+              .catch(reject)
+          }, backoff)
         } else {
           resolved = true
           try {
@@ -219,7 +240,15 @@ export class PeerManager {
               this.peer = null
             }
           } catch (e) {}
-          reject(err)
+          useGameStore.getState().setConnected(false)
+          useGameStore.getState().setConnectionStatus('disconnected')
+          useGameStore.getState().setRoomSession('', false)
+
+          let friendlyMsg = err?.message || `Falha ao registrar espaço P2P: ${err?.type || 'erro de rede'}`
+          if (err?.type === 'network' || err?.type === 'socket-error' || err?.type === 'socket-closed') {
+            friendlyMsg = 'Não foi possível conectar ao servidor de sinalização P2P. Verifique sua conexão ou tente novamente em instantes.'
+          }
+          reject(new Error(friendlyMsg))
         }
       })
     })
@@ -229,7 +258,7 @@ export class PeerManager {
    * Join an existing Room (with Smart Auto-Host Fallback if unhosted)
    */
   public async joinRoom(roomCode: string, localPlayer: Player, retryCount: number = 0): Promise<void> {
-    this.roomCode = roomCode.trim().toUpperCase()
+    this.roomCode = sanitizeRoomCode(roomCode)
     this.isHost = false
     this.isIntentionalDisconnect = false
     const clientPeerId = `gather-v2-${this.roomCode}-peer-${Math.random().toString(36).substring(2, 7)}`
@@ -281,9 +310,19 @@ export class PeerManager {
           } else {
             useGameStore.getState().setConnected(false)
             useGameStore.getState().setConnectionStatus('disconnected')
-            reject(new Error(`O anfitrião da sala ${this.roomCode} não respondeu. A sessão P2P anterior pode ainda estar ativa no servidor.`))
+            reject(new Error(`O anfitrião da sala ${this.roomCode} não respondeu. Verifique se o código está correto ou se o anfitrião continua online.`))
           }
-        } catch (err) {
+        } catch (err: any) {
+          if (err?.type === 'unavailable-id' || err?.message?.includes('Host ID already registered') || err?.message?.includes('is taken')) {
+            try {
+              console.log('[P2P AutoHost] Host ainda está ativo na rede. Tentando reconectar como cliente...')
+              await this.joinRoom(this.roomCode!, localPlayer, retryCount + 1)
+              resolve()
+              return
+            } catch (rejoinErr) {
+              // segue para rejeição
+            }
+          }
           console.error('[P2P AutoHost] Error promoting to host:', err)
           useGameStore.getState().setConnected(false)
           useGameStore.getState().setConnectionStatus('disconnected')
@@ -297,7 +336,7 @@ export class PeerManager {
           diagLog('room', 'join-timeout-autohost', { roomCode: this.roomCode })
           triggerAutoHost()
         }
-      }, 7500)
+      }, 10000)
 
       const myPeer = new Peer(clientPeerId, {
         // STUN + TURN fallback (see SHARED_RTC_CONFIG).
@@ -343,12 +382,12 @@ export class PeerManager {
           reliable: true,
         })
 
-        // Wait up to 3.5s for host connection confirmation before auto-hosting
+        // Wait up to 6s for host connection confirmation before auto-hosting
         fallbackTimer = setTimeout(() => {
           if (!isResolved && this.connections.size === 0) {
             triggerAutoHost()
           }
-        }, 3500)
+        }, 6000)
 
         conn.on('open', () => {
           if (!isResolved) {
@@ -409,6 +448,27 @@ export class PeerManager {
           err?.type === 'server-error'
         ) {
           triggerAutoHost()
+        } else if (
+          (err?.type === 'network' || err?.type === 'socket-error' || err?.type === 'socket-closed') &&
+          retryCount < 2
+        ) {
+          isResolved = true
+          if (fallbackTimer) clearTimeout(fallbackTimer)
+          if (joinTimeout) clearTimeout(joinTimeout)
+          console.warn(`[P2P Join] Transient network error (${err?.type}). Retrying join attempt ${retryCount + 1}...`)
+          try {
+            if (this.peer) {
+              this.peer.destroy()
+              this.peer = null
+            }
+          } catch (e) {}
+
+          const backoff = 700 * (retryCount + 1)
+          setTimeout(() => {
+            this.joinRoom(this.roomCode!, localPlayer, retryCount + 1)
+              .then(resolve)
+              .catch(reject)
+          }, backoff)
         } else {
           isResolved = true
           if (fallbackTimer) clearTimeout(fallbackTimer)
@@ -422,7 +482,12 @@ export class PeerManager {
           useGameStore.getState().setConnected(false)
           useGameStore.getState().setConnectionStatus('disconnected')
           useGameStore.getState().setRoomSession('', false)
-          reject(new Error(`Falha de conexão P2P: ${err?.type || err?.message || 'erro de rede'}`))
+
+          let friendlyMsg = `Falha de conexão P2P: ${err?.type || err?.message || 'erro de rede'}`
+          if (err?.type === 'network' || err?.type === 'socket-error' || err?.type === 'socket-closed') {
+            friendlyMsg = 'Não foi possível conectar ao servidor de sinalização P2P. Verifique sua conexão com a internet ou tente novamente em instantes.'
+          }
+          reject(new Error(friendlyMsg))
         }
       })
     })

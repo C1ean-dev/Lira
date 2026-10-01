@@ -1,5 +1,5 @@
 import React from 'react'
-import { User, PlusCircle, LogIn, Globe, Shield, Sparkles } from 'lucide-react'
+import { User, PlusCircle, LogIn, Globe, Shield, Sparkles, Clipboard } from 'lucide-react'
 import { useMediaStore } from '../../store/useMediaStore'
 
 interface Props {
@@ -147,12 +147,32 @@ export const DirectConnectTab: React.FC<Props> = ({
       {/* Join Code Input */}
       {mode === 'join' && (
         <div className="space-y-1.5 animate-in fade-in duration-150">
-          <label className="block text-xs font-semibold text-slate-300">Código da Sala</label>
+          <div className="flex items-center justify-between">
+            <label className="block text-xs font-semibold text-slate-300">Código da Sala</label>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const text = await navigator.clipboard.readText()
+                  if (text) {
+                    setRoomInput(text.replace(/\s+/g, '').toUpperCase())
+                  }
+                } catch (e) {
+                  console.warn('Could not read clipboard:', e)
+                }
+              }}
+              className="text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1 hover:underline cursor-pointer"
+              title="Colar código copiado da área de transferência"
+            >
+              <Clipboard className="w-3 h-3" />
+              <span>Colar Código</span>
+            </button>
+          </div>
           <input
             type="text"
             value={roomInput}
-            onChange={(e) => setRoomInput(e.target.value.toUpperCase())}
-            placeholder="Ex: GATHER-A9K3F"
+            onChange={(e) => setRoomInput(e.target.value.replace(/\s+/g, '').toUpperCase())}
+            placeholder="Ex: GATHER-A9K3F ou cole o código UUID"
             className="w-full bg-[#12151d] border border-[#2a3142] rounded-xl px-3.5 py-2 text-sm font-mono text-indigo-300 tracking-wider uppercase focus:outline-none focus:border-indigo-500"
           />
         </div>

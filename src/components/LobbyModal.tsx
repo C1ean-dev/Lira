@@ -400,7 +400,7 @@ export const LobbyModal: React.FC<Props> = ({
       onJoined()
     } catch (err: any) {
       console.error(err)
-      setError('Não foi possível conectar. Verifique o código da sala e tente novamente.')
+      setError(err?.message || 'Não foi possível conectar. Verifique o código da sala e tente novamente.')
     } finally {
       enterGuardRef.current.release()
       setLoading(false)

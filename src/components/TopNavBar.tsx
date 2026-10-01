@@ -94,11 +94,15 @@ export const TopNavBar: React.FC<Props> = ({
 
   const currentZone = mapZones.find((z) => z.id === localPlayerCurrentZoneId)
 
-  const handleCopyCode = () => {
+  const handleCopyCode = async () => {
     if (!roomId) return
-    navigator.clipboard.writeText(roomId)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    try {
+      await navigator.clipboard.writeText(roomId.toUpperCase())
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2500)
+    } catch (e) {
+      console.warn('Could not copy room ID:', e)
+    }
   }
 
   return (
@@ -113,13 +117,16 @@ export const TopNavBar: React.FC<Props> = ({
         {roomId && (
           <button
             onClick={handleCopyCode}
-            className="flex items-center gap-2 px-3 py-1.5 bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] rounded-xl text-xs font-semibold text-slate-200 transition-all group"
+            className="flex items-center gap-2 px-3 py-1.5 bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] rounded-xl text-xs font-semibold text-slate-200 transition-all group cursor-pointer"
             title={`ID do Espaço: ${roomId}\n(Clique para copiar)`}
           >
             <span className="text-slate-400 font-normal">ID do Espaço:</span>
-            <span className="font-mono text-indigo-400 font-bold max-w-[110px] sm:max-w-[200px] truncate">{roomId}</span>
+            <span className="font-mono text-indigo-400 font-bold max-w-[130px] sm:max-w-[220px] truncate">{roomId}</span>
             {copied ? (
-              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span className="flex items-center gap-1 text-emerald-400 font-bold text-[11px] animate-in fade-in">
+                <Check className="w-3.5 h-3.5 shrink-0" />
+                <span>Copiado!</span>
+              </span>
             ) : (
               <Copy className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-200 shrink-0" />
             )}
