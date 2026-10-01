@@ -766,19 +766,26 @@ function findExistingInstaller(version?: string): string | null {
     }
   }
 
-  // Fallback: check temp directory for any valid installer matching the version
+  // Fallback: check temp directory for any valid installer matching the version, sorted by newest
   try {
     const files = fs.readdirSync(tempDir)
-    for (const file of files) {
-      if ((file.startsWith('Lira') || file.startsWith('GatherClone')) && file.endsWith('.exe')) {
-        if (!cleanVer || file.includes(cleanVer)) {
-          const full = path.join(tempDir, file)
+    const matching = files
+      .filter((file) => (file.startsWith('Lira') || file.startsWith('GatherClone')) && file.endsWith('.exe'))
+      .filter((file) => !cleanVer || file.includes(cleanVer))
+      .map((file) => {
+        const full = path.join(tempDir, file)
+        try {
           const stats = fs.statSync(full)
-          if (stats.size > 10 * 1024 * 1024) {
-            return full
-          }
+          return { full, size: stats.size, mtime: stats.mtimeMs }
+        } catch {
+          return null
         }
-      }
+      })
+      .filter((item): item is { full: string; size: number; mtime: number } => !!item && item.size > 10 * 1024 * 1024)
+      .sort((a, b) => b.mtime - a.mtime)
+
+    if (matching.length > 0) {
+      return matching[0].full
     }
   } catch {}
 
@@ -897,25 +904,43 @@ async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
       return false
     }
 
-    const appExePath = process.execPath
+    console.log('[Updater] Applying update. Installer:', installerPath)
+
+    // Stop native audio capture helper so it does not keep any files locked in native/bin
+    try {
+      stopProcessAudioCapture()
+    } catch {}
+
     const isWindows = process.platform === 'win32'
-    console.log('[Updater] Applying update. Installer:', installerPath, 'Current App:', appExePath)
-
     if (isWindows) {
-      // Create a background detached PowerShell script that:
-      // 1. Waits 2s for this current Electron process to fully exit and release file locks
-      // 2. Runs the NSIS installer silently (/S) and waits for completion
-      // 3. Immediately relaunches the updated Lira executable
-      const cleanInstaller = installerPath.replace(/'/g, "''")
-      const cleanAppExe = appExePath.replace(/'/g, "''")
-      const psCommand = `Start-Sleep -Seconds 2; $proc = Start-Process -FilePath '${cleanInstaller}' -ArgumentList '/S', '--force-run' -PassThru; $instName = [System.IO.Path]::GetFileNameWithoutExtension('${cleanInstaller}'); $proc | Wait-Process -ErrorAction SilentlyContinue; while (Get-Process -Name $instName -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 500 }; Start-Sleep -Seconds 2; if (-not (Get-Process -Name 'Lira' -ErrorAction SilentlyContinue)) { if (Test-Path '${cleanAppExe}' -and '${cleanAppExe}' -notlike '*electron.exe*') { Start-Process -FilePath '${cleanAppExe}' } else { $p1 = "$env:LOCALAPPDATA\\Programs\\gather-v2-clone\\Lira.exe"; $p2 = "$env:LOCALAPPDATA\\Programs\\Lira\\Lira.exe"; if (Test-Path $p1) { Start-Process -FilePath $p1 } elseif (Test-Path $p2) { Start-Process -FilePath $p2 } } }`
+      // Execute the installer directly using shell.openPath or detached spawn without /S.
+      // Running oneClick without /S shows the native progress bar to the user,
+      // replaces the application files cleanly, and automatically triggers
+      // ExecShell "" "$appExe" upon completion.
+      let launched = false
+      try {
+        const err = await shell.openPath(installerPath)
+        if (!err) {
+          launched = true
+        } else {
+          console.warn('[Updater] shell.openPath reported error:', err)
+        }
+      } catch (err) {
+        console.warn('[Updater] shell.openPath threw:', err)
+      }
 
-      const child = spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', psCommand], {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true,
-      })
-      child.unref()
+      if (!launched) {
+        try {
+          const child = spawn(installerPath, [], {
+            detached: true,
+            stdio: 'ignore',
+          })
+          child.unref()
+          launched = true
+        } catch (err) {
+          console.error('[Updater] spawn fallback failed:', err)
+        }
+      }
     } else {
       shell.openPath(installerPath)
     }

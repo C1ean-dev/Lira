@@ -45,7 +45,7 @@ export const UpdateModal: React.FC<Props> = ({
       if (onApplyUpdate) {
         await onApplyUpdate()
       } else {
-        const success = await UpdateService.applyUpdate(updateInfo.releaseUrl)
+        const success = await UpdateService.applyUpdate(updateInfo.releaseUrl, updateInfo.latestVersion)
         if (!success) {
           setLocalError('Não foi possível iniciar o instalador automaticamente.')
           setLocalInstalling(false)
