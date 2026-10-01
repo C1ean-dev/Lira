@@ -120,6 +120,13 @@ describe('Room Connection & Entry Suite (Testes de Conexão na Sala)', () => {
       expect(sanitizeRoomCode('gather-v2-SALA-DIRETORIA-peer-07zem')).toBe('SALA-DIRETORIA')
     })
 
+    it('remove espaços internos acidentais em códigos como UUIDs espaçados', () => {
+      expect(sanitizeRoomCode('CC8C4732 - 824E - 4139 - BAB5 - 568D0DBA9CE7')).toBe(
+        'CC8C4732-824E-4139-BAB5-568D0DBA9CE7'
+      )
+      expect(sanitizeRoomCode(' SALA - DIRETO - 123 ')).toBe('SALA-DIRETO-123')
+    })
+
     it('retorna string vazia para valores nulos, vazios ou indefinidos', () => {
       expect(sanitizeRoomCode('')).toBe('')
       expect(sanitizeRoomCode('   ')).toBe('')
@@ -218,6 +225,20 @@ describe('Room Connection & Entry Suite (Testes de Conexão na Sala)', () => {
       await expect(joinPromise).rejects.toThrow()
       expect(useGameStore.getState().isConnected).toBe(false)
       expect(useGameStore.getState().connectionStatus).toBe('disconnected')
+    })
+
+    it('formata mensagem amigável quando ocorre erro de rede (network)', async () => {
+      const pm = PeerManager.getInstance()
+      const roomCode = 'SALA-NET-ERR'
+      const joinPromise = pm.joinRoom(roomCode, getPlayer(), 2)
+
+      const clientPeer = FakePeer.instances[0]
+      clientPeer.emit('error', {
+        type: 'network',
+        message: 'Lost connection to server.',
+      })
+
+      await expect(joinPromise).rejects.toThrow('Não foi possível conectar ao servidor de sinalização P2P')
     })
 
     it('formata mensagem amigável no padrão do Lobby quando a sala não pode ser conectada', () => {

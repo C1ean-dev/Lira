@@ -31,5 +31,8 @@ export function sanitizeRoomCode(raw?: string | null): string {
   // 4. Remove fragment identifiers or trailing slashes
   cleaned = cleaned.replace(/^#\/?/, '').replace(/\/+$/, '').trim()
 
+  // 5. Remove any internal spaces, tabs, or newlines (e.g. from copy-pasting spaced codes like "UUID - PART")
+  cleaned = cleaned.replace(/\s+/g, '')
+
   return cleaned.toUpperCase()
 }

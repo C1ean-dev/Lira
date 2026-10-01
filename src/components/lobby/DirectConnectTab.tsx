@@ -151,7 +151,7 @@ export const DirectConnectTab: React.FC<Props> = ({
           <input
             type="text"
             value={roomInput}
-            onChange={(e) => setRoomInput(e.target.value.toUpperCase())}
+            onChange={(e) => setRoomInput(e.target.value.replace(/\s+/g, '').toUpperCase())}
             placeholder="Ex: GATHER-A9K3F"
             className="w-full bg-[#12151d] border border-[#2a3142] rounded-xl px-3.5 py-2 text-sm font-mono text-indigo-300 tracking-wider uppercase focus:outline-none focus:border-indigo-500"
           />
