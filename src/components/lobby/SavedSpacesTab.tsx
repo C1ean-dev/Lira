@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { Plus, LayoutGrid, Check, X, Shield, Copy, ArrowRight, Edit2, Trash2, RefreshCw } from 'lucide-react'
 import { SavedSpace } from '../../store/useSavedSpacesStore'
-import { ConfirmModal } from '../common/ConfirmModal'
+import { ConfirmModal } from '../ConfirmModal'
 
 interface Props {
   savedSpaces: SavedSpace[]

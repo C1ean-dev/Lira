@@ -8,7 +8,7 @@ import dgram from 'dgram'
 import { spawn, exec } from 'child_process'
 import { release as getOsRelease } from 'os'
 import { setupSingleInstanceLock } from './singleInstance'
-import { TrayManager, AppSettings } from './tray/trayManager'
+import { TrayManager, AppSettings } from './trayManager'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -774,26 +774,19 @@ function findExistingInstaller(version?: string): string | null {
     }
   }
 
-  // Fallback: check temp directory for any valid installer matching the version, sorted by newest
+  // Fallback: check temp directory for any valid installer matching the version
   try {
     const files = fs.readdirSync(tempDir)
-    const matching = files
-      .filter((file) => (file.startsWith('Lira') || file.startsWith('GatherClone')) && file.endsWith('.exe'))
-      .filter((file) => !cleanVer || file.includes(cleanVer))
-      .map((file) => {
-        const full = path.join(tempDir, file)
-        try {
+    for (const file of files) {
+      if ((file.startsWith('Lira') || file.startsWith('GatherClone')) && file.endsWith('.exe')) {
+        if (!cleanVer || file.includes(cleanVer)) {
+          const full = path.join(tempDir, file)
           const stats = fs.statSync(full)
-          return { full, size: stats.size, mtime: stats.mtimeMs }
-        } catch {
-          return null
+          if (stats.size > 10 * 1024 * 1024) {
+            return full
+          }
         }
-      })
-      .filter((item): item is { full: string; size: number; mtime: number } => !!item && item.size > 10 * 1024 * 1024)
-      .sort((a, b) => b.mtime - a.mtime)
-
-    if (matching.length > 0) {
-      return matching[0].full
+      }
     }
   } catch {}
 
@@ -912,19 +905,14 @@ async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
       return false
     }
 
-    console.log('[Updater] Applying update. Installer:', installerPath)
-
-    // Stop native audio capture helper so it does not keep any files locked in native/bin
-    try {
-      stopProcessAudioCapture()
-    } catch {}
-
+    const appExePath = process.execPath
     const isWindows = process.platform === 'win32'
+    console.log('[Updater] Applying update. Installer:', installerPath, 'Current App:', appExePath)
+
     if (isWindows) {
-      // Execute the installer directly using shell.openPath or detached spawn without /S.
-      // Running oneClick without /S shows the native progress bar to the user,
-      // replaces the application files cleanly, and automatically triggers
-      // ExecShell "" "$appExe" upon completion.
+      // Inicia o instalador NSIS em modo normal (com interface de usuário).
+      // O instalador nsh (build/installer.nsh) fecha o aplicativo automaticamente,
+      // atualiza os arquivos e reinicia o app executando ExecShell "" "$appExe".
       let launched = false
       // Prefer spawn with detached and unref so Windows launches the installer independent of Electron
       try {
@@ -1315,93 +1303,34 @@ function initNetworkTriggerAndLanDiscovery() {
 ipcMain.handle('check-firewall-status', async () => {
   if (process.platform !== 'win32') return { isAllowed: true }
   return new Promise((resolve) => {
-    const currentExe = process.execPath.replace(/'/g, "''")
-    const query = `
-$count = 0
-$byName = Get-NetFirewallRule -DisplayName '*Lira*','*Gather*' -ErrorAction SilentlyContinue | Where-Object { $_.Action -eq 'Allow' -and $_.Enabled -eq 'True' }
-if ($byName) { $count += @($byName).Count }
-
-$byApp = Get-NetFirewallApplicationFilter -Program '${currentExe}' -ErrorAction SilentlyContinue | Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object { $_.Action -eq 'Allow' -and $_.Enabled -eq 'True' }
-if ($byApp) { $count += @($byApp).Count }
-
-$localApp = Join-Path $env:LOCALAPPDATA 'Programs\\gather-v2-clone\\Lira.exe'
-if (Test-Path $localApp) {
-  $byLocal = Get-NetFirewallApplicationFilter -Program $localApp -ErrorAction SilentlyContinue | Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object { $_.Action -eq 'Allow' -and $_.Enabled -eq 'True' }
-  if ($byLocal) { $count += @($byLocal).Count }
-}
-
-Write-Output $count
-`
-    const encoded = Buffer.from(query, 'utf16le').toString('base64')
-    exec(`powershell.exe -NoProfile -EncodedCommand ${encoded}`, (error, stdout) => {
-      if (error) {
-        resolve({ isAllowed: false })
-        return
+    const execPath = process.execPath.replace(/'/g, "''")
+    const query = `((Get-NetFirewallRule -DisplayName '*Lira*','*Gather*' -ErrorAction SilentlyContinue | Where-Object { $_.Action -eq 'Allow' -and $_.Enabled -eq 'True' }).Count + (Get-NetFirewallApplicationFilter -Program '${execPath}' -ErrorAction SilentlyContinue | Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object { $_.Action -eq 'Allow' -and $_.Enabled -eq 'True' }).Count)`
+    exec(
+      `powershell -NoProfile -Command "${query}"`,
+      (error, stdout) => {
+        if (error) {
+          resolve({ isAllowed: false })
+          return
+        }
+        const count = parseInt(stdout?.trim()) || 0
+        resolve({ isAllowed: count > 0 })
       }
-      const count = parseInt(stdout?.trim()) || 0
-      resolve({ isAllowed: count > 0 })
-    })
+    )
   })
 })
 
 ipcMain.handle('request-firewall-access', async () => {
   if (process.platform !== 'win32') return { success: true }
   return new Promise((resolve) => {
-    const currentExe = process.execPath.replace(/'/g, "''")
-    // Script executado em processo com privilégios de Administrador (RunAs)
-    const innerScript = `
-$ErrorActionPreference = 'Stop'
-$paths = @('${currentExe}')
-$localAppPath = Join-Path $env:LOCALAPPDATA 'Programs\\gather-v2-clone\\Lira.exe'
-if (Test-Path $localAppPath) {
-  $paths += $localAppPath
-}
-$paths = $paths | Select-Object -Unique
+    const execPath = process.execPath.replace(/'/g, "''")
+    // Cria ou atualiza a regra no Firewall do Windows com Profile Any (Privada + Pública) com privilégios de Administrador
+    const script = `if (!(Get-NetFirewallRule -DisplayName ''Lira'' -ErrorAction SilentlyContinue)) { New-NetFirewallRule -DisplayName ''Lira'' -Direction Inbound -Program ''${execPath}'' -Action Allow -Profile Any -Enabled True } else { Set-NetFirewallRule -DisplayName ''Lira'' -Program ''${execPath}'' -Action Allow -Profile Any -Enabled True }`
+    const psCommand = `Start-Process powershell -Verb RunAs -Wait -ArgumentList '-NoProfile', '-Command', "${script}"`
 
-# Remove regras anteriores do Lira se existirem para evitar duplicatas ou regras desatualizadas
-Get-NetFirewallRule -DisplayName 'Lira*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue
-
-$idx = 0
-foreach ($p in $paths) {
-  $ruleName = if ($idx -eq 0) { 'Lira' } else { "Lira ($idx)" }
-  try {
-    New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Program $p -Action Allow -Profile Any -Enabled True -ErrorAction Stop | Out-Null
-    New-NetFirewallRule -DisplayName "$ruleName Outbound" -Direction Outbound -Program $p -Action Allow -Profile Any -Enabled True -ErrorAction SilentlyContinue | Out-Null
-  } catch {
-    & netsh advfirewall firewall delete rule name="$ruleName" | Out-Null
-    & netsh advfirewall firewall delete rule name="$ruleName Outbound" | Out-Null
-    & netsh advfirewall firewall add rule name="$ruleName" dir=in action=allow program="$p" enable=yes profile=any | Out-Null
-    & netsh advfirewall firewall add rule name="$ruleName Outbound" dir=out action=allow program="$p" enable=yes profile=any | Out-Null
-  }
-  $idx++
-}
-exit 0
-`
-    const innerB64 = Buffer.from(innerScript, 'utf16le').toString('base64')
-
-    // Dispara processo elevado (UAC) usando Start-Process -Verb RunAs com -EncodedCommand para evitar problemas de escape de aspas
-    const outerScript = `
-try {
-  $p = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList '-NoProfile', '-EncodedCommand', '${innerB64}'
-  if ($p.ExitCode -eq 0) {
-    exit 0
-  } else {
-    exit $p.ExitCode
-  }
-} catch {
-  exit 1
-}
-`
-    const outerB64 = Buffer.from(outerScript, 'utf16le').toString('base64')
-
-    exec(`powershell.exe -NoProfile -EncodedCommand ${outerB64}`, (error) => {
+    exec(`powershell -NoProfile -Command "${psCommand}"`, (error) => {
       if (error) {
         console.warn('[Firewall] Erro ou cancelamento pelo usuário:', error)
-        resolve({
-          success: false,
-          error:
-            'Acesso de Administrador foi recusado ou cancelado. Permita a elevação do UAC para liberar o Firewall.',
-        })
+        resolve({ success: false, error: error.message })
       } else {
         console.log('[Firewall] Regra adicionada/atualizada com sucesso no Firewall do Windows!')
         resolve({ success: true })

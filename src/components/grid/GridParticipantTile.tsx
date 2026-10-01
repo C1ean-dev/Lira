@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react'
 import { Radio, MicOff, Maximize, Pin, Maximize2, Volume2, Volume1, VolumeX, Headphones } from 'lucide-react'
 import { useMediaStore } from '../../store/useMediaStore'
 import { useUserNetworkQuality } from '../../store/useNetworkQualityStore'
-import { NetworkSignalIcon } from '../common/NetworkSignalIcon'
+import { NetworkSignalIcon } from '../NetworkSignalIcon'
 import { attachStreamToVideo } from '../../media/attachVideoElement'
 
 export interface ParticipantData {
@@ -19,8 +19,6 @@ export interface ParticipantData {
   isScreenSharing?: boolean
   isSpeaking?: boolean
   shirtColor?: string
-  profileImage?: string
-  profilePhoto?: string
   statusEmoji?: string
   callState?: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed'
   onRetryCall?: () => void
@@ -150,20 +148,12 @@ export const GridParticipantTile: React.FC<Props> = ({
               }`}
             />
             {user.isCameraOff && (
-              (user.profileImage || user.profilePhoto) ? (
-                <img
-                  src={user.profileImage || user.profilePhoto}
-                  alt={user.name}
-                  className="w-8 h-8 rounded-full object-cover shadow-md border border-white/20"
-                />
-              ) : (
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-md border border-white/20"
-                  style={{ backgroundColor: user.shirtColor || '#4c6ef5' }}
-                >
-                  {user.name.charAt(0).toUpperCase()}
-                </div>
-              )
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-md border border-white/20"
+                style={{ backgroundColor: user.shirtColor || '#4c6ef5' }}
+              >
+                {user.name.charAt(0).toUpperCase()}
+              </div>
             )}
           </>
         )}
@@ -286,20 +276,12 @@ export const GridParticipantTile: React.FC<Props> = ({
           {/* Camera Off Avatar Screen */}
           {user.isCameraOff && (
             <div className="flex flex-col items-center gap-3">
-              {(user.profileImage || user.profilePhoto) ? (
-                <img
-                  src={user.profileImage || user.profilePhoto}
-                  alt={user.name}
-                  className="w-20 h-20 rounded-full object-cover shadow-2xl border-2 border-white/20"
-                />
-              ) : (
-                <div
-                  className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-extrabold text-white shadow-2xl border-2 border-white/20"
-                  style={{ backgroundColor: user.shirtColor || '#4c6ef5' }}
-                >
-                  {user.name.charAt(0).toUpperCase()}
-                </div>
-              )}
+              <div
+                className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-extrabold text-white shadow-2xl border-2 border-white/20"
+                style={{ backgroundColor: user.shirtColor || '#4c6ef5' }}
+              >
+                {user.name.charAt(0).toUpperCase()}
+              </div>
               <div className="text-sm font-semibold text-slate-300 flex items-center gap-1.5">
                 <span>{user.name}</span>
               </div>

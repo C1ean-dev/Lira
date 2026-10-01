@@ -11,7 +11,6 @@ import {
   Heart,
   Ban,
   Sparkles,
-  RotateCcw,
 } from 'lucide-react'
 import { AvatarConfig, AvatarComponentSlot, PetConfig, PetType, Direction } from '../../types/game'
 import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
@@ -429,32 +428,31 @@ export const PetSelectorPanel: React.FC<Props> = ({
 
       {/* Bottom Customization: Pet Name */}
       {currentPet.type !== 'none' && (
-        <div className="pt-3 border-t border-[#383a40] flex items-center justify-between gap-2.5 shrink-0 w-full">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5 shrink-0">
+        <div className="pt-3 border-t border-[#383a40] flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-2 flex-1 max-w-sm">
+            <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5 shrink-0">
               <Heart className="w-3.5 h-3.5 text-rose-400" />
-              <span>Nome do Mascote:</span>
+              Nome do Mascote:
             </span>
             <input
               type="text"
               value={currentPet.name || ''}
               onChange={(e) => handleNameChange(e.target.value)}
               placeholder="Ex: Rex, Mingau..."
-              maxLength={16}
-              className="flex-1 min-w-[120px] bg-[#1e1f22] border border-[#383a40] focus:border-blue-500 rounded-xl px-3 py-1.5 text-xs font-bold text-white outline-none transition-colors"
+              maxLength={14}
+              className="flex-1 bg-[#1e1f22] border border-[#383a40] focus:border-blue-500 rounded-xl px-2.5 py-1 text-xs font-semibold text-white outline-none"
             />
+            <button
+              type="button"
+              onClick={() =>
+                handleNameChange(PetRenderer.getDefaultPetName(currentPet.type))
+              }
+              className="px-2 py-1 rounded-xl bg-[#1e1f22] hover:bg-[#383a40] text-slate-300 text-[10px] font-semibold border border-[#383a40] transition-colors shrink-0"
+              title="Restaurar nome padrão"
+            >
+              Padrão
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() =>
-              handleNameChange(PetRenderer.getDefaultPetName(currentPet.type))
-            }
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#1e1f22] hover:bg-[#383a40] text-slate-300 hover:text-white text-xs font-semibold border border-[#383a40] transition-colors shrink-0 whitespace-nowrap cursor-pointer active:scale-95 shadow-xs"
-            title="Restaurar nome padrão do mascote"
-          >
-            <RotateCcw className="w-3.5 h-3.5 text-slate-400 group-hover:text-white" />
-            <span>Padrão</span>
-          </button>
         </div>
       )}
 

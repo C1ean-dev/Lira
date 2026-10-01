@@ -1,13 +1,12 @@
+import React from 'react'
 import {
   UserCircle,
   Cat,
-  User,
 } from 'lucide-react'
 
 export type CategoryKey =
   | 'other'
   | 'pet'
-  | 'profile'
 
 interface Props {
   activeCategory: CategoryKey
@@ -17,7 +16,6 @@ interface Props {
 export const CATEGORIES = [
   { id: 'other', label: 'Personagem', icon: UserCircle },
   { id: 'pet', label: 'Pet / Mascote', icon: Cat },
-  { id: 'profile', label: 'Nome e Perfil', icon: User },
 ]
 
 export const CategoryTabs: React.FC<Props> = ({ activeCategory, onSelectCategory }) => {

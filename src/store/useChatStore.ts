@@ -33,9 +33,6 @@ interface ChatStore {
   sendFriendRequest: (target: { id?: string; name: string; avatar?: any }) => string
   respondToFriendRequest: (requestId: string, status: 'accepted' | 'declined') => void
   getFriendRequestStatus: (userIdOrName: string) => FriendRequestData | null
-  createChannel: (name: string, description?: string) => Channel
-  addChannel: (channel: Channel) => void
-  removeChannel: (channelId: string) => void
 }
 
 const DEFAULT_CHANNELS: Channel[] = [
@@ -65,33 +62,11 @@ const DEFAULT_CHANNELS: Channel[] = [
 const SAVED_DMS_STORAGE_KEY = 'gather_v2_saved_dms'
 const SAVED_DM_CHANNELS_STORAGE_KEY = 'gather_v2_saved_dm_channels'
 const SAVED_LAST_READ_KEY = 'gather_v2_saved_last_read_dms'
-const SAVED_CUSTOM_CHANNELS_STORAGE_KEY = 'gather_v2_saved_custom_channels'
 
 const getStorage = () => {
   if (typeof window !== 'undefined' && window.localStorage) return window.localStorage
   if (typeof globalThis !== 'undefined' && (globalThis as any).localStorage) return (globalThis as any).localStorage
   return null
-}
-
-const loadSavedCustomChannels = (): Channel[] => {
-  try {
-    const storage = getStorage()
-    if (storage) {
-      const raw = storage.getItem(SAVED_CUSTOM_CHANNELS_STORAGE_KEY)
-      if (raw) return JSON.parse(raw)
-    }
-  } catch (e) {}
-  return []
-}
-
-const persistCustomChannels = (channels: Channel[]) => {
-  try {
-    const storage = getStorage()
-    if (storage) {
-      const customChannels = channels.filter((c) => c.isCustom || c.type === 'custom')
-      storage.setItem(SAVED_CUSTOM_CHANNELS_STORAGE_KEY, JSON.stringify(customChannels))
-    }
-  } catch (e) {}
 }
 
 const loadSavedDmChannels = (): Channel[] => {
@@ -162,13 +137,12 @@ const persistDmsAndChannels = (messages: ChatMessage[], channels: Channel[]) => 
   } catch (e) {}
 }
 
-const savedCustomChannels = loadSavedCustomChannels()
 const savedChannels = loadSavedDmChannels()
 const savedMessages = loadSavedDmMessages()
 const savedLastRead = loadSavedLastRead()
 
 export const useChatStore = create<ChatStore>((set, get) => ({
-  channels: [...DEFAULT_CHANNELS, ...savedCustomChannels, ...savedChannels],
+  channels: [...DEFAULT_CHANNELS, ...savedChannels],
   activeChannelId: 'general',
   messages: [
     {
@@ -723,65 +697,5 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
     }
     return null
-  },
-
-  createChannel: (name: string, description?: string) => {
-    const rawClean = name.trim().toLowerCase().replace(/^[#\s]+/, '').replace(/[^a-z0-9-_]/g, '-')
-    const cleanName = rawClean || 'novo-canal'
-    const channelId = `custom-${cleanName}-${Date.now().toString(36)}`
-    const local = useGameStore.getState().localPlayer
-    const newChannel: Channel = {
-      id: channelId,
-      name: cleanName,
-      type: 'custom',
-      description: description?.trim() || `Canal #${cleanName}`,
-      unreadCount: 0,
-      isCustom: true,
-      createdBy: local?.name || local?.id || 'Usuário',
-    }
-
-    set((state) => {
-      if (state.channels.some((c) => c.id === channelId || c.name.toLowerCase() === cleanName.toLowerCase())) {
-        return state
-      }
-      const updatedChannels = [...state.channels, newChannel]
-      persistCustomChannels(updatedChannels)
-      return {
-        channels: updatedChannels,
-        activeChannelId: newChannel.id,
-      }
-    })
-
-    try {
-      PeerManager.getInstance().sendCreateChannel(newChannel)
-    } catch (e) {}
-
-    return newChannel
-  },
-
-  addChannel: (channel: Channel) => {
-    set((state) => {
-      if (state.channels.some((c) => c.id === channel.id || (c.type === 'custom' && c.name.toLowerCase() === channel.name.toLowerCase()))) {
-        return state
-      }
-      const updated = [...state.channels, { ...channel, isCustom: true, type: channel.type || 'custom' }]
-      persistCustomChannels(updated)
-      return { channels: updated }
-    })
-  },
-
-  removeChannel: (channelId: string) => {
-    set((state) => {
-      const updated = state.channels.filter((c) => c.id !== channelId)
-      persistCustomChannels(updated)
-      return {
-        channels: updated,
-        activeChannelId: state.activeChannelId === channelId ? 'general' : state.activeChannelId,
-      }
-    })
-
-    try {
-      PeerManager.getInstance().sendDeleteChannel(channelId)
-    } catch (e) {}
   },
 }))

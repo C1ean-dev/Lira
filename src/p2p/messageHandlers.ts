@@ -366,20 +366,6 @@ export function processNetworkMessage(
       break
     }
 
-    case 'CHANNEL_CREATE': {
-      if (msg.payload.channel) {
-        useChatStore.getState().addChannel(msg.payload.channel)
-      }
-      break
-    }
-
-    case 'CHANNEL_DELETE': {
-      if (msg.payload.channelId) {
-        useChatStore.getState().removeChannel(msg.payload.channelId)
-      }
-      break
-    }
-
     case 'REACTION': {
       useGameStore.getState().addReaction(msg.payload.reaction)
       break

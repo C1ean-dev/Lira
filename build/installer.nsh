@@ -21,4 +21,3 @@
   SetOutPath "$INSTDIR"
   ExecShell "" "$appExe"
 !macroend
-

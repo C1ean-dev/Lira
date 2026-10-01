@@ -1,11 +1,11 @@
 import React, { useState } from 'react'
 import { MousePointerClick, Check, Pencil, Trash2, Trash, Settings, Shield, Crown, Lock, Unlock, Scissors, FolderInput, Download } from 'lucide-react'
-import { PixelArtThumbnail } from '../PixelArtThumbnail'
+import { PixelArtThumbnail } from '../../PixelArtThumbnail'
 import { WallType, PrivateZone, MapData } from '../../../types/map'
 import { useMapStore } from '../../../store/useMapStore'
 import { PeerManager } from '../../../p2p/PeerManager'
-import { RoomSettingsModal } from '../../../components/room/RoomSettingsModal'
-import { ConfirmModal } from '../../../components/common/ConfirmModal'
+import { RoomSettingsModal } from '../../../components/RoomSettingsModal'
+import { ConfirmModal } from '../../../components/ConfirmModal'
 
 interface Props {
   activeTool: string

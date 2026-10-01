@@ -131,14 +131,10 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
       {/* Header: User identity */}
       <div className="flex items-center gap-2.5 px-2.5 py-2 mb-1.5 border-b border-[#2a3142]/80">
         <div
-          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-sm border border-white/20 shrink-0 overflow-hidden"
+          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-sm border border-white/20 shrink-0"
           style={{ backgroundColor: user.shirtColor || '#4f46e5' }}
         >
-          {user.profilePhoto ? (
-            <img src={user.profilePhoto} alt={user.name} className="w-full h-full object-cover" />
-          ) : (
-            user.name.charAt(0).toUpperCase()
-          )}
+          {user.name.charAt(0).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
           <div className="text-xs font-bold text-white truncate flex items-center gap-1.5">

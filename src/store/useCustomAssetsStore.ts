@@ -5,7 +5,6 @@ import { PeerManager } from '../p2p/PeerManager'
 import nativeAssetsData from '../data/nativeAssets.json'
 import { Direction } from '../types/game'
 import { bakeLayersToDataUrl } from '../utils/imageResize'
-import { notifyAssetLoaded } from '../utils/avatarSnapshot'
 
 const ASSETS_STORAGE_KEY = 'gather_v2_custom_user_assets'
 const CATEGORIES_STORAGE_KEY = 'gather_v2_custom_categories'
@@ -41,11 +40,6 @@ export function getCustomAssetImage(dataUrl: string): HTMLImageElement | null {
   const img = new Image()
   img.src = dataUrl
   imageCache.set(dataUrl, img)
-  if (!img.complete) {
-    img.addEventListener('load', () => {
-      notifyAssetLoaded()
-    }, { once: true })
-  }
   return img
 }
 
