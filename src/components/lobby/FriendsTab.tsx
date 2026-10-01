@@ -17,6 +17,7 @@ import { FriendProfile } from '../../types/game'
 import { useGameStore } from '../../store/useGameStore'
 import { useChatStore, getDmChannelId } from '../../store/useChatStore'
 import { FriendsPresenceService } from '../../services/friendsPresenceService'
+import { PlayerAvatar } from '../common/PlayerAvatar'
 
 interface Props {
   onOpenChat: (friend: FriendProfile) => void
@@ -277,15 +278,13 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                   className="p-2.5 bg-[#181c28]/80 border border-slate-800 hover:border-indigo-500/30 rounded-xl flex items-center justify-between gap-2 transition-all"
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    <div
-                      className="w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs text-white shrink-0 border border-white/10"
-                      style={{
-                        backgroundColor:
-                          user.avatar?.shirtColor || user.avatar?.topColor || '#6366f1',
-                      }}
-                    >
-                      {user.name.charAt(0).toUpperCase()}
-                    </div>
+                    <PlayerAvatar
+                      player={user}
+                      name={user.name}
+                      avatar={user.avatar}
+                      profilePicture={(user as any).profilePicture}
+                      size="sm"
+                    />
                     <div className="min-w-0">
                       <div className="text-xs font-bold text-slate-200 truncate">
                         {user.name}
@@ -413,20 +412,12 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                     >
                       {/* Left: Avatar & Details */}
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="relative shrink-0">
-                          <div
-                            className="w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-sm text-white border border-white/20 shadow-md"
-                            style={{
-                              backgroundColor:
-                                friend.avatar?.shirtColor || friend.avatar?.topColor || '#10b981',
-                            }}
-                          >
-                            {friend.name.charAt(0).toUpperCase()}
-                          </div>
-                          <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 ring-2 ring-[#12151d] flex items-center justify-center">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-200 animate-pulse" />
-                          </span>
-                        </div>
+                        <PlayerAvatar
+                          player={friend}
+                          showStatus={true}
+                          status="available"
+                          size="md"
+                        />
 
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
@@ -558,18 +549,13 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                     >
                       {/* Left: Avatar & Details */}
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="relative shrink-0">
-                          <div
-                            className="w-9 h-9 rounded-2xl flex items-center justify-center font-bold text-xs text-white border border-white/10 opacity-70"
-                            style={{
-                              backgroundColor:
-                                friend.avatar?.shirtColor || friend.avatar?.topColor || '#475569',
-                            }}
-                          >
-                            {friend.name.charAt(0).toUpperCase()}
-                          </div>
-                          <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-slate-600 ring-2 ring-[#12151d]" />
-                        </div>
+                        <PlayerAvatar
+                          player={friend}
+                          showStatus={true}
+                          status="offline"
+                          size="sm"
+                          className="opacity-75"
+                        />
 
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">

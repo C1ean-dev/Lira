@@ -77,6 +77,7 @@ export function knockOnLockedDoor(zone: PrivateZone) {
       zoneName: zone.name,
       requesterId: localPlayer.id,
       requesterName: localPlayer.name,
+      requesterProfilePicture: localPlayer.profilePicture,
       requesterAvatar: localPlayer.avatar,
       timestamp: Date.now(),
     }

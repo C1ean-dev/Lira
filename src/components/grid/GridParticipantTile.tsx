@@ -4,6 +4,8 @@ import { useMediaStore } from '../../store/useMediaStore'
 import { useUserNetworkQuality } from '../../store/useNetworkQualityStore'
 import { NetworkSignalIcon } from '../NetworkSignalIcon'
 import { attachStreamToVideo } from '../../media/attachVideoElement'
+import { AvatarConfig } from '../../types/game'
+import { PlayerAvatar } from '../common/PlayerAvatar'
 
 export interface ParticipantData {
   id: string
@@ -18,6 +20,8 @@ export interface ParticipantData {
   isLocal?: boolean
   isScreenSharing?: boolean
   isSpeaking?: boolean
+  profilePicture?: string
+  avatar?: AvatarConfig
   shirtColor?: string
   statusEmoji?: string
   callState?: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed'
@@ -148,12 +152,13 @@ export const GridParticipantTile: React.FC<Props> = ({
               }`}
             />
             {user.isCameraOff && (
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-md border border-white/20"
-                style={{ backgroundColor: user.shirtColor || '#4c6ef5' }}
-              >
-                {user.name.charAt(0).toUpperCase()}
-              </div>
+              <PlayerAvatar
+                name={user.name}
+                profilePicture={user.profilePicture}
+                avatar={user.avatar}
+                size="sm"
+                className="w-8 h-8 rounded-full"
+              />
             )}
           </>
         )}
@@ -276,12 +281,13 @@ export const GridParticipantTile: React.FC<Props> = ({
           {/* Camera Off Avatar Screen */}
           {user.isCameraOff && (
             <div className="flex flex-col items-center gap-3">
-              <div
-                className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-extrabold text-white shadow-2xl border-2 border-white/20"
-                style={{ backgroundColor: user.shirtColor || '#4c6ef5' }}
-              >
-                {user.name.charAt(0).toUpperCase()}
-              </div>
+              <PlayerAvatar
+                name={user.name}
+                profilePicture={user.profilePicture}
+                avatar={user.avatar}
+                size="2xl"
+                className="w-20 h-20 rounded-full shadow-2xl border-2 border-white/20"
+              />
               <div className="text-sm font-semibold text-slate-300 flex items-center gap-1.5">
                 <span>{user.name}</span>
               </div>

@@ -87,6 +87,7 @@ export const DoorKnockPrompt: React.FC = () => {
       zoneName: lockedZone.name,
       requesterId: localPlayer.id,
       requesterName: localPlayer.name,
+      requesterProfilePicture: localPlayer.profilePicture,
       requesterAvatar: localPlayer.avatar,
       timestamp: Date.now(),
     }

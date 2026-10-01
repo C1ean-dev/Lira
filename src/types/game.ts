@@ -182,6 +182,7 @@ export interface Player {
    */
   gameId?: string
   name: string
+  profilePicture?: string
   x: number // grid or pixel coords
   y: number
   targetX?: number
@@ -264,6 +265,7 @@ export interface RoomKnockRequest {
   zoneName: string
   requesterId: string
   requesterName: string
+  requesterProfilePicture?: string
   requesterAvatar?: AvatarConfig
   timestamp: number
 }
@@ -273,6 +275,7 @@ export type KnockStatus = 'idle' | 'knocking' | 'approved' | 'denied'
 export interface FriendProfile {
   id: string
   name: string
+  profilePicture?: string
   avatar?: AvatarConfig
   gameId?: string
   actualUserId?: string

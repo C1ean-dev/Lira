@@ -23,6 +23,7 @@ import { CURRENT_APP_VERSION } from '../services/updateService'
 import { NetworkSignalIcon } from './NetworkSignalIcon'
 import { useNetworkQualityStore } from '../store/useNetworkQualityStore'
 import { STATUS_META } from '../types/game'
+import { PlayerAvatar } from './common/PlayerAvatar'
 
 interface Props {
   onOpenAvatarModal: () => void
@@ -44,7 +45,8 @@ export const TopNavBar: React.FC<Props> = ({
   // Granular selectors: subscribing to whole localPlayer/remotePlayers would
   // re-render this bar at 60Hz on every movement frame. Select only UI fields.
   const localPlayerName = useGameStore((s) => s.localPlayer.name)
-  const localPlayerAvatarColor = useGameStore((s) => s.localPlayer.avatar?.shirtColor)
+  const localPlayerProfilePicture = useGameStore((s) => s.localPlayer.profilePicture)
+  const localPlayerAvatar = useGameStore((s) => s.localPlayer.avatar)
   const localPlayerStatus = useGameStore((s) => s.localPlayer.status)
   const localPlayerStatusText = useGameStore((s) => s.localPlayer.statusText)
   const localPlayerCurrentZoneId = useGameStore((s) => s.localPlayer.currentZoneId)
@@ -326,19 +328,14 @@ export const TopNavBar: React.FC<Props> = ({
           onClick={onOpenAvatarModal}
           className="flex items-center gap-2 pl-2 pr-3 py-1 bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] rounded-xl transition-all group"
         >
-          <div className="relative">
-            <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs text-white border border-white/20"
-              style={{ backgroundColor: localPlayerAvatarColor || '#4c6ef5' }}
-            >
-              {localPlayerName.charAt(0).toUpperCase()}
-            </div>
-            <div
-              className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-[#12151d] ${
-                STATUS_META[localPlayerStatus || 'available'].dotColor
-              }`}
-            />
-          </div>
+          <PlayerAvatar
+            name={localPlayerName}
+            profilePicture={localPlayerProfilePicture}
+            avatar={localPlayerAvatar}
+            status={localPlayerStatus}
+            showStatus={true}
+            size="sm"
+          />
           <div className="text-left">
             <div className="text-xs font-bold text-slate-200 group-hover:text-white leading-tight">
               {localPlayerName}

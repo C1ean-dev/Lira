@@ -11,6 +11,7 @@ const FRIEND_PROFILES_STORAGE_KEY = 'gather_v2_friend_profiles'
 interface SavedProfile {
   id?: string
   name?: string
+  profilePicture?: string
   avatar?: AvatarConfig
   status?: PresenceStatus
   statusText?: string
@@ -287,6 +288,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         nextProfiles[playerId] = {
           id: playerId,
           name: profileData?.name || remote?.name || 'Amigo',
+          profilePicture: profileData?.profilePicture || remote?.profilePicture,
           avatar: profileData?.avatar || remote?.avatar,
           gameId: profileData?.gameId || remote?.gameId,
           lastSeen: Date.now(),
@@ -448,6 +450,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       canKick: false,
     },
     avatar: saved.avatar ? { ...DEFAULT_AVATAR, ...saved.avatar } : { ...DEFAULT_AVATAR },
+    profilePicture: saved.profilePicture || '',
     ...sanitizePresence(saved, { allowManualAway: true }),
     currentZoneId: null,
     lastUpdated: Date.now(),
@@ -457,10 +460,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   setLocalPlayer: (data) => {
-    if (data.name !== undefined || data.avatar !== undefined) {
+    if (data.name !== undefined || data.avatar !== undefined || data.profilePicture !== undefined) {
       saveProfile({
         name: data.name,
         avatar: data.avatar,
+        profilePicture: data.profilePicture,
       })
     }
     set((state) => ({
@@ -566,9 +570,31 @@ export const useGameStore = create<GameStore>((set, get) => ({
   remotePlayers: {},
 
   setRemotePlayer: (player) =>
-    set((state) => ({
-      remotePlayers: { ...state.remotePlayers, [player.id]: player },
-    })),
+    set((state) => {
+      const nextRemote = { ...state.remotePlayers, [player.id]: player }
+      if (state.friendProfiles[player.id] || (player.gameId && state.friendProfiles[player.gameId])) {
+        const key = state.friendProfiles[player.id] ? player.id : player.gameId!
+        const existingFp = state.friendProfiles[key]
+        const nextProfiles = {
+          ...state.friendProfiles,
+          [key]: {
+            ...existingFp,
+            name: player.name || existingFp.name,
+            profilePicture: player.profilePicture !== undefined ? player.profilePicture : existingFp.profilePicture,
+            avatar: player.avatar || existingFp.avatar,
+            lastSeen: Date.now(),
+          },
+        }
+        try {
+          const storage = getStorage()
+          if (storage) {
+            storage.setItem(FRIEND_PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles))
+          }
+        } catch (e) {}
+        return { remotePlayers: nextRemote, friendProfiles: nextProfiles }
+      }
+      return { remotePlayers: nextRemote }
+    }),
 
   updateRemotePlayerPosition: (id, x, y, direction, isMoving) =>
     set((state) => {

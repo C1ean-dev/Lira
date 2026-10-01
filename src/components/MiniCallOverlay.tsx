@@ -38,6 +38,8 @@ import { ParticipantContextMenu } from './grid/ParticipantContextMenu'
 import { ParticipantData } from './grid/GridParticipantTile'
 import { NetworkSignalIcon } from './NetworkSignalIcon'
 import { useUserNetworkQuality } from '../store/useNetworkQualityStore'
+import { AvatarConfig } from '../types/game'
+import { PlayerAvatar } from './common/PlayerAvatar'
 
 interface VideoTileProps {
   id?: string
@@ -50,6 +52,8 @@ interface VideoTileProps {
   isLocal?: boolean
   isScreenSharing?: boolean
   isScreenTrack?: boolean
+  profilePicture?: string
+  avatar?: AvatarConfig
   color?: string
   callState?: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed'
   onRetryCall?: () => void
@@ -69,6 +73,8 @@ const VideoTile: React.FC<VideoTileProps> = ({
   isLocal,
   isScreenSharing,
   isScreenTrack,
+  profilePicture,
+  avatar,
   color,
   callState,
   onRetryCall,
@@ -145,12 +151,13 @@ const VideoTile: React.FC<VideoTileProps> = ({
 
       {/* Camera Off Avatar Fallback */}
       {isCameraOff && !isScreenSharing && !isScreenTrack && (
-        <div
-          className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shadow-md border border-white/20"
-          style={{ backgroundColor: color || '#4c6ef5' }}
-        >
-          {name.charAt(0).toUpperCase()}
-        </div>
+        <PlayerAvatar
+          name={name}
+          profilePicture={profilePicture}
+          avatar={avatar}
+          size="md"
+          className="w-10 h-10 rounded-full"
+        />
       )}
 
       {/* Top Live Badge */}
@@ -652,6 +659,8 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               isCameraOff={isCameraOff}
               isLocal={true}
               isScreenSharing={false}
+              profilePicture={localPlayer.profilePicture}
+              avatar={localPlayer.avatar}
               suppressAudio={suppressAudio}
               color={localPlayer.avatar.shirtColor}
               onClick={() => setGridCallOpen(true)}
@@ -702,6 +711,8 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                 isLocal={false}
                 isScreenSharing={peer.isScreenSharing}
                 isScreenTrack={peer.isScreenSharing}
+                profilePicture={peer.profilePicture}
+                avatar={peer.avatar}
                 suppressAudio={suppressAudio}
                 color={peer.avatar.shirtColor}
                 callState={callStates[peer.id] || peer.callState || 'idle'}

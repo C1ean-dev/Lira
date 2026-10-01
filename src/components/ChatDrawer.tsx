@@ -28,6 +28,7 @@ import { useMediaStore } from '../store/useMediaStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { ChatMessage, ChatAttachment } from '../types/chat'
 import { FriendRequestCard } from './chat/FriendRequestCard'
+import { PlayerAvatar } from './common/PlayerAvatar'
 
 function formatFileSize(bytes: number): string {
   if (!bytes || bytes < 1024) return `${bytes || 0} B`
@@ -77,7 +78,7 @@ const ChatDrawerInner: React.FC = () => {
     respondToFriendRequest,
   } = useChatStore()
 
-  const { localPlayer, remotePlayers } = useGameStore()
+  const { localPlayer, remotePlayers, friendProfiles } = useGameStore()
   const isGridCallOpen = useMediaStore((s) => s.isGridCallOpen)
 
   const [inputMessage, setInputMessage] = useState('')
@@ -464,15 +465,13 @@ const ChatDrawerInner: React.FC = () => {
                     }`}
                   >
                     <div className="flex items-center gap-2 truncate">
-                      <div className="relative shrink-0">
-                        <div
-                          className="w-5 h-5 rounded-full border border-white/20 flex items-center justify-center text-[10px] font-bold text-white shadow-sm"
-                          style={{ backgroundColor: player.avatar?.shirtColor || player.avatar?.topColor || '#4c6ef5' }}
-                        >
-                          {player.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 ring-1 ring-[#0d1017]" />
-                      </div>
+                      <PlayerAvatar
+                        player={player}
+                        showStatus={true}
+                        status="available"
+                        size="xs"
+                        className="rounded-full"
+                      />
                       <span className="truncate text-xs">{player.name}</span>
                     </div>
                     {unreadCount > 0 && (
@@ -511,12 +510,14 @@ const ChatDrawerInner: React.FC = () => {
                     }`}
                   >
                     <div className="flex items-center gap-2 truncate">
-                      <div className="relative shrink-0">
-                        <div className="w-5 h-5 rounded-full bg-slate-700 border border-white/10 flex items-center justify-center text-[10px] font-bold text-slate-300">
-                          {dm.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-slate-500 ring-1 ring-[#0d1017]" />
-                      </div>
+                      <PlayerAvatar
+                        name={dm.name}
+                        player={friendProfiles[dm.id] || Object.values(friendProfiles).find((f) => f.name.toLowerCase() === dm.name.toLowerCase())}
+                        showStatus={true}
+                        status="offline"
+                        size="xs"
+                        className="rounded-full opacity-70"
+                      />
                       <span className="truncate text-xs">{dm.name}</span>
                     </div>
                     {dm.unreadCount > 0 && (
@@ -644,11 +645,25 @@ const ChatDrawerInner: React.FC = () => {
 
                 return (
                   <div key={msg.id} className="group relative flex flex-col space-y-1">
-                    <div className="flex items-baseline justify-between">
-                      <span className={`text-xs font-semibold ${isMine ? 'text-indigo-400' : 'text-slate-300'}`}>
-                        {msg.senderName}
-                      </span>
-                      <span className="text-[10px] text-slate-400">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <PlayerAvatar
+                          player={
+                            isMine
+                              ? localPlayer
+                              : remotePlayers[msg.senderId] ||
+                                Object.values(remotePlayers).find((p) => p.name === msg.senderName) ||
+                                Object.values(friendProfiles).find((f) => f.name === msg.senderName)
+                          }
+                          name={msg.senderName}
+                          size="xs"
+                          className="rounded-full"
+                        />
+                        <span className={`text-xs font-semibold truncate ${isMine ? 'text-indigo-400' : 'text-slate-300'}`}>
+                          {msg.senderName}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 shrink-0">
                         {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>

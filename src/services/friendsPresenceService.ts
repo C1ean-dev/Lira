@@ -8,6 +8,7 @@ export interface UserPresence {
   userId: string
   gameId?: string
   name: string
+  profilePicture?: string
   avatar?: any
   status?: string
   statusText?: string
@@ -163,6 +164,7 @@ export class FriendsPresenceService {
     if (gameStore.friendProfiles[p.userId] || gameStore.friends.includes(p.userId)) {
       gameStore.updateFriendProfile(p.userId, {
         name: p.name,
+        profilePicture: p.profilePicture,
         avatar: p.avatar,
         gameId: p.gameId,
         actualUserId: p.userId,
@@ -182,6 +184,7 @@ export class FriendsPresenceService {
             lastSeen: Date.now(),
             lastRoomCode: p.roomCode || undefined,
             lastRoomName: p.roomName || undefined,
+            profilePicture: p.profilePicture || profile.profilePicture,
             avatar: p.avatar || profile.avatar,
           })
         }
@@ -208,6 +211,7 @@ export class FriendsPresenceService {
       userId: local.id,
       gameId: local.gameId,
       name: local.name,
+      profilePicture: local.profilePicture,
       avatar: local.avatar,
       status: local.status,
       statusText: local.statusText,

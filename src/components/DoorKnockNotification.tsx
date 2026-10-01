@@ -5,6 +5,7 @@ import { useMapStore } from '../store/useMapStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { RoomKnockRequest } from '../types/game'
 import { sendNotification } from '../services/notificationService'
+import { PlayerAvatar } from './common/PlayerAvatar'
 
 function playKnockSound() {
   try {
@@ -126,15 +127,12 @@ export const DoorKnockNotification: React.FC = () => {
 
           {/* User Info */}
           <div className="flex items-center gap-3 bg-[#1b202c]/80 p-2.5 rounded-xl border border-[#2a3142]">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-base shadow-inner shrink-0"
-              style={{
-                backgroundColor:
-                  knock.requesterAvatar?.shirtColor || '#4f46e5',
-              }}
-            >
-              {knock.requesterName.charAt(0).toUpperCase()}
-            </div>
+            <PlayerAvatar
+              name={knock.requesterName}
+              profilePicture={knock.requesterProfilePicture}
+              avatar={knock.requesterAvatar}
+              size="lg"
+            />
             <div className="flex flex-col min-w-0 flex-1">
               <span className="text-sm font-bold text-white truncate">
                 {knock.requesterName}
