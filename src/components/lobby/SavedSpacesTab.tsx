@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Plus, LayoutGrid, Check, X, Shield, Copy, ArrowRight, Edit2, Trash2, RefreshCw } from 'lucide-react'
+import { Plus, LayoutGrid, Check, X, Copy, ArrowRight, Edit2, Trash2 } from 'lucide-react'
 import { SavedSpace } from '../../store/useSavedSpacesStore'
 import { ConfirmModal } from '../ConfirmModal'
 
@@ -17,8 +17,8 @@ interface Props {
   handleCreateNewSpace: () => void
   duplicateSavedSpace: (spaceId: string) => void
   deleteSavedSpace: (spaceId: string) => void
-  copiedRoomCode: string | null
-  handleCopyCode: (e: React.MouseEvent, code: string) => void
+  copiedRoomCode?: string | null
+  handleCopyCode?: (e: React.MouseEvent, code: string) => void
   loading: boolean
   error?: string | null
   handleRegenerateCode?: (spaceId: string) => void
@@ -141,48 +141,18 @@ export const SavedSpacesTab: React.FC<Props> = ({
                       </button>
                     </div>
                   ) : (
-                    <div className="flex flex-col min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold truncate text-slate-200 group-hover:text-white transition-colors">
-                          {space.name}
-                        </span>
+                      <div className="flex flex-col min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold truncate text-slate-200 group-hover:text-white transition-colors">
+                            {space.name}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[10px] text-slate-400">
+                            {totalZones} {totalZones === 1 ? 'zona privada' : 'zonas privadas'} • {totalFurniture} {totalFurniture === 1 ? 'móvel' : 'móveis'}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] text-slate-400">
-                          {totalZones} {totalZones === 1 ? 'zona privada' : 'zonas privadas'} • {totalFurniture} {totalFurniture === 1 ? 'móvel' : 'móveis'}
-                        </span>
-                        {space.roomCode && (
-                          <div className="flex items-center gap-1">
-                            <span
-                              onClick={(e) => handleCopyCode(e, space.roomCode)}
-                              className="text-[10px] font-mono text-slate-400 hover:text-white bg-slate-900/90 hover:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-800 flex items-center gap-1 cursor-pointer transition-colors"
-                              title="Clique para copiar o ID Fixo desta sala para seus amigos"
-                            >
-                              <Shield className="w-2.5 h-2.5 text-indigo-400 shrink-0" />
-                              <span className="truncate max-w-[110px] sm:max-w-[160px]">{space.roomCode}</span>
-                              {copiedRoomCode === space.roomCode ? (
-                                <Check className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
-                              ) : (
-                                <Copy className="w-2.5 h-2.5 text-slate-500 shrink-0" />
-                              )}
-                            </span>
-                            {handleRegenerateCode && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleRegenerateCode(space.id)
-                                }}
-                                className="p-0.5 rounded text-slate-400 hover:text-indigo-300 hover:bg-slate-800 transition-colors"
-                                title="Gerar novo código para esta sala (caso a conexão anterior esteja presa no servidor P2P)"
-                              >
-                                <RefreshCw className="w-2.5 h-2.5" />
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
                   )}
                 </div>
 
