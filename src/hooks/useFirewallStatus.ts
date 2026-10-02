@@ -24,6 +24,7 @@ export function useFirewallStatus() {
         const allowed = !!res?.isAllowed
         setIsAllowed(allowed)
         if (allowed) {
+          setFeedback(null)
           try {
             window.localStorage.setItem(STORAGE_FIREWALL_ALLOWED, 'true')
           } catch (e) {}

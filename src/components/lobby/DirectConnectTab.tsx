@@ -47,7 +47,7 @@ export const DirectConnectTab: React.FC<Props> = ({
             onChange={(e) => setUserName(e.target.value)}
             placeholder="Ex: Lucas, Carol..."
             className="flex-1 bg-[#12151d] border border-[#2a3142] rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"
-            maxLength={18}
+            maxLength={32}
             required
           />
           <button

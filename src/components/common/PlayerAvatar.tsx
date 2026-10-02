@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { AvatarConfig, PresenceStatus, STATUS_META } from '../../types/game'
 import { getPlayerAvatarSrc } from '../../utils/avatarUtils'
+import { MoonPhaseIcon } from './MoonPhaseIcon'
 
 export interface PlayerAvatarProps {
   player?: {
@@ -27,7 +28,7 @@ const SIZE_MAP = {
   md: { container: 'w-9 h-9 rounded-xl text-sm', dot: 'w-2.5 h-2.5' },
   lg: { container: 'w-12 h-12 rounded-2xl text-base', dot: 'w-3 h-3' },
   xl: { container: 'w-16 h-16 rounded-2xl text-xl', dot: 'w-3.5 h-3.5' },
-  '2xl': { container: 'w-20 h-20 rounded-full text-2xl', dot: 'w-4 h-4' },
+  '2xl': { container: 'w-20 h-20 rounded-full text-2xl', dot: 'w-5 h-5' },
 }
 
 export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
@@ -85,7 +86,7 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
           alt={alt || effectiveName}
           onError={() => setImgError(true)}
           className={`w-full h-full ${
-            hasCustomPic ? 'object-cover' : 'object-contain pixelated scale-110'
+            hasCustomPic ? 'object-cover' : 'object-contain pixelated'
           }`}
           loading="lazy"
         />
@@ -100,16 +101,12 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
 
       {showStatus && (
         <div
-          className={`absolute -bottom-0.5 -right-0.5 rounded-full ring-2 ring-[#12151d] ${statusClasses(
-            statusMeta.dotColor
-          )} ${sizeClasses.dot}`}
-          title={`Status: ${statusMeta.label}`}
-        />
+          className={`absolute -bottom-0.5 -right-0.5 rounded-full ring-2 ring-[#12151d] overflow-hidden flex items-center justify-center bg-[#12151d] ${sizeClasses.dot}`}
+          title={`Status: ${statusMeta.label}${(statusMeta as any).moonPhase ? ` (${(statusMeta as any).moonPhase})` : ''}`}
+        >
+          <MoonPhaseIcon status={effectiveStatus} className="w-full h-full" withBackground={true} />
+        </div>
       )}
     </div>
   )
-}
-
-function statusClasses(dotColor: string): string {
-  return dotColor || 'bg-emerald-500'
 }

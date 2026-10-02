@@ -426,6 +426,11 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
     const nextState = !get().isNoiseSuppressionEnabled
     saveAudioSettings({ isNoiseSuppressionEnabled: nextState })
     set({ isNoiseSuppressionEnabled: nextState })
+    try {
+      import('../media/MediaManager').then(({ MediaManager }) => {
+        MediaManager.getInstance().updateNoiseSuppression(nextState)
+      }).catch(() => {})
+    } catch {}
   },
 
   toggleGridCall: () => set((state) => ({ isGridCallOpen: !state.isGridCallOpen })),
