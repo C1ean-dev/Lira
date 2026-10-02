@@ -4,8 +4,13 @@ import { AvatarRenderer } from '../engine/AvatarRenderer'
 
 const avatarSnapshotCache = new Map<string, string>()
 
+export function clearAvatarSnapshotCache(): void {
+  avatarSnapshotCache.clear()
+}
+
 /**
  * Renders an avatar configuration onto an offscreen canvas and returns a PNG data URL.
+ * Automatically centers the character bounding box and scales to fit circular avatar containers.
  * Memoized by avatar serialization and target size.
  */
 export function renderAvatarSnapshot(avatar?: AvatarConfig, targetSize: number = 64): string {

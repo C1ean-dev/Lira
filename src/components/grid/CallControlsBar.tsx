@@ -12,7 +12,37 @@ import {
   Headphones,
   Sliders,
   StopCircle,
+  Sparkles,
+  Cpu,
+  Feather,
+  Check,
+  Power,
+  AudioLines,
 } from 'lucide-react'
+
+const NOISE_ENGINES = [
+  {
+    id: 'rnnoise' as const,
+    name: 'RNNoise Neural',
+    badge: 'IA',
+    desc: 'Rede neural treinada (Xiph)',
+    icon: Cpu,
+  },
+  {
+    id: 'soft' as const,
+    name: 'DSP Suave',
+    badge: 'Natural',
+    desc: 'Preserva voz suave e consoantes',
+    icon: Feather,
+  },
+  {
+    id: 'classic' as const,
+    name: 'DSP Clássico',
+    badge: 'Leve',
+    desc: 'Corte agressivo, menor uso de CPU',
+    icon: Sliders,
+  },
+]
 import { useMediaStore } from '../../store/useMediaStore'
 import { useGameStore } from '../../store/useGameStore'
 import { useMapStore } from '../../store/useMapStore'
@@ -36,10 +66,12 @@ export const CallControlsBar: React.FC<Props> = ({
   const isCameraOff = useMediaStore((s) => s.isCameraOff)
   const isScreenSharing = useMediaStore((s) => s.isScreenSharing)
   const isNoiseSuppressionEnabled = useMediaStore((s) => s.isNoiseSuppressionEnabled)
+  const audioProcessorMode = useMediaStore((s) => s.audioProcessorMode)
   const toggleMute = useMediaStore((s) => s.toggleMute)
   const toggleDeafen = useMediaStore((s) => s.toggleDeafen)
   const toggleCamera = useMediaStore((s) => s.toggleCamera)
   const toggleNoiseSuppression = useMediaStore((s) => s.toggleNoiseSuppression)
+  const setAudioProcessorMode = useMediaStore((s) => s.setAudioProcessorMode)
 
   const isChatOpen = useChatStore((state) => state.isChatOpen)
   const activeChannelId = useChatStore((state) => state.activeChannelId)
@@ -62,18 +94,26 @@ export const CallControlsBar: React.FC<Props> = ({
 
   const [isRoomSettingsOpen, setIsRoomSettingsOpen] = React.useState(false)
   const [isActiveStreamMenuOpen, setIsActiveStreamMenuOpen] = React.useState(false)
+  const [isNoiseMenuOpen, setIsNoiseMenuOpen] = React.useState(false)
   const streamMenuRef = React.useRef<HTMLDivElement>(null)
+  const noiseMenuRef = React.useRef<HTMLDivElement>(null)
 
-  // Fecha o mini-menu ao clicar fora ou pressionar ESC
+  // Fecha os mini-menus ao clicar fora ou pressionar ESC
   React.useEffect(() => {
-    if (!isActiveStreamMenuOpen) return
+    if (!isActiveStreamMenuOpen && !isNoiseMenuOpen) return
     const handleClickOutside = (e: MouseEvent) => {
       if (streamMenuRef.current && !streamMenuRef.current.contains(e.target as Node)) {
         setIsActiveStreamMenuOpen(false)
       }
+      if (noiseMenuRef.current && !noiseMenuRef.current.contains(e.target as Node)) {
+        setIsNoiseMenuOpen(false)
+      }
     }
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsActiveStreamMenuOpen(false)
+      if (e.key === 'Escape') {
+        setIsActiveStreamMenuOpen(false)
+        setIsNoiseMenuOpen(false)
+      }
     }
     window.addEventListener('mousedown', handleClickOutside)
     window.addEventListener('keydown', handleKeyDown)
@@ -81,7 +121,7 @@ export const CallControlsBar: React.FC<Props> = ({
       window.removeEventListener('mousedown', handleClickOutside)
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [isActiveStreamMenuOpen])
+  }, [isActiveStreamMenuOpen, isNoiseMenuOpen])
 
   return (
     <>
@@ -150,6 +190,143 @@ export const CallControlsBar: React.FC<Props> = ({
         >
           <Headphones className="w-4 h-4" />
         </button>
+
+        {/* Supressor de Ruído (Noise Suppression) com Menu Suspenso */}
+        <div className="relative">
+          <button
+            onClick={() => setIsNoiseMenuOpen((prev) => !prev)}
+            className={`p-3 rounded-xl flex items-center justify-center transition-all ${
+              isNoiseSuppressionEnabled
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30 shadow-lg shadow-emerald-500/10'
+                : 'bg-[#1b202c] text-slate-400 border border-[#2a3142] hover:bg-slate-700 hover:text-slate-200'
+            }`}
+            title={
+              isNoiseSuppressionEnabled
+                ? `Supressor de Ruído Ativo (${
+                    audioProcessorMode === 'rnnoise'
+                      ? 'RNNoise Neural'
+                      : audioProcessorMode === 'soft'
+                      ? 'DSP Suave'
+                      : 'DSP Clássico'
+                  }) - Clique para alternar motor`
+                : 'Ativar / Configurar Supressor de Ruído'
+            }
+          >
+            <AudioLines className={`w-4 h-4 ${isNoiseSuppressionEnabled ? 'text-emerald-400' : ''}`} />
+          </button>
+
+          {/* Menu compacto para alternar entre os supressores de ruído */}
+          {isNoiseMenuOpen && (
+            <div
+              ref={noiseMenuRef}
+              className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-60 bg-[#12151d]/95 backdrop-blur-xl border border-[#2a3142] rounded-2xl shadow-2xl p-1.5 z-50 select-none animate-in fade-in zoom-in-95 duration-150"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-2.5 py-1 text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center justify-between border-b border-[#2a3142]/60 mb-1">
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      isNoiseSuppressionEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-500'
+                    }`}
+                  />
+                  <span>Supressor de Ruído</span>
+                </div>
+                <span
+                  className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                    isNoiseSuppressionEnabled
+                      ? 'bg-emerald-500/20 text-emerald-300'
+                      : 'bg-slate-700/60 text-slate-400'
+                  }`}
+                >
+                  {isNoiseSuppressionEnabled ? 'Ativo' : 'Desligado'}
+                </span>
+              </div>
+
+              <div className="space-y-0.5">
+                {NOISE_ENGINES.map((engine) => {
+                  const isSelected = isNoiseSuppressionEnabled && audioProcessorMode === engine.id
+                  const Icon = engine.icon
+                  return (
+                    <button
+                      key={engine.id}
+                      type="button"
+                      onClick={async () => {
+                        setIsNoiseMenuOpen(false)
+                        if (!isNoiseSuppressionEnabled) {
+                          toggleNoiseSuppression()
+                          MediaManager.getInstance().updateNoiseSuppression(true)
+                        }
+                        if (audioProcessorMode !== engine.id) {
+                          setAudioProcessorMode(engine.id)
+                          await MediaManager.getInstance().reprocessStream()
+                        }
+                      }}
+                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded-xl text-xs font-medium transition-all text-left ${
+                        isSelected
+                          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold'
+                          : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Icon
+                          className={`w-3.5 h-3.5 shrink-0 ${
+                            isSelected ? 'text-emerald-400' : 'text-slate-400'
+                          }`}
+                        />
+                        <div className="flex flex-col min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate">{engine.name}</span>
+                            {engine.badge && (
+                              <span className="text-[8px] px-1 py-0.2 rounded bg-slate-800 text-slate-400 font-normal">
+                                {engine.badge}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[9px] text-slate-400 font-normal truncate">
+                            {engine.desc}
+                          </span>
+                        </div>
+                      </div>
+                      {isSelected && (
+                        <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 ml-1.5" />
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="my-1 border-t border-[#2a3142]/60" />
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsNoiseMenuOpen(false)
+                      if (isNoiseSuppressionEnabled) {
+                        toggleNoiseSuppression()
+                        MediaManager.getInstance().updateNoiseSuppression(false)
+                      }
+                    }}
+                    className={`w-full flex items-center justify-between px-2 py-1.5 rounded-xl text-xs font-medium transition-all text-left ${
+                      !isNoiseSuppressionEnabled
+                        ? 'bg-rose-500/15 text-rose-300 border border-rose-500/30 font-bold'
+                        : 'text-slate-400 hover:text-rose-300 hover:bg-rose-950/30 border border-transparent'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Power
+                        className={`w-3.5 h-3.5 shrink-0 ${
+                          !isNoiseSuppressionEnabled ? 'text-rose-400' : 'text-slate-500'
+                        }`}
+                      />
+                      <span>Supressor desligado</span>
+                    </div>
+                    {!isNoiseSuppressionEnabled && (
+                      <Check className="w-3.5 h-3.5 text-rose-400 shrink-0 ml-1.5" />
+                    )}
+                  </button>
+            </div>
+          )}
+        </div>
 
         {/* Camera */}
         <button

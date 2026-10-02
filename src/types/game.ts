@@ -4,39 +4,66 @@ export type PresenceStatus = 'available' | 'busy' | 'focusing' | 'away'
 
 export interface StatusMeta {
   label: string
+  moonPhase: string
+  moonEmoji: string
   dotColor: string
   hexColor: string
+  bgColor: string
 }
 
 export const STATUS_META: Record<PresenceStatus, StatusMeta> = {
   available: {
     label: 'Disponível',
-    dotColor: 'bg-emerald-500',
-    hexColor: '#22c55e',
-  },
-  busy: {
-    label: 'Ocupado',
-    dotColor: 'bg-rose-500',
-    hexColor: '#ef4444',
+    moonPhase: 'Terra',
+    moonEmoji: '🌍',
+    dotColor: 'bg-emerald-400',
+    hexColor: '#34d399',
+    bgColor: '#142e22',
   },
   focusing: {
-    label: 'Em Foco',
-    dotColor: 'bg-purple-500',
-    hexColor: '#a855f7',
+    label: 'Em foco',
+    moonPhase: 'Lua e silêncio',
+    moonEmoji: '🌙',
+    dotColor: 'bg-purple-400',
+    hexColor: '#c084fc',
+    bgColor: '#251a3a',
   },
   away: {
     label: 'Ausente',
-    dotColor: 'bg-amber-500',
-    hexColor: '#f59e0b',
+    moonPhase: 'Lua dourada',
+    moonEmoji: '🌕',
+    dotColor: 'bg-amber-400',
+    hexColor: '#fbbf24',
+    bgColor: '#352914',
+  },
+  busy: {
+    label: 'Ocupado',
+    moonPhase: 'Marte',
+    moonEmoji: '🪐',
+    dotColor: 'bg-rose-500',
+    hexColor: '#ef4444',
+    bgColor: '#35151b',
   },
 }
 
-export const STATUS_OPTIONS: { value: PresenceStatus; label: string; dotColor: string }[] = (
+export const STATUS_OPTIONS: {
+  value: PresenceStatus
+  label: string
+  moonPhase: string
+  moonEmoji: string
+  dotColor: string
+  hexColor: string
+  bgColor: string
+}[] = (
   Object.entries(STATUS_META) as [PresenceStatus, StatusMeta][]
 ).map(([value, meta]) => ({
   value,
   label: meta.label,
+  moonPhase: meta.moonPhase,
+  moonEmoji: meta.moonEmoji,
   dotColor: meta.dotColor,
+  hexColor: meta.hexColor,
+  bgColor: meta.bgColor,
 }))
 
 export interface PresenceInfo {

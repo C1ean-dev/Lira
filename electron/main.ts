@@ -1299,90 +1299,109 @@ function initNetworkTriggerAndLanDiscovery() {
   }
 }
 
-// IPCs para checagem e solicitação de liberação do Firewall do Windows
-ipcMain.handle('check-firewall-status', async () => {
-  if (process.platform !== 'win32') return { isAllowed: true }
+// Função auxiliar para verificar se as regras do Lira já estão liberadas no Firewall do Windows
+async function isFirewallRuleAllowed(): Promise<boolean> {
+  if (process.platform !== 'win32') return true
   return new Promise((resolve) => {
     const currentExe = process.execPath.replace(/'/g, "''")
+    // Consulta via COM HNetCfg.FwPolicy2 (não requer privilégios de Administrador)
+    // com fallback para netsh advfirewall
     const query = `
-$count = 0
-$byName = Get-NetFirewallRule -DisplayName '*Lira*','*Gather*' -ErrorAction SilentlyContinue | Where-Object { $_.Action -eq 'Allow' -and $_.Enabled -eq 'True' }
-if ($byName) { $count += @($byName).Count }
-
-$byApp = Get-NetFirewallApplicationFilter -Program '${currentExe}' -ErrorAction SilentlyContinue | Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object { $_.Action -eq 'Allow' -and $_.Enabled -eq 'True' }
-if ($byApp) { $count += @($byApp).Count }
-
-$localApp = Join-Path $env:LOCALAPPDATA 'Programs\\gather-v2-clone\\Lira.exe'
-if (Test-Path $localApp) {
-  $byLocal = Get-NetFirewallApplicationFilter -Program $localApp -ErrorAction SilentlyContinue | Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object { $_.Action -eq 'Allow' -and $_.Enabled -eq 'True' }
-  if ($byLocal) { $count += @($byLocal).Count }
+$isAllowed = $false
+try {
+  $fw = New-Object -ComObject HNetCfg.FwPolicy2
+  $targetExe = '${currentExe}'.ToLower()
+  $targetName = [System.IO.Path]::GetFileNameWithoutExtension($targetExe)
+  foreach ($r in $fw.Rules) {
+    if ($r.Enabled -and $r.Action -eq 1) {
+      $app = if ($r.ApplicationName) { $r.ApplicationName.ToLower() } else { '' }
+      $nm = if ($r.Name) { $r.Name.ToLower() } else { '' }
+      if ($app -eq $targetExe -or ($targetName -and ($app.Contains($targetName) -or $nm.Contains($targetName))) -or $app.EndsWith('\\lira.exe') -or $app.EndsWith('\\electron.exe') -or $nm.Contains('lira') -or $nm.Contains('gather')) {
+        $isAllowed = $true
+        break
+      }
+    }
+  }
+} catch {
+  try {
+    $out = netsh advfirewall firewall show rule name=all | Select-String -Pattern 'lira|gather|electron'
+    if ($out) { $isAllowed = $true }
+  } catch {}
 }
-
-Write-Output $count
+Write-Output $isAllowed
 `
     const encoded = Buffer.from(query, 'utf16le').toString('base64')
     exec(`powershell.exe -NoProfile -EncodedCommand ${encoded}`, (error, stdout) => {
       if (error) {
-        resolve({ isAllowed: false })
+        resolve(false)
         return
       }
-      const count = parseInt(stdout?.trim()) || 0
-      resolve({ isAllowed: count > 0 })
+      resolve(stdout?.trim().toLowerCase() === 'true')
     })
   })
+}
+
+// IPCs para checagem e solicitação de liberação do Firewall do Windows
+ipcMain.handle('check-firewall-status', async () => {
+  if (process.platform !== 'win32') return { isAllowed: true }
+  const isAllowed = await isFirewallRuleAllowed()
+  return { isAllowed }
 })
 
 ipcMain.handle('request-firewall-access', async () => {
   if (process.platform !== 'win32') return { success: true }
+
+  // 1. Se já estiver permitido, retorna sucesso imediatamente sem abrir UAC desnecessário
+  const alreadyAllowed = await isFirewallRuleAllowed()
+  if (alreadyAllowed) {
+    console.log('[Firewall] Regras já existentes e permitidas no Firewall.')
+    return { success: true }
+  }
+
   return new Promise((resolve) => {
     const currentExe = process.execPath.replace(/'/g, "''")
     // Script executado em processo com privilégios de Administrador (RunAs)
     const innerScript = `
-$ErrorActionPreference = 'Stop'
-$paths = @('${currentExe}')
-$localAppPath = Join-Path $env:LOCALAPPDATA 'Programs\\gather-v2-clone\\Lira.exe'
-if (Test-Path $localAppPath) {
-  $paths += $localAppPath
-}
-$paths = $paths | Select-Object -Unique
+$paths = @(
+  '${currentExe}',
+  (Join-Path $env:LOCALAPPDATA 'Programs\\lira\\Lira.exe'),
+  (Join-Path $env:LOCALAPPDATA 'Programs\\gather-v2-clone\\Lira.exe')
+) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
 
-# Remove regras anteriores do Lira se existirem para evitar duplicatas ou regras desatualizadas
-Get-NetFirewallRule -DisplayName 'Lira*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue
-
-$idx = 0
 foreach ($p in $paths) {
-  $ruleName = if ($idx -eq 0) { 'Lira' } else { "Lira ($idx)" }
-  try {
-    New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Program $p -Action Allow -Profile Any -Enabled True -ErrorAction Stop | Out-Null
-    New-NetFirewallRule -DisplayName "$ruleName Outbound" -Direction Outbound -Program $p -Action Allow -Profile Any -Enabled True -ErrorAction SilentlyContinue | Out-Null
-  } catch {
-    & netsh advfirewall firewall delete rule name="$ruleName" | Out-Null
-    & netsh advfirewall firewall delete rule name="$ruleName Outbound" | Out-Null
-    & netsh advfirewall firewall add rule name="$ruleName" dir=in action=allow program="$p" enable=yes profile=any | Out-Null
-    & netsh advfirewall firewall add rule name="$ruleName Outbound" dir=out action=allow program="$p" enable=yes profile=any | Out-Null
-  }
-  $idx++
+  & netsh advfirewall firewall delete rule name="Lira" program="$p" 2>$null | Out-Null
+  & netsh advfirewall firewall delete rule name="Lira Outbound" program="$p" 2>$null | Out-Null
+  & netsh advfirewall firewall add rule name="Lira" dir=in action=allow program="$p" enable=yes profile=any 2>$null | Out-Null
+  & netsh advfirewall firewall add rule name="Lira Outbound" dir=out action=allow program="$p" enable=yes profile=any 2>$null | Out-Null
 }
 exit 0
 `
     const innerB64 = Buffer.from(innerScript, 'utf16le').toString('base64')
 
-    // Dispara processo elevado (UAC) usando Start-Process -Verb RunAs com -EncodedCommand para evitar problemas de escape de aspas
+    // Dispara processo elevado (UAC) usando Start-Process -Verb RunAs
     const outerScript = `
 try {
-  $p = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList '-NoProfile', '-EncodedCommand', '${innerB64}'
+  $p = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -ArgumentList '-NoProfile', '-EncodedCommand', '${innerB64}'
   if ($p.ExitCode -eq 0) {
     exit 0
   } else {
     exit $p.ExitCode
   }
 } catch {
-  exit 1
+  exit 1223
 }
 `
     const outerB64 = Buffer.from(outerScript, 'utf16le').toString('base64')
 
-    exec(`powershell.exe -NoProfile -EncodedCommand ${outerB64}`, (error) => {
+    exec(`powershell.exe -NoProfile -EncodedCommand ${outerB64}`, async (error) => {
+      // Verifica se a regra passou a existir mesmo se houver sinalização de erro
+      const isNowAllowed = await isFirewallRuleAllowed()
+      if (isNowAllowed) {
+        console.log('[Firewall] Regra verificada com sucesso no Firewall do Windows!')
+        resolve({ success: true })
+        return
+      }
+
       if (error) {
         console.warn('[Firewall] Erro ou cancelamento pelo usuário:', error)
         resolve({

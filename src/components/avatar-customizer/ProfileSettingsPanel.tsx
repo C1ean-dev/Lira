@@ -3,6 +3,7 @@ import { Upload, Trash2, User, Sparkles, Check, Image as ImageIcon, Crop } from 
 import { AvatarConfig, PresenceStatus, STATUS_OPTIONS } from '../../types/game'
 import { PlayerAvatar } from '../common/PlayerAvatar'
 import { ImageCropModal } from '../common/ImageCropModal'
+import { MoonPhaseIcon } from '../common/MoonPhaseIcon'
 
 interface Props {
   name: string
@@ -219,26 +220,52 @@ export const ProfileSettingsPanel: React.FC<Props> = ({
       </div>
 
       {/* Presence Status Quick Selection */}
-      <div className="bg-[#1e1f22] p-4 rounded-2xl border border-[#383a40] flex flex-col gap-2.5">
-        <label className="text-xs font-bold text-slate-200">
-          Status de Disponibilidade
-        </label>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="bg-[#1e1f22] p-4 rounded-2xl border border-[#383a40] flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-bold text-slate-200">
+            Status de Disponibilidade
+          </label>
+          <span className="text-[10px] text-slate-400 font-medium">
+            Tema Cósmico
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {STATUS_OPTIONS.map((opt) => {
             const isSelected = status === opt.value
             return (
               <button
                 key={opt.value}
                 onClick={() => onChangeStatus(opt.value)}
-                className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-bold transition-all text-left ${
+                className={`relative flex flex-col items-center justify-center p-4 rounded-2xl border transition-all text-center group ${
                   isSelected
-                    ? 'bg-blue-600/20 border-blue-500/60 text-white shadow-sm'
-                    : 'bg-[#2b2d31] hover:bg-[#34373d] border-[#383a40] text-slate-300'
+                    ? 'bg-[#22242a] border-blue-500/80 ring-2 ring-blue-500/20 shadow-lg shadow-blue-500/10'
+                    : 'bg-[#161719] hover:bg-[#202226] border-[#2e3035] text-slate-300'
                 }`}
               >
-                <span className={`w-2.5 h-2.5 rounded-full ${opt.dotColor} shrink-0`} />
-                <span className="truncate">{opt.label}</span>
-                {isSelected && <Check className="w-3.5 h-3.5 ml-auto text-blue-400 shrink-0" />}
+                {/* Active checkmark */}
+                {isSelected && (
+                  <div className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-blue-500/20 border border-blue-400/40 flex items-center justify-center">
+                    <Check className="w-3 h-3 text-blue-400 shrink-0" />
+                  </div>
+                )}
+
+                {/* Circular celestial illustration badge filling 100% of space */}
+                <div
+                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center mb-3 shadow-md overflow-hidden transition-transform group-hover:scale-105 shrink-0"
+                  style={{ backgroundColor: opt.bgColor }}
+                >
+                  <MoonPhaseIcon status={opt.value} className="w-full h-full" withBackground={true} />
+                </div>
+
+                {/* Title */}
+                <span className="text-sm font-bold text-white tracking-wide">
+                  {opt.label}
+                </span>
+
+                {/* Subtitle */}
+                <span className="text-xs text-slate-400 font-medium mt-1 leading-snug">
+                  {opt.moonPhase}
+                </span>
               </button>
             )
           })}

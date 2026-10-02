@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { X, Check, Eye, EyeOff } from 'lucide-react'
 import { CustomDropdown } from './common/CustomDropdown'
+import { MoonPhaseIcon } from './common/MoonPhaseIcon'
 import { useGameStore } from '../store/useGameStore'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { AvatarConfig, AvatarComponentSlot, PresenceStatus, Direction, PetType, STATUS_OPTIONS, STATUS_META } from '../types/game'
@@ -68,6 +69,14 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
       })
     }
   }, [isOpen, localPlayer])
+
+  const statusDropdownOptions = useMemo(() => {
+    return STATUS_OPTIONS.map((opt) => ({
+      value: opt.value,
+      label: `${opt.label} (${opt.moonPhase})`,
+      icon: <MoonPhaseIcon status={opt.value} className="w-3.5 h-3.5 rounded-full overflow-hidden" withBackground={true} />,
+    }))
+  }, [])
 
   if (!isOpen) return null
 
@@ -276,7 +285,7 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-200 select-none">
-      <div className="bg-[#1e1f22] border border-[#2b2d31] rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col h-[600px] max-h-[92vh]">
+      <div className="bg-[#1e1f22] border border-[#2b2d31] rounded-3xl w-full max-w-5xl lg:max-w-6xl overflow-hidden shadow-2xl flex flex-col h-[680px] max-h-[94vh]">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-3 border-b border-[#2b2d31] bg-[#18191c]">
           <div className="flex items-center gap-3">
@@ -290,14 +299,14 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Seu Nickname"
                 maxLength={32}
-                className="bg-transparent text-xs font-bold text-slate-100 focus:outline-none focus:text-white w-36 sm:w-44"
+                className="bg-transparent text-xs font-bold text-slate-100 focus:outline-none focus:text-white w-36 sm:w-48"
               />
             </div>
 
             {/* Current Status Selector */}
             <CustomDropdown<PresenceStatus>
               value={status}
-              options={STATUS_OPTIONS}
+              options={statusDropdownOptions}
               onChange={setStatus}
               labelPrefix="Status:"
               buttonClassName="bg-[#2b2d31] hover:bg-[#34373d] border-[#383a40]"
