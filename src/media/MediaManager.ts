@@ -673,9 +673,11 @@ export class MediaManager {
         dummyTrack.enabled = false
       }
 
-      const audioTracks = currentLocal ? currentLocal.getAudioTracks() : (this.rawUserStream ? this.rawUserStream.getAudioTracks() : [])
-      const newLocalStream = new MediaStream([...audioTracks, ...(dummyTrack ? [dummyTrack] : [])])
-      useMediaStore.getState().setLocalStream(newLocalStream)
+      if (typeof MediaStream !== 'undefined') {
+        const audioTracks = currentLocal ? currentLocal.getAudioTracks() : (this.rawUserStream ? this.rawUserStream.getAudioTracks() : [])
+        const newLocalStream = new MediaStream([...audioTracks, ...(dummyTrack ? [dummyTrack] : [])])
+        useMediaStore.getState().setLocalStream(newLocalStream)
+      }
       useMediaStore.setState({ isCameraOff: true })
 
       if (!useMediaStore.getState().isScreenSharing && dummyTrack) {

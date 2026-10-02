@@ -5,6 +5,8 @@ import {
   isHardwareAccelerationEnabled as getHwCodecEnabled,
   setHardwareAccelerationEnabled as setHwCodecEnabled,
 } from '../media/hardwareCodec'
+import { MediaManager } from '../media/MediaManager'
+import { PeerManager } from '../p2p/PeerManager'
 
 export interface MicCalibration {
   noiseFloorDb: number
@@ -216,6 +218,9 @@ const saveAudioSettingsDebounced = (settings: Record<string, any>, delayMs: numb
 const isValidMode = (m: any): m is AudioProcessorMode =>
   m === 'classic' || m === 'soft' || m === 'rnnoise'
 
+const hasMediaHardware = () =>
+  typeof window !== 'undefined' && typeof navigator !== 'undefined' && !!navigator.mediaDevices
+
 export const useMediaStore = create<MediaStore>((set, get) => ({
   localStream: null,
   localScreenStream: null,
@@ -282,11 +287,11 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
     if (get().selectedVideoInput === selectedVideoInput) return
     saveAudioSettings({ selectedVideoInput })
     set({ selectedVideoInput })
-    try {
-      import('../media/MediaManager').then(({ MediaManager }) => {
+    if (hasMediaHardware()) {
+      try {
         MediaManager.getInstance().changeVideoInput(selectedVideoInput)
-      }).catch(() => {})
-    } catch {}
+      } catch {}
+    }
   },
   setInputVolume: (inputVolume) => {
     saveAudioSettingsDebounced({ inputVolume })
@@ -374,11 +379,11 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
       isMuted: nextMute,
       isMutedByAdmin: false,
     })
-    try {
-      import('../media/MediaManager').then(({ MediaManager }) => {
+    if (hasMediaHardware()) {
+      try {
         MediaManager.getInstance().syncMuteState(nextMute, false)
-      }).catch(() => {})
-    } catch {}
+      } catch {}
+    }
   },
 
   setMuted: (isMuted) => {
@@ -393,31 +398,31 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
       isMuted,
       isMutedByAdmin: false,
     })
-    try {
-      import('../media/MediaManager').then(({ MediaManager }) => {
+    if (hasMediaHardware()) {
+      try {
         MediaManager.getInstance().syncMuteState(isMuted, false)
-      }).catch(() => {})
-    } catch {}
+      } catch {}
+    }
   },
 
   toggleCamera: () => {
     const nextCam = !get().isCameraOff
     set({ isCameraOff: nextCam })
-    try {
-      import('../media/MediaManager').then(({ MediaManager }) => {
+    if (hasMediaHardware()) {
+      try {
         MediaManager.getInstance().syncCameraState(nextCam)
-      }).catch(() => {})
-    } catch {}
+      } catch {}
+    }
   },
 
   setCameraOff: (isCameraOff) => {
     if (get().isCameraOff === isCameraOff) return
     set({ isCameraOff })
-    try {
-      import('../media/MediaManager').then(({ MediaManager }) => {
+    if (hasMediaHardware()) {
+      try {
         MediaManager.getInstance().syncCameraState(isCameraOff)
-      }).catch(() => {})
-    } catch {}
+      } catch {}
+    }
   },
 
   setScreenSharing: (sharing) => set({ isScreenSharing: sharing }),
@@ -438,18 +443,14 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
     set({ isDeafened: next })
     useGameStore.getState().setLocalPlayer({ isDeafened: next })
     try {
-      import('../p2p/PeerManager').then(({ PeerManager }) => {
-        PeerManager.getInstance().sendPlayerUpdate({ isDeafened: next })
-      }).catch(() => {})
+      PeerManager.getInstance().sendPlayerUpdate({ isDeafened: next })
     } catch {}
   },
   setDeafened: (isDeafened) => {
     set({ isDeafened })
     useGameStore.getState().setLocalPlayer({ isDeafened })
     try {
-      import('../p2p/PeerManager').then(({ PeerManager }) => {
-        PeerManager.getInstance().sendPlayerUpdate({ isDeafened })
-      }).catch(() => {})
+      PeerManager.getInstance().sendPlayerUpdate({ isDeafened })
     } catch {}
   },
 

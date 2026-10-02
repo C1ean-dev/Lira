@@ -6,6 +6,7 @@ import { useChatStore } from '../store/useChatStore'
 import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import { useMediaStore } from '../store/useMediaStore'
 import { PublicRoomsService } from '../services/publicRoomsService'
+import { MediaManager } from '../media/MediaManager'
 import { resolveUniquePlayerName } from '../utils/playerName'
 
 export function processNetworkMessage(
@@ -483,9 +484,7 @@ export function processNetworkMessage(
         useMediaStore.getState().setMuted(mute)
         useGameStore.getState().setLocalPlayer({ isMuted: mute, isMutedByAdmin: mute })
         try {
-          import('../media/MediaManager').then(({ MediaManager }) => {
-            MediaManager.getInstance().syncMuteState(mute, mute)
-          }).catch(() => {})
+          MediaManager.getInstance().syncMuteState(mute, mute)
         } catch {}
         useMediaStore.getState().setAdminNotice({
           message: mute

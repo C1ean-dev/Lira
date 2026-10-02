@@ -10,6 +10,7 @@ import { PublicRoomsService } from '../services/publicRoomsService'
 import { processNetworkMessage } from './messageHandlers'
 import { MediaCallHandler, ICE_CONNECT_TIMEOUT_MS, SHARED_RTC_CONFIG, resolveCallGlare } from './mediaCalls'
 import { prioritizeH264HardwareCodec } from '../media/hardwareCodec'
+import { MediaManager } from '../media/MediaManager'
 import { DynamicBufferManager } from '../services/DynamicBufferManager'
 import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
 import { sanitizeRoomCode } from '../utils/roomCode'
@@ -879,10 +880,10 @@ export class PeerManager {
 
     if (msg.type === 'PLAYER_UPDATE' && msg.payload?.player?.isScreenSharing !== undefined) {
       if (useMediaStore.getState().isScreenSharing) {
-        import('../media/MediaManager').then(({ MediaManager }) => {
+        try {
           const { targetBitrate } = MediaManager.resolveOptimalScreenQuality()
           this.updateScreenShareBitrate(targetBitrate)
-        }).catch(() => {})
+        } catch {}
       }
     }
   }

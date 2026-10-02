@@ -152,6 +152,9 @@ export default defineConfig({
     exclude: ['@jitsi/rnnoise-wasm'],
   },
   assetsInclude: ['**/*.wasm'],
+  build: {
+    chunkSizeWarningLimit: 6000,
+  },
   server: {
     port: 5173,
     host: true,
