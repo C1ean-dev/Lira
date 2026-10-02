@@ -35,11 +35,7 @@ jobs:
       - name: Generate Dynamic Version Tag and Bump package.json
         id: tag
         shell: bash
-        run: |
-          VERSION="1.1.80"
-          echo "tag_name=v$VERSION" >> $GITHUB_OUTPUT
-          echo "release_title=Gather Clone V2 - v$VERSION" >> $GITHUB_OUTPUT
-          npm version "$VERSION" --no-git-tag-version --allow-same-version
+        run: node scripts/bump-version.js
 
       - name: Build and Package Electron App
         env:

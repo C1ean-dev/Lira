@@ -1,6 +1,6 @@
 {
   "name": "gather-v2-clone",
-  "version": "1.1.80",
+  "version": "1.1.81",
   "description": "Lira - Espaço Virtual e Comunicação em Tempo Real",
   "main": "dist-electron/main.js",
   "type": "module",
