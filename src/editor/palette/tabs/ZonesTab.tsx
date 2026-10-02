@@ -82,20 +82,6 @@ export const ZonesTab: React.FC<Props> = ({
           />
         </div>
 
-        {/* Auto-Generated Unique Identification Color Badge */}
-        <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div
-              className="w-4 h-4 rounded-full shadow-md border-2 border-white/20 shrink-0"
-              style={{ backgroundColor: zoneDraft.color || '#4c6ef5' }}
-            />
-            <span className="text-[11px] font-semibold text-slate-300">Cor de Identificação</span>
-          </div>
-          <span className="text-[10px] text-indigo-300 font-semibold bg-indigo-500/15 px-2 py-0.5 rounded-full border border-indigo-500/25">
-            Gerada Automaticamente ✨
-          </span>
-        </div>
-
         {/* Zone Walls & Texture Config */}
         <div className="pt-2 border-t border-slate-800 space-y-2.5">
           <div className="flex items-center justify-between">
@@ -218,7 +204,12 @@ export const ZonesTab: React.FC<Props> = ({
 
                       {/* Center Wall Thumbnail */}
                       <div className="flex-1 flex items-center justify-center w-full min-h-0 overflow-hidden py-0.5">
-                        <PixelArtThumbnail type="wall" id={wall.id} size={48} />
+                        <PixelArtThumbnail
+                          key={`${wall.id}_${(wall as any).updatedAt || ''}`}
+                          type="wall"
+                          id={wall.id}
+                          size={48}
+                        />
                       </div>
 
                       {/* Bottom Label */}
@@ -250,7 +241,7 @@ export const ZonesTab: React.FC<Props> = ({
         </button>
 
         <div className="text-[11px] text-slate-400 text-center leading-relaxed">
-          👉 Clique no mapa e <strong className="text-slate-200">arraste</strong> para criar a sala com as paredes selecionadas.
+          Clique no mapa e <strong className="text-slate-200">arraste</strong> para criar a sala com as paredes selecionadas.
         </div>
       </div>
 

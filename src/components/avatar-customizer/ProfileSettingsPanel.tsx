@@ -1,8 +1,8 @@
 import React, { useRef, useState } from 'react'
-import { Upload, Trash2, User, Sparkles, Check, Image as ImageIcon } from 'lucide-react'
+import { Upload, Trash2, User, Sparkles, Check, Image as ImageIcon, Crop } from 'lucide-react'
 import { AvatarConfig, PresenceStatus, STATUS_OPTIONS } from '../../types/game'
 import { PlayerAvatar } from '../common/PlayerAvatar'
-import { resizeImageFile } from '../../utils/avatarUtils'
+import { ImageCropModal } from '../common/ImageCropModal'
 
 interface Props {
   name: string
@@ -26,26 +26,62 @@ export const ProfileSettingsPanel: React.FC<Props> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [cropModalOpen, setCropModalOpen] = useState(false)
+  const [rawImageToCrop, setRawImageToCrop] = useState<string | null>(null)
 
   const hasCustomPicture = !!(profilePicture && profilePicture.trim() !== '')
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      setErrorMsg('O arquivo selecionado não é uma imagem válida.')
+      return
+    }
 
     try {
       setIsProcessing(true)
       setErrorMsg(null)
-      const dataUrl = await resizeImageFile(file, 256)
-      onChangeProfilePicture(dataUrl)
+      const reader = new FileReader()
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          setRawImageToCrop(reader.result)
+          setCropModalOpen(true)
+        }
+        setIsProcessing(false)
+      }
+      reader.onerror = () => {
+        setErrorMsg('Erro ao ler o arquivo de imagem.')
+        setIsProcessing(false)
+      }
+      reader.readAsDataURL(file)
     } catch (err: any) {
-      console.warn('Erro ao carregar foto de perfil:', err)
+      console.warn('Erro ao carregar imagem para recorte:', err)
       setErrorMsg(err?.message || 'Falha ao processar a imagem selecionada.')
-    } finally {
       setIsProcessing(false)
+    } finally {
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
+    }
+  }
+
+  const handleCropComplete = (croppedDataUrl: string) => {
+    setCropModalOpen(false)
+    setRawImageToCrop(null)
+    onChangeProfilePicture(croppedDataUrl)
+  }
+
+  const handleCropCancel = () => {
+    setCropModalOpen(false)
+    setRawImageToCrop(null)
+  }
+
+  const handleOpenRecrop = () => {
+    if (profilePicture && profilePicture.trim() !== '') {
+      setRawImageToCrop(profilePicture)
+      setCropModalOpen(true)
     }
   }
 
@@ -95,15 +131,10 @@ export const ProfileSettingsPanel: React.FC<Props> = ({
         <div className="flex-1 flex flex-col justify-center gap-2 text-center sm:text-left min-w-0">
           <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
             <span className="text-xs font-bold text-slate-200">Foto de Perfil</span>
-            {hasCustomPicture ? (
+            {hasCustomPicture && (
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 flex items-center gap-1">
                 <ImageIcon className="w-3 h-3 text-blue-400" />
                 <span>Foto Personalizada</span>
-              </span>
-            ) : (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-emerald-400" />
-                <span>Usando Personagem 2D</span>
               </span>
             )}
           </div>
@@ -140,15 +171,27 @@ export const ProfileSettingsPanel: React.FC<Props> = ({
             </button>
 
             {hasCustomPicture && (
-              <button
-                onClick={handleRemovePicture}
-                disabled={isProcessing}
-                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition-all border border-slate-700 flex items-center gap-1.5 active:scale-95 cursor-pointer"
-                title="Voltar a usar seu personagem como foto de perfil"
-              >
-                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-                <span>Usar Personagem</span>
-              </button>
+              <>
+                <button
+                  onClick={handleOpenRecrop}
+                  disabled={isProcessing}
+                  className="px-3 py-1.5 rounded-xl bg-[#2b2d31] hover:bg-[#34373d] text-slate-200 hover:text-white text-xs font-bold transition-all border border-white/10 flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                  title="Ajustar o enquadramento ou zoom da sua foto de perfil atual"
+                >
+                  <Crop className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Ajustar Recorte</span>
+                </button>
+
+                <button
+                  onClick={handleRemovePicture}
+                  disabled={isProcessing}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition-all border border-slate-700 flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                  title="Voltar a usar seu personagem como foto de perfil"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Usar Personagem</span>
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -158,7 +201,7 @@ export const ProfileSettingsPanel: React.FC<Props> = ({
       <div className="bg-[#1e1f22] p-4 rounded-2xl border border-[#383a40] flex flex-col gap-2">
         <label className="text-xs font-bold text-slate-200 flex items-center justify-between">
           <span>Nome de Exibição (Nickname)</span>
-          <span className="text-[10px] text-slate-400 font-mono">{name.length}/16</span>
+          <span className="text-[10px] text-slate-400 font-mono">{name.length}/32</span>
         </label>
         <div className="flex items-center gap-2 bg-[#2b2d31] px-3 py-2 rounded-xl border border-[#383a40] focus-within:border-blue-500 transition-colors">
           <input
@@ -166,7 +209,7 @@ export const ProfileSettingsPanel: React.FC<Props> = ({
             value={name}
             onChange={(e) => onChangeName(e.target.value)}
             placeholder="Digite seu nome ou apelido"
-            maxLength={16}
+            maxLength={32}
             className="bg-transparent text-sm font-semibold text-white focus:outline-none w-full"
           />
         </div>
@@ -201,6 +244,14 @@ export const ProfileSettingsPanel: React.FC<Props> = ({
           })}
         </div>
       </div>
+
+      {/* Interactive Image Crop Modal */}
+      <ImageCropModal
+        isOpen={cropModalOpen}
+        imageSrc={rawImageToCrop}
+        onCropComplete={handleCropComplete}
+        onCancel={handleCropCancel}
+      />
     </div>
   )
 }

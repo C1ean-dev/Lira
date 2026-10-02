@@ -289,8 +289,8 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Seu Nickname"
-                maxLength={16}
-                className="bg-transparent text-xs font-bold text-slate-100 focus:outline-none focus:text-white w-28"
+                maxLength={32}
+                className="bg-transparent text-xs font-bold text-slate-100 focus:outline-none focus:text-white w-36 sm:w-44"
               />
             </div>
 

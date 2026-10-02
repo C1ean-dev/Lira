@@ -5,7 +5,7 @@
     "name": "Espaço de Player",
     "description": "Espaço de colaboração e produtividade",
     "createdAt": 1790098063146,
-    "updatedAt": 1790599765043,
+    "updatedAt": 1790964837440,
     "mapData": {
       "id": "room-a7sj91",
       "name": "Espaço de Player",
@@ -17,6 +17,22 @@
         "y": 20
       },
       "furniture": [
+        {
+          "id": "furn-6z2tni",
+          "defId": "custom_1788980580407_qypmc",
+          "x": 30,
+          "y": 18,
+          "direction": "down",
+          "rotation": 0
+        },
+        {
+          "id": "furn-rw5ipe",
+          "defId": "custom_1789055486317_zl5ux",
+          "x": 32.25,
+          "y": 16,
+          "direction": "down",
+          "rotation": 0
+        },
         {
           "id": "furn-dt8ieq",
           "defId": "custom_1789055686146_b8lx1",
@@ -46,7 +62,7 @@
           "hasWalls": true,
           "wallType": "drywall_white",
           "description": "Zona de chamada privada demarcada com mouse",
-          "isLocked": false,
+          "isLocked": true,
           "authorizedPeers": [
             "Player",
             "gather-v2-CC8C4732-824E-4139-BAB5-568D0DBA9CE7-host",
@@ -63,16 +79,55 @@
           "admins": [
             "Player"
           ],
-          "allowKnock": true,
-          "welcomeMessage": null
+          "allowKnock": true
         }
       ],
       "defaultFloor": "habbo_parquet",
       "floorOverrides": {
-        "29,16": "wood_parquet",
-        "28,17": "wood_parquet",
-        "29,17": "wood_parquet",
-        "35,17": "wood_parquet"
+        "28,17": "custom_1788130196197_ihfp8",
+        "29,17": "custom_1788130196197_ihfp8",
+        "30,17": "custom_1788130196197_ihfp8",
+        "31,17": "custom_1788130196197_ihfp8",
+        "32,17": "custom_1788130196197_ihfp8",
+        "33,17": "custom_1788130196197_ihfp8",
+        "34,17": "custom_1788130196197_ihfp8",
+        "35,17": "custom_1788130196197_ihfp8",
+        "28,18": "custom_1788130196197_ihfp8",
+        "29,18": "custom_1788130196197_ihfp8",
+        "30,18": "custom_1788130196197_ihfp8",
+        "31,18": "custom_1788130196197_ihfp8",
+        "32,18": "custom_1788130196197_ihfp8",
+        "33,18": "custom_1788130196197_ihfp8",
+        "34,18": "custom_1788130196197_ihfp8",
+        "35,18": "custom_1788130196197_ihfp8",
+        "27,19": "wood_parquet",
+        "28,19": "custom_1788130196197_ihfp8",
+        "29,19": "custom_1788130196197_ihfp8",
+        "30,19": "custom_1788130196197_ihfp8",
+        "31,19": "custom_1788130196197_ihfp8",
+        "32,19": "custom_1788130196197_ihfp8",
+        "33,19": "custom_1788130196197_ihfp8",
+        "34,19": "custom_1788130196197_ihfp8",
+        "35,19": "custom_1788130196197_ihfp8",
+        "27,20": "wood_parquet",
+        "28,20": "custom_1788130196197_ihfp8",
+        "29,20": "custom_1788130196197_ihfp8",
+        "30,20": "custom_1788130196197_ihfp8",
+        "31,20": "custom_1788130196197_ihfp8",
+        "32,20": "custom_1788130196197_ihfp8",
+        "33,20": "custom_1788130196197_ihfp8",
+        "34,20": "custom_1788130196197_ihfp8",
+        "35,20": "custom_1788130196197_ihfp8",
+        "27,21": "wood_parquet",
+        "28,21": "custom_1788130196197_ihfp8",
+        "29,21": "custom_1788130196197_ihfp8",
+        "30,21": "custom_1788130196197_ihfp8",
+        "31,21": "custom_1788130196197_ihfp8",
+        "32,21": "custom_1788130196197_ihfp8",
+        "33,21": "custom_1788130196197_ihfp8",
+        "34,21": "custom_1788130196197_ihfp8",
+        "35,21": "custom_1788130196197_ihfp8",
+        "27,22": "wood_parquet"
       },
       "wallOverrides": {
         "28,15": "drywall_white",

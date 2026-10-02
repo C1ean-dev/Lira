@@ -416,8 +416,11 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   },
 
   setCameraOff: (isCameraOff) => {
-    if (get().isCameraOff === isCameraOff) return
     set({ isCameraOff })
+    useGameStore.getState().setLocalPlayer({ isCameraOff })
+    try {
+      PeerManager.getInstance().sendPlayerUpdate({ isCameraOff })
+    } catch {}
     if (hasMediaHardware()) {
       try {
         MediaManager.getInstance().syncCameraState(isCameraOff)

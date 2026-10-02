@@ -729,13 +729,6 @@ export const MapViewport: React.FC = () => {
         </div>
       )}
 
-      {/* Drawing Zone Active Floating Banner */}
-      {isEditorOpen && activeTool === 'draw_zone' && mapViewMode !== 'simplified' && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-indigo-600/90 backdrop-blur-md border border-indigo-400/40 text-white px-4 py-2 rounded-2xl shadow-xl flex items-center gap-2.5 text-xs font-semibold animate-pulse select-none z-30">
-          <Sparkles className="w-4 h-4 text-amber-300" />
-          <span>Clique e arraste no mapa para demarcar a zona privada</span>
-        </div>
-      )}
 
       {/* Floor paint active banner */}
       {isEditorOpen && activeTool === 'paint_floor' && mapViewMode !== 'simplified' && (

@@ -14,6 +14,27 @@ const DEFAULT_CATEGORIES = ['Geral', 'pokemon']
 // In-memory HTMLImageElement cache for fast canvas rendering
 const imageCache: Map<string, HTMLImageElement> = new Map()
 
+// Change listener for external renderers (e.g. staticLayerCache) to bust caches immediately
+type AssetChangeListener = () => void
+const assetChangeListeners = new Set<AssetChangeListener>()
+
+export function onCustomAssetsChange(listener: AssetChangeListener): () => void {
+  assetChangeListeners.add(listener)
+  return () => {
+    assetChangeListeners.delete(listener)
+  }
+}
+
+export function notifyCustomAssetsChanged(): void {
+  assetChangeListeners.forEach((fn) => {
+    try {
+      fn()
+    } catch (e) {
+      console.error('[useCustomAssetsStore] Listener error:', e)
+    }
+  })
+}
+
 // O(1) id → asset lookup for hot render/collision paths.
 // Rebuilt whenever the asset array identity changes; getAssetById keeps it
 // in sync as a fallback so external mutations can't leave it stale.
@@ -340,6 +361,7 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
 
     set({ customAssets: updated, customCategories: newCats })
     syncToNativeFile(updated, newCats)
+    notifyCustomAssetsChanged()
 
     // Broadcast new custom asset across P2P mesh
     PeerManager.getInstance().sendCustomAssetAddOrUpdate(asset)
@@ -349,7 +371,10 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
     let fullAsset: CustomAsset | null = null
     const updated = get().customAssets.map((a) => {
       if (a.id === id) {
-        const res = { ...a, ...partial }
+        const res = { ...a, ...partial, updatedAt: Date.now() }
+        if (partial.thumbnail) {
+          getCustomAssetImage(partial.thumbnail)
+        }
         if (partial.frames) {
           partial.frames.forEach(getCustomAssetImage)
         }
@@ -375,6 +400,7 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
     saveCustomAssets(updated)
     set({ customAssets: updated, customCategories: updatedCats })
     syncToNativeFile(updated, updatedCats)
+    notifyCustomAssetsChanged()
 
     // Broadcast updated custom asset across P2P mesh
     if (fullAsset) {
@@ -387,6 +413,7 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
     saveCustomAssets(updated)
     set({ customAssets: updated })
     syncToNativeFile(updated, get().customCategories)
+    notifyCustomAssetsChanged()
 
     // Broadcast asset deletion across P2P mesh
     PeerManager.getInstance().sendCustomAssetDelete(id)
@@ -432,6 +459,7 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
     }
 
     set({ customAssets: merged, customCategories: updatedCats })
+    notifyCustomAssetsChanged()
   },
 
   syncRemoteAssetAddOrUpdate: (asset) => {
@@ -460,12 +488,14 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
     }
 
     set({ customAssets: updated, customCategories: updatedCats })
+    notifyCustomAssetsChanged()
   },
 
   syncRemoteAssetDelete: (id) => {
     const updated = get().customAssets.filter((a) => a.id !== id)
     saveCustomAssets(updated)
     set({ customAssets: updated })
+    notifyCustomAssetsChanged()
   },
 
   addCategory: (categoryName) => {

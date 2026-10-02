@@ -90,8 +90,10 @@ export function processNetworkMessage(
         ? resolveUniquePlayerName(incomingName, existingNames)
         : incomingName
 
+      const incomingPlayer = msg.payload.player || {}
       const player: Player = {
-        ...msg.payload.player,
+        ...incomingPlayer,
+        isCameraOff: incomingPlayer.isCameraOff !== undefined ? incomingPlayer.isCameraOff : true,
         name: resolvedName,
         id: remotePeerId,
         gameId: incomingGameId,
@@ -217,6 +219,7 @@ export function processNetworkMessage(
         const nextPlayer: Player = {
           ...existing,
           ...updated,
+          isCameraOff: updated?.isCameraOff !== undefined ? updated.isCameraOff : (existing.isCameraOff ?? true),
           id: existingKey,
           isHost: isPeerHost,
           role: isPeerHost ? 'host' : updated?.role || existing.role || 'member',

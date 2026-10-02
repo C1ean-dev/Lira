@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { renderAvatarSnapshot, getPlayerAvatarSrc, resizeImageFile } from '../utils/avatarUtils'
+import { renderAvatarSnapshot, getPlayerAvatarSrc, resizeImageFile, cropImageToSquare } from '../utils/avatarUtils'
 import { useGameStore } from '../store/useGameStore'
 import { DEFAULT_AVATAR } from '../engine/Constants'
 import { CATEGORIES } from '../components/avatar-customizer/CategoryTabs'
@@ -109,4 +109,12 @@ describe('Profile Picture & Avatar Fallback System', () => {
     expect(friendProfile.profilePicture).toBe(customPic)
     expect(friendProfile.name).toBe('Amigo 1 Updated')
   })
+
+  it('cropImageToSquare returns cropped image string', () => {
+    const mockSource = {} as any
+    const cropped = cropImageToSquare(mockSource, 0, 0, 100, 256)
+    expect(cropped).toBeDefined()
+    expect(typeof cropped).toBe('string')
+  })
 })
+

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Mic,
   MicOff,
@@ -96,6 +96,15 @@ const VideoTile: React.FC<VideoTileProps> = ({
 
   const isEffectivelyMuted = Boolean(isLocal || suppressAudio || isGlobalDeafened || isSilenced || rawVolume === 0)
 
+  const hasLiveVideoTrack = useMemo(() => {
+    if (!stream) return false
+    const videoTracks = stream.getVideoTracks()
+    return videoTracks.some((t) => t.readyState === 'live' && t.enabled && !(t as any).__isDummy)
+  }, [stream])
+
+  const isCameraEffectivelyOff = isCameraOff ?? !hasLiveVideoTrack
+  const shouldShowVideo = (isScreenSharing || isScreenTrack) || (!isCameraEffectivelyOff && hasLiveVideoTrack)
+
   useEffect(() => {
     const video = videoRef.current
     if (!video || !stream) return
@@ -145,18 +154,18 @@ const VideoTile: React.FC<VideoTileProps> = ({
         onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
         onCanPlay={() => videoRef.current?.play().catch(() => {})}
         className={`w-full h-full ${isScreenTrack ? 'object-contain bg-black' : 'object-cover'} ${
-          isCameraOff && !isScreenSharing && !isScreenTrack ? 'hidden' : 'block'
+          shouldShowVideo ? 'block' : 'hidden'
         } ${isLocal && !isScreenSharing && !isScreenTrack ? '-scale-x-100' : ''}`}
       />
 
       {/* Camera Off Avatar Fallback */}
-      {isCameraOff && !isScreenSharing && !isScreenTrack && (
+      {!shouldShowVideo && (
         <PlayerAvatar
           name={name}
           profilePicture={profilePicture}
           avatar={avatar}
-          size="md"
-          className="w-10 h-10 rounded-full"
+          size="xl"
+          className="w-14 h-14 rounded-full shadow-lg border-2 border-white/20"
         />
       )}
 
@@ -484,7 +493,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
   const toggleDeafen = useMediaStore((s) => s.toggleDeafen)
   const toggleCamera = useMediaStore((s) => s.toggleCamera)
 
-  const { localPlayer, remotePlayers, callStates } = useGameStore()
+  const { localPlayer, remotePlayers, callStates, friendProfiles } = useGameStore()
   const { mapData, toggleZoneLock } = useMapStore()
 
   const isChatOpen = useChatStore((state) => state.isChatOpen)
@@ -698,27 +707,32 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
             )}
 
             {/* Remote Peers in Zone */}
-            {peersInSameZone.map((peer) => (
-              <VideoTile
-                key={peer.id}
-                id={peer.id}
-                stream={peerStreams[peer.id] || null}
-                name={peer.name}
-                isMuted={peer.isMuted}
-                isMutedByAdmin={peer.isMutedByAdmin}
-                isDeafened={peer.isDeafened}
-                isCameraOff={peer.isCameraOff}
-                isLocal={false}
-                isScreenSharing={peer.isScreenSharing}
-                isScreenTrack={peer.isScreenSharing}
-                profilePicture={peer.profilePicture}
-                avatar={peer.avatar}
-                suppressAudio={suppressAudio}
-                color={peer.avatar.shirtColor}
-                callState={callStates[peer.id] || peer.callState || 'idle'}
-                onRetryCall={() => PeerManager.getInstance().retryZoneCall(peer.id)}
-                onClick={() => setGridCallOpen(true)}
-                onContextMenu={(e) => {
+            {peersInSameZone.map((peer) => {
+              const friendProfile = friendProfiles[peer.id] || (peer.gameId ? friendProfiles[peer.gameId] : undefined)
+              const resolvedPic = peer.profilePicture || friendProfile?.profilePicture
+              const resolvedAvatar = peer.avatar || friendProfile?.avatar
+
+              return (
+                <VideoTile
+                  key={peer.id}
+                  id={peer.id}
+                  stream={peerStreams[peer.id] || null}
+                  name={peer.name}
+                  isMuted={peer.isMuted}
+                  isMutedByAdmin={peer.isMutedByAdmin}
+                  isDeafened={peer.isDeafened}
+                  isCameraOff={peer.isCameraOff ?? true}
+                  isLocal={false}
+                  isScreenSharing={peer.isScreenSharing}
+                  isScreenTrack={peer.isScreenSharing}
+                  profilePicture={resolvedPic}
+                  avatar={resolvedAvatar}
+                  suppressAudio={suppressAudio}
+                  color={resolvedAvatar?.shirtColor || '#3b82f6'}
+                  callState={callStates[peer.id] || peer.callState || 'idle'}
+                  onRetryCall={() => PeerManager.getInstance().retryZoneCall(peer.id)}
+                  onClick={() => setGridCallOpen(true)}
+                  onContextMenu={(e) => {
                   setContextMenuState({
                     user: {
                       id: peer.id,
@@ -737,7 +751,8 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                   })
                 }}
               />
-            ))}
+            )
+          })}
           </div>
 
           {/* Quick Controls Bar */}

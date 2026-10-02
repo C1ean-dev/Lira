@@ -18,15 +18,16 @@ export const PixelArtThumbnail: React.FC<PixelArtThumbnailProps> = ({
   className = '',
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const customAsset = useCustomAssetsStore((s) => s.customAssets.find((a) => a.id === id))
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    let animationFrameId: number
+    let cancelled = false
     const render = () => {
       try {
-        if (!canvas) return
+        if (!canvas || cancelled) return
         const ctx = canvas.getContext('2d')
         if (!ctx) return
 
@@ -34,7 +35,6 @@ export const PixelArtThumbnail: React.FC<PixelArtThumbnailProps> = ({
         ctx.clearRect(0, 0, canvas.width, canvas.height)
 
         if (type === 'furniture') {
-          const customAsset = useCustomAssetsStore.getState().getAssetById(id)
           const def = customAsset || FURNITURE_CATALOG.find((f) => f.id === id)
           if (!def) return
 
@@ -63,10 +63,26 @@ export const PixelArtThumbnail: React.FC<PixelArtThumbnailProps> = ({
 
           PixelArtRenderer.drawFurniture(ctx, mockFurn)
           ctx.restore()
+
+          if (customAsset) {
+            const frameUrl =
+              customAsset.frames?.[0] ||
+              (Array.isArray(customAsset.directionalFrames?.down)
+                ? customAsset.directionalFrames.down[0]
+                : (customAsset.directionalFrames?.down as string)) ||
+              customAsset.thumbnail
+            if (frameUrl) {
+              const img = getCustomAssetImage(frameUrl)
+              if (img && (!img.complete || img.naturalWidth === 0)) {
+                img.addEventListener('load', () => {
+                  if (!cancelled) render()
+                }, { once: true })
+              }
+            }
+          }
         } else if (type === 'floor') {
           ctx.save()
-          const customAsset = useCustomAssetsStore.getState().getAssetById(id)
-          if (customAsset && ((customAsset.width && customAsset.width > 1) || (customAsset.height && customAsset.height > 1))) {
+          if (customAsset) {
             const wTiles = Math.max(1, Math.round(customAsset.width || 1))
             const hTiles = Math.max(1, Math.round(customAsset.height || 1))
             const maxDim = Math.max(wTiles, hTiles)
@@ -77,9 +93,26 @@ export const PixelArtThumbnail: React.FC<PixelArtThumbnailProps> = ({
             const offsetX = (size - drawW) / 2
             const offsetY = (size - drawH) / 2
             ctx.translate(offsetX, offsetY)
-            const img = customAsset.frames?.[0] ? getCustomAssetImage(customAsset.frames[0]) : null
-            if (img && img.complete && img.naturalWidth > 0) {
-              ctx.drawImage(img, 0, 0, drawW, drawH)
+
+            const frameUrl =
+              customAsset.frames?.[0] ||
+              (Array.isArray(customAsset.directionalFrames?.down)
+                ? customAsset.directionalFrames.down[0]
+                : (customAsset.directionalFrames?.down as string)) ||
+              customAsset.thumbnail
+
+            if (frameUrl) {
+              const img = getCustomAssetImage(frameUrl)
+              if (img && img.complete && img.naturalWidth > 0) {
+                ctx.drawImage(img, 0, 0, drawW, drawH)
+              } else if (img) {
+                img.addEventListener('load', () => {
+                  if (!cancelled) render()
+                }, { once: true })
+                PixelArtRenderer.drawFloor(ctx, id as FloorType, 0, 0, size)
+              } else {
+                PixelArtRenderer.drawFloor(ctx, id as FloorType, 0, 0, size)
+              }
             } else {
               PixelArtRenderer.drawFloor(ctx, id as FloorType, 0, 0, size)
             }
@@ -91,6 +124,23 @@ export const PixelArtThumbnail: React.FC<PixelArtThumbnailProps> = ({
           ctx.save()
           PixelArtRenderer.drawWall(ctx, id as WallType, 0, 0, size)
           ctx.restore()
+
+          if (customAsset) {
+            const frameUrl =
+              customAsset.frames?.[0] ||
+              (Array.isArray(customAsset.directionalFrames?.down)
+                ? customAsset.directionalFrames.down[0]
+                : (customAsset.directionalFrames?.down as string)) ||
+              customAsset.thumbnail
+            if (frameUrl) {
+              const img = getCustomAssetImage(frameUrl)
+              if (img && (!img.complete || img.naturalWidth === 0)) {
+                img.addEventListener('load', () => {
+                  if (!cancelled) render()
+                }, { once: true })
+              }
+            }
+          }
         }
       } catch (e) {
         console.error('Error in thumbnail render:', e)
@@ -99,14 +149,15 @@ export const PixelArtThumbnail: React.FC<PixelArtThumbnailProps> = ({
 
     render()
     // Trigger follow-up renders in case sprites finish loading
-    const timer = setTimeout(render, 100)
-    const timer2 = setTimeout(render, 300)
+    const timer = setTimeout(render, 50)
+    const timer2 = setTimeout(render, 200)
 
     return () => {
+      cancelled = true
       clearTimeout(timer)
       clearTimeout(timer2)
     }
-  }, [type, id, size])
+  }, [type, id, size, customAsset])
 
   return (
     <canvas

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useMemo, useRef } from 'react'
 import { Radio, MicOff, Maximize, Pin, Maximize2, Volume2, Volume1, VolumeX, Headphones } from 'lucide-react'
 import { useMediaStore } from '../../store/useMediaStore'
 import { useUserNetworkQuality } from '../../store/useNetworkQualityStore'
@@ -103,6 +103,15 @@ export const GridParticipantTile: React.FC<Props> = ({
     })
   }, [activeStream, isLive, user.isLocal, isEffectivelyMuted])
 
+  const hasLiveVideoTrack = useMemo(() => {
+    if (!activeStream) return false
+    const videoTracks = activeStream.getVideoTracks()
+    return videoTracks.some((t) => t.readyState === 'live' && t.enabled && !(t as any).__isDummy)
+  }, [activeStream])
+
+  const isCameraEffectivelyOff = user.isCameraOff ?? !hasLiveVideoTrack
+  const shouldShowVideo = isLive || (!isCameraEffectivelyOff && hasLiveVideoTrack)
+
   const handleFullscreenClick = (e: React.MouseEvent) => {
     e.stopPropagation()
     if (onOpenLiveFullscreen) {
@@ -147,17 +156,17 @@ export const GridParticipantTile: React.FC<Props> = ({
               muted={user.isLocal}
               onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
               onCanPlay={() => videoRef.current?.play().catch(() => {})}
-              className={`w-full h-full object-cover ${user.isCameraOff ? 'hidden' : 'block'} ${
+              className={`w-full h-full object-cover ${shouldShowVideo ? 'block' : 'hidden'} ${
                 user.isLocal ? '-scale-x-100' : ''
               }`}
             />
-            {user.isCameraOff && (
+            {!shouldShowVideo && (
               <PlayerAvatar
                 name={user.name}
                 profilePicture={user.profilePicture}
                 avatar={user.avatar}
-                size="sm"
-                className="w-8 h-8 rounded-full"
+                size="lg"
+                className="w-10 h-10 rounded-full shadow-md border border-white/20"
               />
             )}
           </>
@@ -273,23 +282,24 @@ export const GridParticipantTile: React.FC<Props> = ({
             muted={user.isLocal}
             onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
             onCanPlay={() => videoRef.current?.play().catch(() => {})}
-            className={`w-full h-full object-cover ${user.isCameraOff ? 'hidden' : 'block'} ${
+            className={`w-full h-full object-cover ${shouldShowVideo ? 'block' : 'hidden'} ${
               user.isLocal ? '-scale-x-100' : ''
             }`}
           />
 
           {/* Camera Off Avatar Screen */}
-          {user.isCameraOff && (
-            <div className="flex flex-col items-center gap-3">
+          {!shouldShowVideo && (
+            <div className="flex flex-col items-center gap-3.5">
               <PlayerAvatar
                 name={user.name}
                 profilePicture={user.profilePicture}
                 avatar={user.avatar}
-                size="2xl"
-                className="w-20 h-20 rounded-full shadow-2xl border-2 border-white/20"
+                size="4xl"
+                className="w-28 h-28 sm:w-32 sm:h-32 md:w-36 md:h-36 rounded-full shadow-2xl border-2 border-white/25 ring-4 ring-black/30 transition-transform duration-200"
               />
-              <div className="text-sm font-semibold text-slate-300 flex items-center gap-1.5">
+              <div className="text-sm sm:text-base font-bold text-slate-200 flex items-center gap-2 drop-shadow-md">
                 <span>{user.name}</span>
+                {user.isMuted && <MicOff className="w-3.5 h-3.5 text-rose-400" />}
               </div>
             </div>
           )}

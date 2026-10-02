@@ -454,8 +454,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     ...sanitizePresence(saved, { allowManualAway: true }),
     currentZoneId: null,
     lastUpdated: Date.now(),
-    isMuted: false,
-    isCameraOff: false,
+    isMuted: true,
+    isCameraOff: true,
     isScreenSharing: false,
   },
 

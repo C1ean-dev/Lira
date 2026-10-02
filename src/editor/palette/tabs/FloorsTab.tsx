@@ -5,7 +5,7 @@ import { FloorType } from '../../../types/map'
 import { ConfirmModal } from '../../../components/ConfirmModal'
 
 interface Props {
-  floors: { id: string; name: string; isCustom?: boolean; width?: number; height?: number }[]
+  floors: { id: string; name: string; isCustom?: boolean; width?: number; height?: number; updatedAt?: number }[]
   selectedFloor: FloorType
   setSelectedFloor: (floor: FloorType) => void
   activeTool: string
@@ -168,7 +168,12 @@ export const FloorsTab: React.FC<Props> = ({
 
               {/* Center Floor Thumbnail */}
               <div className="flex-1 flex items-center justify-center w-full min-h-0 overflow-hidden py-0.5">
-                <PixelArtThumbnail type="floor" id={floor.id} size={48} />
+                <PixelArtThumbnail
+                  key={`${floor.id}_${floor.updatedAt || ''}`}
+                  type="floor"
+                  id={floor.id}
+                  size={48}
+                />
               </div>
 
               {/* Bottom Label */}

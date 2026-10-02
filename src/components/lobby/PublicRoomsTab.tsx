@@ -1,5 +1,5 @@
 import React from 'react'
-import { Radio, RefreshCw, Plus, Search, X, Globe, Users, Check, Copy, ArrowRight } from 'lucide-react'
+import { Radio, RefreshCw, Search, X, Globe, Users, Check, Copy, ArrowRight, LogIn } from 'lucide-react'
 import { PublicRoomInfo } from '../../types/game'
 import { useBrokerStatus } from '../../hooks/useBrokerStatus'
 
@@ -13,8 +13,11 @@ interface Props {
   copiedRoomCode: string | null
   handleCopyCode: (e: React.MouseEvent, code: string) => void
   handleJoinPublicRoom: (room: PublicRoomInfo) => void
+  handleJoinByCode: (code: string) => void
   loading: boolean
-  onOpenCreateMode: () => void
+  error?: string | null
+  setError?: (err: string | null) => void
+  onOpenCreateMode?: () => void
 }
 
 export const PublicRoomsTab: React.FC<Props> = ({
@@ -27,14 +30,48 @@ export const PublicRoomsTab: React.FC<Props> = ({
   copiedRoomCode,
   handleCopyCode,
   handleJoinPublicRoom,
+  handleJoinByCode,
   loading,
-  onOpenCreateMode,
+  error,
+  setError,
 }) => {
   const { status: brokerStatus, isResolving, feedback, resolveConnection } = useBrokerStatus()
 
+  const handleSearchSubmit = () => {
+    const raw = searchQuery.trim()
+    if (!raw) return
+
+    // 1. Check if matches any active public room by code (case-insensitive)
+    const matchByCode = publicRooms.find(
+      (r) => r.code.trim().toUpperCase() === raw.toUpperCase()
+    )
+    if (matchByCode) {
+      handleJoinPublicRoom(matchByCode)
+      return
+    }
+
+    // 2. Check if matches any active public room by name (case-insensitive)
+    const matchByName = publicRooms.find(
+      (r) => r.name.trim().toUpperCase() === raw.toUpperCase()
+    )
+    if (matchByName) {
+      handleJoinPublicRoom(matchByName)
+      return
+    }
+
+    // 3. If filtered list currently has exactly 1 room matching the query, enter it
+    if (filteredPublicRooms.length === 1) {
+      handleJoinPublicRoom(filteredPublicRooms[0])
+      return
+    }
+
+    // 4. Default: behave like "entrar por código" for direct/private/public room codes
+    handleJoinByCode(raw)
+  }
+
   return (
     <div className="p-5 space-y-3.5 overflow-y-auto flex-1 flex flex-col">
-      {/* Top Hub Bar: Status, Search, Refresh, Create */}
+      {/* Top Hub Bar: Status, Count, Refresh */}
       <div className="space-y-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -84,21 +121,35 @@ export const PublicRoomsTab: React.FC<Props> = ({
             <button
               type="button"
               onClick={handleManualRefresh}
-              className="p-1.5 rounded-xl bg-[#12151d] hover:bg-slate-800 border border-[#2a3142] text-slate-300 hover:text-white transition-all cursor-pointer"
+              disabled={isRefreshing}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#12151d] hover:bg-slate-800 border border-[#2a3142] text-slate-200 hover:text-white text-xs font-semibold transition-all cursor-pointer"
               title="Atualizar lista de salas públicas"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-indigo-400' : ''}`} />
-            </button>
-            <button
-              type="button"
-              onClick={onOpenCreateMode}
-              className="px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all active:scale-95 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Abrir Sala</span>
+              <span>{isRefreshing ? 'Atualizando...' : 'Atualizar'}</span>
             </button>
           </div>
         </div>
+
+        {/* Error message if any */}
+        {error && (
+          <div className="text-xs p-2.5 rounded-xl border border-rose-500/40 bg-rose-500/15 text-rose-300 flex items-center justify-between gap-2 animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0" />
+              <span>{error}</span>
+            </div>
+            {setError && (
+              <button
+                type="button"
+                onClick={() => setError(null)}
+                className="text-rose-400 hover:text-rose-200 p-0.5 cursor-pointer"
+                title="Fechar aviso"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Feedback message if any */}
         {feedback && (
@@ -126,26 +177,49 @@ export const PublicRoomsTab: React.FC<Props> = ({
           </div>
         )}
 
-        {/* Search input */}
-        <div className="relative">
-          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Buscar por nome da sala, host ou código..."
-            className="w-full bg-[#12151d] border border-[#2a3142] rounded-xl pl-8 pr-8 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          )}
-        </div>
+        {/* Search & Direct Join by Code Form */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            handleSearchSubmit()
+          }}
+          className="flex items-center gap-2"
+        >
+          <div className="relative flex-1">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar por nome da sala ou digite o código para entrar..."
+              className="w-full bg-[#12151d] border border-[#2a3142] rounded-xl pl-8 pr-8 py-2 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 cursor-pointer"
+                title="Limpar pesquisa"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          <button
+            type="submit"
+            disabled={!searchQuery.trim() || loading}
+            className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all active:scale-95 shrink-0 cursor-pointer"
+            title="Entrar na sala com este código ou nome"
+          >
+            {loading ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <LogIn className="w-3.5 h-3.5" />
+            )}
+            <span>Entrar</span>
+          </button>
+        </form>
       </div>
 
       {/* Public Rooms List */}
@@ -163,17 +237,18 @@ export const PublicRoomsTab: React.FC<Props> = ({
               </h4>
               <p className="text-[11px] text-slate-400 mt-1 max-w-sm mx-auto">
                 {searchQuery
-                  ? 'Tente buscar por outro nome ou código da sala.'
-                  : 'Abra seu espaço e deixe-o público para aparecer aqui para outros usuários!'}
+                  ? 'Pressione Enter ou clique em Entrar para tentar conectar usando este código direto.'
+                  : 'Aperte o botão abaixo para atualizar e verificar se novas salas públicas foram abertas.'}
               </p>
             </div>
             <button
               type="button"
-              onClick={onOpenCreateMode}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold inline-flex items-center gap-1.5 shadow-lg shadow-indigo-600/20 transition-all active:scale-95"
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold inline-flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition-all active:scale-95 cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Criar a Primeira Sala Pública</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span>{isRefreshing ? 'Atualizando Lista...' : 'Atualizar Lista de Salas'}</span>
             </button>
           </div>
         ) : (

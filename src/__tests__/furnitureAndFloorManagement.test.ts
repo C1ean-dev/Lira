@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
+import { useCustomAssetsStore, onCustomAssetsChange } from '../store/useCustomAssetsStore'
 import { useMapStore } from '../store/useMapStore'
 import { CustomAsset } from '../types/customAsset'
 import { createEmptyWorkspace } from '../editor/templates'
@@ -284,5 +284,35 @@ describe('Furniture & Floor Management (Edit and Delete)', () => {
         expect(useMapStore.getState().mapData.floors[10 + dy][10 + dx]).toBe('wood_light')
       }
     }
+  })
+
+  it('should immediately update updatedAt and notify listeners when editing floor asset', () => {
+    let notified = false
+    const unsubscribe = onCustomAssetsChange(() => {
+      notified = true
+    })
+
+    const assetStore = useCustomAssetsStore.getState()
+    const floorAsset = createCustomAssetFixture({
+      id: 'custom_floor_test',
+      name: 'Piso de Pedra Original',
+      type: 'floor',
+      frames: ['data:image/png;base64,originalFrame'],
+    })
+    assetStore.addCustomAsset(floorAsset)
+
+    const beforeUpdate = Date.now()
+    assetStore.updateCustomAsset('custom_floor_test', {
+      frames: ['data:image/png;base64,newEditedFrame'],
+      thumbnail: 'data:image/png;base64,newEditedFrame',
+    })
+
+    const updated = useCustomAssetsStore.getState().getAssetById('custom_floor_test')
+    expect(updated?.frames?.[0]).toBe('data:image/png;base64,newEditedFrame')
+    expect(updated?.thumbnail).toBe('data:image/png;base64,newEditedFrame')
+    expect(updated?.updatedAt).toBeGreaterThanOrEqual(beforeUpdate)
+    expect(notified).toBe(true)
+
+    unsubscribe()
   })
 })

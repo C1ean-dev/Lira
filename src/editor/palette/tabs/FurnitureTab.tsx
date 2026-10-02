@@ -258,7 +258,12 @@ export const FurnitureTab: React.FC<Props> = ({
 
                 {/* Center Sprite Thumbnail */}
                 <div className="flex-1 flex items-center justify-center w-full min-h-0 overflow-hidden py-0.5">
-                  <PixelArtThumbnail type="furniture" id={item.id} size={48} />
+                  <PixelArtThumbnail
+                    key={`${item.id}_${(item as any).updatedAt || ''}`}
+                    type="furniture"
+                    id={item.id}
+                    size={48}
+                  />
                 </div>
 
                 {/* Bottom Label */}

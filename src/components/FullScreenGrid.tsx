@@ -35,7 +35,7 @@ const FullScreenGridInner: React.FC = () => {
   const isScreenSharing = useMediaStore((s) => s.isScreenSharing)
   const localAudioLevel = useMediaStore((s) => s.localAudioLevel)
 
-  const { localPlayer, remotePlayers, callStates } = useGameStore()
+  const { localPlayer, remotePlayers, callStates, friendProfiles } = useGameStore()
   const { mapData } = useMapStore()
 
   const [isScreenModalOpen, setIsScreenModalOpen] = useState(false)
@@ -94,30 +94,37 @@ const FullScreenGridInner: React.FC = () => {
         shirtColor: localPlayer.avatar.shirtColor,
         statusEmoji: localPlayer.statusEmoji,
       },
-      ...peersInSameZone.map((p) => ({
-        id: p.id,
-        gameId: p.gameId || p.id,
-        name: p.name,
-        profilePicture: p.profilePicture,
-        avatar: p.avatar,
-        stream: peerStreams[p.id] || null,
-        screenStream: peerScreenStreams[p.id] || (p.isScreenSharing ? peerStreams[p.id] : null),
-        isMuted: p.isMuted,
-        isMutedByAdmin: p.isMutedByAdmin,
-        isDeafened: p.isDeafened,
-        isCameraOff: p.isCameraOff,
-        isLocal: false,
-        isScreenSharing: p.isScreenSharing,
-        isSpeaking: false,
-        shirtColor: p.avatar.shirtColor,
-        statusEmoji: p.statusEmoji,
-        callState: callStates[p.id] || p.callState || 'idle',
-        onRetryCall: () => PeerManager.getInstance().retryZoneCall(p.id),
-      })),
+      ...peersInSameZone.map((p) => {
+        const fp = friendProfiles[p.id] || (p.gameId ? friendProfiles[p.gameId] : undefined)
+        const resolvedPic = p.profilePicture || fp?.profilePicture
+        const resolvedAvatar = p.avatar || fp?.avatar
+
+        return {
+          id: p.id,
+          gameId: p.gameId || p.id,
+          name: p.name,
+          profilePicture: resolvedPic,
+          avatar: resolvedAvatar,
+          stream: peerStreams[p.id] || null,
+          screenStream: peerScreenStreams[p.id] || (p.isScreenSharing ? peerStreams[p.id] : null),
+          isMuted: p.isMuted,
+          isMutedByAdmin: p.isMutedByAdmin,
+          isDeafened: p.isDeafened,
+          isCameraOff: p.isCameraOff ?? true,
+          isLocal: false,
+          isScreenSharing: p.isScreenSharing,
+          isSpeaking: false,
+          shirtColor: resolvedAvatar?.shirtColor || '#3b82f6',
+          statusEmoji: p.statusEmoji,
+          callState: callStates[p.id] || p.callState || 'idle',
+          onRetryCall: () => PeerManager.getInstance().retryZoneCall(p.id),
+        }
+      }),
     ]
   }, [
     remotePlayers,
     localPlayer,
+    friendProfiles,
     localStream,
     localScreenStream,
     peerStreams,

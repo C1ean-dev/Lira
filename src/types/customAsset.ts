@@ -44,6 +44,7 @@ export interface CustomAsset {
   frameRateMs?: number // default 160ms
   iconColor?: string
   createdAt: number
+  updatedAt?: number
   creationSource?: 'slicer' | 'atlas' | 'studio'
   sourceImageSrc?: string
   sourceFileName?: string

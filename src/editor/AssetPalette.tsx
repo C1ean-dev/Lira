@@ -113,15 +113,16 @@ export const AssetPalette: React.FC = () => {
       isCustom: true,
       width: a.width || 1,
       height: a.height || 1,
+      updatedAt: a.updatedAt,
     }))
   const floors = [...customFloors, ...baseFloors]
 
-  const baseWalls: { id: WallType | string; name: string; isCustom?: boolean }[] = [
+  const baseWalls: { id: WallType | string; name: string; isCustom?: boolean; updatedAt?: number }[] = [
     { id: 'drywall_white', name: 'Parede Padrão (Drywall)' },
   ]
   const customWalls = customAssets
     .filter((a) => a.type === 'wall')
-    .map((a) => ({ id: a.id, name: `✨ ${a.name}`, isCustom: true }))
+    .map((a) => ({ id: a.id, name: `✨ ${a.name}`, isCustom: true, updatedAt: a.updatedAt }))
   const walls = [...customWalls, ...baseWalls]
 
   const customFurnitureDefs = customAssets
@@ -136,6 +137,7 @@ export const AssetPalette: React.FC = () => {
       spriteKey: a.id,
       iconColor: a.iconColor || '#e03131',
       isCustom: true,
+      updatedAt: a.updatedAt,
     }))
   const allFurniture = [...customFurnitureDefs, ...FURNITURE_CATALOG]
 
@@ -302,7 +304,9 @@ export const AssetPalette: React.FC = () => {
         : (cat === 'furniture' || cat === 'wall')
     const subCategory = options?.category || (cat === 'furniture' ? effectiveCategory : cat)
 
+    const existing = editingId ? customAssets.find((a) => a.id === editingId) : null
     const asset: CustomAsset = {
+      ...(existing || {}),
       id,
       name,
       type: cat,
@@ -316,7 +320,9 @@ export const AssetPalette: React.FC = () => {
       thumbnail: previewUrl || undefined,
       frames: frames.length > 0 ? frames : (previewUrl ? [previewUrl] : []),
       frameRateMs: 160,
-      createdAt: Date.now(),
+      createdAt: existing?.createdAt || Date.now(),
+      updatedAt: Date.now(),
+      frameLayers: undefined,
     }
 
     if (editingId) {

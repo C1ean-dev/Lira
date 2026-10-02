@@ -586,6 +586,7 @@ export class PeerManager {
         payload: {
           player: {
             ...localPlayer,
+            isCameraOff: localPlayer.isCameraOff !== undefined ? localPlayer.isCameraOff : true,
             id: this.peer!.id,
             gameId: localPlayer.gameId || localPlayer.id,
           },
@@ -636,13 +637,18 @@ export class PeerManager {
           }
         }
 
-        // Also broadcast newcomer to other peers
+        // Also send existing peers to the newcomer
         const remotePlayers = useGameStore.getState().remotePlayers
         Object.values(remotePlayers).forEach((p) => {
           this.sendToPeer(conn, {
             type: 'PLAYER_JOIN',
             senderId: p.id,
-            payload: { player: p },
+            payload: {
+              player: {
+                ...p,
+                isCameraOff: p.isCameraOff !== undefined ? p.isCameraOff : true,
+              },
+            },
             timestamp: Date.now(),
           })
         })

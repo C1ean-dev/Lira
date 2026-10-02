@@ -3,7 +3,7 @@ import type { MapData, PlacedFurniture, PrivateZone } from '../../types/map'
 import { FloorRenderer } from './floorRenderer'
 import { WallRenderer } from './wallRenderer'
 import { FurnitureRenderer } from './furnitureRenderer'
-import { useCustomAssetsStore, getCustomAssetImage } from '../../store/useCustomAssetsStore'
+import { useCustomAssetsStore, getCustomAssetImage, onCustomAssetsChange } from '../../store/useCustomAssetsStore'
 
 interface StaticLayer {
   canvas: HTMLCanvasElement
@@ -42,6 +42,11 @@ function isAnimatedAsset(
 export function invalidateStaticLayer(): void {
   cached = null
 }
+
+// Auto-invalidate when custom assets are added, edited, or removed
+onCustomAssetsChange(() => {
+  invalidateStaticLayer()
+})
 
 /**
  * StaticLayerCache — pre-renders floors + walls + static furniture once into a
@@ -100,6 +105,7 @@ export function getStaticLayer(map: MapData): StaticLayer | null {
 
   // 1. Floors — static draw. Animated custom floors: bake frame 0 now,
   // remember tile for dynamic overdraw each frame.
+  const checkedFloors = new Set<string>()
   for (let y = 0; y < mapH; y++) {
     const row = map.floors?.[y]
     for (let x = 0; x < mapW; x++) {
@@ -108,9 +114,16 @@ export function getStaticLayer(map: MapData): StaticLayer | null {
       if (isAnimatedAsset(custom)) {
         animatedFloorTiles.push({ x, y, type: floor })
       }
-      // Heuristic: dataURL frames not yet decoded (naturalWidth 0) need refresh.
-      // We can't cheaply check every tile's image; instead rely on the
-      // furniture/zone image checks below + a single probe per unique type.
+      if (custom && custom.frames?.[0] && !checkedFloors.has(floor)) {
+        checkedFloors.add(floor)
+        const fImg = getCustomAssetImage(custom.frames[0])
+        if (fImg && (!fImg.complete || fImg.naturalWidth === 0)) {
+          needsRefresh = true
+          fImg.onload = () => {
+            invalidateStaticLayer()
+          }
+        }
+      }
       FloorRenderer.drawFloor(ctx, floor, x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, x, y, map.floors)
     }
   }

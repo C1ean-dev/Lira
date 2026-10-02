@@ -242,16 +242,35 @@ export const LobbyModal: React.FC<Props> = ({
     setError(null)
 
     try {
-      setLocalPlayer({ name: userName.trim() })
+      useMediaStore.getState().setMuted(true)
+      useMediaStore.getState().setCameraOff(true)
+      setLocalPlayer({ name: userName.trim(), isCameraOff: true, isMuted: true })
+      const playerPayload: Player = {
+        ...useGameStore.getState().localPlayer,
+        name: userName.trim(),
+        isCameraOff: true,
+        isMuted: true,
+      }
+
+      const matchingSpace = savedSpaces.find(
+        (s) => s.roomCode?.toUpperCase() === room.code.trim().toUpperCase()
+      )
+      if (matchingSpace) {
+        useMapStore.getState().setMapData(matchingSpace.mapData)
+        setActiveSpaceId(matchingSpace.id)
+        setSelectedSpaceId(matchingSpace.id)
+        const spawnX = matchingSpace.mapData.spawnPoint?.x ?? 34
+        const spawnY = matchingSpace.mapData.spawnPoint?.y ?? 20
+        playerPayload.x = spawnX
+        playerPayload.y = spawnY
+      }
+
       // Parallel: mic/camera warm-up must NOT block the P2P handshake.
       // MediaManager.startMedia re-triggers zone-call eligibility when the
       // stream lands, so calls missed while the mic was initializing heal.
       await Promise.all([
         MediaManager.getInstance().startMedia(true, true),
-        PeerManager.getInstance().joinRoom(room.code, {
-          ...localPlayer,
-          name: userName.trim(),
-        }),
+        PeerManager.getInstance().joinRoom(room.code, playerPayload),
       ])
       onJoined()
     } catch (err: any) {
@@ -275,18 +294,37 @@ export const LobbyModal: React.FC<Props> = ({
     setError(null)
 
     try {
-      setLocalPlayer({ name: userName.trim() })
+      useMediaStore.getState().setMuted(true)
+      useMediaStore.getState().setCameraOff(true)
+      setLocalPlayer({ name: userName.trim(), isCameraOff: true, isMuted: true })
+      const playerPayload: Player = {
+        ...useGameStore.getState().localPlayer,
+        name: userName.trim(),
+        isCameraOff: true,
+        isMuted: true,
+      }
+
+      const matchingSpace = savedSpaces.find(
+        (s) => s.roomCode?.toUpperCase() === code.trim().toUpperCase()
+      )
+      if (matchingSpace) {
+        useMapStore.getState().setMapData(matchingSpace.mapData)
+        setActiveSpaceId(matchingSpace.id)
+        setSelectedSpaceId(matchingSpace.id)
+        const spawnX = matchingSpace.mapData.spawnPoint?.x ?? 34
+        const spawnY = matchingSpace.mapData.spawnPoint?.y ?? 20
+        playerPayload.x = spawnX
+        playerPayload.y = spawnY
+      }
+
       await Promise.all([
         MediaManager.getInstance().startMedia(true, true),
-        PeerManager.getInstance().joinRoom(code, {
-          ...localPlayer,
-          name: userName.trim(),
-        }),
+        PeerManager.getInstance().joinRoom(code.trim(), playerPayload),
       ])
       onJoined()
     } catch (err: any) {
       console.error(err)
-      setError(`Não foi possível conectar à sala (${code}). O host pode ter fechado o app.`)
+      setError(`Não foi possível conectar à sala (${code}). O host pode ter fechado o app ou o código está incorreto.`)
     } finally {
       enterGuardRef.current.release()
       setLoading(false)
@@ -356,6 +394,8 @@ export const LobbyModal: React.FC<Props> = ({
           x: newMap.spawnPoint.x,
           y: newMap.spawnPoint.y,
           currentZoneId: null,
+          isCameraOff: useMediaStore.getState().isCameraOff ?? true,
+          isMuted: useMediaStore.getState().isMuted ?? true,
         }
 
         await Promise.all([
@@ -376,6 +416,8 @@ export const LobbyModal: React.FC<Props> = ({
         const playerPayload: Player = {
           ...useGameStore.getState().localPlayer,
           name: userName.trim(),
+          isCameraOff: useMediaStore.getState().isCameraOff ?? true,
+          isMuted: useMediaStore.getState().isMuted ?? true,
         }
 
         const matchingSpace = savedSpaces.find(
@@ -465,6 +507,8 @@ export const LobbyModal: React.FC<Props> = ({
         x: spawnX,
         y: spawnY,
         currentZoneId: null,
+        isCameraOff: useMediaStore.getState().isCameraOff ?? true,
+        isMuted: useMediaStore.getState().isMuted ?? true,
       }
 
       try {
@@ -704,12 +748,10 @@ export const LobbyModal: React.FC<Props> = ({
             copiedRoomCode={copiedRoomCode}
             handleCopyCode={handleCopyCode}
             handleJoinPublicRoom={handleJoinPublicRoom}
+            handleJoinByCode={handleJoinByCode}
             loading={loading}
-            onOpenCreateMode={() => {
-              setMode('create')
-              setCreateIsPublic(true)
-              setActiveTab('connect')
-            }}
+            error={error}
+            setError={setError}
           />
         )}
 
