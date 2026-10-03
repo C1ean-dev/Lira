@@ -10,9 +10,9 @@ if ($ExecutablePath) {
   $candidates += $ExecutablePath
 }
 $candidates += @(
-  (Join-Path $workspaceRoot 'release\win-unpacked\Gather Clone V2.exe'),
-  (Join-Path $env:LOCALAPPDATA 'Programs\Gather Clone V2\Gather Clone V2.exe'),
-  (Join-Path $env:LOCALAPPDATA 'Gather Clone V2\Gather Clone V2.exe')
+  (Join-Path $workspaceRoot 'release\win-unpacked\Lira.exe'),
+  (Join-Path $env:LOCALAPPDATA 'Programs\Lira\Lira.exe'),
+  (Join-Path $env:LOCALAPPDATA 'Lira\Lira.exe')
 )
 
 $resolvedExecutable = $null
@@ -24,7 +24,7 @@ foreach ($candidate in $candidates) {
 }
 
 if (-not $resolvedExecutable) {
-  throw "Executável do Gather não encontrado. Gere o pacote ou informe -ExecutablePath 'C:\caminho\Gather Clone V2.exe'."
+  throw "Executável do Lira não encontrado. Gere o pacote ou informe -ExecutablePath 'C:\caminho\Lira.exe'."
 }
 
 $workingDirectory = Split-Path -Parent $resolvedExecutable

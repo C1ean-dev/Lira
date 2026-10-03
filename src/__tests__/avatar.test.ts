@@ -4,7 +4,7 @@ import { AvatarRenderer } from '../engine/AvatarRenderer'
 import { Player } from '../types/game'
 
 describe('Avatar Customizer & Pixel Art Renderer - Expected Behaviors', () => {
-  it('should have complete DEFAULT_AVATAR with all neutral Gather layers', () => {
+  it('should have complete DEFAULT_AVATAR with all neutral Lira layers', () => {
     expect(DEFAULT_AVATAR.skinTone).toBe('#ffd1a4')
     expect(DEFAULT_AVATAR.skinDetail).toBe('smooth')
     expect(DEFAULT_AVATAR.eyeType).toBe('normal')

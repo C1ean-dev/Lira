@@ -28,7 +28,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught Error in Gather V2:', error, errorInfo)
+    console.error('Uncaught Error in Lira:', error, errorInfo)
     this.setState({ error, errorInfo })
   }
 
@@ -46,7 +46,7 @@ export class ErrorBoundary extends Component<Props, State> {
     const componentStack = this.state.errorInfo?.componentStack || 'No component stack trace available'
 
     const fullReport = [
-      `=== GATHER V2 ERROR REPORT ===`,
+      `=== LIRA ERROR REPORT ===`,
       `Timestamp: ${timestamp}`,
       `URL: ${url}`,
       `User Agent: ${userAgent}`,
@@ -97,7 +97,7 @@ export class ErrorBoundary extends Component<Props, State> {
               </div>
               <div>
                 <h2 className="text-lg font-bold text-white">Ops! Ocorreu um erro ao carregar a tela</h2>
-                <p className="text-xs text-slate-400">O Gather V2 encontrou uma falha de renderização</p>
+                <p className="text-xs text-slate-400">O Lira encontrou uma falha de renderização</p>
               </div>
             </div>
 

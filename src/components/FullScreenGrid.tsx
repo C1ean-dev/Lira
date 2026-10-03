@@ -245,7 +245,7 @@ const FullScreenGridInner: React.FC = () => {
           )}
         </div>
 
-        {/* Bottom Controls Bar (Gather V2 Dock) */}
+        {/* Bottom Controls Bar (Lira Dock) */}
         <CallControlsBar
           onToggleScreenShare={handleToggleScreenShare}
           onLeaveCall={() => setGridCallOpen(false)}

@@ -1,7 +1,6 @@
 !macro KillAppProcesses
   # Encerra todas as instâncias em execução do Lira e processos auxiliares para garantir que nenhum arquivo fique bloqueado
   nsExec::Exec `"$SYSDIR\taskkill.exe" /F /IM "Lira.exe" /T`
-  nsExec::Exec `"$SYSDIR\taskkill.exe" /F /IM "gather-v2-clone.exe" /T`
   nsExec::Exec `"$SYSDIR\taskkill.exe" /F /IM "process-audio-capture.exe" /T`
   Sleep 1000
 !macroend

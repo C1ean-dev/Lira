@@ -167,7 +167,7 @@ export async function exportCategoryAtlas(
 ): Promise<{ xmlString: string; pngDataUrl?: string }> {
   const spritesToPack: { name: string; image?: HTMLImageElement; width: number; height: number }[] = []
 
-  // 1. Gather custom assets in this category
+  // 1. Collect custom assets in this category
   const categoryAssets = customAssets.filter((a) => {
     if (category === 'furniture' || category === 'floor' || category === 'wall') {
       return a.type === category

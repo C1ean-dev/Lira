@@ -140,7 +140,7 @@ export function getStaticLayer(map: MapData): StaticLayer | null {
     }
   }
   for (const zone of staticZones) {
-    WallRenderer.drawGatherRoom(ctx, zone, zones)
+    WallRenderer.drawLiraRoom(ctx, zone, zones)
   }
 
   // 3. Furniture — built-in static only; custom assets (high-fidelity/sub-tile) and animated excluded for dynamic draw.

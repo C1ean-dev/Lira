@@ -4,12 +4,13 @@
  * and Software Encoding (VP8 libvpx on CPU).
  */
 
-const STORAGE_HW_KEY = 'gather_hw_acceleration_enabled'
+const STORAGE_HW_KEY = 'lira_hw_acceleration_enabled'
+const LEGACY_STORAGE_HW_KEY = 'gather_hw_acceleration_enabled'
 
 let hwAccelerationActive = (() => {
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
-      const stored = window.localStorage.getItem(STORAGE_HW_KEY)
+      const stored = window.localStorage.getItem(STORAGE_HW_KEY) ?? window.localStorage.getItem(LEGACY_STORAGE_HW_KEY)
       if (stored !== null) return stored === 'true'
     }
   } catch {}
@@ -25,6 +26,7 @@ export function setHardwareAccelerationEnabled(enabled: boolean) {
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
       window.localStorage.setItem(STORAGE_HW_KEY, String(enabled))
+      window.dispatchEvent(new CustomEvent('lira:hw-acceleration-changed', { detail: { enabled } }))
       window.dispatchEvent(new CustomEvent('gather:hw-acceleration-changed', { detail: { enabled } }))
     }
   } catch {}

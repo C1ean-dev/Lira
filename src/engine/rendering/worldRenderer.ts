@@ -92,7 +92,7 @@ export class WorldRenderer {
           PixelArtRenderer.drawFloor(ctx, t.type, t.x * TILE_SIZE, t.y * TILE_SIZE, TILE_SIZE, t.x, t.y, map.floors)
         }
         for (const zone of staticLayer.animatedZones) {
-          PixelArtRenderer.drawGatherRoom(ctx, zone, map.zones || [])
+          PixelArtRenderer.drawLiraRoom(ctx, zone, map.zones || [])
         }
         for (const item of staticLayer.animatedFurniture) {
           // Cheap tile-margin cull without def lookup (max furniture ~4 tiles).
@@ -121,7 +121,7 @@ export class WorldRenderer {
           }
         }
 
-        // 2. Draw Gather Room Architecture (culled per zone)
+        // 2. Draw Lira Room Architecture (culled per zone)
         for (const zone of map.zones || []) {
           if (enableCulling) {
             const zx0 = zone.x * TILE_SIZE
@@ -130,7 +130,7 @@ export class WorldRenderer {
             const zy1 = (zone.y + zone.height) * TILE_SIZE
             if (zx1 < camMinX || zx0 > camMaxX || zy1 < camMinY || zy0 > camMaxY) continue
           }
-          PixelArtRenderer.drawGatherRoom(ctx, zone, map.zones || [])
+          PixelArtRenderer.drawLiraRoom(ctx, zone, map.zones || [])
         }
 
         // 4. Draw Placed Furniture (culled)

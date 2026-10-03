@@ -12,7 +12,7 @@ export interface CallAudioIsolatorConfig {
  *
  * Problem:
  * When a user shares their screen or application (e.g. Chrome playing a YouTube video)
- * while in a Gather call, system loopback capture records all audio sent to the speakers,
+ * while in a Lira call, system loopback capture records all audio sent to the speakers,
  * including incoming remote peer voices. This creates a severe audio feedback loop
  * (peers hear themselves echoing back) and pollutes the live stream with call chatter.
  *

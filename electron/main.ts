@@ -598,7 +598,7 @@ ipcMain.handle('check-update', async () => {
     const res = await fetch(url, {
       signal: controller.signal,
       headers: {
-        'User-Agent': 'gather-v2-clone-updater',
+        'User-Agent': 'lira-updater',
         Accept: 'application/vnd.github.v3+json',
       },
     })
@@ -675,7 +675,7 @@ function downloadFileWithRedirects(
           currentUrl,
           {
             headers: {
-              'User-Agent': 'gather-v2-clone-updater',
+              'User-Agent': 'lira-updater',
               Accept: 'application/octet-stream',
             },
           },
@@ -754,8 +754,7 @@ function findExistingInstaller(version?: string): string | null {
     candidates.push(
       path.join(tempDir, `Lira-Update-Setup-${cleanVer}.exe`),
       path.join(tempDir, `Lira.Setup.${cleanVer}.exe`),
-      path.join(tempDir, `Lira-Setup-${cleanVer}.exe`),
-      path.join(tempDir, `GatherClone-Update-Setup-${cleanVer}.exe`)
+      path.join(tempDir, `Lira-Setup-${cleanVer}.exe`)
     )
   }
   if (downloadedInstallerPath && fs.existsSync(downloadedInstallerPath)) {
@@ -778,7 +777,7 @@ function findExistingInstaller(version?: string): string | null {
   try {
     const files = fs.readdirSync(tempDir)
     for (const file of files) {
-      if ((file.startsWith('Lira') || file.startsWith('GatherClone')) && file.endsWith('.exe')) {
+      if (file.startsWith('Lira') && file.endsWith('.exe')) {
         if (!cleanVer || file.includes(cleanVer)) {
           const full = path.join(tempDir, file)
           const stats = fs.statSync(full)
@@ -798,7 +797,7 @@ function cleanupOldInstallers(currentInstallerPath?: string): void {
     const tempDir = app.getPath('temp')
     const files = fs.readdirSync(tempDir)
     for (const f of files) {
-      if ((f.startsWith('GatherClone-Update-Setup') || f.startsWith('Lira-Update-Setup') || f.startsWith('Lira.Setup')) && (f.endsWith('.exe') || f.endsWith('.tmp'))) {
+      if ((f.startsWith('Lira-Update-Setup') || f.startsWith('Lira.Setup')) && (f.endsWith('.exe') || f.endsWith('.tmp'))) {
         const fullPath = path.join(tempDir, f)
         if (!currentInstallerPath || fullPath !== currentInstallerPath) {
           try {
@@ -1146,7 +1145,7 @@ ipcMain.handle(
 
 // 8. Cross-process presence and direct messaging for multi-instance desktop
 function getPresenceDirectory(): string {
-  const dir = path.join(app.getPath('temp'), 'gather_v2_presence')
+  const dir = path.join(app.getPath('temp'), 'lira_presence')
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true })
   }
@@ -1154,7 +1153,7 @@ function getPresenceDirectory(): string {
 }
 
 function getMessagesDirectory(): string {
-  const dir = path.join(app.getPath('temp'), 'gather_v2_messages')
+  const dir = path.join(app.getPath('temp'), 'lira_messages')
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true })
   }
@@ -1224,6 +1223,17 @@ ipcMain.handle('send-cross-message', async (_event, message: any) => {
               fs.writeFileSync(otherPath, JSON.stringify(data), 'utf-8')
             }
           } catch (e) {}
+        }
+      } catch (e) {}
+    // If this is a message delivery/read status update, sync original message file if present
+    if (message.targetMessageId && message.status) {
+      try {
+        const targetPath = path.join(dir, `msg_${message.targetMessageId}.json`)
+        if (fs.existsSync(targetPath)) {
+          const raw = fs.readFileSync(targetPath, 'utf-8')
+          const data = JSON.parse(raw)
+          data.status = message.status
+          fs.writeFileSync(targetPath, JSON.stringify(data), 'utf-8')
         }
       } catch (e) {}
     }
@@ -1316,7 +1326,7 @@ try {
     if ($r.Enabled -and $r.Action -eq 1) {
       $app = if ($r.ApplicationName) { $r.ApplicationName.ToLower() } else { '' }
       $nm = if ($r.Name) { $r.Name.ToLower() } else { '' }
-      if ($app -eq $targetExe -or ($targetName -and ($app.Contains($targetName) -or $nm.Contains($targetName))) -or $app.EndsWith('\\lira.exe') -or $app.EndsWith('\\electron.exe') -or $nm.Contains('lira') -or $nm.Contains('gather')) {
+      if ($app -eq $targetExe -or ($targetName -and ($app.Contains($targetName) -or $nm.Contains($targetName))) -or $app.EndsWith('\\lira.exe') -or $app.EndsWith('\\electron.exe') -or $nm.Contains('lira')) {
         $isAllowed = $true
         break
       }
@@ -1324,7 +1334,7 @@ try {
   }
 } catch {
   try {
-    $out = netsh advfirewall firewall show rule name=all | Select-String -Pattern 'lira|gather|electron'
+    $out = netsh advfirewall firewall show rule name=all | Select-String -Pattern 'lira|electron'
     if ($out) { $isAllowed = $true }
   } catch {}
 }
@@ -1364,8 +1374,7 @@ ipcMain.handle('request-firewall-access', async () => {
     const innerScript = `
 $paths = @(
   '${currentExe}',
-  (Join-Path $env:LOCALAPPDATA 'Programs\\lira\\Lira.exe'),
-  (Join-Path $env:LOCALAPPDATA 'Programs\\gather-v2-clone\\Lira.exe')
+  (Join-Path $env:LOCALAPPDATA 'Programs\\lira\\Lira.exe')
 ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
 
 foreach ($p in $paths) {

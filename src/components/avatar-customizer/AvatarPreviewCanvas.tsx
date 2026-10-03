@@ -39,7 +39,7 @@ export const AvatarPreviewCanvas: React.FC<Props> = ({
     const render = (tick: number) => {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-      // 1. Draw Aesthetic Gather Pastel Room Background (Floor, Wall, Baseboard)
+      // 1. Draw Aesthetic Lira Pastel Room Background (Floor, Wall, Baseboard)
       const w = canvas.width
       const h = canvas.height
 
@@ -139,7 +139,7 @@ export const AvatarPreviewCanvas: React.FC<Props> = ({
     AvatarRenderer.drawPlayer(ctx, tempPlayer, true, 0, 32, false)
 
     const link = document.createElement('a')
-    link.download = `${localPlayer.name || 'avatar'}-gather-pixel.png`
+    link.download = `${localPlayer.name || 'avatar'}-lira-pixel.png`
     link.href = canvas.toDataURL('image/png')
     link.click()
   }

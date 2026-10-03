@@ -1,5 +1,5 @@
-import { FriendProfile, PublicRoomInfo } from '../types/game'
-import { ChatMessage } from '../types/chat'
+import { FriendProfile, PublicRoomInfo, PresenceStatus } from '../types/game'
+import { ChatMessage, MessageDeliveryStatus } from '../types/chat'
 import { useGameStore } from '../store/useGameStore'
 import { useChatStore } from '../store/useChatStore'
 import { PublicRoomsService } from './publicRoomsService'
@@ -18,18 +18,33 @@ export interface UserPresence {
   lastHeartbeat: number
 }
 
-type PresenceMessageType = 'PRESENCE_HEARTBEAT' | 'PRESENCE_OFFLINE' | 'DIRECT_MESSAGE'
+type PresenceMessageType = 'PRESENCE_HEARTBEAT' | 'PRESENCE_OFFLINE' | 'DIRECT_MESSAGE' | 'MESSAGE_STATUS'
+
+export interface MessageStatusReceipt {
+  receiptId?: string
+  senderId: string
+  senderName?: string
+  recipientId: string
+  recipientName?: string
+  channelId?: string
+  messageId?: string
+  messageIds?: string[]
+  status: MessageDeliveryStatus
+  timestamp: number
+  upToTimestamp?: number
+}
 
 interface PresenceMessage {
   type: PresenceMessageType
   presence?: UserPresence
   userId?: string
   message?: ChatMessage
+  statusReceipt?: MessageStatusReceipt
   timestamp: number
 }
 
-const STORAGE_CACHE_KEY = 'gather_v2_presence_cache'
-const BROADCAST_CHANNEL_NAME = 'gather_v2_presence_channel'
+const STORAGE_CACHE_KEY = 'lira_presence_cache'
+const BROADCAST_CHANNEL_NAME = 'lira_presence_channel'
 const HEARTBEAT_INTERVAL_MS = 2000
 const STALE_PRESENCE_THRESHOLD_MS = 8000
 
@@ -154,6 +169,38 @@ export class FriendsPresenceService {
           chatStore.addMessage(incoming)
         }
       }
+    } else if (msg.type === 'MESSAGE_STATUS' && msg.statusReceipt) {
+      const receipt = msg.statusReceipt
+      const local = useGameStore.getState().localPlayer
+      const isForMe =
+        receipt.recipientId === local.id ||
+        (local.gameId && receipt.recipientId === local.gameId) ||
+        (receipt.recipientName && receipt.recipientName.toLowerCase() === local.name.toLowerCase()) ||
+        (receipt.channelId && (receipt.channelId.includes(local.id) || (local.gameId && receipt.channelId.includes(local.gameId))))
+
+      if (isForMe && receipt.senderId !== local.id) {
+        const chatStore = useChatStore.getState()
+        if (receipt.messageId) {
+          chatStore.updateMessageStatus(receipt.messageId, receipt.status)
+        }
+        if (receipt.messageIds && receipt.messageIds.length > 0) {
+          chatStore.updateMessageStatus(receipt.messageIds, receipt.status)
+        }
+        if (receipt.senderId) {
+          chatStore.updateMessagesStatusForPeer(
+            receipt.senderId,
+            receipt.status,
+            receipt.upToTimestamp || receipt.timestamp
+          )
+        }
+        if (receipt.senderName) {
+          chatStore.updateMessagesStatusForPeer(
+            receipt.senderName,
+            receipt.status,
+            receipt.upToTimestamp || receipt.timestamp
+          )
+        }
+      }
     }
   }
 
@@ -168,6 +215,8 @@ export class FriendsPresenceService {
         avatar: p.avatar,
         gameId: p.gameId,
         actualUserId: p.userId,
+        status: (p.status as PresenceStatus) || 'available',
+        statusText: p.statusText || 'Disponível',
         lastSeen: Date.now(),
         lastRoomCode: p.roomCode || undefined,
         lastRoomName: p.roomName || undefined,
@@ -181,6 +230,8 @@ export class FriendsPresenceService {
         if (profile.name.toLowerCase() === pNameLower) {
           gameStore.updateFriendProfile(friendId, {
             actualUserId: p.userId,
+            status: (p.status as PresenceStatus) || profile.status || 'available',
+            statusText: p.statusText || profile.statusText || 'Disponível',
             lastSeen: Date.now(),
             lastRoomCode: p.roomCode || undefined,
             lastRoomName: p.roomName || undefined,
@@ -275,7 +326,21 @@ export class FriendsPresenceService {
           })
           if (Array.isArray(pending) && pending.length > 0) {
             const chatStore = useChatStore.getState()
-            pending.forEach((msg: ChatMessage) => {
+            pending.forEach((msg: any) => {
+              if (msg.isStatusReceipt || (msg.status && msg.targetMessageId)) {
+                if (msg.senderId !== local.id) {
+                  if (msg.targetMessageId) {
+                    chatStore.updateMessageStatus(msg.targetMessageId, msg.status)
+                  }
+                  if (msg.senderId) {
+                    chatStore.updateMessagesStatusForPeer(msg.senderId, msg.status, msg.upToTimestamp || msg.timestamp)
+                  }
+                  if (msg.senderName) {
+                    chatStore.updateMessagesStatusForPeer(msg.senderName, msg.status, msg.upToTimestamp || msg.timestamp)
+                  }
+                }
+                return
+              }
               if (msg.senderId !== local.id) {
                 const existing = chatStore.messages.find(
                   (m) =>
@@ -359,6 +424,62 @@ export class FriendsPresenceService {
     }
   }
 
+  public async sendMessageStatusReceipt(receipt: MessageStatusReceipt) {
+    // 1. Send via Electron cross-instance IPC if available
+    if (typeof window !== 'undefined' && (window as any).electronAPI?.sendCrossProcessMessage) {
+      try {
+        await (window as any).electronAPI.sendCrossProcessMessage({
+          id: `status-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+          senderId: receipt.senderId,
+          senderName: receipt.senderName,
+          recipientId: receipt.recipientId,
+          recipientName: receipt.recipientName,
+          channelId: receipt.channelId,
+          targetMessageId: receipt.messageId,
+          status: receipt.status,
+          upToTimestamp: receipt.upToTimestamp || receipt.timestamp,
+          isStatusReceipt: true,
+          timestamp: Date.now(),
+        })
+      } catch (e) {
+        // Ignore
+      }
+    }
+
+    // 2. Broadcast via standard BroadcastChannel (for browser tabs)
+    if (this.broadcastChannel) {
+      try {
+        const msg: PresenceMessage = {
+          type: 'MESSAGE_STATUS',
+          statusReceipt: receipt,
+          timestamp: Date.now(),
+        }
+        this.broadcastChannel.postMessage(msg)
+      } catch (e) {
+        // Ignore
+      }
+    }
+  }
+
+  public sendReadReceipt(
+    recipientId: string,
+    recipientName?: string,
+    channelId?: string,
+    upToTimestamp?: number
+  ) {
+    const local = useGameStore.getState().localPlayer
+    return this.sendMessageStatusReceipt({
+      senderId: local.id,
+      senderName: local.name,
+      recipientId,
+      recipientName,
+      channelId,
+      status: 'read',
+      timestamp: Date.now(),
+      upToTimestamp: upToTimestamp || Date.now(),
+    })
+  }
+
   private startPruneInterval() {
     this.pruneTimer = setInterval(() => {
       const now = Date.now()
@@ -382,13 +503,42 @@ export class FriendsPresenceService {
 
   public getFriendStatus(friend: FriendProfile): {
     isOnline: boolean
+    status?: PresenceStatus
+    statusText?: string
+    statusEmoji?: string
     roomCode?: string | null
     roomName?: string | null
     inRoom: boolean
-    statusText?: string
     lastSeen: number
   } {
     const now = Date.now()
+
+    // 0. Active room check: If this friend is currently in the same room as local player
+    try {
+      const gameState = useGameStore.getState()
+      if (gameState.roomId) {
+        const targetName = friend.name.trim().toLowerCase()
+        const inRoomPeer = Object.values(gameState.remotePlayers).find(
+          (p) =>
+            p.id === friend.id ||
+            (friend.actualUserId && p.id === friend.actualUserId) ||
+            (friend.gameId && p.gameId === friend.gameId) ||
+            p.name.trim().toLowerCase() === targetName
+        )
+        if (inRoomPeer) {
+          return {
+            isOnline: true,
+            status: (inRoomPeer.status as PresenceStatus) || friend.status || 'available',
+            statusText: inRoomPeer.statusText || friend.statusText || 'Disponível',
+            statusEmoji: inRoomPeer.statusEmoji,
+            roomCode: gameState.roomId,
+            roomName: gameState.roomName,
+            inRoom: true,
+            lastSeen: now,
+          }
+        }
+      }
+    } catch {}
 
     // 1. Direct match by ID in presenceMap
     let presence = this.presenceMap.get(friend.id)
@@ -422,10 +572,11 @@ export class FriendsPresenceService {
     if (presence && now - presence.lastHeartbeat <= STALE_PRESENCE_THRESHOLD_MS) {
       return {
         isOnline: true,
+        status: (presence.status as PresenceStatus) || friend.status || 'available',
+        statusText: presence.statusText || friend.statusText || 'Disponível',
         roomCode: presence.roomCode,
         roomName: presence.roomName,
         inRoom: presence.inRoom,
-        statusText: presence.statusText || friend.statusText,
         lastSeen: now,
       }
     }
@@ -441,20 +592,22 @@ export class FriendsPresenceService {
     if (matchingRoom) {
       return {
         isOnline: true,
+        status: friend.status || 'available',
+        statusText: friend.statusText || 'Disponível',
         roomCode: matchingRoom.code,
         roomName: matchingRoom.name,
         inRoom: true,
-        statusText: `Host em "${matchingRoom.name}"`,
         lastSeen: now,
       }
     }
 
     return {
       isOnline: false,
+      status: 'away',
+      statusText: friend.statusText || 'Offline',
       roomCode: friend.lastRoomCode,
       roomName: friend.lastRoomName,
       inRoom: false,
-      statusText: friend.statusText,
       lastSeen: friend.lastSeen || 0,
     }
   }

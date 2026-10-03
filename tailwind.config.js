@@ -8,7 +8,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        gather: {
+        lira: {
           dark: '#12151d',
           darker: '#0c0e14',
           card: '#1b202c',

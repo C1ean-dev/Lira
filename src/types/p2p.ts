@@ -13,6 +13,7 @@ export type NetworkMessageType =
   | 'CUSTOM_ASSET_ADD_OR_UPDATE'
   | 'CUSTOM_ASSET_DELETE'
   | 'CHAT_MESSAGE'
+  | 'CHAT_MESSAGE_STATUS'
   | 'REACTION'
   | 'REQUEST_MAP'
   | 'HEARTBEAT'

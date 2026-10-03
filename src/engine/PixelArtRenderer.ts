@@ -46,14 +46,22 @@ export class PixelArtRenderer {
   }
 
   /**
-   * Draw Exact Gather Room Architecture Textured with Zone Wall Type
+   * Draw Exact Lira Room Architecture Textured with Zone Wall Type
    */
+  static drawLiraRoom(
+    ctx: CanvasRenderingContext2D,
+    zone: PrivateZone,
+    zones: PrivateZone[] = []
+  ) {
+    WallRenderer.drawLiraRoom(ctx, zone, zones)
+  }
+
   static drawGatherRoom(
     ctx: CanvasRenderingContext2D,
     zone: PrivateZone,
     zones: PrivateZone[] = []
   ) {
-    WallRenderer.drawGatherRoom(ctx, zone, zones)
+    WallRenderer.drawLiraRoom(ctx, zone, zones)
   }
 
   /**

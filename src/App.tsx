@@ -125,7 +125,7 @@ export const App: React.FC = () => {
         <MiniCallOverlay />
       </main>
 
-      {/* Full-Screen Conference Grid (Gather V2 Grid View) */}
+      {/* Full-Screen Conference Grid (Lira Grid View) */}
       <FullScreenGrid />
 
       {/* Door Knock System */}

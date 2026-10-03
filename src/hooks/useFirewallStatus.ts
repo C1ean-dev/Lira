@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 
-const STORAGE_FIREWALL_ALLOWED = 'gather_firewall_allowed'
+const STORAGE_FIREWALL_ALLOWED = 'lira_firewall_allowed'
+const LEGACY_STORAGE_FIREWALL_ALLOWED = 'gather_firewall_allowed'
 
 export function useFirewallStatus() {
   const [isAllowed, setIsAllowed] = useState<boolean>(() => {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        return window.localStorage.getItem(STORAGE_FIREWALL_ALLOWED) === 'true'
+        const stored = window.localStorage.getItem(STORAGE_FIREWALL_ALLOWED) ?? window.localStorage.getItem(LEGACY_STORAGE_FIREWALL_ALLOWED)
+        return stored === 'true'
       }
     } catch (e) {}
     return true

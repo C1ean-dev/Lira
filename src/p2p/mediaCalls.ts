@@ -7,8 +7,8 @@ import { DynamicBufferManager } from '../services/DynamicBufferManager'
 import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
 
 /**
- * ICE candidate pool — pre-gathered candidates before the call is established.
- * This collapses ~500ms-2s of ICE gathering latency that otherwise happens
+ * ICE candidate pool — pre-collected candidates before the call is established.
+ * This collapses ~500ms-2s of ICE discovery latency that otherwise happens
  * WHILE the first audio/video packets are being encoded, producing the
  * "robotic / 2-3s behind" voice the user reports.
  */
@@ -73,7 +73,22 @@ export const SHARED_RTC_CONFIG: RTCConfiguration = {
       credential: 'openrelayproject',
     },
     {
+      urls: 'turn:openrelay.metered.ca:80?transport=tcp',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
       urls: 'turn:openrelay.metered.ca:443',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turns:openrelay.metered.ca:443?transport=tcp',
       username: 'openrelayproject',
       credential: 'openrelayproject',
     },
@@ -503,7 +518,7 @@ export class MediaCallHandler {
    * remote side saw BLACK video. Never bypass PeerJS signaling again.
    *
    * Low delay still holds because every other layer starts minimal:
-   * adaptive jitter buffers seed at 1ms/1ms, ICE candidates are pre-gathered
+   * adaptive jitter buffers seed at 1ms/1ms, ICE candidates are pre-collected
    * (iceCandidatePoolSize), TURN exists as fallback, and encoder bitrate is
    * capped so the uplink never bloats.
    *

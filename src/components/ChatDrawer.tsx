@@ -20,15 +20,19 @@ const MIN_DRAWER_WIDTH = 340
 const DEFAULT_CHANNELS_WIDTH = 144
 const MIN_CHANNELS_WIDTH = 110
 
-const DRAWER_STORAGE_KEY = 'gather_chat_drawer_width'
-const CHANNELS_STORAGE_KEY = 'gather_chat_channels_width'
+const DRAWER_STORAGE_KEY = 'lira_chat_drawer_width'
+const LEGACY_DRAWER_STORAGE_KEY = 'gather_chat_drawer_width'
+const CHANNELS_STORAGE_KEY = 'lira_chat_channels_width'
+const LEGACY_CHANNELS_STORAGE_KEY = 'gather_chat_channels_width'
 import { useChatStore, getDmChannelId } from '../store/useChatStore'
 import { useGameStore } from '../store/useGameStore'
 import { useMediaStore } from '../store/useMediaStore'
 import { PeerManager } from '../p2p/PeerManager'
+import { FriendsPresenceService } from '../services/friendsPresenceService'
 import { ChatMessage, ChatAttachment } from '../types/chat'
 import { FriendRequestCard } from './chat/FriendRequestCard'
 import { PlayerAvatar } from './common/PlayerAvatar'
+import { MessageStatusIcon } from './chat/MessageStatusIcon'
 
 function formatFileSize(bytes: number): string {
   if (!bytes || bytes < 1024) return `${bytes || 0} B`
@@ -89,7 +93,7 @@ const ChatDrawerInner: React.FC = () => {
 
   const [drawerWidth, setDrawerWidth] = useState<number>(() => {
     try {
-      const saved = localStorage.getItem(DRAWER_STORAGE_KEY)
+      const saved = localStorage.getItem(DRAWER_STORAGE_KEY) || localStorage.getItem(LEGACY_DRAWER_STORAGE_KEY)
       if (saved) {
         const val = parseInt(saved, 10)
         if (!isNaN(val) && val >= MIN_DRAWER_WIDTH && val <= 1600) {
@@ -102,7 +106,7 @@ const ChatDrawerInner: React.FC = () => {
 
   const [channelsWidth, setChannelsWidth] = useState<number>(() => {
     try {
-      const saved = localStorage.getItem(CHANNELS_STORAGE_KEY)
+      const saved = localStorage.getItem(CHANNELS_STORAGE_KEY) || localStorage.getItem(LEGACY_CHANNELS_STORAGE_KEY)
       if (saved) {
         const val = parseInt(saved, 10)
         if (!isNaN(val) && val >= MIN_CHANNELS_WIDTH && val <= 400) {
@@ -260,10 +264,14 @@ const ChatDrawerInner: React.FC = () => {
       avatarConfig: localPlayer.avatar,
       attachment: pendingAttachment || undefined,
       recipientId: activeChannel?.type === 'dm' ? activeChannel.recipientId : undefined,
+      status: 'sent',
     }
 
     addMessage(newMsg)
     PeerManager.getInstance().sendChatMessage(newMsg)
+    if (activeChannel?.type === 'dm') {
+      FriendsPresenceService.getInstance().sendDirectMessage(newMsg)
+    }
     setInputMessage('')
     setPendingAttachment(null)
     setUploadError(null)
@@ -602,7 +610,7 @@ const ChatDrawerInner: React.FC = () => {
                 const hasAttachment = !!msg.attachment
                 const isImage = hasAttachment && isImageAttachment(msg.attachment!)
 
-                if (msg.friendRequest) {
+                 if (msg.friendRequest) {
                   const rId = msg.friendRequest.requestId
                   if (seenRequestIds.has(rId)) {
                     if (!msg.content) return null
@@ -612,9 +620,12 @@ const ChatDrawerInner: React.FC = () => {
                           <span className={`text-xs font-semibold ${isMine ? 'text-indigo-400' : 'text-slate-300'}`}>
                             {msg.senderName}
                           </span>
-                          <span className="text-[10px] text-slate-400">
-                            {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="text-[10px] text-slate-400">
+                              {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            {isMine && <MessageStatusIcon status={msg.status} />}
+                          </div>
                         </div>
                         <div className="text-xs text-slate-200 bg-[#1b202c] p-2.5 rounded-xl border border-[#2a3142]/60 break-words">
                           {msg.content}
@@ -630,9 +641,12 @@ const ChatDrawerInner: React.FC = () => {
                         <span className={`text-xs font-semibold ${isMine ? 'text-indigo-400' : 'text-slate-300'}`}>
                           {msg.senderName}
                         </span>
-                        <span className="text-[10px] text-slate-400">
-                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-[10px] text-slate-400">
+                            {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          {isMine && <MessageStatusIcon status={msg.status} />}
+                        </div>
                       </div>
                       <FriendRequestCard
                         message={msg}
@@ -663,9 +677,12 @@ const ChatDrawerInner: React.FC = () => {
                           {msg.senderName}
                         </span>
                       </div>
-                      <span className="text-[10px] text-slate-400 shrink-0">
-                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="text-[10px] text-slate-400">
+                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        {isMine && <MessageStatusIcon status={msg.status} />}
+                      </div>
                     </div>
 
                     <div className="text-xs text-slate-200 bg-[#1b202c] p-2.5 rounded-xl border border-[#2a3142]/60 break-words space-y-2">

@@ -113,7 +113,7 @@ export function checkCollision(x: number, y: number, map: MapData): boolean {
     return true
   }
 
-  // 1. Precise Room Architecture Collision (Exact 1:1 Gather Photo)
+  // 1. Precise Room Architecture Collision (Exact 1:1 Lira Architecture)
   for (const zone of map.zones) {
     if (zone.hasWalls === false) continue
 
@@ -463,7 +463,7 @@ export function isPlayerInZone(playerX: number, playerY: number, zone: PrivateZo
     return false
   }
 
-  // 3. For rooms with physical walls (Gather Room Architecture):
+  // 3. For rooms with physical walls (Lira Room Architecture):
   if (zone.hasWalls !== false) {
     const h = zone.height
     const w = zone.width

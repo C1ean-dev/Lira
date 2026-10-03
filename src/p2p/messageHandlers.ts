@@ -370,6 +370,41 @@ export function processNetworkMessage(
       break
     }
 
+    case 'CHAT_MESSAGE_STATUS': {
+      const {
+        senderId,
+        senderName,
+        recipientId,
+        messageId,
+        channelId,
+        status,
+        upToTimestamp,
+      } = msg.payload || {}
+      const local = useGameStore.getState().localPlayer
+
+      // Verify this status receipt is meant for me
+      const isForMe =
+        !recipientId ||
+        recipientId === local.id ||
+        (local.gameId && recipientId === local.gameId) ||
+        (myPeerId && recipientId === myPeerId) ||
+        (channelId && (channelId.includes(local.id) || (local.gameId && channelId.includes(local.gameId))))
+
+      if (isForMe && status) {
+        const chatStore = useChatStore.getState()
+        if (messageId) {
+          chatStore.updateMessageStatus(messageId, status)
+        }
+        if (senderId) {
+          chatStore.updateMessagesStatusForPeer(senderId, status, upToTimestamp)
+        }
+        if (senderName) {
+          chatStore.updateMessagesStatusForPeer(senderName, status, upToTimestamp)
+        }
+      }
+      break
+    }
+
     case 'REACTION': {
       useGameStore.getState().addReaction(msg.payload.reaction)
       break

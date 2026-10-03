@@ -7,8 +7,8 @@ import { NetworkMessage } from '../types/p2p'
 import { MediaCallHandler } from '../p2p/mediaCalls'
 
 describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
-  const HOST_PEER_ID = 'gather-v2-TESTROOM-host'
-  const LOCAL_CLIENT_PEER_ID = 'gather-v2-TESTROOM-peer-02'
+  const HOST_PEER_ID = 'lira-TESTROOM-host'
+  const LOCAL_CLIENT_PEER_ID = 'lira-TESTROOM-peer-02'
   const LOCAL_GAME_ID = 'local-game-02'
 
   const noopBroadcast = vi.fn()
@@ -16,16 +16,16 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
   const noopEligibility = vi.fn()
 
   const PLAYERS_DATA: Array<{ peerId: string; gameId: string; name: string; skinTone: string; x: number; y: number }> = [
-    { peerId: 'gather-v2-TESTROOM-host', gameId: 'local-game-01', name: 'Alice (Host)', skinTone: '#ffd1b3', x: 10, y: 10 },
-    { peerId: 'gather-v2-TESTROOM-peer-02', gameId: 'local-game-02', name: 'Bob (Client 2)', skinTone: '#e0ac69', x: 12, y: 10 },
-    { peerId: 'gather-v2-TESTROOM-peer-03', gameId: 'local-game-03', name: 'Charlie (Client 3)', skinTone: '#c68642', x: 14, y: 10 },
-    { peerId: 'gather-v2-TESTROOM-peer-04', gameId: 'local-game-04', name: 'David (Client 4)', skinTone: '#8d5524', x: 16, y: 10 },
-    { peerId: 'gather-v2-TESTROOM-peer-05', gameId: 'local-game-05', name: 'Eve (Client 5)', skinTone: '#3c2e18', x: 18, y: 10 },
-    { peerId: 'gather-v2-TESTROOM-peer-06', gameId: 'local-game-06', name: 'Frank (Client 6)', skinTone: '#fcd0a1', x: 20, y: 10 },
-    { peerId: 'gather-v2-TESTROOM-peer-07', gameId: 'local-game-07', name: 'Grace (Client 7)', skinTone: '#d4aa78', x: 22, y: 10 },
-    { peerId: 'gather-v2-TESTROOM-peer-08', gameId: 'local-game-08', name: 'Heidi (Client 8)', skinTone: '#b58a63', x: 24, y: 10 },
-    { peerId: 'gather-v2-TESTROOM-peer-09', gameId: 'local-game-09', name: 'Ivan (Client 9)', skinTone: '#714928', x: 26, y: 10 },
-    { peerId: 'gather-v2-TESTROOM-peer-10', gameId: 'local-game-10', name: 'Judy (Client 10)', skinTone: '#4a321f', x: 28, y: 10 },
+    { peerId: 'lira-TESTROOM-host', gameId: 'local-game-01', name: 'Alice (Host)', skinTone: '#ffd1b3', x: 10, y: 10 },
+    { peerId: 'lira-TESTROOM-peer-02', gameId: 'local-game-02', name: 'Bob (Client 2)', skinTone: '#e0ac69', x: 12, y: 10 },
+    { peerId: 'lira-TESTROOM-peer-03', gameId: 'local-game-03', name: 'Charlie (Client 3)', skinTone: '#c68642', x: 14, y: 10 },
+    { peerId: 'lira-TESTROOM-peer-04', gameId: 'local-game-04', name: 'David (Client 4)', skinTone: '#8d5524', x: 16, y: 10 },
+    { peerId: 'lira-TESTROOM-peer-05', gameId: 'local-game-05', name: 'Eve (Client 5)', skinTone: '#3c2e18', x: 18, y: 10 },
+    { peerId: 'lira-TESTROOM-peer-06', gameId: 'local-game-06', name: 'Frank (Client 6)', skinTone: '#fcd0a1', x: 20, y: 10 },
+    { peerId: 'lira-TESTROOM-peer-07', gameId: 'local-game-07', name: 'Grace (Client 7)', skinTone: '#d4aa78', x: 22, y: 10 },
+    { peerId: 'lira-TESTROOM-peer-08', gameId: 'local-game-08', name: 'Heidi (Client 8)', skinTone: '#b58a63', x: 24, y: 10 },
+    { peerId: 'lira-TESTROOM-peer-09', gameId: 'local-game-09', name: 'Ivan (Client 9)', skinTone: '#714928', x: 26, y: 10 },
+    { peerId: 'lira-TESTROOM-peer-10', gameId: 'local-game-10', name: 'Judy (Client 10)', skinTone: '#4a321f', x: 28, y: 10 },
   ]
 
   function createPlayer(idx: number): Player {
@@ -494,7 +494,7 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
 
   it('verifies host migration and failover election among 9 remaining peers when the host disconnects', () => {
     const ROOM_CODE = 'TESTROOM'
-    const hostPeerId = `gather-v2-${ROOM_CODE}-host`
+    const hostPeerId = `lira-${ROOM_CODE}-host`
 
     // Set initial room session as a non-host client
     useGameStore.getState().setRoomSession(ROOM_CODE, false)
@@ -523,11 +523,11 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
     const myId = LOCAL_CLIENT_PEER_ID
 
     // Failover election algorithm (used by PeerManager.handleHostDisconnected):
-    // All remaining live candidates are gathered and sorted deterministically
+    // All remaining live candidates are collected and sorted deterministically
     const candidateList = [myId, ...remainingPeers].filter(Boolean).sort()
 
     // Deterministic election:
-    // candidateList sorted: 'gather-v2-TESTROOM-peer-02' is the lowest lexicographically
+    // candidateList sorted: 'lira-TESTROOM-peer-02' is the lowest lexicographically
     expect(candidateList[0]).toBe(LOCAL_CLIENT_PEER_ID)
 
     // Verify Client 2 is the elected candidate:
@@ -565,14 +565,14 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
 
     // 3. Verify election from perspective of Client 3 (who was NOT elected):
     const candidateListForClient3 = [
-      'gather-v2-TESTROOM-peer-03',
-      'gather-v2-TESTROOM-peer-02',
+      'lira-TESTROOM-peer-03',
+      'lira-TESTROOM-peer-02',
       ...PLAYERS_DATA.slice(3).map((d) => d.peerId),
     ].sort()
 
     // Client 3 sees peer-02 as the elected host:
-    expect(candidateListForClient3[0]).toBe('gather-v2-TESTROOM-peer-02')
-    const client3IsElected = candidateListForClient3[0] === 'gather-v2-TESTROOM-peer-03'
+    expect(candidateListForClient3[0]).toBe('lira-TESTROOM-peer-02')
+    const client3IsElected = candidateListForClient3[0] === 'lira-TESTROOM-peer-03'
     expect(client3IsElected).toBe(false)
   })
 })

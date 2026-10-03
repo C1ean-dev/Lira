@@ -59,7 +59,7 @@ describe('Custom Directional Walls (Estúdio Pixel Art: Parede)', () => {
     return { ctx: ctx as unknown as CanvasRenderingContext2D, patterns, drawn }
   }
 
-  it('drawGatherRoom uses directional frames for back (up), left (left), right (right), and front (down)', () => {
+  it('drawLiraRoom uses directional frames for back (up), left (left), right (right), and front (down)', () => {
     const customWallAsset: CustomAsset = {
       id: customWallId,
       name: 'Parede Multicolorida',
@@ -95,8 +95,8 @@ describe('Custom Directional Walls (Estúdio Pixel Art: Parede)', () => {
       wallType: customWallId,
     }
 
-    // Call drawGatherRoom
-    WallRenderer.drawGatherRoom(ctx, zone, [zone])
+    // Call drawLiraRoom
+    WallRenderer.drawLiraRoom(ctx, zone, [zone])
 
     // Verify patterns were created from all 4 directional frames
     expect(patterns).toContain('data:image/png;base64,mockBlackBack')

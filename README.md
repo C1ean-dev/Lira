@@ -42,7 +42,7 @@ Ambiente virtual para coworking, reuniões e interação em tempo real, integran
   - Sinalização de batida na porta (*door knocking*) com notificação sonora e visual para os ocupantes.
 - **Modos de Exibição de Chamada**:
   - **Mini-Call Flutuante**: Prévias de vídeo integradas ao mapa para colaboração contínua.
-  - **Modo Grade (Gather Grid)**: Tela cheia com palco principal e barra lateral de participantes.
+  - **Modo Grade (Lira Grid)**: Tela cheia com palco principal e barra lateral de participantes.
   - **Modo Foco (Spotlight)**: Destaque para palestrantes ou compartilhamento de tela.
 - **Visualização Flexível do Mapa**:
   - **Modo Imersivo**: Renderizador Canvas 2D em 60 FPS com pixel art nítido, sombreamento e profundidade em Y.
@@ -126,7 +126,7 @@ O sistema adota uma arquitetura híbrida descentralizada, combinando topologia e
 ### 1. Topologia Híbrida: Estado vs. Mídia
 
 - **Canal de Dados e Estado (Topologia em Estrela / Superpeer)**:
-  - Ao entrar em uma sala, o primeiro participante registra o identificador de host (`gather-v2-[CÓDIGO]-host`).
+  - Ao entrar em uma sala, o primeiro participante registra o identificador de host (`lira-[CÓDIGO]-host`).
   - Os demais clientes conectam-se ao Host por meio de canais de dados seguros (`RTCDataChannel` via PeerJS) com entrega ordenada (`ordered: true`).
   - O Host centraliza a retransmissão de coordenadas de movimento dos avatares, mensagens de chat, alterações no mapa em tempo real e sincronização de permissões administrativas.
 - **Mídia por Zonas Acústicas (Topologia em Malha Direta)**:

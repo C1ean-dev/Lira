@@ -1,5 +1,6 @@
 import Peer, { DataConnection, MediaConnection } from 'peerjs'
 import { NetworkMessage } from '../types/p2p'
+import { MessageDeliveryStatus } from '../types/chat'
 import { Player, RoomKnockRequest } from '../types/game'
 import { useGameStore } from '../store/useGameStore'
 import { useMapStore } from '../store/useMapStore'
@@ -31,14 +32,12 @@ export class PeerManager {
 
   private constructor() {
     if (typeof window !== 'undefined') {
-      window.addEventListener('gather:live-buffer-changed', (e: any) => {
+      const handleBufferChanged = (e: any) => {
         const ms = e.detail || MediaCallHandler.DEFAULT_LIVE_BUFFER_MS
-        // Legacy single-number slider event: apply ONLY to video; audio
-        // stays at its dynamic value. The DynamicBufferManager writes to
-        // liveBufferDelay frequently (every 1.5s) so this rarely fires
-        // unless the user touches the slider.
         MediaCallHandler.applyJitterBuffer(this.mediaCalls, ms)
-      })
+      }
+      window.addEventListener('lira:live-buffer-changed', handleBufferChanged)
+      window.addEventListener('gather:live-buffer-changed', handleBufferChanged)
     }
   }
 
@@ -75,7 +74,7 @@ export class PeerManager {
     this.roomCode = sanitizeRoomCode(roomCode)
     this.isHost = true
     this.isIntentionalDisconnect = false
-    const hostPeerId = `gather-v2-${this.roomCode}-host`
+    const hostPeerId = `lira-${this.roomCode}-host`
 
     // Clean up any stale peer connection first
     if (this.peer) {
@@ -262,8 +261,8 @@ export class PeerManager {
     this.roomCode = sanitizeRoomCode(roomCode)
     this.isHost = false
     this.isIntentionalDisconnect = false
-    const clientPeerId = `gather-v2-${this.roomCode}-peer-${Math.random().toString(36).substring(2, 7)}`
-    const hostPeerId = `gather-v2-${this.roomCode}-host`
+    const clientPeerId = `lira-${this.roomCode}-peer-${Math.random().toString(36).substring(2, 7)}`
+    const hostPeerId = `lira-${this.roomCode}-host`
 
     // Clean up any stale peer connection first
     if (this.peer) {
@@ -320,8 +319,15 @@ export class PeerManager {
               await this.joinRoom(this.roomCode!, localPlayer, retryCount + 1)
               resolve()
               return
-            } catch (rejoinErr) {
-              // segue para rejeição
+            } catch (rejoinErr: any) {
+              console.error('[P2P AutoHost] Erro ao reconectar como cliente:', rejoinErr)
+              useGameStore.getState().setConnected(false)
+              useGameStore.getState().setConnectionStatus('disconnected')
+              const msg = rejoinErr?.message?.includes('is taken')
+                ? `O anfitrião da sala ${this.roomCode} está online, mas não foi possível estabelecer conexão P2P direta. Verifique suas regras de Firewall.`
+                : (rejoinErr?.message || 'Falha ao conectar com o anfitrião da sala.')
+              reject(new Error(msg))
+              return
             }
           }
           console.error('[P2P AutoHost] Error promoting to host:', err)
@@ -377,9 +383,14 @@ export class PeerManager {
         this.setupPeerListeners()
         this.startHeartbeat()
 
-        // Connect to Host
+        // Connect to Host with minimal metadata (avoid sending large base64 profile pictures or avatar frames over WebSocket signaling)
+        const minimalMetadata = {
+          id: currentLocal.id || id,
+          name: currentLocal.name,
+          gameId: currentLocal.gameId || currentLocal.id,
+        }
         const conn = this.peer!.connect(hostPeerId, {
-          metadata: { player: useGameStore.getState().localPlayer },
+          metadata: { player: minimalMetadata },
           reliable: true,
         })
 
@@ -740,7 +751,7 @@ export class PeerManager {
       this.connections.delete(peerId)
     }
 
-    const wasHost = peerId.endsWith('-host') || (this.roomCode && peerId === `gather-v2-${this.roomCode}-host`)
+    const wasHost = peerId.endsWith('-host') || (this.roomCode && (peerId === `lira-${this.roomCode}-host` || peerId === `gather-v2-${this.roomCode}-host`))
 
     useGameStore.getState().removeRemotePlayer(peerId)
     this.endMediaCallWithPeer(peerId)
@@ -788,7 +799,7 @@ export class PeerManager {
       console.log(`[P2P Failover] Peer ${candidateList[0]} elected. Reconnecting in 2.5s...`)
       setTimeout(() => {
         if (!this.isHost && this.roomCode) {
-          this.reconnectToHost(`gather-v2-${this.roomCode}-host`)
+          this.reconnectToHost(`lira-${this.roomCode}-host`)
         }
       }, 2500)
     }
@@ -818,7 +829,7 @@ export class PeerManager {
     }
     this.connections.clear()
 
-    const hostPeerId = `gather-v2-${this.roomCode}-host`
+    const hostPeerId = `lira-${this.roomCode}-host`
     this.peer = new Peer(hostPeerId, {
       // STUN + TURN fallback (see SHARED_RTC_CONFIG).
       config: SHARED_RTC_CONFIG,
@@ -865,8 +876,13 @@ export class PeerManager {
     console.log('[P2P Failover] Attempting to reconnect to new host endpoint:', hostPeerId)
     useGameStore.getState().setConnectionStatus('reconnecting')
     const localPlayer = useGameStore.getState().localPlayer
+    const minimalMetadata = {
+      id: localPlayer.id,
+      name: localPlayer.name,
+      gameId: localPlayer.gameId || localPlayer.id,
+    }
     const conn = this.peer.connect(hostPeerId, {
-      metadata: { player: localPlayer },
+      metadata: { player: minimalMetadata },
       reliable: true,
     })
     this.setupDataConnection(conn)
@@ -1164,6 +1180,36 @@ export class PeerManager {
       type: 'CHAT_MESSAGE',
       senderId: this.peer.id,
       payload: { message },
+      timestamp: Date.now(),
+    }
+    this.broadcast(msg)
+  }
+
+  /**
+   * Broadcast Chat Message Delivery / Read Status
+   */
+  public sendMessageStatus(
+    recipientId?: string,
+    channelId?: string,
+    status: MessageDeliveryStatus = 'delivered',
+    messageId?: string,
+    upToTimestamp?: number
+  ) {
+    if (!this.peer) return
+    const local = useGameStore.getState().localPlayer
+    const msg: NetworkMessage = {
+      type: 'CHAT_MESSAGE_STATUS',
+      senderId: this.peer.id,
+      payload: {
+        senderId: local.id,
+        senderName: local.name,
+        recipientId,
+        channelId,
+        messageId,
+        status,
+        upToTimestamp: upToTimestamp || Date.now(),
+        timestamp: Date.now(),
+      },
       timestamp: Date.now(),
     }
     this.broadcast(msg)

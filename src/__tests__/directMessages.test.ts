@@ -116,10 +116,10 @@ describe('Direct Messages & Friend Chat Selection', () => {
   })
 
   it('correctly maps incoming DM when receiver opened channel using target peer id', () => {
-    // Alice's localPlayer has peer ID 'gather-v2-room-peer-alice' and gameId 'profile-alice'
+    // Alice's localPlayer has peer ID 'lira-room-peer-alice' and gameId 'profile-alice'
     useGameStore.setState({
       localPlayer: {
-        id: 'gather-v2-room-peer-alice',
+        id: 'lira-room-peer-alice',
         gameId: 'profile-alice',
         name: 'Alice',
         x: 10,
@@ -131,18 +131,18 @@ describe('Direct Messages & Friend Chat Selection', () => {
 
     // Alice opens direct message with Bob using Bob's peer ID
     const { openDirectMessage, addMessage } = useChatStore.getState()
-    openDirectMessage({ id: 'gather-v2-room-host-bob', name: 'Bob' })
+    openDirectMessage({ id: 'lira-room-host-bob', name: 'Bob' })
 
     const aliceActiveChannel = useChatStore.getState().activeChannelId
-    expect(aliceActiveChannel).toBe('dm-gather-v2-room-host-bob-gather-v2-room-peer-alice')
+    expect(aliceActiveChannel).toBe('dm-lira-room-host-bob-lira-room-peer-alice')
 
     // Bob sends a message addressed to Alice's peer ID
     const msgFromBob: ChatMessage = {
       id: 'msg-from-bob-1',
-      senderId: 'gather-v2-room-host-bob',
+      senderId: 'lira-room-host-bob',
       senderName: 'Bob',
-      channelId: 'dm-gather-v2-room-host-bob-gather-v2-room-peer-alice',
-      recipientId: 'gather-v2-room-peer-alice',
+      channelId: 'dm-lira-room-host-bob-lira-room-peer-alice',
+      recipientId: 'lira-room-peer-alice',
       content: 'Oi Alice, recebeu minha mensagem?',
       timestamp: Date.now(),
     }
@@ -153,6 +153,100 @@ describe('Direct Messages & Friend Chat Selection', () => {
     const activeMsgs = state.messages.filter((m) => m.channelId === state.activeChannelId)
     expect(activeMsgs.length).toBe(1)
     expect(activeMsgs[0].content).toBe('Oi Alice, recebeu minha mensagem?')
+  })
+
+  it('correctly sets initial status: "sent" for sender and updates to "delivered" then "read"', () => {
+    const { addMessage, updateMessageStatus, updateMessagesStatusForPeer } = useChatStore.getState()
+
+    // Alice sends a message to Bob
+    const aliceMsg: ChatMessage = {
+      id: 'alice-msg-1',
+      senderId: 'player-alice',
+      senderName: 'Alice',
+      channelId: 'dm-player-alice-player-bob',
+      recipientId: 'player-bob',
+      recipientName: 'Bob',
+      content: 'Oi Bob!',
+      timestamp: 1000,
+    }
+
+    addMessage(aliceMsg)
+
+    // Initially defaults to 'sent'
+    let state = useChatStore.getState()
+    let found = state.messages.find((m) => m.id === 'alice-msg-1')
+    expect(found?.status).toBe('sent')
+
+    // Bob receives it -> status updates to 'delivered'
+    updateMessageStatus('alice-msg-1', 'delivered')
+    state = useChatStore.getState()
+    found = state.messages.find((m) => m.id === 'alice-msg-1')
+    expect(found?.status).toBe('delivered')
+
+    // Bob reads it -> status updates to 'read'
+    updateMessageStatus('alice-msg-1', 'read')
+    state = useChatStore.getState()
+    found = state.messages.find((m) => m.id === 'alice-msg-1')
+    expect(found?.status).toBe('read')
+
+    // CRITICAL: An earlier status ('sent' or 'delivered') must NEVER overwrite 'read'
+    updateMessageStatus('alice-msg-1', 'delivered')
+    state = useChatStore.getState()
+    found = state.messages.find((m) => m.id === 'alice-msg-1')
+    expect(found?.status).toBe('read')
+  })
+
+  it('batch updates peer messages status up to timestamp', () => {
+    const { addMessage, updateMessagesStatusForPeer } = useChatStore.getState()
+
+    // Alice sends 3 messages at different timestamps
+    addMessage({
+      id: 'msg-batch-1',
+      senderId: 'player-alice',
+      senderName: 'Alice',
+      channelId: 'dm-player-alice-player-bob',
+      recipientId: 'player-bob',
+      recipientName: 'Bob',
+      content: 'Mensagem 1',
+      timestamp: 1000,
+      status: 'sent',
+    })
+
+    addMessage({
+      id: 'msg-batch-2',
+      senderId: 'player-alice',
+      senderName: 'Alice',
+      channelId: 'dm-player-alice-player-bob',
+      recipientId: 'player-bob',
+      recipientName: 'Bob',
+      content: 'Mensagem 2',
+      timestamp: 2000,
+      status: 'sent',
+    })
+
+    addMessage({
+      id: 'msg-batch-3',
+      senderId: 'player-alice',
+      senderName: 'Alice',
+      channelId: 'dm-player-alice-player-bob',
+      recipientId: 'player-bob',
+      recipientName: 'Bob',
+      content: 'Mensagem 3',
+      timestamp: 3000,
+      status: 'sent',
+    })
+
+    // Bob marks as read up to timestamp 2000
+    updateMessagesStatusForPeer('player-bob', 'read', 2000)
+
+    const state = useChatStore.getState()
+    const m1 = state.messages.find((m) => m.id === 'msg-batch-1')
+    const m2 = state.messages.find((m) => m.id === 'msg-batch-2')
+    const m3 = state.messages.find((m) => m.id === 'msg-batch-3')
+
+    expect(m1?.status).toBe('read')
+    expect(m2?.status).toBe('read')
+    expect(m3?.status).toBe('sent') // Newer than 2000, remains sent
   })
 })
 

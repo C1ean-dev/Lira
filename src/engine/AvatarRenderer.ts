@@ -130,7 +130,7 @@ export class AvatarRenderer {
   }
 
   /**
-   * Draw Authentic Gather.town Pixel Art 2D Avatar with Hybrid Fallback
+   * Draw Authentic Lira Pixel Art 2D Avatar with Hybrid Fallback
    */
   static drawPlayer(
     ctx: CanvasRenderingContext2D,

@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { X, Send, MessageSquare, ArrowRight, CheckCheck, Smile, Radio } from 'lucide-react'
-import { FriendProfile } from '../../types/game'
+import { X, Send, MessageSquare, ArrowRight, Smile, Radio } from 'lucide-react'
+import { FriendProfile, STATUS_META, PresenceStatus } from '../../types/game'
 import { ChatMessage } from '../../types/chat'
 import { useGameStore } from '../../store/useGameStore'
 import { useChatStore, getDmChannelId } from '../../store/useChatStore'
 import { FriendsPresenceService } from '../../services/friendsPresenceService'
+import { PeerManager } from '../../p2p/PeerManager'
 import { FriendRequestCard } from '../chat/FriendRequestCard'
+import { MessageStatusIcon } from '../chat/MessageStatusIcon'
 
 interface Props {
   friend: FriendProfile
@@ -43,11 +45,20 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
     return () => unsub()
   }, [friend])
 
-  // Mark channel & peer as read on open
+  // Mark channel & peer as read on open and emit read receipts
   useEffect(() => {
     markChannelAsRead(channelId)
-    markPeerAsRead([friend.name, friend.id, friend.actualUserId || ''])
+    const peerIdentifiers = [friend.name, friend.id, friend.actualUserId || ''].filter(Boolean)
+    markPeerAsRead(peerIdentifiers)
     inputRef.current?.focus()
+
+    // Send read receipts immediately to friend
+    peerIdentifiers.forEach((id) => {
+      FriendsPresenceService.getInstance().sendReadReceipt(id, friend.name, channelId)
+      try {
+        PeerManager.getInstance().sendMessageStatus(id, channelId, 'read', undefined, Date.now())
+      } catch (e) {}
+    })
   }, [channelId, friend, markChannelAsRead, markPeerAsRead])
 
   // Filter messages for this conversation
@@ -85,8 +96,17 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
   // Auto-scroll to bottom & mark as read
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-    markPeerAsRead([friend.name, friend.id, friend.actualUserId || ''])
+    const peerIdentifiers = [friend.name, friend.id, friend.actualUserId || ''].filter(Boolean)
+    markPeerAsRead(peerIdentifiers)
     markChannelAsRead(channelId)
+
+    // Notify sender that incoming messages were read
+    peerIdentifiers.forEach((id) => {
+      FriendsPresenceService.getInstance().sendReadReceipt(id, friend.name, channelId)
+      try {
+        PeerManager.getInstance().sendMessageStatus(id, channelId, 'read', undefined, Date.now())
+      } catch (e) {}
+    })
   }, [chatMessages.length, friend, channelId, markPeerAsRead, markChannelAsRead])
 
   const handleSendMessage = (e?: React.FormEvent) => {
@@ -103,10 +123,14 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
       recipientName: friend.name,
       content,
       timestamp: Date.now(),
+      status: 'sent',
     }
 
     addMessage(newMsg)
     FriendsPresenceService.getInstance().sendDirectMessage(newMsg)
+    try {
+      PeerManager.getInstance().sendChatMessage(newMsg)
+    } catch (e) {}
     setInputText('')
   }
 
@@ -139,57 +163,80 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
               </div>
               <span
                 className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ring-2 ring-[#12151e] flex items-center justify-center ${
-                  presence.isOnline ? 'bg-emerald-500' : 'bg-slate-500'
+                  presence.isOnline
+                    ? (STATUS_META[(presence.status as PresenceStatus) || friend.status || 'available'] || STATUS_META.available).dotColor
+                    : 'bg-slate-500'
                 }`}
-              >
-                {presence.isOnline && (
-                  <span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping opacity-75" />
-                )}
-              </span>
+              />
             </div>
 
             {/* Info */}
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-extrabold text-slate-100 truncate">
-                  {friend.name}
-                </h3>
-                <span
-                  className={`text-[9px] px-2 py-0.5 rounded-full font-bold border flex items-center gap-1 ${
-                    presence.isOnline
-                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                      : 'bg-slate-800 text-slate-400 border-slate-700'
-                  }`}
-                >
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      presence.isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
-                    }`}
-                  />
-                  <span>{presence.isOnline ? 'Online' : 'Offline'}</span>
-                </span>
-              </div>
+              {(() => {
+                const statusKey = (presence.status as PresenceStatus) || friend.status || 'available'
+                const statusMeta = STATUS_META[statusKey] || STATUS_META.available
+                const displayStatusText = presence.statusText || friend.statusText || statusMeta.label || 'Disponível'
 
-              <p className="text-[11px] text-slate-400 truncate">
-                {presence.isOnline ? (
-                  presence.inRoom ? (
-                    <span className="text-indigo-300 font-medium">
-                      Em: {presence.roomName || 'Sala Virtual'}
-                    </span>
-                  ) : (
-                    <span>No Lobby / Tela Inicial</span>
-                  )
-                ) : (
-                  <span>
-                    {friend.lastSeen
-                      ? `Visto por último: ${new Date(friend.lastSeen).toLocaleTimeString([], {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}`
-                      : 'Visto recentemente'}
-                  </span>
-                )}
-              </p>
+                return (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-extrabold text-slate-100 truncate">
+                        {friend.name}
+                      </h3>
+                      <span
+                        className={`text-[9px] px-2 py-0.5 rounded-full font-bold border flex items-center gap-1 ${
+                          presence.isOnline
+                            ? statusKey === 'busy'
+                              ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                              : statusKey === 'focusing'
+                              ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+                              : statusKey === 'away'
+                              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                              : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                            : 'bg-slate-800 text-slate-400 border-slate-700'
+                        }`}
+                      >
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            presence.isOnline ? statusMeta.dotColor : 'bg-slate-500'
+                          }`}
+                        />
+                        <span>{presence.isOnline ? displayStatusText : 'Offline'}</span>
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400 truncate mt-0.5 flex items-center gap-1.5">
+                      {presence.isOnline ? (
+                        <>
+                          <span className="text-slate-300 font-medium">{displayStatusText}</span>
+                          {presence.inRoom && presence.roomName ? (
+                            <>
+                              <span className="text-slate-600">•</span>
+                              <span className="text-indigo-300 font-medium truncate">
+                                Em: {presence.roomName}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-slate-600">•</span>
+                              <span className="text-slate-500">No Lobby / Tela Inicial</span>
+                            </>
+                          )}
+                        </>
+                      ) : (
+                        <span>
+                          {friend.lastSeen
+                            ? `Visto por último: ${new Date(friend.lastSeen).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}`
+                            : 'Visto recentemente'}
+                        </span>
+                      )}
+                    </p>
+                  </>
+                )
+              })()}
             </div>
           </div>
 
@@ -275,7 +322,7 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
                       </div>
                       <div className="flex items-center gap-1 text-[10px] text-slate-500 px-1">
                         <span>{formatTime(msg.timestamp)}</span>
-                        {isMe && <CheckCheck className="w-3 h-3 text-indigo-400" />}
+                        {isMe && <MessageStatusIcon status={msg.status} className="ml-0.5" />}
                       </div>
                     </div>
                   )
@@ -294,7 +341,7 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
                     />
                     <div className="flex items-center gap-1 text-[10px] text-slate-500 px-1">
                       <span>{formatTime(msg.timestamp)}</span>
-                      {isMe && <CheckCheck className="w-3 h-3 text-indigo-400" />}
+                      {isMe && <MessageStatusIcon status={msg.status} className="ml-0.5" />}
                     </div>
                   </div>
                 )
@@ -322,7 +369,7 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
 
                   <div className="flex items-center gap-1 text-[10px] text-slate-500 px-1">
                     <span>{formatTime(msg.timestamp)}</span>
-                    {isMe && <CheckCheck className="w-3 h-3 text-indigo-400" />}
+                    {isMe && <MessageStatusIcon status={msg.status} className="ml-0.5" />}
                   </div>
                 </div>
               )

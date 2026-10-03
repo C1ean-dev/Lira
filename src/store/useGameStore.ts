@@ -3,10 +3,14 @@ import { Player, PresenceStatus, PresenceInfo, sanitizePresence, STATUS_META, Re
 import { DEFAULT_AVATAR } from '../engine/Constants'
 import { PublicRoomsService } from '../services/publicRoomsService'
 
-const PROFILE_STORAGE_KEY = 'gather_v2_user_profile'
-const AVAILABLE_ROOMS_KEY = 'gather_v2_available_rooms'
-const FRIENDS_STORAGE_KEY = 'gather_v2_friends_list'
-const FRIEND_PROFILES_STORAGE_KEY = 'gather_v2_friend_profiles'
+const PROFILE_STORAGE_KEY = 'lira_user_profile'
+const LEGACY_PROFILE_STORAGE_KEY = 'gather_v2_user_profile'
+const AVAILABLE_ROOMS_KEY = 'lira_available_rooms'
+const LEGACY_AVAILABLE_ROOMS_KEY = 'gather_v2_available_rooms'
+const FRIENDS_STORAGE_KEY = 'lira_friends_list'
+const LEGACY_FRIENDS_STORAGE_KEY = 'gather_v2_friends_list'
+const FRIEND_PROFILES_STORAGE_KEY = 'lira_friend_profiles'
+const LEGACY_FRIEND_PROFILES_STORAGE_KEY = 'gather_v2_friend_profiles'
 
 interface SavedProfile {
   id?: string
@@ -32,7 +36,7 @@ const loadSavedProfile = (): SavedProfile | null => {
   try {
     const storage = getStorage()
     if (storage) {
-      const raw = storage.getItem(PROFILE_STORAGE_KEY)
+      const raw = storage.getItem(PROFILE_STORAGE_KEY) || storage.getItem(LEGACY_PROFILE_STORAGE_KEY)
       if (raw) {
         return JSON.parse(raw)
       }
@@ -61,7 +65,7 @@ const syncPublicRoomRegistration = (roomId: string | null, isPublic: boolean, ro
     const storage = getStorage()
     if (!storage) return
 
-    const raw = storage.getItem(AVAILABLE_ROOMS_KEY)
+    const raw = storage.getItem(AVAILABLE_ROOMS_KEY) || storage.getItem(LEGACY_AVAILABLE_ROOMS_KEY)
     let rooms: any[] = raw ? JSON.parse(raw) : []
     if (!Array.isArray(rooms)) rooms = []
 
@@ -183,8 +187,10 @@ interface GameStore {
   setMyKnockStatus: (zoneId: string, status: KnockStatus) => void
 }
 
-const MAP_VIEW_STORAGE_KEY = 'gather_v2_map_view_mode'
-const CAMERA_ZOOM_STORAGE_KEY = 'gather_v2_camera_zoom'
+const MAP_VIEW_STORAGE_KEY = 'lira_map_view_mode'
+const LEGACY_MAP_VIEW_STORAGE_KEY = 'gather_v2_map_view_mode'
+const CAMERA_ZOOM_STORAGE_KEY = 'lira_camera_zoom'
+const LEGACY_CAMERA_ZOOM_STORAGE_KEY = 'gather_v2_camera_zoom'
 const MIN_CAMERA_ZOOM = 0.4
 const MAX_CAMERA_ZOOM = 4.0
 
@@ -192,7 +198,7 @@ const loadSavedCameraZoom = (): number | null => {
   try {
     const storage = getStorage()
     if (storage) {
-      const raw = storage.getItem(CAMERA_ZOOM_STORAGE_KEY)
+      const raw = storage.getItem(CAMERA_ZOOM_STORAGE_KEY) ?? storage.getItem(LEGACY_CAMERA_ZOOM_STORAGE_KEY)
       if (raw !== null) {
         const parsed = Number(raw)
         if (Number.isFinite(parsed) && parsed >= MIN_CAMERA_ZOOM && parsed <= MAX_CAMERA_ZOOM) {
@@ -208,7 +214,7 @@ const loadSavedMapViewMode = (): 'immersive' | 'simplified' => {
   try {
     const storage = getStorage()
     if (storage) {
-      const raw = storage.getItem(MAP_VIEW_STORAGE_KEY)
+      const raw = storage.getItem(MAP_VIEW_STORAGE_KEY) || storage.getItem(LEGACY_MAP_VIEW_STORAGE_KEY)
       if (raw === 'simplified' || raw === 'immersive') return raw
     }
   } catch (e) {}
@@ -219,7 +225,7 @@ const loadSavedFriends = (): string[] => {
   try {
     const storage = getStorage()
     if (storage) {
-      const raw = storage.getItem(FRIENDS_STORAGE_KEY)
+      const raw = storage.getItem(FRIENDS_STORAGE_KEY) || storage.getItem(LEGACY_FRIENDS_STORAGE_KEY)
       if (raw) return JSON.parse(raw)
     }
   } catch (e) {}
@@ -230,7 +236,7 @@ const loadSavedFriendProfiles = (): Record<string, FriendProfile> => {
   try {
     const storage = getStorage()
     if (storage) {
-      const raw = storage.getItem(FRIEND_PROFILES_STORAGE_KEY)
+      const raw = storage.getItem(FRIEND_PROFILES_STORAGE_KEY) || storage.getItem(LEGACY_FRIEND_PROFILES_STORAGE_KEY)
       if (raw) return JSON.parse(raw)
     }
   } catch (e) {}
@@ -678,7 +684,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setRoomSession: (roomId, isOwner, options) => {
     const isPublic = options?.isPublic ?? false
     const name = options?.roomName || `Espaço de ${get().localPlayer.name}`
-    const description = options?.roomDescription || 'Espaço virtual Gather V2'
+    const description = options?.roomDescription || 'Espaço virtual Lira'
     const maxPlayers = options?.maxPlayers || 20
     const color = options?.color || '#3b82f6'
 

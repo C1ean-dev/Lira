@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { Channel, ChatMessage, FriendRequestData } from '../types/chat'
+import { Channel, ChatMessage, FriendRequestData, MessageDeliveryStatus } from '../types/chat'
 import { useGameStore } from './useGameStore'
 import { playMessageNotificationChime } from '../utils/audioChime'
 import { FriendsPresenceService } from '../services/friendsPresenceService'
@@ -9,6 +9,12 @@ import { sendNotification } from '../services/notificationService'
 export const getDmChannelId = (userId1: string, userId2: string): string => {
   const sorted = [userId1, userId2].sort()
   return `dm-${sorted[0]}-${sorted[1]}`
+}
+
+export const STATUS_RANK: Record<MessageDeliveryStatus, number> = {
+  sent: 1,
+  delivered: 2,
+  read: 3,
 }
 
 interface ChatStore {
@@ -22,6 +28,8 @@ interface ChatStore {
   toggleChat: () => void
   setChatOpen: (open: boolean) => void
   addMessage: (message: ChatMessage) => void
+  updateMessageStatus: (messageId: string | string[], status: MessageDeliveryStatus) => void
+  updateMessagesStatusForPeer: (peerIdOrName: string, status: MessageDeliveryStatus, upToTimestamp?: number) => void
   addReactionToMessage: (messageId: string, emoji: string, userId: string) => void
   markChannelAsRead: (channelId: string) => void
   markPeerAsRead: (peerIdentifiers: string[]) => void
@@ -59,9 +67,12 @@ const DEFAULT_CHANNELS: Channel[] = [
   },
 ]
 
-const SAVED_DMS_STORAGE_KEY = 'gather_v2_saved_dms'
-const SAVED_DM_CHANNELS_STORAGE_KEY = 'gather_v2_saved_dm_channels'
-const SAVED_LAST_READ_KEY = 'gather_v2_saved_last_read_dms'
+const SAVED_DMS_STORAGE_KEY = 'lira_saved_dms'
+const LEGACY_SAVED_DMS_STORAGE_KEY = 'gather_v2_saved_dms'
+const SAVED_DM_CHANNELS_STORAGE_KEY = 'lira_saved_dm_channels'
+const LEGACY_SAVED_DM_CHANNELS_STORAGE_KEY = 'gather_v2_saved_dm_channels'
+const SAVED_LAST_READ_KEY = 'lira_saved_last_read_dms'
+const LEGACY_SAVED_LAST_READ_KEY = 'gather_v2_saved_last_read_dms'
 
 const getStorage = () => {
   if (typeof window !== 'undefined' && window.localStorage) return window.localStorage
@@ -73,7 +84,7 @@ const loadSavedDmChannels = (): Channel[] => {
   try {
     const storage = getStorage()
     if (storage) {
-      const raw = storage.getItem(SAVED_DM_CHANNELS_STORAGE_KEY)
+      const raw = storage.getItem(SAVED_DM_CHANNELS_STORAGE_KEY) || storage.getItem(LEGACY_SAVED_DM_CHANNELS_STORAGE_KEY)
       if (raw) return JSON.parse(raw)
     }
   } catch (e) {}
@@ -84,7 +95,7 @@ const loadSavedDmMessages = (): ChatMessage[] => {
   try {
     const storage = getStorage()
     if (storage) {
-      const raw = storage.getItem(SAVED_DMS_STORAGE_KEY)
+      const raw = storage.getItem(SAVED_DMS_STORAGE_KEY) || storage.getItem(LEGACY_SAVED_DMS_STORAGE_KEY)
       if (raw) {
         const parsed: ChatMessage[] = JSON.parse(raw)
         // Deduplicate friend requests by requestId
@@ -109,7 +120,7 @@ const loadSavedLastRead = (): Record<string, number> => {
   try {
     const storage = getStorage()
     if (storage) {
-      const raw = storage.getItem(SAVED_LAST_READ_KEY)
+      const raw = storage.getItem(SAVED_LAST_READ_KEY) || storage.getItem(LEGACY_SAVED_LAST_READ_KEY)
       if (raw) return JSON.parse(raw)
     }
   } catch (e) {}
@@ -148,9 +159,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     {
       id: 'welcome-msg',
       senderId: 'system',
-      senderName: 'Gather Bot',
+      senderName: 'Lira Bot',
       channelId: 'general',
-      content: '👋 Bem-vindo ao seu espaço virtual Gather V2! Use WASD ou clique com o mouse para andar pelo escritório.',
+      content: '👋 Bem-vindo ao seu espaço virtual Lira! Use WASD ou clique com o mouse para andar pelo escritório.',
       timestamp: Date.now(),
     },
     ...savedMessages,
@@ -163,6 +174,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       activeChannelId: channelId,
       channels: state.channels.map((c) => (c.id === channelId ? { ...c, unreadCount: 0 } : c)),
     }))
+    get().markChannelAsRead(channelId)
   },
 
   toggleChat: () => set((state) => ({ isChatOpen: !state.isChatOpen })),
@@ -271,6 +283,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const normalizedMessage: ChatMessage = {
         ...message,
         channelId: targetChannelId,
+        status: message.status || (isFromMe ? 'sent' : isCurrent ? 'read' : 'delivered'),
       }
 
       let nextMessages = [...state.messages]
@@ -356,6 +369,33 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         }
       }
 
+      // Send delivery / read ACK back to sender for direct messages
+      if (isDm && !isFromMe && message.senderId) {
+        const ackStatus: MessageDeliveryStatus = isCurrent ? 'read' : 'delivered'
+        try {
+          FriendsPresenceService.getInstance().sendMessageStatusReceipt({
+            senderId: localId,
+            senderName: local.name,
+            recipientId: message.senderId,
+            recipientName: message.senderName,
+            channelId: targetChannelId,
+            messageId: message.id,
+            status: ackStatus,
+            timestamp: Date.now(),
+            upToTimestamp: message.timestamp,
+          })
+        } catch (e) {}
+        try {
+          PeerManager.getInstance().sendMessageStatus(
+            message.senderId,
+            targetChannelId,
+            ackStatus,
+            message.id,
+            message.timestamp
+          )
+        } catch (e) {}
+      }
+
       // Trigger notification if message is from another user and not currently focused
       if (message.senderId && !isFromMe && message.senderId !== 'system') {
         if (isDm || !isCurrent) {
@@ -378,6 +418,75 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
     }),
 
+  updateMessageStatus: (messageIdOrIds, status) => {
+    const ids = Array.isArray(messageIdOrIds) ? messageIdOrIds : [messageIdOrIds]
+    if (ids.length === 0) return
+
+    set((state) => {
+      const newRank = STATUS_RANK[status] || 1
+      let changed = false
+      const updatedMessages = state.messages.map((m) => {
+        if (ids.includes(m.id)) {
+          const currentRank = STATUS_RANK[m.status || 'sent'] || 1
+          if (newRank > currentRank) {
+            changed = true
+            return { ...m, status }
+          }
+        }
+        return m
+      })
+
+      if (!changed) return state
+
+      persistDmsAndChannels(updatedMessages, state.channels)
+      return { messages: updatedMessages }
+    })
+  },
+
+  updateMessagesStatusForPeer: (peerIdOrName, status, upToTimestamp = Date.now()) => {
+    const peerLower = (peerIdOrName || '').trim().toLowerCase()
+    if (!peerLower) return
+
+    set((state) => {
+      const local = useGameStore.getState().localPlayer
+      const localId = local?.id || 'local'
+      const localGameId = local?.gameId
+      const newRank = STATUS_RANK[status] || 1
+
+      let changed = false
+      const updatedMessages = state.messages.map((m) => {
+        // Only update messages sent by local player
+        const isFromMe =
+          m.senderId === localId ||
+          (localGameId && m.senderId === localGameId)
+        if (!isFromMe) return m
+
+        const rIdLower = (m.recipientId || '').toLowerCase()
+        const rNameLower = (m.recipientName || '').toLowerCase()
+        const channelLower = (m.channelId || '').toLowerCase()
+
+        const isMatch =
+          rIdLower === peerLower ||
+          rNameLower === peerLower ||
+          channelLower.includes(peerLower)
+
+        if (isMatch && m.timestamp <= upToTimestamp) {
+          const currentRank = STATUS_RANK[m.status || 'sent'] || 1
+          if (newRank > currentRank) {
+            changed = true
+            return { ...m, status }
+          }
+        }
+        return m
+      })
+
+      if (!changed) return state
+
+      persistDmsAndChannels(updatedMessages, state.channels)
+      return { messages: updatedMessages }
+    })
+  },
+
   addReactionToMessage: (messageId, emoji, userId) =>
     set((state) => ({
       messages: state.messages.map((m) => {
@@ -396,10 +505,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }),
     })),
 
-  markChannelAsRead: (channelId) =>
-    set((state) => ({
-      channels: state.channels.map((c) => (c.id === channelId ? { ...c, unreadCount: 0 } : c)),
-    })),
+  markChannelAsRead: (channelId) => {
+    const state = get()
+    const targetChannel = state.channels.find((c) => c.id === channelId)
+    set((s) => ({
+      channels: s.channels.map((c) => (c.id === channelId ? { ...c, unreadCount: 0 } : c)),
+    }))
+    if (targetChannel && targetChannel.type === 'dm') {
+      const identifiers = [targetChannel.recipientId, targetChannel.name].filter(Boolean) as string[]
+      if (identifiers.length > 0) {
+        state.markPeerAsRead(identifiers)
+      }
+    }
+  },
 
   markPeerAsRead: (peerIdentifiers: string[]) => {
     const now = Date.now()
@@ -438,6 +556,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         channels: updatedChannels,
       }
     })
+
+    // Also send read receipt to those peers via presence & P2P
+    try {
+      peerIdentifiers.forEach((peerId) => {
+        if (!peerId) return
+        FriendsPresenceService.getInstance().sendReadReceipt(peerId, peerId, undefined, now)
+        try {
+          PeerManager.getInstance().sendMessageStatus(peerId, undefined, 'read', undefined, now)
+        } catch (e) {}
+      })
+    } catch (e) {}
   },
 
   getUnreadCountForFriend: (friend) => {
@@ -601,6 +730,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       timestamp: Date.now(),
       avatarConfig: local.avatar,
       friendRequest,
+      status: 'sent',
     }
 
     // Ensure DM channel exists and is open

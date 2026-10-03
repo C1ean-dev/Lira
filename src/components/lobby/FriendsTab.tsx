@@ -13,7 +13,7 @@ import {
   Clock,
   AlertCircle,
 } from 'lucide-react'
-import { FriendProfile } from '../../types/game'
+import { FriendProfile, STATUS_META, PresenceStatus } from '../../types/game'
 import { useGameStore } from '../../store/useGameStore'
 import { useChatStore, getDmChannelId } from '../../store/useChatStore'
 import { FriendsPresenceService } from '../../services/friendsPresenceService'
@@ -67,7 +67,8 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
         roomCode: presence.roomCode,
         roomName: presence.roomName,
         inRoom: presence.inRoom,
-        statusText: presence.statusText || profile.statusText,
+        status: presence.status || profile.status || 'available',
+        statusText: presence.statusText || profile.statusText || 'Disponível',
       }
     })
   }, [friends, friendProfiles, presenceTick])
@@ -400,6 +401,9 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                   const unread = getUnreadCount(friend)
                   const lastMsg = getLastMessageWithFriend(friend)
                   const isConfirming = confirmDeleteId === friend.id
+                  const statusKey = (friend.status as PresenceStatus) || 'available'
+                  const statusMeta = STATUS_META[statusKey] || STATUS_META.available
+                  const displayStatusText = friend.statusText || statusMeta.label || 'Disponível'
 
                   return (
                     <div
@@ -415,7 +419,7 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                         <PlayerAvatar
                           player={friend}
                           showStatus={true}
-                          status="available"
+                          status={statusKey}
                           size="md"
                         />
 
@@ -424,8 +428,19 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                             <span className="text-xs font-bold text-slate-100 truncate">
                               {friend.name}
                             </span>
-                            <span className="text-[9px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.2 rounded-full font-bold">
-                              Online
+                            <span
+                              className={`text-[9px] px-2 py-0.5 rounded-full font-bold border flex items-center gap-1 ${
+                                statusKey === 'busy'
+                                  ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                                  : statusKey === 'focusing'
+                                  ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
+                                  : statusKey === 'away'
+                                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                  : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                              }`}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dotColor}`} />
+                              <span>{displayStatusText}</span>
                             </span>
                             {unread > 0 && (
                               <span className="text-[9px] bg-rose-500 text-white font-extrabold px-2 py-0.5 rounded-full shadow-md shadow-rose-500/40 flex items-center gap-1 animate-pulse">
@@ -435,14 +450,24 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                             )}
                           </div>
 
-                          <div className="text-[11px] text-slate-400 truncate mt-0.5 flex items-center gap-1.5">
+                          <div className="text-[11px] text-slate-300 truncate mt-0.5 flex items-center gap-1.5">
+                            <span className="font-medium flex items-center gap-1 text-slate-200">
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusMeta.dotColor}`} />
+                              <span className="truncate">{displayStatusText}</span>
+                            </span>
                             {friend.inRoom && friend.roomName ? (
-                              <span className="text-indigo-300 font-semibold flex items-center gap-1">
-                                <Globe className="w-3 h-3 text-indigo-400" />
-                                <span>Em: {friend.roomName}</span>
-                              </span>
+                              <>
+                                <span className="text-slate-600">•</span>
+                                <span className="text-indigo-300 font-medium flex items-center gap-1 truncate" title={`Na sala: ${friend.roomName}`}>
+                                  <Globe className="w-3 h-3 text-indigo-400 shrink-0" />
+                                  <span className="truncate">Em: {friend.roomName}</span>
+                                </span>
+                              </>
                             ) : (
-                              <span>No Lobby / Tela Inicial</span>
+                              <>
+                                <span className="text-slate-600">•</span>
+                                <span className="text-slate-500 truncate">No Lobby / Tela Inicial</span>
+                              </>
                             )}
                           </div>
 

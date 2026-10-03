@@ -27,8 +27,8 @@ interface ScaleMetrics {
 describe('100-Player Scale & Performance Stress Test', () => {
   const TOTAL_PLAYERS = 100
   const ROOM_CODE = 'STRESS100'
-  const HOST_PEER_ID = `gather-v2-${ROOM_CODE}-host`
-  const LOCAL_CLIENT_PEER_ID = `gather-v2-${ROOM_CODE}-peer-001`
+  const HOST_PEER_ID = `lira-${ROOM_CODE}-host`
+  const LOCAL_CLIENT_PEER_ID = `lira-${ROOM_CODE}-peer-001`
   const LOCAL_GAME_ID = 'local-game-001'
 
   const noopBroadcast = vi.fn()
@@ -40,7 +40,7 @@ describe('100-Player Scale & Performance Stress Test', () => {
   for (let i = 0; i < TOTAL_PLAYERS; i++) {
     const isHost = i === 0
     const padId = String(i).padStart(3, '0')
-    const peerId = isHost ? HOST_PEER_ID : `gather-v2-${ROOM_CODE}-peer-${padId}`
+    const peerId = isHost ? HOST_PEER_ID : `lira-${ROOM_CODE}-peer-${padId}`
     const gameId = `local-game-${padId}`
     const skinTones = ['#ffd1b3', '#e0ac69', '#c68642', '#8d5524', '#3c2e18', '#fcd0a1', '#d4aa78', '#b58a63', '#714928', '#4a321f']
 

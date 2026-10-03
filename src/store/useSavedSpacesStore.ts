@@ -16,8 +16,10 @@ export interface SavedSpace {
   color?: string
 }
 
-const STORAGE_KEY = 'gather_v2_saved_spaces'
-const ACTIVE_SPACE_ID_KEY = 'gather_v2_active_space_id'
+const STORAGE_KEY = 'lira_saved_spaces'
+const LEGACY_STORAGE_KEY = 'gather_v2_saved_spaces'
+const ACTIVE_SPACE_ID_KEY = 'lira_active_space_id'
+const LEGACY_ACTIVE_SPACE_ID_KEY = 'gather_v2_active_space_id'
 
 const serializeSpacesForStorage = (spaces: SavedSpace[]) => {
   return spaces.map((s) => ({
@@ -66,7 +68,7 @@ const loadSavedSpaces = (): SavedSpace[] => {
   let savedSpaces: SavedSpace[] = []
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
-      const raw = window.localStorage.getItem(STORAGE_KEY)
+      const raw = window.localStorage.getItem(STORAGE_KEY) || window.localStorage.getItem(LEGACY_STORAGE_KEY)
       if (raw) {
         const parsed = JSON.parse(raw)
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -127,7 +129,7 @@ export const useSavedSpacesStore = create<SavedSpacesState>((set, get) => {
   const initialSpaces = loadSavedSpaces()
   const savedActiveId =
     typeof window !== 'undefined' && window.localStorage
-      ? window.localStorage.getItem(ACTIVE_SPACE_ID_KEY)
+      ? (window.localStorage.getItem(ACTIVE_SPACE_ID_KEY) || window.localStorage.getItem(LEGACY_ACTIVE_SPACE_ID_KEY))
       : null
 
   const activeSpaceId =

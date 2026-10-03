@@ -29,6 +29,8 @@ export interface FriendRequestData {
   status: FriendRequestStatus
 }
 
+export type MessageDeliveryStatus = 'sent' | 'delivered' | 'read'
+
 export interface ChatMessage {
   id: string
   senderId: string
@@ -42,5 +44,6 @@ export interface ChatMessage {
   recipientId?: string // for direct messages
   recipientName?: string
   friendRequest?: FriendRequestData
+  status?: MessageDeliveryStatus
 }
 

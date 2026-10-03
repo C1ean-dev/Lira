@@ -15,11 +15,11 @@ describe('Update Service & Version Checker', () => {
       tag_name: 'v2.0.0',
       name: 'Release v2.0.0',
       body: 'Bug fixes and performance improvements',
-      html_url: 'https://github.com/C1ean-dev/gather-clone/releases/tag/v2.0.0',
+      html_url: 'https://github.com/C1ean-dev/Lira/releases/tag/v2.0.0',
       assets: [
         {
-          name: 'Gather-Clone-Setup-2.0.0.exe',
-          browser_download_url: 'https://github.com/C1ean-dev/gather-clone/releases/download/v2.0.0/Gather-Clone-Setup.exe',
+          name: 'Lira-Setup-2.0.0.exe',
+          browser_download_url: 'https://github.com/C1ean-dev/Lira/releases/download/v2.0.0/Lira-Setup.exe',
         },
       ],
     }
@@ -34,7 +34,7 @@ describe('Update Service & Version Checker', () => {
     expect(updateInfo.hasUpdate).toBe(true)
     expect(updateInfo.latestVersion).toBe('v2.0.0')
     expect(updateInfo.downloadUrl).toBe(
-      'https://github.com/C1ean-dev/gather-clone/releases/download/v2.0.0/Gather-Clone-Setup.exe'
+      'https://github.com/C1ean-dev/Lira/releases/download/v2.0.0/Lira-Setup.exe'
     )
     expect(updateInfo.releaseNotes).toBe('Bug fixes and performance improvements')
   })
@@ -44,7 +44,7 @@ describe('Update Service & Version Checker', () => {
       tag_name: `v${CURRENT_APP_VERSION}`,
       name: `Release v${CURRENT_APP_VERSION}`,
       body: 'Initial release',
-      html_url: `https://github.com/C1ean-dev/gather-clone/releases/tag/v${CURRENT_APP_VERSION}`,
+      html_url: `https://github.com/C1ean-dev/Lira/releases/tag/v${CURRENT_APP_VERSION}`,
       assets: [],
     }
 

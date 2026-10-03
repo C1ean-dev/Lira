@@ -1,6 +1,6 @@
-# Gather Clone Context
+# Lira Context
 
-Gather V2 Desktop Clone with Pixel Art Office, Realtime Map Editor, Zone Calls, Screenshare, and Noise Suppression.
+Lira Desktop Virtual Office & Coworking with Pixel Art, Realtime Map Editor, Zone Calls, Screenshare, and Noise Suppression.
 
 ## Language
 

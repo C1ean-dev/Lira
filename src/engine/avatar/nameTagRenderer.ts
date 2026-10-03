@@ -20,7 +20,7 @@ function measureLabelWidth(
 
 export class NameTagRenderer {
   /**
-   * Draw Gather Pill Name Tag (Compact & Sleek)
+   * Draw Lira Pill Name Tag (Compact & Sleek)
    *
    * When `player.callState === 'connecting'`, the status dot pulses amber and
    * the label gets a "connecting…" badge so users see the WebRTC handshake
@@ -48,7 +48,7 @@ export class NameTagRenderer {
     const pillX = centerX - pillW / 2
     const pillY = tagY - pillH + 2
 
-    // Background pill (Gather dark glass badge)
+    // Background pill (Lira dark glass badge)
     ctx.fillStyle = isLocal ? 'rgba(15, 23, 42, 0.92)' : 'rgba(27, 32, 44, 0.90)'
     ctx.beginPath()
     ctx.roundRect(pillX, pillY, pillW, pillH, 6.5)

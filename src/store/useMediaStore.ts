@@ -146,7 +146,7 @@ interface MediaStore {
   setLiveBufferDelay: (ms: number) => void
   /**
    * Written by DynamicBufferManager every evaluation tick. Unlike
-   * setLiveBufferDelay it does NOT dispatch 'gather:live-buffer-changed'
+   * setLiveBufferDelay it does NOT dispatch 'lira:live-buffer-changed'
    * (the manager already applied both values straight to the peer
    * connections) — dispatching would make PeerManager re-apply a
    * video-only value and clobber the adaptive audio number.
@@ -163,12 +163,13 @@ interface MediaStore {
   stopAllMedia: () => void
 }
 
-const STORAGE_KEY = 'gather_v2_audio_settings'
+const STORAGE_KEY = 'lira_audio_settings'
+const LEGACY_STORAGE_KEY = 'gather_v2_audio_settings'
 
 const loadSavedAudioSettings = () => {
   try {
     if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
-      const raw = window.localStorage.getItem(STORAGE_KEY)
+      const raw = window.localStorage.getItem(STORAGE_KEY) || window.localStorage.getItem(LEGACY_STORAGE_KEY)
       if (raw) {
         return JSON.parse(raw)
       }
@@ -578,7 +579,7 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
     saveAudioSettings({ liveBufferDelay: clamped })
     set({ liveBufferDelay: clamped })
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('gather:live-buffer-changed', { detail: clamped }))
+      window.dispatchEvent(new CustomEvent('lira:live-buffer-changed', { detail: clamped }))
     }
   },
 

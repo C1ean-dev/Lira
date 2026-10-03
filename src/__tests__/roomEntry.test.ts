@@ -88,7 +88,7 @@ describe('room entry (createRoom)', () => {
     const pm = PeerManager.getInstance()
     const pending = pm.createRoom('code-aaa', player() as any)
     expect(FakePeer.instances).toHaveLength(1)
-    FakePeer.instances[0].emit('open', 'gather-v2-CODE-AAA-host')
+    FakePeer.instances[0].emit('open', 'lira-CODE-AAA-host')
     await expect(pending).resolves.toBe('CODE-AAA')
     // create-begin + create-open at minimum.
     expect(diagStats().buffered).toBeGreaterThanOrEqual(2)
@@ -111,7 +111,7 @@ describe('room entry (createRoom)', () => {
     const run2 = pm.createRoom('code-bbb', player() as any)
     // Pre-cleanup of run 2 legitimately destroys the stale peer A.
     expect(peerA.destroyed).toBe(true)
-    FakePeer.instances[1].emit('open', 'gather-v2-CODE-BBB-host')
+    FakePeer.instances[1].emit('open', 'lira-CODE-BBB-host')
     await expect(run2).resolves.toBe('CODE-BBB')
     const peerB = FakePeer.instances[1]
     const destroysAfterOpen = peerB.destroyedCount
@@ -174,7 +174,7 @@ describe('room entry (joinRoom)', () => {
     FakePeer.instances[0].emit('error', { type: 'peer-unavailable', message: 'Could not connect to peer' })
     // Auto-host creates a real second peer (host id); open it.
     expect(FakePeer.instances).toHaveLength(2)
-    FakePeer.instances[1].emit('open', 'gather-v2-CODE-AAA-host')
+    FakePeer.instances[1].emit('open', 'lira-CODE-AAA-host')
     await expect(pending).resolves.toBeUndefined()
     expect(diagStats().buffered).toBeGreaterThanOrEqual(4) // begin + error + autohost + create-*
   })
@@ -192,7 +192,7 @@ describe('room entry (joinRoom)', () => {
 
     // Run 2 replaces it and connects as host.
     const run2 = pm.createRoom('code-bbb', player() as any)
-    FakePeer.instances[1].emit('open', 'gather-v2-CODE-BBB-host')
+    FakePeer.instances[1].emit('open', 'lira-CODE-BBB-host')
     await expect(run2).resolves.toBe('CODE-BBB')
     const peerB = FakePeer.instances[1]
     const destroysAfterOpen = peerB.destroyedCount

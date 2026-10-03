@@ -140,7 +140,7 @@ export class FloorRenderer {
       case 'wood_parquet':
       case 'habbo_parquet': // retrocompatibilidade com mapas salvos
       case 'wood_light':
-        // Soft, elegant Gather Wood Plank Floor (seamless without harsh grid borders)
+        // Soft, elegant Lira Wood Plank Floor (seamless without harsh grid borders)
         ctx.fillStyle = '#f6e7d2'
         ctx.fillRect(px, py, s, s)
         // Soft alternating plank highlights (subtle grain, no harsh perimeter borders)

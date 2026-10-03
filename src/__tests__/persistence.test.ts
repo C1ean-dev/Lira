@@ -45,7 +45,7 @@ describe('Storage Persistence - Expected Behaviors', () => {
       },
     })
 
-    const raw = localStorageMock.getItem('gather_v2_user_profile')
+    const raw = localStorageMock.getItem('lira_user_profile')
     expect(raw).toBeTruthy()
     const parsed = JSON.parse(raw!)
     expect(parsed.name).toBe('DevMaster')
@@ -58,7 +58,7 @@ describe('Storage Persistence - Expected Behaviors', () => {
     
     setLocalStatus('focusing', 'Codando persistência...', '🚀')
 
-    const raw = localStorageMock.getItem('gather_v2_user_profile')
+    const raw = localStorageMock.getItem('lira_user_profile')
     expect(raw).toBeTruthy()
     const parsed = JSON.parse(raw!)
     expect(parsed.status).toBe('focusing')
@@ -82,7 +82,7 @@ describe('Storage Persistence - Expected Behaviors', () => {
 
     addOrUpdateZone(newZone)
 
-    const raw = localStorageMock.getItem('gather_v2_custom_map')
+    const raw = localStorageMock.getItem('lira_custom_map')
     expect(raw).toBeTruthy()
     const parsed = JSON.parse(raw!)
     expect(parsed.zones.some((z: any) => z.name === 'Sala de Guerra')).toBe(true)
@@ -100,7 +100,7 @@ describe('Storage Persistence - Expected Behaviors', () => {
 
     addFurniture(furn)
 
-    const raw = localStorageMock.getItem('gather_v2_custom_map')
+    const raw = localStorageMock.getItem('lira_custom_map')
     expect(raw).toBeTruthy()
     const parsed = JSON.parse(raw!)
     expect(parsed.furniture.some((f: any) => f.id === 'furn-test-1')).toBe(true)
@@ -123,7 +123,7 @@ describe('Storage Persistence - Expected Behaviors', () => {
     addOrUpdateZone(zone)
     renameZone('test-zone-rename', 'Sala Nova da Diretoria')
 
-    const raw = localStorageMock.getItem('gather_v2_custom_map')
+    const raw = localStorageMock.getItem('lira_custom_map')
     expect(raw).toBeTruthy()
     const parsed = JSON.parse(raw!)
     const renamed = parsed.zones.find((z: any) => z.id === 'test-zone-rename')
@@ -134,42 +134,42 @@ describe('Storage Persistence - Expected Behaviors', () => {
     const customRoom = {
       id: 'avail-test-1',
       name: 'Servidor Geral de Estudos',
-      code: 'GATHER-ESTUDOS-01',
+      code: 'LIRA-ESTUDOS-01',
       color: '#3b82f6',
       description: 'Sala pública disponível para todos',
     }
 
     const rooms = [customRoom]
-    localStorageMock.setItem('gather_v2_available_rooms', JSON.stringify(rooms))
+    localStorageMock.setItem('lira_available_rooms', JSON.stringify(rooms))
 
-    const raw = localStorageMock.getItem('gather_v2_available_rooms')
+    const raw = localStorageMock.getItem('lira_available_rooms')
     expect(raw).toBeTruthy()
     const parsed = JSON.parse(raw!)
     expect(parsed.length).toBe(1)
     expect(parsed[0].name).toBe('Servidor Geral de Estudos')
-    expect(parsed[0].code).toBe('GATHER-ESTUDOS-01')
+    expect(parsed[0].code).toBe('LIRA-ESTUDOS-01')
   })
 
   it('should allow host to toggle room privacy and sync with available rooms', () => {
     const { setRoomSession, toggleRoomPrivacy } = useGameStore.getState()
     
     // 1. Start room as host
-    setRoomSession('GATHER-HOST-ROOM', true)
+    setRoomSession('LIRA-HOST-ROOM', true)
     expect(useGameStore.getState().isRoomPublic).toBe(false)
 
     // 2. Toggle to public
     toggleRoomPrivacy()
     expect(useGameStore.getState().isRoomPublic).toBe(true)
-    let raw = localStorageMock.getItem('gather_v2_available_rooms')
+    let raw = localStorageMock.getItem('lira_available_rooms')
     let parsed = JSON.parse(raw!)
-    expect(parsed.some((r: any) => r.code === 'GATHER-HOST-ROOM')).toBe(true)
+    expect(parsed.some((r: any) => r.code === 'LIRA-HOST-ROOM')).toBe(true)
 
     // 3. Toggle back to private
     toggleRoomPrivacy()
     expect(useGameStore.getState().isRoomPublic).toBe(false)
-    raw = localStorageMock.getItem('gather_v2_available_rooms')
+    raw = localStorageMock.getItem('lira_available_rooms')
     parsed = JSON.parse(raw!)
-    expect(parsed.some((r: any) => r.code === 'GATHER-HOST-ROOM')).toBe(false)
+    expect(parsed.some((r: any) => r.code === 'LIRA-HOST-ROOM')).toBe(false)
   })
 
   it('should persist private room configuration, roles, admins and members to localStorage', () => {
@@ -193,7 +193,7 @@ describe('Storage Persistence - Expected Behaviors', () => {
 
     addOrUpdateZone(roomZone)
 
-    let raw = localStorageMock.getItem('gather_v2_custom_map')
+    let raw = localStorageMock.getItem('lira_custom_map')
     expect(raw).toBeTruthy()
     let parsed = JSON.parse(raw!)
     let savedZone = parsed.zones.find((z: any) => z.id === 'room-executiva-01')
@@ -211,7 +211,7 @@ describe('Storage Persistence - Expected Behaviors', () => {
       isLocked: false,
     })
 
-    raw = localStorageMock.getItem('gather_v2_custom_map')
+    raw = localStorageMock.getItem('lira_custom_map')
     parsed = JSON.parse(raw!)
     savedZone = parsed.zones.find((z: any) => z.id === 'room-executiva-01')
     expect(savedZone.name).toBe('Sala Executiva Principal')

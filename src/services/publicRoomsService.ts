@@ -1,7 +1,7 @@
 import { PublicRoomInfo } from '../types/game'
 
-const STORAGE_KEY = 'gather_v2_public_hub_cache'
-const BROADCAST_CHANNEL_NAME = 'gather_v2_public_hub_channel'
+const STORAGE_KEY = 'lira_public_hub_cache'
+const BROADCAST_CHANNEL_NAME = 'lira_public_hub_channel'
 const HEARTBEAT_INTERVAL_MS = 4000 // 4s
 const STALE_ROOM_THRESHOLD_MS = 20000 // 20s
 
@@ -270,14 +270,14 @@ export class PublicRoomsService {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
 
     try {
-      const clientId = 'gather_hub_' + Math.random().toString(36).substring(2, 10)
+      const clientId = 'lira_hub_' + Math.random().toString(36).substring(2, 10)
       const connectPacket = this.encodeMqttConnect(clientId)
       this.ws.send(connectPacket)
 
       // Fallback subscribe and query timers in case broker doesn't emit CONNACK/SUBACK
       setTimeout(() => {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-          const subPacket = this.encodeMqttSubscribe('gather_v2_public_hub/events', 1)
+          const subPacket = this.encodeMqttSubscribe('lira_public_hub/events', 1)
           this.ws.send(subPacket)
         }
       }, 350)
@@ -352,7 +352,7 @@ export class PublicRoomsService {
         // CONNACK (0x20): Connect acknowledged! Send SUBSCRIBE immediately
         if (packetType === 0x20) {
           if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            const subPacket = this.encodeMqttSubscribe('gather_v2_public_hub/events', 1)
+            const subPacket = this.encodeMqttSubscribe('lira_public_hub/events', 1)
             this.ws.send(subPacket)
           }
           return
@@ -405,7 +405,7 @@ export class PublicRoomsService {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       try {
         const str = JSON.stringify(msg)
-        const packet = this.encodeMqttPublish('gather_v2_public_hub/events', str)
+        const packet = this.encodeMqttPublish('lira_public_hub/events', str)
         this.ws.send(packet)
       } catch (err) {
         // Ignore

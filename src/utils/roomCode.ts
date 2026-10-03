@@ -23,9 +23,9 @@ export function sanitizeRoomCode(raw?: string | null): string {
   }
 
   // 3. Strip PeerJS ID prefix or suffix if user accidentally copied full network peer ID
-  // e.g., "gather-v2-ROOM-123-host" or "gather-v2-ROOM-123-peer-abc12"
-  if (cleaned.startsWith('gather-v2-')) {
-    cleaned = cleaned.replace(/^gather-v2-/, '').replace(/-(host|peer-[a-z0-9]+)$/i, '')
+  // e.g., "lira-ROOM-123-host", "lira-v2-ROOM-123-host" or "gather-v2-ROOM-123-host"
+  if (cleaned.startsWith('lira-') || cleaned.startsWith('lira-v2-') || cleaned.startsWith('gather-v2-')) {
+    cleaned = cleaned.replace(/^(lira(-v2)?-|gather-v2-)/i, '').replace(/-(host|peer-[a-z0-9]+)$/i, '')
   }
 
   // 4. Remove fragment identifiers or trailing slashes

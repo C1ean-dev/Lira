@@ -23,8 +23,8 @@ const localStorageMock = {
 ;(globalThis as any).localStorage = localStorageMock
 
 describe('ChatDrawer Resize & Persistence Logic', () => {
-  const DRAWER_STORAGE_KEY = 'gather_chat_drawer_width'
-  const CHANNELS_STORAGE_KEY = 'gather_chat_channels_width'
+  const DRAWER_STORAGE_KEY = 'lira_chat_drawer_width'
+  const CHANNELS_STORAGE_KEY = 'lira_chat_channels_width'
   const DEFAULT_DRAWER_WIDTH = 440
   const MIN_DRAWER_WIDTH = 340
   const DEFAULT_CHANNELS_WIDTH = 144

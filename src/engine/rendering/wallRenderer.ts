@@ -219,7 +219,7 @@ export class WallRenderer {
   }
 
   /**
-   * Draw Exact Gather Room Architecture Textured with Zone Wall Type:
+   * Draw Exact Lira Room Architecture Textured with Zone Wall Type:
    *  1. Tall Themed Back Wall with trim & baseboard.
    *  2. Side Partitions with corresponding material.
    *  3. Solid 3D Front Wall Blocks with doorway.
@@ -232,7 +232,7 @@ export class WallRenderer {
    * appear as one continuous wall — matching the reference look where the
    * top edges blend into a single shape.
    */
-  static drawGatherRoom(ctx: CanvasRenderingContext2D, zone: PrivateZone, zones: PrivateZone[] = []) {
+  static drawLiraRoom(ctx: CanvasRenderingContext2D, zone: PrivateZone, zones: PrivateZone[] = []) {
     if (zone.hasWalls === false) return
 
     const minX = Math.floor(zone.x * TILE_SIZE)
@@ -607,5 +607,9 @@ export class WallRenderer {
     )
 
     ctx.restore()
+  }
+
+  static drawGatherRoom(ctx: CanvasRenderingContext2D, zone: PrivateZone, zones: PrivateZone[] = []) {
+    return this.drawLiraRoom(ctx, zone, zones)
   }
 }

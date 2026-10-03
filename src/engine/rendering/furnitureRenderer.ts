@@ -199,7 +199,7 @@ export class FurnitureRenderer {
 
     switch (def.spriteKey) {
       // ==========================================
-      // 1. WALL ITEMS & WINDOWS (EXACT GATHER STYLE)
+      // 1. WALL ITEMS & WINDOWS (EXACT LIRA STYLE)
       // ==========================================
       case 'window_grid_large': {
         // 3-Pane Large Modern Office Window (as in screenshot)
@@ -335,7 +335,7 @@ export class FurnitureRenderer {
 
 
       // ==========================================
-      // 2. GATHER OFFICE FURNITURE (FROM SCREENSHOT)
+      // 2. LIRA OFFICE FURNITURE (FROM SCREENSHOT)
       // ==========================================
       case 'desk_executive_clean': {
         // Large Clean Grey/White Meeting Table (3x1)
