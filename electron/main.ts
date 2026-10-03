@@ -1225,6 +1225,8 @@ ipcMain.handle('send-cross-message', async (_event, message: any) => {
           } catch (e) {}
         }
       } catch (e) {}
+    }
+
     // If this is a message delivery/read status update, sync original message file if present
     if (message.targetMessageId && message.status) {
       try {
