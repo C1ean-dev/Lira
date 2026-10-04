@@ -8,6 +8,8 @@ import {
   SETTINGS_FILE_NAME,
   parseAppSettings,
   mergeAppSettings,
+  buildLoginItemOptions,
+  resolveLoginItemState,
 } from './traySettings'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -54,14 +56,8 @@ export function applyLoginItemSettings(settings: AppSettings, isPackaged: boolea
     return
   }
   try {
-    const execPath = process.execPath
-    app.setLoginItemSettings({
-      openAtLogin: settings.openAtLogin,
-      openAsHidden: settings.openAsHidden,
-      path: isPackaged ? execPath : undefined,
-      args: settings.openAtLogin && settings.openAsHidden ? ['--hidden'] : [],
-    })
-    console.info(`[TrayManager] Windows LoginItem set: openAtLogin=${settings.openAtLogin}, openAsHidden=${settings.openAsHidden}`)
+    app.setLoginItemSettings(buildLoginItemOptions(settings, isPackaged, process.execPath))
+    console.info(`[TrayManager] Windows LoginItem set: openAtLogin=${settings.openAtLogin}`)
   } catch (err) {
     console.warn('[TrayManager] Error applying login item settings:', err)
   }
@@ -84,7 +80,10 @@ export class TrayManager {
       if (process.platform === 'win32' || process.platform === 'darwin') {
         const loginSettings = app.getLoginItemSettings()
         if (loginSettings) {
-          this.settings.openAtLogin = loginSettings.openAtLogin
+          const login = resolveLoginItemState(loginSettings)
+          this.settings.openAtLogin = login.openAtLogin
+          // Registered by an older version with --hidden: write it again without.
+          if (login.needsRewrite) applyLoginItemSettings(this.settings)
         }
       }
     } catch {}
@@ -95,10 +94,7 @@ export class TrayManager {
   }
 
   public updateSettings(partial: Partial<AppSettings>): AppSettings {
-    this.settings = {
-      ...this.settings,
-      ...partial,
-    }
+    this.settings = mergeAppSettings(this.settings, partial)
     writeSettingsToDisk(this.settings)
     applyLoginItemSettings(this.settings)
     this.buildContextMenu()
@@ -263,15 +259,6 @@ export class TrayManager {
         checked: this.settings.openAtLogin,
         click: (item) => {
           this.updateSettings({ openAtLogin: item.checked })
-        },
-      },
-      {
-        label: 'Iniciar Oculto (na bandeja)',
-        type: 'checkbox',
-        checked: this.settings.openAsHidden,
-        enabled: this.settings.openAtLogin,
-        click: (item) => {
-          this.updateSettings({ openAsHidden: item.checked })
         },
       },
       {

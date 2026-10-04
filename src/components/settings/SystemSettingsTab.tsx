@@ -5,7 +5,6 @@ import {
   Minimize2,
   ShieldCheck,
   ShieldAlert,
-  EyeOff,
   ExternalLink,
   CheckCircle2,
   AlertCircle,
@@ -59,34 +58,6 @@ export const SystemSettingsTab: React.FC = () => {
               type="checkbox"
               checked={settings.openAtLogin}
               onChange={(e) => updateSettings({ openAtLogin: e.target.checked })}
-              className="sr-only peer"
-            />
-            <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-          </label>
-        </div>
-
-        {/* Sub-option: Start Hidden */}
-        <div
-          className={`pl-12 pt-3 border-t border-[#2a3142]/60 flex items-center justify-between transition-opacity ${
-            settings.openAtLogin ? 'opacity-100' : 'opacity-40 pointer-events-none'
-          }`}
-        >
-          <div className="pr-4">
-            <div className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
-              <EyeOff className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Iniciar em segundo plano (oculto na bandeja)</span>
-            </div>
-            <div className="text-[11px] text-slate-400 mt-0.5">
-              Abre o app diretamente nos ícones ocultos perto do relógio do Windows, sem exibir a janela na tela até você clicar no ícone.
-            </div>
-          </div>
-
-          <label className="relative inline-flex items-center cursor-pointer shrink-0">
-            <input
-              type="checkbox"
-              disabled={!settings.openAtLogin}
-              checked={settings.openAsHidden}
-              onChange={(e) => updateSettings({ openAsHidden: e.target.checked })}
               className="sr-only peer"
             />
             <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>

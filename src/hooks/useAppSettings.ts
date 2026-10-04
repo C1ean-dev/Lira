@@ -2,14 +2,12 @@ import { useState, useEffect, useCallback } from 'react'
 
 export interface AppSettings {
   openAtLogin: boolean
-  openAsHidden: boolean
   closeToTray: boolean
   minimizeToTray: boolean
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
   openAtLogin: false,
-  openAsHidden: true,
   closeToTray: true,
   minimizeToTray: false,
 }
