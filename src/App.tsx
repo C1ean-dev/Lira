@@ -17,9 +17,11 @@ import { useGameStore } from './store/useGameStore'
 import { useMediaStore } from './store/useMediaStore'
 import { useChatStore } from './store/useChatStore'
 import { useMapStore } from './store/useMapStore'
-import { useUpdateStore } from './store/useUpdateStore'
+import { useUpdateStore, UPDATE_STALE_AFTER_MS } from './store/useUpdateStore'
+import { startAutoUpdateChecks } from './services/updateScheduler'
 import { AppUpdateScreen } from './components/AppUpdateScreen'
 import { idleManager } from './services/idleManager'
+import { FriendsPresenceService } from './services/friendsPresenceService'
 import { PeerManager } from './p2p/PeerManager'
 import { MediaManager } from './media/MediaManager'
 
@@ -40,17 +42,19 @@ export const App: React.FC = () => {
   const updateInfo = useUpdateStore((s) => s.updateInfo)
   const updateStatus = useUpdateStore((s) => s.status)
   const isUpdateScreenOpen = useUpdateStore((s) => s.isUpdateScreenOpen)
-  const checkForUpdatesAndDownload = useUpdateStore((s) => s.checkForUpdatesAndDownload)
   const startInteractiveUpdate = useUpdateStore((s) => s.startInteractiveUpdate)
 
-  // Check for updates on startup: downloads silently in background
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      checkForUpdatesAndDownload()
-    }, 1500)
+  // Check for updates on startup and keep checking while the app is open
+  // (periodically and when the window gets focus): downloads silently in
+  // the background.
+  useEffect(() => startAutoUpdateChecks(), [])
 
-    return () => clearTimeout(timer)
-  }, [checkForUpdatesAndDownload])
+  // Coming back to the lobby is a good moment to notice a new version.
+  useEffect(() => {
+    // (The very first check belongs to the scheduler above.)
+    const updates = useUpdateStore.getState()
+    if (inLobby && updates.lastCheckAt !== null) updates.checkIfDue(UPDATE_STALE_AFTER_MS)
+  }, [inLobby])
 
   // 2. Global Keyboard Shortcuts (M for Mic, V for Video, C for Chat)
   useEffect(() => {
@@ -93,6 +97,11 @@ export const App: React.FC = () => {
   useEffect(() => {
     idleManager.start()
     return () => idleManager.stop()
+  }, [])
+
+  // 5. Friends presence & direct messages outside rooms (home screen, other spaces)
+  useEffect(() => {
+    FriendsPresenceService.getInstance().connectFriendsNetwork()
   }, [])
 
   const handleConfirmDisconnect = () => {

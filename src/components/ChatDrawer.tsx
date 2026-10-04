@@ -24,7 +24,7 @@ const DRAWER_STORAGE_KEY = 'lira_chat_drawer_width'
 const LEGACY_DRAWER_STORAGE_KEY = 'gather_chat_drawer_width'
 const CHANNELS_STORAGE_KEY = 'lira_chat_channels_width'
 const LEGACY_CHANNELS_STORAGE_KEY = 'gather_chat_channels_width'
-import { useChatStore, getDmChannelId } from '../store/useChatStore'
+import { useChatStore, getLocalDmChannelId } from '../store/useChatStore'
 import { useGameStore } from '../store/useGameStore'
 import { useMediaStore } from '../store/useMediaStore'
 import { PeerManager } from '../p2p/PeerManager'
@@ -33,6 +33,9 @@ import { ChatMessage, ChatAttachment } from '../types/chat'
 import { FriendRequestCard } from './chat/FriendRequestCard'
 import { PlayerAvatar } from './common/PlayerAvatar'
 import { MessageStatusIcon } from './chat/MessageStatusIcon'
+import { ChatUserContextMenu } from './chat/ChatUserContextMenu'
+import { getPlayerUserId, findFriendKey, isUserId } from '../utils/userId'
+import { getChatUserFriendState } from '../utils/chatUserActions'
 
 function formatFileSize(bytes: number): string {
   if (!bytes || bytes < 1024) return `${bytes || 0} B`
@@ -80,9 +83,12 @@ const ChatDrawerInner: React.FC = () => {
     addMessage,
     addReactionToMessage,
     respondToFriendRequest,
+    markChannelAsRead,
+    sendFriendRequest,
+    getFriendRequestStatus,
   } = useChatStore()
 
-  const { localPlayer, remotePlayers, friendProfiles } = useGameStore()
+  const { localPlayer, remotePlayers, friends, friendProfiles } = useGameStore()
   const isGridCallOpen = useMediaStore((s) => s.isGridCallOpen)
 
   const [inputMessage, setInputMessage] = useState('')
@@ -90,6 +96,14 @@ const ChatDrawerInner: React.FC = () => {
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [lightboxImage, setLightboxImage] = useState<{ url: string; name: string } | null>(null)
+  const [userMenu, setUserMenu] = useState<{ x: number; y: number; msg: ChatMessage } | null>(null)
+  const closeUserMenu = useCallback(() => setUserMenu(null), [])
+
+  const openUserMenu = (e: React.MouseEvent, msg: ChatMessage) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setUserMenu({ x: e.clientX, y: e.clientY, msg })
+  }
 
   const [drawerWidth, setDrawerWidth] = useState<number>(() => {
     try {
@@ -225,6 +239,17 @@ const ChatDrawerInner: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [filteredMessages.length])
 
+  // A DM that is open on screen is being read: keep its read state (and the
+  // sender's receipts) current so it is not counted as unread on the home screen.
+  const isDmOpen = activeChannel?.type === 'dm'
+  useEffect(() => {
+    if (isDmOpen) markChannelAsRead(activeChannelId)
+  }, [isDmOpen, activeChannelId, filteredMessages.length, markChannelAsRead])
+
+  // Friends outside this space can come online or leave at any moment.
+  const [, setPresenceTick] = useState(0)
+  useEffect(() => FriendsPresenceService.getInstance().subscribe(() => setPresenceTick((t) => t + 1)), [])
+
   const handleFileSelect = (file: File) => {
     setUploadError(null)
     const MAX_BYTES = 15 * 1024 * 1024 // 15MB limit for P2P safety
@@ -254,22 +279,25 @@ const ChatDrawerInner: React.FC = () => {
     e.preventDefault()
     if (!inputMessage.trim() && !pendingAttachment) return
 
+    const isDm = activeChannel?.type === 'dm'
     const newMsg: ChatMessage = {
       id: 'msg-' + Math.random().toString(36).substring(2, 9),
-      senderId: localPlayer.id,
+      // A DM outlives this room session, so it is signed with the stable user
+      // id; room channels keep the connection id the room knows us by.
+      senderId: isDm ? getPlayerUserId(localPlayer) : localPlayer.id,
       senderName: localPlayer.name,
       channelId: activeChannelId,
       content: inputMessage.trim(),
       timestamp: Date.now(),
       avatarConfig: localPlayer.avatar,
       attachment: pendingAttachment || undefined,
-      recipientId: activeChannel?.type === 'dm' ? activeChannel.recipientId : undefined,
+      recipientId: isDm ? activeChannel.recipientId : undefined,
       status: 'sent',
     }
 
     addMessage(newMsg)
     PeerManager.getInstance().sendChatMessage(newMsg)
-    if (activeChannel?.type === 'dm') {
+    if (isDm) {
       FriendsPresenceService.getInstance().sendDirectMessage(newMsg)
     }
     setInputMessage('')
@@ -447,7 +475,8 @@ const ChatDrawerInner: React.FC = () => {
               <div className="text-[11px] text-slate-400 px-2 py-1 italic">Ninguém online</div>
             ) : (
               remotePlayerList.map((player) => {
-                const dmChannelId = getDmChannelId(localPlayer.id, player.id)
+                const playerUserId = getPlayerUserId(player)
+                const dmChannelId = getLocalDmChannelId(playerUserId)
                 const dmChannel = channels.find(
                   (c) =>
                     c.id === dmChannelId ||
@@ -465,7 +494,7 @@ const ChatDrawerInner: React.FC = () => {
                   <button
                     key={player.id}
                     type="button"
-                    onClick={() => openDirectMessage({ id: player.id, name: player.name })}
+                    onClick={() => openDirectMessage({ id: playerUserId, name: player.name })}
                     className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition-all ${
                       isCurrent
                         ? 'bg-indigo-600/30 text-indigo-300 font-semibold border border-indigo-500/30'
@@ -499,13 +528,22 @@ const ChatDrawerInner: React.FC = () => {
                   c.type === 'dm' &&
                   !remotePlayerList.some(
                     (p) =>
-                      getDmChannelId(localPlayer.id, p.id) === c.id ||
+                      getLocalDmChannelId(getPlayerUserId(p)) === c.id ||
                       c.recipientId === p.id ||
                       (p.gameId && c.recipientId === p.gameId)
                   )
               )
               .map((dm) => {
                 const isCurrent = activeChannelId === dm.id
+                // Not in this space, but possibly online on the home screen or elsewhere.
+                const friendKey = findFriendKey(friends, friendProfiles, [dm.recipientId])
+                const friend = friendKey
+                  ? friendProfiles[friendKey]
+                  : isUserId(dm.recipientId)
+                  ? undefined
+                  : Object.values(friendProfiles).find((f) => f.name.toLowerCase() === dm.name.toLowerCase())
+                const presence = friend ? FriendsPresenceService.getInstance().getFriendStatus(friend) : null
+                const isOnline = !!presence?.isOnline
                 return (
                   <button
                     key={dm.id}
@@ -514,17 +552,20 @@ const ChatDrawerInner: React.FC = () => {
                     className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition-all ${
                       isCurrent
                         ? 'bg-indigo-600/30 text-indigo-300 font-semibold border border-indigo-500/30'
+                        : isOnline
+                        ? 'text-slate-300 hover:text-white hover:bg-slate-800/40'
                         : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
                     }`}
+                    title={isOnline ? `${dm.name} está online` : `${dm.name} está offline`}
                   >
                     <div className="flex items-center gap-2 truncate">
                       <PlayerAvatar
                         name={dm.name}
-                        player={friendProfiles[dm.id] || Object.values(friendProfiles).find((f) => f.name.toLowerCase() === dm.name.toLowerCase())}
+                        player={friend}
                         showStatus={true}
-                        status="offline"
+                        status={isOnline ? presence?.status || 'available' : 'offline'}
                         size="xs"
-                        className="rounded-full opacity-70"
+                        className={isOnline ? 'rounded-full' : 'rounded-full opacity-70'}
                       />
                       <span className="truncate text-xs">{dm.name}</span>
                     </div>
@@ -615,7 +656,7 @@ const ChatDrawerInner: React.FC = () => {
                   if (seenRequestIds.has(rId)) {
                     if (!msg.content) return null
                     return (
-                      <div key={msg.id} className="group relative flex flex-col space-y-1">
+                      <div key={msg.id} onContextMenu={(e) => openUserMenu(e, msg)} className="group relative flex flex-col space-y-1">
                         <div className="flex items-baseline justify-between">
                           <span className={`text-xs font-semibold ${isMine ? 'text-indigo-400' : 'text-slate-300'}`}>
                             {msg.senderName}
@@ -636,7 +677,7 @@ const ChatDrawerInner: React.FC = () => {
                   seenRequestIds.add(rId)
 
                   return (
-                    <div key={msg.id} className="group relative flex flex-col space-y-1">
+                    <div key={msg.id} onContextMenu={(e) => openUserMenu(e, msg)} className="group relative flex flex-col space-y-1">
                       <div className="flex items-baseline justify-between">
                         <span className={`text-xs font-semibold ${isMine ? 'text-indigo-400' : 'text-slate-300'}`}>
                           {msg.senderName}
@@ -658,7 +699,7 @@ const ChatDrawerInner: React.FC = () => {
                 }
 
                 return (
-                  <div key={msg.id} className="group relative flex flex-col space-y-1">
+                  <div key={msg.id} onContextMenu={(e) => openUserMenu(e, msg)} className="group relative flex flex-col space-y-1">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 min-w-0">
                         <PlayerAvatar
@@ -666,6 +707,7 @@ const ChatDrawerInner: React.FC = () => {
                             isMine
                               ? localPlayer
                               : remotePlayers[msg.senderId] ||
+                                Object.values(remotePlayers).find((p) => p.gameId === msg.senderId) ||
                                 Object.values(remotePlayers).find((p) => p.name === msg.senderName) ||
                                 Object.values(friendProfiles).find((f) => f.name === msg.senderName)
                           }
@@ -947,6 +989,33 @@ const ChatDrawerInner: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Right-click menu on a message's author */}
+      {userMenu && (() => {
+        const { state, target, friendKey } = getChatUserFriendState({
+          senderId: userMenu.msg.senderId,
+          senderName: userMenu.msg.senderName,
+          localPlayer,
+          remotePlayers,
+          friends,
+          friendProfiles,
+          getRequestStatus: getFriendRequestStatus,
+        })
+        return (
+          <ChatUserContextMenu
+            x={userMenu.x}
+            y={userMenu.y}
+            name={target.name}
+            friendState={state}
+            onAddFriend={() => sendFriendRequest(target)}
+            onRemoveFriend={() => friendKey && useGameStore.getState().removeFriend(friendKey)}
+            onCopyName={() => {
+              navigator.clipboard?.writeText(target.name).catch(() => {})
+            }}
+            onClose={closeUserMenu}
+          />
+        )
+      })()}
     </div>
   )
 }

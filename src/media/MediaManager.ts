@@ -107,6 +107,28 @@ export class MediaManager {
     this.classicEngine = new NoiseSuppressor()
     this.softEngine = new SoftDspProcessor()
     this.rnnoiseEngine = new RnnoiseProcessor()
+    this.rnnoiseEngine.setRuntimeFailureHandler((cause) => {
+      void this.handleRnnoiseRuntimeFailure(cause)
+    })
+  }
+
+  /**
+   * Why RNNoise stopped denoising mid-call, until the next engine start
+   * consumes it: that start uses the Soft DSP instead of RNNoise.
+   */
+  private rnnoiseRuntimeFailure: string | null = null
+
+  /**
+   * RNNoise gave up after it had started (its worklet is passing raw audio).
+   * Same remedy as a failed init: put the Soft DSP on the call.
+   */
+  private async handleRnnoiseRuntimeFailure(cause: string) {
+    if (this.activeEngine !== this.rnnoiseEngine) return
+    this.rnnoiseRuntimeFailure = cause
+    await this.reprocessStream()
+    // Not consumed when there was no stream to reprocess: do not let it
+    // decide some later, unrelated start.
+    this.rnnoiseRuntimeFailure = null
   }
 
   public static getInstance(): MediaManager {
@@ -242,7 +264,13 @@ export class MediaManager {
     levelCallback: (level: number, isGateOpen: boolean, rawRms?: number, dynamicThresholdPercent?: number) => void
   ): Promise<MediaStream> {
     const state = useMediaStore.getState()
-    const nextEngine = this.selectEngine()
+    let nextEngine = this.selectEngine()
+    const runtimeFailure = this.rnnoiseRuntimeFailure
+    this.rnnoiseRuntimeFailure = null
+    if (runtimeFailure && nextEngine === this.rnnoiseEngine) {
+      console.warn('[MediaManager] RNNoise stopped processing, falling back to soft DSP')
+      nextEngine = this.softEngine
+    }
 
     // Tear down whatever engine was previously in use. Without this the
     // RNNoise worklet (or DSP analyser) keeps running in parallel and the
@@ -259,7 +287,9 @@ export class MediaManager {
     this.levelForwardLastSent = 0
     // Keep the RNNoise status badge truthful when another engine is active.
     if (nextEngine !== this.rnnoiseEngine) {
-      useMediaStore.getState().setRnnoiseStatus('idle')
+      useMediaStore
+        .getState()
+        .setRnnoiseStatus(runtimeFailure ? 'fallback' : 'idle', runtimeFailure)
     }
 
     const result = nextEngine.processStream(
@@ -274,17 +304,23 @@ export class MediaManager {
 
     const processed = result instanceof Promise ? await result : result
 
-    if (processed === inputStream && this.currentProcessorMode === 'rnnoise') {
+    // RNNoise hands the raw stream back both when it failed and when its
+    // start was cancelled (media stopped mid-init). Only a failure — which it
+    // reports as 'error' — deserves the fallback engine.
+    if (
+      processed === inputStream &&
+      this.currentProcessorMode === 'rnnoise' &&
+      useMediaStore.getState().rnnoiseStatus === 'error'
+    ) {
       console.warn(
         '[MediaManager] RNNoise failed to initialise, falling back to soft DSP'
       )
       // Preserve the underlying cause set by the processor (don't clobber
       // 'error' detail — it's the only pointer to the real failure).
       const st = useMediaStore.getState()
-      const cause =
-        st.rnnoiseStatus === 'error' && st.rnnoiseError
-          ? st.rnnoiseError
-          : 'init failed — using Soft DSP'
+      const cause = st.rnnoiseError
+        ? st.rnnoiseError
+        : 'init failed — using Soft DSP'
       st.setRnnoiseStatus('fallback', cause)
       try {
         this.activeEngine.dispose()
@@ -296,7 +332,8 @@ export class MediaManager {
         state.inputVolume,
         state.sensitivityMode,
         state.manualSensitivityThreshold,
-        (level, gateOpen) => levelCallback(level, gateOpen)
+        (level, gateOpen, rawRms, dynamicThresholdPercent) =>
+          levelCallback(level, gateOpen, rawRms, dynamicThresholdPercent)
       )
     }
 

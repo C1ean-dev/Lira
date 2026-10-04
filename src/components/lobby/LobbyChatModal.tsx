@@ -3,11 +3,14 @@ import { X, Send, MessageSquare, ArrowRight, Smile, Radio } from 'lucide-react'
 import { FriendProfile, STATUS_META, PresenceStatus } from '../../types/game'
 import { ChatMessage } from '../../types/chat'
 import { useGameStore } from '../../store/useGameStore'
-import { useChatStore, getDmChannelId } from '../../store/useChatStore'
+import { useChatStore, getLocalDmChannelId } from '../../store/useChatStore'
 import { FriendsPresenceService } from '../../services/friendsPresenceService'
 import { PeerManager } from '../../p2p/PeerManager'
 import { FriendRequestCard } from '../chat/FriendRequestCard'
 import { MessageStatusIcon } from '../chat/MessageStatusIcon'
+import { StatusBadge } from '../common/StatusBadge'
+import { MoonPhaseIcon } from '../common/MoonPhaseIcon'
+import { getPlayerUserId, getFriendUserId, isSameParticipant } from '../../utils/userId'
 
 interface Props {
   friend: FriendProfile
@@ -34,8 +37,9 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Channel ID between me and friend
-  const channelId = getDmChannelId(localPlayer.id, friend.id)
+  // Channel ID between me and friend (their stable user id whenever it is known)
+  const friendUserId = getFriendUserId(friend)
+  const channelId = getLocalDmChannelId(friendUserId || friend.id)
 
   // Keep presence updated
   useEffect(() => {
@@ -64,33 +68,14 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
   // Filter messages for this conversation
   const chatMessages = messages.filter((m) => {
     if (m.channelId === channelId) return true
-    const isFromFriendId =
-      m.senderId === friend.id || (friend.actualUserId && m.senderId === friend.actualUserId)
-    const isToFriendId =
-      m.recipientId === friend.id || (friend.actualUserId && m.recipientId === friend.actualUserId)
-
-    if (
-      isToFriendId &&
-      (m.senderId === localPlayer.id || m.senderId === localPlayer.gameId)
-    ) {
-      return true
-    }
-    if (
-      isFromFriendId &&
-      (m.recipientId === localPlayer.id || m.recipientId === localPlayer.gameId)
-    ) {
-      return true
-    }
-
-    // Name-based matching fallback
-    const friendNameLower = friend.name.toLowerCase()
-    if (
-      (m.senderName && m.senderName.toLowerCase() === friendNameLower) ||
-      (m.recipientName && m.recipientName.toLowerCase() === friendNameLower)
-    ) {
-      return true
-    }
-    return false
+    // Only private messages belong here, never what the friend said in a room channel.
+    if (!m.channelId?.startsWith('dm-') && !m.recipientId) return false
+    // Ids are matched exactly; the name is a fallback for history saved
+    // before stable user ids (see isSameParticipant).
+    return (
+      isSameParticipant(friend, m.senderId, m.senderName) ||
+      isSameParticipant(friend, m.recipientId, m.recipientName)
+    )
   })
 
   // Auto-scroll to bottom & mark as read
@@ -116,10 +101,10 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
 
     const newMsg: ChatMessage = {
       id: 'dm-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8),
-      senderId: localPlayer.id,
+      senderId: getPlayerUserId(localPlayer),
       senderName: localPlayer.name || 'Você',
       channelId,
-      recipientId: friend.actualUserId || friend.id,
+      recipientId: friendUserId || friend.actualUserId || friend.id,
       recipientName: friend.name,
       content,
       timestamp: Date.now(),
@@ -161,13 +146,17 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
               >
                 {friend.name.charAt(0).toUpperCase()}
               </div>
-              <span
-                className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ring-2 ring-[#12151e] flex items-center justify-center ${
-                  presence.isOnline
-                    ? (STATUS_META[(presence.status as PresenceStatus) || friend.status || 'available'] || STATUS_META.available).dotColor
-                    : 'bg-slate-500'
-                }`}
-              />
+              <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full ring-2 ring-[#12151e] bg-[#12151e] overflow-hidden flex items-center justify-center">
+                <MoonPhaseIcon
+                  status={
+                    presence.isOnline
+                      ? (presence.status as PresenceStatus) || friend.status || 'available'
+                      : 'offline'
+                  }
+                  className="w-full h-full"
+                  withBackground={true}
+                />
+              </span>
             </div>
 
             {/* Info */}
@@ -183,26 +172,10 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
                       <h3 className="text-sm font-extrabold text-slate-100 truncate">
                         {friend.name}
                       </h3>
-                      <span
-                        className={`text-[9px] px-2 py-0.5 rounded-full font-bold border flex items-center gap-1 ${
-                          presence.isOnline
-                            ? statusKey === 'busy'
-                              ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
-                              : statusKey === 'focusing'
-                              ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
-                              : statusKey === 'away'
-                              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                              : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                            : 'bg-slate-800 text-slate-400 border-slate-700'
-                        }`}
-                      >
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            presence.isOnline ? statusMeta.dotColor : 'bg-slate-500'
-                          }`}
-                        />
-                        <span>{presence.isOnline ? displayStatusText : 'Offline'}</span>
-                      </span>
+                      <StatusBadge
+                        status={presence.isOnline ? statusKey : 'offline'}
+                        label={presence.isOnline ? displayStatusText : 'Offline'}
+                      />
                     </div>
 
                     <p className="text-[11px] text-slate-400 truncate mt-0.5 flex items-center gap-1.5">

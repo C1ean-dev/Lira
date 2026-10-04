@@ -36,6 +36,7 @@ import { ConfirmModal } from './ConfirmModal'
 import { Player, UserRole } from '../types/game'
 import { knockOnLockedDoor } from '../utils/doorKnockHelper'
 import { PlayerAvatar } from './common/PlayerAvatar'
+import { getPlayerUserId, findFriendKey } from '../utils/userId'
 
 /**
  * Outer gate: subscribes ONLY to isOnlineUsersOpen so 60Hz position updates
@@ -60,7 +61,8 @@ const OnlineUsersMenuInner: React.FC = () => {
     connectionHostId,
     setConnectionHostId,
     friends,
-    toggleFriend,
+    friendProfiles,
+    removeFriend,
     updatePlayerRole,
     teleportToPlayer,
     kickPlayer,
@@ -99,7 +101,10 @@ const OnlineUsersMenuInner: React.FC = () => {
     if (!matchesQuery) return false
 
     if (filterTab === 'friends') {
-      return friends.includes(player.id) || player.id === localPlayer.id
+      return (
+        !!findFriendKey(friends, friendProfiles, [player.id, player.gameId]) ||
+        player.id === localPlayer.id
+      )
     }
     return true
   })
@@ -254,7 +259,13 @@ const OnlineUsersMenuInner: React.FC = () => {
             const isPlayerOwner = isLocal ? isOwner : (player.id.endsWith('-host') || player.isOwner || player.role === 'owner')
             const isPlayerConnectionHost = connectionHostId ? player.id === connectionHostId : (isLocal ? isHost : (player.isHost ?? false))
             const roleBadge = getRoleBadge(player.role, isPlayerOwner, isPlayerConnectionHost && !isPlayerOwner)
-            const isFriend = friends.includes(player.id)
+            // Friendships and DMs are tied to the stable user id, not to the
+            // connection id of this room session.
+            const playerUserId = getPlayerUserId(player)
+            const friendKey = isLocal
+              ? undefined
+              : findFriendKey(friends, friendProfiles, [player.id, player.gameId])
+            const isFriend = !!friendKey
             const isMenuOpen = selectedUserMenuId === player.id
             const pingMs = player.ping ?? (isLocal ? 12 : 38)
             const pingColor = pingMs < 60 ? 'text-emerald-400' : pingMs < 120 ? 'text-amber-400' : 'text-rose-400'
@@ -369,10 +380,10 @@ const OnlineUsersMenuInner: React.FC = () => {
 
                     {/* Quick Message Button */}
                     {!isLocal && (() => {
-                      const friendUnread = getUnreadCountForFriend({ id: player.id, name: player.name, actualUserId: player.id })
+                      const friendUnread = getUnreadCountForFriend({ id: player.id, name: player.name, actualUserId: playerUserId })
                       return (
                         <button
-                          onClick={() => openDirectMessage({ id: player.id, name: player.name })}
+                          onClick={() => openDirectMessage({ id: playerUserId, name: player.name })}
                           className={`p-1.5 rounded-lg border transition-colors relative ${
                             friendUnread > 0
                               ? 'bg-rose-600 text-white border-rose-500 animate-pulse shadow-md shadow-rose-600/30'
@@ -394,17 +405,20 @@ const OnlineUsersMenuInner: React.FC = () => {
 
                     {/* Friend Toggle / Request */}
                     {!isLocal && (() => {
-                      const req = getFriendRequestStatus(player.id) || getFriendRequestStatus(player.name)
+                      const req =
+                        getFriendRequestStatus(playerUserId) ||
+                        getFriendRequestStatus(player.id) ||
+                        getFriendRequestStatus(player.name)
                       const isPending = req?.status === 'pending'
 
                       return (
                         <button
                           onClick={() => {
-                            if (isFriend) {
-                              toggleFriend(player.id, player)
+                            if (friendKey) {
+                              removeFriend(friendKey)
                             } else {
-                              sendFriendRequest({ id: player.id, name: player.name, avatar: player.avatar })
-                              openDirectMessage({ id: player.id, name: player.name })
+                              sendFriendRequest({ id: playerUserId, name: player.name, avatar: player.avatar })
+                              openDirectMessage({ id: playerUserId, name: player.name })
                             }
                           }}
                           className={`p-1.5 rounded-lg border transition-colors ${
@@ -483,7 +497,7 @@ const OnlineUsersMenuInner: React.FC = () => {
 
                       <button
                         onClick={() => {
-                          openDirectMessage({ id: player.id, name: player.name })
+                          openDirectMessage({ id: playerUserId, name: player.name })
                           setSelectedUserMenuId(null)
                         }}
                         className="py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 border border-slate-700 transition-colors"
@@ -495,8 +509,8 @@ const OnlineUsersMenuInner: React.FC = () => {
                       {!isFriend && (
                         <button
                           onClick={() => {
-                            sendFriendRequest({ id: player.id, name: player.name, avatar: player.avatar })
-                            openDirectMessage({ id: player.id, name: player.name })
+                            sendFriendRequest({ id: playerUserId, name: player.name, avatar: player.avatar })
+                            openDirectMessage({ id: playerUserId, name: player.name })
                             setSelectedUserMenuId(null)
                           }}
                           className="py-1.5 px-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-bold text-xs flex items-center gap-1.5 border border-emerald-500/30 transition-colors col-span-2"

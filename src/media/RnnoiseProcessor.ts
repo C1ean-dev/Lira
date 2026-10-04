@@ -1,22 +1,81 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMediaStore } from '../store/useMediaStore'
 import { diagLog } from '../utils/diagnosticLogger'
-// Emscripten glue inlined as text (worker-safe single-threaded build).
-// ?raw keeps it out of the module graph — it runs inside the worklet Blob.
-import rnnoiseGlueSrc from '@jitsi/rnnoise-wasm/dist/rnnoise.js?raw'
+// @jitsi/rnnoise-wasm ships two builds: dist/rnnoise.wasm is RNNoise 0.1 and
+// dist/rnnoise-sync.js is RNNoise 0.2, with its binary embedded in the
+// Emscripten glue as base64. We use the 0.2 one. ?raw keeps it out of the
+// module graph — it is taken apart below and runs inside the worklet Blob.
+import rnnoiseSyncSrc from '@jitsi/rnnoise-wasm/dist/rnnoise-sync.js?raw'
 import workletSrc from './rnnoiseWorkletSrc.js?raw'
-import { RNNOISE_WASM_BASE64 } from '../generated/rnnoiseWasmBytes'
 
-let cachedWasmBytes: Uint8Array | null = null
+// Auto-mode gate, on the VU meter's scale (level = RMS of the denoised
+// signal * 6). The gate opens above AUTO_OPEN_LEVEL and only closes again
+// below AUTO_CLOSE_LEVEL; the neural VAD lets quieter speech through.
+const AUTO_OPEN_LEVEL = 0.025 // RMS ~0.004
+const AUTO_CLOSE_LEVEL = 0.012
+const AUTO_SOFT_SPEECH_LEVEL = 0.015
+const VAD_SPEECH = 0.2
+const VAD_SOFT_SPEECH = 0.08
+const VAD_SILENCE = 0.05
 
-function getWasmBytes(): Uint8Array {
-  if (!cachedWasmBytes) {
-    const bin = atob(RNNOISE_WASM_BASE64)
-    const bytes = new Uint8Array(bin.length)
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-    cachedWasmBytes = bytes
+/** Gate timing, shared with the offline preview (rnnoiseOffline.ts). */
+export const RNNOISE_GATE = {
+  /** Keep the gate open this long after the last sound above threshold. */
+  holdMs: 220,
+  attackTimeConstant: 0.008,
+  releaseTimeConstant: 0.12,
+  /** Manual mode closes at this fraction of the opening level. */
+  manualCloseRatio: 0.75,
+} as const
+
+/** Filters in front of the network, shared with the offline preview. */
+export const RNNOISE_PRE_EQ = {
+  highpassHz: 90,
+  highpassQ: 0.7,
+  shelfHz: 6500,
+  shelfGainDb: -4,
+} as const
+
+const EMBEDDED_WASM = /"data:application\/octet-stream;base64,([A-Za-z0-9+/=]+)"/
+
+let cachedAssets: { glue: string; wasmBytes: Uint8Array } | null = null
+
+/**
+ * Take dist/rnnoise-sync.js apart, once:
+ *   - the binary, decoded here so nothing has to decode 1.9 MB of base64 on
+ *     the audio thread (it reaches the worklet as bytes, see processStream);
+ *   - the glue as a plain script: binary removed, `import.meta.url` and the
+ *     `export default` tail neutralised, since it is evaluated from a Blob
+ *     and through `new Function`, neither of which is a module with a URL.
+ * Throws if the package layout ever changes; the caller then reports the
+ * engine as failed and the Soft DSP takes over.
+ */
+function getRnnoiseAssets(): { glue: string; wasmBytes: Uint8Array } {
+  if (cachedAssets) return cachedAssets
+  const embedded = EMBEDDED_WASM.exec(rnnoiseSyncSrc)
+  if (!embedded) {
+    throw new Error('RNNoise binary not found in @jitsi/rnnoise-wasm/dist/rnnoise-sync.js')
   }
-  return cachedWasmBytes
+  const bin = atob(embedded[1])
+  const wasmBytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) wasmBytes[i] = bin.charCodeAt(i)
+
+  const glue = (
+    rnnoiseSyncSrc.slice(0, embedded.index) +
+    '"rnnoise.wasm"' +
+    rnnoiseSyncSrc.slice(embedded.index + embedded[0].length)
+  )
+    .replace(/\bimport\.meta\.url\b/g, 'undefined')
+    .replace(/export\s+default\s+createRNNWasmModuleSync\s*;?\s*$/, '')
+  if (glue.includes('import.meta') || /export\s+default/.test(glue)) {
+    throw new Error('RNNoise glue has module syntax this loader does not handle')
+  }
+  cachedAssets = { glue, wasmBytes }
+  return cachedAssets
+}
+
+export function getWasmBytes(): Uint8Array {
+  return getRnnoiseAssets().wasmBytes
 }
 
 /**
@@ -33,27 +92,45 @@ function getWasmBytes(): Uint8Array {
  */
 let workletProcVersion = 0
 
-function buildWorkletModule(procName: string): {
-  blobUrl: string
-  procName: string
-  debug: string
-} {
-  const shim = `var globalScope = typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : this);\n` +
+/**
+ * The worklet module as text, in evaluation order: scope shim, Emscripten
+ * glue, processor. Kept separate from the Blob so the tests can run the very
+ * same text that ships.
+ */
+/**
+ * The Emscripten glue as a plain script declaring `createRNNWasmModuleSync`.
+ * It instantiates the binary synchronously from `wasmBinary` unless it is
+ * given an `instantiateWasm` hook (see rnnoiseOffline.ts).
+ */
+export function getRnnoiseGlueSource(): string {
+  return getRnnoiseAssets().glue
+}
+
+export function buildWorkletSource(procName: string): string[] {
+  const shim =`var globalScope = typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : this);\n` +
     `try { if (typeof globalScope.self === 'undefined') globalScope.self = globalScope; } catch (e) {}\n` +
     `var self = globalScope;\n` +
     `try { if (typeof globalScope.location === 'undefined') globalScope.location = { href: 'rnnoise-worklet:' }; } catch (e) {}\n` +
     `try { if (typeof globalScope.setTimeout === 'undefined') { globalScope.setTimeout = function(fn) { try { fn(); } catch (e) {} return 0; }; globalScope.clearTimeout = function() {}; } } catch (e) {}\n` +
     `try { if (typeof globalScope.setInterval === 'undefined') { globalScope.setInterval = function() { return 0; }; globalScope.clearInterval = function() {}; } } catch (e) {}\n`
-  // The glue ships as an ES module (`export default ...` tail) but worklets
-  // evaluate as module scripts: strip the export, and expose createRNNWasmModule
-  // on globalScope and in module scope.
-  const classicGlue = rnnoiseGlueSrc.replace(/export\s+default\s+createRNNWasmModule\s*;?\s*$/, '')
-  const exposeGlue = `\ntry { globalScope.createRNNWasmModule = createRNNWasmModule; } catch (e) {}\n`
+  // Expose the factory under the name the processor looks up.
+  const classicGlue = getRnnoiseGlueSource()
+  const exposeGlue = `\ntry { globalScope.createRNNWasmModule = createRNNWasmModuleSync; } catch (e) {}\n`
   const namespacedSrc = workletSrc.replace(
     `registerProcessor('rnnoise-worklet'`,
     `registerProcessor('${procName}'`
   )
-  const blob = new Blob([shim, classicGlue, exposeGlue, '\n;\n', namespacedSrc], {
+  return [shim, classicGlue, exposeGlue, '\n;\n', namespacedSrc]
+}
+
+function buildWorkletModule(procName: string): {
+  blobUrl: string
+  procName: string
+  debug: string
+} {
+  const parts = buildWorkletSource(procName)
+  const [, classicGlue, , , namespacedSrc] = parts
+  const blob = new Blob(parts, {
     type: 'application/javascript',
   })
   // Composition fingerprint: if a ?raw import ever resolves empty at
@@ -100,10 +177,9 @@ export class RnnoiseProcessor {
   private sensitivityMode: 'auto' | 'manual' = 'auto'
   private manualThresholdPercent = 20
 
-  // Hold Time & Dynamic noise tracking
-  private holdTimeMs = 220
+  // Hold Time
+  private holdTimeMs: number = RNNOISE_GATE.holdMs
   private lastSpeechTime = 0
-  private dynamicNoiseFloor = 0.005
 
   private workletReady = false
   private workletError: string | null = null
@@ -111,6 +187,16 @@ export class RnnoiseProcessor {
   private lastMetricsLogAt = 0
   /** Resolved by the first 'ready'/'error' message (or timeout) per processStream. */
   private readySettler: { resolve: (ok: boolean) => void } | null = null
+  private readyTimer: ReturnType<typeof setTimeout> | null = null
+  /**
+   * Bumped by dispose(). A processStream that sees it change across an await
+   * was cancelled (media stopped, engine swapped) and must hand the raw
+   * stream back without reporting a failure — otherwise the caller would
+   * start the fallback engine on a stream nobody wants any more.
+   */
+  private generation = 0
+  /** True from the start of processStream until it succeeds, fails or is cancelled. */
+  private starting = false
   /**
    * Live Blob URL of the loaded worklet. Revoked only on dispose/replace —
    * revoking right after addModule is theoretically safe, but there is no
@@ -120,7 +206,14 @@ export class RnnoiseProcessor {
   /** How long startMedia waits for WASM init before falling back to soft DSP. */
   private static readonly READY_TIMEOUT_MS = 5000
 
+  private onRuntimeFailure: ((message: string) => void) | null = null
+
   constructor() {}
+
+  /** Called when the worklet stops denoising after it had started fine. */
+  public setRuntimeFailureHandler(handler: ((message: string) => void) | null) {
+    this.onRuntimeFailure = handler
+  }
 
   public async processStream(
     inputStream: MediaStream,
@@ -130,11 +223,16 @@ export class RnnoiseProcessor {
     manualThresholdPercent: number = 20,
     onAudioLevel?: (level: number, gateOpen: boolean, rawRms: number, dynamicThresholdPercent?: number) => void
   ): Promise<MediaStream> {
+    this.dispose()
+    const generation = this.generation
+    const cancelled = () => generation !== this.generation
+    // A previous attempt's failure must not decide this one ("Tentar de novo").
+    this.workletError = null
+    this.starting = true
     try {
-      this.dispose()
-
       const audioTrack = inputStream.getAudioTracks()[0]
       if (!audioTrack) {
+        this.starting = false
         useMediaStore.getState().setRnnoiseStatus('error', 'no audio track in input stream')
         return inputStream
       }
@@ -151,6 +249,7 @@ export class RnnoiseProcessor {
       this.audioCtx = new AudioContextClass({ sampleRate: 48000 })
       if (this.audioCtx.state === 'suspended') {
         await this.audioCtx.resume().catch(() => {})
+        if (cancelled()) return inputStream
       }
       // RNNoise is trained for 48 kHz and has no internal resampler. Never
       // report it as active while the browser is silently passing another
@@ -178,6 +277,7 @@ export class RnnoiseProcessor {
           `addModule(Blob): ${(err as Error)?.message ?? String(err)}`
         )
       }
+      if (cancelled()) return inputStream
       store.setRnnoiseStage('addModule ok')
 
       this.sourceNode = this.audioCtx.createMediaStreamSource(inputStream)
@@ -191,13 +291,13 @@ export class RnnoiseProcessor {
 
       this.highpassFilter = this.audioCtx.createBiquadFilter()
       this.highpassFilter.type = 'highpass'
-      this.highpassFilter.frequency.setValueAtTime(90, this.audioCtx.currentTime)
-      this.highpassFilter.Q.setValueAtTime(0.7, this.audioCtx.currentTime)
+      this.highpassFilter.frequency.setValueAtTime(RNNOISE_PRE_EQ.highpassHz, this.audioCtx.currentTime)
+      this.highpassFilter.Q.setValueAtTime(RNNOISE_PRE_EQ.highpassQ, this.audioCtx.currentTime)
 
       this.highShelfFilter = this.audioCtx.createBiquadFilter()
       this.highShelfFilter.type = 'highshelf'
-      this.highShelfFilter.frequency.setValueAtTime(6500, this.audioCtx.currentTime)
-      this.highShelfFilter.gain.setValueAtTime(-4, this.audioCtx.currentTime)
+      this.highShelfFilter.frequency.setValueAtTime(RNNOISE_PRE_EQ.shelfHz, this.audioCtx.currentTime)
+      this.highShelfFilter.gain.setValueAtTime(RNNOISE_PRE_EQ.shelfGainDb, this.audioCtx.currentTime)
 
       this.postGain = this.audioCtx.createGain()
       this.postGain.gain.setValueAtTime(1.0, this.audioCtx.currentTime)
@@ -240,6 +340,7 @@ export class RnnoiseProcessor {
           this.workletBlobUrl = retry.blobUrl
           useMediaStore.getState().setRnnoiseStage(`blob retry ${retry.debug}`)
           await this.audioCtx.audioWorklet.addModule(retry.blobUrl)
+          if (cancelled()) return inputStream
           useMediaStore.getState().setRnnoiseStage('addModule retry ok')
           try {
             workletNode = new AudioWorkletNode(this.audioCtx, retry.procName, {
@@ -264,18 +365,29 @@ export class RnnoiseProcessor {
       // Wire the worklet lifecycle messages.
       this.workletNode.port.onmessage = (e: MessageEvent) => {
         const data = e.data
-        if (!data) return
+        // A worklet from a disposed start has nothing to say to this one.
+        if (!data || cancelled()) return
         if (data.type === 'ready') {
           this.workletReady = true
           this.workletError = null
           this.readySettler?.resolve(true)
           this.readySettler = null
         } else if (data.type === 'error') {
+          const wasRunning = this.workletReady
+          const message: string = data.message ?? 'unknown worklet error'
           this.workletReady = false
-          this.workletError = data.message ?? 'unknown worklet error'
-          console.warn('[rnnoise] worklet reported error:', this.workletError)
+          this.workletError = message
+          console.warn('[rnnoise] worklet reported error:', message)
           this.readySettler?.resolve(false)
           this.readySettler = null
+          if (wasRunning) {
+            // The worklet gave up mid-call and is passing raw audio. Say so
+            // (the badge must not keep claiming "active") and let the owner
+            // swap engines.
+            useMediaStore.getState().setRnnoiseStatus('error', message)
+            diagLog('audio', 'rnnoise.runtime-failure', { message })
+            this.onRuntimeFailure?.(message)
+          }
         } else if (data.type === 'vad') {
           this.lastVad = typeof data.probability === 'number' ? data.probability : 0
         } else if (data.type === 'metrics') {
@@ -327,7 +439,8 @@ export class RnnoiseProcessor {
         if (this.workletReady) return resolve(true)
         if (this.workletError) return resolve(false)
         this.readySettler = { resolve }
-        setTimeout(() => {
+        this.readyTimer = setTimeout(() => {
+          this.readyTimer = null
           if (this.readySettler) {
             this.readySettler = null
             console.warn('[rnnoise] init timed out, falling back')
@@ -335,10 +448,17 @@ export class RnnoiseProcessor {
           }
         }, RnnoiseProcessor.READY_TIMEOUT_MS)
       })
+      if (cancelled()) return inputStream
+      if (this.readyTimer) {
+        clearTimeout(this.readyTimer)
+        this.readyTimer = null
+      }
 
+      this.starting = false
       if (!ready) {
-        useMediaStore.getState().setRnnoiseStatus('error', this.workletError || 'init timeout')
+        const cause = this.workletError || 'init timeout'
         this.dispose()
+        useMediaStore.getState().setRnnoiseStatus('error', cause)
         return inputStream
       }
       useMediaStore.getState().setRnnoiseStatus('ready', null)
@@ -351,7 +471,9 @@ export class RnnoiseProcessor {
       inputStream.getVideoTracks().forEach((vTrack) => outputStream.addTrack(vTrack))
       return outputStream
     } catch (err) {
+      if (cancelled()) return inputStream
       console.warn('[rnnoise] processStream failed:', err)
+      this.starting = false
       this.dispose()
       useMediaStore
         .getState()
@@ -391,7 +513,7 @@ export class RnnoiseProcessor {
           // Align with VU meter scale (level = rms * 6)
           const targetLevel = this.manualThresholdPercent / 100
           const openLevel = targetLevel / 6
-          const closeLevel = openLevel * 0.75
+          const closeLevel = openLevel * RNNOISE_GATE.manualCloseRatio
           if (rms > openLevel) {
             shouldOpen = true
           } else if (rms < closeLevel) {
@@ -405,18 +527,16 @@ export class RnnoiseProcessor {
         const speechProb = this.workletReady ? this.lastVad : 0
         if (this.workletReady) {
           // Neural VAD is operational:
-          // 1. Definite speech (prob >= 0.20): open immediately
-          // 2. Soft speech with slight energy (prob >= 0.08 && level > 0.015): open
-          // 3. Clear audio level above quiet ambient floor (level > 0.025, i.e. RMS > 0.004): open
-          // 4. Loud sound safety valve (level > 0.40): open
+          // 1. Definite speech: open immediately
+          // 2. Soft speech with slight energy: open
+          // 3. Clear audio level above the quiet ambient floor: open
           if (
-            speechProb >= 0.20 ||
-            (speechProb >= 0.08 && level > 0.015) ||
-            level > 0.025 ||
-            level > 0.40
+            speechProb >= VAD_SPEECH ||
+            (speechProb >= VAD_SOFT_SPEECH && level > AUTO_SOFT_SPEECH_LEVEL) ||
+            level > AUTO_OPEN_LEVEL
           ) {
             shouldOpen = true
-          } else if (speechProb < 0.05 && level < 0.012) {
+          } else if (speechProb < VAD_SILENCE && level < AUTO_CLOSE_LEVEL) {
             // True ambient silence: allow gate to close
             shouldOpen = false
           } else {
@@ -425,20 +545,13 @@ export class RnnoiseProcessor {
           }
         } else {
           // Fallback before worklet is ready: rely on volume level
-          if (level > 0.025) {
+          if (level > AUTO_OPEN_LEVEL) {
             shouldOpen = true
-          } else if (level < 0.012) {
+          } else if (level < AUTO_CLOSE_LEVEL) {
             shouldOpen = false
           } else {
             shouldOpen = this.isGateOpen
           }
-        }
-
-        // Track ambient noise floor dynamically in auto mode
-        if (rms < this.dynamicNoiseFloor || this.dynamicNoiseFloor === 0) {
-          this.dynamicNoiseFloor = this.dynamicNoiseFloor * 0.95 + rms * 0.05
-        } else if (!shouldOpen) {
-          this.dynamicNoiseFloor = this.dynamicNoiseFloor * 0.999 + rms * 0.001
         }
       }
 
@@ -455,22 +568,24 @@ export class RnnoiseProcessor {
       if (this.gateGainNode && this.isSuppressionActive) {
         if (!this.isGateOpen && effectiveOpen) {
           this.gateGainNode.gain.cancelScheduledValues(now)
-          this.gateGainNode.gain.setTargetAtTime(1.0, now, 0.008) // 8ms fast attack
+          this.gateGainNode.gain.setTargetAtTime(1.0, now, RNNOISE_GATE.attackTimeConstant) // 8ms fast attack
           this.isGateOpen = true
         } else if (this.isGateOpen && !effectiveOpen) {
           this.gateGainNode.gain.cancelScheduledValues(now)
-          this.gateGainNode.gain.setTargetAtTime(0.0, now, 0.12) // 120ms smooth release to 0.0
+          this.gateGainNode.gain.setTargetAtTime(0.0, now, RNNOISE_GATE.releaseTimeConstant) // 120ms smooth release to 0.0
           this.isGateOpen = false
         }
       } else {
         this.isGateOpen = true
       }
 
-      // Dynamic threshold percent for VU meter alignment (0 - 100%)
+      // Threshold marker for the VU meter (0 - 100%): the level that opens
+      // the gate. In auto mode that is a fixed level of the denoised signal,
+      // not something tracked from the room noise.
       const dynamicThresholdPercent =
         this.sensitivityMode === 'manual'
           ? this.manualThresholdPercent
-          : Math.min(100, Math.max(8, Math.round(this.dynamicNoiseFloor * 6 * 100 * 1.8)))
+          : AUTO_OPEN_LEVEL * 100
 
       if (this.onLevelCallback) {
         this.onLevelCallback(level, this.isGateOpen, rms, dynamicThresholdPercent)
@@ -551,7 +666,20 @@ export class RnnoiseProcessor {
       clearInterval(this.levelIntervalId)
       this.levelIntervalId = null
     }
+    this.generation++
+    if (this.readyTimer) {
+      clearTimeout(this.readyTimer)
+      this.readyTimer = null
+    }
+    // Release a start that is still waiting for the worklet: left pending,
+    // it would hold MediaManager's start queue (and the microphone) forever.
+    const settler = this.readySettler
     this.readySettler = null
+    settler?.resolve(false)
+    if (this.starting) {
+      this.starting = false
+      useMediaStore.getState().setRnnoiseStatus('idle')
+    }
     if (this.workletBlobUrl) {
       try {
         URL.revokeObjectURL(this.workletBlobUrl)

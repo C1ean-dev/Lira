@@ -11,14 +11,20 @@
  * exactly 480 samples (10 ms at 48 kHz) and writes the cleaned frame back
  * into the same buffer in-place.
  *
- * The Emscripten glue (from @jitsi/rnnoise-wasm) is prepended to this source
- * in the Blob, and the WASM bytes arrive via processorOptions (no fetches).
+ * The Emscripten glue (RNNoise 0.2 build of @jitsi/rnnoise-wasm) is prepended
+ * to this source in the Blob, and the WASM bytes arrive via processorOptions
+ * (no fetches). That glue compiles the binary synchronously, which is fine
+ * here: it happens once, off the main thread, before the stream is in use.
  *
  * Communication with the main thread (via this.port):
  *   - Main -> worklet: { type: 'bypass', enabled: boolean }
+ *   - Main -> worklet: { type: 'destroy' }
  *   - Worklet -> main: { type: 'ready' } when WASM + state are initialised
  *   - Worklet -> main: { type: 'error', message } on init failure
- *   - Worklet -> main: { type: 'vad', probability } at ~10 Hz for the UI VU
+ *   - Worklet -> main: { type: 'error', message, fatal: true } when processing
+ *     keeps failing after init (the node passes raw audio from then on)
+ *   - Worklet -> main: { type: 'vad', probability } every 5 frames (20 Hz)
+ *   - Worklet -> main: { type: 'metrics', ... } every 500 frames (5 s)
  *
  * The processor is registered as 'rnnoise-worklet' so the main thread can
  * instantiate it via `new AudioWorkletNode(ctx, 'rnnoise-worklet')`.
@@ -27,6 +33,10 @@
  * needs 480-sample frames (128 does not divide 480). A FIFO accumulator
  * below stitches quanta into exact 480-sample frames; without it the
  * denoiser would silently pass everything through unprocessed.
+ *
+ * Latency note: frames complete at irregular points of the quantum grid, so
+ * the denoised path runs a fixed LATENCY_SAMPLES behind the input. That is
+ * the smallest delay at which the output FIFO never runs dry.
  */
 
 const FRAME_SIZE = 480 // 10 ms @ 48 kHz — RNNoise's hard requirement.
@@ -39,6 +49,13 @@ const PCM_SCALE = 32768
 const PCM_MIN = -32768
 const PCM_MAX = 32767
 const BYPASS_RAMP_SAMPLES = 240 // 5 ms @ 48 kHz crossfade (click-free toggle)
+// FRAME_SIZE - gcd(FRAME_SIZE, 128): with less than this the output FIFO
+// underflows every few quanta and raw samples get spliced into the output.
+const LATENCY_SAMPLES = 448
+const VAD_REPORT_FRAMES = 5 // 50 ms
+const METRICS_REPORT_FRAMES = 500 // 5 s
+// Consecutive failed quanta (~130 ms) before the node gives up and says so.
+const MAX_FAILED_QUANTA = 50
 
 class RnnoiseWorkletProcessor extends AudioWorkletProcessor {
   constructor(options) {
@@ -53,8 +70,13 @@ class RnnoiseWorkletProcessor extends AudioWorkletProcessor {
     this.bypass = false
     // 0 = fully denoised (wet), 1 = passthrough (dry). Ramped per sample.
     this.bypassMix = 1
+    // False while the FIFOs are refilling (stream start, suppression turned
+    // back on): the output stays dry until the wet path is LATENCY_SAMPLES
+    // deep, then crossfades. Switching earlier splices raw samples in.
+    this.primed = false
     // Input FIFO: accumulates 128-sample quanta into 480-sample frames.
     this.inBuf = new Float32Array(FRAME_SIZE * 2)
+    this.frameIn = this.inBuf.subarray(0, FRAME_SIZE)
     this.inLen = 0
     // Output FIFO: holds denoised samples waiting to fill a 128 quantum.
     this.outBuf = new Float32Array(FRAME_SIZE * 2)
@@ -62,8 +84,9 @@ class RnnoiseWorkletProcessor extends AudioWorkletProcessor {
     this.frameTmp = new Float32Array(FRAME_SIZE)
     this.vadAccum = 0
     this.vadFrames = 0
-    this.lastVadEmit = 0
     this.sampleRateWarned = false
+    this.failedQuanta = 0
+    this.failed = false
     this.processedFrames = 0
     this.inputEnergy = 0
     this.outputEnergy = 0
@@ -73,14 +96,9 @@ class RnnoiseWorkletProcessor extends AudioWorkletProcessor {
       const data = e.data
       if (!data) return
       if (data.type === 'bypass') {
-        const wantBypass = !!data.enabled
-        // Flushing stale FIFO content on re-enable avoids a burst of old
-        // audio; the ~8 ms passthrough while the FIFO refills is inaudible.
-        if (this.bypass && !wantBypass) {
-          this.inLen = 0
-          this.outLen = 0
-        }
-        this.bypass = wantBypass
+        // The FIFOs are flushed once the crossfade to dry completes (see
+        // process), not here: a quick off/on then just ramps back.
+        this.bypass = !!data.enabled
       } else if (data.type === 'destroy') {
         this._destroy()
       }
@@ -139,7 +157,6 @@ class RnnoiseWorkletProcessor extends AudioWorkletProcessor {
       if (!this.inputPtr || !this.outputPtr) throw new Error('WASM malloc failed')
       // NOTE: the jitsi glue does NOT export _rnnoise_get_frame_size — do not
       // call it (it throws and would brick init). FRAME_SIZE is fixed at 480.
-      this.bypassMix = this.bypass ? 1 : 0
       this.port.postMessage({ type: 'ready' })
     } catch (err) {
       this.port.postMessage({
@@ -149,15 +166,8 @@ class RnnoiseWorkletProcessor extends AudioWorkletProcessor {
     }
   }
 
-  _emitVad(probability) {
-    const now = currentTime
-    if (now - this.lastVadEmit < 0.1) return
-    this.lastVadEmit = now
-    this.port.postMessage({ type: 'vad', probability })
-  }
-
   _emitMetrics() {
-    if (this.metricFrames < 50) return
+    if (this.metricFrames < METRICS_REPORT_FRAMES) return
     const inputRms = Math.sqrt(this.inputEnergy / (this.metricFrames * FRAME_SIZE))
     const outputRms = Math.sqrt(this.outputEnergy / (this.metricFrames * FRAME_SIZE))
     this.port.postMessage({
@@ -203,11 +213,39 @@ class RnnoiseWorkletProcessor extends AudioWorkletProcessor {
     }
     this.metricFrames++
     this._emitMetrics()
-    if (this.vadFrames >= 5) {
-      this._emitVad(this.vadAccum / this.vadFrames)
+    // Every report covers all frames since the previous one: the gate on the
+    // main thread acts on this, so nothing may be thrown away.
+    if (this.vadFrames >= VAD_REPORT_FRAMES) {
+      this.port.postMessage({
+        type: 'vad',
+        probability: this.vadAccum / this.vadFrames,
+      })
       this.vadAccum = 0
       this.vadFrames = 0
     }
+  }
+
+  /**
+   * Fail open: a bad frame must never mute the user. But a node that fails
+   * on every quantum is passing raw audio while the UI says "neural network
+   * active" — after MAX_FAILED_QUANTA in a row, stop trying and report it so
+   * the main thread can swap engines.
+   */
+  _recordFailure(err) {
+    this.failedQuanta++
+    if (this.failedQuanta < MAX_FAILED_QUANTA || this.failed) return
+    this.failed = true
+    this.port.postMessage({
+      type: 'error',
+      fatal: true,
+      message: 'processing keeps failing: ' + ((err && err.message) || String(err)),
+    })
+  }
+
+  _resetFifos() {
+    this.inLen = 0
+    this.outLen = 0
+    this.primed = false
   }
 
   process(inputs, outputs) {
@@ -215,9 +253,9 @@ class RnnoiseWorkletProcessor extends AudioWorkletProcessor {
     const output = outputs[0] && outputs[0][0]
     if (!input || !output) return true
 
-    // Until WASM is ready, pass audio through unchanged so the user is never
-    // muted by a slow load.
-    if (!this.module || !this.statePtr) {
+    // Until WASM is ready (or once processing has been given up on), pass
+    // audio through unchanged so the user is never muted.
+    if (!this.module || !this.statePtr || this.failed) {
       output.set(input)
       return true
     }
@@ -240,10 +278,10 @@ class RnnoiseWorkletProcessor extends AudioWorkletProcessor {
       return true
     }
 
-    const mixTarget = this.bypass ? 1 : 0
-
-    // Steady-state full bypass: cheapest path, FIFOs untouched.
-    if (mixTarget === 1 && this.bypassMix === 1) {
+    // Steady-state full bypass: cheapest path. Whatever the FIFOs still hold
+    // is stale by the time suppression comes back, so drop it now.
+    if (this.bypass && this.bypassMix === 1) {
+      if (this.inLen || this.outLen || this.primed) this._resetFifos()
       output.set(input)
       return true
     }
@@ -263,25 +301,39 @@ class RnnoiseWorkletProcessor extends AudioWorkletProcessor {
       // 2. Carve exact 480-sample frames and denoise them into the out FIFO.
       while (this.inLen >= FRAME_SIZE) {
         if (this.outLen + FRAME_SIZE > this.outBuf.length) break
-        const frameIn = this.inBuf.subarray(0, FRAME_SIZE)
-        this._processFrame(frameIn, this.frameTmp)
+        this._processFrame(this.frameIn, this.frameTmp)
         this.outBuf.set(this.frameTmp, this.outLen)
         this.outLen += FRAME_SIZE
         this.inBuf.copyWithin(0, FRAME_SIZE, this.inLen)
         this.inLen -= FRAME_SIZE
       }
     } catch (err) {
-      // Fail open: a single bad frame must never mute the user.
+      this._recordFailure(err)
       output.set(input)
       return true
     }
+    this.failedQuanta = 0
 
-    // 3. Emit one 128-sample quantum, crossfading dry<->wet per sample so
-    // bypass toggles never click. If the FIFO is short (stream startup),
-    // top up from the dry input — steady state never underflows.
+    // 3. Start reading the wet path only when it is exactly LATENCY_SAMPLES
+    // behind the input (older samples are dropped). From then on the output
+    // FIFO never runs dry and the delay never changes.
+    if (!this.primed) {
+      const surplus = this.inLen + this.outLen - (LATENCY_SAMPLES + input.length)
+      if (surplus >= 0) {
+        const drop = Math.min(surplus, this.outLen)
+        this.outBuf.copyWithin(0, drop, this.outLen)
+        this.outLen -= drop
+        this.primed = true
+      }
+    }
+    const mixTarget = this.bypass || !this.primed ? 1 : 0
+
+    // 4. Emit one 128-sample quantum, crossfading dry<->wet per sample so
+    // neither a bypass toggle nor the end of priming clicks. The dry top-up
+    // only covers a render quantum other than 128 samples.
     const step = 1 / BYPASS_RAMP_SAMPLES
     let mix = this.bypassMix
-    const wet = Math.min(this.outLen, input.length)
+    const wet = this.primed ? Math.min(this.outLen, input.length) : 0
     for (let i = 0; i < input.length; i++) {
       if (mix < mixTarget) mix = Math.min(mixTarget, mix + step)
       else if (mix > mixTarget) mix = Math.max(mixTarget, mix - step)

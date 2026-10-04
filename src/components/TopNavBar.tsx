@@ -18,7 +18,7 @@ import { useChatStore } from '../store/useChatStore'
 import { useMediaStore } from '../store/useMediaStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { LiraLogo } from './LiraLogo'
-import { useUpdateStore } from '../store/useUpdateStore'
+import { useUpdateStore, versionBadgeLabel } from '../store/useUpdateStore'
 import { CURRENT_APP_VERSION } from '../services/updateService'
 import { NetworkSignalIcon } from './NetworkSignalIcon'
 import { useNetworkQualityStore } from '../store/useNetworkQualityStore'
@@ -52,6 +52,8 @@ export const TopNavBar: React.FC<Props> = ({
   const localPlayerCurrentZoneId = useGameStore((s) => s.localPlayer.currentZoneId)
   const roomId = useGameStore((s) => s.roomId)
   const updateInfo = useUpdateStore((s) => s.updateInfo)
+  const manualCheck = useUpdateStore((s) => s.manualCheck)
+  const checkNow = useUpdateStore((s) => s.checkNow)
   const rawVersion = updateInfo?.currentVersion || CURRENT_APP_VERSION
   const currentVersion = rawVersion.startsWith('v') ? rawVersion : `v${rawVersion}`
   const isOwner = useGameStore((s) => s.isOwner)
@@ -291,13 +293,20 @@ export const TopNavBar: React.FC<Props> = ({
             )}
           </button>
         ) : (
-          <div
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#1b202c] border border-[#2a3142] text-slate-300 text-xs font-semibold select-none"
-            title={`Versão atual do Lira: ${currentVersion}`}
+          <button
+            type="button"
+            onClick={() => checkNow()}
+            disabled={manualCheck === 'checking'}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#1b202c] hover:bg-[#232a3a] border border-[#2a3142] text-slate-300 text-xs font-semibold select-none transition-colors cursor-pointer disabled:cursor-wait"
+            title={`Versão atual do Lira: ${currentVersion}. Clique para verificar atualizações.`}
           >
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            <span className="font-mono text-[11px] text-slate-400">{currentVersion}</span>
-          </div>
+            {manualCheck === 'checking' ? (
+              <RefreshCw className="w-3 h-3 animate-spin text-slate-400" />
+            ) : (
+              <span className={`w-1.5 h-1.5 rounded-full ${manualCheck === 'failed' ? 'bg-rose-400' : 'bg-emerald-400'}`} />
+            )}
+            <span className="font-mono text-[11px] text-slate-400">{versionBadgeLabel(manualCheck, currentVersion)}</span>
+          </button>
         )}
 
         {/* Real-time Network Quality Indicator */}

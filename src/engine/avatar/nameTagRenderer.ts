@@ -1,5 +1,6 @@
 import { Player, STATUS_META } from '../../types/game'
 import { useGameStore } from '../../store/useGameStore'
+import { getStatusIconImage } from './statusIcons'
 
 const textWidthCache = new Map<string, number>()
 
@@ -43,7 +44,8 @@ export class NameTagRenderer {
     const font = 'bold 7.5px Inter, sans-serif'
     const textW = measureLabelWidth(ctx, label, font)
     ctx.font = font
-    const pillW = textW + 14
+    // Room for the status icon; the same whether or not its image has loaded.
+    const pillW = textW + 18
     const pillH = 13
     const pillX = centerX - pillW / 2
     const pillY = tagY - pillH + 2
@@ -62,27 +64,42 @@ export class NameTagRenderer {
     ctx.lineWidth = 1.0
     ctx.stroke()
 
-    // Presence dot
-    let statusColor = '#22c55e'
-    if (isConnecting) {
-      // Pulsing amber while WebRTC ICE/codec handshake runs.
-      const t = (Date.now() % 900) / 900
-      const pulse = 0.45 + Math.abs(Math.sin(t * Math.PI)) * 0.55
-      ctx.globalAlpha = pulse
-      statusColor = '#f59e0b'
-    } else {
-      statusColor = STATUS_META[player.status || 'available']?.hexColor || '#22c55e'
-    }
+    // Presence: the status image (Terra, Lua, Marte...). While the WebRTC
+    // handshake runs it is a pulsing amber dot, and a dot of the status color
+    // stands in for the few frames before the image has loaded.
+    const iconX = pillX + 7
+    const iconY = pillY + pillH / 2
+    const iconRadius = 4.5
+    const statusIcon = isConnecting ? null : getStatusIconImage(player.status || 'available')
 
-    ctx.fillStyle = statusColor
-    ctx.beginPath()
-    ctx.arc(pillX + 5.5, pillY + pillH / 2, 2.2, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.globalAlpha = 1
+    if (statusIcon) {
+      ctx.save()
+      ctx.beginPath()
+      ctx.arc(iconX, iconY, iconRadius, 0, Math.PI * 2)
+      ctx.clip()
+      ctx.drawImage(statusIcon, iconX - iconRadius, iconY - iconRadius, iconRadius * 2, iconRadius * 2)
+      ctx.restore()
+    } else {
+      let statusColor: string
+      if (isConnecting) {
+        // Pulsing amber while WebRTC ICE/codec handshake runs.
+        const t = (Date.now() % 900) / 900
+        const pulse = 0.45 + Math.abs(Math.sin(t * Math.PI)) * 0.55
+        ctx.globalAlpha = pulse
+        statusColor = '#f59e0b'
+      } else {
+        statusColor = STATUS_META[player.status || 'available']?.hexColor || '#22c55e'
+      }
+      ctx.fillStyle = statusColor
+      ctx.beginPath()
+      ctx.arc(iconX, iconY, 2.2, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.globalAlpha = 1
+    }
 
     // Text name
     ctx.fillStyle = isConnecting ? '#fde68a' : '#ffffff'
-    ctx.fillText(label, pillX + 10.5, pillY + 9.2)
+    ctx.fillText(label, pillX + 13.5, pillY + 9.2)
 
     // Sleeping "Zzz" floating animation for AFK / away players
     if (player.status === 'away' || player.statusEmoji === '💤') {

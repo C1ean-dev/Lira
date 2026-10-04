@@ -15,6 +15,7 @@ import { MediaManager } from '../media/MediaManager'
 import { DynamicBufferManager } from '../services/DynamicBufferManager'
 import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
 import { sanitizeRoomCode } from '../utils/roomCode'
+import { getPlayerUserId } from '../utils/userId'
 
 export class PeerManager {
   private static instance: PeerManager
@@ -1201,7 +1202,9 @@ export class PeerManager {
       type: 'CHAT_MESSAGE_STATUS',
       senderId: this.peer.id,
       payload: {
-        senderId: local.id,
+        // Stable user id: direct messages are addressed to it, and the
+        // receipt must match them after either side reconnects.
+        senderId: getPlayerUserId(local),
         senderName: local.name,
         recipientId,
         channelId,
