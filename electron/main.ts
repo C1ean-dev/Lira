@@ -10,6 +10,7 @@ import { release as getOsRelease } from 'os'
 import { setupSingleInstanceLock } from './singleInstance'
 import { TrayManager, AppSettings } from './trayManager'
 import { createLogWriter, installConsoleCapture, installProcessErrorCapture } from './logWriter'
+import { readNativeDataFile, writeNativeDataFileLatest } from './nativeDataFile'
 import { sanitizeRecords } from '../src/utils/logFormat'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -1086,7 +1087,9 @@ ipcMain.handle('save-native-assets', async (_event, data: { categories: string[]
   try {
     const dataDir = getDataDirectory()
     const filePath = path.join(dataDir, 'nativeAssets.json')
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8')
+    // In time slices, one write at a time (see nativeDataFile): the main process stays responsive while this
+    // runs at start-up. The installed app does not recode the pictures: nothing reads this file back there.
+    await writeNativeDataFileLatest(filePath, data, { optimize: !app.isPackaged })
     console.log('[NativeAssets] Saved to', filePath)
     return true
   } catch (err) {
@@ -1100,8 +1103,7 @@ ipcMain.handle('load-native-assets', async () => {
     const dataDir = getDataDirectory()
     const filePath = path.join(dataDir, 'nativeAssets.json')
     if (fs.existsSync(filePath)) {
-      const raw = fs.readFileSync(filePath, 'utf-8')
-      return JSON.parse(raw)
+      return readNativeDataFile(filePath)
     }
   } catch (err) {
     console.error('[NativeAssets] Load error:', err)

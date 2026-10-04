@@ -4,6 +4,7 @@ import electron from 'vite-plugin-electron'
 import renderer from 'vite-plugin-electron-renderer'
 import path from 'path'
 import fs from 'fs'
+import { writeNativeDataFileLatest } from './electron/nativeDataFile'
 
 const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, './package.json'), 'utf-8'))
 
@@ -81,11 +82,12 @@ export default defineConfig({
             req.on('data', (chunk) => {
               body += chunk
             })
-            req.on('end', () => {
+            req.on('end', async () => {
               try {
                 const parsed = JSON.parse(body)
                 const targetPath = path.resolve(process.cwd(), 'src/data/nativeAssets.json')
-                fs.writeFileSync(targetPath, JSON.stringify(parsed, null, 2), 'utf-8')
+                // in time slices, so serving the modules is not held up while the pictures are recoded
+                await writeNativeDataFileLatest(targetPath, parsed)
                 console.log('[DiskMiddleware] Saved nativeAssets.json to disk successfully')
                 res.setHeader('Content-Type', 'application/json')
                 res.statusCode = 200

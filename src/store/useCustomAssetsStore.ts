@@ -2,9 +2,17 @@ import { create } from 'zustand'
 import { CustomAsset } from '../types/customAsset'
 import { FurnitureDefinition } from '../types/map'
 import { PeerManager } from '../p2p/PeerManager'
-import nativeAssetsData from '../data/nativeAssets.json'
+import rawNativeAssetsData from '../data/nativeAssets.json'
 import { Direction } from '../types/game'
 import { bakeLayersToDataUrl } from '../utils/imageResize'
+import { unpackImages } from '../utils/imageTable'
+
+// The file keeps each distinct image once, in a table (see utils/imageTable);
+// expand it back into the data URLs the rest of the app works with.
+const nativeAssetsData = unpackImages(rawNativeAssetsData as unknown as Record<string, unknown>) as {
+  categories?: string[]
+  assets?: CustomAsset[]
+}
 
 const ASSETS_STORAGE_KEY = 'lira_custom_user_assets'
 const LEGACY_ASSETS_STORAGE_KEY = 'gather_v2_custom_user_assets'
