@@ -1005,6 +1005,11 @@ export class MediaManager {
       const { resolution: effectiveResolution, fps: effectiveFps, targetBitrate } =
         MediaManager.resolveOptimalScreenQuality(resolution, fps)
 
+      // Raise the encoder caps of the open calls now, before capturing. The
+      // capture takes a second or more, time the connections use to probe for
+      // bandwidth, so the live does not start at the bitrate of an idle call.
+      PeerManager.getInstance().primeScreenShare(targetBitrate, effectiveFps)
+
       let width = 1920
       let height = 1080
       if (effectiveResolution === '480p') {
@@ -1199,12 +1204,22 @@ export class MediaManager {
         screenVideoTrack.onended = () => {
           this.stopScreenShare()
         }
+      } else {
+        // No screen video to send: the calls keep the camera, with its caps.
+        PeerManager.getInstance().cancelScreenSharePrime()
       }
 
       return screenStream
     } catch (err) {
       console.warn('Screen share cancelled or failed:', err)
       diagLog('screenshare', 'cancelled-or-failed', { error: errShort(err) })
+      // The caps were raised before capturing. Undo that, unless a live that
+      // was already running is still on the calls.
+      if (!useMediaStore.getState().isScreenSharing) {
+        try {
+          PeerManager.getInstance().cancelScreenSharePrime()
+        } catch {}
+      }
       return null
     }
   }

@@ -5,6 +5,19 @@ import { useMediaStore } from '../store/useMediaStore'
 import { prioritizeH264HardwareCodec } from '../media/hardwareCodec'
 import { DynamicBufferManager } from '../services/DynamicBufferManager'
 import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
+import {
+  CAMERA_CAPS,
+  activeScreenCaps,
+  applyCameraCaps,
+  applyScreenCaps,
+  applyVideoCaps,
+  beginScreenShare,
+  endScreenShare,
+  findVideoSender,
+  screenCaps,
+  setScreenShareBitrate,
+  watchScreenShareRamp,
+} from './videoSendPolicy'
 
 /**
  * ICE candidate pool — pre-collected candidates before the call is established.
@@ -231,24 +244,29 @@ export class MediaCallHandler {
    * EVERYONE. degradationPreference 'maintain-framerate' tells the
    * congestion controller to shed pixels (resolution) instead of time
    * (latency) — the call gets blurrier under load, never laggier.
+   *
+   * A call that connects while a live is starting or running carries the
+   * SCREEN on this sender: it gets the live's caps instead (the camera caps
+   * would pin the live at 1.2Mbps/30fps for that viewer).
    */
-  static applyEncoderCaps(pc: RTCPeerConnection, maxBitrate: number = 1_200_000, maxFramerate: number = 30) {
+  static applyEncoderCaps(pc: RTCPeerConnection, maxBitrate?: number, maxFramerate?: number) {
     if (!pc || typeof pc.getSenders !== 'function') return
+    const sharing = maxBitrate === undefined && maxFramerate === undefined && activeScreenCaps() !== null
     try {
       pc.getSenders().forEach((sender) => {
         if (!sender.track || sender.track.kind !== 'video') return
-        try {
-          const params = sender.getParameters()
-          if (params && params.encodings && params.encodings.length > 0) {
-            params.encodings[0].maxBitrate = maxBitrate
-            params.encodings[0].maxFramerate = maxFramerate
-            params.encodings[0].scaleResolutionDownBy = 1.0
-            ;(params.encodings[0] as any).networkPriority = 'high'
-            ;(params.encodings[0] as any).priority = 'high'
-            ;(params as any).degradationPreference = 'maintain-framerate'
-            sender.setParameters(params).catch(() => {})
-          }
-        } catch (e) {}
+        if (sharing) {
+          applyScreenCaps(sender)
+        } else {
+          applyVideoCaps(
+            sender,
+            {
+              maxBitrate: maxBitrate ?? CAMERA_CAPS.maxBitrate,
+              maxFramerate: maxFramerate ?? CAMERA_CAPS.maxFramerate,
+            },
+            'maintain-framerate'
+          )
+        }
       })
     } catch (e) {}
 
@@ -648,7 +666,10 @@ export class MediaCallHandler {
           reason,
         })
         MediaCallHandler.logSenderSnapshot(mediaCalls, direction === 'out' ? 'outgoing-connected' : 'incoming-connected')
-        if (pc) MediaCallHandler.applyEncoderCaps(pc)
+        if (pc) {
+          MediaCallHandler.applyEncoderCaps(pc)
+          if (activeScreenCaps()) watchScreenShareRamp(pc, peerId, 'join')
+        }
         // PeerJS can expose an audio sender with no track after glare recovery
         // or a late microphone initialization. Reconcile it with the current
         // local microphone as soon as the call is connected so the remote peer
@@ -1120,13 +1141,55 @@ export class MediaCallHandler {
   }
 
   /**
+   * A live is about to start and the screen is not captured yet: raise the
+   * video caps of the open calls to the live's values while they still carry
+   * the camera. Capturing takes a second or more, and in that time the
+   * connections can probe for bandwidth, so the first screen frame is not
+   * encoded at the bitrate of an idle call. Only setParameters, no track
+   * changes; calls that connect from now on get the same caps.
+   */
+  static primeScreenShare(mediaCalls: Map<string, MediaConnection>, maxBitrate: number, maxFramerate: number) {
+    const caps = screenCaps(maxBitrate, maxFramerate)
+    beginScreenShare(caps)
+    diagLog('screenshare', 'prime', { calls: mediaCalls.size, ...caps })
+    mediaCalls.forEach((call, peerId) => {
+      try {
+        const pc = (call as any).peerConnection as RTCPeerConnection
+        if (!pc || typeof pc.getSenders !== 'function') return
+        const videoSender = findVideoSender(pc)
+        if (!videoSender) return
+        watchScreenShareRamp(pc, peerId, 'prime')
+        applyScreenCaps(videoSender)
+      } catch (e) {}
+    })
+  }
+
+  /** The capture was cancelled or failed after primeScreenShare: back to the camera caps. */
+  static cancelScreenSharePrime(mediaCalls: Map<string, MediaConnection>) {
+    if (!activeScreenCaps()) return
+    endScreenShare()
+    diagLog('screenshare', 'prime-cancelled', { calls: mediaCalls.size })
+    mediaCalls.forEach((call) => {
+      try {
+        const pc = (call as any).peerConnection as RTCPeerConnection
+        if (!pc || typeof pc.getSenders !== 'function') return
+        const videoSender = findVideoSender(pc)
+        if (videoSender) applyCameraCaps(videoSender)
+      } catch (e) {}
+    })
+  }
+
+  /**
    * Replace active video track (Switching between Camera & Screen Share).
    *
-   * Bitrate policy (mesh uplink protection): camera capped at 1.2Mbps/30fps,
-   * screenshare at 2.5Mbps/30fps. The old defaults (1.8/3.5Mbps @ 60fps)
-   * saturated home uplinks with 3+ peers → router bufferbloat → delay for
-   * everyone on the call. degradationPreference 'maintain-framerate' makes
-   * congestion shed pixels instead of adding latency.
+   * Bitrate policy (mesh uplink protection): camera capped at 1.2Mbps/30fps;
+   * a live uses the bitrate and fps picked for the room (at most 6Mbps/60fps).
+   * degradationPreference 'maintain-framerate' makes congestion shed pixels
+   * instead of adding latency.
+   *
+   * Going to the screen, the caps are set BEFORE the swap, so the first
+   * screen frame is never encoded with the camera caps, and the resolution is
+   * held for the first seconds (see videoSendPolicy).
    */
   static replaceVideoTrack(
     mediaCalls: Map<string, MediaConnection>,
@@ -1142,26 +1205,25 @@ export class MediaCallHandler {
       }
     }
 
+    const toScreen = isScreenShare && !!newTrack
+    if (toScreen) {
+      beginScreenShare(screenCaps(maxBitrate, maxFramerate))
+    } else {
+      endScreenShare()
+    }
+
     mediaCalls.forEach((call, peerId) => {
       try {
         const pc = (call as any).peerConnection as RTCPeerConnection
         if (pc) {
           prioritizeH264HardwareCodec(pc)
-          const senders = pc.getSenders()
-          let videoSender = senders.find((s) => s.track && s.track.kind === 'video')
-          if (!videoSender) {
-            videoSender = senders.find((s) => (s as any).kind === 'video' || (s as any).track?.kind === 'video')
-          }
-          if (!videoSender && pc.getTransceivers) {
-            const videoTransceiver = pc.getTransceivers().find(
-              (t) => (t.sender && t.sender.track?.kind === 'video') || (t.receiver && t.receiver.track?.kind === 'video')
-            )
-            if (videoTransceiver) {
-              videoSender = videoTransceiver.sender
-            }
-          }
+          const videoSender = findVideoSender(pc)
 
           if (videoSender) {
+            if (toScreen) {
+              applyScreenCaps(videoSender)
+              watchScreenShareRamp(pc, peerId, 'live')
+            }
             videoSender
               .replaceTrack(newTrack)
               .then(() => {
@@ -1171,20 +1233,7 @@ export class MediaCallHandler {
                   screen: isScreenShare,
                   trackEnabled: newTrack ? !!newTrack.enabled : null,
                 })
-                if (newTrack) {
-                  try {
-                    const params = videoSender.getParameters()
-                    if (params && params.encodings && params.encodings.length > 0) {
-                      params.encodings[0].maxBitrate = isScreenShare ? Math.min(maxBitrate, 6_000_000) : 1_200_000
-                      params.encodings[0].maxFramerate = isScreenShare ? Math.min(maxFramerate, 60) : 30
-                      params.encodings[0].scaleResolutionDownBy = 1.0
-                      ;(params.encodings[0] as any).networkPriority = 'high'
-                      ;(params.encodings[0] as any).priority = 'high'
-                      ;(params as any).degradationPreference = 'maintain-framerate'
-                      videoSender.setParameters(params).catch(() => {})
-                    }
-                  } catch (paramErr) {}
-                }
+                if (newTrack && !toScreen) applyCameraCaps(videoSender)
               })
               .catch((err) => {
                 diagLog('p2p', 'call.replace-failed', {
@@ -1218,6 +1267,7 @@ export class MediaCallHandler {
     mediaCalls: Map<string, MediaConnection>,
     maxBitrate: number
   ) {
+    setScreenShareBitrate(maxBitrate)
     mediaCalls.forEach((call) => {
       try {
         const pc = (call as any).peerConnection as RTCPeerConnection

@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { MediaManager } from '../media/MediaManager'
 import { MediaCallHandler } from '../p2p/mediaCalls'
 import { PeerManager } from '../p2p/PeerManager'
+import { SCREEN_START_HOLD_MS, activeScreenCaps, __resetVideoSendPolicyForTests } from '../p2p/videoSendPolicy'
 import { useMediaStore } from '../store/useMediaStore'
 import { useGameStore } from '../store/useGameStore'
 
@@ -96,6 +97,7 @@ if (typeof globalThis.navigator === 'undefined') {
 describe('Video Delivery & Screen Share Guarantee Tests', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    __resetVideoSendPolicyForTests()
     useMediaStore.setState({
       localStream: null,
       localScreenStream: null,
@@ -206,24 +208,37 @@ describe('Video Delivery & Screen Share Guarantee Tests', () => {
     const mediaCalls = new Map<string, any>()
     mediaCalls.set('remote-peer-1', mockCall)
 
-    // Call replaceVideoTrack for Screen Share
-    MediaCallHandler.replaceVideoTrack(mediaCalls, fakeScreenTrack, true, 4_500_000, 60)
+    vi.useFakeTimers()
+    try {
+      // Call replaceVideoTrack for Screen Share
+      MediaCallHandler.replaceVideoTrack(mediaCalls, fakeScreenTrack, true, 4_500_000, 60)
 
-    expect(fakeScreenTrack.enabled).toBe(true)
-    expect(fakeScreenTrack.contentHint).toBe('motion')
-    expect(mockSender.replaceTrack).toHaveBeenCalledWith(fakeScreenTrack)
+      expect(fakeScreenTrack.enabled).toBe(true)
+      expect(fakeScreenTrack.contentHint).toBe('motion')
+      expect(mockSender.replaceTrack).toHaveBeenCalledWith(fakeScreenTrack)
 
-    // Flush the replaceTrack().then() microtask so encoder params land.
-    await Promise.resolve()
-    await new Promise((r) => setTimeout(r, 0))
+      // Flush the replaceTrack().then() microtask.
+      await vi.advanceTimersByTimeAsync(0)
+      expect(replacedWith).toBe(fakeScreenTrack)
 
-    // Recommended bitrate: screenshare supports high-framerate/bitrate (up to 6.0 Mbps and 60 FPS)
-    // with maintain-framerate degradation preference to keep streams sharp and smooth.
-    expect(encodings[0].maxBitrate).toBe(4_500_000)
-    expect(encodings[0].maxFramerate).toBe(60)
-    expect(mockSender.setParameters).toHaveBeenCalled()
-    const appliedParams = mockSender.setParameters.mock.calls[0][0]
-    expect(appliedParams.degradationPreference).toBe('maintain-framerate')
+      // Recommended bitrate: screenshare supports high-framerate/bitrate (up to 6.0 Mbps and 60 FPS).
+      expect(encodings[0].maxBitrate).toBe(4_500_000)
+      expect(encodings[0].maxFramerate).toBe(60)
+      expect(mockSender.setParameters).toHaveBeenCalled()
+      // The first seconds hold the resolution so the live does not start
+      // blurry and climb back slowly...
+      const firstParams = mockSender.setParameters.mock.calls[0][0]
+      expect(firstParams.degradationPreference).toBe('maintain-resolution')
+
+      // ...then the stream goes back to maintain-framerate, which keeps it
+      // smooth under load (sheds pixels, never adds latency).
+      await vi.advanceTimersByTimeAsync(SCREEN_START_HOLD_MS)
+      const lastCall = mockSender.setParameters.mock.calls[mockSender.setParameters.mock.calls.length - 1]
+      expect(lastCall[0].degradationPreference).toBe('maintain-framerate')
+      expect(encodings[0].maxBitrate).toBe(4_500_000)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('should cap camera tracks at 1.2Mbps/30fps with maintain-framerate', async () => {    const fakeCamTrack = {
@@ -544,6 +559,91 @@ describe('Video Delivery & Screen Share Guarantee Tests', () => {
       if (prevWindow === undefined) delete (globalThis as any).window
       else (globalThis as any).window = prevWindow
     }
+  })
+
+  describe('preparing the calls for a live', () => {
+    let prevWindow: any
+    beforeEach(() => {
+      prevWindow = (globalThis as any).window
+      ;(globalThis as any).window = {}
+    })
+    afterEach(() => {
+      if (prevWindow === undefined) delete (globalThis as any).window
+      else (globalThis as any).window = prevWindow
+    })
+
+    const failCapture = () => {
+      // First attempt, then the retry without audio.
+      ;(navigator.mediaDevices.getDisplayMedia as any)
+        .mockImplementationOnce(async () => {
+          throw new Error('NotAllowedError')
+        })
+        .mockImplementationOnce(async () => {
+          throw new Error('NotAllowedError')
+        })
+    }
+
+    it('raises the call caps BEFORE capturing the screen, then swaps the track', async () => {
+      const order: string[] = []
+      const primeSpy = vi.spyOn(PeerManager.getInstance(), 'primeScreenShare').mockImplementation(() => {
+        order.push('prime')
+      })
+      const replaceSpy = vi.spyOn(PeerManager.getInstance(), 'replaceVideoTrack').mockImplementation(() => {
+        order.push('swap')
+      })
+      const screenVideoTrack: any = { id: 'screen-video-prime', kind: 'video', enabled: false, stop: vi.fn(), onended: null }
+      ;(navigator.mediaDevices.getDisplayMedia as any).mockImplementationOnce(async () => {
+        order.push('capture')
+        return new MockMediaStream([screenVideoTrack])
+      })
+
+      await MediaManager.getInstance().startScreenShare({ resolution: '1080p', fps: 60 })
+
+      expect(order).toEqual(['prime', 'capture', 'swap'])
+      expect(primeSpy).toHaveBeenCalledWith(5_500_000, 60)
+      expect(replaceSpy).toHaveBeenCalledWith(screenVideoTrack, true, 5_500_000, 60)
+      MediaManager.getInstance().stopScreenShare()
+    })
+
+    it('puts the camera caps back when the capture is cancelled or fails', async () => {
+      const cancelSpy = vi.spyOn(PeerManager.getInstance(), 'cancelScreenSharePrime')
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      failCapture()
+
+      const stream = await MediaManager.getInstance().startScreenShare({})
+
+      expect(stream).toBeNull()
+      expect(cancelSpy).toHaveBeenCalledTimes(1)
+      expect(activeScreenCaps()).toBeNull()
+      expect(useMediaStore.getState().isScreenSharing).toBe(false)
+    })
+
+    it('keeps the caps of a live that is still running when changing its source fails', async () => {
+      useMediaStore.setState({ isScreenSharing: true })
+      const cancelSpy = vi.spyOn(PeerManager.getInstance(), 'cancelScreenSharePrime')
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      failCapture()
+
+      const stream = await MediaManager.getInstance().startScreenShare({ resolution: '720p', fps: 30 })
+
+      expect(stream).toBeNull()
+      expect(cancelSpy).not.toHaveBeenCalled()
+      expect(activeScreenCaps()).toEqual({ maxBitrate: 2_000_000, maxFramerate: 30 })
+    })
+
+    it('puts the camera caps back when the capture has no video to send', async () => {
+      const cancelSpy = vi.spyOn(PeerManager.getInstance(), 'cancelScreenSharePrime')
+      const replaceSpy = vi.spyOn(PeerManager.getInstance(), 'replaceVideoTrack')
+      const audioOnly = new MockMediaStream([{ id: 'screen-audio-only', kind: 'audio', enabled: true, stop: vi.fn() }])
+      ;(navigator.mediaDevices.getDisplayMedia as any).mockImplementationOnce(async () => audioOnly)
+
+      await MediaManager.getInstance().startScreenShare({})
+
+      expect(replaceSpy).not.toHaveBeenCalled()
+      expect(cancelSpy).toHaveBeenCalledTimes(1)
+      expect(activeScreenCaps()).toBeNull()
+      MediaManager.getInstance().stopScreenShare()
+    })
   })
 
   it('should acquire physical camera, create a new MediaStream instance, and update peer senders when camera is toggled on', async () => {

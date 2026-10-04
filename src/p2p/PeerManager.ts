@@ -1047,6 +1047,19 @@ export class PeerManager {
   }
 
   /**
+   * A live is about to start: raise the video caps of the open calls before
+   * the screen is captured (see MediaCallHandler.primeScreenShare).
+   */
+  public primeScreenShare(maxBitrate: number, maxFramerate: number) {
+    MediaCallHandler.primeScreenShare(this.mediaCalls, maxBitrate, maxFramerate)
+  }
+
+  /** The capture was cancelled or failed: back to the camera caps. */
+  public cancelScreenSharePrime() {
+    MediaCallHandler.cancelScreenSharePrime(this.mediaCalls)
+  }
+
+  /**
    * Dynamically adjust active video encoding bitrate on all active calls
    */
   public updateScreenShareBitrate(maxBitrate: number) {
