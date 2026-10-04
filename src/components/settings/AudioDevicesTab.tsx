@@ -15,26 +15,8 @@ import { useMediaStore } from '../../store/useMediaStore'
 import { MediaManager } from '../../media/MediaManager'
 import { attachStreamToVideo } from '../../media/attachVideoElement'
 import { AudioDeviceInfo, SensitivityMode } from '../../types/audio'
-import { CustomDropdown, DropdownOption } from '../common/CustomDropdown'
-
-function toDeviceOptions(
-  devices: AudioDeviceInfo[],
-  fallbackName: string,
-  renderIcon: (className: string) => React.ReactNode
-): DropdownOption<string>[] {
-  return [
-    {
-      value: 'default',
-      label: `${fallbackName} Padrão do Sistema`,
-      icon: renderIcon('w-3.5 h-3.5 text-indigo-400'),
-    },
-    ...devices.map((d) => ({
-      value: d.deviceId,
-      label: d.label || `${fallbackName} (${d.deviceId.slice(0, 8)}...)`,
-      icon: renderIcon('w-3.5 h-3.5 text-slate-400'),
-    })),
-  ]
-}
+import { CustomDropdown } from '../common/CustomDropdown'
+import { toDeviceOptions } from './deviceOptions'
 
 interface Props {
   inputDevices: AudioDeviceInfo[]
@@ -310,10 +292,14 @@ export const AudioDevicesTab: React.FC<Props> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* Microfone */}
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-xs font-bold text-slate-200">
-            <Mic className="w-4 h-4 text-indigo-400" />
-            <span>Dispositivo de Entrada (Microfone)</span>
-          </label>
+          {/* Cabeçalhos de entrada e saída com a mesma altura: o da saída tem o botão "Testar Som",
+              mais alto que o título, e sem isso a coluna da saída ficaria mais baixa. */}
+          <div className="flex items-center justify-between h-7">
+            <label className="flex items-center gap-2 text-xs font-bold text-slate-200">
+              <Mic className="w-4 h-4 text-indigo-400" />
+              <span>Dispositivo de Entrada (Microfone)</span>
+            </label>
+          </div>
           <CustomDropdown
             value={selectedAudioInput}
             options={toDeviceOptions(inputDevices, 'Microfone', (cls) => <Mic className={cls} />)}
@@ -342,10 +328,10 @@ export const AudioDevicesTab: React.FC<Props> = ({
 
         {/* Saída de Som */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between h-7">
             <label className="flex items-center gap-2 text-xs font-bold text-slate-200">
               <Headphones className="w-4 h-4 text-indigo-400" />
-              <span>Dispositivo de Saída (Fones/Caixas)</span>
+              <span>Dispositivo de Saída</span>
             </label>
             <button
               type="button"

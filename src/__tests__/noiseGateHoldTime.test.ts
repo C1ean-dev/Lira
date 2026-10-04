@@ -2,13 +2,14 @@ import { describe, it, expect } from 'vitest'
 import { NoiseSuppressor } from '../media/NoiseSuppressor'
 import { SoftDspProcessor } from '../media/SoftDspProcessor'
 import { RnnoiseProcessor } from '../media/RnnoiseProcessor'
+import { AUTO_GATE } from '../media/autoGate'
 import { useMediaStore } from '../store/useMediaStore'
 
 describe('Noise Gate Hold Time (Hangover) & Adaptive Threshold Features', () => {
   it('NoiseSuppressor exposes a standard 220ms hold time to eliminate word clipping', () => {
     const ns = new NoiseSuppressor()
     expect(ns.getHoldTimeMs()).toBe(220)
-    expect(ns.getDynamicNoiseFloor()).toBe(0.005)
+    expect(ns.getDynamicNoiseFloor()).toBe(AUTO_GATE.INITIAL_FLOOR_RMS)
   })
 
   it('SoftDspProcessor exposes a standard 220ms hold time for natural human speech', () => {

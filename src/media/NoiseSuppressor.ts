@@ -1,4 +1,5 @@
 import { SensitivityMode } from '../types/audio'
+import { AutoGate } from './autoGate'
 
 export class NoiseSuppressor {
   private audioCtx: AudioContext | null = null
@@ -20,15 +21,14 @@ export class NoiseSuppressor {
   private sensitivityMode: SensitivityMode = 'auto'
   private manualThresholdPercent: number = 20
   private currentThreshold: number = 0.015 // Current active RMS threshold
-  private dynamicNoiseFloor: number = 0.005 // Auto tracker
+  // Auto mode: learns the room's noise floor; never opens under RMS 0.0045
+  private autoGate = new AutoGate({ minOpenRms: 0.0045, minCloseRms: 0.0045 * 0.6 })
   private isGateOpen: boolean = false
   private isSuppressionActive: boolean = true
 
-  // Hold Time & Speech Protection against continuous voice noise floor elevation
+  // Hold Time: keeps the gate open through the natural micro-pauses of speech
   private holdTimeMs: number = 220
   private lastSpeechTime: number = 0
-  private quietMs: number = 0
-  private static readonly HOLD_MS_FOR_NOISE_FLOOR_INCREASE: number = 1500
 
   constructor() {}
 
@@ -148,8 +148,8 @@ export class NoiseSuppressor {
       const maxRMS = 0.12
       this.currentThreshold = minRMS + (this.manualThresholdPercent / 100) * (maxRMS - minRMS)
     } else {
-      // Auto mode: responsive baseline for quiet microphones down to 0.0045 RMS
-      this.currentThreshold = Math.max(0.0045, this.dynamicNoiseFloor * 1.6)
+      // Auto mode: learned from the room, never under 0.0045 RMS so quiet microphones still get through
+      this.currentThreshold = this.autoGate.openLevel
     }
   }
 
@@ -175,24 +175,10 @@ export class NoiseSuppressor {
       }
       const rms = Math.sqrt(sum / buffer.length)
 
-      // Auto tracker for ambient noise floor with continuous speech protection
-      if (this.sensitivityMode === 'auto') {
-        const quietLimit = this.currentThreshold * 0.7
-        if (rms < this.dynamicNoiseFloor || this.dynamicNoiseFloor === 0) {
-          this.dynamicNoiseFloor = this.dynamicNoiseFloor * 0.95 + rms * 0.05
-          this.updateCalculatedThreshold()
-        } else if (rms < quietLimit) {
-          // In quiet periods, allow gentle upward creep only after sustained silence (>1.5s)
-          this.quietMs += 1000 / 60
-          if (this.quietMs > NoiseSuppressor.HOLD_MS_FOR_NOISE_FLOOR_INCREASE) {
-            this.dynamicNoiseFloor = this.dynamicNoiseFloor * 0.999 + rms * 0.001
-            this.updateCalculatedThreshold()
-          }
-        } else {
-          // Active speech detected: reset quiet timer so user speech does NOT raise ambient floor
-          this.quietMs = 0
-        }
-      }
+      // Ambient noise floor, with continuous speech protection. Learns in
+      // manual mode too, so switching to auto starts from the room as it is now.
+      this.autoGate.update(rms, nowMs)
+      if (this.sensitivityMode === 'auto') this.updateCalculatedThreshold()
 
       // Normalized level for UI VU Meter (0.0 to 1.0)
       const normalizedLevel = Math.min(1, rms * 6)
@@ -220,14 +206,12 @@ export class NoiseSuppressor {
               shouldOpen = this.isGateOpen
             }
           }
+        } else if (rms > this.autoGate.openLevel) {
+          shouldOpen = true
+        } else if (rms < this.autoGate.closeLevel) {
+          shouldOpen = false
         } else {
-          if (rms > this.currentThreshold) {
-            shouldOpen = true
-          } else if (rms < this.currentThreshold * 0.6) {
-            shouldOpen = false
-          } else {
-            shouldOpen = this.isGateOpen
-          }
+          shouldOpen = this.isGateOpen
         }
 
         // Hold Time tracking: keep gate open during natural micro-pauses in human speech
@@ -336,7 +320,7 @@ export class NoiseSuppressor {
     this.testGainNode = null
     this.audioCtx = null
     this.lastSpeechTime = 0
-    this.quietMs = 0
+    this.autoGate.reset()
   }
 
   public async resumeContext(): Promise<void> {
@@ -352,6 +336,6 @@ export class NoiseSuppressor {
   }
 
   public getDynamicNoiseFloor(): number {
-    return this.dynamicNoiseFloor
+    return this.autoGate.floor
   }
 }

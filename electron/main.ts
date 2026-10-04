@@ -355,17 +355,11 @@ function createWindow() {
   const xOffset = isMultiInstance && instNum > 1 ? 40 + (instNum - 1) * 70 : undefined
   const yOffset = isMultiInstance && instNum > 1 ? 40 + (instNum - 1) * 60 : undefined
 
-  const isStartHidden =
-    process.argv.includes('--hidden') ||
-    process.argv.includes('--start-hidden') ||
-    (app.getLoginItemSettings?.().wasOpenedAsHidden ?? false)
-
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 900,
     minHeight: 600,
-    show: !isStartHidden,
     ...(xOffset !== undefined ? { x: xOffset } : {}),
     ...(yOffset !== undefined ? { y: yOffset } : {}),
     title: isMultiInstance ? `Lira (Instância ${instanceId})` : 'Lira',
@@ -1458,7 +1452,6 @@ try {
 ipcMain.handle('get-app-settings', () => {
   return trayManager?.getSettings() || {
     openAtLogin: false,
-    openAsHidden: true,
     closeToTray: true,
     minimizeToTray: false,
   }
@@ -1468,7 +1461,6 @@ ipcMain.handle('set-app-settings', (_event, partial: Partial<AppSettings>) => {
   return (
     trayManager?.updateSettings(partial) || {
       openAtLogin: false,
-      openAsHidden: true,
       closeToTray: true,
       minimizeToTray: false,
     }
