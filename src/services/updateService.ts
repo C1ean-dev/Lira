@@ -6,6 +6,11 @@ export interface UpdateInfo {
   releaseNotes: string
   downloadUrl: string | null
   releaseUrl: string
+  /**
+   * True when GitHub could not be asked (offline, timeout, rate limit). The
+   * other fields then say nothing about whether an update exists.
+   */
+  checkFailed?: boolean
 }
 
 export interface UpdateProgress {
@@ -85,6 +90,7 @@ export class UpdateService {
           releaseNotes: '',
           downloadUrl: null,
           releaseUrl: `https://github.com/${GITHUB_REPO}/releases`,
+          checkFailed: true,
         }
       }
 
@@ -120,6 +126,7 @@ export class UpdateService {
         releaseNotes: '',
         downloadUrl: null,
         releaseUrl: `https://github.com/${GITHUB_REPO}/releases`,
+        checkFailed: true,
       }
     }
   }

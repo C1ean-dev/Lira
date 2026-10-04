@@ -18,6 +18,8 @@ import { useGameStore } from '../../store/useGameStore'
 import { useChatStore, getDmChannelId } from '../../store/useChatStore'
 import { FriendsPresenceService } from '../../services/friendsPresenceService'
 import { PlayerAvatar } from '../common/PlayerAvatar'
+import { StatusBadge } from '../common/StatusBadge'
+import { MoonPhaseIcon } from '../common/MoonPhaseIcon'
 
 interface Props {
   onOpenChat: (friend: FriendProfile) => void
@@ -428,20 +430,7 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                             <span className="text-xs font-bold text-slate-100 truncate">
                               {friend.name}
                             </span>
-                            <span
-                              className={`text-[9px] px-2 py-0.5 rounded-full font-bold border flex items-center gap-1 ${
-                                statusKey === 'busy'
-                                  ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
-                                  : statusKey === 'focusing'
-                                  ? 'bg-purple-500/15 text-purple-300 border-purple-500/30'
-                                  : statusKey === 'away'
-                                  ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                                  : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                              }`}
-                            >
-                              <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dotColor}`} />
-                              <span>{displayStatusText}</span>
-                            </span>
+                            <StatusBadge status={statusKey} label={displayStatusText} />
                             {unread > 0 && (
                               <span className="text-[9px] bg-rose-500 text-white font-extrabold px-2 py-0.5 rounded-full shadow-md shadow-rose-500/40 flex items-center gap-1 animate-pulse">
                                 <MessageSquare className="w-2.5 h-2.5 fill-white" />
@@ -452,7 +441,7 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
 
                           <div className="text-[11px] text-slate-300 truncate mt-0.5 flex items-center gap-1.5">
                             <span className="font-medium flex items-center gap-1 text-slate-200">
-                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusMeta.dotColor}`} />
+                              <MoonPhaseIcon status={statusKey} className="w-3.5 h-3.5" />
                               <span className="truncate">{displayStatusText}</span>
                             </span>
                             {friend.inRoom && friend.roomName ? (

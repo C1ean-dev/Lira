@@ -9,6 +9,8 @@ import { spawn, exec } from 'child_process'
 import { release as getOsRelease } from 'os'
 import { setupSingleInstanceLock } from './singleInstance'
 import { TrayManager, AppSettings } from './trayManager'
+import { createLogWriter, installConsoleCapture, installProcessErrorCapture } from './logWriter'
+import { sanitizeRecords } from '../src/utils/logFormat'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -273,6 +275,21 @@ async function startProcessAudioCapture(sourceId: string): Promise<ProcessAudioC
     }
   })
 }
+
+// App log: console output of this process and of the renderer goes to
+// logs/lira-<day>.log; errors (also uncaught ones) additionally go to
+// logs/lira-errors-<day>.log. The folder is resolved on each write, after
+// userData has its final location.
+const appLog = createLogWriter({
+  dir: () => getLogsDirectory(),
+  onFailure: (error) => process.stderr.write(`[Log] could not write log file: ${String(error)}
+`),
+})
+installConsoleCapture(console as any, appLog, 'main')
+installProcessErrorCapture(process, appLog, 'main')
+app.on('child-process-gone', (_event, details) => {
+  console.error(`[Electron] Child process gone: ${details.type} (${details.reason}, exitCode: ${details.exitCode})`)
+})
 
 // Multi-instance testing support (--instance=2 or env INSTANCE=2 or --multi)
 const instanceArg = process.argv.find((a) => a.startsWith('--instance='))?.split('=')[1]
@@ -612,6 +629,8 @@ ipcMain.handle('check-update', async () => {
         releaseNotes: '',
         downloadUrl: null,
         releaseUrl: `https://github.com/${GITHUB_REPO}/releases`,
+        // Not "no update": the renderer keeps what it knew and retries soon.
+        checkFailed: true,
       }
     }
 
@@ -650,6 +669,7 @@ ipcMain.handle('check-update', async () => {
       releaseNotes: '',
       downloadUrl: null,
       releaseUrl: `https://github.com/${GITHUB_REPO}/releases`,
+      checkFailed: true,
     }
   }
 })
@@ -1048,6 +1068,12 @@ ipcMain.handle('diagnostic-log-batch', async (_event, entries: unknown[]) => {
     console.error('[DiagLog] append failed:', err)
     return { ok: false, path: null as string | null }
   }
+})
+
+// Renderer console output, uncaught errors and rejections, in batches.
+ipcMain.handle('renderer-log-batch', (_event, records: unknown) => {
+  appLog.writeBatch(sanitizeRecords(records))
+  return { ok: true }
 })
 
 ipcMain.handle('open-logs-folder', async () => {

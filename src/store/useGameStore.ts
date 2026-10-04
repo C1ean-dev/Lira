@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { Player, PresenceStatus, PresenceInfo, sanitizePresence, STATUS_META, ReactionItem, AvatarConfig, UserRole, PlayerPermissions, ConnectionStatus, RoomKnockRequest, KnockStatus, FriendProfile } from '../types/game'
 import { DEFAULT_AVATAR } from '../engine/Constants'
 import { PublicRoomsService } from '../services/publicRoomsService'
+import { generateUserId, isUserId, getPlayerUserId, getFriendUserId, findFriendKey } from '../utils/userId'
 
 const PROFILE_STORAGE_KEY = 'lira_user_profile'
 const LEGACY_PROFILE_STORAGE_KEY = 'gather_v2_user_profile'
@@ -93,6 +94,14 @@ const syncPublicRoomRegistration = (roomId: string | null, isPublic: boolean, ro
 }
 
 const saved = loadSavedProfile() || {}
+
+// The profile id is the user's stable identity: friendships, direct messages
+// and presence are addressed to it, so it is generated once and persisted.
+// (It used to be regenerated on every launch, orphaning every saved friend.)
+const savedUserId = isUserId(saved.id) ? saved.id : generateUserId()
+if (saved.id !== savedUserId) {
+  saveProfile({ id: savedUserId })
+}
 
 interface RoomSessionOptions {
   roomName?: string
@@ -314,7 +323,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }),
   addFriend: (profile) =>
     set((state) => {
-      const nextFriends = state.friends.includes(profile.id)
+      let nextFriends = state.friends.includes(profile.id)
         ? state.friends
         : [...state.friends, profile.id]
       const nextProfiles = {
@@ -324,6 +333,35 @@ export const useGameStore = create<GameStore>((set, get) => ({
           ...profile,
           lastSeen: profile.lastSeen || Date.now(),
         },
+      }
+
+      // A friendship confirmed under a stable user id supersedes older entries
+      // for the same person: ones already resolved to that user, and ones saved
+      // under a temporary connection id (unreachable, matched by name).
+      const userId = getFriendUserId(profile)
+      if (userId) {
+        const nameLower = (profile.name || '').trim().toLowerCase()
+        const superseded = nextFriends.filter((key) => {
+          if (key === profile.id) return false
+          const other = state.friendProfiles[key]
+          const otherUserId = getFriendUserId(other || { id: key })
+          if (otherUserId) return otherUserId === userId
+          return !!nameLower && (other?.name || '').trim().toLowerCase() === nameLower
+        })
+        if (superseded.length > 0) {
+          for (const key of superseded) {
+            const old = nextProfiles[key]
+            if (old) {
+              nextProfiles[profile.id] = {
+                ...nextProfiles[profile.id],
+                profilePicture: nextProfiles[profile.id].profilePicture ?? old.profilePicture,
+                avatar: nextProfiles[profile.id].avatar ?? old.avatar,
+              }
+            }
+            delete nextProfiles[key]
+          }
+          nextFriends = nextFriends.filter((key) => !superseded.includes(key))
+        }
       }
       try {
         const storage = getStorage()
@@ -439,7 +477,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     removeRemotePlayer(targetId)
   },
   localPlayer: {
-    id: saved.id || 'local-' + Math.random().toString(36).substring(2, 8),
+    id: savedUserId,
+    gameId: savedUserId,
     name: saved.name || 'Player',
     x: 18,
     y: 11,
@@ -578,9 +617,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setRemotePlayer: (player) =>
     set((state) => {
       const nextRemote = { ...state.remotePlayers, [player.id]: player }
-      if (state.friendProfiles[player.id] || (player.gameId && state.friendProfiles[player.gameId])) {
-        const key = state.friendProfiles[player.id] ? player.id : player.gameId!
-        const existingFp = state.friendProfiles[key]
+      const key = findFriendKey(state.friends, state.friendProfiles, [player.id, player.gameId])
+      const existingFp = key ? state.friendProfiles[key] : undefined
+      if (key && existingFp) {
         const nextProfiles = {
           ...state.friendProfiles,
           [key]: {
@@ -820,3 +859,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       },
     })),
 }))
+
+/** Stable identity of the local user, regardless of the current connection id. */
+export const getLocalUserId = (): string => getPlayerUserId(useGameStore.getState().localPlayer)

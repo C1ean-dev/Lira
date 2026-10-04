@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { ChatMessage, FriendRequestData } from '../../types/chat'
 import { useGameStore } from '../../store/useGameStore'
+import { isSameParticipant } from '../../utils/userId'
 
 interface Props {
   message: ChatMessage
@@ -31,24 +32,14 @@ export const FriendRequestCard: React.FC<Props> = ({
   if (!req) return null
 
   // 1. Is the local player the original sender of this request?
-  const isSender =
-    req.fromUserId === localPlayer.id ||
-    (localPlayer.gameId && req.fromUserId === localPlayer.gameId) ||
-    (localPlayer.name && req.fromUserName.toLowerCase() === localPlayer.name.toLowerCase())
+  const isSender = isSameParticipant(localPlayer, req.fromUserId, req.fromUserName)
 
-  // 2. Are they already friends in useGameStore?
-  const isAlreadyFriend =
-    friends.includes(req.fromUserId) ||
-    (req.toUserId && friends.includes(req.toUserId)) ||
-    Object.values(friendProfiles).some((p) => {
-      const pName = (p.name || '').toLowerCase()
-      const reqFromName = (req.fromUserName || '').toLowerCase()
-      const reqToName = (req.toUserName || '').toLowerCase()
-      return (
-        (pName && (pName === reqFromName || pName === reqToName)) ||
-        (p.actualUserId && (p.actualUserId === req.fromUserId || p.actualUserId === req.toUserId))
-      )
-    })
+  // 2. Is the other person already a friend in useGameStore?
+  const peerId = isSender ? req.toUserId : req.fromUserId
+  const peerName = isSender ? req.toUserName : req.fromUserName
+  const isAlreadyFriend = friends.some((key) =>
+    isSameParticipant(friendProfiles[key] || { id: key }, peerId, peerName)
+  )
 
   // 3. Effective status: if already in friends list, never show pending buttons!
   const effectiveStatus = isAlreadyFriend ? 'accepted' : req.status

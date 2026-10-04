@@ -20,8 +20,9 @@ import { SavedSpacesTab } from './lobby/SavedSpacesTab'
 import { FriendsTab } from './lobby/FriendsTab'
 import { LobbyChatModal } from './lobby/LobbyChatModal'
 import { LiraLogo } from './LiraLogo'
-import { useUpdateStore } from '../store/useUpdateStore'
+import { useUpdateStore, versionBadgeLabel } from '../store/useUpdateStore'
 import { CURRENT_APP_VERSION } from '../services/updateService'
+import { isSameParticipant } from '../utils/userId'
 
 interface Props {
   onJoined: () => void
@@ -53,6 +54,8 @@ export const LobbyModal: React.FC<Props> = ({
 }) => {
   const updateInfo = useUpdateStore((s) => s.updateInfo)
   const hasUpdate = hasUpdateProp ?? !!updateInfo?.hasUpdate
+  const manualCheck = useUpdateStore((s) => s.manualCheck)
+  const checkNow = useUpdateStore((s) => s.checkNow)
   const rawVersion = updateInfo?.currentVersion || CURRENT_APP_VERSION
   const currentVersion = rawVersion.startsWith('v') ? rawVersion : `v${rawVersion}`
 
@@ -118,23 +121,12 @@ export const LobbyModal: React.FC<Props> = ({
   useEffect(() => {
     if (messages.length > prevMessagesCountRef.current) {
       const newest = messages[messages.length - 1]
-      const localId = localPlayer.id
-      const localNameLower = (localPlayer.name || '').trim().toLowerCase()
-      const isFromMe =
-        newest.senderId === localId ||
-        (localPlayer.gameId && newest.senderId === localPlayer.gameId) ||
-        (localNameLower && (newest.senderName || '').trim().toLowerCase() === localNameLower)
+      const isFromMe = isSameParticipant(localPlayer, newest.senderId, newest.senderName)
 
       if (!isFromMe && (newest.channelId?.startsWith('dm-') || newest.recipientId)) {
-        const senderNameLower = (newest.senderName || '').trim().toLowerCase()
-        const matchedFriendId = friends.find((fid) => {
-          const fp = friendProfiles[fid]
-          return (
-            fid === newest.senderId ||
-            (fp?.actualUserId && fp.actualUserId === newest.senderId) ||
-            (fp?.name && fp.name.trim().toLowerCase() === senderNameLower)
-          )
-        })
+        const matchedFriendId = friends.find((fid) =>
+          isSameParticipant(friendProfiles[fid] || { id: fid }, newest.senderId, newest.senderName)
+        )
 
         if (matchedFriendId) {
           const profile = friendProfiles[matchedFriendId] || {
@@ -606,13 +598,20 @@ export const LobbyModal: React.FC<Props> = ({
               )}
             </button>
           ) : (
-            <div
-              className="absolute top-4 right-4 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/20 text-white/90 text-xs font-bold shadow-sm transition-all"
-              title={`Versão atual do Lira: ${currentVersion}`}
+            <button
+              type="button"
+              onClick={() => checkNow()}
+              disabled={manualCheck === 'checking'}
+              className="absolute top-4 right-4 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/20 text-white/90 text-xs font-bold shadow-sm transition-all cursor-pointer disabled:cursor-wait"
+              title={`Versão atual do Lira: ${currentVersion}. Clique para verificar atualizações.`}
             >
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span className="font-mono">{currentVersion}</span>
-            </div>
+              {manualCheck === 'checking' ? (
+                <RefreshCw className="w-3 h-3 animate-spin" />
+              ) : (
+                <span className={`w-2 h-2 rounded-full ${manualCheck === 'failed' ? 'bg-rose-400' : 'bg-emerald-400'}`} />
+              )}
+              <span className="font-mono">{versionBadgeLabel(manualCheck, currentVersion)}</span>
+            </button>
           )}
           <div className="relative z-10 flex flex-col items-center">
             <div className="mb-2">

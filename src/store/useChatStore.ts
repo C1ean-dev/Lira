@@ -1,14 +1,27 @@
 import { create } from 'zustand'
 import { Channel, ChatMessage, FriendRequestData, MessageDeliveryStatus } from '../types/chat'
-import { useGameStore } from './useGameStore'
+import { useGameStore, getLocalUserId } from './useGameStore'
 import { playMessageNotificationChime } from '../utils/audioChime'
 import { FriendsPresenceService } from '../services/friendsPresenceService'
 import { PeerManager } from '../p2p/PeerManager'
 import { sendNotification } from '../services/notificationService'
+import { isUserId, isSameParticipant } from '../utils/userId'
 
 export const getDmChannelId = (userId1: string, userId2: string): string => {
   const sorted = [userId1, userId2].sort()
   return `dm-${sorted[0]}-${sorted[1]}`
+}
+
+/**
+ * Channel id of the local user's conversation with `targetId`. When the other
+ * end is a stable user id ours is used too, so the same conversation is found
+ * from the home screen and from inside any room (where `localPlayer.id` is a
+ * temporary connection id).
+ */
+export const getLocalDmChannelId = (targetId: string): string => {
+  const local = useGameStore.getState().localPlayer
+  const localId = isUserId(targetId) ? getLocalUserId() : local?.id || 'local'
+  return getDmChannelId(localId, targetId)
 }
 
 export const STATUS_RANK: Record<MessageDeliveryStatus, number> = {
@@ -181,9 +194,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   setChatOpen: (open) => set({ isChatOpen: open }),
 
   openDirectMessage: (targetUser) => {
-    const local = useGameStore.getState().localPlayer
-    const localId = local?.id || 'local'
-    const channelId = getDmChannelId(localId, targetUser.id)
+    const channelId = getLocalDmChannelId(targetUser.id)
 
     set((state) => {
       const existing = state.channels.find(
@@ -222,6 +233,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         isChatOpen: true,
       }
     })
+
+    // Opening a conversation reads it, same as picking it in the channel list.
+    get().markChannelAsRead(get().activeChannelId)
   },
 
   addMessage: (message) =>
@@ -239,6 +253,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       // Find if we already have a channel for this DM (by channelId, recipientId, or participant name)
       const otherParticipantId = isFromMe ? message.recipientId : message.senderId
       const otherParticipantName = isFromMe ? message.recipientName : message.senderName
+      // A name only ties a message to a conversation when neither end has a
+      // stable user id; otherwise anyone using a friend's name could post into it.
+      const canMatchByName = !isUserId(otherParticipantId)
 
       const channelIndex = state.channels.findIndex(
         (c) =>
@@ -246,7 +263,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           (isDm &&
             c.type === 'dm' &&
             ((otherParticipantId && (c.recipientId === otherParticipantId || c.id.includes(otherParticipantId))) ||
-             (otherParticipantName && c.name.toLowerCase() === otherParticipantName.toLowerCase())))
+             (canMatchByName &&
+               !isUserId(c.recipientId) &&
+               otherParticipantName &&
+               c.name.toLowerCase() === otherParticipantName.toLowerCase())))
       )
 
       if (channelIndex !== -1) {
@@ -280,31 +300,39 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         })
       }
 
-      const normalizedMessage: ChatMessage = {
+      let normalizedMessage: ChatMessage = {
         ...message,
         channelId: targetChannelId,
         status: message.status || (isFromMe ? 'sent' : isCurrent ? 'read' : 'delivered'),
       }
 
       let nextMessages = [...state.messages]
-      const incomingReq = normalizedMessage.friendRequest
+      let incomingReq = normalizedMessage.friendRequest
 
       if (incomingReq) {
         const gameStore = useGameStore.getState()
-        const requesterId = incomingReq.fromUserId
-        const targetUserId = incomingReq.toUserId
-        const isAlreadyFriend =
-          gameStore.friends.includes(requesterId) ||
-          (targetUserId && gameStore.friends.includes(targetUserId)) ||
-          Object.values(gameStore.friendProfiles).some(
-            (p) =>
-              (p.name && (p.name.toLowerCase() === incomingReq.fromUserName.toLowerCase() || p.name.toLowerCase() === incomingReq.toUserName.toLowerCase())) ||
-              (p.actualUserId && (p.actualUserId === requesterId || p.actualUserId === targetUserId))
-          )
+        const amISender =
+          incomingReq.fromUserId === localId ||
+          (local?.gameId && incomingReq.fromUserId === local.gameId)
+        const peerId = amISender ? incomingReq.toUserId : incomingReq.fromUserId
+        const peerName = amISender ? incomingReq.toUserName : incomingReq.fromUserName
+        // A stable user id identifies the other person exactly; a name is only
+        // a fallback for people known by a connection id or a typed nickname.
+        const isAlreadyFriend = gameStore.friends.some((key) =>
+          isSameParticipant(gameStore.friendProfiles[key] || { id: key }, peerId, peerName)
+        )
+
+        // Only the person a request was sent TO can accept it: one that arrives
+        // already accepted by its own sender is shown as pending instead.
+        if (incomingReq.status === 'accepted' && !amISender && !isAlreadyFriend) {
+          incomingReq = { ...incomingReq, status: 'pending' }
+          normalizedMessage = { ...normalizedMessage, friendRequest: incomingReq }
+        }
 
         // 1. If we already have a message matching this requestId, update its status
+        const requestId = incomingReq.requestId
         const existingReqIndex = nextMessages.findIndex(
-          (m) => m.friendRequest?.requestId === incomingReq.requestId
+          (m) => m.friendRequest?.requestId === requestId
         )
         if (existingReqIndex !== -1) {
           const currentStatus = nextMessages[existingReqIndex].friendRequest?.status
@@ -329,12 +357,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         // 2. Mutual friendship trigger on accepted status
         const effectiveStatus = isAlreadyFriend ? 'accepted' : incomingReq.status
         if (effectiveStatus === 'accepted') {
-          const amISender =
-            incomingReq.fromUserId === localId ||
-            (local?.gameId && incomingReq.fromUserId === local.gameId)
-          const peerId = amISender ? incomingReq.toUserId : incomingReq.fromUserId
-          const peerName = amISender ? incomingReq.toUserName : incomingReq.fromUserName
-
           if (peerId && peerName) {
             useGameStore.getState().addFriend({
               id: peerId,
@@ -374,7 +396,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         const ackStatus: MessageDeliveryStatus = isCurrent ? 'read' : 'delivered'
         try {
           FriendsPresenceService.getInstance().sendMessageStatusReceipt({
-            senderId: localId,
+            senderId: getLocalUserId(),
             senderName: local.name,
             recipientId: message.senderId,
             recipientName: message.senderName,
@@ -572,8 +594,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   getUnreadCountForFriend: (friend) => {
     const state = get()
     const local = useGameStore.getState().localPlayer
-    const localId = local?.id || 'local'
-    const localNameLower = (local?.name || '').trim().toLowerCase()
     const friendNameLower = friend.name.trim().toLowerCase()
 
     // 1. Get highest last read timestamp for this friend across any known identifiers
@@ -586,28 +606,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // 2. Count messages from this friend newer than lastRead
     let unreadFromMessages = 0
     state.messages.forEach((m) => {
-      const senderNameLower = (m.senderName || '').trim().toLowerCase()
-      const isFromLocal =
-        m.senderId === localId ||
-        (local?.gameId && m.senderId === local.gameId) ||
-        (localNameLower && senderNameLower === localNameLower)
+      if (isSameParticipant(local, m.senderId, m.senderName)) return
 
-      if (isFromLocal) return
-
-      const isFromFriend =
-        m.senderId === friend.id ||
-        (friend.actualUserId && m.senderId === friend.actualUserId) ||
-        (senderNameLower && senderNameLower === friendNameLower)
-
-      if (isFromFriend && m.timestamp > lastRead) {
+      if (isSameParticipant(friend, m.senderId, m.senderName) && m.timestamp > lastRead) {
         unreadFromMessages++
       }
     })
 
     // 3. Also check matching channels unreadCount as a fallback
     let unreadFromChannels = 0
-    const targetChannelId = getDmChannelId(localId, friend.id)
-    const actualChannelId = friend.actualUserId ? getDmChannelId(localId, friend.actualUserId) : null
+    const targetChannelId = getLocalDmChannelId(friend.id)
+    const actualChannelId = friend.actualUserId ? getLocalDmChannelId(friend.actualUserId) : null
 
     state.channels.forEach((c) => {
       if (c.type !== 'dm') return
@@ -616,7 +625,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         (actualChannelId && c.id === actualChannelId) ||
         c.recipientId === friend.id ||
         (friend.actualUserId && c.recipientId === friend.actualUserId) ||
-        (c.name && c.name.toLowerCase() === friendNameLower) ||
+        (!isUserId(c.recipientId) && c.name && c.name.toLowerCase() === friendNameLower) ||
         (c.id && c.id.includes(friend.id)) ||
         (friend.actualUserId && c.id && c.id.includes(friend.actualUserId))
 
@@ -648,7 +657,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           return (
             c.recipientId === fid ||
             (fp?.actualUserId && c.recipientId === fp.actualUserId) ||
-            (fp?.name && c.name.toLowerCase() === fp.name.toLowerCase())
+            (!isUserId(c.recipientId) && fp?.name && c.name.toLowerCase() === fp.name.toLowerCase())
           )
         })
         if (!isFriendChannel) {
@@ -662,20 +671,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   getLastMessageWithFriend: (friend) => {
     const state = get()
-    const friendNameLower = friend.name.trim().toLowerCase()
 
     for (let i = state.messages.length - 1; i >= 0; i--) {
       const m = state.messages[i]
-      const senderNameLower = (m.senderName || '').trim().toLowerCase()
-      const recipientNameLower = (m.recipientName || '').trim().toLowerCase()
 
       const isMatch =
-        m.senderId === friend.id ||
-        (friend.actualUserId && m.senderId === friend.actualUserId) ||
-        m.recipientId === friend.id ||
-        (friend.actualUserId && m.recipientId === friend.actualUserId) ||
-        (senderNameLower && senderNameLower === friendNameLower) ||
-        (recipientNameLower && recipientNameLower === friendNameLower)
+        isSameParticipant(friend, m.senderId, m.senderName) ||
+        isSameParticipant(friend, m.recipientId, m.recipientName)
 
       if (isMatch) {
         return m
@@ -703,11 +705,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   sendFriendRequest: (target) => {
     const state = get()
     const local = useGameStore.getState().localPlayer
-    const localId = local?.id || 'local'
+    // The stable user id: the friendship must outlive this room connection.
+    const localId = getLocalUserId()
     const targetName = target.name.trim()
     const targetId = target.id || `friend-${targetName.toLowerCase().replace(/\s+/g, '-')}`
 
-    const channelId = getDmChannelId(localId, targetId)
+    const channelId = getLocalDmChannelId(targetId)
     const requestId = `freq-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`
 
     const friendRequest: FriendRequestData = {

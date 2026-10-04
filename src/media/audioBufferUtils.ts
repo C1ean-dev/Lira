@@ -1,6 +1,8 @@
 /**
  * Utilities for recording, processing, and encoding AudioBuffers to WAV.
  */
+import { RNNOISE_PRE_EQ } from './RnnoiseProcessor'
+import { denoiseSamples, gateDenoisedSamples } from './rnnoiseOffline'
 
 function writeString(view: DataView, offset: number, str: string) {
   for (let i = 0; i < str.length; i++) {
@@ -109,9 +111,56 @@ export function extractWaveformData(buffer: AudioBuffer, points: number = 75): n
   })
 }
 
+type OfflineAudioContextClass = new (
+  channels: number,
+  length: number,
+  sampleRate: number
+) => OfflineAudioContext
+
+/**
+ * The RNNoise track of the comparison, made the way the live engine makes
+ * it: pre-filter, the real network, then the gate. No compressor — the live
+ * RNNoise chain has none.
+ */
+async function renderRnnoisePreview(
+  rawBuffer: AudioBuffer,
+  sensitivityPercent: number,
+  OfflineContextClass: OfflineAudioContextClass
+): Promise<AudioBuffer> {
+  const offlineCtx = new OfflineContextClass(1, rawBuffer.length, rawBuffer.sampleRate)
+  const source = offlineCtx.createBufferSource()
+  source.buffer = rawBuffer
+
+  const hp = offlineCtx.createBiquadFilter()
+  hp.type = 'highpass'
+  hp.frequency.setValueAtTime(RNNOISE_PRE_EQ.highpassHz, 0)
+  hp.Q.setValueAtTime(RNNOISE_PRE_EQ.highpassQ, 0)
+
+  const shelf = offlineCtx.createBiquadFilter()
+  shelf.type = 'highshelf'
+  shelf.frequency.setValueAtTime(RNNOISE_PRE_EQ.shelfHz, 0)
+  shelf.gain.setValueAtTime(RNNOISE_PRE_EQ.shelfGainDb, 0)
+
+  source.connect(hp)
+  hp.connect(shelf)
+  shelf.connect(offlineCtx.destination)
+  source.start(0)
+
+  const rendered = await offlineCtx.startRendering()
+  const channel = rendered.getChannelData(0)
+  const denoised = await denoiseSamples(channel)
+  channel.set(gateDenoisedSamples(denoised, rendered.sampleRate, sensitivityPercent))
+  return rendered
+}
+
 /**
  * Processes a raw audio buffer offline using the DSP / Noise Gate parameters
  * corresponding to the recommended engine and sensitivity threshold.
+ *
+ * The classic and soft tracks are rendered with the same kind of filters,
+ * gate and compressor the live engines use. The RNNoise track goes through
+ * the real network; the filter-only approximation below is kept for when
+ * that is not possible.
  */
 export async function processAudioBufferOffline(
   rawBuffer: AudioBuffer,
@@ -129,6 +178,17 @@ export async function processAudioBufferOffline(
 
   const sampleRate = rawBuffer.sampleRate
   const length = rawBuffer.length
+
+  if (recommendedMode === 'rnnoise') {
+    try {
+      // The network only works at 48 kHz (the calibration records at it).
+      if (sampleRate !== 48000) throw new Error(`recording is at ${sampleRate} Hz`)
+      return await renderRnnoisePreview(rawBuffer, sensitivityPercent, OfflineContextClass)
+    } catch (err) {
+      console.warn('[audio] RNNoise preview unavailable, using the approximation:', err)
+    }
+  }
+
   const offlineCtx = new OfflineContextClass(1, length, sampleRate)
 
   const source = offlineCtx.createBufferSource()
