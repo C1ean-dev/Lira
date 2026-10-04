@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useMediaStore } from '../store/useMediaStore'
 import { diagLog } from '../utils/diagnosticLogger'
+import { AutoGate } from './autoGate'
 // @jitsi/rnnoise-wasm ships two builds: dist/rnnoise.wasm is RNNoise 0.1 and
 // dist/rnnoise-sync.js is RNNoise 0.2, with its binary embedded in the
 // Emscripten glue as base64. We use the 0.2 one. ?raw keeps it out of the
@@ -9,8 +10,10 @@ import rnnoiseSyncSrc from '@jitsi/rnnoise-wasm/dist/rnnoise-sync.js?raw'
 import workletSrc from './rnnoiseWorkletSrc.js?raw'
 
 // Auto-mode gate, on the VU meter's scale (level = RMS of the denoised
-// signal * 6). The gate opens above AUTO_OPEN_LEVEL and only closes again
-// below AUTO_CLOSE_LEVEL; the neural VAD lets quieter speech through.
+// signal * 6). The gate opens above the level the AutoGate derives from the
+// room's noise floor and only closes again below its close level; the neural
+// VAD lets quieter speech through. In a quiet room the floor is tiny and the
+// levels stay at these minimums, which are what auto mode always used.
 const AUTO_OPEN_LEVEL = 0.025 // RMS ~0.004
 const AUTO_CLOSE_LEVEL = 0.012
 const AUTO_SOFT_SPEECH_LEVEL = 0.015
@@ -176,6 +179,10 @@ export class RnnoiseProcessor {
   private isGateOpen = true
   private sensitivityMode: 'auto' | 'manual' = 'auto'
   private manualThresholdPercent = 20
+  private autoGate = new AutoGate({
+    minOpenRms: AUTO_OPEN_LEVEL / 6,
+    minCloseRms: AUTO_CLOSE_LEVEL / 6,
+  })
 
   // Hold Time
   private holdTimeMs: number = RNNOISE_GATE.holdMs
@@ -402,6 +409,8 @@ export class RnnoiseProcessor {
               outputRms: data.outputRms,
               attenuationDb: data.attenuationDb,
               sampleRate: this.audioCtx?.sampleRate,
+              gateFloorRms: Number(this.autoGate.floor.toFixed(5)),
+              gateOpenRms: Number(this.autoGate.openLevel.toFixed(5)),
             })
           }
         }
@@ -503,6 +512,12 @@ export class RnnoiseProcessor {
       const rms = Math.sqrt(sum / buffer.length)
       const level = Math.min(1, rms * 6)
 
+      // Learns the room in manual mode too, so switching to auto starts from
+      // the room as it is now. A voice the neural detector hears is not noise.
+      this.autoGate.update(rms, nowMs, this.workletReady && this.lastVad >= VAD_SOFT_SPEECH)
+      const autoOpenLevel = this.autoGate.openLevel * 6
+      const autoCloseLevel = this.autoGate.closeLevel * 6
+
       let shouldOpen = false
       if (this.sensitivityMode === 'manual') {
         if (this.manualThresholdPercent >= 100) {
@@ -529,14 +544,14 @@ export class RnnoiseProcessor {
           // Neural VAD is operational:
           // 1. Definite speech: open immediately
           // 2. Soft speech with slight energy: open
-          // 3. Clear audio level above the quiet ambient floor: open
+          // 3. Audio level above what the room's noise floor explains: open
           if (
             speechProb >= VAD_SPEECH ||
             (speechProb >= VAD_SOFT_SPEECH && level > AUTO_SOFT_SPEECH_LEVEL) ||
-            level > AUTO_OPEN_LEVEL
+            level > autoOpenLevel
           ) {
             shouldOpen = true
-          } else if (speechProb < VAD_SILENCE && level < AUTO_CLOSE_LEVEL) {
+          } else if (speechProb < VAD_SILENCE && level < autoCloseLevel) {
             // True ambient silence: allow gate to close
             shouldOpen = false
           } else {
@@ -545,9 +560,9 @@ export class RnnoiseProcessor {
           }
         } else {
           // Fallback before worklet is ready: rely on volume level
-          if (level > AUTO_OPEN_LEVEL) {
+          if (level > autoOpenLevel) {
             shouldOpen = true
-          } else if (level < AUTO_CLOSE_LEVEL) {
+          } else if (level < autoCloseLevel) {
             shouldOpen = false
           } else {
             shouldOpen = this.isGateOpen
@@ -580,12 +595,9 @@ export class RnnoiseProcessor {
       }
 
       // Threshold marker for the VU meter (0 - 100%): the level that opens
-      // the gate. In auto mode that is a fixed level of the denoised signal,
-      // not something tracked from the room noise.
+      // the gate. In auto mode it moves with the room's noise floor.
       const dynamicThresholdPercent =
-        this.sensitivityMode === 'manual'
-          ? this.manualThresholdPercent
-          : AUTO_OPEN_LEVEL * 100
+        this.sensitivityMode === 'manual' ? this.manualThresholdPercent : autoOpenLevel * 100
 
       if (this.onLevelCallback) {
         this.onLevelCallback(level, this.isGateOpen, rms, dynamicThresholdPercent)
@@ -644,8 +656,15 @@ export class RnnoiseProcessor {
     this.testGainNode.gain.setTargetAtTime(enabled ? 1.0 : 0.0, now, 0.05)
   }
 
+  /** RMS level that opens the gate, as in the other engines. */
   public getCurrentThreshold(): number {
-    // RNNoise has no RMS threshold — expose the VAD probability for the UI.
+    return this.sensitivityMode === 'manual'
+      ? this.manualThresholdPercent / 100 / 6
+      : this.autoGate.openLevel
+  }
+
+  /** Last speech probability reported by the RNNoise VAD (0 - 1). */
+  public getVadProbability(): number {
     return this.lastVad
   }
 
@@ -709,6 +728,7 @@ export class RnnoiseProcessor {
     this.lastVad = 0
     this.lastMetricsLogAt = 0
     this.lastSpeechTime = 0
+    this.autoGate.reset()
   }
 
   public async resumeContext(): Promise<void> {
