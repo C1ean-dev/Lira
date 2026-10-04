@@ -6,6 +6,7 @@ import { NetworkSignalIcon } from '../NetworkSignalIcon'
 import { attachStreamToVideo } from '../../media/attachVideoElement'
 import { AvatarConfig } from '../../types/game'
 import { PlayerAvatar } from '../common/PlayerAvatar'
+import { RemoteAudio } from '../common/RemoteAudio'
 
 export interface ParticipantData {
   id: string
@@ -73,35 +74,35 @@ export const GridParticipantTile: React.FC<Props> = ({
 
   const isEffectivelyMuted = Boolean(user.isLocal || isDeafened || isSilenced || rawVolume === 0)
 
-  // Apply viewer's volume preference & audio output sink
-  useEffect(() => {
-    if (videoRef.current && !user.isLocal) {
-      const effectiveVol = isEffectivelyMuted
-        ? 0
-        : Math.max(0, Math.min(1, (outputVolume / 100) * (rawVolume / 100)))
-      videoRef.current.volume = effectiveVol
-      videoRef.current.muted = isEffectivelyMuted
-      if (typeof (videoRef.current as any).setSinkId === 'function' && selectedAudioOutput) {
-        ;(videoRef.current as any)
-          .setSinkId(selectedAudioOutput === 'default' ? '' : selectedAudioOutput)
-          .catch(() => {})
-      }
-    }
-  }, [rawVolume, outputVolume, selectedAudioOutput, user.isLocal, isEffectivelyMuted])
-
   useEffect(() => {
     const video = videoRef.current
     if (!video || !activeStream) return
 
-    video.muted = isEffectivelyMuted
+    // Picture only. The sound comes from <RemoteAudio>: a <video> stays silent
+    // until its video track delivers a frame, which a peer with the camera
+    // off may never send.
+    video.muted = true
     return attachStreamToVideo(video, activeStream, {
       tile: 'grid',
       peer: user.id,
       isLocal: !!user.isLocal,
-      muted: isEffectivelyMuted,
+      muted: true,
       isLive,
     })
-  }, [activeStream, isLive, user.isLocal, isEffectivelyMuted])
+  }, [activeStream, isLive, user.isLocal])
+
+  // Sound of a remote participant, with the viewer's volume and output device.
+  const remoteAudio =
+    !user.isLocal && activeStream ? (
+      <RemoteAudio
+        stream={activeStream}
+        tile="grid-audio"
+        peer={user.id}
+        muted={isEffectivelyMuted}
+        volume={(outputVolume / 100) * (rawVolume / 100)}
+        sinkId={selectedAudioOutput}
+      />
+    ) : null
 
   const hasLiveVideoTrack = useMemo(() => {
     if (!activeStream) return false
@@ -142,7 +143,7 @@ export const GridParticipantTile: React.FC<Props> = ({
             ref={videoRef}
             autoPlay
             playsInline
-            muted={user.isLocal}
+            muted
             onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
             onCanPlay={() => videoRef.current?.play().catch(() => {})}
             className="w-full h-full object-cover bg-black"
@@ -153,7 +154,7 @@ export const GridParticipantTile: React.FC<Props> = ({
               ref={videoRef}
               autoPlay
               playsInline
-              muted={user.isLocal}
+              muted
               onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
               onCanPlay={() => videoRef.current?.play().catch(() => {})}
               className={`w-full h-full object-cover ${shouldShowVideo ? 'block' : 'hidden'} ${
@@ -171,6 +172,8 @@ export const GridParticipantTile: React.FC<Props> = ({
             )}
           </>
         )}
+
+        {remoteAudio}
 
         {/* Live Badge if sharing in sidebar */}
         {isLive && (
@@ -267,7 +270,7 @@ export const GridParticipantTile: React.FC<Props> = ({
           ref={videoRef}
           autoPlay
           playsInline
-          muted={user.isLocal}
+          muted
           onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
           onCanPlay={() => videoRef.current?.play().catch(() => {})}
           className="w-full h-full object-contain bg-black"
@@ -279,7 +282,7 @@ export const GridParticipantTile: React.FC<Props> = ({
             ref={videoRef}
             autoPlay
             playsInline
-            muted={user.isLocal}
+            muted
             onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
             onCanPlay={() => videoRef.current?.play().catch(() => {})}
             className={`w-full h-full object-cover ${shouldShowVideo ? 'block' : 'hidden'} ${
@@ -305,6 +308,8 @@ export const GridParticipantTile: React.FC<Props> = ({
           )}
         </>
       )}
+
+      {remoteAudio}
 
       {/* Top Badges: LIVE indicator + Reconnecting + Action Buttons */}
       <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
