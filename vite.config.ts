@@ -29,8 +29,15 @@ export default defineConfig({
           build: {
             lib: {
               entry: 'electron/preload.ts',
+              // The plugin's own default ('es', because package.json is
+              // type: module) is MERGED with this list, so both formats are
+              // built. Each needs its own file: written to the same path, the
+              // two outputs race in watch mode and can leave a preload.js
+              // that is half ESM, half CJS. It then fails to load and the app
+              // runs with no window.electronAPI (no IPC, no logs, no native
+              // capture). Only preload.js (CJS) is loaded by main.ts.
               formats: ['cjs'],
-              fileName: () => 'preload.js',
+              fileName: (format) => (format === 'es' ? 'preload.mjs' : 'preload.js'),
             },
           },
         },
