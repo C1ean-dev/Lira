@@ -5,6 +5,7 @@ import { useChatStore, getLocalDmChannelId } from '../store/useChatStore'
 import { PublicRoomsService } from './publicRoomsService'
 import { FriendsNetwork, FriendPacket } from '../p2p/FriendsNetwork'
 import { isUserId, getPlayerUserId, getFriendUserId, findFriendKey } from '../utils/userId'
+import { readRoomInvite } from '../utils/roomInvite'
 
 export interface UserPresence {
   userId: string
@@ -351,6 +352,8 @@ export class FriendsPresenceService {
       // A clock ahead of ours would keep the message "newer than last read".
       timestamp: Math.min(Number(raw.timestamp) || now, now),
       attachment: linkAttachment(raw.attachment),
+      // An invite puts a button that leads into a space: friends only.
+      roomInvite: this.isFriendUser(userId) ? readRoomInvite(raw.roomInvite) : undefined,
     }
 
     if (req && typeof req === 'object') {

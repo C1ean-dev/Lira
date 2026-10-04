@@ -4,7 +4,6 @@ import {
   Hash,
   Send,
   X,
-  ChevronDown,
   Lock,
   Paperclip,
   Download,
@@ -13,6 +12,16 @@ import {
   Minimize2,
   AlertCircle,
   GripVertical,
+  CheckCheck,
+  Compass,
+  Copy,
+  DoorOpen,
+  LogIn,
+  Pencil,
+  Plus,
+  Trash2,
+  UserMinus,
+  UserPlus,
 } from 'lucide-react'
 
 const DEFAULT_DRAWER_WIDTH = 440
@@ -29,13 +38,45 @@ import { useGameStore } from '../store/useGameStore'
 import { useMediaStore } from '../store/useMediaStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { FriendsPresenceService } from '../services/friendsPresenceService'
-import { ChatMessage, ChatAttachment } from '../types/chat'
+import { Channel, ChatMessage, ChatAttachment } from '../types/chat'
 import { FriendRequestCard } from './chat/FriendRequestCard'
 import { PlayerAvatar } from './common/PlayerAvatar'
 import { MessageStatusIcon } from './chat/MessageStatusIcon'
 import { ChatUserContextMenu } from './chat/ChatUserContextMenu'
-import { getPlayerUserId, findFriendKey, isUserId } from '../utils/userId'
+import { ChatPeopleList } from './chat/ChatPeopleList'
+import { ChatChannelList, ChannelEditing } from './chat/ChatChannelList'
+import { ChatContextMenu } from './chat/ChatContextMenu'
+import { RoomInviteCard } from './chat/RoomInviteCard'
+import { ConfirmModal } from './ConfirmModal'
+import { getPlayerUserId, findFriendKey } from '../utils/userId'
 import { getChatUserFriendState } from '../utils/chatUserActions'
+import { buildChatPeople, openChatPerson, ChatPerson } from '../utils/chatPeople'
+import { ChatPersonAction, getChatPersonMenu } from '../utils/chatPersonMenu'
+import { ChannelAction, getChannelMenu } from '../utils/roomChannels'
+import { getRoomInviteState, readRoomInvite } from '../utils/roomInvite'
+import { goToPlayer } from '../utils/goToPlayer'
+import { createRoomChannel, deleteRoomChannel, renameRoomChannel } from '../services/roomChannelsService'
+import { useRoomJoinStore } from '../store/useRoomJoinStore'
+
+const MENU_ICON = 'w-4 h-4 shrink-0'
+
+const PERSON_ACTION_ICONS: Record<ChatPersonAction, React.ReactNode> = {
+  message: <MessageSquare className={`${MENU_ICON} text-indigo-400`} />,
+  goto: <Compass className={`${MENU_ICON} text-indigo-400`} />,
+  invite: <DoorOpen className={`${MENU_ICON} text-emerald-400`} />,
+  join: <LogIn className={`${MENU_ICON} text-emerald-400`} />,
+  'add-friend': <UserPlus className={`${MENU_ICON} text-indigo-400`} />,
+  'remove-friend': <UserMinus className={`${MENU_ICON} text-rose-400`} />,
+  'close-conversation': <X className={`${MENU_ICON} text-slate-400`} />,
+  'copy-name': <Copy className={`${MENU_ICON} text-slate-400`} />,
+}
+
+const CHANNEL_ACTION_ICONS: Record<ChannelAction, React.ReactNode> = {
+  'mark-read': <CheckCheck className={`${MENU_ICON} text-slate-400`} />,
+  rename: <Pencil className={`${MENU_ICON} text-indigo-400`} />,
+  delete: <Trash2 className={`${MENU_ICON} text-rose-400`} />,
+  create: <Plus className={`${MENU_ICON} text-emerald-400`} />,
+}
 
 function formatFileSize(bytes: number): string {
   if (!bytes || bytes < 1024) return `${bytes || 0} B`
@@ -86,9 +127,11 @@ const ChatDrawerInner: React.FC = () => {
     markChannelAsRead,
     sendFriendRequest,
     getFriendRequestStatus,
+    closeDirectMessage,
+    sendRoomInvite,
   } = useChatStore()
 
-  const { localPlayer, remotePlayers, friends, friendProfiles } = useGameStore()
+  const { localPlayer, remotePlayers, friends, friendProfiles, roomId, isOwner, removeFriend } = useGameStore()
   const isGridCallOpen = useMediaStore((s) => s.isGridCallOpen)
 
   const [inputMessage, setInputMessage] = useState('')
@@ -104,6 +147,15 @@ const ChatDrawerInner: React.FC = () => {
     e.stopPropagation()
     setUserMenu({ x: e.clientX, y: e.clientY, msg })
   }
+
+  const [personMenu, setPersonMenu] = useState<{ x: number; y: number; person: ChatPerson } | null>(null)
+  const closePersonMenu = useCallback(() => setPersonMenu(null), [])
+  const [channelMenu, setChannelMenu] = useState<{ x: number; y: number; channel: Channel | null } | null>(null)
+  const closeChannelMenu = useCallback(() => setChannelMenu(null), [])
+  const [channelEditing, setChannelEditing] = useState<ChannelEditing>(null)
+  const [channelError, setChannelError] = useState<string | null>(null)
+  const [channelToDelete, setChannelToDelete] = useState<Channel | null>(null)
+  const [roomToJoin, setRoomToJoin] = useState<{ code: string; name?: string } | null>(null)
 
   const [drawerWidth, setDrawerWidth] = useState<number>(() => {
     try {
@@ -233,7 +285,89 @@ const ChatDrawerInner: React.FC = () => {
     }
     return false
   })
-  const remotePlayerList = Object.values(remotePlayers)
+  const people = buildChatPeople({
+    remotePlayers: Object.values(remotePlayers),
+    friends,
+    friendProfiles,
+    channels,
+    activeChannelId,
+    dmChannelIdFor: getLocalDmChannelId,
+    getFriendPresence: (friend) => FriendsPresenceService.getInstance().getFriendStatus(friend),
+  })
+
+  // Only the owner of the space creates, renames and deletes its channels.
+  const canManageChannels = !!roomId && isOwner
+
+  const isRequestPending = (person: ChatPerson) =>
+    [person.contactId, person.playerId, person.name].some(
+      (key) => !!key && getFriendRequestStatus(key)?.status === 'pending'
+    )
+
+  const runPersonAction = (person: ChatPerson, action: ChatPersonAction) => {
+    switch (action) {
+      case 'message':
+        openChatPerson(person, { setActiveChannel, openDirectMessage })
+        break
+      case 'goto':
+        if (person.playerId) goToPlayer(person.playerId)
+        break
+      case 'invite':
+        if (person.contactId) sendRoomInvite({ id: person.contactId, name: person.name })
+        break
+      case 'join':
+        if (person.room) setRoomToJoin(person.room)
+        break
+      case 'add-friend':
+        if (person.contactId) {
+          sendFriendRequest({ id: person.contactId, name: person.name, avatar: person.avatarSource?.avatar })
+        }
+        break
+      case 'remove-friend':
+        if (person.friendKey) removeFriend(person.friendKey)
+        break
+      case 'close-conversation':
+        if (person.channelId) closeDirectMessage(person.channelId)
+        break
+      case 'copy-name':
+        navigator.clipboard?.writeText(person.name).catch(() => {})
+        break
+    }
+  }
+
+  const startChannelEdit = (editing: ChannelEditing) => {
+    setChannelError(null)
+    setChannelEditing(editing)
+  }
+
+  const runChannelAction = (channel: Channel | null, action: ChannelAction) => {
+    switch (action) {
+      case 'mark-read':
+        if (channel) markChannelAsRead(channel.id)
+        break
+      case 'rename':
+        if (channel) startChannelEdit({ mode: 'rename', channelId: channel.id })
+        break
+      case 'delete':
+        if (channel) setChannelToDelete(channel)
+        break
+      case 'create':
+        startChannelEdit({ mode: 'create' })
+        break
+    }
+  }
+
+  const submitChannelName = (name: string) => {
+    if (!channelEditing) return
+    const result =
+      channelEditing.mode === 'create'
+        ? createRoomChannel(name)
+        : renameRoomChannel(channelEditing.channelId, name)
+    if (result.ok) {
+      startChannelEdit(null)
+    } else {
+      setChannelError(result.error)
+    }
+  }
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -428,156 +562,32 @@ const ChatDrawerInner: React.FC = () => {
             isResizingChannels ? '' : 'transition-[width] duration-150 ease-out'
           }`}
         >
-          {/* Channels Section */}
-          <div className="space-y-1">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 py-1 flex items-center justify-between">
-              <span>Canais</span>
-              <ChevronDown className="w-3 h-3" />
-            </div>
+          {/* Channels of the space; right-click to manage them */}
+          <ChatChannelList
+            channels={channels.filter((c) => c.type !== 'dm')}
+            activeChannelId={activeChannelId}
+            canManage={canManageChannels}
+            editing={channelEditing}
+            error={channelError}
+            onSelect={setActiveChannel}
+            onContextMenu={(e, channel) => {
+              e.preventDefault()
+              setChannelMenu({ x: e.clientX, y: e.clientY, channel })
+            }}
+            onStartCreate={() => startChannelEdit({ mode: 'create' })}
+            onSubmitName={submitChannelName}
+            onCancelEdit={() => startChannelEdit(null)}
+          />
 
-            {channels.filter((c) => c.type !== 'dm').map((ch) => {
-              const isCurrent = ch.id === activeChannelId
-              return (
-                <button
-                  key={ch.id}
-                  onClick={() => setActiveChannel(ch.id)}
-                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                    isCurrent
-                      ? 'bg-indigo-600/30 text-indigo-400 font-semibold'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5 truncate">
-                    {ch.type === 'zone' ? (
-                      <Lock className="w-3 h-3 text-emerald-400 shrink-0" />
-                    ) : (
-                      <Hash className="w-3 h-3 shrink-0" />
-                    )}
-                    <span className="truncate">{ch.name}</span>
-                  </div>
-                  {ch.unreadCount > 0 && (
-                    <span className="bg-indigo-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-                      {ch.unreadCount}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-
-          {/* Direct Messages Section */}
-          <div className="space-y-1 flex-1">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 py-1">
-              Amigos ({remotePlayerList.length})
-            </div>
-
-            {remotePlayerList.length === 0 ? (
-              <div className="text-[11px] text-slate-400 px-2 py-1 italic">Ninguém online</div>
-            ) : (
-              remotePlayerList.map((player) => {
-                const playerUserId = getPlayerUserId(player)
-                const dmChannelId = getLocalDmChannelId(playerUserId)
-                const dmChannel = channels.find(
-                  (c) =>
-                    c.id === dmChannelId ||
-                    (c.type === 'dm' &&
-                      (c.recipientId === player.id ||
-                        (player.gameId && c.recipientId === player.gameId) ||
-                        c.id.includes(player.id)))
-                )
-                const isCurrent =
-                  activeChannelId === dmChannelId ||
-                  (dmChannel && activeChannelId === dmChannel.id)
-                const unreadCount = dmChannel?.unreadCount || 0
-
-                return (
-                  <button
-                    key={player.id}
-                    type="button"
-                    onClick={() => openDirectMessage({ id: playerUserId, name: player.name })}
-                    className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition-all ${
-                      isCurrent
-                        ? 'bg-indigo-600/30 text-indigo-300 font-semibold border border-indigo-500/30'
-                        : 'text-slate-300 hover:text-white hover:bg-slate-800/40'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 truncate">
-                      <PlayerAvatar
-                        player={player}
-                        showStatus={true}
-                        status="available"
-                        size="xs"
-                        className="rounded-full"
-                      />
-                      <span className="truncate text-xs">{player.name}</span>
-                    </div>
-                    {unreadCount > 0 && (
-                      <span className="bg-indigo-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-                        {unreadCount}
-                      </span>
-                    )}
-                  </button>
-                )
-              })
-            )}
-
-            {/* Offline DMs with chat history */}
-            {channels
-              .filter(
-                (c) =>
-                  c.type === 'dm' &&
-                  !remotePlayerList.some(
-                    (p) =>
-                      getLocalDmChannelId(getPlayerUserId(p)) === c.id ||
-                      c.recipientId === p.id ||
-                      (p.gameId && c.recipientId === p.gameId)
-                  )
-              )
-              .map((dm) => {
-                const isCurrent = activeChannelId === dm.id
-                // Not in this space, but possibly online on the home screen or elsewhere.
-                const friendKey = findFriendKey(friends, friendProfiles, [dm.recipientId])
-                const friend = friendKey
-                  ? friendProfiles[friendKey]
-                  : isUserId(dm.recipientId)
-                  ? undefined
-                  : Object.values(friendProfiles).find((f) => f.name.toLowerCase() === dm.name.toLowerCase())
-                const presence = friend ? FriendsPresenceService.getInstance().getFriendStatus(friend) : null
-                const isOnline = !!presence?.isOnline
-                return (
-                  <button
-                    key={dm.id}
-                    type="button"
-                    onClick={() => setActiveChannel(dm.id)}
-                    className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition-all ${
-                      isCurrent
-                        ? 'bg-indigo-600/30 text-indigo-300 font-semibold border border-indigo-500/30'
-                        : isOnline
-                        ? 'text-slate-300 hover:text-white hover:bg-slate-800/40'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
-                    }`}
-                    title={isOnline ? `${dm.name} está online` : `${dm.name} está offline`}
-                  >
-                    <div className="flex items-center gap-2 truncate">
-                      <PlayerAvatar
-                        name={dm.name}
-                        player={friend}
-                        showStatus={true}
-                        status={isOnline ? presence?.status || 'available' : 'offline'}
-                        size="xs"
-                        className={isOnline ? 'rounded-full' : 'rounded-full opacity-70'}
-                      />
-                      <span className="truncate text-xs">{dm.name}</span>
-                    </div>
-                    {dm.unreadCount > 0 && (
-                      <span className="bg-indigo-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-                        {dm.unreadCount}
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
-          </div>
+          {/* Friends, the other people in this space, other saved conversations */}
+          <ChatPeopleList
+            people={people}
+            onOpen={(person) => openChatPerson(person, { setActiveChannel, openDirectMessage })}
+            onContextMenu={(e, person) => {
+              e.preventDefault()
+              setPersonMenu({ x: e.clientX, y: e.clientY, person })
+            }}
+          />
         </div>
 
         {/* Channels divider resize handle */}
@@ -693,6 +703,39 @@ const ChatDrawerInner: React.FC = () => {
                         message={msg}
                         onAccept={(reqId) => respondToFriendRequest(reqId, 'accepted')}
                         onDecline={(reqId) => respondToFriendRequest(reqId, 'declined')}
+                      />
+                    </div>
+                  )
+                }
+
+                // An invite is offered only from a friend (or shown as sent, when it is mine).
+                const invite = readRoomInvite(msg.roomInvite)
+                const inviterKey = isMine ? undefined : findFriendKey(friends, friendProfiles, [msg.senderId])
+                if (invite && (isMine || inviterKey)) {
+                  const inviterPresence = inviterKey
+                    ? FriendsPresenceService.getInstance().getFriendStatus(
+                        friendProfiles[inviterKey] || { id: inviterKey, name: msg.senderName }
+                      )
+                    : null
+                  return (
+                    <div key={msg.id} onContextMenu={(e) => openUserMenu(e, msg)} className="group relative flex flex-col space-y-1">
+                      <div className="flex items-baseline justify-between">
+                        <span className={`text-xs font-semibold ${isMine ? 'text-indigo-400' : 'text-slate-300'}`}>
+                          {msg.senderName}
+                        </span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-[10px] text-slate-400">
+                            {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          {isMine && <MessageStatusIcon status={msg.status} />}
+                        </div>
+                      </div>
+                      <RoomInviteCard
+                        invite={invite}
+                        state={getRoomInviteState({ invite, isMine: !!isMine, currentRoomId: roomId, inviterPresence })}
+                        senderName={msg.senderName}
+                        recipientName={msg.recipientName}
+                        onJoin={() => setRoomToJoin({ code: invite.roomCode, name: invite.roomName })}
                       />
                     </div>
                   )
@@ -1016,6 +1059,79 @@ const ChatDrawerInner: React.FC = () => {
           />
         )
       })()}
+
+      {/* Right-click menu on a person of the sidebar */}
+      {personMenu && (
+        <ChatContextMenu
+          x={personMenu.x}
+          y={personMenu.y}
+          title={personMenu.person.name}
+          items={getChatPersonMenu(personMenu.person, {
+            roomId,
+            requestPending: isRequestPending(personMenu.person),
+          }).map((item) => ({
+            id: item.action,
+            label: item.label,
+            tone: item.tone,
+            disabled: item.disabled,
+            icon: PERSON_ACTION_ICONS[item.action],
+          }))}
+          onSelect={(action) => runPersonAction(personMenu.person, action as ChatPersonAction)}
+          onClose={closePersonMenu}
+        />
+      )}
+
+      {/* Right-click menu on the channel list */}
+      {channelMenu && (() => {
+        const menu = getChannelMenu(channelMenu.channel, { canManage: canManageChannels })
+        return (
+          <ChatContextMenu
+            x={channelMenu.x}
+            y={channelMenu.y}
+            title={channelMenu.channel ? `#${channelMenu.channel.name}` : 'Canais'}
+            items={menu.items.map((item) => ({
+              id: item.action,
+              label: item.label,
+              tone: item.tone,
+              disabled: item.disabled,
+              icon: CHANNEL_ACTION_ICONS[item.action],
+            }))}
+            note={menu.note}
+            onSelect={(action) => runChannelAction(channelMenu.channel, action as ChannelAction)}
+            onClose={closeChannelMenu}
+          />
+        )
+      })()}
+
+      <ConfirmModal
+        isOpen={!!channelToDelete}
+        title={`Excluir #${channelToDelete?.name || ''}?`}
+        message="O canal e as mensagens dele somem para todos neste espaço."
+        confirmText="Excluir canal"
+        cancelText="Cancelar"
+        variant="danger"
+        icon="alert"
+        onConfirm={() => {
+          if (channelToDelete) deleteRoomChannel(channelToDelete.id)
+          setChannelToDelete(null)
+        }}
+        onCancel={() => setChannelToDelete(null)}
+      />
+
+      <ConfirmModal
+        isOpen={!!roomToJoin}
+        title="Trocar de espaço?"
+        message={`Você sai deste espaço, suas chamadas são encerradas e você entra em ${roomToJoin?.name || 'outro espaço'}.`}
+        confirmText="Sair e entrar"
+        cancelText="Ficar aqui"
+        variant="primary"
+        icon="logout"
+        onConfirm={() => {
+          if (roomToJoin) useRoomJoinStore.getState().requestJoin(roomToJoin.code)
+          setRoomToJoin(null)
+        }}
+        onCancel={() => setRoomToJoin(null)}
+      />
     </div>
   )
 }

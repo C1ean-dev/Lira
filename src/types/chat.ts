@@ -1,4 +1,4 @@
-export type ChannelType = 'general' | 'social' | 'zone' | 'dm'
+export type ChannelType = 'general' | 'social' | 'zone' | 'dm' | 'custom'
 
 export interface Channel {
   id: string
@@ -8,6 +8,13 @@ export interface Channel {
   unreadCount: number
   recipientId?: string // for DMs
   zoneId?: string      // for zone chat
+}
+
+/** A channel of a space, as shared with everyone in it and saved with it. */
+export interface RoomChannel {
+  id: string
+  name: string
+  description?: string
 }
 
 export interface ChatAttachment {
@@ -29,6 +36,12 @@ export interface FriendRequestData {
   status: FriendRequestStatus
 }
 
+/** An invite to enter the space its sender is in. */
+export interface RoomInviteData {
+  roomCode: string
+  roomName: string
+}
+
 export type MessageDeliveryStatus = 'sent' | 'delivered' | 'read'
 
 export interface ChatMessage {
@@ -44,6 +57,7 @@ export interface ChatMessage {
   recipientId?: string // for direct messages
   recipientName?: string
   friendRequest?: FriendRequestData
+  roomInvite?: RoomInviteData
   status?: MessageDeliveryStatus
 }
 

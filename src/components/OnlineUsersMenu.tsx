@@ -34,7 +34,7 @@ import { useNetworkQualityStore, DEFAULT_NETWORK_QUALITY } from '../store/useNet
 import { NetworkSignalIcon } from './NetworkSignalIcon'
 import { ConfirmModal } from './ConfirmModal'
 import { Player, UserRole } from '../types/game'
-import { knockOnLockedDoor } from '../utils/doorKnockHelper'
+import { goToPlayer } from '../utils/goToPlayer'
 import { PlayerAvatar } from './common/PlayerAvatar'
 import { getPlayerUserId, findFriendKey } from '../utils/userId'
 
@@ -64,7 +64,6 @@ const OnlineUsersMenuInner: React.FC = () => {
     friendProfiles,
     removeFriend,
     updatePlayerRole,
-    teleportToPlayer,
     kickPlayer,
   } = useGameStore()
 
@@ -474,19 +473,7 @@ const OnlineUsersMenuInner: React.FC = () => {
                     <div className="grid grid-cols-2 gap-1.5">
                       <button
                         onClick={() => {
-                          if (player.currentZoneId) {
-                            const zone = mapData.zones?.find((z) => z.id === player.currentZoneId)
-                            if (
-                              zone &&
-                              zone.isLocked &&
-                              !useMapStore.getState().isPeerAuthorizedForZone(zone.id, localPlayer.id, localPlayer.name)
-                            ) {
-                              knockOnLockedDoor(zone)
-                              setSelectedUserMenuId(null)
-                              return
-                            }
-                          }
-                          teleportToPlayer(player.id)
+                          goToPlayer(player.id)
                           setSelectedUserMenuId(null)
                         }}
                         className="py-1.5 px-2 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 font-bold text-xs flex items-center gap-1.5 border border-indigo-500/30 transition-colors"

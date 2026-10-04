@@ -7,10 +7,12 @@ import { useChatStore, getLocalDmChannelId } from '../../store/useChatStore'
 import { FriendsPresenceService } from '../../services/friendsPresenceService'
 import { PeerManager } from '../../p2p/PeerManager'
 import { FriendRequestCard } from '../chat/FriendRequestCard'
+import { RoomInviteCard } from '../chat/RoomInviteCard'
 import { MessageStatusIcon } from '../chat/MessageStatusIcon'
 import { StatusBadge } from '../common/StatusBadge'
 import { MoonPhaseIcon } from '../common/MoonPhaseIcon'
 import { getPlayerUserId, getFriendUserId, isSameParticipant } from '../../utils/userId'
+import { getRoomInviteState, readRoomInvite } from '../../utils/roomInvite'
 
 interface Props {
   friend: FriendProfile
@@ -311,6 +313,33 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
                       message={msg}
                       onAccept={(reqId) => respondToFriendRequest(reqId, 'accepted')}
                       onDecline={(reqId) => respondToFriendRequest(reqId, 'declined')}
+                    />
+                    <div className="flex items-center gap-1 text-[10px] text-slate-500 px-1">
+                      <span>{formatTime(msg.timestamp)}</span>
+                      {isMe && <MessageStatusIcon status={msg.status} className="ml-0.5" />}
+                    </div>
+                  </div>
+                )
+              }
+
+              const invite = readRoomInvite(msg.roomInvite)
+              if (invite) {
+                return (
+                  <div
+                    key={msg.id}
+                    className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-1 w-full my-1`}
+                  >
+                    <RoomInviteCard
+                      invite={invite}
+                      state={getRoomInviteState({
+                        invite,
+                        isMine: !!isMe,
+                        currentRoomId: null,
+                        inviterPresence: presence,
+                      })}
+                      senderName={msg.senderName}
+                      recipientName={friend.name}
+                      onJoin={() => onJoinRoom?.(invite.roomCode)}
                     />
                     <div className="flex items-center gap-1 text-[10px] text-slate-500 px-1">
                       <span>{formatTime(msg.timestamp)}</span>

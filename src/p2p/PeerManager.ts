@@ -1,11 +1,12 @@
 import Peer, { DataConnection, MediaConnection } from 'peerjs'
 import { NetworkMessage } from '../types/p2p'
-import { MessageDeliveryStatus } from '../types/chat'
+import { MessageDeliveryStatus, RoomChannel } from '../types/chat'
 import { Player, RoomKnockRequest } from '../types/game'
 import { useGameStore } from '../store/useGameStore'
 import { useMapStore } from '../store/useMapStore'
 import { useMediaStore } from '../store/useMediaStore'
 import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
+import { useChatStore } from '../store/useChatStore'
 import { CustomAsset } from '../types/customAsset'
 import { PublicRoomsService } from '../services/publicRoomsService'
 import { processNetworkMessage } from './messageHandlers'
@@ -16,6 +17,8 @@ import { DynamicBufferManager } from '../services/DynamicBufferManager'
 import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
 import { sanitizeRoomCode } from '../utils/roomCode'
 import { getPlayerUserId } from '../utils/userId'
+import { getRoomChannels } from '../utils/roomChannels'
+import { restoreRoomChannels } from '../services/roomChannelsService'
 
 export class PeerManager {
   private static instance: PeerManager
@@ -166,6 +169,7 @@ export class PeerManager {
           role: 'host',
         })
         useGameStore.getState().setRoomSession(this.roomCode!, true, options)
+        restoreRoomChannels(this.roomCode!)
         useGameStore.getState().setConnected(true)
         useGameStore.getState().setConnectionStatus('connected')
         this.setupPeerListeners()
@@ -379,6 +383,8 @@ export class PeerManager {
           isOwner: false,
         })
         useGameStore.getState().setRoomSession(this.roomCode!, false)
+        // The host sends this space's channels once the connection is up.
+        useChatStore.getState().resetRoomChannels()
         useGameStore.getState().setConnected(true)
         useGameStore.getState().setConnectionStatus('connecting')
         this.setupPeerListeners()
@@ -613,6 +619,13 @@ export class PeerManager {
           type: 'MAP_SYNC',
           senderId: this.peer!.id,
           payload: { mapData: currentMap },
+          timestamp: Date.now(),
+        })
+
+        this.sendToPeer(conn, {
+          type: 'CHANNELS_SYNC',
+          senderId: this.peer!.id,
+          payload: { channels: getRoomChannels(useChatStore.getState().channels) },
           timestamp: Date.now(),
         })
 
@@ -1200,6 +1213,20 @@ export class PeerManager {
   }
 
   /**
+   * Broadcast the chat channels of the space. They are the host's to tell.
+   */
+  public sendRoomChannels(channels: RoomChannel[]) {
+    if (!this.peer || !this.isHost) return
+    const msg: NetworkMessage = {
+      type: 'CHANNELS_SYNC',
+      senderId: this.peer.id,
+      payload: { channels },
+      timestamp: Date.now(),
+    }
+    this.broadcast(msg)
+  }
+
+  /**
    * Broadcast Chat Message Delivery / Read Status
    */
   public sendMessageStatus(
@@ -1456,5 +1483,7 @@ export class PeerManager {
     useGameStore.getState().clearRemotePlayers()
     // clearRemotePlayers already clears callStates (defined in same set()).
     useMediaStore.getState().clearAllPeerStreams()
+    // The next space has channels of its own.
+    useChatStore.getState().resetRoomChannels()
   }
 }
