@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState, useEffect } from 'react'
+import React, { Suspense, lazy, useState, useEffect, useLayoutEffect } from 'react'
 import { LobbyModal } from './components/LobbyModal'
 import { ConfirmModal } from './components/ConfirmModal'
 import { useGameStore } from './store/useGameStore'
@@ -14,6 +14,7 @@ import { FriendsPresenceService } from './services/friendsPresenceService'
 import { PeerManager } from './p2p/PeerManager'
 import { MediaManager } from './media/MediaManager'
 import { useMountOnFirstOpen } from './hooks/useMountOnFirstOpen'
+import { markStartup, reportStartupAfterPaint } from './utils/startupTrace'
 
 // The menu is the first screen. Being inside a space (world, editor, chat, calls) and the heavy
 // modals load on demand, and are fetched in idle time once the menu is up, so entering a space or
@@ -45,6 +46,13 @@ export const App: React.FC = () => {
   const updateStatus = useUpdateStore((s) => s.status)
   const isUpdateScreenOpen = useUpdateStore((s) => s.isUpdateScreenOpen)
   const startInteractiveUpdate = useUpdateStore((s) => s.startInteractiveUpdate)
+
+  // Start-up measurement: this is the app's first commit, the menu is in the DOM. The report is
+  // logged once it has painted.
+  useLayoutEffect(() => {
+    markStartup('commit')
+    reportStartupAfterPaint()
+  }, [])
 
   // Both modals open from the menu as well as from inside a space; each one is loaded the first
   // time it opens and stays mounted after that.
