@@ -9,6 +9,9 @@
 #include <propvarutil.h>
 #include <roapi.h>
 #include <dwmapi.h>
+#include <timeapi.h>
+
+#pragma comment(lib, "winmm.lib")
 
 #include <atomic>
 #include <chrono>
@@ -421,6 +424,11 @@ int RunScreenCapture(int left, int top, int width, int height) {
   uint64_t nonSilentSamples = 0;
   uint64_t scanCount = 0;
   auto lastStats = std::chrono::steady_clock::now();
+  // Clock-driven output pacing (see the mixing loop below).
+  constexpr uint64_t kMaxCatchUpFrames = kSampleRate / 10;  // 100 ms
+  const auto pacingStart = std::chrono::steady_clock::now();
+  uint64_t framesEmitted = 0;
+  timeBeginPeriod(1);
 
   while (keepCapturing) {
     auto now = std::chrono::steady_clock::now();
@@ -491,53 +499,74 @@ int RunScreenCapture(int left, int top, int width, int height) {
       }
     }
 
-    // Mix available frames across all sessions without blocking on silent processes.
-    // A silent window on the monitor must NEVER stall audio from an active application.
-    std::fill(mixBufferLeft.begin(), mixBufferLeft.end(), 0);
-    std::fill(mixBufferRight.begin(), mixBufferRight.end(), 0);
+    // Emit exactly kSampleRate frames per second, paced by the steady clock.
+    // The previous `Sleep(10)` pacing really slept ~10.9-15.6 ms on Windows,
+    // so the helper produced only ~44k frames/s for a 48 kHz stream: the
+    // per-session buffers overflowed (audio dropped) and the renderer padded
+    // the gaps with silence, drifting the live audio away from the video.
+    const auto nowForPacing = std::chrono::steady_clock::now();
+    const uint64_t elapsedUs = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(nowForPacing - pacingStart).count());
+    const uint64_t framesDue = elapsedUs * kSampleRate / 1000000ULL;
+    // After a long stall (pipe blocked, machine hiccup) do not burst the whole
+    // backlog downstream - that backlog would become permanent latency.
+    if (framesDue > framesEmitted + kMaxCatchUpFrames) {
+      framesEmitted = framesDue - kMixFrames;
+    }
 
+    while (keepCapturing && framesEmitted + kMixFrames <= framesDue) {
+      // Mix available frames across all sessions without blocking on silent processes.
+      // A silent window on the monitor must NEVER stall audio from an active application.
+      std::fill(mixBufferLeft.begin(), mixBufferLeft.end(), 0);
+      std::fill(mixBufferRight.begin(), mixBufferRight.end(), 0);
+
+      for (auto& pair : sessions) {
+        auto& buf = pair.second->buffer;
+        const size_t availableFrames = buf.size() / kChannels;
+        const size_t framesToTake = (std::min)(static_cast<size_t>(kMixFrames), availableFrames);
+
+        for (size_t f = 0; f < framesToTake; ++f) {
+          mixBufferLeft[f] += buf[f * 2];
+          mixBufferRight[f] += buf[f * 2 + 1];
+        }
+
+        if (framesToTake > 0) {
+          buf.erase(buf.begin(), buf.begin() + (framesToTake * kChannels));
+        }
+      }
+
+      for (UINT32 f = 0; f < kMixFrames; ++f) {
+        int32_t l = mixBufferLeft[f];
+        int32_t r = mixBufferRight[f];
+        if (l > 32767) l = 32767; else if (l < -32768) l = -32768;
+        if (r > 32767) r = 32767; else if (r < -32768) r = -32768;
+        outputPcm[f * 2] = static_cast<int16_t>(l);
+        outputPcm[f * 2 + 1] = static_cast<int16_t>(r);
+      }
+
+      keepCapturing = WriteAll(output, reinterpret_cast<const BYTE*>(outputPcm.data()), kMixFrames * kBytesPerFrame);
+      if (keepCapturing) {
+        framesEmitted += kMixFrames;
+        bytesWritten += kMixFrames * kBytesPerFrame;
+        for (const auto sample : outputPcm) {
+          if (sample != 0) {
+            nonSilentSamples++;
+          }
+        }
+      }
+    }
+
+    // Bound each session's backlog so a stalled consumer can't turn into
+    // permanent delay (keep at most ~60 ms queued per process).
     for (auto& pair : sessions) {
       auto& buf = pair.second->buffer;
-      const size_t availableFrames = buf.size() / kChannels;
-      const size_t framesToTake = (std::min)(static_cast<size_t>(kMixFrames), availableFrames);
-
-      for (size_t f = 0; f < framesToTake; ++f) {
-        mixBufferLeft[f] += buf[f * 2];
-        mixBufferRight[f] += buf[f * 2 + 1];
-      }
-
-      if (framesToTake > 0) {
-        buf.erase(buf.begin(), buf.begin() + (framesToTake * kChannels));
-      }
-
-      // Bound buffer to prevent lag/desync (max 100ms buffered per session)
-      constexpr size_t kMaxBufferSamples = kMixFrames * kChannels * 10;
+      constexpr size_t kMaxBufferSamples = kMixFrames * kChannels * 6;
       if (buf.size() > kMaxBufferSamples) {
         buf.erase(buf.begin(), buf.end() - kMaxBufferSamples);
       }
     }
 
-    for (UINT32 f = 0; f < kMixFrames; ++f) {
-      int32_t l = mixBufferLeft[f];
-      int32_t r = mixBufferRight[f];
-      if (l > 32767) l = 32767; else if (l < -32768) l = -32768;
-      if (r > 32767) r = 32767; else if (r < -32768) r = -32768;
-      outputPcm[f * 2] = static_cast<int16_t>(l);
-      outputPcm[f * 2 + 1] = static_cast<int16_t>(r);
-    }
-
-    keepCapturing = WriteAll(output, reinterpret_cast<const BYTE*>(outputPcm.data()), kMixFrames * kBytesPerFrame);
-    if (keepCapturing) {
-      bytesWritten += kMixFrames * kBytesPerFrame;
-      for (const auto sample : outputPcm) {
-        if (sample != 0) {
-          nonSilentSamples++;
-        }
-      }
-    }
-
-    // Paced at 10ms intervals (480 samples @ 48kHz = 10ms)
-    Sleep(10);
+    Sleep(2);
 
     if (std::chrono::steady_clock::now() - lastStats >= std::chrono::seconds(2)) {
       std::wcerr << L"[process-audio-capture] STATS mode=screen sessions=" << sessions.size()
@@ -548,6 +577,7 @@ int RunScreenCapture(int left, int top, int width, int height) {
     }
   }
 
+  timeEndPeriod(1);
   for (auto& pair : sessions) {
     pair.second->Dispose();
   }
