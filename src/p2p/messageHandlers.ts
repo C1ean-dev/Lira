@@ -8,6 +8,7 @@ import { useMediaStore } from '../store/useMediaStore'
 import { PublicRoomsService } from '../services/publicRoomsService'
 import { MediaManager } from '../media/MediaManager'
 import { resolveUniquePlayerName } from '../utils/playerName'
+import { sanitizeRoomChannels } from '../utils/roomChannels'
 
 export function processNetworkMessage(
   msg: NetworkMessage,
@@ -370,6 +371,15 @@ export function processNetworkMessage(
       break
     }
 
+    case 'CHANNELS_SYNC': {
+      // The channels of a space come from whoever hosts it, over the
+      // connection to them: never from another visitor, never relayed.
+      if (isHost || !peerId.endsWith('-host') || msg.senderId !== peerId) break
+      const channels = sanitizeRoomChannels(msg.payload?.channels)
+      if (channels) useChatStore.getState().setRoomChannels(channels)
+      break
+    }
+
     case 'CHAT_MESSAGE_STATUS': {
       const {
         senderId,
@@ -595,7 +605,13 @@ export function processNetworkMessage(
   }
 
   // If host, forward to other peers in mesh
-  if (isHost && msg.type !== 'MAP_SYNC' && msg.type !== 'CUSTOM_ASSETS_SYNC' && msg.type !== 'HEARTBEAT') {
+  if (
+    isHost &&
+    msg.type !== 'MAP_SYNC' &&
+    msg.type !== 'CUSTOM_ASSETS_SYNC' &&
+    msg.type !== 'CHANNELS_SYNC' &&
+    msg.type !== 'HEARTBEAT'
+  ) {
     broadcast(msg, peerId)
   }
 }

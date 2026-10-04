@@ -25,9 +25,12 @@ function errShort(err: unknown): string {
  * when only the *audio* track unmuted, the element stayed paused: black tile
  * AND silence despite flowing RTP. This helper retries play on audio unmute
  * too, on track add/remove, and on click (a user gesture always unlocks play).
+ *
+ * Also used for the <audio> element that plays a remote peer's sound (see
+ * remoteAudio.ts), hence the HTMLMediaElement type.
  */
 export function attachStreamToVideo(
-  video: HTMLVideoElement,
+  video: HTMLMediaElement,
   stream: MediaStream,
   ctx: AttachCtx
 ): () => void {

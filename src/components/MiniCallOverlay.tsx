@@ -68,6 +68,7 @@ import { NetworkSignalIcon } from './NetworkSignalIcon'
 import { useUserNetworkQuality } from '../store/useNetworkQualityStore'
 import { AvatarConfig } from '../types/game'
 import { PlayerAvatar } from './common/PlayerAvatar'
+import { RemoteAudio } from './common/RemoteAudio'
 
 interface VideoTileProps {
   id?: string
@@ -90,7 +91,7 @@ interface VideoTileProps {
   suppressAudio?: boolean
 }
 
-const VideoTile: React.FC<VideoTileProps> = ({
+export const VideoTile: React.FC<VideoTileProps> = ({
   id,
   stream,
   name,
@@ -137,26 +138,17 @@ const VideoTile: React.FC<VideoTileProps> = ({
     const video = videoRef.current
     if (!video || !stream) return
 
-    video.muted = isEffectivelyMuted
+    // Picture only. The sound comes from <RemoteAudio> below: a <video> stays
+    // silent until its video track delivers a frame, which a peer with the
+    // camera off may never send.
+    video.muted = true
     return attachStreamToVideo(video, stream, {
       tile: 'mini',
       peer: name,
       isLocal: !!isLocal,
-      muted: isEffectivelyMuted,
+      muted: true,
     })
-  }, [stream, isLocal, isEffectivelyMuted])
-
-  useEffect(() => {
-    if (videoRef.current && !isLocal) {
-      const effectiveVol = isEffectivelyMuted ? 0 : Math.max(0, Math.min(1, (outputVolume / 100) * (rawVolume / 100)))
-      videoRef.current.volume = effectiveVol
-      if (typeof (videoRef.current as any).setSinkId === 'function' && selectedAudioOutput) {
-        ;(videoRef.current as any)
-          .setSinkId(selectedAudioOutput === 'default' ? '' : selectedAudioOutput)
-          .catch(() => {})
-      }
-    }
-  }, [rawVolume, outputVolume, selectedAudioOutput, isLocal, isEffectivelyMuted])
+  }, [stream, isLocal])
 
   return (
     <div
@@ -178,13 +170,26 @@ const VideoTile: React.FC<VideoTileProps> = ({
         ref={videoRef}
         autoPlay
         playsInline
-        muted={isLocal || suppressAudio} // Avoid local echo and duplicate audio while the grid is open
+        muted
         onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
         onCanPlay={() => videoRef.current?.play().catch(() => {})}
         className={`w-full h-full ${isScreenTrack ? 'object-contain bg-black' : 'object-cover'} ${
           shouldShowVideo ? 'block' : 'hidden'
         } ${isLocal && !isScreenSharing && !isScreenTrack ? '-scale-x-100' : ''}`}
       />
+
+      {/* Sound of a remote participant. Silent for the local tile (no echo)
+          and while the grid is open (it plays the same audio). */}
+      {!isLocal && stream && (
+        <RemoteAudio
+          stream={stream}
+          tile="mini-audio"
+          peer={name}
+          muted={isEffectivelyMuted}
+          volume={(outputVolume / 100) * (rawVolume / 100)}
+          sinkId={selectedAudioOutput}
+        />
+      )}
 
       {/* Camera Off Avatar Fallback */}
       {!shouldShowVideo && (

@@ -18,6 +18,7 @@ import { useMediaStore } from './store/useMediaStore'
 import { useChatStore } from './store/useChatStore'
 import { useMapStore } from './store/useMapStore'
 import { useUpdateStore, UPDATE_STALE_AFTER_MS } from './store/useUpdateStore'
+import { useRoomJoinStore } from './store/useRoomJoinStore'
 import { startAutoUpdateChecks } from './services/updateScheduler'
 import { AppUpdateScreen } from './components/AppUpdateScreen'
 import { idleManager } from './services/idleManager'
@@ -104,8 +105,7 @@ export const App: React.FC = () => {
     FriendsPresenceService.getInstance().connectFriendsNetwork()
   }, [])
 
-  const handleConfirmDisconnect = () => {
-    setIsDisconnectModalOpen(false)
+  const leaveSpace = () => {
     PeerManager.getInstance().disconnect()
     MediaManager.getInstance().stopAllMedia()
     useMediaStore.getState().stopAllMedia()
@@ -113,6 +113,18 @@ export const App: React.FC = () => {
     useMapStore.getState().setEditorOpen(false)
     setInLobby(true)
   }
+
+  const handleConfirmDisconnect = () => {
+    setIsDisconnectModalOpen(false)
+    leaveSpace()
+  }
+
+  // 6. Entering another space from inside one (an invite, a friend's space):
+  // leave this one; the home screen picks the pending code up and joins.
+  const pendingRoomCode = useRoomJoinStore((s) => s.pendingRoomCode)
+  useEffect(() => {
+    if (pendingRoomCode && !inLobby) leaveSpace()
+  }, [pendingRoomCode, inLobby])
 
   return (
     <div className="flex flex-col h-screen w-screen bg-[#0c0e14] text-slate-100 overflow-hidden font-sans select-none">

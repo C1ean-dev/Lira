@@ -1,11 +1,23 @@
 import { create } from 'zustand'
-import { Channel, ChatMessage, FriendRequestData, MessageDeliveryStatus } from '../types/chat'
+import { Channel, ChatMessage, FriendRequestData, MessageDeliveryStatus, RoomChannel } from '../types/chat'
 import { useGameStore, getLocalUserId } from './useGameStore'
 import { playMessageNotificationChime } from '../utils/audioChime'
 import { FriendsPresenceService } from '../services/friendsPresenceService'
 import { PeerManager } from '../p2p/PeerManager'
 import { sendNotification } from '../services/notificationService'
 import { isUserId, isSameParticipant } from '../utils/userId'
+import {
+  DEFAULT_ROOM_CHANNELS,
+  GENERAL_CHANNEL_ID,
+  MAX_ROOM_CHANNELS,
+  applyRoomChannels,
+  canDeleteChannel,
+  canRenameChannel,
+  getRoomChannels,
+  isRoomChannel,
+  validateChannelName,
+} from '../utils/roomChannels'
+import { buildRoomInviteMessage } from '../utils/roomInvite'
 
 export const getDmChannelId = (userId1: string, userId2: string): string => {
   const sorted = [userId1, userId2].sort()
@@ -29,6 +41,8 @@ export const STATUS_RANK: Record<MessageDeliveryStatus, number> = {
   delivered: 2,
   read: 3,
 }
+
+export type ChannelEditResult = { ok: true; channelId: string } | { ok: false; error: string }
 
 interface ChatStore {
   channels: Channel[]
@@ -54,6 +68,17 @@ interface ChatStore {
   sendFriendRequest: (target: { id?: string; name: string; avatar?: any }) => string
   respondToFriendRequest: (requestId: string, status: 'accepted' | 'declined') => void
   getFriendRequestStatus: (userIdOrName: string) => FriendRequestData | null
+
+  // Channels of the space. These change local state only: sharing them with
+  // the space and saving them is done by roomChannelsService.
+  createRoomChannel: (name: string) => ChannelEditResult
+  renameRoomChannel: (channelId: string, name: string) => ChannelEditResult
+  deleteRoomChannel: (channelId: string) => boolean
+  setRoomChannels: (channels: RoomChannel[]) => void
+  resetRoomChannels: () => void
+
+  closeDirectMessage: (channelId: string) => void
+  sendRoomInvite: (target: { id: string; name: string }) => boolean
 }
 
 const DEFAULT_CHANNELS: Channel[] = [
@@ -272,6 +297,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       if (channelIndex !== -1) {
         targetChannelId = state.channels[channelIndex].id
       }
+
+      // A room message for a channel that is not there (deleted, or not
+      // received yet) has nowhere to go. Only a private message opens a
+      // conversation by arriving.
+      if (channelIndex === -1 && !isDm) return state
 
       const isCurrent =
         state.isChatOpen &&
@@ -830,5 +860,92 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
     }
     return null
+  },
+
+  createRoomChannel: (rawName) => {
+    const state = get()
+    if (state.channels.filter(isRoomChannel).length >= MAX_ROOM_CHANNELS) {
+      return { ok: false, error: `Um espaço tem no máximo ${MAX_ROOM_CHANNELS} canais.` }
+    }
+    const check = validateChannelName(rawName, state.channels)
+    if (!check.ok) return check
+    const channelId = 'ch-' + Math.random().toString(36).substring(2, 10)
+    set({
+      channels: applyRoomChannels(state.channels, [
+        ...getRoomChannels(state.channels),
+        { id: channelId, name: check.name },
+      ]),
+      activeChannelId: channelId,
+    })
+    return { ok: true, channelId }
+  },
+
+  renameRoomChannel: (channelId, rawName) => {
+    const state = get()
+    const target = state.channels.find((c) => c.id === channelId)
+    if (!target || !canRenameChannel(target)) return { ok: false, error: 'Este canal não pode ser renomeado.' }
+    const check = validateChannelName(rawName, state.channels, channelId)
+    if (!check.ok) return check
+    set({ channels: state.channels.map((c) => (c.id === channelId ? { ...c, name: check.name } : c)) })
+    return { ok: true, channelId }
+  },
+
+  deleteRoomChannel: (channelId) => {
+    const state = get()
+    const target = state.channels.find((c) => c.id === channelId)
+    if (!target || !canDeleteChannel(target)) return false
+    set({
+      channels: state.channels.filter((c) => c.id !== channelId),
+      messages: state.messages.filter((m) => m.channelId !== channelId),
+      activeChannelId: state.activeChannelId === channelId ? GENERAL_CHANNEL_ID : state.activeChannelId,
+    })
+    return true
+  },
+
+  setRoomChannels: (roomChannels) =>
+    set((state) => {
+      const channels = applyRoomChannels(state.channels, roomChannels)
+      const kept = new Set(channels.map((c) => c.id))
+      const gone = state.channels.filter((c) => isRoomChannel(c) && !kept.has(c.id)).map((c) => c.id)
+      return {
+        channels,
+        messages: gone.length > 0 ? state.messages.filter((m) => !gone.includes(m.channelId)) : state.messages,
+        activeChannelId: kept.has(state.activeChannelId) ? state.activeChannelId : GENERAL_CHANNEL_ID,
+      }
+    }),
+
+  resetRoomChannels: () => get().setRoomChannels(DEFAULT_ROOM_CHANNELS),
+
+  closeDirectMessage: (channelId) =>
+    set((state) => {
+      const target = state.channels.find((c) => c.id === channelId)
+      if (!target || target.type !== 'dm') return state
+      const channels = state.channels.filter((c) => c.id !== channelId)
+      // The messages stay: if this person writes again, the conversation
+      // comes back with its history.
+      persistDmsAndChannels(state.messages, channels)
+      return {
+        channels,
+        activeChannelId: state.activeChannelId === channelId ? GENERAL_CHANNEL_ID : state.activeChannelId,
+      }
+    }),
+
+  sendRoomInvite: (target) => {
+    const { roomId, roomName, localPlayer } = useGameStore.getState()
+    if (!roomId || !target.id) return false
+
+    get().openDirectMessage({ id: target.id, name: target.name })
+    const message = buildRoomInviteMessage({
+      id: `dm-invite-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+      from: { id: getLocalUserId(), name: localPlayer.name || 'Você', avatar: localPlayer.avatar },
+      to: { id: target.id, name: target.name },
+      room: { code: roomId, name: roomName },
+      channelId: get().activeChannelId,
+      timestamp: Date.now(),
+    })
+    get().addMessage(message)
+    // Only over the direct link: whoever is invited is not in this space.
+    FriendsPresenceService.getInstance().sendDirectMessage(message)
+    return true
   },
 }))

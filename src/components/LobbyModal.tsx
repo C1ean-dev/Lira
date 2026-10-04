@@ -5,6 +5,7 @@ import { useChatStore } from '../store/useChatStore'
 import { useMapStore } from '../store/useMapStore'
 import { useMediaStore } from '../store/useMediaStore'
 import { useSavedSpacesStore } from '../store/useSavedSpacesStore'
+import { useRoomJoinStore } from '../store/useRoomJoinStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { MediaManager } from '../media/MediaManager'
 import { createEmptyWorkspace } from '../editor/templates'
@@ -322,6 +323,15 @@ export const LobbyModal: React.FC<Props> = ({
       setLoading(false)
     }
   }
+
+  // A space asked for from somewhere that cannot join by itself (an invite,
+  // a friend's space): the app comes back to this screen, which joins.
+  const pendingRoomCode = useRoomJoinStore((s) => s.pendingRoomCode)
+  useEffect(() => {
+    if (!pendingRoomCode) return
+    useRoomJoinStore.getState().clear()
+    handleJoinByCode(pendingRoomCode)
+  }, [pendingRoomCode])
 
   const handleStart = async (e: React.FormEvent) => {
     e.preventDefault()

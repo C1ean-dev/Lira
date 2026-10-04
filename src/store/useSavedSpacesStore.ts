@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { MapData } from '../types/map'
+import { RoomChannel } from '../types/chat'
 import { createEmptyWorkspace } from '../editor/templates'
 import nativeSpacesData from '../data/nativeSpaces.json'
 import { generateUUID } from '../utils/uuid'
@@ -14,6 +15,8 @@ export interface SavedSpace {
   updatedAt: number
   mapData: MapData
   color?: string
+  /** The chat channels of the space; absent while it only has the default ones. */
+  channels?: RoomChannel[]
 }
 
 const STORAGE_KEY = 'lira_saved_spaces'
@@ -86,6 +89,7 @@ const loadSavedSpaces = (): SavedSpace[] => {
                 updatedAt: s.updatedAt || Date.now(),
                 mapData,
                 color: s.color || '#4c6ef5',
+                channels: Array.isArray(s.channels) ? s.channels : undefined,
               }
             })
         }

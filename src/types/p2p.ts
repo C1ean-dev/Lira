@@ -14,6 +14,7 @@ export type NetworkMessageType =
   | 'CUSTOM_ASSET_DELETE'
   | 'CHAT_MESSAGE'
   | 'CHAT_MESSAGE_STATUS'
+  | 'CHANNELS_SYNC'
   | 'REACTION'
   | 'REQUEST_MAP'
   | 'HEARTBEAT'
