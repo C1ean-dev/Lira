@@ -15,9 +15,7 @@ const nativeAssetsData = unpackImages(rawNativeAssetsData as unknown as Record<s
 }
 
 const ASSETS_STORAGE_KEY = 'lira_custom_user_assets'
-const LEGACY_ASSETS_STORAGE_KEY = 'gather_v2_custom_user_assets'
 const CATEGORIES_STORAGE_KEY = 'lira_custom_categories'
-const LEGACY_CATEGORIES_STORAGE_KEY = 'gather_v2_custom_categories'
 
 const DEFAULT_CATEGORIES = ['Geral', 'pokemon']
 
@@ -122,7 +120,7 @@ const loadSavedCustomAssets = (): CustomAsset[] => {
   let savedAssets: CustomAsset[] = []
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
-      const raw = window.localStorage.getItem(ASSETS_STORAGE_KEY) || window.localStorage.getItem(LEGACY_ASSETS_STORAGE_KEY)
+      const raw = window.localStorage.getItem(ASSETS_STORAGE_KEY)
       if (raw) {
         const parsed = JSON.parse(raw)
         if (Array.isArray(parsed)) {
@@ -256,7 +254,7 @@ const loadSavedCategories = (): string[] => {
   let savedCats: string[] = []
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
-      const raw = window.localStorage.getItem(CATEGORIES_STORAGE_KEY) || window.localStorage.getItem(LEGACY_CATEGORIES_STORAGE_KEY)
+      const raw = window.localStorage.getItem(CATEGORIES_STORAGE_KEY)
       if (raw) {
         const parsed = JSON.parse(raw)
         if (Array.isArray(parsed) && parsed.length > 0) {

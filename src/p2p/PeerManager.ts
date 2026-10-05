@@ -41,7 +41,6 @@ export class PeerManager {
         MediaCallHandler.applyJitterBuffer(this.mediaCalls, ms)
       }
       window.addEventListener('lira:live-buffer-changed', handleBufferChanged)
-      window.addEventListener('gather:live-buffer-changed', handleBufferChanged)
     }
   }
 
@@ -765,7 +764,7 @@ export class PeerManager {
       this.connections.delete(peerId)
     }
 
-    const wasHost = peerId.endsWith('-host') || (this.roomCode && (peerId === `lira-${this.roomCode}-host` || peerId === `gather-v2-${this.roomCode}-host`))
+    const wasHost = peerId.endsWith('-host') || (this.roomCode && peerId === `lira-${this.roomCode}-host`)
 
     useGameStore.getState().removeRemotePlayer(peerId)
     this.endMediaCallWithPeer(peerId)

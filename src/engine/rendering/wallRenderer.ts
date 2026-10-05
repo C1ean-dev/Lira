@@ -608,8 +608,4 @@ export class WallRenderer {
 
     ctx.restore()
   }
-
-  static drawGatherRoom(ctx: CanvasRenderingContext2D, zone: PrivateZone, zones: PrivateZone[] = []) {
-    return this.drawLiraRoom(ctx, zone, zones)
-  }
 }

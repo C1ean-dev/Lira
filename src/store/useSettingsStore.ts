@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 
 const SETTINGS_STORAGE_KEY = 'lira_graphics_settings'
-const LEGACY_SETTINGS_STORAGE_KEY = 'gather_v2_graphics_settings'
 
 export interface GraphicsSettings {
   targetFps: number // 30, 60, 120, 144, 0 (0 = uncapped / monitor refresh)
@@ -24,7 +23,7 @@ interface SettingsStore extends GraphicsSettings {
 const loadSavedSettings = (): Partial<GraphicsSettings> => {
   try {
     if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
-      const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY) || window.localStorage.getItem(LEGACY_SETTINGS_STORAGE_KEY)
+      const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY)
       if (raw) return JSON.parse(raw)
     }
   } catch (e) {

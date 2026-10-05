@@ -164,12 +164,11 @@ interface MediaStore {
 }
 
 const STORAGE_KEY = 'lira_audio_settings'
-const LEGACY_STORAGE_KEY = 'gather_v2_audio_settings'
 
 const loadSavedAudioSettings = () => {
   try {
     if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
-      const raw = window.localStorage.getItem(STORAGE_KEY) || window.localStorage.getItem(LEGACY_STORAGE_KEY)
+      const raw = window.localStorage.getItem(STORAGE_KEY)
       if (raw) {
         return JSON.parse(raw)
       }
