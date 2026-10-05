@@ -84,9 +84,7 @@ native/bin/
 native/process-audio-capture/obj/
 
 # Editor / IDE settings
-.vscode/*
-!.vscode/extensions.json
-!.vscode/settings.json
+.vscode/
 .idea/
 *.suo
 *.ntvs*
