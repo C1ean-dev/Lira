@@ -19,6 +19,7 @@ import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import { CustomAsset } from '../types/customAsset'
 import { saveAssetFileToDisk, savePetAtlasToDisk } from '../utils/diskAssetPersistence'
 import { resolveUniquePlayerName } from '../utils/playerName'
+import { presetNameForStudio } from '../utils/studioNaming'
 
 import { DEFAULT_AVATAR } from '../engine/Constants'
 
@@ -103,7 +104,8 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
       isOpen: true,
       category,
       presetId,
-      presetName: label,
+      // an asset of the user's keeps its name; a built-in preset is saved as a copy of its own
+      presetName: presetNameForStudio(label, !!customAsset),
       directionalFrames,
     })
   }

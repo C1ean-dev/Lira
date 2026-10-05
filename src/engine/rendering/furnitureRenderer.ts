@@ -3,6 +3,7 @@ import { Direction } from '../../types/game'
 import { CustomAsset } from '../../types/customAsset'
 import { FURNITURE_CATALOG, TILE_SIZE } from '../Constants'
 import { useCustomAssetsStore, getCustomAssetImage } from '../../store/useCustomAssetsStore'
+import { resolveSpritePlacement } from './spritePlacement'
 
 export type FurnitureDef = FurnitureDefinition
 
@@ -143,23 +144,9 @@ export class FurnitureRenderer {
           ctx.imageSmoothingEnabled = false
         }
 
-        if (imgW === targetW && imgH === targetH) {
-          ctx.drawImage(img, px, py, targetW, targetH)
-        } else if (imgW <= targetW && imgH <= targetH) {
-          // If the sprite fits inside the bounding box, render 1:1 without fractional scaling artifacts
-          const offX = px + Math.round((targetW - imgW) / 2)
-          const offY = py + (targetH - imgH) // Bottom-aligned to floor
-          ctx.drawImage(img, offX, offY, imgW, imgH)
-        } else {
-          // Calculate proportional scale to fit within bounding box without distortion
-          const scale = Math.min(targetW / imgW, targetH / imgH)
-          const drawW = Math.max(1, Math.round(imgW * scale))
-          const drawH = Math.max(1, Math.round(imgH * scale))
-          const offX = px + Math.round((targetW - drawW) / 2)
-          const offY = py + (targetH - drawH) // Bottom-aligned to floor
-
-          ctx.drawImage(img, offX, offY, drawW, drawH)
-        }
+        // The same placement the hitbox is worked out from (spritePlacement.ts)
+        const { offsetX, offsetY, drawWidth, drawHeight } = resolveSpritePlacement(imgW, imgH, targetW, targetH)
+        ctx.drawImage(img, px + offsetX, py + offsetY, drawWidth, drawHeight)
       } else {
         ctx.fillStyle = customAsset.iconColor || '#e03131'
         ctx.fillRect(px + 1, py + 1, Math.max(2, targetW - 2), Math.max(2, targetH - 2))

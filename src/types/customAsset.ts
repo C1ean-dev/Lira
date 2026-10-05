@@ -35,6 +35,10 @@ export interface CustomAsset {
   pixelHeight?: number // exact height in pixels (1 to 2048+)
   isObstacle: boolean // general flag for backward compatibility
   collisionGrid?: boolean[][] // 2D matrix [row][col] of tile collisions
+  // True when the grids were worked out from the drawing by the pixel art studio (a tile blocks only
+  // where there are visible pixels), so saving there again works them out again. Absent when the grids
+  // were painted by hand in the composition studio: the pixel art studio leaves those alone.
+  collisionFromSprite?: boolean
   frames: string[] // base64 PNG dataURLs with alpha channel
   directionalFrames?: Partial<Record<Direction, string | string[]>>
   directionalFrameLayers?: Partial<Record<Direction, CustomAssetLayer[][]>>

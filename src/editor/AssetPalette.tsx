@@ -26,6 +26,7 @@ import { AvatarPixelArtModal } from './avatar/AvatarPixelArtModal'
 import { AvatarSpritesheetSlicerModal } from '../components/avatar-customizer/AvatarSpritesheetSlicerModal'
 import { AtlasImportModal } from '../components/avatar-customizer/AtlasImportModal'
 import { exportCategoryAtlas } from '../engine/avatar/avatarAtlasExporter'
+import { resolveStudioHitbox, type SpriteCollision } from '../utils/spriteHitbox'
 
 export const AssetPalette: React.FC = () => {
   const {
@@ -282,6 +283,7 @@ export const AssetPalette: React.FC = () => {
       pixelHeight?: number
       isObstacle?: boolean
       category?: string
+      spriteCollision?: SpriteCollision | null
     }
   ) => {
     const editingId = pixelArtModal.editingId
@@ -316,6 +318,8 @@ export const AssetPalette: React.FC = () => {
       pixelWidth,
       pixelHeight,
       isObstacle,
+      // Furniture: the hitbox follows the drawing, so the transparent parts do not block (spriteHitbox.ts)
+      ...(cat === 'furniture' ? resolveStudioHitbox(existing, isObstacle, options?.spriteCollision) : {}),
       directionalFrames,
       thumbnail: previewUrl || undefined,
       frames: frames.length > 0 ? frames : (previewUrl ? [previewUrl] : []),
