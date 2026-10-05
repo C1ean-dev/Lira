@@ -56,14 +56,6 @@ export class PixelArtRenderer {
     WallRenderer.drawLiraRoom(ctx, zone, zones)
   }
 
-  static drawGatherRoom(
-    ctx: CanvasRenderingContext2D,
-    zone: PrivateZone,
-    zones: PrivateZone[] = []
-  ) {
-    WallRenderer.drawLiraRoom(ctx, zone, zones)
-  }
-
   /**
    * Draw 2D Furniture & Wall Decors
    */

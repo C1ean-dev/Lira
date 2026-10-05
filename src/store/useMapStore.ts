@@ -12,7 +12,6 @@ import { PeerManager } from '../p2p/PeerManager'
 import { hydrateMapData, compressMapDataForStorage } from '../utils/mapSerialization'
 
 const MAP_STORAGE_KEY = 'lira_custom_map'
-const LEGACY_MAP_STORAGE_KEY = 'gather_v2_custom_map'
 
 const getStorage = () => {
   if (typeof window !== 'undefined' && window.localStorage) {
@@ -28,7 +27,7 @@ const loadSavedMap = (): MapData | null => {
   try {
     const storage = getStorage()
     if (storage) {
-      const raw = storage.getItem(MAP_STORAGE_KEY) || storage.getItem(LEGACY_MAP_STORAGE_KEY)
+      const raw = storage.getItem(MAP_STORAGE_KEY)
       if (raw) {
         const parsed = JSON.parse(raw)
         if (parsed && typeof parsed === 'object') {

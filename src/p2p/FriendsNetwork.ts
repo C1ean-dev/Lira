@@ -73,7 +73,7 @@ const CONNECT_TIMEOUT_MS = 20000
 const SIGNALING_OPEN_TIMEOUT_MS = 15000
 /**
  * Backoff between dials to a contact that did not answer. Every dial spins up
- * an RTCPeerConnection (ICE gathering included), so an offline contact is
+ * an RTCPeerConnection (ICE candidate lookup included), so an offline contact is
  * probed rarely: mutual friends dial US the moment they come online, which
  * makes these retries a fallback rather than the discovery mechanism.
  */
@@ -91,7 +91,7 @@ const FATAL_PEER_ERRORS = new Set(['browser-incompatible', 'invalid-id', 'invali
 
 const createCloudPeer = (peerId: string): LinkPeer =>
   new Peer(peerId, {
-    // Same STUN + TURN fallback as rooms, minus the pre-gathered candidate
+    // Same STUN + TURN fallback as rooms, minus the pre-allocated candidate
     // pool: links are data-only and dialing an offline contact must stay cheap.
     config: { ...SHARED_RTC_CONFIG, iceCandidatePoolSize: 0 },
   }) as unknown as LinkPeer

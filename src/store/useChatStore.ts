@@ -106,11 +106,8 @@ const DEFAULT_CHANNELS: Channel[] = [
 ]
 
 const SAVED_DMS_STORAGE_KEY = 'lira_saved_dms'
-const LEGACY_SAVED_DMS_STORAGE_KEY = 'gather_v2_saved_dms'
 const SAVED_DM_CHANNELS_STORAGE_KEY = 'lira_saved_dm_channels'
-const LEGACY_SAVED_DM_CHANNELS_STORAGE_KEY = 'gather_v2_saved_dm_channels'
 const SAVED_LAST_READ_KEY = 'lira_saved_last_read_dms'
-const LEGACY_SAVED_LAST_READ_KEY = 'gather_v2_saved_last_read_dms'
 
 const getStorage = () => {
   if (typeof window !== 'undefined' && window.localStorage) return window.localStorage
@@ -122,7 +119,7 @@ const loadSavedDmChannels = (): Channel[] => {
   try {
     const storage = getStorage()
     if (storage) {
-      const raw = storage.getItem(SAVED_DM_CHANNELS_STORAGE_KEY) || storage.getItem(LEGACY_SAVED_DM_CHANNELS_STORAGE_KEY)
+      const raw = storage.getItem(SAVED_DM_CHANNELS_STORAGE_KEY)
       if (raw) return JSON.parse(raw)
     }
   } catch (e) {}
@@ -133,7 +130,7 @@ const loadSavedDmMessages = (): ChatMessage[] => {
   try {
     const storage = getStorage()
     if (storage) {
-      const raw = storage.getItem(SAVED_DMS_STORAGE_KEY) || storage.getItem(LEGACY_SAVED_DMS_STORAGE_KEY)
+      const raw = storage.getItem(SAVED_DMS_STORAGE_KEY)
       if (raw) {
         const parsed: ChatMessage[] = JSON.parse(raw)
         // Deduplicate friend requests by requestId
@@ -158,7 +155,7 @@ const loadSavedLastRead = (): Record<string, number> => {
   try {
     const storage = getStorage()
     if (storage) {
-      const raw = storage.getItem(SAVED_LAST_READ_KEY) || storage.getItem(LEGACY_SAVED_LAST_READ_KEY)
+      const raw = storage.getItem(SAVED_LAST_READ_KEY)
       if (raw) return JSON.parse(raw)
     }
   } catch (e) {}

@@ -15,13 +15,12 @@ const DEFAULT_SETTINGS: AppSettings = {
 }
 
 const BROWSER_STORAGE_KEY = 'lira_system_app_settings'
-const LEGACY_BROWSER_STORAGE_KEY = 'gather_system_app_settings'
 
 export function useAppSettings() {
   const [settings, setSettings] = useState<AppSettings>(() => {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        const stored = window.localStorage.getItem(BROWSER_STORAGE_KEY) || window.localStorage.getItem(LEGACY_BROWSER_STORAGE_KEY)
+        const stored = window.localStorage.getItem(BROWSER_STORAGE_KEY)
         if (stored) return { ...DEFAULT_SETTINGS, ...JSON.parse(stored) }
       }
     } catch {}

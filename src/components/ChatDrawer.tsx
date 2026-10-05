@@ -30,9 +30,7 @@ const DEFAULT_CHANNELS_WIDTH = 144
 const MIN_CHANNELS_WIDTH = 110
 
 const DRAWER_STORAGE_KEY = 'lira_chat_drawer_width'
-const LEGACY_DRAWER_STORAGE_KEY = 'gather_chat_drawer_width'
 const CHANNELS_STORAGE_KEY = 'lira_chat_channels_width'
-const LEGACY_CHANNELS_STORAGE_KEY = 'gather_chat_channels_width'
 import { useChatStore, getLocalDmChannelId } from '../store/useChatStore'
 import { useGameStore } from '../store/useGameStore'
 import { useMediaStore } from '../store/useMediaStore'
@@ -159,7 +157,7 @@ const ChatDrawerInner: React.FC = () => {
 
   const [drawerWidth, setDrawerWidth] = useState<number>(() => {
     try {
-      const saved = localStorage.getItem(DRAWER_STORAGE_KEY) || localStorage.getItem(LEGACY_DRAWER_STORAGE_KEY)
+      const saved = localStorage.getItem(DRAWER_STORAGE_KEY)
       if (saved) {
         const val = parseInt(saved, 10)
         if (!isNaN(val) && val >= MIN_DRAWER_WIDTH && val <= 1600) {
@@ -172,7 +170,7 @@ const ChatDrawerInner: React.FC = () => {
 
   const [channelsWidth, setChannelsWidth] = useState<number>(() => {
     try {
-      const saved = localStorage.getItem(CHANNELS_STORAGE_KEY) || localStorage.getItem(LEGACY_CHANNELS_STORAGE_KEY)
+      const saved = localStorage.getItem(CHANNELS_STORAGE_KEY)
       if (saved) {
         const val = parseInt(saved, 10)
         if (!isNaN(val) && val >= MIN_CHANNELS_WIDTH && val <= 400) {
