@@ -10,6 +10,7 @@ import { useGameStore } from './useGameStore'
 import { useCustomAssetsStore } from './useCustomAssetsStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { hydrateMapData, compressMapDataForStorage } from '../utils/mapSerialization'
+import { reportStorageFailure } from '../utils/storageReport'
 
 const MAP_STORAGE_KEY = 'lira_custom_map'
 
@@ -39,7 +40,7 @@ const loadSavedMap = (): MapData | null => {
       }
     }
   } catch (e) {
-    // Ignore in non-browser env
+    reportStorageFailure('read', MAP_STORAGE_KEY, e)
   }
   return null
 }
@@ -51,7 +52,7 @@ const saveMap = (mapData: MapData) => {
       storage.setItem(MAP_STORAGE_KEY, JSON.stringify(compressMapDataForStorage(mapData)))
     }
   } catch (e) {
-    // Ignore in non-browser env
+    reportStorageFailure('write', MAP_STORAGE_KEY, e)
   }
 }
 

@@ -2,6 +2,7 @@ import Peer from 'peerjs'
 import { SHARED_RTC_CONFIG } from './mediaCalls'
 import { isUserId } from '../utils/userId'
 import { diagLog } from '../utils/diagnosticLogger'
+import { registerReportContext } from '../utils/reportContext'
 
 /**
  * Friends network: one direct P2P data link per contact, independent of rooms.
@@ -118,6 +119,7 @@ export class FriendsNetwork {
   private signalingAttempts = 0
   private lastPingAt = 0
   private lastRefreshAt = 0
+  private forgetReportContext: (() => void) | null = null
 
   constructor(private readonly createPeer: (peerId: string) => LinkPeer = createCloudPeer) {}
 
@@ -144,13 +146,29 @@ export class FriendsNetwork {
     this.userId = userId
     this.handlers = handlers
     this.running = true
+    this.forgetReportContext = registerReportContext('friends', () => this.describeForReport())
     this.openPeer()
     this.tickTimer = setInterval(() => this.tick(), TICK_INTERVAL_MS)
+  }
+
+  /** What an error report says about the links to friends. */
+  private describeForReport() {
+    const peer = this.peer
+    return {
+      running: this.running,
+      signaling: !peer ? 'none' : peer.destroyed ? 'destroyed' : peer.disconnected ? 'disconnected' : peer.open ? 'open' : 'connecting',
+      signalingAttempts: this.signalingAttempts,
+      linkedUsers: this.links.size,
+      pendingLinks: this.pending.size,
+      redialing: this.redial.size,
+    }
   }
 
   public stop() {
     if (!this.running) return
     this.running = false
+    this.forgetReportContext?.()
+    this.forgetReportContext = null
     if (this.tickTimer) {
       clearInterval(this.tickTimer)
       this.tickTimer = null

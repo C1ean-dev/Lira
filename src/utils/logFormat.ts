@@ -1,12 +1,18 @@
+import type { BreadcrumbInput } from './breadcrumbs'
+import { ErrorReport, normalizeErrorMessage, reportReference, sanitizeErrorReport } from './errorReport'
+
 /**
  * Log record format shared by the Electron main process and the renderer.
  * Pure functions only: no fs, no DOM, no Electron.
  *
  * Every record becomes one readable line:
- *   2026-10-04T10:20:30.456Z ERROR renderer [PeerManager] connection failed Error: timeout
+ *   2026-10-04T10:20:30.456Z ERROR renderer 9008ec95 [PeerManager] connection failed Error: timeout
  *       Error: timeout
  *           at ...
- * so a log can be read, grepped by level/source/scope, and pasted in a report.
+ *       -> report r-mfx1k2-0a1b fp=1a2b3c4d
+ * so a log can be read, grepped by level/source/session/scope, and pasted in a
+ * report. The last line points at the structured report of that error, in
+ * lira-reports-<day>.jsonl (see errorReport.ts).
  */
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
@@ -17,17 +23,25 @@ export interface LogRecord {
   t: string
   level: LogLevel
   source: LogSource
+  /** The process run that wrote it: tells the windows of a multi-instance run apart. */
+  session?: string
   /** The `[Scope]` the message was tagged with, e.g. PeerManager */
   scope?: string
   message: string
   stack?: string
+  /** Fingerprint of the error, on error records: the same for every occurrence of that error. */
+  fp?: string
+  /** The structured report, when this occurrence got one (repeats are only counted). */
+  report?: ErrorReport
 }
 
 export const MAX_MESSAGE_LENGTH = 4000
 export const MAX_STACK_LENGTH = 8000
 export const MAX_BATCH_RECORDS = 500
 
-const SCOPE_PATTERN = /^\[([A-Za-z][\w:.-]{0,39})\]\s*([\s\S]*)$/
+const SCOPE_PATTERN = /^\[([A-Za-z][\w:./ -]{0,39})\]\s*([\s\S]*)$/
+const PLACEHOLDER = /%([sdifoOc%])/g
+const SESSION_PATTERN = /^[\w-]{1,32}$/
 const LEVELS: readonly LogLevel[] = ['debug', 'info', 'warn', 'error']
 
 interface ErrorLike {
@@ -79,10 +93,27 @@ function formatArg(arg: unknown): string {
   return String(arg)
 }
 
+/** Fills the console placeholders (`%s`, `%d`, `%o`...) of the first argument, as the console does. */
+function fillPlaceholders(args: unknown[]): unknown[] {
+  const first = args[0]
+  if (typeof first !== 'string' || args.length < 2 || !first.includes('%')) return args
+  let next = 1
+  const text = first.replace(PLACEHOLDER, (token: string, kind: string) => {
+    if (kind === '%') return '%'
+    if (next >= args.length) return token
+    const arg = args[next++]
+    if (kind === 'c') return ''
+    if (kind === 'd' || kind === 'i') return String(typeof arg === 'number' ? Math.trunc(arg) : parseInt(String(arg), 10))
+    if (kind === 'f') return String(Number(arg))
+    return formatArg(arg)
+  })
+  return [text, ...args.slice(next)]
+}
+
 export function formatArgs(args: unknown[]): string {
   let text: string
   try {
-    text = args.map(formatArg).join(' ')
+    text = fillPlaceholders(args).map(formatArg).join(' ')
   } catch {
     text = '[Unserializable]'
   }
@@ -94,7 +125,8 @@ export function extractScope(args: unknown[]): { scope?: string; args: unknown[]
   const first = args[0]
   if (typeof first !== 'string') return { args }
   const match = SCOPE_PATTERN.exec(first)
-  if (!match) return { args }
+  // "[object Object] ..." is a printed value, not a tag.
+  if (!match || match[1].startsWith('object ')) return { args }
   const rest = match[2] ? [match[2], ...args.slice(1)] : args.slice(1)
   return { scope: match[1], args: rest }
 }
@@ -106,17 +138,47 @@ function findStack(args: unknown[]): string | undefined {
   return undefined
 }
 
+/**
+ * What an error report needs from the arguments of a `console.error`: the scope
+ * tag, the message, the error object and, for React warnings, the component
+ * stack that comes glued to the message.
+ */
+export function consoleErrorInput(args: unknown[]): {
+  scope?: string
+  message: string
+  error?: unknown
+  componentStack?: string
+} {
+  const { scope, args: rest } = extractScope(args)
+  let message = formatArgs(rest)
+  let componentStack: string | undefined
+  const stackStart = message.search(/\n\s+at\s/)
+  if (stackStart !== -1) {
+    componentStack = message.slice(stackStart)
+    message = message.slice(0, stackStart).trimEnd()
+  }
+  const error = rest.find(isErrorLike)
+  return {
+    ...(scope ? { scope } : {}),
+    message,
+    ...(error !== undefined ? { error } : {}),
+    ...(componentStack ? { componentStack } : {}),
+  }
+}
+
 export function buildRecord(
   level: LogLevel,
   source: LogSource,
   args: unknown[],
-  now: Date = new Date()
+  now: Date = new Date(),
+  session?: string
 ): LogRecord {
   const { scope, args: rest } = extractScope(args)
   const record: LogRecord = {
     t: now.toISOString(),
     level,
     source,
+    ...(session ? { session } : {}),
     message: formatArgs(rest),
   }
   if (scope) record.scope = scope
@@ -127,13 +189,48 @@ export function buildRecord(
 
 export function formatLogRecord(record: LogRecord): string {
   const scope = record.scope ? `[${record.scope}] ` : ''
-  const head = `${record.t} ${record.level.toUpperCase().padEnd(5)} ${record.source.padEnd(8)} ${scope}${record.message}`
-  if (!record.stack) return head
-  return [head, ...record.stack.split('\n').map((line) => `    ${line}`)].join('\n')
+  const session = record.session ? `${record.session} ` : ''
+  const lines = [
+    `${record.t} ${record.level.toUpperCase().padEnd(5)} ${record.source.padEnd(8)} ${session}${scope}${record.message}`,
+  ]
+  if (record.stack) lines.push(...record.stack.split('\n').map((line) => `    ${line}`))
+  if (record.report) lines.push(`    -> ${reportReference(record.report)}`)
+  else if (record.fp) lines.push(`    -> repeat fp=${record.fp}`)
+  return lines.join('\n')
 }
 
-/** `lira-2026-10-04.log` holds everything; `lira-errors-2026-10-04.log` only errors. */
-export function logFileName(kind: 'app' | 'error', day: string): string {
+/** A log line as an entry of the trail that error reports carry. */
+export function logBreadcrumb(record: LogRecord): BreadcrumbInput {
+  const message = record.message.split('\n')[0].slice(0, 200)
+  return {
+    t: record.t,
+    cat: 'log',
+    event: record.level,
+    key: `${record.scope ?? ''}|${normalizeErrorMessage(message)}`,
+    data: { ...(record.scope ? { scope: record.scope } : {}), message },
+  }
+}
+
+/** The log line of a report that stands for occurrences that were only counted. */
+export function lateRecord(report: ErrorReport): LogRecord {
+  return {
+    t: report.t,
+    level: 'error',
+    source: report.source,
+    session: report.session,
+    ...(report.scope ? { scope: report.scope } : {}),
+    message: `${report.message} (x${report.count} since the last report)`,
+    fp: report.fingerprint,
+    report,
+  }
+}
+
+/**
+ * `lira-2026-10-04.log` holds everything; `lira-errors-2026-10-04.log` only
+ * errors; `lira-reports-2026-10-04.jsonl` one structured report per line.
+ */
+export function logFileName(kind: 'app' | 'error' | 'report', day: string): string {
+  if (kind === 'report') return `lira-reports-${day}.jsonl`
   return kind === 'error' ? `lira-errors-${day}.log` : `lira-${day}.log`
 }
 
@@ -160,8 +257,12 @@ export function sanitizeRecords(input: unknown): LogRecord[] {
       source: 'renderer',
       message: r.message.slice(0, MAX_MESSAGE_LENGTH),
     }
+    if (typeof r.session === 'string' && SESSION_PATTERN.test(r.session)) record.session = r.session
     if (typeof r.scope === 'string' && r.scope) record.scope = r.scope.slice(0, 40)
     if (typeof r.stack === 'string' && r.stack) record.stack = r.stack.slice(0, MAX_STACK_LENGTH)
+    if (typeof r.fp === 'string' && /^[0-9a-f]{8}$/.test(r.fp)) record.fp = r.fp
+    const report = r.report === undefined ? null : sanitizeErrorReport(r.report, 'renderer')
+    if (report) record.report = report
     out.push(record)
   }
   return out

@@ -7,6 +7,15 @@ import http from 'http'
 import dgram from 'dgram'
 import { spawn, exec } from 'child_process'
 import { release as getOsRelease } from 'os'
+import { guardIpcMain } from './ipcGuard'
+import { createLogBundle } from './logBundle'
+import { logErrorWith } from './logWriter'
+import { buildMainContext, summarizeGpu } from './mainContext'
+import { describeProcessGone } from './processGone'
+import { createSymbolicator } from './stackSymbolicator'
+import type { ErrorReport } from '../src/utils/errorReport'
+import { appTrail } from '../src/utils/breadcrumbs'
+import { createErrorReporter } from '../src/utils/errorReporter'
 import { setupSingleInstanceLock } from './singleInstance'
 import { TrayManager, AppSettings } from './trayManager'
 import { createLogWriter, installConsoleCapture, installProcessErrorCapture } from './logWriter'
@@ -41,6 +50,8 @@ let lastSelectedSourceTime = 0
 
 const GITHUB_REPO = 'C1ean-dev/Lira'
 const CURRENT_VERSION = app.getVersion() || '1.0.0'
+// Identifies this run of the main process on its log lines, diagnostic entries and error reports.
+const MAIN_SESSION = `electron-${process.pid}`
 
 type ProcessAudioCaptureResult = { ok: true } | { ok: false; error: string }
 type ProcessAudioCaptureInfo = {
@@ -51,16 +62,23 @@ type ProcessAudioCaptureInfo = {
   error?: string
 }
 
-function writeMainAudioDiagnostic(event: string, data?: Record<string, unknown>) {
+/**
+ * A transition of the main process (window created, helper spawned, IPC handler
+ * that blocked...): one JSON line in logs/call-debug-<day>.log next to the
+ * renderer's, a line in the timeline, and an entry in the trail that the error
+ * reports of this process carry.
+ */
+function writeMainDiagnostic(cat: string, event: string, data?: Record<string, unknown>) {
   const entry = {
     t: new Date().toISOString(),
-    session: `electron-${process.pid}`,
-    cat: 'screenshare-native',
+    session: MAIN_SESSION,
+    cat,
     event,
     ...(data ? { data } : {}),
   }
   try {
-    console.info(`[diag:screenshare-native] ${event}`, data ?? '')
+    appTrail.add(entry)
+    console.info(`[diag:${cat}] ${event}`, data ?? '')
     const dir = getLogsDirectory()
     const day = new Date().toISOString().slice(0, 10)
     const filePath = path.join(dir, `call-debug-${day}.log`)
@@ -69,6 +87,10 @@ function writeMainAudioDiagnostic(event: string, data?: Record<string, unknown>)
   } catch (error) {
     console.warn('[DiagLog] native audio append failed:', error)
   }
+}
+
+function writeMainAudioDiagnostic(event: string, data?: Record<string, unknown>) {
+  writeMainDiagnostic('screenshare-native', event, data)
 }
 
 function emitProcessAudioStatus(status: 'started' | 'stopped' | 'error', detail?: string) {
@@ -279,22 +301,133 @@ async function startProcessAudioCapture(sourceId: string): Promise<ProcessAudioC
   })
 }
 
+// Error reports: every error of this process and of the renderer becomes one
+// JSON line in logs/lira-reports-<day>.jsonl, with the state of the app and the
+// trail of what happened before it (src/utils/errorReport.ts).
+function mainReportContext(): Record<string, unknown> {
+  return buildMainContext({
+    version: CURRENT_VERSION,
+    packaged: app.isPackaged,
+    instance: instanceId,
+    versions: process.versions,
+    platform: process.platform,
+    arch: process.arch,
+    osRelease: getOsRelease(),
+    locale: app.isReady() ? app.getLocale() : undefined,
+    uptimeSec: process.uptime(),
+    memory: process.memoryUsage(),
+    windows: BrowserWindow.getAllWindows(),
+    extra: {
+      screenShareHelper: processAudioCapture ? 'running' : 'idle',
+      pendingScreenCapture: !!pendingScreenCapture,
+    },
+  })
+}
+
+const mainReporter = createErrorReporter({
+  source: 'main',
+  session: MAIN_SESSION,
+  context: mainReportContext,
+  breadcrumbs: () => appTrail.list(),
+  stats: () => appTrail.stats(),
+})
+
+// The installed app runs from minified bundles: the maps the build puts next to them
+// (vite.config.ts) turn the stack frames of a report back into source files and lines.
+const symbolicator = createSymbolicator({
+  loadMap: (file) => {
+    const mapPath = path.join(app.getAppPath(), `${file}.map`)
+    if (!fs.existsSync(mapPath)) return null
+    const map = JSON.parse(fs.readFileSync(mapPath, 'utf-8'))
+    // Only what the lookup reads: a whole map is several megabytes.
+    return { sources: map.sources, names: map.names, mappings: map.mappings, sourceRoot: map.sourceRoot }
+  },
+})
+let forgetMapsTimer: ReturnType<typeof setTimeout> | null = null
+
+function translateReport(report: ErrorReport) {
+  symbolicator.report(report)
+  // Errors come in bursts: keep the maps for the next ones, then give the memory back.
+  if (forgetMapsTimer) clearTimeout(forgetMapsTimer)
+  forgetMapsTimer = setTimeout(() => symbolicator.forget(), 120000)
+  forgetMapsTimer.unref()
+}
+
+/** The first lines of a session: what is running, where, and on which graphics hardware. */
+function logSessionStart() {
+  console.info('[Session] started', {
+    session: MAIN_SESSION,
+    ...(mainReportContext().app as Record<string, unknown>),
+    logs: getLogsDirectory(),
+  })
+  app
+    .getGPUInfo('basic')
+    .then((info) => console.info('[Session] gpu', summarizeGpu(info, app.getGPUFeatureStatus())))
+    .catch((error) => console.warn('[Session] could not read the GPU info:', error))
+}
+
+/** A renderer, GPU or utility process went away: an error only when it was not ended on purpose. */
+function logProcessGone(
+  kind: 'renderer' | 'child',
+  details: { type?: string; reason?: string; exitCode?: number; name?: string; serviceName?: string }
+) {
+  const gone = describeProcessGone(kind, details)
+  if (gone.level === 'error') {
+    logErrorWith(console, { kind: 'process-gone', severity: gone.severity, data: gone.data }, `[Electron] ${gone.message}`)
+  } else if (gone.level === 'warn') {
+    console.warn(`[Electron] ${gone.message}`)
+  } else {
+    console.info(`[Electron] ${gone.message}`)
+  }
+}
+
+/** What happens to a window between "created" and "closed", for the trail of later errors. */
+function watchWindow(win: BrowserWindow) {
+  const id = win.id
+  writeMainDiagnostic('main', 'window-created', { id })
+  win.on('unresponsive', () => {
+    logErrorWith(console, { kind: 'unresponsive', data: { id } }, '[Electron] Window is not responding')
+  })
+  win.on('responsive', () => writeMainDiagnostic('main', 'window-responsive', { id }))
+  win.on('show', () => writeMainDiagnostic('main', 'window-show', { id }))
+  win.on('hide', () => writeMainDiagnostic('main', 'window-hide', { id }))
+  win.on('minimize', () => writeMainDiagnostic('main', 'window-minimize', { id }))
+  win.on('restore', () => writeMainDiagnostic('main', 'window-restore', { id }))
+  win.on('closed', () => writeMainDiagnostic('main', 'window-closed', { id }))
+  // A second "loaded" for the same window is a reload: the renderer started over.
+  win.webContents.on('did-finish-load', () => writeMainDiagnostic('main', 'window-loaded', { id }))
+}
+
 // App log: console output of this process and of the renderer goes to
 // logs/lira-<day>.log; errors (also uncaught ones) additionally go to
 // logs/lira-errors-<day>.log. The folder is resolved on each write, after
 // userData has its final location.
 const appLog = createLogWriter({
   dir: () => getLogsDirectory(),
+  session: MAIN_SESSION,
+  reporter: mainReporter,
+  trail: appTrail,
+  symbolicate: translateReport,
   onFailure: (error) => process.stderr.write(`[Log] could not write log file: ${String(error)}
 `),
 })
+// An error that repeats is reported once and then counted; the count is written here.
+setInterval(() => appLog.flushReports(), 15000).unref()
+app.on('will-quit', () => appLog.flushReports())
+// From here on, a failing IPC handler is reported with its channel, and one that blocks this process is noted.
+guardIpcMain(ipcMain, {
+  onError: (channel, error, ms) =>
+    logErrorWith(console, { kind: 'ipc', data: { channel, ms } }, `[IPC] ${channel} failed:`, error),
+  onSlow: (channel, ms) => writeMainDiagnostic('ipc', 'blocked-main', { channel, ms }),
+})
+app.whenReady().then(logSessionStart)
 installConsoleCapture(console as any, appLog, 'main')
 installProcessErrorCapture(process, appLog, 'main')
 // Start-up steps of the main process, in the same log ("[Startup] main: ..."); the renderer adds its own line.
 const startupStep = createStartupTimer({ log: (line) => console.log(line) })
 let startupProfiled = false
 app.on('child-process-gone', (_event, details) => {
-  console.error(`[Electron] Child process gone: ${details.type} (${details.reason}, exitCode: ${details.exitCode})`)
+  logProcessGone('child', details)
 })
 
 // Multi-instance testing support (--instance=2 or env INSTANCE=2 or --multi)
@@ -384,6 +517,7 @@ function createWindow() {
   // Inicializa a bandeja do sistema (ícones ocultos no Windows)
   trayManager = new TrayManager(instanceId, isMultiInstance)
   trayManager.init(mainWindow)
+  watchWindow(mainWindow)
 
   // Grant media permissions automatically
   session.defaultSession.setPermissionCheckHandler(() => {
@@ -490,7 +624,7 @@ function createWindow() {
   })
 
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
-    console.error(`[Electron] Render process gone: ${details.reason} (exitCode: ${details.exitCode})`)
+    logProcessGone('renderer', details)
   })
 
   const loadApp = () => {
@@ -1102,8 +1236,30 @@ ipcMain.handle('diagnostic-log-batch', async (_event, entries: unknown[]) => {
 })
 
 // Renderer console output, uncaught errors and rejections, in batches.
-ipcMain.handle('renderer-log-batch', (_event, records: unknown) => {
-  appLog.writeBatch(sanitizeRecords(records))
+const rendererSessions = new Set<string>()
+ipcMain.handle('renderer-log-batch', (event, records: unknown) => {
+  const batch = sanitizeRecords(records)
+  for (const record of batch) {
+    // Which window a renderer session is: a reload starts a new session in the same window.
+    if (record.session && !rendererSessions.has(record.session)) {
+      rendererSessions.add(record.session)
+      writeMainDiagnostic('main', 'renderer-session', {
+        session: record.session,
+        window: BrowserWindow.fromWebContents(event.sender)?.id ?? null,
+      })
+    }
+    // A later error of this process (a renderer that died) shows the renderer errors that came before it.
+    if (record.level === 'error') {
+      appTrail.add({
+        t: record.t,
+        cat: 'renderer',
+        event: 'error',
+        key: record.fp,
+        data: { session: record.session, scope: record.scope, message: record.message.split('\n')[0].slice(0, 160), fp: record.fp },
+      })
+    }
+  }
+  appLog.writeBatch(batch)
   return { ok: true }
 })
 
@@ -1115,6 +1271,25 @@ ipcMain.handle('open-logs-folder', async () => {
   } catch (err) {
     console.error('[DiagLog] open folder failed:', err)
     return null
+  }
+})
+
+// One zip with the error reports and the logs of the last days, in the Downloads
+// folder and shown there: the file a person sends when something went wrong.
+ipcMain.handle('export-log-bundle', async () => {
+  try {
+    appLog.flushReports()
+    const bundle = await createLogBundle({
+      logsDir: getLogsDirectory(),
+      outDir: app.getPath('downloads'),
+      info: { session: MAIN_SESSION, ...(mainReportContext().app as Record<string, unknown>) },
+    })
+    writeMainDiagnostic('main', 'log-bundle', { files: bundle.files.length, skipped: bundle.skipped.length, bytes: bundle.bytes })
+    shell.showItemInFolder(bundle.path)
+    return { ok: true, path: bundle.path as string | null }
+  } catch (err) {
+    console.error('[DiagLog] log bundle failed:', err)
+    return { ok: false, path: null as string | null }
   }
 })
 
