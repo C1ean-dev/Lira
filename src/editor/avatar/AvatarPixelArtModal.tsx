@@ -25,6 +25,8 @@ import {
 import { AvatarConfig, AvatarComponentSlot, Direction } from '../../types/game'
 import { ColorWheelPicker } from '../../components/common/ColorWheelPicker'
 import { smartRescalePixelArt, smartRescaleDataUrl } from '../../utils/imageResize'
+import { spriteCollisionFromFrames, type SpriteCollision } from '../../utils/spriteHitbox'
+import { centerOffset, clampedSizeText, composeFrameSource, parseSizeInput } from '../../utils/studioResize'
 
 export type DrawTool = 'pencil' | 'eraser' | 'bucket' | 'picker' | 'move'
 
@@ -54,9 +56,15 @@ interface Props {
       pixelHeight?: number
       isObstacle?: boolean
       category?: string
+      /** Furniture with "Obstáculo" on: the tiles that have something visible in the drawing, per direction.
+       *  null if the drawing could not be read; absent otherwise. */
+      spriteCollision?: SpriteCollision | null
     }
   ) => void
 }
+
+// How long the canvas waits after the last key typed in Dimensões before it is resized
+const LIVE_RESIZE_DELAY_MS = 180
 
 const PRESET_PALETTE = [
   '#000000', '#1e1f22', '#475569', '#94a3b8', '#cbd5e1', '#ffffff',
@@ -120,6 +128,8 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     return 32
   })
   const initialLoadedRef = useRef<boolean>(false)
+  // Saving reads the drawing to work out the hitbox, which takes a moment: a second click must not save twice
+  const savingRef = useRef<boolean>(false)
 
   useEffect(() => {
     initialLoadedRef.current = false
@@ -149,12 +159,17 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     setInputTamanhoHStr(String(tamanhoHeight))
   }, [tamanhoHeight])
 
+  // The Dimensões fields show the size applied to the canvas, except while one of them is being edited
+  const dimensionsFocusedRef = useRef<boolean>(false)
+  // Size typed in Dimensões that the canvas has still to follow
+  const [requestedCanvasSize, setRequestedCanvasSize] = useState<{ width: number; height: number } | null>(null)
+
   useEffect(() => {
-    setInputWidthStr(String(pixelWidth))
+    if (!dimensionsFocusedRef.current) setInputWidthStr(String(pixelWidth))
   }, [pixelWidth])
 
   useEffect(() => {
-    setInputHeightStr(String(pixelHeight))
+    if (!dimensionsFocusedRef.current) setInputHeightStr(String(pixelHeight))
   }, [pixelHeight])
   const [isObstacle, setIsObstacle] = useState<boolean>(initialIsObstacle !== undefined ? initialIsObstacle : true)
   const [furnitureCategory, setFurnitureCategory] = useState<string>(initialSubCategory || 'Geral')
@@ -231,8 +246,10 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
   defaultZoomRef.current = defaultZoom
 
   const [showGrid, setShowGrid] = useState<boolean>(true)
+  // The name is what the caller gives: editing something keeps its name. A caller that saves a copy of a
+  // built-in preset says so in the name it passes (utils/studioNaming.ts).
   const [customName, setCustomName] = useState<string>(
-    presetName ? `${presetName} (Custom)` : `Novo ${CATEGORY_LABELS[category]}`
+    presetName || `Novo ${CATEGORY_LABELS[category]}`
   )
 
   // Canvas Panning (Right Click Drag, Middle Click Drag, Space + Left Click, Mouse Scroll)
@@ -935,20 +952,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     const canvas = drawCanvasRef.current
     const activeFrameKey = `${activeDirection}_${activeFrameIndex}`
 
-    // Ensure we have the unclipped pristine image of the active canvas BEFORE resizing
-    let activeUnclipped = unclippedFramesMapRef.current.get(activeFrameKey)
-    if (!activeUnclipped && canvas) {
-      activeUnclipped = document.createElement('canvas')
-      activeUnclipped.width = canvas.width
-      activeUnclipped.height = canvas.height
-      const uCtx = activeUnclipped.getContext('2d')
-      if (uCtx) {
-        uCtx.imageSmoothingEnabled = false
-        uCtx.drawImage(canvas, 0, 0)
-        unclippedFramesMapRef.current.set(activeFrameKey, activeUnclipped)
-      }
-    }
-
     commitCurrentCanvas()
 
     const activeFrameUrl = canvas ? canvas.toDataURL('image/png') : ''
@@ -983,59 +986,32 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
         const resizedList = await Promise.all(
           list.map(async (frameUrl, fIdx) => {
             if (!frameUrl) return ''
+
+            // The frame as it is on the canvas now, plus whatever of it lies outside a smaller canvas
+            const fKey = `${dir}_${fIdx}`
+            const source = await composeFrameSource(unclippedFramesMapRef.current.get(fKey), frameUrl)
+            if (!source) return ''
+            unclippedFramesMapRef.current.set(fKey, source)
+
             const off = document.createElement('canvas')
             off.width = targetW
             off.height = targetH
             const oCtx = off.getContext('2d')
             if (!oCtx) return ''
             oCtx.imageSmoothingEnabled = false
-
-            const fKey = `${dir}_${fIdx}`
-            const unclippedF = unclippedFramesMapRef.current.get(fKey)
-            if (unclippedF) {
-              const srcW = unclippedF.width
-              const srcH = unclippedF.height
-              const dx = Math.round((targetW - srcW) / 2)
-              const dy = Math.round((targetH - srcH) / 2)
-              oCtx.drawImage(unclippedF, dx, dy)
-              return off.toDataURL('image/png')
-            }
-
-            const img = new Image()
-            img.src = frameUrl
-            await new Promise<void>((resolve) => {
-              img.onload = () => {
-                const srcW = img.naturalWidth || pixelWidth || targetW
-                const srcH = img.naturalHeight || pixelHeight || targetH
-
-                // Place 1:1 centered in the new canvas dimensions without stretching or re-scaling pixels
-                const dx = Math.round((targetW - srcW) / 2)
-                const dy = Math.round((targetH - srcH) / 2)
-
-                oCtx.imageSmoothingEnabled = false
-                oCtx.drawImage(img, dx, dy)
-
-                // Store unclipped version in map
-                const uCanvas = document.createElement('canvas')
-                uCanvas.width = srcW
-                uCanvas.height = srcH
-                const uCtx = uCanvas.getContext('2d')
-                if (uCtx) {
-                  uCtx.imageSmoothingEnabled = false
-                  uCtx.drawImage(img, 0, 0)
-                  unclippedFramesMapRef.current.set(fKey, uCanvas)
-                }
-
-                resolve()
-              }
-              img.onerror = () => resolve()
-            })
+            const offset = centerOffset(
+              { width: targetW, height: targetH },
+              { width: source.width, height: source.height }
+            )
+            oCtx.drawImage(source, offset.x, offset.y)
             return off.toDataURL('image/png')
           })
         )
         resizedCanvasFrames[dir] = resizedList
       })
     )
+
+    const activeUnclipped = unclippedFramesMapRef.current.get(activeFrameKey)
 
     masterFramesRef.current = {
       down: [...resizedCanvasFrames.down],
@@ -1119,11 +1095,66 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     const safeH = isNaN(parsedH) || parsedH < 1 ? pixelHeight : Math.min(4096, parsedH)
     setInputWidthStr(String(safeW))
     setInputHeightStr(String(safeH))
+    if (isResizingRef.current) {
+      // a resize is running: this one is applied when it ends
+      setRequestedCanvasSize({ width: safeW, height: safeH })
+      return
+    }
+    setRequestedCanvasSize(null)
     if (safeW !== pixelWidth || safeH !== pixelHeight) {
       initialLoadedRef.current = true
       handleResizeDimensions(safeW, safeH)
     }
   }
+
+  const handleDimensionsBlur = () => {
+    dimensionsFocusedRef.current = false
+    handleApplyDimensions()
+  }
+
+  // Dimensões and Tamanho follow what is typed: the size is applied while typing, not only on blur / Enter.
+  // A field that is empty or below 1 changes nothing until it holds a valid size; above 4096 it becomes 4096.
+  const handleDimensionsInput = (axis: 'width' | 'height', typedText: string) => {
+    const shownText = clampedSizeText(typedText)
+    if (axis === 'width') setInputWidthStr(shownText)
+    else setInputHeightStr(shownText)
+    const typedSize = parseSizeInput(shownText)
+    if (typedSize === null) {
+      setRequestedCanvasSize(null)
+      return
+    }
+    const requestedWidth = axis === 'width' ? typedSize : parseSizeInput(inputWidthStr) ?? pixelWidth
+    const requestedHeight = axis === 'height' ? typedSize : parseSizeInput(inputHeightStr) ?? pixelHeight
+    setRequestedCanvasSize({ width: requestedWidth, height: requestedHeight })
+  }
+
+  const handleTamanhoInput = (axis: 'width' | 'height', typedText: string) => {
+    const shownText = clampedSizeText(typedText)
+    if (axis === 'width') setInputTamanhoWStr(shownText)
+    else setInputTamanhoHStr(shownText)
+    const typedSize = parseSizeInput(shownText)
+    if (typedSize === null) return
+    if (axis === 'width') setTamanhoWidth(typedSize)
+    else setTamanhoHeight(typedSize)
+  }
+
+  // The canvas follows the size typed in Dimensões once the typing pauses, one resize at a time
+  const resizeHandlerRef = useRef(handleResizeDimensions)
+  resizeHandlerRef.current = handleResizeDimensions
+
+  useEffect(() => {
+    const requestedSize = requestedCanvasSize
+    if (!requestedSize || (requestedSize.width === pixelWidth && requestedSize.height === pixelHeight)) return
+    const timer = setTimeout(() => {
+      // a resize that is running re-runs this effect when it ends (the applied size changes)
+      if (isResizingRef.current) return
+      initialLoadedRef.current = true
+      void resizeHandlerRef.current(requestedSize.width, requestedSize.height).finally(() => {
+        isResizingRef.current = false
+      })
+    }, LIVE_RESIZE_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [requestedCanvasSize, pixelWidth, pixelHeight])
 
   const handleApplyTamanho = () => {
     const parsedW = parseInt(inputTamanhoWStr, 10)
@@ -1705,6 +1736,22 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       category: furnitureCategory,
     }
 
+    // The hitbox follows the drawing: only the tiles with something visible in them block (spriteHitbox.ts)
+    const commit = async (frames: Record<Direction, string[]>) => {
+      if (savingRef.current) return
+      savingRef.current = true
+      try {
+        const spriteCollision =
+          category === 'furniture' && isObstacle
+            ? await spriteCollisionFromFrames(frames, finalPixelW, finalPixelH)
+            : undefined
+        onSave(frames, customName.trim() || `Preset ${CATEGORY_LABELS[category]}`, { ...saveOptions, spriteCollision })
+        onClose()
+      } finally {
+        savingRef.current = false
+      }
+    }
+
     if (category === 'floor') {
       finalFrames.up = [...finalFrames.down]
       finalFrames.left = [...finalFrames.down]
@@ -1731,8 +1778,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 
         const completeSave = () => {
           finalFrames.right = mirrored
-          onSave(finalFrames, customName.trim() || `Preset ${CATEGORY_LABELS[category]}`, saveOptions)
-          onClose()
+          void commit(finalFrames)
         }
 
         leftFrames.forEach((frameUrl, idx) => {
@@ -1781,8 +1827,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 
         const completeSave = () => {
           finalFrames.left = mirrored
-          onSave(finalFrames, customName.trim() || `Preset ${CATEGORY_LABELS[category]}`, saveOptions)
-          onClose()
+          void commit(finalFrames)
         }
 
         rightFrames.forEach((frameUrl, idx) => {
@@ -1817,8 +1862,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       }
     }
 
-    onSave(finalFrames, customName.trim() || `Preset ${CATEGORY_LABELS[category]}`, saveOptions)
-    onClose()
+    void commit(finalFrames)
   }
 
   const pixelScale = zoom
@@ -1857,8 +1901,11 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                     min={1}
                     max={4096}
                     value={inputWidthStr}
-                    onChange={(e) => setInputWidthStr(e.target.value)}
-                    onBlur={handleApplyDimensions}
+                    onChange={(event) => handleDimensionsInput('width', event.target.value)}
+                    onFocus={() => {
+                      dimensionsFocusedRef.current = true
+                    }}
+                    onBlur={handleDimensionsBlur}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         handleApplyDimensions()
@@ -1866,7 +1913,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                       }
                     }}
                     className="w-12 bg-[#18191c] border border-[#383a40] rounded px-1 py-0.5 text-center text-white font-bold text-xs focus:outline-none focus:border-[#3b82f6]"
-                    title="Resolução da tela trabalhada em pixels (Enter para aplicar)"
+                    title="Resolução da tela trabalhada em pixels"
                   />
                   <span className="text-slate-400 text-xs">×</span>
                   <input
@@ -1874,8 +1921,11 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                     min={1}
                     max={4096}
                     value={inputHeightStr}
-                    onChange={(e) => setInputHeightStr(e.target.value)}
-                    onBlur={handleApplyDimensions}
+                    onChange={(event) => handleDimensionsInput('height', event.target.value)}
+                    onFocus={() => {
+                      dimensionsFocusedRef.current = true
+                    }}
+                    onBlur={handleDimensionsBlur}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         handleApplyDimensions()
@@ -1883,7 +1933,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                       }
                     }}
                     className="w-12 bg-[#18191c] border border-[#383a40] rounded px-1 py-0.5 text-center text-white font-bold text-xs focus:outline-none focus:border-[#3b82f6]"
-                    title="Resolução da tela trabalhada em pixels (Enter para aplicar)"
+                    title="Resolução da tela trabalhada em pixels"
                   />
                   <span className="text-[10px] text-slate-400 font-medium">px</span>
                 </div>
@@ -1898,7 +1948,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                     min={1}
                     max={4096}
                     value={inputTamanhoWStr}
-                    onChange={(e) => setInputTamanhoWStr(e.target.value)}
+                    onChange={(event) => handleTamanhoInput('width', event.target.value)}
                     onBlur={handleApplyTamanho}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
@@ -1907,7 +1957,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                       }
                     }}
                     className="w-12 bg-[#18191c] border border-[#383a40] rounded px-1 py-0.5 text-center text-white font-bold text-xs focus:outline-none focus:border-[#3b82f6]"
-                    title="Tamanho final de exibição do asset no mapa/jogo e preview em pixels (Enter para aplicar)"
+                    title="Tamanho final de exibição do asset no mapa/jogo e preview em pixels"
                   />
                   <span className="text-slate-400 text-xs">×</span>
                   <input
@@ -1915,7 +1965,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                     min={1}
                     max={4096}
                     value={inputTamanhoHStr}
-                    onChange={(e) => setInputTamanhoHStr(e.target.value)}
+                    onChange={(event) => handleTamanhoInput('height', event.target.value)}
                     onBlur={handleApplyTamanho}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
@@ -1924,7 +1974,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                       }
                     }}
                     className="w-12 bg-[#18191c] border border-[#383a40] rounded px-1 py-0.5 text-center text-white font-bold text-xs focus:outline-none focus:border-[#3b82f6]"
-                    title="Tamanho final de exibição do asset no mapa/jogo e preview em pixels (Enter para aplicar)"
+                    title="Tamanho final de exibição do asset no mapa/jogo e preview em pixels"
                   />
                   <span className="text-[10px] text-slate-400 font-medium">px</span>
                 </div>
@@ -1933,7 +1983,14 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 
             {/* Obstacle Checkbox for Furniture and Walls */}
             {(category === 'furniture' || category === 'wall') && (
-              <label className="flex items-center gap-1.5 cursor-pointer bg-[#2b2d31] border border-[#3f4147] px-2.5 py-1 rounded-xl text-xs">
+              <label
+                className="flex items-center gap-1.5 cursor-pointer bg-[#2b2d31] border border-[#3f4147] px-2.5 py-1 rounded-xl text-xs"
+                title={
+                  category === 'furniture'
+                    ? 'Bloqueia a passagem só nos quadrados de 32 px que têm pixels visíveis. As partes transparentes ficam livres.'
+                    : undefined
+                }
+              >
                 <input
                   type="checkbox"
                   checked={isObstacle}
@@ -2243,261 +2300,9 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               )}
             </div>
 
-            {/* Bottom Dock: Multi-Frame Timeline & Direction Controls */}
+            {/* Bottom Dock: Status & Controls (the direction selector is in the right column) */}
             <div className="absolute bottom-3 z-10 flex flex-col items-center gap-2 max-w-[95%] pointer-events-none">
-              {/* Row 1: Animation Timeline Strip for Active Direction */}
-              <div className="flex items-center gap-2 bg-[#18191c]/95 border border-[#383a40] backdrop-blur-md px-3.5 py-1.5 rounded-2xl shadow-2xl pointer-events-auto">
-                <div className="flex items-center gap-1.5 mr-1 shrink-0">
-                  <span className="text-[11px] font-extrabold text-blue-400 uppercase tracking-wider flex items-center gap-1">
-                    <span>🎞️</span>
-                    <span>{category === 'floor' ? 'Quadros:' : `Quadros (${DIRECTIONS.find((d) => d.id === activeDirection)?.label}):`}</span>
-                  </span>
-                </div>
-
-                {/* Frame List */}
-                <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 max-w-md">
-                  {currentDirectionFrames.map((frameData, idx) => {
-                    const isFrameActive = idx === activeFrameIndex
-                    const isDragged = draggedFrameIndex === idx
-                    const isDragOver = dragOverFrameIndex === idx && draggedFrameIndex !== idx
-                    return (
-                      <div
-                        key={idx}
-                        draggable={currentDirectionFrames.length > 1}
-                        onDragStart={(e) => {
-                          setDraggedFrameIndex(idx)
-                          e.dataTransfer.effectAllowed = 'move'
-                          e.dataTransfer.setData('text/plain', String(idx))
-                        }}
-                        onDragOver={(e) => {
-                          e.preventDefault()
-                          e.dataTransfer.dropEffect = 'move'
-                          if (dragOverFrameIndex !== idx) {
-                            setDragOverFrameIndex(idx)
-                          }
-                        }}
-                        onDragLeave={(e) => {
-                          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                            if (dragOverFrameIndex === idx) {
-                              setDragOverFrameIndex(null)
-                            }
-                          }
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault()
-                          setDragOverFrameIndex(null)
-                          const rawFrom = e.dataTransfer.getData('text/plain')
-                          const fromIdx = draggedFrameIndex !== null ? draggedFrameIndex : rawFrom ? parseInt(rawFrom, 10) : null
-                          if (fromIdx !== null && !isNaN(fromIdx) && fromIdx !== idx) {
-                            handleMoveFrame(fromIdx, idx)
-                          }
-                          setDraggedFrameIndex(null)
-                        }}
-                        onDragEnd={() => {
-                          setDraggedFrameIndex(null)
-                          setDragOverFrameIndex(null)
-                        }}
-                        onClick={() => switchFrame(idx)}
-                        title={
-                          currentDirectionFrames.length > 1
-                            ? `Quadro Q${idx + 1} (Clique para selecionar, arraste ou use as setas para reposicionar)`
-                            : `Quadro Q${idx + 1}`
-                        }
-                        className={`group relative flex flex-col items-center p-1 rounded-xl border transition-all select-none min-w-[44px] ${
-                          currentDirectionFrames.length > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
-                        } ${
-                          isDragged
-                            ? 'opacity-35 scale-95 border-dashed border-blue-400 bg-blue-500/10'
-                            : isDragOver
-                            ? 'border-blue-400 bg-blue-500/25 ring-2 ring-blue-500/60 scale-105 shadow-lg shadow-blue-500/30'
-                            : isFrameActive
-                            ? 'bg-[#3b82f6]/25 border-[#3b82f6] shadow-md shadow-blue-500/25 scale-105'
-                            : 'bg-[#2b2d31] border-[#383a40] hover:border-slate-500 hover:bg-[#32353b]'
-                        }`}
-                      >
-                        <div className="w-9 h-9 rounded-lg bg-[#141517] border border-slate-700/60 flex items-center justify-center overflow-hidden pointer-events-none">
-                          {frameData ? (
-                            <img
-                              src={isFrameActive ? previewDataUrl || frameData : frameData}
-                              alt={`Q${idx + 1}`}
-                              draggable={false}
-                              className="w-8 h-8 [image-rendering:pixelated]"
-                            />
-                          ) : (
-                            <span className="text-[9px] text-slate-500 italic">Vazio</span>
-                          )}
-                        </div>
-
-                        {currentDirectionFrames.length > 1 ? (
-                          <div className="flex items-center justify-between w-full mt-0.5 px-0.5 gap-0.5">
-                            {idx > 0 ? (
-                              <button
-                                type="button"
-                                draggable={false}
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleMoveFrame(idx, idx - 1)
-                                }}
-                                title="Mover para a esquerda"
-                                className="p-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700/80 transition-all cursor-pointer opacity-70 group-hover:opacity-100"
-                              >
-                                <ChevronLeft className="w-2.5 h-2.5" />
-                              </button>
-                            ) : (
-                              <div className="w-3.5" />
-                            )}
-
-                            <span
-                              className={`text-[9px] font-bold leading-none ${
-                                isFrameActive ? 'text-blue-300' : 'text-slate-400'
-                              }`}
-                            >
-                              Q{idx + 1}
-                            </span>
-
-                            {idx < currentDirectionFrames.length - 1 ? (
-                              <button
-                                type="button"
-                                draggable={false}
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleMoveFrame(idx, idx + 1)
-                                }}
-                                title="Mover para a direita"
-                                className="p-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700/80 transition-all cursor-pointer opacity-70 group-hover:opacity-100"
-                              >
-                                <ChevronRight className="w-2.5 h-2.5" />
-                              </button>
-                            ) : (
-                              <div className="w-3.5" />
-                            )}
-                          </div>
-                        ) : (
-                          <span
-                            className={`text-[9px] font-bold mt-0.5 ${
-                              isFrameActive ? 'text-blue-300' : 'text-slate-400'
-                            }`}
-                          >
-                            Q{idx + 1}
-                          </span>
-                        )}
-
-                        {/* Delete Frame Button */}
-                        {currentDirectionFrames.length > 1 && (
-                          <button
-                            type="button"
-                            draggable={false}
-                            onClick={(e) => handleDeleteFrame(e, idx)}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            title="Excluir este quadro"
-                            className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity shadow cursor-pointer z-10"
-                          >
-                            ×
-                          </button>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-
-                {/* Timeline Action Buttons */}
-                <div className="flex items-center gap-1.5 ml-1.5 shrink-0">
-                  <button
-                    onClick={handleAddFrame}
-                    title="Adicionar Novo Quadro em Branco"
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-[#2b2d31] hover:bg-[#383a40] border border-[#383a40] text-blue-400 hover:text-white text-xs font-bold transition-all cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Novo</span>
-                  </button>
-
-                  <button
-                    onClick={handleDuplicateFrame}
-                    title="Duplicar Quadro Atual (Perfeito para ajustar passos de caminhada!)"
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-[#2b2d31] hover:bg-[#383a40] border border-[#383a40] text-indigo-300 hover:text-white text-xs font-bold transition-all cursor-pointer"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Duplicar</span>
-                  </button>
-
-                  {/* Reorder / Move Active Frame Buttons */}
-                  <div
-                    className="flex items-center bg-[#2b2d31] border border-[#383a40] rounded-xl p-0.5"
-                    title="Mover a posição do quadro ativo na animação (ou arraste os quadros diretamente)"
-                  >
-                    <button
-                      onClick={() => handleMoveFrame(activeFrameIndex, activeFrameIndex - 1)}
-                      disabled={activeFrameIndex <= 0 || currentDirectionFrames.length <= 1}
-                      title="Mover quadro ativo para a esquerda (Alt + ←)"
-                      className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-[#383a40] disabled:opacity-20 disabled:cursor-not-allowed transition-all cursor-pointer"
-                    >
-                      <ChevronLeft className="w-3.5 h-3.5" />
-                    </button>
-                    <span className="text-[10px] font-bold text-slate-400 px-1 select-none flex items-center gap-1">
-                      Mover
-                    </span>
-                    <button
-                      onClick={() => handleMoveFrame(activeFrameIndex, activeFrameIndex + 1)}
-                      disabled={activeFrameIndex >= currentDirectionFrames.length - 1 || currentDirectionFrames.length <= 1}
-                      title="Mover quadro ativo para a direita (Alt + →)"
-                      className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-[#383a40] disabled:opacity-20 disabled:cursor-not-allowed transition-all cursor-pointer"
-                    >
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Row 2: Direction Switcher & Mirror (Hidden when editing floors) */}
-              {category !== 'floor' && (
-                <div className="flex items-center gap-2 bg-[#18191c]/95 border border-[#383a40] backdrop-blur-md px-3 py-1.5 rounded-2xl shadow-xl pointer-events-auto">
-                  <span className="text-[11px] font-bold text-slate-300 ml-1 mr-0.5">Direção:</span>
-                  {DIRECTIONS.map((dirItem) => {
-                    const isCurrent = activeDirection === dirItem.id
-                    const framesCount = (directionalFrames[dirItem.id] || []).length
-                    const hasFrames = framesCount > 0 && directionalFrames[dirItem.id].some((f) => !!f)
-                    return (
-                      <button
-                        key={dirItem.id}
-                        onClick={() => switchDirection(dirItem.id)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
-                          isCurrent
-                            ? 'bg-[#3b82f6] text-white border-[#60a5fa] shadow-md shadow-blue-500/25 scale-105'
-                            : 'bg-[#2b2d31] text-slate-300 hover:text-white border-[#383a40] hover:border-slate-500'
-                        }`}
-                      >
-                        <span>{dirItem.icon}</span>
-                        <span>{dirItem.label}</span>
-                        {hasFrames && (
-                          <span className="text-[10px] font-mono bg-black/40 px-1 rounded text-slate-300">
-                            {framesCount}
-                          </span>
-                        )}
-                      </button>
-                    )
-                  })}
-
-                  {(activeDirection === 'left' || activeDirection === 'right') && (
-                    <>
-                      <div className="w-px h-5 bg-[#383a40] mx-1" />
-                      <button
-                        onClick={handleMirrorOppositeSide}
-                        title={
-                          activeDirection === 'left'
-                            ? 'Espelhar todos os quadros da Esquerda para a Direita'
-                            : 'Espelhar todos os quadros da Direita para a Esquerda'
-                        }
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#2b2d31] hover:bg-[#383a40] border border-[#383a40] text-indigo-300 hover:text-white text-[11px] font-semibold transition-all cursor-pointer"
-                      >
-                        <FlipHorizontal className="w-3.5 h-3.5" />
-                        <span>Espelhar {activeDirection === 'left' ? 'p/ Direita ➡️' : 'p/ Esquerda ⬅️'}</span>
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* Row 3: Status & Controls Bar */}
+              {/* Status & Controls Bar */}
               <div className="flex items-center gap-4 bg-[#18191c]/90 border border-[#383a40] backdrop-blur-md px-4 py-1.5 rounded-2xl text-xs text-slate-400 shadow-lg pointer-events-auto">
                 <span>
                   Pixel: <strong className="text-white">{hoverPixel ? `${hoverPixel.x}, ${hoverPixel.y}` : '-'}</strong>
@@ -2675,6 +2480,210 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                 </div>
               )}
 
+              {/* Animation frames of the active direction. They used to be a floating bar over the canvas,
+                  which hid part of the drawing: they live in this column now. */}
+              <div className="flex flex-col gap-1.5 mt-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  {category === 'floor' ? 'Quadros' : `Quadros (${DIRECTIONS.find((direction) => direction.id === activeDirection)?.label})`}
+                </span>
+                <div className="flex flex-col gap-2 bg-[#1e1f22] p-2 rounded-xl border border-[#383a40]/60">
+                  {/* Frame List */}
+                  <div className="flex flex-wrap items-start gap-1 max-h-[9.5rem] overflow-y-auto px-0.5 pt-2 pb-1">
+                    {currentDirectionFrames.map((frameData, idx) => {
+                      const isFrameActive = idx === activeFrameIndex
+                      const isDragged = draggedFrameIndex === idx
+                      const isDragOver = dragOverFrameIndex === idx && draggedFrameIndex !== idx
+                      return (
+                        <div
+                          key={idx}
+                          draggable={currentDirectionFrames.length > 1}
+                          onDragStart={(event) => {
+                            setDraggedFrameIndex(idx)
+                            event.dataTransfer.effectAllowed = 'move'
+                            event.dataTransfer.setData('text/plain', String(idx))
+                          }}
+                          onDragOver={(event) => {
+                            event.preventDefault()
+                            event.dataTransfer.dropEffect = 'move'
+                            if (dragOverFrameIndex !== idx) {
+                              setDragOverFrameIndex(idx)
+                            }
+                          }}
+                          onDragLeave={(event) => {
+                            if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+                              if (dragOverFrameIndex === idx) {
+                                setDragOverFrameIndex(null)
+                              }
+                            }
+                          }}
+                          onDrop={(event) => {
+                            event.preventDefault()
+                            setDragOverFrameIndex(null)
+                            const rawFrom = event.dataTransfer.getData('text/plain')
+                            const fromIdx = draggedFrameIndex !== null ? draggedFrameIndex : rawFrom ? parseInt(rawFrom, 10) : null
+                            if (fromIdx !== null && !isNaN(fromIdx) && fromIdx !== idx) {
+                              handleMoveFrame(fromIdx, idx)
+                            }
+                            setDraggedFrameIndex(null)
+                          }}
+                          onDragEnd={() => {
+                            setDraggedFrameIndex(null)
+                            setDragOverFrameIndex(null)
+                          }}
+                          onClick={() => switchFrame(idx)}
+                          title={
+                            currentDirectionFrames.length > 1
+                              ? `Quadro Q${idx + 1} (Clique para selecionar, arraste ou use as setas para reposicionar)`
+                              : `Quadro Q${idx + 1}`
+                          }
+                          className={`group relative flex flex-col items-center p-1 rounded-xl border transition-all select-none min-w-[44px] ${
+                            currentDirectionFrames.length > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+                          } ${
+                            isDragged
+                              ? 'opacity-35 scale-95 border-dashed border-blue-400 bg-blue-500/10'
+                              : isDragOver
+                              ? 'border-blue-400 bg-blue-500/25 ring-2 ring-blue-500/60 scale-105 shadow-lg shadow-blue-500/30'
+                              : isFrameActive
+                              ? 'bg-[#3b82f6]/25 border-[#3b82f6] shadow-md shadow-blue-500/25 scale-105'
+                              : 'bg-[#2b2d31] border-[#383a40] hover:border-slate-500 hover:bg-[#32353b]'
+                          }`}
+                        >
+                          <div className="w-9 h-9 rounded-lg bg-[#141517] border border-slate-700/60 flex items-center justify-center overflow-hidden pointer-events-none">
+                            {frameData ? (
+                              <img
+                                src={isFrameActive ? previewDataUrl || frameData : frameData}
+                                alt={`Q${idx + 1}`}
+                                draggable={false}
+                                className="w-8 h-8 [image-rendering:pixelated]"
+                              />
+                            ) : (
+                              <span className="text-[9px] text-slate-500 italic">Vazio</span>
+                            )}
+                          </div>
+
+                          {currentDirectionFrames.length > 1 ? (
+                            <div className="flex items-center justify-between w-full mt-0.5 px-0.5 gap-0.5">
+                              {idx > 0 ? (
+                                <button
+                                  type="button"
+                                  draggable={false}
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    handleMoveFrame(idx, idx - 1)
+                                  }}
+                                  title="Mover para a esquerda"
+                                  className="p-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700/80 transition-all cursor-pointer opacity-70 group-hover:opacity-100"
+                                >
+                                  <ChevronLeft className="w-2.5 h-2.5" />
+                                </button>
+                              ) : (
+                                <div className="w-3.5" />
+                              )}
+
+                              <span
+                                className={`text-[9px] font-bold leading-none ${
+                                  isFrameActive ? 'text-blue-300' : 'text-slate-400'
+                                }`}
+                              >
+                                Q{idx + 1}
+                              </span>
+
+                              {idx < currentDirectionFrames.length - 1 ? (
+                                <button
+                                  type="button"
+                                  draggable={false}
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    handleMoveFrame(idx, idx + 1)
+                                  }}
+                                  title="Mover para a direita"
+                                  className="p-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700/80 transition-all cursor-pointer opacity-70 group-hover:opacity-100"
+                                >
+                                  <ChevronRight className="w-2.5 h-2.5" />
+                                </button>
+                              ) : (
+                                <div className="w-3.5" />
+                              )}
+                            </div>
+                          ) : (
+                            <span
+                              className={`text-[9px] font-bold mt-0.5 ${
+                                isFrameActive ? 'text-blue-300' : 'text-slate-400'
+                              }`}
+                            >
+                              Q{idx + 1}
+                            </span>
+                          )}
+
+                          {/* Delete Frame Button */}
+                          {currentDirectionFrames.length > 1 && (
+                            <button
+                              type="button"
+                              draggable={false}
+                              onClick={(event) => handleDeleteFrame(event, idx)}
+                              onMouseDown={(event) => event.stopPropagation()}
+                              title="Excluir este quadro"
+                              className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity shadow cursor-pointer z-10"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* Timeline Action Buttons */}
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      onClick={handleAddFrame}
+                      title="Adicionar Novo Quadro em Branco"
+                      className="flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl bg-[#2b2d31] hover:bg-[#383a40] border border-[#383a40] text-blue-400 hover:text-white text-[11px] font-bold transition-all cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Novo</span>
+                    </button>
+
+                    <button
+                      onClick={handleDuplicateFrame}
+                      title="Duplicar Quadro Atual (Perfeito para ajustar passos de caminhada!)"
+                      className="flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl bg-[#2b2d31] hover:bg-[#383a40] border border-[#383a40] text-indigo-300 hover:text-white text-[11px] font-bold transition-all cursor-pointer"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Duplicar</span>
+                    </button>
+
+                    {/* Reorder / Move Active Frame Buttons: only with 2+ frames, there is nothing to move otherwise */}
+                    {currentDirectionFrames.length > 1 && (
+                      <div
+                        className="col-span-2 flex items-center justify-between bg-[#2b2d31] border border-[#383a40] rounded-xl p-0.5"
+                        title="Mover a posição do quadro ativo na animação (ou arraste os quadros diretamente)"
+                      >
+                        <button
+                          onClick={() => handleMoveFrame(activeFrameIndex, activeFrameIndex - 1)}
+                          disabled={activeFrameIndex <= 0}
+                          title="Mover quadro ativo para a esquerda (Alt + ←)"
+                          className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-[#383a40] disabled:opacity-20 disabled:cursor-not-allowed transition-all cursor-pointer"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="text-[10px] font-bold text-slate-400 px-1 select-none flex items-center gap-1">
+                          Mover quadro
+                        </span>
+                        <button
+                          onClick={() => handleMoveFrame(activeFrameIndex, activeFrameIndex + 1)}
+                          disabled={activeFrameIndex >= currentDirectionFrames.length - 1}
+                          title="Mover quadro ativo para a direita (Alt + →)"
+                          className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-[#383a40] disabled:opacity-20 disabled:cursor-not-allowed transition-all cursor-pointer"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* 4 Directions Mini Previews (Hidden when editing floors) */}
               {category !== 'floor' && (
                 <div className="flex flex-col gap-1.5 mt-1">
@@ -2720,6 +2729,22 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                       )
                     })}
                   </div>
+
+                  {/* Mirror the sides into each other: only while a side is the active direction */}
+                  {(activeDirection === 'left' || activeDirection === 'right') && (
+                    <button
+                      onClick={handleMirrorOppositeSide}
+                      title={
+                        activeDirection === 'left'
+                          ? 'Espelhar todos os quadros da Esquerda para a Direita'
+                          : 'Espelhar todos os quadros da Direita para a Esquerda'
+                      }
+                      className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#2b2d31] hover:bg-[#383a40] border border-[#383a40] text-indigo-300 hover:text-white text-[11px] font-semibold transition-all cursor-pointer"
+                    >
+                      <FlipHorizontal className="w-3.5 h-3.5" />
+                      <span>Espelhar {activeDirection === 'left' ? 'p/ Direita ➡️' : 'p/ Esquerda ⬅️'}</span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>

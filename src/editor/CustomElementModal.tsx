@@ -1921,6 +1921,8 @@ export const CustomElementModal: React.FC = () => {
         pixelHeight: basePixelHeight,
         isObstacle: finalIsObstacle,
         collisionGrid: finalCollisionGrid,
+        // The grids saved here were painted by hand: the pixel art studio must not work them out again
+        collisionFromSprite: undefined,
         frames: finalFrames,
         frameLayers: finalFrameLayers,
         directionalFrames:
