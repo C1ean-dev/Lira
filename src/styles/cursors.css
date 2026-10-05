@@ -1,0 +1,54 @@
+/* The app's own mouse cursor (src/assets/cursors/*.svg): a faceted blue arrow, the same arrow with a ring
+   around its tip over anything clickable, the arrow with a small clock while the app is busy, and an
+   I-beam in the same style over text.
+   Only these four are replaced. The resize, crosshair, grab and not-allowed cursors stay the system's:
+   they tell where a click will land or what a drag will do.
+   The keyword after each image is what the system shows if the image cannot be loaded.
+   Hotspot (the point that does the click): 7 7 is the tip of the arrow, in the three arrow images; 8 13 is
+   the middle of the I-beam.
+   Tailwind's cursor-default / cursor-pointer / cursor-wait / cursor-text use these same four
+   (tailwind.config.js). */
+:root {
+  --cursor-default: url('../assets/cursors/arrow.svg') 7 7, default;
+  --cursor-pointer: url('../assets/cursors/pointer.svg') 7 7, pointer;
+  --cursor-wait: url('../assets/cursors/wait.svg') 7 7, wait;
+  --cursor-text: url('../assets/cursors/text.svg') 8 13, text;
+}
+
+@layer base {
+  html {
+    cursor: var(--cursor-default);
+  }
+
+  /* The browser's own sheet gives these the system arrow or hand, which would show up in the middle
+     of the app's cursor. Same meaning as before, only drawn by the app. */
+  label,
+  summary,
+  progress,
+  meter,
+  input:where([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file']) {
+    cursor: var(--cursor-default);
+  }
+
+  /* Text fields (and text the user can select) get the system I-beam from the browser's own sheet.
+     Every input that is not a button-like control is a text field: text, search, email, password,
+     number, date, and an input with no type. */
+  textarea,
+  [contenteditable]:not([contenteditable='false']),
+  .select-text,
+  input:where(:not([type='checkbox'], [type='radio'], [type='range'], [type='color'], [type='file'], [type='button'], [type='submit'], [type='reset'], [type='image'], [type='hidden'])) {
+    cursor: var(--cursor-text);
+  }
+
+  /* Tailwind's preflight gives buttons the system hand. */
+  button,
+  [role='button'],
+  a[href] {
+    cursor: var(--cursor-pointer);
+  }
+
+  /* Last, so a disabled field or button shows the arrow, whatever rule above gave it a cursor. */
+  :disabled {
+    cursor: var(--cursor-default);
+  }
+}

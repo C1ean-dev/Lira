@@ -1,6 +1,7 @@
 @import './styles/scrollbars.css';
 @import './styles/forms.css';
 @import './styles/animations.css';
+@import './styles/cursors.css';
 
 @tailwind base;
 @tailwind components;
