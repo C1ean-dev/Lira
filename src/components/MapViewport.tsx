@@ -711,7 +711,9 @@ export const MapViewport: React.FC = () => {
             ? 'cursor-grabbing'
             : isEditorOpen && (hoveredFurnitureId || (isMovingFurniture && selectedPlacedFurnitureId))
             ? 'cursor-grab'
-            : 'cursor-crosshair'
+            : isEditorOpen
+            ? 'cursor-crosshair'
+            : 'cursor-default'
         } ${
           mapViewMode === 'simplified' ? 'hidden' : 'block'
         }`}

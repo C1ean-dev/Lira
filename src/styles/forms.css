@@ -9,7 +9,7 @@
     background-position: right 0.75rem center;
     background-size: 1rem 1rem;
     padding-right: 2.25rem !important;
-    cursor: pointer;
+    cursor: var(--cursor-pointer);
   }
 
   select:disabled {
