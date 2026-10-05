@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { reportStorageFailure } from '../utils/storageReport'
 
 const SETTINGS_STORAGE_KEY = 'lira_graphics_settings'
 
@@ -27,7 +28,7 @@ const loadSavedSettings = (): Partial<GraphicsSettings> => {
       if (raw) return JSON.parse(raw)
     }
   } catch (e) {
-    // Ignore in non-browser
+    reportStorageFailure('read', SETTINGS_STORAGE_KEY, e)
   }
   return {}
 }
@@ -75,6 +76,6 @@ function saveSettings(partial: Partial<GraphicsSettings>) {
       window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ ...current, ...partial }))
     }
   } catch (e) {
-    // Ignore
+    reportStorageFailure('write', SETTINGS_STORAGE_KEY, e)
   }
 }

@@ -1,6 +1,10 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react'
 import { AlertTriangle, RefreshCw, Trash2, Copy, Check } from 'lucide-react'
 import { ConfirmModal } from './ConfirmModal'
+import { ExportLogsButton } from './ExportLogsButton'
+import { reportError } from '../utils/logger'
+import type { ErrorReport } from '../utils/errorReport'
+import { formatReport } from '../utils/reportDigest'
 
 interface Props {
   children: ReactNode
@@ -10,8 +14,41 @@ interface State {
   hasError: boolean
   error: Error | null
   errorInfo: ErrorInfo | null
+  /** The structured report of the error, as written to logs/lira-reports-<day>.jsonl. */
+  report: ErrorReport | null
   copied: boolean
   isResetConfirmOpen: boolean
+}
+
+/** What "Copiar Erro" puts on the clipboard: the error, and what the app was doing when it happened. */
+export function buildErrorScreenText(input: {
+  error: Error | null
+  componentStack: string | null | undefined
+  report: ErrorReport | null
+  timestamp: string
+  url: string
+  userAgent: string
+}): string {
+  const { error, report } = input
+  return [
+    `=== LIRA ERROR REPORT ===`,
+    `Timestamp: ${input.timestamp}`,
+    `URL: ${input.url}`,
+    `User Agent: ${input.userAgent}`,
+    ...(report ? [`Report: ${report.id} (fingerprint ${report.fingerprint}, session ${report.session})`] : []),
+    ``,
+    `=== ERROR DETAILS ===`,
+    `Type: ${error?.name || 'Error'}`,
+    `Message: ${error?.message || 'Unknown Error'}`,
+    ``,
+    `=== FULL CALL STACK ===`,
+    error?.stack || 'No stack trace available',
+    ``,
+    `=== REACT COMPONENT TREE STACK ===`,
+    input.componentStack || 'No component stack trace available',
+    ...(report ? [``, `=== WHAT THE APP WAS DOING ===`, formatReport(report)] : []),
+    `================================`,
+  ].join('\n')
 }
 
 export class ErrorBoundary extends Component<Props, State> {
@@ -19,6 +56,7 @@ export class ErrorBoundary extends Component<Props, State> {
     hasError: false,
     error: null,
     errorInfo: null,
+    report: null,
     copied: false,
     isResetConfirmOpen: false,
   }
@@ -28,8 +66,15 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught Error in Lira:', error, errorInfo)
-    this.setState({ error, errorInfo })
+    // Logged with a structured report: the state of the app and what happened before the error.
+    const report = reportError(error, {
+      kind: 'react',
+      severity: 'fatal',
+      scope: 'ErrorBoundary',
+      message: 'the screen failed to render',
+      componentStack: errorInfo.componentStack ?? undefined,
+    })
+    this.setState({ error, errorInfo, report })
   }
 
   private handleReload = () => {
@@ -37,31 +82,14 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   private handleCopyError = () => {
-    const timestamp = new Date().toISOString()
-    const url = typeof window !== 'undefined' ? window.location.href : 'Unknown'
-    const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown'
-    const errorName = this.state.error?.name || 'Error'
-    const errorMessage = this.state.error?.message || 'Unknown Error'
-    const errorStack = this.state.error?.stack || 'No stack trace available'
-    const componentStack = this.state.errorInfo?.componentStack || 'No component stack trace available'
-
-    const fullReport = [
-      `=== LIRA ERROR REPORT ===`,
-      `Timestamp: ${timestamp}`,
-      `URL: ${url}`,
-      `User Agent: ${userAgent}`,
-      ``,
-      `=== ERROR DETAILS ===`,
-      `Type: ${errorName}`,
-      `Message: ${errorMessage}`,
-      ``,
-      `=== FULL CALL STACK ===`,
-      errorStack,
-      ``,
-      `=== REACT COMPONENT TREE STACK ===`,
-      componentStack,
-      `================================`,
-    ].join('\n')
+    const fullReport = buildErrorScreenText({
+      error: this.state.error,
+      componentStack: this.state.errorInfo?.componentStack,
+      report: this.state.report,
+      timestamp: new Date().toISOString(),
+      url: typeof window !== 'undefined' ? window.location.href : 'Unknown',
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown',
+    })
 
     navigator.clipboard.writeText(fullReport)
     this.setState({ copied: true })
@@ -164,6 +192,9 @@ export class ErrorBoundary extends Component<Props, State> {
                 <span>Limpar Cache</span>
               </button>
             </div>
+
+            {/* The file to send to whoever supports the app */}
+            <ExportLogsButton className="w-full py-2.5 px-4 rounded-xl bg-transparent hover:bg-slate-800 text-slate-400 hover:text-slate-200 font-semibold text-xs border border-slate-700/70 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-60" />
           </div>
 
           {/* Confirm Reset All Cache Modal */}

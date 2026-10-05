@@ -1,12 +1,15 @@
 import { create } from 'zustand'
 import { SensitivityMode, AudioProcessorMode } from '../types/audio'
 import { useGameStore } from './useGameStore'
+import { diagLog, shortId, summarizeStream } from '../utils/diagnosticLogger'
+import { registerReportContext } from '../utils/reportContext'
 import {
   isHardwareAccelerationEnabled as getHwCodecEnabled,
   setHardwareAccelerationEnabled as setHwCodecEnabled,
 } from '../media/hardwareCodec'
 import { MediaManager } from '../media/MediaManager'
 import { PeerManager } from '../p2p/PeerManager'
+import { reportStorageFailure } from '../utils/storageReport'
 
 export interface MicCalibration {
   noiseFloorDb: number
@@ -174,7 +177,7 @@ const loadSavedAudioSettings = () => {
       }
     }
   } catch (e) {
-    // Ignore in non-browser env
+    reportStorageFailure('read', STORAGE_KEY, e)
   }
   return null
 }
@@ -194,7 +197,7 @@ const saveAudioSettings = (settings: Record<string, any>) => {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...settings }))
     }
   } catch (e) {
-    // Ignore in non-browser env
+    reportStorageFailure('write', STORAGE_KEY, e)
   }
 }
 
@@ -699,3 +702,65 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   },
   setIsTestingMic: (isTestingMic) => set({ isTestingMic }),
 }))
+
+// What an error report says about microphone, camera and screen share: states and
+// track summaries, never the streams themselves.
+registerReportContext('media', () => {
+  const state = useMediaStore.getState()
+  return {
+    muted: state.isMuted,
+    cameraOff: state.isCameraOff,
+    screenSharing: state.isScreenSharing,
+    deafened: state.isDeafened,
+    noiseSuppression: state.isNoiseSuppressionEnabled,
+    processor: state.audioProcessorMode,
+    sensitivity: state.sensitivityMode,
+    echoCancellation: state.echoCancellation,
+    autoGainControl: state.autoGainControl,
+    hwAcceleration: state.isHardwareAccelerationEnabled,
+    devices: {
+      input: shortId(state.selectedAudioInput ?? ''),
+      output: shortId(state.selectedAudioOutput ?? ''),
+      camera: shortId(state.selectedVideoInput ?? ''),
+    },
+    volumes: { input: state.inputVolume, output: state.outputVolume },
+    liveBufferDelay: state.liveBufferDelay,
+    screenShare: state.isScreenSharing
+      ? { target: state.screenShareTargetTitle, audioMode: state.screenShareAudioMode, volume: state.screenShareAudioVolume }
+      : undefined,
+    localStream: summarizeStream(state.localStream),
+    screenStream: summarizeStream(state.localScreenStream),
+    gridOpen: state.isGridCallOpen,
+    settingsOpen: state.isSettingsModalOpen,
+  }
+})
+
+// Changes to how audio and video are captured and sent, and the two windows that change
+// what plays (the call grid, the settings): in logs/call-debug-<day>.log and in the trail of
+// error reports. Levels and volumes change all the time and stay out.
+const TRACKED_MEDIA_SETTINGS = [
+  'audioProcessorMode',
+  'isNoiseSuppressionEnabled',
+  'echoCancellation',
+  'autoGainControl',
+  'sensitivityMode',
+  'selectedAudioInput',
+  'selectedAudioOutput',
+  'selectedVideoInput',
+  'isHardwareAccelerationEnabled',
+  'screenShareAudioMode',
+] as const
+
+useMediaStore.subscribe((state, previous) => {
+  for (const name of TRACKED_MEDIA_SETTINGS) {
+    if (state[name] === previous[name]) continue
+    const value = state[name]
+    diagLog('settings', name, { value: name.startsWith('selected') && typeof value === 'string' ? shortId(value) : value })
+  }
+  if (state.isGridCallOpen !== previous.isGridCallOpen) {
+    diagLog('ui', 'grid-call', { open: state.isGridCallOpen }, String(state.isGridCallOpen))
+  }
+  if (state.isSettingsModalOpen !== previous.isSettingsModalOpen) {
+    diagLog('ui', 'settings', { open: state.isSettingsModalOpen }, String(state.isSettingsModalOpen))
+  }
+})

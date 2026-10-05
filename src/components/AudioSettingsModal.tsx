@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { X, Sliders, Mic, Sparkles, CheckCircle2, Download, Monitor } from 'lucide-react'
+import { X, Sliders, Mic, Sparkles, CheckCircle2, Monitor } from 'lucide-react'
 import { useMediaStore } from '../store/useMediaStore'
 import { MediaManager } from '../media/MediaManager'
-import { exportDiagLogs } from '../utils/diagnosticLogger'
+import { ExportLogsButton } from './ExportLogsButton'
 import { AudioDeviceInfo } from '../types/audio'
 import { AudioDevicesTab } from './settings/AudioDevicesTab'
 import { AdvancedAudioTab } from './settings/AdvancedAudioTab'
@@ -20,7 +20,6 @@ export const AudioSettingsModal: React.FC = () => {
   const [videoDevices, setVideoDevices] = useState<AudioDeviceInfo[]>([])
   const [activeTab, setActiveTab] = useState<'devices' | 'advanced' | 'system'>('devices')
   const [isPlayingTestSound, setIsPlayingTestSound] = useState(false)
-  const [logsExported, setLogsExported] = useState(false)
 
   // Enumerate all media devices
   const refreshDevices = async () => {
@@ -176,18 +175,7 @@ export const AudioSettingsModal: React.FC = () => {
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
               <span>Configurações salvas automaticamente no seu dispositivo</span>
             </div>
-            <button
-              onClick={async () => {
-                await exportDiagLogs()
-                setLogsExported(true)
-                setTimeout(() => setLogsExported(false), 3000)
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-[11px] font-bold transition-all"
-              title="Gera o arquivo de diagnóstico da chamada (pasta logs) para enviar ao suporte"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>{logsExported ? 'Pasta de logs aberta!' : 'Exportar logs da chamada'}</span>
-            </button>
+            <ExportLogsButton className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-[11px] font-bold transition-all disabled:opacity-60" />
           </div>
 
           <button

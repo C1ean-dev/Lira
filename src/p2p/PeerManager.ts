@@ -15,6 +15,8 @@ import { prioritizeH264HardwareCodec } from '../media/hardwareCodec'
 import { MediaManager } from '../media/MediaManager'
 import { DynamicBufferManager } from '../services/DynamicBufferManager'
 import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
+import { reportError } from '../utils/logger'
+import { registerReportContext } from '../utils/reportContext'
 import { sanitizeRoomCode } from '../utils/roomCode'
 import { getPlayerUserId } from '../utils/userId'
 import { getRoomChannels } from '../utils/roomChannels'
@@ -35,6 +37,7 @@ export class PeerManager {
   private signalingReconnectAttempts = 0
 
   private constructor() {
+    registerReportContext('p2p', () => this.describeForReport())
     if (typeof window !== 'undefined') {
       const handleBufferChanged = (e: any) => {
         const ms = e.detail || MediaCallHandler.DEFAULT_LIVE_BUFFER_MS
@@ -57,6 +60,28 @@ export class PeerManager {
 
   public getPeerId(): string | null {
     return this.peer ? this.peer.id : null
+  }
+
+  /** What an error report says about the connection to the room. */
+  private describeForReport() {
+    const peer = this.peer
+    let open = 0
+    for (const conn of this.connections.values()) if (conn.open) open++
+    const now = Date.now()
+    let quietestPeerMs = 0
+    for (const seen of this.peerLastSeen.values()) quietestPeerMs = Math.max(quietestPeerMs, now - seen)
+    return {
+      peerId: peer ? peer.id : null,
+      signaling: !peer ? 'none' : peer.destroyed ? 'destroyed' : peer.disconnected ? 'disconnected' : peer.open ? 'open' : 'connecting',
+      roomCode: this.roomCode,
+      host: this.isHost,
+      connections: { total: this.connections.size, open },
+      mediaCalls: this.mediaCalls.size,
+      reconnectAttempts: this.signalingReconnectAttempts,
+      reconnectPending: !!this.signalingReconnectTimer,
+      leaving: this.isIntentionalDisconnect,
+      quietestPeerMs: this.peerLastSeen.size > 0 ? quietestPeerMs : undefined,
+    }
   }
 
   /**
@@ -903,23 +928,34 @@ export class PeerManager {
 
   private handleNetworkMessage(msg: NetworkMessage, peerId: string) {
     this.peerLastSeen.set(peerId, Date.now())
-    processNetworkMessage(
-      msg,
-      peerId,
-      this.isHost,
-      (m, exclude) => this.broadcast(m, exclude),
-      (pid) => this.removePeer(pid),
-      (remotePlayer) => this.checkZoneCallEligibility(remotePlayer),
-      this.peer ? this.peer.id : null
-    )
+    try {
+      processNetworkMessage(
+        msg,
+        peerId,
+        this.isHost,
+        (m, exclude) => this.broadcast(m, exclude),
+        (pid) => this.removePeer(pid),
+        (remotePlayer) => this.checkZoneCallEligibility(remotePlayer),
+        this.peer ? this.peer.id : null
+      )
 
-    if (msg.type === 'PLAYER_UPDATE' && msg.payload?.player?.isScreenSharing !== undefined) {
-      if (useMediaStore.getState().isScreenSharing) {
-        try {
-          const { targetBitrate } = MediaManager.resolveOptimalScreenQuality()
-          this.updateScreenShareBitrate(targetBitrate)
-        } catch {}
+      if (msg.type === 'PLAYER_UPDATE' && msg.payload?.player?.isScreenSharing !== undefined) {
+        if (useMediaStore.getState().isScreenSharing) {
+          try {
+            const { targetBitrate } = MediaManager.resolveOptimalScreenQuality()
+            this.updateScreenShareBitrate(targetBitrate)
+          } catch {}
+        }
       }
+    } catch (error) {
+      // One message that breaks its handler must not throw into the connection it came from:
+      // the next messages of that peer still have to be handled. Report which one it was.
+      const type = typeof (msg as { type?: unknown } | null)?.type === 'string' ? String(msg.type).slice(0, 40) : 'none'
+      reportError(error, {
+        scope: 'P2P Message',
+        message: `handler failed for ${type}`,
+        data: { type, from: peerId, host: this.isHost },
+      })
     }
   }
 
@@ -983,7 +1019,7 @@ export class PeerManager {
       try {
         conn.send(msg)
       } catch (err) {
-        console.warn('Failed to send data to peer:', err)
+        console.warn(`[P2P Data] Failed to send ${msg.type} to ${conn.peer}:`, err)
       }
     }
   }

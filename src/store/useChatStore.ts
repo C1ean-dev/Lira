@@ -6,6 +6,7 @@ import { FriendsPresenceService } from '../services/friendsPresenceService'
 import { PeerManager } from '../p2p/PeerManager'
 import { sendNotification } from '../services/notificationService'
 import { isUserId, isSameParticipant } from '../utils/userId'
+import { registerReportContext } from '../utils/reportContext'
 import {
   DEFAULT_ROOM_CHANNELS,
   GENERAL_CHANNEL_ID,
@@ -18,6 +19,7 @@ import {
   validateChannelName,
 } from '../utils/roomChannels'
 import { buildRoomInviteMessage } from '../utils/roomInvite'
+import { reportStorageFailure } from '../utils/storageReport'
 
 export const getDmChannelId = (userId1: string, userId2: string): string => {
   const sorted = [userId1, userId2].sort()
@@ -122,7 +124,9 @@ const loadSavedDmChannels = (): Channel[] => {
       const raw = storage.getItem(SAVED_DM_CHANNELS_STORAGE_KEY)
       if (raw) return JSON.parse(raw)
     }
-  } catch (e) {}
+  } catch (e) {
+    reportStorageFailure('read', SAVED_DM_CHANNELS_STORAGE_KEY, e)
+  }
   return []
 }
 
@@ -147,7 +151,9 @@ const loadSavedDmMessages = (): ChatMessage[] => {
         })
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    reportStorageFailure('read', SAVED_DMS_STORAGE_KEY, e)
+  }
   return []
 }
 
@@ -158,7 +164,9 @@ const loadSavedLastRead = (): Record<string, number> => {
       const raw = storage.getItem(SAVED_LAST_READ_KEY)
       if (raw) return JSON.parse(raw)
     }
-  } catch (e) {}
+  } catch (e) {
+    reportStorageFailure('read', SAVED_LAST_READ_KEY, e)
+  }
   return {}
 }
 
@@ -168,7 +176,9 @@ const saveLastRead = (data: Record<string, number>) => {
     if (storage) {
       storage.setItem(SAVED_LAST_READ_KEY, JSON.stringify(data))
     }
-  } catch (e) {}
+  } catch (e) {
+    reportStorageFailure('write', SAVED_LAST_READ_KEY, e)
+  }
 }
 
 const persistDmsAndChannels = (messages: ChatMessage[], channels: Channel[]) => {
@@ -180,7 +190,9 @@ const persistDmsAndChannels = (messages: ChatMessage[], channels: Channel[]) => 
       storage.setItem(SAVED_DMS_STORAGE_KEY, JSON.stringify(dmMessages))
       storage.setItem(SAVED_DM_CHANNELS_STORAGE_KEY, JSON.stringify(dmChannels))
     }
-  } catch (e) {}
+  } catch (e) {
+    reportStorageFailure('write', SAVED_DMS_STORAGE_KEY, e)
+  }
 }
 
 const savedChannels = loadSavedDmChannels()
@@ -946,3 +958,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     return true
   },
 }))
+
+// What an error report says about the chat: where it is, never what was said.
+registerReportContext('chat', () => {
+  const state = useChatStore.getState()
+  return {
+    open: state.isChatOpen,
+    activeChannel: state.activeChannelId,
+    channels: state.channels.length,
+    dms: state.channels.filter((channel) => channel.type === 'dm').length,
+    messages: state.messages.length,
+  }
+})

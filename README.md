@@ -273,6 +273,20 @@ npm run build
 npm run electron:build
 ```
 
+### 7. Logs e Relatórios de Erro
+
+O app grava em `logs/` (desenvolvimento) ou em `%APPDATA%\lira\logs` (instalado) a linha do tempo de cada execução e um relatório estruturado por erro, com a pilha, o estado do app e o que aconteceu antes. Para ver os erros do dia agrupados:
+```bash
+npm run logs:errors
+```
+
+Quem usa o app envia os logs pelo botão **Gerar arquivo de logs** (configurações de áudio e tela de erro), que cria um `.zip` na pasta Downloads. Para ler o zip recebido:
+```bash
+node scripts/error-reports.js --dir caminho/do/Lira-logs.zip
+```
+
+Os arquivos, os campos de um relatório e como registrar a partir do código estão em [docs/logs.md](docs/logs.md).
+
 ---
 
 ## Licença

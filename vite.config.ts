@@ -19,6 +19,14 @@ export default defineConfig({
     ...(process.env.VITEST ? [] : [electron([
       {
         entry: 'electron/main.ts',
+        vite: {
+          build: {
+            // The map the main process reads to translate its own stack frames in error
+            // reports (electron/stackSymbolicator.ts). No comment in the bundle points at it.
+            sourcemap: 'hidden',
+            rollupOptions: { output: { sourcemapExcludeSources: true } },
+          },
+        },
       },
       {
         entry: 'electron/preload.ts',
@@ -138,6 +146,11 @@ export default defineConfig({
   assetsInclude: ['**/*.wasm'],
   build: {
     chunkSizeWarningLimit: 6000,
+    // A map next to each bundle, without the sources inside it and without the comment that
+    // would make DevTools load it: the main process reads these maps to translate the stack
+    // frames of the installed app's error reports (electron/stackSymbolicator.ts).
+    sourcemap: 'hidden',
+    rollupOptions: { output: { sourcemapExcludeSources: true } },
   },
   server: {
     port: 5173,

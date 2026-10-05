@@ -3,6 +3,9 @@ import { Player, PresenceStatus, PresenceInfo, sanitizePresence, STATUS_META, Re
 import { DEFAULT_AVATAR } from '../engine/Constants'
 import { PublicRoomsService } from '../services/publicRoomsService'
 import { generateUserId, isUserId, getPlayerUserId, getFriendUserId, findFriendKey } from '../utils/userId'
+import { registerReportContext } from '../utils/reportContext'
+import { diagLog } from '../utils/diagnosticLogger'
+import { reportStorageFailure } from '../utils/storageReport'
 
 const PROFILE_STORAGE_KEY = 'lira_user_profile'
 const AVAILABLE_ROOMS_KEY = 'lira_available_rooms'
@@ -39,7 +42,7 @@ const loadSavedProfile = (): SavedProfile | null => {
       }
     }
   } catch (e) {
-    // Ignore in non-browser env
+    reportStorageFailure('read', PROFILE_STORAGE_KEY, e)
   }
   return null
 }
@@ -52,7 +55,7 @@ const saveProfile = (data: Partial<SavedProfile>) => {
       storage.setItem(PROFILE_STORAGE_KEY, JSON.stringify({ ...current, ...data }))
     }
   } catch (e) {
-    // Ignore in non-browser env
+    reportStorageFailure('write', PROFILE_STORAGE_KEY, e)
   }
 }
 
@@ -85,7 +88,7 @@ const syncPublicRoomRegistration = (roomId: string | null, isPublic: boolean, ro
     }
     storage.setItem(AVAILABLE_ROOMS_KEY, JSON.stringify(rooms))
   } catch (e) {
-    // Ignore
+    reportStorageFailure('write', AVAILABLE_ROOMS_KEY, e)
   }
 }
 
@@ -209,7 +212,9 @@ const loadSavedCameraZoom = (): number | null => {
         }
       }
     }
-  } catch (e) {}
+  } catch (e) {
+    reportStorageFailure('read', CAMERA_ZOOM_STORAGE_KEY, e)
+  }
   return null
 }
 
@@ -220,7 +225,9 @@ const loadSavedMapViewMode = (): 'immersive' | 'simplified' => {
       const raw = storage.getItem(MAP_VIEW_STORAGE_KEY)
       if (raw === 'simplified' || raw === 'immersive') return raw
     }
-  } catch (e) {}
+  } catch (e) {
+    reportStorageFailure('read', MAP_VIEW_STORAGE_KEY, e)
+  }
   return 'immersive'
 }
 
@@ -231,7 +238,9 @@ const loadSavedFriends = (): string[] => {
       const raw = storage.getItem(FRIENDS_STORAGE_KEY)
       if (raw) return JSON.parse(raw)
     }
-  } catch (e) {}
+  } catch (e) {
+    reportStorageFailure('read', FRIENDS_STORAGE_KEY, e)
+  }
   return []
 }
 
@@ -242,7 +251,9 @@ const loadSavedFriendProfiles = (): Record<string, FriendProfile> => {
       const raw = storage.getItem(FRIEND_PROFILES_STORAGE_KEY)
       if (raw) return JSON.parse(raw)
     }
-  } catch (e) {}
+  } catch (e) {
+    reportStorageFailure('read', FRIEND_PROFILES_STORAGE_KEY, e)
+  }
   return {}
 }
 
@@ -253,7 +264,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
     try {
       const storage = getStorage()
       if (storage) storage.setItem(MAP_VIEW_STORAGE_KEY, mapViewMode)
-    } catch (e) {}
+    } catch (e) {
+      reportStorageFailure('write', MAP_VIEW_STORAGE_KEY, e)
+    }
     set({
       mapViewMode,
       isManualSimplified: mapViewMode === 'simplified' ? (isManual ?? false) : false,
@@ -274,7 +287,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
         if (normalized === null) storage.removeItem(CAMERA_ZOOM_STORAGE_KEY)
         else storage.setItem(CAMERA_ZOOM_STORAGE_KEY, String(normalized))
       }
-    } catch (e) {}
+    } catch (e) {
+      reportStorageFailure('write', CAMERA_ZOOM_STORAGE_KEY, e)
+    }
     set({ cameraZoom: normalized })
   },
   isOnlineUsersOpen: false,
@@ -311,7 +326,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
           storage.setItem(FRIENDS_STORAGE_KEY, JSON.stringify(nextFriends))
           storage.setItem(FRIEND_PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles))
         }
-      } catch (e) {}
+      } catch (e) {
+        reportStorageFailure('write', FRIENDS_STORAGE_KEY, e)
+      }
 
       return { friends: nextFriends, friendProfiles: nextProfiles }
     }),
@@ -363,7 +380,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
           storage.setItem(FRIENDS_STORAGE_KEY, JSON.stringify(nextFriends))
           storage.setItem(FRIEND_PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles))
         }
-      } catch (e) {}
+      } catch (e) {
+        reportStorageFailure('write', FRIENDS_STORAGE_KEY, e)
+      }
       return { friends: nextFriends, friendProfiles: nextProfiles }
     }),
   removeFriend: (playerId) =>
@@ -377,7 +396,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
           storage.setItem(FRIENDS_STORAGE_KEY, JSON.stringify(nextFriends))
           storage.setItem(FRIEND_PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles))
         }
-      } catch (e) {}
+      } catch (e) {
+        reportStorageFailure('write', FRIENDS_STORAGE_KEY, e)
+      }
       return { friends: nextFriends, friendProfiles: nextProfiles }
     }),
   updateFriendProfile: (playerId, partial) =>
@@ -393,7 +414,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
         if (storage) {
           storage.setItem(FRIEND_PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles))
         }
-      } catch (e) {}
+      } catch (e) {
+        reportStorageFailure('write', FRIEND_PROFILES_STORAGE_KEY, e)
+      }
       return { friendProfiles: nextProfiles }
     }),
   updateRemotePlayer: (id, partial) =>
@@ -629,7 +652,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
           if (storage) {
             storage.setItem(FRIEND_PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles))
           }
-        } catch (e) {}
+        } catch (e) {
+          reportStorageFailure('write', FRIEND_PROFILES_STORAGE_KEY, e)
+        }
         return { remotePlayers: nextRemote, friendProfiles: nextProfiles }
       }
       return { remotePlayers: nextRemote }
@@ -856,3 +881,44 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
 /** Stable identity of the local user, regardless of the current connection id. */
 export const getLocalUserId = (): string => getPlayerUserId(useGameStore.getState().localPlayer)
+
+// What an error report says about the room (utils/reportContext.ts): counts and states, no names.
+registerReportContext('room', () => {
+  const state = useGameStore.getState()
+  const calls: Record<string, number> = {}
+  for (const callState of Object.values(state.callStates)) calls[callState] = (calls[callState] ?? 0) + 1
+  return {
+    inRoom: !!state.roomId,
+    roomId: state.roomId,
+    role: state.roomId ? (state.isHost ? 'host' : 'guest') : undefined,
+    owner: state.isOwner,
+    connected: state.isConnected,
+    status: state.connectionStatus,
+    hostId: state.connectionHostId,
+    public: state.isRoomPublic,
+    players: Object.keys(state.remotePlayers).length,
+    calls,
+    zone: state.localPlayer.currentZoneId ?? null,
+    me: state.localPlayer.id,
+    mapView: state.mapViewMode,
+  }
+})
+
+// The transitions of the room, wherever they come from (join, failover, a lost connection),
+// in logs/call-debug-<day>.log and in the trail of error reports.
+useGameStore.subscribe((state, previous) => {
+  if (state.roomId !== previous.roomId) {
+    if (state.roomId) diagLog('room', 'entered', { roomId: state.roomId, host: state.isHost }, state.roomId)
+    else diagLog('room', 'left', { roomId: previous.roomId })
+  } else if (state.roomId && state.isHost !== previous.isHost) {
+    diagLog('room', 'role', { host: state.isHost }, String(state.isHost))
+  }
+  if (state.connectionStatus !== previous.connectionStatus) {
+    diagLog('room', 'connection', { status: state.connectionStatus }, state.connectionStatus)
+  }
+  if (state.remotePlayers !== previous.remotePlayers) {
+    const count = Object.keys(state.remotePlayers).length
+    const before = Object.keys(previous.remotePlayers).length
+    if (count !== before) diagLog('room', 'players', { count, change: count - before })
+  }
+})

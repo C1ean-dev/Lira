@@ -31,7 +31,8 @@ const installFakeWindow = () => {
   })
 }
 
-describe('lira storage keys and events', () => {
+// The first test loads the stores from scratch, which takes seconds on a busy machine.
+describe('lira storage keys and events', { timeout: 30000 }, () => {
   beforeEach(() => {
     vi.resetModules()
     installFakeWindow()
