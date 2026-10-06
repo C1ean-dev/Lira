@@ -10,6 +10,7 @@ import {
   Zap,
   Sparkles,
   Laptop,
+  LocateFixed,
 } from 'lucide-react'
 import { useGameStore } from '../store/useGameStore'
 
@@ -17,12 +18,22 @@ interface MapControlsWidgetProps {
   onZoomIn: () => void
   onZoomOut: () => void
   onFitScreen: () => void
+  onRecenter?: () => void
+  isPanned?: boolean
+  showDpad?: boolean
+  onToggleDpad?: () => void
+  isMobile?: boolean
 }
 
 export const MapControlsWidget: React.FC<MapControlsWidgetProps> = ({
   onZoomIn,
   onZoomOut,
   onFitScreen,
+  onRecenter,
+  isPanned,
+  showDpad,
+  onToggleDpad,
+  isMobile,
 }) => {
   const { mapViewMode, setMapViewMode } = useGameStore()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -187,6 +198,38 @@ export const MapControlsWidget: React.FC<MapControlsWidgetProps> = ({
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
         </div>
+
+        {/* Mobile Recenter Button (When map camera is panned) */}
+        {isPanned && onRecenter && (
+          <>
+            <div className="h-4 w-px bg-slate-700" />
+            <button
+              onClick={onRecenter}
+              className="p-1.5 rounded-lg bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600 hover:text-white transition-colors animate-pulse"
+              title="Recentralizar no Jogador"
+            >
+              <LocateFixed className="w-3.5 h-3.5" />
+            </button>
+          </>
+        )}
+
+        {/* Mobile Virtual D-Pad Toggle Button */}
+        {isMobile && onToggleDpad && (
+          <>
+            <div className="h-4 w-px bg-slate-700" />
+            <button
+              onClick={onToggleDpad}
+              className={`p-1.5 rounded-lg transition-colors ${
+                showDpad
+                  ? 'bg-indigo-600 text-white'
+                  : 'hover:bg-slate-700 text-slate-400 hover:text-slate-200'
+              }`}
+              title={showDpad ? 'Ocultar Controles na Tela' : 'Exibir Controles na Tela (D-Pad)'}
+            >
+              <Gamepad2 className="w-3.5 h-3.5" />
+            </button>
+          </>
+        )}
       </div>
     </div>
   )

@@ -588,17 +588,17 @@ export const LobbyModal: React.FC<Props> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0c0e14]/90 backdrop-blur-xl p-4 select-none animate-in fade-in duration-300">
-      <div className="bg-[#1b202c] border border-[#2a3142] rounded-3xl w-full max-w-2xl sm:max-w-[740px] overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0c0e14]/90 backdrop-blur-xl p-2 sm:p-4 select-none animate-in fade-in duration-300">
+      <div className="bg-[#1b202c] border border-[#2a3142] rounded-2xl sm:rounded-3xl w-full max-w-2xl sm:max-w-[740px] overflow-hidden shadow-2xl flex flex-col max-h-[96vh] sm:max-h-[92vh]">
         {/* Banner Header */}
-        <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 p-5 text-center relative overflow-hidden shrink-0">
+        <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 p-3.5 sm:p-5 text-center relative overflow-hidden shrink-0">
           <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full bg-white/10 blur-2xl" />
           {hasUpdate && onApplyUpdate ? (
             <button
               type="button"
               onClick={onApplyUpdate}
               disabled={isUpdating}
-              className="absolute top-4 right-4 z-20 p-2.5 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-300 hover:text-white transition-all hover:scale-105 active:scale-95 shadow-lg shadow-emerald-500/20 cursor-pointer disabled:opacity-75 disabled:pointer-events-none"
+              className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 p-2 sm:p-2.5 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-300 hover:text-white transition-all hover:scale-105 active:scale-95 shadow-lg shadow-emerald-500/20 cursor-pointer disabled:opacity-75 disabled:pointer-events-none"
               title="Nova versão disponível! Clique para atualizar agora."
             >
               {isUpdating ? (
@@ -612,7 +612,7 @@ export const LobbyModal: React.FC<Props> = ({
               type="button"
               onClick={() => checkNow()}
               disabled={manualCheck === 'checking'}
-              className="absolute top-4 right-4 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/20 text-white/90 text-xs font-bold shadow-sm transition-all cursor-pointer disabled:cursor-wait"
+              className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/20 text-white/90 text-xs font-bold shadow-sm transition-all cursor-pointer disabled:cursor-wait"
               title={`Versão atual do Lira: ${currentVersion}. Clique para verificar atualizações.`}
             >
               {manualCheck === 'checking' ? (
@@ -624,18 +624,18 @@ export const LobbyModal: React.FC<Props> = ({
             </button>
           )}
           <div className="relative z-10 flex flex-col items-center">
-            <div className="mb-2">
-              <LiraLogo size={52} />
+            <div className="mb-1 sm:mb-2 scale-90 sm:scale-100">
+              <LiraLogo size={46} />
             </div>
-            <h1 className="text-xl font-extrabold text-white tracking-wider">LIRA</h1>
-            <p className="text-xs text-indigo-100 max-w-sm mt-0.5">
+            <h1 className="text-lg sm:text-xl font-extrabold text-white tracking-wider">LIRA</h1>
+            <p className="text-[11px] sm:text-xs text-indigo-100 max-w-sm mt-0.5 px-2">
               Escritório virtual colaborativo com salas em tempo real, áudio P2P e zonas privadas
             </p>
           </div>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-[#2a3142] bg-[#12151d]/80 px-6 pt-3 gap-2.5 shrink-0 overflow-x-auto justify-start sm:justify-center">
+        <div className="flex border-b border-[#2a3142] bg-[#12151d]/80 px-3 sm:px-6 pt-2.5 sm:pt-3 gap-1.5 sm:gap-2.5 shrink-0 overflow-x-auto justify-start sm:justify-center">
           <button
             type="button"
             onClick={() => setActiveTab('connect')}

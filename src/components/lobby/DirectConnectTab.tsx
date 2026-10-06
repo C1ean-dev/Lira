@@ -36,7 +36,7 @@ export const DirectConnectTab: React.FC<Props> = ({
   onSubmit,
 }) => {
   return (
-    <form onSubmit={onSubmit} className="p-6 space-y-4 overflow-y-auto">
+    <form onSubmit={onSubmit} className="p-4 sm:p-6 space-y-3.5 sm:space-y-4 overflow-y-auto">
       {/* User Nickname & Avatar Button */}
       <div>
         <label className="block text-xs font-semibold text-slate-300 mb-1.5">Seu Nickname</label>

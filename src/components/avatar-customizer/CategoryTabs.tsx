@@ -13,6 +13,7 @@ export type CategoryKey =
 interface Props {
   activeCategory: CategoryKey
   onSelectCategory: (category: CategoryKey) => void
+  className?: string
 }
 
 export const CATEGORIES = [
@@ -21,9 +22,9 @@ export const CATEGORIES = [
   { id: 'profile', label: 'Config. de Perfil', icon: UserCog },
 ]
 
-export const CategoryTabs: React.FC<Props> = ({ activeCategory, onSelectCategory }) => {
+export const CategoryTabs: React.FC<Props> = ({ activeCategory, onSelectCategory, className = '' }) => {
   return (
-    <div className="w-48 bg-[#18191c] border-r border-[#2b2d31] p-3 flex flex-col gap-1 overflow-y-auto shrink-0">
+    <div className={className || "w-48 bg-[#18191c] border-r border-[#2b2d31] p-3 flex flex-col gap-1 overflow-y-auto shrink-0"}>
       {CATEGORIES.map((cat) => {
         const Icon = cat.icon
         const isActive = activeCategory === cat.id

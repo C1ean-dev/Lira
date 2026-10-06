@@ -11,7 +11,7 @@
       "category": "Geral",
       "width": 4,
       "height": 6,
-      "isObstacle": false,
+      "isObstacle": true,
       "collisionGrid": [
         [
           false,
@@ -53,25 +53,27 @@
       "frames": [
         "@2akrmrex4o2"
       ],
-      "frameLayers": [
-        [
-          {
-            "id": "layer_1787944391915_jzcu",
-            "clipId": "clip_1787944391914_zrva",
-            "name": "Peça 2 (128x192px)",
-            "dataUrl": "@2akrmrex4o2",
-            "x": 0,
-            "y": 0,
-            "width": 128,
-            "height": 192,
-            "flipH": false,
-            "opacity": 1
-          }
-        ]
-      ],
       "frameRateMs": 160,
       "iconColor": "#e03131",
-      "createdAt": 1787944370643
+      "createdAt": 1787944370643,
+      "pixelWidth": 128,
+      "pixelHeight": 192,
+      "directionalFrames": {
+        "down": [
+          "@2akrmrex4o2"
+        ],
+        "up": [
+          ""
+        ],
+        "left": [
+          ""
+        ],
+        "right": [
+          ""
+        ]
+      },
+      "thumbnail": "@2akrmrex4o2",
+      "updatedAt": 1791211963945
     },
     {
       "id": "custom_1787945438028_vb5cc",
@@ -4508,7 +4510,7 @@
       "name": "caça niquel",
       "type": "furniture",
       "category": "pokemon",
-      "width": 2,
+      "width": 1.34375,
       "height": 2,
       "pixelWidth": 43,
       "pixelHeight": 64,
