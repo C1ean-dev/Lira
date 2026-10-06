@@ -43,6 +43,10 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The default list includes 'tools', a package the SDK no longer ships, which fails
+          # the step. Install what android/variables.gradle compiles against instead.
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
 
       - name: Resolve release tag
         id: tag
