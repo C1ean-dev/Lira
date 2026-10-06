@@ -15,6 +15,7 @@ import { PeerManager } from './p2p/PeerManager'
 import { MediaManager } from './media/MediaManager'
 import { useMountOnFirstOpen } from './hooks/useMountOnFirstOpen'
 import { markStartup, reportStartupAfterPaint } from './utils/startupTrace'
+import { callNotificationService } from './services/callNotificationService'
 
 // The menu is the first screen. Being inside a space (world, editor, chat, calls) and the heavy
 // modals load on demand, and are fetched in idle time once the menu is up, so entering a space or
@@ -136,7 +137,13 @@ export const App: React.FC = () => {
     FriendsPresenceService.getInstance().connectFriendsNetwork()
   }, [])
 
+  // 6. Background Call Notification for Android
+  useEffect(() => {
+    callNotificationService.init()
+  }, [])
+
   const leaveSpace = () => {
+    callNotificationService.clearNotification()
     PeerManager.getInstance().disconnect()
     MediaManager.getInstance().stopAllMedia()
     useMediaStore.getState().stopAllMedia()

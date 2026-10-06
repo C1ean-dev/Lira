@@ -53,10 +53,40 @@ export class CameraManager {
     }
   }
 
+  public isManualPan: boolean = false
+
+  /**
+   * Panning manual da câmera (ex: arrasto com o dedo ou mouse)
+   */
+  public pan(deltaPixelsX: number, deltaPixelsY: number) {
+    this.isManualPan = true
+    this.x -= deltaPixelsX / this.zoom
+    this.y -= deltaPixelsY / this.zoom
+  }
+
+  /**
+   * Reseta o pan manual e reativa o rastreamento automático do jogador
+   */
+  public resetPan(localX?: number, localY?: number) {
+    this.isManualPan = false
+    if (localX !== undefined && localY !== undefined) {
+      this.x = localX * TILE_SIZE
+      this.y = localY * TILE_SIZE
+    } else {
+      const local = useGameStore.getState().localPlayer
+      if (local) {
+        this.x = (local.x ?? 34) * TILE_SIZE
+        this.y = (local.y ?? 20) * TILE_SIZE
+      }
+    }
+  }
+
   /**
    * Smooth, jitter-free Camera Following of Local Player with exponential decay
    */
   public followPlayer(localX: number, localY: number, deltaTime: number = 0.016) {
+    if (this.isManualPan) return
+
     const targetX = localX * TILE_SIZE
     const targetY = localY * TILE_SIZE
     const clampedDelta = Math.max(0.001, Math.min(deltaTime, 0.1))

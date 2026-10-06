@@ -271,9 +271,9 @@ export const OptionSelectorGrid: React.FC<Props> = ({
     <div className="flex-1 overflow-y-auto pr-1">
       {/* Top action bar with Export, Import and Slicer Buttons */}
       {activeCategory === 'other' && (
-        <div className="flex items-center justify-between mb-3 px-1">
+        <div className="flex flex-wrap items-center justify-between mb-3 px-1 gap-2">
           <span className="text-xs font-bold text-slate-300">Modelos & Presets</span>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             {/* Hidden input for direct Spritesheet Slicer */}
             <input
               ref={directSlicerInputRef}
@@ -287,7 +287,7 @@ export const OptionSelectorGrid: React.FC<Props> = ({
               type="button"
               onClick={() => directSlicerInputRef.current?.click()}
               title={`Abrir Fatiador Interativo para recortar frames de uma folha de spritesheet PNG e gerar o arquivo XML`}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#18191c] hover:bg-[#383a40] border border-[#383a40] text-indigo-400 hover:text-indigo-300 text-[11px] font-semibold transition-all shadow-xs cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#18191c] hover:bg-[#383a40] border border-[#383a40] text-indigo-400 hover:text-indigo-300 text-[11px] font-semibold transition-all shadow-xs cursor-pointer"
             >
               <Scissors className="w-3.5 h-3.5 text-indigo-400" />
               <span>Fatiar Imagem</span>
@@ -297,7 +297,7 @@ export const OptionSelectorGrid: React.FC<Props> = ({
               type="button"
               onClick={() => setIsImportModalOpen(true)}
               title={`Importar Folha PNG e Arquivo Sparrow XML para personagens`}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#18191c] hover:bg-[#383a40] border border-[#383a40] text-emerald-400 hover:text-emerald-300 text-[11px] font-semibold transition-all shadow-xs cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#18191c] hover:bg-[#383a40] border border-[#383a40] text-emerald-400 hover:text-emerald-300 text-[11px] font-semibold transition-all shadow-xs cursor-pointer"
             >
               <Upload className="w-3.5 h-3.5 text-emerald-400" />
               <span>Importar Atlas</span>
@@ -307,7 +307,7 @@ export const OptionSelectorGrid: React.FC<Props> = ({
               type="button"
               onClick={() => exportCategoryAtlas(activeCategory, customAssets, avatar)}
               title={`Exportar Folha PNG e Arquivo Sparrow XML para personagens`}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#18191c] hover:bg-[#383a40] border border-[#383a40] text-slate-300 hover:text-white text-[11px] font-semibold transition-all shadow-xs cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#18191c] hover:bg-[#383a40] border border-[#383a40] text-slate-300 hover:text-white text-[11px] font-semibold transition-all shadow-xs cursor-pointer"
             >
               <Download className="w-3.5 h-3.5 text-[#3b82f6]" />
               <span>Exportar Atlas</span>
@@ -318,7 +318,7 @@ export const OptionSelectorGrid: React.FC<Props> = ({
 
       {/* CATEGORY: PERSONAGEM */}
       {activeCategory === 'other' && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
           {renderCreateCard()}
           {renderCustomPresetCards()}
         </div>

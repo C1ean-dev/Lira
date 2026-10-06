@@ -233,9 +233,9 @@ export const PetSelectorPanel: React.FC<Props> = ({
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
       {/* Top action bar with Slicer, Import, and Export buttons */}
-      <div className="flex items-center justify-between mb-3 px-1 shrink-0">
+      <div className="flex flex-wrap items-center justify-between mb-3 px-1 shrink-0 gap-2">
         <span className="text-xs font-bold text-slate-300">Opções & Presets</span>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           {/* Hidden input for direct Spritesheet Slicer */}
           <input
             ref={directSlicerInputRef}
@@ -249,7 +249,7 @@ export const PetSelectorPanel: React.FC<Props> = ({
             type="button"
             onClick={() => directSlicerInputRef.current?.click()}
             title="Abrir Fatiador Interativo para recortar frames de uma folha de spritesheet de Pet e gerar XML"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#18191c] hover:bg-[#383a40] border border-[#383a40] text-indigo-400 hover:text-indigo-300 text-[11px] font-semibold transition-all shadow-xs cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#18191c] hover:bg-[#383a40] border border-[#383a40] text-indigo-400 hover:text-indigo-300 text-[11px] font-semibold transition-all shadow-xs cursor-pointer"
           >
             <Scissors className="w-3.5 h-3.5 text-indigo-400" />
             <span>Fatiar Imagem</span>
@@ -259,7 +259,7 @@ export const PetSelectorPanel: React.FC<Props> = ({
             type="button"
             onClick={() => setIsImportModalOpen(true)}
             title="Importar folha de spritesheet PNG e arquivo XML (Sparrow) para Pet"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#18191c] hover:bg-[#383a40] border border-[#383a40] text-emerald-400 hover:text-emerald-300 text-[11px] font-semibold transition-all shadow-xs cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#18191c] hover:bg-[#383a40] border border-[#383a40] text-emerald-400 hover:text-emerald-300 text-[11px] font-semibold transition-all shadow-xs cursor-pointer"
           >
             <Upload className="w-3.5 h-3.5 text-emerald-400" />
             <span>Importar Atlas</span>
@@ -269,7 +269,7 @@ export const PetSelectorPanel: React.FC<Props> = ({
             type="button"
             onClick={() => exportCategoryAtlas('pet', customAssets, avatar)}
             title="Exportar todos os Mascotes personalizados em uma folha de spritesheet PNG e arquivo XML (Sparrow)"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#18191c] hover:bg-[#383a40] border border-[#383a40] text-slate-300 hover:text-white text-[11px] font-semibold transition-all shadow-xs cursor-pointer"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#18191c] hover:bg-[#383a40] border border-[#383a40] text-slate-300 hover:text-white text-[11px] font-semibold transition-all shadow-xs cursor-pointer"
           >
             <Download className="w-3.5 h-3.5 text-[#3b82f6]" />
             <span>Exportar Atlas</span>
@@ -277,9 +277,9 @@ export const PetSelectorPanel: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Grid of Pets - 3x3 matching the rest of the menu */}
+      {/* Grid of Pets - 2 cols on mobile, 3 cols on sm+ */}
       <div className="flex-1 overflow-y-auto pr-1 min-h-0 mb-3">
-        <div className="grid grid-cols-3 gap-3 pb-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3 pb-2">
           {/* 1. Create New Pet Button (Pixel Art Studio) */}
           {onCreatePreset && (
             <button
@@ -428,8 +428,8 @@ export const PetSelectorPanel: React.FC<Props> = ({
 
       {/* Bottom Customization: Pet Name */}
       {currentPet.type !== 'none' && (
-        <div className="pt-3 border-t border-[#383a40] flex items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-2 flex-1 max-w-sm">
+        <div className="pt-2 sm:pt-3 border-t border-[#383a40] flex flex-wrap items-center justify-between gap-2 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-2 flex-1 min-w-[200px] max-w-sm">
             <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5 shrink-0">
               <Heart className="w-3.5 h-3.5 text-rose-400" />
               Nome do Mascote:

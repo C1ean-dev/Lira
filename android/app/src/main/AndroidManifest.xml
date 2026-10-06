@@ -33,6 +33,16 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <receiver
+            android:name=".CallActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.lira.app.ACTION_TOGGLE_MUTE" />
+                <action android:name="com.lira.app.ACTION_TOGGLE_DEAFEN" />
+                <action android:name="com.lira.app.ACTION_LEAVE_ROOM" />
+            </intent-filter>
+        </receiver>
     </application>
 
     <!-- Permissions -->
