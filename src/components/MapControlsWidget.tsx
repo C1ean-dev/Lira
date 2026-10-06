@@ -20,8 +20,6 @@ interface MapControlsWidgetProps {
   onFitScreen: () => void
   onRecenter?: () => void
   isPanned?: boolean
-  showDpad?: boolean
-  onToggleDpad?: () => void
   isMobile?: boolean
 }
 
@@ -31,8 +29,6 @@ export const MapControlsWidget: React.FC<MapControlsWidgetProps> = ({
   onFitScreen,
   onRecenter,
   isPanned,
-  showDpad,
-  onToggleDpad,
   isMobile,
 }) => {
   const { mapViewMode, setMapViewMode } = useGameStore()
@@ -209,24 +205,6 @@ export const MapControlsWidget: React.FC<MapControlsWidgetProps> = ({
               title="Recentralizar no Jogador"
             >
               <LocateFixed className="w-3.5 h-3.5" />
-            </button>
-          </>
-        )}
-
-        {/* Mobile Virtual D-Pad Toggle Button */}
-        {isMobile && onToggleDpad && (
-          <>
-            <div className="h-4 w-px bg-slate-700" />
-            <button
-              onClick={onToggleDpad}
-              className={`p-1.5 rounded-lg transition-colors ${
-                showDpad
-                  ? 'bg-indigo-600 text-white'
-                  : 'hover:bg-slate-700 text-slate-400 hover:text-slate-200'
-              }`}
-              title={showDpad ? 'Ocultar Controles na Tela' : 'Exibir Controles na Tela (D-Pad)'}
-            >
-              <Gamepad2 className="w-3.5 h-3.5" />
             </button>
           </>
         )}

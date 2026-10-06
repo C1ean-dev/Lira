@@ -26,6 +26,7 @@ import { NetworkSignalIcon } from './NetworkSignalIcon'
 import { useNetworkQualityStore } from '../store/useNetworkQualityStore'
 import { STATUS_META } from '../types/game'
 import { PlayerAvatar } from './common/PlayerAvatar'
+import { isAndroid } from '../utils/platform'
 
 interface Props {
   onOpenAvatarModal: () => void
@@ -100,6 +101,8 @@ export const TopNavBar: React.FC<Props> = ({
   }, [isEditorOpen])
 
   const currentZone = mapZones.find((z) => z.id === localPlayerCurrentZoneId)
+  const isAndroidPlatform = isAndroid()
+  const displayRoomId = isAndroidPlatform && roomId ? roomId.slice(0, 8) : roomId
 
   const handleCopyCode = async () => {
     if (!roomId) return
@@ -126,14 +129,14 @@ export const TopNavBar: React.FC<Props> = ({
           <button
             onClick={handleCopyCode}
             className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] rounded-xl text-xs font-semibold text-slate-200 transition-all group cursor-pointer"
-            title={`ID do Espaço: ${roomId}\n(Clique para copiar)`}
+            title={`ID do Espaço: ${roomId}\n(Clique para copiar tudo)`}
           >
-            <span className="text-slate-400 font-normal hidden sm:inline">ID do Espaço:</span>
-            <span className="font-mono text-indigo-400 font-bold max-w-[85px] sm:max-w-[220px] truncate">{roomId}</span>
+            {!isAndroidPlatform && <span className="text-slate-400 font-normal hidden sm:inline">ID do Espaço:</span>}
+            <span className="font-mono text-indigo-400 font-bold max-w-[85px] sm:max-w-[220px] truncate">{displayRoomId}</span>
             {copied ? (
               <span className="flex items-center gap-1 text-emerald-400 font-bold text-[11px] animate-in fade-in">
                 <Check className="w-3.5 h-3.5 shrink-0" />
-                <span className="hidden sm:inline">Copiado!</span>
+                {!isAndroidPlatform && <span className="hidden sm:inline">Copiado!</span>}
               </span>
             ) : (
               <Copy className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-200 shrink-0" />
@@ -146,7 +149,9 @@ export const TopNavBar: React.FC<Props> = ({
           <button
             onClick={isOwner ? toggleRoomPrivacy : undefined}
             disabled={!isOwner}
-            className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+            className={`flex items-center justify-center ${
+              isAndroidPlatform ? 'p-2' : 'hidden sm:flex items-center gap-1.5 px-3 py-1.5'
+            } rounded-xl border text-xs font-semibold transition-all ${
               isRoomPublic
                 ? 'bg-blue-500/15 border-blue-500/40 text-blue-300 hover:bg-blue-500/25'
                 : 'bg-[#1b202c] border-[#2a3142] text-slate-300 hover:bg-slate-800'
@@ -162,20 +167,19 @@ export const TopNavBar: React.FC<Props> = ({
             }
           >
             {isRoomPublic ? (
-              <>
-                <Globe className="w-3.5 h-3.5 text-blue-400" />
-                <span>Pública</span>
-              </>
+              <Globe className="w-3.5 h-3.5 text-blue-400 shrink-0" />
             ) : (
-              <>
-                <Lock className="w-3.5 h-3.5 text-slate-400" />
-                <span>Privada</span>
-              </>
+              <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             )}
-            {isOwner && (
-              <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1 py-0.2 rounded font-bold ml-0.5">
-                Dono
-              </span>
+            {!isAndroidPlatform && (
+              <>
+                <span>{isRoomPublic ? 'Pública' : 'Privada'}</span>
+                {isOwner && (
+                  <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1 py-0.2 rounded font-bold ml-0.5">
+                    Dono
+                  </span>
+                )}
+              </>
             )}
           </button>
         )}

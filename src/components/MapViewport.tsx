@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { Sparkles, RotateCw, LocateFixed, Gamepad2 } from 'lucide-react'
+import { Sparkles, RotateCw, LocateFixed } from 'lucide-react'
 import { CanvasEngine } from '../engine/CanvasEngine'
 import { getNextAvailableZoneColor, FURNITURE_CATALOG } from '../engine/Constants'
 import { resolveFurnitureDimensions } from '../engine/rendering/furnitureRenderer'
@@ -12,7 +12,6 @@ import { PlacedFurniture, PrivateZone, FloorType } from '../types/map'
 import { MapControlsWidget } from './MapControlsWidget'
 import { SimplifiedMapView } from './SimplifiedMapView'
 import { FurnitureContextMenu } from '../editor/FurnitureContextMenu'
-import { MobileDpad } from './MobileDpad'
 
 /**
  * Enquadramento inicial / restauração: usa o zoom persistido do usuário
@@ -84,7 +83,6 @@ export const MapViewport: React.FC = () => {
   const touchMovedRef = useRef<boolean>(false)
   const [isCameraPanned, setIsCameraPanned] = useState(false)
   const [isMobileDevice, setIsMobileDevice] = useState(false)
-  const [showDpad, setShowDpad] = useState(true)
 
   useEffect(() => {
     const checkTouch = () => {
@@ -937,14 +935,7 @@ export const MapViewport: React.FC = () => {
       {/* Furniture Contextual Action Menu (Move / Color / Delete) */}
       <FurnitureContextMenu />
 
-      {/* Virtual D-Pad for Mobile Touch Devices */}
-      {isMobileDevice && showDpad && mapViewMode !== 'simplified' && !isEditorOpen && (
-        <div className="absolute bottom-24 left-4 z-40 pointer-events-auto animate-in fade-in duration-200">
-          <MobileDpad engineRef={engineRef} />
-        </div>
-      )}
-
-      {/* Floating Bottom-Right Map Controls Widget (Modes + Zoom + Dpad toggle) */}
+      {/* Floating Bottom-Right Map Controls Widget (Modes + Zoom) */}
       <div className="absolute bottom-4 right-4 z-40">
         <MapControlsWidget
           onZoomIn={() => handleZoom(0.2)}
@@ -952,8 +943,6 @@ export const MapViewport: React.FC = () => {
           onFitScreen={handleFitScreen}
           onRecenter={handleRecenterCamera}
           isPanned={isCameraPanned}
-          showDpad={showDpad}
-          onToggleDpad={() => setShowDpad((prev) => !prev)}
           isMobile={isMobileDevice}
         />
       </div>
