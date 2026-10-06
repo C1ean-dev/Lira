@@ -1,3 +1,6 @@
+import { registerPlugin } from '@capacitor/core'
+import { isAndroid } from '../utils/platform'
+
 export interface UpdateInfo {
   hasUpdate: boolean
   currentVersion: string
@@ -18,6 +21,19 @@ export interface UpdateProgress {
   downloaded: number
   total: number
 }
+
+export interface AppUpdatePluginInterface {
+  canRequestPackageInstalls(): Promise<{ canInstall: boolean }>
+  openInstallPermissionSettings(): Promise<{ success: boolean }>
+  downloadAndInstallApk(options: { downloadUrl: string; targetVersion?: string }): Promise<{ success: boolean; path?: string }>
+  installApk(): Promise<{ success: boolean }>
+  addListener(
+    eventName: 'onUpdateProgress',
+    listenerFunc: (progress: { percent: number; downloaded: number; total: number }) => void
+  ): Promise<any>
+}
+
+export const AppUpdate = registerPlugin<AppUpdatePluginInterface>('AppUpdatePlugin')
 
 declare global {
   interface Window {
@@ -72,7 +88,7 @@ export class UpdateService {
       return await window.electronAPI.checkForUpdates()
     }
 
-    // Web Fallback
+    // Web & Android Fallback
     try {
       const url = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`
       const res = await fetch(url, {
@@ -100,11 +116,22 @@ export class UpdateService {
 
       let downloadUrl: string | null = null
       if (Array.isArray(data.assets)) {
-        const exeAsset = data.assets.find(
-          (a: any) => a.name && a.name.endsWith('.exe') && !a.name.includes('blockmap')
-        )
-        if (exeAsset && exeAsset.browser_download_url) {
-          downloadUrl = exeAsset.browser_download_url
+        if (isAndroid()) {
+          // No Android, buscar diretamente o arquivo APK da release
+          const apkAsset = data.assets.find(
+            (a: any) => a.name && a.name.endsWith('.apk')
+          )
+          if (apkAsset && apkAsset.browser_download_url) {
+            downloadUrl = apkAsset.browser_download_url
+          }
+        } else {
+          // No Windows / Desktop, buscar o instalador EXE
+          const exeAsset = data.assets.find(
+            (a: any) => a.name && a.name.endsWith('.exe') && !a.name.includes('blockmap')
+          )
+          if (exeAsset && exeAsset.browser_download_url) {
+            downloadUrl = exeAsset.browser_download_url
+          }
         }
       }
 
@@ -145,7 +172,11 @@ export class UpdateService {
         ? await window.electronAPI.downloadUpdate(downloadUrl, targetVersion)
         : await window.electronAPI.downloadUpdate(downloadUrl)
     }
-    // Web fallback: return true so web can proceed to prompt
+
+    if (isAndroid() && downloadUrl) {
+      return true
+    }
+
     return true
   }
 
@@ -165,6 +196,13 @@ export class UpdateService {
       typeof window.electronAPI.applyUpdate === 'function'
     ) {
       return await window.electronAPI.applyUpdate(targetVersion)
+    }
+
+    if (isAndroid()) {
+      try {
+        const res = await AppUpdate.installApk()
+        return !!res.success
+      } catch {}
     }
 
     // Web / browser fallback
@@ -223,6 +261,21 @@ export class UpdateService {
       return await window.electronAPI.downloadAndInstallUpdate(downloadUrl, targetVersion)
     }
 
+    // Android native updater via AppUpdatePlugin
+    if (isAndroid() && downloadUrl) {
+      try {
+        const res = await AppUpdate.downloadAndInstallApk({ downloadUrl, targetVersion })
+        return !!res.success
+      } catch (e: any) {
+        console.error('[UpdateService] Error executing Android in-app update:', e)
+        // Se falhar o plugin nativo, faz fallback para download direto do APK no navegador
+        if (typeof window !== 'undefined') {
+          window.open(downloadUrl, '_blank')
+        }
+        return false
+      }
+    }
+
     // Web / external fallback
     if (
       typeof window !== 'undefined' &&
@@ -231,7 +284,8 @@ export class UpdateService {
     ) {
       await window.electronAPI.openExternal(releaseUrl)
     } else if (typeof window !== 'undefined') {
-      window.open(releaseUrl, '_blank')
+      const targetUrl = isAndroid() && downloadUrl ? downloadUrl : releaseUrl
+      window.open(targetUrl, '_blank')
     }
     return true
   }
@@ -247,6 +301,22 @@ export class UpdateService {
     ) {
       return window.electronAPI.onUpdateProgress(callback)
     }
+
+    if (isAndroid()) {
+      let handle: any = null
+      AppUpdate.addListener('onUpdateProgress', (progress) => {
+        callback(progress)
+      }).then((h) => {
+        handle = h
+      }).catch(() => {})
+
+      return () => {
+        if (handle && typeof handle.remove === 'function') {
+          handle.remove()
+        }
+      }
+    }
+
     return () => {}
   }
 }
