@@ -13,6 +13,8 @@ jobs:
   build-and-release:
     name: Build and Release Windows App
     runs-on: windows-latest
+    outputs:
+      tag_name: ${{ steps.tag.outputs.tag_name }}
 
     steps:
       - name: Checkout repository
@@ -57,3 +59,12 @@ jobs:
             release/latest.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  android:
+    name: Android APK
+    needs: build-and-release
+    uses: ./.github/workflows/android.yml
+    with:
+      tag_name: ${{ needs.build-and-release.outputs.tag_name }}
+    permissions:
+      contents: write
