@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { isNewerVersion, UpdateService, CURRENT_APP_VERSION } from '../services/updateService'
+import * as platform from '../utils/platform'
 
 describe('Update Service & Version Checker', () => {
   it('should accurately compare semver versions', () => {
@@ -100,5 +101,40 @@ describe('Update Service & Version Checker', () => {
     expect(applyMock).toHaveBeenCalledWith('v1.0.79')
 
     delete (globalThis as any).window
+  })
+
+  it('detects .apk asset when running on Android', async () => {
+    const isAndroidSpy = vi.spyOn(platform, 'isAndroid').mockReturnValue(true)
+
+    const mockRelease = {
+      tag_name: 'v2.0.0',
+      name: 'Release v2.0.0',
+      body: 'Android APK update',
+      html_url: 'https://github.com/C1ean-dev/Lira/releases/tag/v2.0.0',
+      assets: [
+        {
+          name: 'Lira-Setup-2.0.0.exe',
+          browser_download_url: 'https://github.com/C1ean-dev/Lira/releases/download/v2.0.0/Lira-Setup.exe',
+        },
+        {
+          name: 'Lira-v2.0.0.apk',
+          browser_download_url: 'https://github.com/C1ean-dev/Lira/releases/download/v2.0.0/Lira-v2.0.0.apk',
+        },
+      ],
+    }
+
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockRelease,
+    } as any)
+
+    const updateInfo = await UpdateService.checkForUpdates()
+
+    expect(updateInfo.hasUpdate).toBe(true)
+    expect(updateInfo.downloadUrl).toBe(
+      'https://github.com/C1ean-dev/Lira/releases/download/v2.0.0/Lira-v2.0.0.apk'
+    )
+
+    isAndroidSpy.mockRestore()
   })
 })
