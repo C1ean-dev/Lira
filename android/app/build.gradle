@@ -10,8 +10,8 @@ android {
         // Set by the CI workflow from the release tag; local builds keep the defaults.
         // Assignments, not the `versionCode x` call form: without "=" Groovy reads
         // `versionCode (x).toInteger()` as `versionCode(x).toInteger()` and the build fails.
-        versionCode = (System.getenv("LIRA_VERSION_CODE") ?: "1").toInteger()
-        versionName = System.getenv("LIRA_VERSION_NAME") ?: "1.0"
+        versionCode = (System.getenv("LIRA_VERSION_CODE") ?: "1193").toInteger()
+        versionName = System.getenv("LIRA_VERSION_NAME") ?: "1.1.93"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

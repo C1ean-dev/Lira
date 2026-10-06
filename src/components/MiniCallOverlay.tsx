@@ -28,6 +28,7 @@ import {
   Check,
   Power,
   AudioLines,
+  GripHorizontal,
 } from 'lucide-react'
 
 const NOISE_ENGINES = [
@@ -546,6 +547,88 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
   const [isCardCollapsed, setIsCardCollapsed] = useState(false)
   const [contextMenuState, setContextMenuState] = useState<{ user: ParticipantData; x: number; y: number } | null>(null)
 
+  // Floating draggable position state & ref
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const dragStartRef = useRef<{ startX: number; startY: number; initX: number; initY: number; hasMoved: boolean } | null>(null)
+
+  // Resize listener to keep card within viewport bounds
+  useEffect(() => {
+    const handleResize = () => {
+      setPosition((prev) => {
+        if (!prev || !containerRef.current) return prev
+        const rect = containerRef.current.getBoundingClientRect()
+        const maxX = Math.max(8, window.innerWidth - rect.width - 8)
+        const maxY = Math.max(8, window.innerHeight - rect.height - 8)
+        return {
+          x: Math.min(Math.max(8, prev.x), maxX),
+          y: Math.min(Math.max(8, prev.y), maxY),
+        }
+      })
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  // Dragging event listeners for smooth mouse and touch tracking
+  useEffect(() => {
+    if (!isDragging) return
+
+    const handlePointerMove = (e: PointerEvent) => {
+      if (!dragStartRef.current || !containerRef.current) return
+      const dx = e.clientX - dragStartRef.current.startX
+      const dy = e.clientY - dragStartRef.current.startY
+
+      if (Math.hypot(dx, dy) > 4) {
+        dragStartRef.current.hasMoved = true
+      }
+
+      const rect = containerRef.current.getBoundingClientRect()
+      const maxX = Math.max(8, window.innerWidth - rect.width - 8)
+      const maxY = Math.max(8, window.innerHeight - rect.height - 8)
+
+      const nextX = Math.min(Math.max(8, dragStartRef.current.initX + dx), maxX)
+      const nextY = Math.min(Math.max(8, dragStartRef.current.initY + dy), maxY)
+
+      setPosition({ x: nextX, y: nextY })
+    }
+
+    const handlePointerUp = () => {
+      dragStartRef.current = null
+      setIsDragging(false)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+    }
+  }, [isDragging])
+
+  const handleDragPointerDown = (e: React.PointerEvent) => {
+    const target = e.target as HTMLElement
+    if (target.closest('button, input, a, select, textarea, [data-no-drag="true"]')) {
+      return
+    }
+    const el = containerRef.current
+    if (!el) return
+
+    const rect = el.getBoundingClientRect()
+    dragStartRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      initX: position ? position.x : rect.left,
+      initY: position ? position.y : rect.top,
+      hasMoved: false,
+    }
+    setIsDragging(true)
+  }
+
   const streamMenuRef = useRef<HTMLDivElement>(null)
   const noiseMenuRef = useRef<HTMLDivElement>(null)
 
@@ -634,7 +717,18 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
 
   return (
     <>
-      <div className="fixed bottom-4 left-4 z-40 flex flex-col items-start select-none">
+      <div
+        ref={containerRef}
+        onPointerDown={handleDragPointerDown}
+        style={
+          position
+            ? { left: `${position.x}px`, top: `${position.y}px`, bottom: 'auto', right: 'auto' }
+            : undefined
+        }
+        className={`fixed z-40 flex flex-col items-start select-none touch-none ${
+          position ? '' : 'bottom-4 left-4'
+        } ${isDragging ? 'cursor-grabbing' : ''}`}
+      >
         {/* 1. Dedicated Floating Screen Share PiP Window (When sharing is active) */}
         {hasActiveScreenShare && activeScreenStream && isFloatingPreviewVisible && (
           <FloatingScreenPreview
@@ -653,10 +747,14 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
           {/* Top Status */}
           <div className="flex items-center justify-between gap-2 sm:gap-4 px-1">
             <div
-              onClick={handleOpenRoomChat}
-              className="flex items-center gap-2 cursor-pointer group min-w-0"
-              title={`Ir para o Chat da Sala (${zoneName})`}
+              onClick={() => {
+                if (dragStartRef.current?.hasMoved) return
+                handleOpenRoomChat()
+              }}
+              className="flex items-center gap-1.5 cursor-grab active:cursor-grabbing group min-w-0"
+              title={`Ir para o Chat da Sala (${zoneName}) • Arraste para mover`}
             >
+              <GripHorizontal className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-300 shrink-0" />
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
               <span className="text-xs font-bold text-slate-100 group-hover:text-indigo-400 transition-colors truncate max-w-[110px] sm:max-w-[180px]">
                 {zoneName}

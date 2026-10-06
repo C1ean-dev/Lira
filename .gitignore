@@ -82,6 +82,7 @@ out/
 .vite/
 native/bin/
 native/process-audio-capture/obj/
+*.apk
 
 # Editor / IDE settings
 .vscode/

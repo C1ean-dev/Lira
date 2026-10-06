@@ -139,16 +139,18 @@ export const ActiveItemSummary: React.FC<Props> = ({
   const activeItem = getSummary()
 
   return (
-    <div className="p-3 bg-[#12151d]/90 border-b border-[#2a3142] flex items-center gap-3">
-      {activeItem.thumbnail}
+    <div className="p-2 sm:p-3 bg-[#12151d]/90 border-b border-[#2a3142] flex items-center gap-2 sm:gap-3">
+      <div className="shrink-0 scale-90 sm:scale-100 origin-left">
+        {activeItem.thumbnail}
+      </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+          <span className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
             {activeItem.badge}
           </span>
         </div>
-        <div className="text-xs font-bold text-slate-100 truncate mt-0.5">{activeItem.title}</div>
-        <div className="text-[10px] text-slate-400 truncate">{activeItem.subtitle}</div>
+        <div className="text-[11px] sm:text-xs font-bold text-slate-100 truncate mt-0.5">{activeItem.title}</div>
+        <div className="text-[9px] sm:text-[10px] text-slate-400 truncate">{activeItem.subtitle}</div>
       </div>
       {activeTool !== 'select' && (
         <button
@@ -157,10 +159,10 @@ export const ActiveItemSummary: React.FC<Props> = ({
             setSelectedFurnitureDefId('')
             setActiveTool('select')
           }}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors shrink-0"
+          className="p-1 sm:p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors shrink-0"
           title="Deselecionar item (Escape)"
         >
-          <X className="w-4 h-4" />
+          <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
         </button>
       )}
     </div>

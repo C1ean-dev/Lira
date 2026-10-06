@@ -7,6 +7,8 @@ import {
   LayoutGrid,
   Square,
   Sparkles,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 import { useMapStore } from '../store/useMapStore'
 import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
@@ -67,6 +69,7 @@ export const AssetPalette: React.FC = () => {
   const categories = getAllCategories()
   const [activeTab, setActiveTab] = useState<'furniture' | 'floors' | 'zones'>('furniture')
   const [furnitureCategory, setFurnitureCategory] = useState<string>(() => categories[0] || 'Geral')
+  const [isCollapsed, setIsCollapsed] = useState(false)
 
   // Modals state for Pixel Art Studio, Slicer and Atlas Importer
   const [pixelArtModal, setPixelArtModal] = useState<{
@@ -378,29 +381,41 @@ export const AssetPalette: React.FC = () => {
         onChange={handleSlicerFileSelected}
       />
 
-      <div className="absolute top-16 right-4 w-[380px] max-w-[calc(100vw-2rem)] bg-[#1b202c]/95 backdrop-blur-md border border-[#2a3142] rounded-2xl shadow-2xl z-40 overflow-hidden flex flex-col max-h-[calc(100vh-100px)] animate-in fade-in slide-in-from-right-4 duration-200 select-none">
+      <div
+        className={`absolute top-14 sm:top-16 right-2 left-2 sm:left-auto sm:right-4 w-auto sm:w-[380px] max-w-sm sm:max-w-md bg-[#1b202c]/95 backdrop-blur-md border border-[#2a3142] rounded-2xl shadow-2xl z-40 overflow-hidden flex flex-col ${
+          isCollapsed ? 'max-h-none' : 'max-h-[52vh] sm:max-h-[calc(100vh-100px)]'
+        } animate-in fade-in slide-in-from-right-4 duration-200 select-none`}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a3142] bg-[#12151d]/70">
-          <div className="flex items-center gap-2">
-            <Layers className="w-5 h-5 text-indigo-400" />
-            <span className="font-bold text-sm text-slate-100">Editor de Espaço</span>
+        <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b border-[#2a3142] bg-[#12151d]/70">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <Layers className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-400" />
+            <span className="font-bold text-xs sm:text-sm text-slate-100">Editor de Espaço</span>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1 sm:gap-1.5">
             <button
               onClick={() =>
                 openStudioForCreate(
                   activeTab === 'furniture' ? 'furniture' : activeTab === 'floors' ? 'floor' : 'wall'
                 )
               }
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-xs shadow-md transition-all border border-white/10 cursor-pointer"
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-[11px] sm:text-xs shadow-md transition-all border border-white/10 cursor-pointer"
               title="Criar novo elemento no Estúdio Pixel Art"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Criar Elemento</span>
+              <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+              <span>Criar</span>
+            </button>
+            <button
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className="p-1 rounded-lg hover:bg-slate-700/50 text-slate-400 hover:text-slate-200 transition-colors"
+              title={isCollapsed ? 'Expandir painel de ferramentas' : 'Recolher painel para visualizar o mapa'}
+            >
+              {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
             </button>
             <button
               onClick={() => setEditorOpen(false)}
               className="p-1 rounded-lg hover:bg-slate-700/50 text-slate-400 hover:text-slate-200 transition-colors"
+              title="Fechar editor"
             >
               <X className="w-4 h-4" />
             </button>
@@ -419,8 +434,10 @@ export const AssetPalette: React.FC = () => {
           selectedFurnitureDefId={selectedFurnitureDefId}
         />
 
-        {/* Tabs */}
-        <div className="grid grid-cols-3 p-1.5 gap-1 bg-[#12151d]/40 border-b border-[#2a3142]">
+        {!isCollapsed && (
+          <>
+            {/* Tabs */}
+            <div className="grid grid-cols-3 p-1.5 gap-1 bg-[#12151d]/40 border-b border-[#2a3142]">
           <button
             onClick={() => {
               setActiveTab('furniture')
@@ -480,7 +497,7 @@ export const AssetPalette: React.FC = () => {
         </div>
 
         {/* Content Area */}
-        <div className="p-4 overflow-y-auto flex-1 space-y-4">
+        <div className="p-2 sm:p-4 overflow-y-auto flex-1 space-y-3 sm:space-y-4">
           {activeTab === 'furniture' && (
             <FurnitureTab
               categories={categories}
@@ -552,6 +569,8 @@ export const AssetPalette: React.FC = () => {
           setActiveTool={setActiveTool}
           onResetWorkspace={handleResetWorkspace}
         />
+          </>
+        )}
       </div>
 
       {/* Confirm Reset Space Modal */}

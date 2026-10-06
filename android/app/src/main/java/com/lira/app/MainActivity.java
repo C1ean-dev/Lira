@@ -10,7 +10,25 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        registerPlugin(CallNotificationPlugin.class);
         super.onCreate(savedInstanceState);
+        hideSystemUI();
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        if (CallNotificationPlugin.instance != null) {
+            CallNotificationPlugin.instance.onActivityPaused();
+        }
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (CallNotificationPlugin.instance != null) {
+            CallNotificationPlugin.instance.onActivityResumed();
+        }
         hideSystemUI();
     }
 

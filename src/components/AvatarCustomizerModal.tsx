@@ -364,7 +364,8 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
           {/* Desktop Left Sidebar: Categories List */}
           <CategoryTabs activeCategory={activeCategory} onSelectCategory={setActiveCategory} className="hidden md:flex w-48 bg-[#18191c] border-r border-[#2b2d31] p-3 flex-col gap-1 overflow-y-auto shrink-0" />
 
-          {/* Mobile Preview Stage (Compact at top of body) */}
+        {/* Mobile Preview Stage (Compact at top of body, only when not on profile tab) */}
+        {activeCategory !== 'profile' && (
           <AvatarPreviewCanvas
             isOpen={isOpen}
             avatar={avatar}
@@ -373,15 +374,16 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
             localPlayer={localPlayer}
             onRandomize={handleRandomize}
             showNameTags={showNameTags}
-            className="md:hidden w-full h-36 sm:h-44 bg-[#1e1f22] border-b border-[#2b2d31] relative flex items-center justify-center p-2 shrink-0 overflow-hidden"
+            className="md:hidden w-full h-28 sm:h-36 bg-[#1e1f22] border-b border-[#2b2d31] relative flex items-center justify-center p-1.5 shrink-0 overflow-hidden"
             canvasWidth={320}
-            canvasHeight={160}
+            canvasHeight={140}
           />
+        )}
 
-          {/* Middle Column: Options Grid */}
-          <div className="flex-1 bg-[#2b2d31] flex flex-col justify-between p-3 sm:p-5 overflow-hidden">
-            {activeCategory === 'profile' ? (
-              <ProfileSettingsPanel
+        {/* Middle Column: Options Grid */}
+        <div className="flex-1 bg-[#2b2d31] flex flex-col justify-between p-2 sm:p-5 overflow-y-auto">
+          {activeCategory === 'profile' ? (
+            <ProfileSettingsPanel
                 name={name}
                 onChangeName={setName}
                 profilePicture={profilePicture}

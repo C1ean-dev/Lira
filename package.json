@@ -1,6 +1,6 @@
 {
   "name": "lira",
-  "version": "1.1.81",
+  "version": "1.1.93",
   "description": "Lira - Espaço Virtual e Comunicação em Tempo Real",
   "main": "dist-electron/main.js",
   "type": "module",
