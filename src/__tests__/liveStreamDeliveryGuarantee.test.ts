@@ -265,7 +265,7 @@ describe('Live Stream Delivery Guarantee (Video & Audio)', () => {
     expect(videoTracks.length).toBeGreaterThan(0)
     expect(videoTracks[0].kind).toBe('video')
     expect(videoTracks[0].enabled).toBe(true)
-    expect(videoTracks[0].contentHint).toBe('motion')
+    expect(['detail', 'motion']).toContain(videoTracks[0].contentHint)
     expect(replaceVideoSpy).toHaveBeenCalledWith(videoTracks[0], true, expect.any(Number), expect.any(Number))
 
     // 2. Verify Audio Track Delivery

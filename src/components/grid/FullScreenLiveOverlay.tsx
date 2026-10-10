@@ -1,8 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Radio, Minimize2, Volume2, Volume1, VolumeX } from 'lucide-react'
+import { Radio, Minimize2, Volume2, Volume1, VolumeX, EyeOff } from 'lucide-react'
 import { ParticipantData } from './GridParticipantTile'
 import { useMediaStore } from '../../store/useMediaStore'
 import { attachStreamToVideo } from '../../media/attachVideoElement'
+import { LiveWatchPrompt } from '../LiveWatchPrompt'
+import { useLiveGate } from '../../hooks/useLiveGate'
+import { useLiveViewBox } from '../../hooks/useLiveViewBox'
 
 interface Props {
   user: ParticipantData
@@ -36,6 +39,9 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
   const [prevVolume, setPrevVolume] = useState<number>(rawVolume > 0 ? rawVolume : 100)
 
   const activeStream = user.screenStream || user.stream
+  // The full screen also shows a camera; only a live of somebody else waits for a click.
+  const isLive = Boolean(user.screenStream || user.isScreenSharing)
+  const liveGate = useLiveGate(user.id, Boolean(!user.isLocal && isLive && user.liveOptIn), !!user.liveWatching)
 
   useEffect(() => {
     const video = theaterVideoRef.current
@@ -55,7 +61,10 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
       peer: user.id,
       isLocal: !!user.isLocal,
     })
-  }, [activeStream, selectedAudioOutput])
+    // The <video> is a new element after the click to watch.
+  }, [activeStream, selectedAudioOutput, liveGate.needsClick])
+
+  useLiveViewBox(user.id, theaterVideoRef, 'contain', liveGate.watching)
 
   // Update volume in real-time
   useEffect(() => {
@@ -71,7 +80,7 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
       const participant = rawVolume / 100
       video.volume = Math.max(0, Math.min(1, master * participant))
     }
-  }, [rawVolume, outputVolume, user.isLocal])
+  }, [rawVolume, outputVolume, user.isLocal, liveGate.needsClick])
 
   const handleVolumeChange = (newVal: number) => {
     const clamped = Math.max(0, Math.min(200, newVal))
@@ -167,16 +176,24 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
       onMouseMove={handleMouseMove}
       className="fixed inset-0 z-[100] bg-black flex items-center justify-center overflow-hidden select-none cursor-default"
     >
-      <video
-        ref={theaterVideoRef}
-        autoPlay
-        playsInline
-        muted={user.isLocal}
-        onLoadedMetadata={() => theaterVideoRef.current?.play().catch(() => {})}
-        onCanPlay={() => theaterVideoRef.current?.play().catch(() => {})}
-        className="w-full h-full object-contain bg-black"
-        onDoubleClick={handleDoubleClickVideo}
-      />
+      {/* A live starts with a click: until then only the microphone arrives */}
+      {!liveGate.needsClick && (
+        <video
+          ref={theaterVideoRef}
+          autoPlay
+          playsInline
+          muted={user.isLocal}
+          onLoadedMetadata={() => theaterVideoRef.current?.play().catch(() => {})}
+          onCanPlay={() => theaterVideoRef.current?.play().catch(() => {})}
+          onLoadedData={liveGate.onFrame}
+          onPlaying={liveGate.onFrame}
+          className="w-full h-full object-contain bg-black"
+          onDoubleClick={handleDoubleClickVideo}
+        />
+      )}
+      {(liveGate.needsClick || liveGate.connecting) && (
+        <LiveWatchPrompt size="stage" name={user.name} connecting={liveGate.connecting} onWatch={liveGate.watch} />
+      )}
 
       {/* Floating Top Control Bar */}
       <div
@@ -195,10 +212,21 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
           </div>
         </div>
 
-        {/* Right Actions: Volume + Exit */}
+        {/* Right Actions: Stop watching + Volume + Exit */}
         <div className="flex items-center gap-3">
+          {liveGate.watching && (
+            <button
+              onClick={liveGate.stop}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-black/80 hover:bg-rose-600 text-white border border-white/15 backdrop-blur-xl shadow-2xl font-bold text-xs transition-all hover:scale-105"
+              title="Deixar de receber o vídeo e o som desta transmissão"
+            >
+              <EyeOff className="w-4 h-4" />
+              <span>Parar de assistir</span>
+            </button>
+          )}
+
           {/* Volume Control for Viewer */}
-          {!user.isLocal && (
+          {!user.isLocal && !liveGate.needsClick && (
             <div
               className="flex items-center gap-2.5 bg-black/80 backdrop-blur-xl px-4 py-2 rounded-2xl border border-white/15 shadow-2xl"
               onMouseEnter={() => {

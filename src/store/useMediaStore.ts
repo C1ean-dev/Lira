@@ -75,11 +75,12 @@ interface MediaStore {
    * the default engine on startup.
    */
   hasUserChosenProcessorMode: boolean
-  screenShareAudioVolume: number // 0 to 100 (percentage, default 100)
+  screenShareAudioVolume: number // 0 to 200 (percentage, default 100)
   duckingEnabled: boolean // Auto-reduce screen sound when user talks
   screenShareIsolateCallAudio: boolean // Isolate call audio: prevent remote peers' voices from leaking into screen share
   screenShareTargetTitle: string | null // Name of target window/app being shared
   screenShareAudioMode: 'app_only' | 'app_and_mic' // 'app_only' = pure app sound, 'app_and_mic' = app + user voice
+  screenShareOptimizationMode: 'quality' | 'smoothness' // 'quality' = maintain-resolution, 'smoothness' = maintain-framerate
 
   setSelectedAudioInput: (deviceId: string) => void
   setSelectedAudioOutput: (deviceId: string) => void
@@ -96,6 +97,7 @@ interface MediaStore {
   setScreenShareIsolateCallAudio: (enabled: boolean) => void
   setScreenShareTargetTitle: (title: string | null) => void
   setScreenShareAudioMode: (mode: 'app_only' | 'app_and_mic') => void
+  setScreenShareOptimizationMode: (mode: 'quality' | 'smoothness') => void
 
   // WebRTC GPU Hardware Acceleration
   isHardwareAccelerationEnabled: boolean
@@ -130,7 +132,7 @@ interface MediaStore {
   // Remote Streams map: peerId -> MediaStream
   peerStreams: Record<string, MediaStream>
   peerScreenStreams: Record<string, MediaStream>
-  participantVolumes: Record<string, number> // peerId or streamId -> 0 to 100
+  participantVolumes: Record<string, number> // peerId or streamId -> 0 to 200
   setParticipantVolume: (id: string, volume: number) => void
   getEffectiveParticipantVolume: (id: string) => number
   liveStreamVolume: number // shared persisted volume for live / screen share
@@ -256,6 +258,8 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   screenShareIsolateCallAudio: saved.screenShareIsolateCallAudio !== undefined ? saved.screenShareIsolateCallAudio : true,
   screenShareTargetTitle: null,
   screenShareAudioMode: saved.screenShareAudioMode === 'app_and_mic' ? 'app_and_mic' : 'app_only',
+  screenShareOptimizationMode:
+    saved.screenShareOptimizationMode === 'smoothness' ? 'smoothness' : 'quality',
   isHardwareAccelerationEnabled:
     saved.isHardwareAccelerationEnabled !== undefined
       ? Boolean(saved.isHardwareAccelerationEnabled)
@@ -328,8 +332,9 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
     set({ audioProcessorMode, hasUserChosenProcessorMode: true })
   },
   setScreenShareAudioVolume: (screenShareAudioVolume) => {
-    saveAudioSettingsDebounced({ screenShareAudioVolume })
-    set({ screenShareAudioVolume })
+    const clamped = Math.max(0, Math.min(200, Math.round(screenShareAudioVolume)))
+    saveAudioSettingsDebounced({ screenShareAudioVolume: clamped })
+    set({ screenShareAudioVolume: clamped })
   },
   setDuckingEnabled: (duckingEnabled) => {
     saveAudioSettings({ duckingEnabled })
@@ -343,6 +348,11 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   setScreenShareAudioMode: (screenShareAudioMode) => {
     saveAudioSettings({ screenShareAudioMode })
     set({ screenShareAudioMode })
+  },
+  setScreenShareOptimizationMode: (mode) => {
+    saveAudioSettings({ screenShareOptimizationMode: mode })
+    set({ screenShareOptimizationMode: mode })
+    MediaManager.getInstance().updateScreenShareOptimizationMode(mode)
   },
   setHardwareAccelerationEnabled: (enabled: boolean) => {
     saveAudioSettings({ isHardwareAccelerationEnabled: enabled })
@@ -718,6 +728,7 @@ registerReportContext('media', () => {
     echoCancellation: state.echoCancellation,
     autoGainControl: state.autoGainControl,
     hwAcceleration: state.isHardwareAccelerationEnabled,
+    screenShareOptimizationMode: state.screenShareOptimizationMode,
     devices: {
       input: shortId(state.selectedAudioInput ?? ''),
       output: shortId(state.selectedAudioOutput ?? ''),

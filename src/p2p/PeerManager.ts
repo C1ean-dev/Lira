@@ -11,8 +11,10 @@ import { CustomAsset } from '../types/customAsset'
 import { PublicRoomsService } from '../services/publicRoomsService'
 import { processNetworkMessage } from './messageHandlers'
 import { MediaCallHandler, ICE_CONNECT_TIMEOUT_MS, SHARED_RTC_CONFIG, resolveCallGlare } from './mediaCalls'
+import { VideoDegradation } from './videoSendPolicy'
 import { prioritizeH264HardwareCodec } from '../media/hardwareCodec'
 import { MediaManager } from '../media/MediaManager'
+import { connectLiveView, liveViewReporter } from '../media/liveView'
 import { DynamicBufferManager } from '../services/DynamicBufferManager'
 import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
 import { reportError } from '../utils/logger'
@@ -38,7 +40,15 @@ export class PeerManager {
 
   private constructor() {
     registerReportContext('p2p', () => this.describeForReport())
-    if (typeof window !== 'undefined') {
+    // What this user watches of the lives of the others goes out through the room.
+    connectLiveView({
+      send: (sharerId, watch, h) => this.sendLiveView(sharerId, watch, h),
+      stats: (sharerId) => {
+        const pc = (this.mediaCalls.get(sharerId) as any)?.peerConnection as RTCPeerConnection | undefined
+        return pc && typeof pc.getStats === 'function' ? pc.getStats() : null
+      },
+    })
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       const handleBufferChanged = (e: any) => {
         const ms = e.detail || MediaCallHandler.DEFAULT_LIVE_BUFFER_MS
         MediaCallHandler.applyJitterBuffer(this.mediaCalls, ms)
@@ -602,7 +612,7 @@ export class PeerManager {
         myId: this.peer ? this.peer.id : '',
         mediaCalls: this.mediaCalls,
         endMediaCallWithPeer: (pid) => this.endMediaCallWithPeer(pid),
-        onCallConnected: () => {},
+        onCallConnected: (pid) => this.onMediaCallConnected(pid),
         attemptRedialIfEligible: () => {
           const remotePlayer = useGameStore.getState().remotePlayers[call.peer]
           if (remotePlayer) {
@@ -631,6 +641,9 @@ export class PeerManager {
             isCameraOff: localPlayer.isCameraOff !== undefined ? localPlayer.isCameraOff : true,
             id: this.peer!.id,
             gameId: localPlayer.gameId || localPlayer.id,
+            // This app asks before watching a live: who is live sends it no
+            // video, and not the sound of the live, until LIVE_VIEW says so.
+            liveOptIn: true,
           },
         },
         timestamp: Date.now(),
@@ -939,6 +952,8 @@ export class PeerManager {
         this.peer ? this.peer.id : null
       )
 
+      if (msg.type === 'LIVE_VIEW') this.handleLiveView(msg)
+
       if (msg.type === 'PLAYER_UPDATE' && msg.payload?.player?.isScreenSharing !== undefined) {
         if (useMediaStore.getState().isScreenSharing) {
           try {
@@ -957,6 +972,40 @@ export class PeerManager {
         data: { type, from: peerId, host: this.isHost },
       })
     }
+  }
+
+  /**
+   * A viewer says whether it watches the live of this peer and at what size.
+   * The message travels through the room, so it reaches everybody: only who
+   * it is for acts on it (see MediaCallHandler.applyViewerRequest).
+   */
+  private handleLiveView(msg: NetworkMessage) {
+    const myId = this.peer?.id
+    const payload = msg.payload
+    if (!myId || !payload || typeof payload !== 'object' || payload.to !== myId) return
+    const viewerId = msg.senderId
+    if (typeof viewerId !== 'string' || !viewerId || viewerId === myId) return
+    const height = typeof payload.h === 'number' && Number.isFinite(payload.h) && payload.h >= 0 ? payload.h : null
+    MediaCallHandler.applyViewerRequest(this.mediaCalls, viewerId, payload.watch === true, height)
+  }
+
+  /**
+   * Tell who is live (`sharerId`) whether this user watches its live, and how
+   * tall the picture is on this screen (see liveViewReporter).
+   */
+  public sendLiveView(sharerId: string, watch: boolean, h: number | null) {
+    if (!this.peer) return
+    this.broadcast({
+      type: 'LIVE_VIEW',
+      senderId: this.peer.id,
+      payload: { to: sharerId, watch, h },
+      timestamp: Date.now(),
+    })
+  }
+
+  /** What was asked of a live went to a call that is gone: it is asked again on the new one. */
+  private onMediaCallConnected(peerId: string) {
+    liveViewReporter.callConnected(peerId)
   }
 
   /**
@@ -1032,7 +1081,8 @@ export class PeerManager {
       remotePlayer,
       this.peer,
       this.mediaCalls,
-      (pid) => this.endMediaCallWithPeer(pid)
+      (pid) => this.endMediaCallWithPeer(pid),
+      (pid) => this.onMediaCallConnected(pid)
     )
   }
 
@@ -1063,7 +1113,8 @@ export class PeerManager {
         remotePlayer,
         this.peer,
         this.mediaCalls,
-        (pid) => this.endMediaCallWithPeer(pid)
+        (pid) => this.endMediaCallWithPeer(pid),
+        (pid) => this.onMediaCallConnected(pid)
       )
     }
   }
@@ -1089,9 +1140,19 @@ export class PeerManager {
     newTrack: MediaStreamTrack | null,
     isScreenShare: boolean = false,
     maxBitrate: number = 8_000_000,
-    maxFramerate: number = 60
+    maxFramerate: number = 60,
+    degradationPreference?: VideoDegradation
   ) {
-    MediaCallHandler.replaceVideoTrack(this.mediaCalls, newTrack, isScreenShare, maxBitrate, maxFramerate)
+    MediaCallHandler.replaceVideoTrack(this.mediaCalls, newTrack, isScreenShare, maxBitrate, maxFramerate, degradationPreference)
+  }
+
+  /**
+   * Dynamically switch active screen share between Quality (maintain-resolution)
+   * and Smoothness (maintain-framerate) without reconnecting
+   */
+  public updateScreenShareOptimizationMode(mode: 'quality' | 'smoothness') {
+    const degradation: VideoDegradation = mode === 'quality' ? 'maintain-resolution' : 'maintain-framerate'
+    MediaCallHandler.updateScreenDegradationPreference(this.mediaCalls, degradation)
   }
 
   /**

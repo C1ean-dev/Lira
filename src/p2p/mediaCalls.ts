@@ -3,21 +3,42 @@ import { Player } from '../types/game'
 import { useGameStore } from '../store/useGameStore'
 import { useMediaStore } from '../store/useMediaStore'
 import { prioritizeH264HardwareCodec } from '../media/hardwareCodec'
+import { silentAudioTrack } from '../media/silentAudioTrack'
 import { DynamicBufferManager } from '../services/DynamicBufferManager'
 import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
+import { logVideoCodecsOnce, watchLiveQuality } from './liveQualityLog'
 import {
   CAMERA_CAPS,
+  VideoDegradation,
   activeScreenCaps,
   applyCameraCaps,
   applyScreenCaps,
   applyVideoCaps,
+  askedHeight,
   beginScreenShare,
   endScreenShare,
   findVideoSender,
+  forgetAllViewers,
+  forgetViewer,
+  liveGuard,
+  noteViewRequest,
   screenCaps,
+  setCaptureSource,
+  setScreenDegradationPreference,
   setScreenShareBitrate,
+  setViewerOptInLookup,
+  syncScreenCaps,
+  takeExpiredRequest,
+  viewerMode,
+  viewerSend,
   watchScreenShareRamp,
+  watchesLive,
 } from './videoSendPolicy'
+
+// A player says on joining the room that it asks before watching a live
+// (PeerManager puts liveOptIn in its PLAYER_JOIN). Versions that do not say
+// it, and browsers, are sent a live as soon as it starts.
+setViewerOptInLookup((peerId) => useGameStore.getState().remotePlayers[peerId]?.liveOptIn === true)
 
 /**
  * ICE candidate pool — pre-collected candidates before the call is established.
@@ -196,8 +217,12 @@ export class MediaCallHandler {
    * Build the stream we will SEND once the call is established.
    * Extracted so the two-phase connect (negotiate first, attach tracks second)
    * can call it after ICE is ready.
+   *
+   * During a live the video is the screen for everybody (a viewer that has
+   * not asked to watch has it switched off, see setupCallLifecycle), and the
+   * audio depends on the viewer: the sound of the live, or the microphone.
    */
-  private static buildOutboundStream(): MediaStream {
+  private static buildOutboundStream(peerId?: string): MediaStream {
     const isSharing = useMediaStore.getState().isScreenSharing
     const screenStream = useMediaStore.getState().localScreenStream
     const localStream = useMediaStore.getState().localStream
@@ -218,7 +243,7 @@ export class MediaCallHandler {
         (track) => (track as any).__screenShareLiveAudio === true
       )
       if (liveAudioTrack) {
-        combined.addTrack(liveAudioTrack)
+        combined.addTrack(MediaCallHandler.audioTrackFor(peerId, liveAudioTrack))
       } else if (localStream) {
         localStream.getAudioTracks().forEach((t) => combined.addTrack(t))
       }
@@ -226,6 +251,38 @@ export class MediaCallHandler {
       return combined
     }
     return localStream || new MediaStream()
+  }
+
+  /** The sound of the live that is running: the shared app and the microphone, mixed in one track. */
+  private static liveAudioTrack(): MediaStreamTrack | null {
+    const media = useMediaStore.getState()
+    if (!media.isScreenSharing) return null
+    return (
+      media.localScreenStream?.getAudioTracks?.().find((track) => (track as any).__screenShareLiveAudio === true) ??
+      null
+    )
+  }
+
+  /**
+   * What a viewer that is not watching the live hears: the microphone alone.
+   * Somebody with no microphone sends silence, because a call with no audio
+   * at all never connects.
+   */
+  private static quietAudioTrack(): MediaStreamTrack | null {
+    const microphone = useMediaStore
+      .getState()
+      .localStream?.getAudioTracks?.()
+      .find((track) => track.readyState !== 'ended')
+    return microphone ?? silentAudioTrack()
+  }
+
+  /**
+   * The track one call gets when `track` is put on the calls. The sound of a
+   * live only goes to who watches it; any other track goes to everybody.
+   */
+  private static audioTrackFor(peerId: string | undefined, track: MediaStreamTrack): MediaStreamTrack {
+    if ((track as any).__screenShareLiveAudio !== true || watchesLive(peerId)) return track
+    return MediaCallHandler.quietAudioTrack() ?? track
   }
 
   /**
@@ -247,16 +304,17 @@ export class MediaCallHandler {
    *
    * A call that connects while a live is starting or running carries the
    * SCREEN on this sender: it gets the live's caps instead (the camera caps
-   * would pin the live at 1.2Mbps/30fps for that viewer).
+   * would pin the live at 1.2Mbps/30fps for that viewer). `peerId` says whose
+   * call it is, so the viewer gets its own share of the live, or none.
    */
-  static applyEncoderCaps(pc: RTCPeerConnection, maxBitrate?: number, maxFramerate?: number) {
+  static applyEncoderCaps(pc: RTCPeerConnection, maxBitrate?: number, maxFramerate?: number, peerId?: string) {
     if (!pc || typeof pc.getSenders !== 'function') return
     const sharing = maxBitrate === undefined && maxFramerate === undefined && activeScreenCaps() !== null
     try {
       pc.getSenders().forEach((sender) => {
         if (!sender.track || sender.track.kind !== 'video') return
         if (sharing) {
-          applyScreenCaps(sender)
+          applyScreenCaps(sender, peerId)
         } else {
           applyVideoCaps(
             sender,
@@ -605,7 +663,17 @@ export class MediaCallHandler {
       } catch (e) {}
 
       MediaCallHandler.watchRemoteTracks(pc, peerId, direction)
+
+      // A viewer that asks before watching must not get the first frames of a
+      // live while the call connects: its video starts switched off.
+      if (activeScreenCaps() && viewerMode(peerId) === 'off') {
+        try {
+          const videoSender = findVideoSender(pc)
+          if (videoSender) applyScreenCaps(videoSender, peerId)
+        } catch (e) {}
+      }
     }
+    logVideoCodecsOnce()
 
     const applyBuffer = () => {
       if (!pc) return
@@ -667,17 +735,19 @@ export class MediaCallHandler {
         })
         MediaCallHandler.logSenderSnapshot(mediaCalls, direction === 'out' ? 'outgoing-connected' : 'incoming-connected')
         if (pc) {
-          MediaCallHandler.applyEncoderCaps(pc)
-          if (activeScreenCaps()) watchScreenShareRamp(pc, peerId, 'join')
+          MediaCallHandler.applyEncoderCaps(pc, undefined, undefined, peerId)
+          if (activeScreenCaps()) {
+            if (viewerMode(peerId) !== 'off') watchScreenShareRamp(pc, peerId, 'join')
+            MediaCallHandler.watchLive(mediaCalls, call, pc, peerId)
+          }
         }
         // PeerJS can expose an audio sender with no track after glare recovery
         // or a late microphone initialization. Reconcile it with the current
         // local microphone as soon as the call is connected so the remote peer
-        // never remains on an empty audio sender.
+        // never remains on an empty audio sender. During a live each call
+        // gets the audio of its viewer (see replaceAudioTrack).
         const mediaState = useMediaStore.getState()
-        const screenAudioTrack = mediaState.isScreenSharing
-          ? mediaState.localScreenStream?.getAudioTracks?.().find((track) => (track as any).__screenShareLiveAudio === true)
-          : null
+        const screenAudioTrack = MediaCallHandler.liveAudioTrack()
         const localAudioTrack = screenAudioTrack || mediaState.localStream?.getAudioTracks?.()[0] || null
         if (localAudioTrack) {
           MediaCallHandler.replaceAudioTrack(mediaCalls, localAudioTrack, 'connected-reconcile')
@@ -967,7 +1037,7 @@ export class MediaCallHandler {
         (track) => (track as any).__screenShareLiveAudio === true
       )
       if (liveAudioTrack) {
-        combined.addTrack(liveAudioTrack)
+        combined.addTrack(MediaCallHandler.audioTrackFor(call.peer, liveAudioTrack))
       } else if (localStream) {
         localStream.getAudioTracks().forEach((t) => combined.addTrack(t))
       }
@@ -1047,7 +1117,7 @@ export class MediaCallHandler {
 
         useGameStore.getState().setCallState(remotePlayer.id, 'connecting')
 
-        const streamToSend = MediaCallHandler.buildOutboundStream()
+        const streamToSend = MediaCallHandler.buildOutboundStream(remotePlayer.id)
         diagLog('p2p', 'call.dial', {
           toPeer: remotePlayer.id,
           toName: remotePlayer.name,
@@ -1159,7 +1229,10 @@ export class MediaCallHandler {
         const videoSender = findVideoSender(pc)
         if (!videoSender) return
         watchScreenShareRamp(pc, peerId, 'prime')
-        applyScreenCaps(videoSender)
+        // A viewer that has not asked to watch keeps getting the camera until
+        // the screen takes its place: there is nothing to prepare for it.
+        if (viewerMode(peerId) === 'off') return
+        applyScreenCaps(videoSender, peerId)
       } catch (e) {}
     })
   }
@@ -1189,25 +1262,56 @@ export class MediaCallHandler {
    *
    * Going to the screen, the caps are set BEFORE the swap, so the first
    * screen frame is never encoded with the camera caps, and the resolution is
-   * held for the first seconds (see videoSendPolicy).
+   * held for the first seconds (see videoSendPolicy). For a viewer that asks
+   * before watching, the video is switched off before the swap instead: the
+   * screen is on its sender, and nothing is sent until it asks.
    */
+  /**
+   * Update video degradation preference on active calls in real-time
+   * ('maintain-resolution' for Quality vs 'maintain-framerate' for Smoothness)
+   */
+  static updateScreenDegradationPreference(
+    mediaCalls: Map<string, MediaConnection>,
+    degradation: VideoDegradation
+  ) {
+    setScreenDegradationPreference(degradation)
+    mediaCalls.forEach((call, peerId) => {
+      try {
+        const pc = (call as any).peerConnection as RTCPeerConnection
+        if (pc) {
+          const videoSender = findVideoSender(pc)
+          if (videoSender) {
+            syncScreenCaps(videoSender, peerId)
+          }
+        }
+      } catch (e) {}
+    })
+  }
+
   static replaceVideoTrack(
     mediaCalls: Map<string, MediaConnection>,
     newTrack: MediaStreamTrack | null,
     isScreenShare: boolean = false,
     maxBitrate: number = 5_500_000,
-    maxFramerate: number = 60
+    maxFramerate: number = 60,
+    degradationPreference?: VideoDegradation
   ) {
+    if (isScreenShare && degradationPreference) {
+      setScreenDegradationPreference(degradationPreference)
+    }
     if (newTrack) {
       newTrack.enabled = true
       if (isScreenShare && 'contentHint' in newTrack) {
-        newTrack.contentHint = 'motion'
+        if (!newTrack.contentHint) {
+          newTrack.contentHint = degradationPreference === 'maintain-resolution' ? 'detail' : 'motion'
+        }
       }
     }
 
     const toScreen = isScreenShare && !!newTrack
     if (toScreen) {
       beginScreenShare(screenCaps(maxBitrate, maxFramerate))
+      setCaptureSource(newTrack)
     } else {
       endScreenShare()
     }
@@ -1221,8 +1325,9 @@ export class MediaCallHandler {
 
           if (videoSender) {
             if (toScreen) {
-              applyScreenCaps(videoSender)
-              watchScreenShareRamp(pc, peerId, 'live')
+              applyScreenCaps(videoSender, peerId)
+              if (viewerMode(peerId) !== 'off') watchScreenShareRamp(pc, peerId, 'live')
+              MediaCallHandler.watchLive(mediaCalls, call, pc, peerId)
             }
             videoSender
               .replaceTrack(newTrack)
@@ -1261,20 +1366,26 @@ export class MediaCallHandler {
 
   /**
    * Dynamically adjust active video encoding bitrate on all active calls
-   * without renegotiating or disrupting video playback.
+   * without renegotiating or disrupting video playback. During a live each
+   * viewer has its own share of that bitrate (see liveLayers).
    */
   static updateScreenShareBitrate(
     mediaCalls: Map<string, MediaConnection>,
     maxBitrate: number
   ) {
     setScreenShareBitrate(maxBitrate)
-    mediaCalls.forEach((call) => {
+    const live = activeScreenCaps() !== null
+    mediaCalls.forEach((call, peerId) => {
       try {
         const pc = (call as any).peerConnection as RTCPeerConnection
         if (!pc || typeof pc.getSenders !== 'function') return
         const senders = pc.getSenders()
         const videoSender = senders.find((s) => s.track && s.track.kind === 'video')
         if (videoSender && typeof videoSender.getParameters === 'function') {
+          if (live) {
+            syncScreenCaps(videoSender, peerId)
+            return
+          }
           const params = videoSender.getParameters()
           if (params && params.encodings && params.encodings.length > 0) {
             params.encodings[0].maxBitrate = maxBitrate
@@ -1286,7 +1397,101 @@ export class MediaCallHandler {
   }
 
   /**
-   * Replace active audio track (When mixing system audio with microphone)
+   * A viewer said whether it watches the live, and how tall the picture is on
+   * its screen (0 while its window shows nothing, null when it did not say:
+   * it gets everything). Only the connection of that viewer changes: its
+   * video is switched on at that size, or off, and its audio is the sound of
+   * the live or the microphone alone. Nothing is renegotiated. A request that
+   * repeats the one before it only renews it.
+   */
+  static applyViewerRequest(
+    mediaCalls: Map<string, MediaConnection>,
+    peerId: string,
+    watch: boolean,
+    height: number | null
+  ) {
+    const news = noteViewRequest(peerId, watch, height)
+    if (news) {
+      const send = viewerSend(peerId)
+      // Each viewer and each size is its own line in the trail of an error report.
+      diagLog('screenshare', 'viewer', { peer: peerId, ...send }, `${peerId}:${send.watch ? send.h : 'off'}`)
+    }
+    try {
+      const call = mediaCalls.get(peerId)
+      const pc = (call as any)?.peerConnection as RTCPeerConnection | undefined
+      if (!call || !pc || typeof pc.getSenders !== 'function') return
+      const videoSender = findVideoSender(pc)
+      if (videoSender) {
+        const change = syncScreenCaps(videoSender, peerId)
+        if (change === 'on' || change === 'more') watchScreenShareRamp(pc, peerId, 'view')
+      }
+      MediaCallHandler.syncViewerAudio(mediaCalls, peerId)
+    } catch (e) {}
+  }
+
+  /** Give one viewer the audio that goes with what it watches now. */
+  private static syncViewerAudio(mediaCalls: Map<string, MediaConnection>, peerId: string) {
+    const liveAudio = MediaCallHandler.liveAudioTrack()
+    // A live with no sound of its own: the microphone is already on every call.
+    if (!liveAudio) return
+    const call = mediaCalls.get(peerId)
+    if (!call) return
+    MediaCallHandler.putAudioTrack(
+      mediaCalls,
+      call,
+      peerId,
+      MediaCallHandler.audioTrackFor(peerId, liveAudio),
+      'viewer',
+      true
+    )
+  }
+
+  /**
+   * Every 10 s while the live runs, for one connection: let go of a size the
+   * viewer stopped confirming, and log what the encoder is doing.
+   */
+  private static watchLive(
+    mediaCalls: Map<string, MediaConnection>,
+    call: MediaConnection,
+    pc: RTCPeerConnection,
+    peerId: string
+  ) {
+    const sameLive = liveGuard()
+    watchLiveQuality({
+      pc,
+      peerId,
+      isActive: () => sameLive() && mediaCalls.get(peerId) === call,
+      onTick: () => {
+        if (takeExpiredRequest(peerId)) diagLog('screenshare', 'viewer-expired', { peer: peerId }, peerId)
+        const videoSender = findVideoSender(pc)
+        if (videoSender) syncScreenCaps(videoSender, peerId)
+      },
+      viewer: () => ({ mode: viewerMode(peerId), askH: askedHeight(peerId) }),
+    })
+  }
+
+  private static findAudioSender(pc: RTCPeerConnection, senders: RTCRtpSender[]): RTCRtpSender | undefined {
+    let audioSender = senders.find((s) => s.track && s.track.kind === 'audio')
+    // A negotiated sender can temporarily have no track (notably after
+    // call glare/recovery). Match it by sender/transceiver kind instead
+    // of treating the microphone as absent.
+    if (!audioSender) {
+      audioSender = senders.find((s) => (s as any).kind === 'audio')
+    }
+    if (!audioSender && typeof pc.getTransceivers === 'function') {
+      const audioTransceiver = pc.getTransceivers().find((t: any) =>
+        t?.sender && (t.sender.track?.kind === 'audio' || t.receiver?.track?.kind === 'audio' || t.kind === 'audio')
+      )
+      audioSender = audioTransceiver?.sender
+    }
+    return audioSender
+  }
+
+  /**
+   * Replace active audio track (When mixing system audio with microphone).
+   *
+   * The sound of a live is put only on the calls of who is watching it; the
+   * other calls keep the microphone alone (see audioTrackFor).
    */
   static replaceAudioTrack(
     mediaCalls: Map<string, MediaConnection>,
@@ -1307,68 +1512,72 @@ export class MediaCallHandler {
         : null,
     })
     mediaCalls.forEach((call, peerId) => {
-      try {
-        const pc = (call as any).peerConnection as RTCPeerConnection
-        if (pc) {
-          const senders = pc.getSenders()
-          let audioSender = senders.find((s) => s.track && s.track.kind === 'audio')
-          // A negotiated sender can temporarily have no track (notably after
-          // call glare/recovery). Match it by sender/transceiver kind instead
-          // of treating the microphone as absent.
-          if (!audioSender) {
-            audioSender = senders.find((s) => (s as any).kind === 'audio')
-          }
-          if (!audioSender && typeof pc.getTransceivers === 'function') {
-            const audioTransceiver = pc.getTransceivers().find((t: any) =>
-              t?.sender && (t.sender.track?.kind === 'audio' || t.receiver?.track?.kind === 'audio' || t.kind === 'audio')
-            )
-            audioSender = audioTransceiver?.sender
-          }
-          if (audioSender && newTrack) {
-            diagLog('p2p', 'audio-replace-sender-found', {
-              toPeer: peerId,
-              previousTrack: audioSender.track
-                ? { id: shortTrackId(audioSender.track.id), ready: audioSender.track.readyState, enabled: audioSender.track.enabled }
-                : null,
-            })
-            audioSender.replaceTrack(newTrack).then(
-              () => {
-                diagLog('p2p', 'audio-replace-ok', { toPeer: peerId, trackId: shortTrackId(newTrack.id) })
-                MediaCallHandler.logSenderSnapshot(mediaCalls, 'audio-replace-ok')
-              },
-              (err) => {
-                const error = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
-                diagLog('p2p', 'audio-replace-failed', { toPeer: peerId, error })
-                console.warn('Could not replace audio track:', err)
-              }
-            )
-          } else {
-            if (newTrack && typeof pc.addTrack === 'function') {
-              try {
-                const localStream = useMediaStore.getState().localStream
-                if (localStream) pc.addTrack(newTrack, localStream)
-                else pc.addTrack(newTrack)
-                diagLog('p2p', 'audio-add-sender', { toPeer: peerId, trackId: shortTrackId(newTrack.id), reason })
-                return
-              } catch (addErr) {
-                diagLog('p2p', 'audio-add-sender-failed', {
-                  toPeer: peerId,
-                  reason,
-                  error: addErr instanceof Error ? `${addErr.name}: ${addErr.message}` : String(addErr),
-                })
-              }
-            }
-            diagLog('p2p', 'audio-replace-no-sender', {
-              toPeer: peerId,
-              hasTrack: !!newTrack,
-              senderKinds: senders.map((sender) => sender.track?.kind || null),
-            })
-          }
-        }
-      } catch (err) {
-        console.warn('Error replacing audio track:', err)
-      }
+      const track = newTrack ? MediaCallHandler.audioTrackFor(peerId, newTrack) : null
+      // A call that keeps the microphone instead of the sound of the live
+      // usually has it already.
+      MediaCallHandler.putAudioTrack(mediaCalls, call, peerId, track, reason, track !== newTrack)
     })
+  }
+
+  /** Put an audio track on the sender of one call. */
+  private static putAudioTrack(
+    mediaCalls: Map<string, MediaConnection>,
+    call: MediaConnection,
+    peerId: string,
+    newTrack: MediaStreamTrack | null,
+    reason: string,
+    onlyIfDifferent: boolean = false
+  ) {
+    try {
+      const pc = (call as any).peerConnection as RTCPeerConnection
+      if (pc) {
+        const senders = pc.getSenders()
+        const audioSender = MediaCallHandler.findAudioSender(pc, senders)
+        if (onlyIfDifferent && audioSender && audioSender.track === newTrack) return
+        if (audioSender && newTrack) {
+          diagLog('p2p', 'audio-replace-sender-found', {
+            toPeer: peerId,
+            previousTrack: audioSender.track
+              ? { id: shortTrackId(audioSender.track.id), ready: audioSender.track.readyState, enabled: audioSender.track.enabled }
+              : null,
+          })
+          audioSender.replaceTrack(newTrack).then(
+            () => {
+              diagLog('p2p', 'audio-replace-ok', { toPeer: peerId, trackId: shortTrackId(newTrack.id) })
+              MediaCallHandler.logSenderSnapshot(mediaCalls, 'audio-replace-ok')
+            },
+            (err) => {
+              const error = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+              diagLog('p2p', 'audio-replace-failed', { toPeer: peerId, error })
+              console.warn('Could not replace audio track:', err)
+            }
+          )
+        } else {
+          if (newTrack && typeof pc.addTrack === 'function') {
+            try {
+              const localStream = useMediaStore.getState().localStream
+              if (localStream) pc.addTrack(newTrack, localStream)
+              else pc.addTrack(newTrack)
+              diagLog('p2p', 'audio-add-sender', { toPeer: peerId, trackId: shortTrackId(newTrack.id), reason })
+              return
+            } catch (addErr) {
+              diagLog('p2p', 'audio-add-sender-failed', {
+                toPeer: peerId,
+                reason,
+                error: addErr instanceof Error ? `${addErr.name}: ${addErr.message}` : String(addErr),
+              })
+            }
+          }
+          diagLog('p2p', 'audio-replace-no-sender', {
+            toPeer: peerId,
+            hasTrack: !!newTrack,
+            senderKinds: senders.map((sender) => sender.track?.kind || null),
+          })
+        }
+      }
+    } catch (err) {
+      console.warn('Error replacing audio track:', err)
+    }
   }
 
   /** Log inbound audio RTP counters so a silent remote tile is actionable. */
@@ -1397,6 +1606,9 @@ export class MediaCallHandler {
   static endMediaCall(mediaCalls: Map<string, MediaConnection>, peerId: string) {
     MediaCallHandler.clearCallRetryTimer(peerId)
     MediaCallHandler.clearIceDisconnectTimer(peerId)
+    // What the viewer asked for ends with the call: the next one starts
+    // without video, and the viewer asks again when it connects.
+    forgetViewer(peerId)
     const call = mediaCalls.get(peerId)
     if (call) {
       try {
@@ -1414,6 +1626,7 @@ export class MediaCallHandler {
     MediaCallHandler.callRetryCounts.clear()
     MediaCallHandler.iceDisconnectTimers.forEach((t) => clearTimeout(t))
     MediaCallHandler.iceDisconnectTimers.clear()
+    forgetAllViewers()
     const peerIds: string[] = []
     mediaCalls.forEach((call, peerId) => {
       try {

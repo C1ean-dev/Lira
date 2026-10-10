@@ -233,6 +233,13 @@ export interface Player {
   isCameraOff?: boolean
   isScreenSharing?: boolean
   /**
+   * This player's app asks before watching a live: it is sent no video, and
+   * not the sound of the live, until the player clicks to watch. Said once,
+   * on joining the room. A player that does not say it gets a live as soon as
+   * it starts, and its own live is shown without the click.
+   */
+  liveOptIn?: boolean
+  /**
    * Per-player WebRTC zone-call lifecycle. Separate from `status` (which is
    * user-presence "available/busy/..."). Tracks whether the audio/video
    * handshake with this peer has finished negotiating ICE + codecs yet.

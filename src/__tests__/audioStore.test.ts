@@ -288,6 +288,27 @@ describe('Audio & Media Store - Expected Behaviors', () => {
 
     setLiveStreamVolume(-10)
     expect(useMediaStore.getState().liveStreamVolume).toBe(0)
+
+    // Reset to default 100%
+    setLiveStreamVolume(100)
+    expect(useMediaStore.getState().liveStreamVolume).toBe(100)
+  })
+
+  it('should clamp screen share audio volume up to 200% with default 100%', () => {
+    const { setScreenShareAudioVolume } = useMediaStore.getState()
+
+    setScreenShareAudioVolume(180)
+    expect(useMediaStore.getState().screenShareAudioVolume).toBe(180)
+
+    // Clamping to 200%
+    setScreenShareAudioVolume(250)
+    expect(useMediaStore.getState().screenShareAudioVolume).toBe(200)
+
+    setScreenShareAudioVolume(-5)
+    expect(useMediaStore.getState().screenShareAudioVolume).toBe(0)
+
+    setScreenShareAudioVolume(100)
+    expect(useMediaStore.getState().screenShareAudioVolume).toBe(100)
   })
 
   it('should update and persist selected video input device', () => {

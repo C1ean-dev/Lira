@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react'
-import { Radio, MicOff, Maximize, Pin, Maximize2, Volume2, Volume1, VolumeX, Headphones } from 'lucide-react'
+import { Radio, MicOff, Maximize, Pin, Maximize2, Volume2, Volume1, VolumeX, Headphones, EyeOff } from 'lucide-react'
 import { useMediaStore } from '../../store/useMediaStore'
 import { useUserNetworkQuality } from '../../store/useNetworkQualityStore'
 import { NetworkSignalIcon } from '../NetworkSignalIcon'
@@ -7,6 +7,9 @@ import { attachStreamToVideo } from '../../media/attachVideoElement'
 import { AvatarConfig } from '../../types/game'
 import { PlayerAvatar } from '../common/PlayerAvatar'
 import { RemoteAudio } from '../common/RemoteAudio'
+import { LiveWatchPrompt } from '../LiveWatchPrompt'
+import { useLiveGate } from '../../hooks/useLiveGate'
+import { useLiveViewBox } from '../../hooks/useLiveViewBox'
 
 export interface ParticipantData {
   id: string
@@ -27,6 +30,10 @@ export interface ParticipantData {
   statusEmoji?: string
   callState?: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed'
   onRetryCall?: () => void
+  /** The app of this participant waits for a click before a live is sent to it, and before showing one. */
+  liveOptIn?: boolean
+  /** This user clicked to watch the live of this participant. */
+  liveWatching?: boolean
 }
 
 interface Props {
@@ -49,6 +56,8 @@ export const GridParticipantTile: React.FC<Props> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const isLive = Boolean(user.screenStream || user.isScreenSharing)
   const activeStream = user.screenStream || user.stream
+  // A live of somebody else is shown after a click to watch it.
+  const liveGate = useLiveGate(user.id, Boolean(!user.isLocal && isLive && user.liveOptIn), !!user.liveWatching)
 
   // Granular selectors: the media store updates on every VU-meter tick and
   // every peer-stream change — subscribing whole-store would re-render every
@@ -89,7 +98,11 @@ export const GridParticipantTile: React.FC<Props> = ({
       muted: true,
       isLive,
     })
-  }, [activeStream, isLive, user.isLocal])
+    // The <video> is a new element after the click to watch.
+  }, [activeStream, isLive, user.isLocal, liveGate.needsClick])
+
+  // The sidebar thumbnail crops the live to fill its box; the stage shows all of it.
+  useLiveViewBox(user.id, videoRef, isSidebar ? 'cover' : 'contain', liveGate.watching)
 
   // Sound of a remote participant, with the viewer's volume and output device.
   const remoteAudio =
@@ -138,7 +151,15 @@ export const GridParticipantTile: React.FC<Props> = ({
             : 'border-[#2a3142] hover:border-slate-500'
         }`}
       >
-        {isLive ? (
+        {liveGate.needsClick ? (
+          <PlayerAvatar
+            name={user.name}
+            profilePicture={user.profilePicture}
+            avatar={user.avatar}
+            size="lg"
+            className="w-10 h-10 rounded-full shadow-md border border-white/20"
+          />
+        ) : isLive ? (
           <video
             ref={videoRef}
             autoPlay
@@ -146,6 +167,8 @@ export const GridParticipantTile: React.FC<Props> = ({
             muted
             onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
             onCanPlay={() => videoRef.current?.play().catch(() => {})}
+            onLoadedData={liveGate.onFrame}
+            onPlaying={liveGate.onFrame}
             className="w-full h-full object-cover bg-black"
           />
         ) : (
@@ -171,6 +194,11 @@ export const GridParticipantTile: React.FC<Props> = ({
               />
             )}
           </>
+        )}
+
+        {/* A live starts with a click: until then only the microphone arrives */}
+        {(liveGate.needsClick || liveGate.connecting) && (
+          <LiveWatchPrompt size="tile" name={user.name} connecting={liveGate.connecting} onWatch={liveGate.watch} />
         )}
 
         {remoteAudio}
@@ -265,7 +293,7 @@ export const GridParticipantTile: React.FC<Props> = ({
       }`}
     >
       {/* Screen Share or Video Content */}
-      {isLive ? (
+      {liveGate.needsClick ? null : isLive ? (
         <video
           ref={videoRef}
           autoPlay
@@ -273,6 +301,8 @@ export const GridParticipantTile: React.FC<Props> = ({
           muted
           onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
           onCanPlay={() => videoRef.current?.play().catch(() => {})}
+          onLoadedData={liveGate.onFrame}
+          onPlaying={liveGate.onFrame}
           className="w-full h-full object-contain bg-black"
         />
       ) : (
@@ -307,6 +337,11 @@ export const GridParticipantTile: React.FC<Props> = ({
             </div>
           )}
         </>
+      )}
+
+      {/* A live starts with a click: until then only the microphone arrives */}
+      {(liveGate.needsClick || liveGate.connecting) && (
+        <LiveWatchPrompt size="stage" name={user.name} connecting={liveGate.connecting} onWatch={liveGate.watch} />
       )}
 
       {remoteAudio}
@@ -378,11 +413,11 @@ export const GridParticipantTile: React.FC<Props> = ({
               </button>
 
               {/* Slider expands smoothly on hover */}
-              <div className="w-0 group-hover/vol:w-28 transition-all duration-200 overflow-hidden flex items-center gap-1.5">
+              <div className="w-0 group-hover/vol:w-32 transition-all duration-200 overflow-hidden flex items-center gap-1.5">
                 <input
                   type="range"
                   min="0"
-                  max="100"
+                  max="200"
                   value={rawVolume}
                   onChange={(e) => {
                     const val = Number(e.target.value)
@@ -393,11 +428,25 @@ export const GridParticipantTile: React.FC<Props> = ({
                   className="w-16 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400"
                   title={`Volume: ${rawVolume}%`}
                 />
-                <span className="text-[10px] font-mono text-slate-200 min-w-[28px]">
+                <span className="text-[10px] font-mono text-slate-200 min-w-[32px]">
                   {rawVolume}%
                 </span>
               </div>
             </div>
+          )}
+
+          {liveGate.watching && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                liveGate.stop()
+              }}
+              className="px-3 py-1.5 rounded-xl bg-black/80 hover:bg-rose-600 text-white backdrop-blur-md transition-all shadow-md flex items-center gap-1.5 text-xs font-bold"
+              title="Deixar de receber o vídeo e o som desta transmissão"
+            >
+              <EyeOff className="w-4 h-4" />
+              <span>Parar de assistir</span>
+            </button>
           )}
 
           <button

@@ -20,6 +20,8 @@ export interface ScreenShareConfig {
   includeAudio?: boolean
   resolution?: 'auto' | '480p' | '720p' | '1080p'
   fps?: 'auto' | 30 | 60
+  /** Optimization mode: 'quality' prioritizes sharp resolution, 'smoothness' prioritizes framerate */
+  optimizationMode?: 'quality' | 'smoothness'
   /**
    * Kept for backwards compatibility. The microphone remains in the call via
    * its own input; this flag cannot enable system audio or other applications.
@@ -1180,17 +1182,23 @@ export class MediaManager {
         tracks: summarizeStream(screenStream),
       })
 
+      const optimizationMode =
+        config.optimizationMode ?? useMediaStore.getState().screenShareOptimizationMode ?? 'quality'
+
       const screenVideoTrack = screenStream.getVideoTracks()[0]
       if (screenVideoTrack) {
         screenVideoTrack.enabled = true
-        // 'motion' prioritizes steady frame rate over heavy intra-frame compression
         if ('contentHint' in screenVideoTrack) {
-          screenVideoTrack.contentHint = 'motion'
+          screenVideoTrack.contentHint = optimizationMode === 'quality' ? 'detail' : 'motion'
         }
 
+        const degradationPref = optimizationMode === 'quality' ? 'maintain-resolution' : 'maintain-framerate'
         PeerManager.getInstance().replaceVideoTrack(screenVideoTrack, true, targetBitrate, effectiveFps)
+        PeerManager.getInstance().updateScreenShareOptimizationMode(optimizationMode)
         diagLog('screenshare', 'video-track-sent', {
           bitrate: targetBitrate,
+          optimizationMode,
+          degradationPreference: degradationPref,
           track: summarizeStream({
             getAudioTracks: () => [],
             getVideoTracks: () => [screenVideoTrack],
@@ -1329,6 +1337,19 @@ export class MediaManager {
       mic: micTrack ? { enabled: micTrack.enabled } : null,
     })
     PeerManager.getInstance().sendPlayerUpdate({ isScreenSharing: false })
+  }
+
+  /**
+   * Switch live screen share optimization mode between Quality and Smoothness in real-time
+   */
+  public updateScreenShareOptimizationMode(mode: 'quality' | 'smoothness') {
+    const localScreenStream = useMediaStore.getState().localScreenStream
+    const track = localScreenStream?.getVideoTracks()[0]
+    if (track && 'contentHint' in track) {
+      track.contentHint = mode === 'quality' ? 'detail' : 'motion'
+    }
+    PeerManager.getInstance().updateScreenShareOptimizationMode(mode)
+    diagLog('screenshare', 'optimization-mode-updated', { mode })
   }
 
   public stopAllMedia() {

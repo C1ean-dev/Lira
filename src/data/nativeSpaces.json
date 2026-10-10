@@ -1748,7 +1748,7 @@
     "name": "Espaço de Player",
     "description": "Espaço de colaboração e produtividade",
     "createdAt": 1788461550715,
-    "updatedAt": 1788461673930,
+    "updatedAt": 1791145155602,
     "mapData": {
       "id": "room-1x2q5w",
       "name": "Espaço de Player",
@@ -1774,8 +1774,13 @@
           "description": "Zona de chamada privada demarcada com mouse",
           "createdBy": "local-rt2plg",
           "createdByName": "Player",
-          "isLocked": true,
-          "allowKnock": true
+          "isLocked": false,
+          "allowKnock": true,
+          "admins": [
+            "clean"
+          ],
+          "members": [],
+          "authorizedPeers": []
         }
       ],
       "defaultFloor": "habbo_parquet",

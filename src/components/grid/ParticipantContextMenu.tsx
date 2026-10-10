@@ -47,12 +47,17 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
   const isDeafened = useMediaStore((s) => s.isDeafened)
   const participantVolumes = useMediaStore((s) => s.participantVolumes)
   const setParticipantVolume = useMediaStore((s) => s.setParticipantVolume)
+  const liveStreamVolume = useMediaStore((s) => s.liveStreamVolume)
+  const setLiveStreamVolume = useMediaStore((s) => s.setLiveStreamVolume)
+  const isLive = Boolean(user.screenStream || user.isScreenSharing)
 
   const currentVol =
     participantVolumes[user.id] !== undefined
       ? participantVolumes[user.id]
       : user.gameId && participantVolumes[user.gameId] !== undefined
       ? participantVolumes[user.gameId]
+      : isLive && liveStreamVolume !== undefined
+      ? liveStreamVolume
       : 100
 
   const remotePlayer = useGameStore((s) =>
@@ -117,8 +122,6 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
     PeerManager.getInstance().sendAdminDeafenParticipant(user.id, nextDeafen, user.name, user.gameId)
     onClose()
   }
-
-  const isLive = Boolean(user.screenStream || user.isScreenSharing)
 
   return (
     <div
@@ -192,6 +195,7 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
                 const val = Number(e.target.value)
                 setParticipantVolume(user.id, val)
                 if (user.name) setParticipantVolume(user.name, val)
+                if (isLive) setLiveStreamVolume(val)
               }}
               className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400"
             />
@@ -204,6 +208,7 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
                 e.stopPropagation()
                 setParticipantVolume(user.id, 0)
                 if (user.name) setParticipantVolume(user.name, 0)
+                if (isLive) setLiveStreamVolume(0)
               }}
               className={`px-1.5 py-0.5 rounded transition-colors ${
                 currentVol === 0 ? 'text-rose-400 font-bold bg-rose-500/10' : 'hover:text-white hover:bg-slate-800'
@@ -217,6 +222,7 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
                 e.stopPropagation()
                 setParticipantVolume(user.id, 100)
                 if (user.name) setParticipantVolume(user.name, 100)
+                if (isLive) setLiveStreamVolume(100)
               }}
               className={`px-1.5 py-0.5 rounded transition-colors ${
                 currentVol === 100 ? 'text-indigo-400 font-bold bg-indigo-500/10' : 'hover:text-white hover:bg-slate-800'
@@ -230,6 +236,7 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
                 e.stopPropagation()
                 setParticipantVolume(user.id, 200)
                 if (user.name) setParticipantVolume(user.name, 200)
+                if (isLive) setLiveStreamVolume(200)
               }}
               className={`px-1.5 py-0.5 rounded transition-colors ${
                 currentVol === 200 ? 'text-amber-400 font-bold bg-amber-500/10' : 'hover:text-amber-300 hover:bg-slate-800'

@@ -18,6 +18,7 @@ import {
   Check,
   Power,
   AudioLines,
+  Zap,
 } from 'lucide-react'
 
 const NOISE_ENGINES = [
@@ -72,6 +73,8 @@ export const CallControlsBar: React.FC<Props> = ({
   const toggleCamera = useMediaStore((s) => s.toggleCamera)
   const toggleNoiseSuppression = useMediaStore((s) => s.toggleNoiseSuppression)
   const setAudioProcessorMode = useMediaStore((s) => s.setAudioProcessorMode)
+  const optimizationMode = useMediaStore((s) => s.screenShareOptimizationMode)
+  const setScreenShareOptimizationMode = useMediaStore((s) => s.setScreenShareOptimizationMode)
 
   const isChatOpen = useChatStore((state) => state.isChatOpen)
   const activeChannelId = useChatStore((state) => state.activeChannelId)
@@ -368,10 +371,52 @@ export const CallControlsBar: React.FC<Props> = ({
               className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-48 bg-[#12151d]/95 backdrop-blur-xl border border-[#2a3142] rounded-2xl shadow-2xl p-1.5 z-50 select-none animate-in fade-in zoom-in-95 duration-150"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="px-2.5 py-1 text-[10px] font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1.5 border-b border-[#2a3142]/60 mb-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-                Ao Vivo
+              <div className="px-2.5 py-1 text-[10px] font-bold text-rose-400 uppercase tracking-wider flex items-center justify-between border-b border-[#2a3142]/60 mb-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                  <span>Ao Vivo</span>
+                </div>
+                <span className="text-[9px] font-semibold text-slate-400 normal-case">
+                  {optimizationMode === 'quality' ? 'Qualidade' : 'Fluidez'}
+                </span>
               </div>
+              <div className="space-y-0.5 mb-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScreenShareOptimizationMode('quality')
+                  }}
+                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded-xl text-xs font-medium transition-all text-left ${
+                    optimizationMode === 'quality'
+                      ? 'bg-indigo-500/15 text-indigo-300 font-bold border border-indigo-500/30'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Sparkles className={`w-3.5 h-3.5 shrink-0 ${optimizationMode === 'quality' ? 'text-indigo-400' : 'text-slate-400'}`} />
+                    <span className="truncate">Priorizar Qualidade</span>
+                  </div>
+                  {optimizationMode === 'quality' && <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0 ml-1.5" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScreenShareOptimizationMode('smoothness')
+                  }}
+                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded-xl text-xs font-medium transition-all text-left ${
+                    optimizationMode === 'smoothness'
+                      ? 'bg-indigo-500/15 text-indigo-300 font-bold border border-indigo-500/30'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Zap className={`w-3.5 h-3.5 shrink-0 ${optimizationMode === 'smoothness' ? 'text-indigo-400' : 'text-slate-400'}`} />
+                    <span className="truncate">Priorizar Fluidez</span>
+                  </div>
+                  {optimizationMode === 'smoothness' && <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0 ml-1.5" />}
+                </button>
+              </div>
+              <div className="my-1 border-t border-[#2a3142]/60" />
               <button
                 type="button"
                 onClick={() => {
