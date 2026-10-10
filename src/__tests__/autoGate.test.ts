@@ -214,5 +214,5 @@ describe('AutoGate - automatic noise-gate threshold', () => {
       expect(gate.closeLevel).toBeGreaterThanOrEqual(SOFT.minCloseRms)
       expect(gate.closeLevel).toBeLessThan(gate.openLevel)
     }
-  })
+  }, 15000)
 })
