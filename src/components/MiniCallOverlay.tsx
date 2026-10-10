@@ -132,6 +132,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
   const selectedAudioOutput = useMediaStore((s) => s.selectedAudioOutput)
   const participantVolumes = useMediaStore((s) => s.participantVolumes)
   const setParticipantVolume = useMediaStore((s) => s.setParticipantVolume)
+  const setLiveStreamVolume = useMediaStore((s) => s.setLiveStreamVolume)
   const isGlobalDeafened = useMediaStore((s) => s.isDeafened)
   const isSilenced = useMediaStore((s) => (id ? s.isUserSilenced(id, name) : false))
   const rawVolume = (id && participantVolumes[id] !== undefined) ? participantVolumes[id] : 100
