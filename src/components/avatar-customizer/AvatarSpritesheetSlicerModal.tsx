@@ -105,15 +105,13 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
   const [sourceImg, setSourceImg] = useState<HTMLImageElement | null>(null)
   const [zoom, setZoom] = useState<number>(0.5)
   const [showGrid, setShowGrid] = useState<boolean>(true)
-  const [gridSnapSize, setGridSnapSize] = useState<number>(16) // Supports 8, 16, 24, 32 or custom sizes
+  const [gridSnapSize, setGridSnapSize] = useState<number>(16)
 
-  // Background Removal State (disabled by default)
   const [enableBgRemoval, setEnableBgRemoval] = useState<boolean>(false)
   const [targetColorHex, setTargetColorHex] = useState<string>('#21232a')
   const [tolerance, setTolerance] = useState<number>(25)
   const [isPickingColor, setIsPickingColor] = useState<boolean>(false)
 
-  // Selection Box (supports any pixel size, smaller than 32x32)
   const [selection, setSelection] = useState<{ x: number; y: number; w: number; h: number }>(() => {
     const firstSlot =
       editingAsset?.slicerPresets?.[0]?.directions.down[0] ||
@@ -138,19 +136,16 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
   })
   const [selectedRegionDataUrl, setSelectedRegionDataUrl] = useState<string>('')
 
-  // Drag-Selection State
   const isSelectingRef = useRef<boolean>(false)
   const selectionStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 })
   const isMovingSelectionRef = useRef<boolean>(false)
   const moveOffsetRef = useRef<{ offsetX: number; offsetY: number }>({ offsetX: 0, offsetY: 0 })
   const [isHoveringSelection, setIsHoveringSelection] = useState<boolean>(false)
 
-  // Frame Drag & Drop and Direction Transfer State
   const [draggedFrameIndex, setDraggedFrameIndex] = useState<number | null>(null)
   const [dragOverFrameIndex, setDragOverFrameIndex] = useState<number | null>(null)
   const [directionMenuIndex, setDirectionMenuIndex] = useState<number | null>(null)
 
-  // Panning State
   const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [isPanning, setIsPanning] = useState<boolean>(false)
   const panStartRef = useRef<{ mouseX: number; mouseY: number; startX: number; startY: number }>({
@@ -162,7 +157,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
   const stageRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
-  // Presets List with Multi-Frame Support per Direction
   const [presets, setPresets] = useState<SlicedPreset[]>(() => {
     if (editingAsset) {
       return convertAssetToSlicedPresets(editingAsset, editingAsset.sourceXmlContent)
@@ -181,7 +175,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     ]
   })
 
-  // Sync presets whenever editingAsset changes
   useEffect(() => {
     if (editingAsset) {
       const converted = convertAssetToSlicedPresets(editingAsset, editingAsset.sourceXmlContent)
@@ -213,11 +206,9 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
   const [showXmlModal, setShowXmlModal] = useState<boolean>(false)
   const [savedSuccessCount, setSavedSuccessCount] = useState<number | null>(null)
 
-  // Walk Cycle Animation Preview State
   const [isPlayingWalk, setIsPlayingWalk] = useState<boolean>(true)
   const [walkTick, setWalkTick] = useState<number>(0)
 
-  // Pixel Art Studio Direct Integration ("Pintar")
   const [isPixelStudioOpen, setIsPixelStudioOpen] = useState<boolean>(false)
 
   const getCurrentDirectionalFrames = useCallback((): Record<Direction, string[]> => {
@@ -341,7 +332,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
         pixelWidth: finalW,
         pixelHeight: finalH,
         isObstacle,
-        // Furniture: the hitbox follows the drawing, so the transparent parts do not block (spriteHitbox.ts)
         ...(editingAsset.type === 'furniture' ? resolveStudioHitbox(editingAsset, isObstacle, options?.spriteCollision) : {}),
         category: options?.category || editingAsset.category,
         directionalFrames: newDirectionalFrames,
@@ -371,7 +361,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     setIsPixelStudioOpen(false)
   }
 
-  // Extract and process any rectangular region from source image
   const sliceRegion = useCallback(
     (img: HTMLImageElement, x: number, y: number, w: number, h: number): string => {
       if (typeof document === 'undefined') return ''
@@ -398,7 +387,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     [enableBgRemoval, targetColorHex, tolerance]
   )
 
-  // Reset zoom and pan on open
   useEffect(() => {
     if (isOpen) {
       setZoom(0.5)
@@ -406,7 +394,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     }
   }, [isOpen])
 
-  // Load Source Image
   useEffect(() => {
     if (!imageSrc) return
     const img = new Image()
@@ -433,19 +420,15 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     }
   }, [imageSrc, sliceRegion])
 
-  // Re-slice when background removal params change
   useEffect(() => {
     if (sourceImg) {
       sliceRegion(sourceImg, selection.x, selection.y, selection.w, selection.h)
     }
   }, [enableBgRemoval, targetColorHex, tolerance, sourceImg, selection, sliceRegion])
 
-  // Automatically detects the background color and applies removal
   const handleAutoDetectBg = useCallback(() => {
     if (!sourceImg) return
-    // 1. Try region around current selection
     let detected = detectBackgroundColor(sourceImg, selection)
-    // 2. If not found or transparent, sample whole sheet
     if (!detected) {
       detected = detectBackgroundColor(sourceImg)
     }
@@ -457,7 +440,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     }
   }, [sourceImg, selection])
 
-  // Eyedropper activation: native browser API if supported, or interactive canvas click
   const handleToggleEyedropper = async () => {
     if (typeof window !== 'undefined' && (window as any).EyeDropper) {
       try {
@@ -470,13 +452,11 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
           return
         }
       } catch {
-        // Cancelled by user
       }
     }
     setIsPickingColor((prev) => !prev)
   }
 
-  // Cancel color picker on Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isPickingColor) {
@@ -487,7 +467,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isPickingColor])
 
-  // Walk Cycle Loop Timer
   useEffect(() => {
     if (!isPlayingWalk) {
       setWalkTick(0)
@@ -499,13 +478,11 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     return () => clearInterval(interval)
   }, [isPlayingWalk])
 
-  // Zoom control with Ctrl + mouse wheel scroll
   useEffect(() => {
     const stage = stageRef.current
     if (!stage) return
 
     const handleWheel = (e: WheelEvent) => {
-      // Zoom with Ctrl + mouse wheel scroll
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault()
         e.stopPropagation()
@@ -521,7 +498,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     return () => stage.removeEventListener('wheel', handleWheel)
   }, [isOpen])
 
-  // Render Spritesheet on Canvas
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || !sourceImg) return
@@ -535,7 +511,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(sourceImg, 0, 0)
 
-    // Draw Grid with configurable snap size (8, 16, 24, 32, etc.)
     if (showGrid && gridSnapSize > 0) {
       ctx.lineWidth = 1
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)'
@@ -555,7 +530,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
       }
     }
 
-    // Draw assigned markers for active preset
     const activePreset = presets[activePresetIndex]
     if (activePreset) {
       DIRECTIONS.forEach(({ id: dir }) => {
@@ -569,7 +543,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
           ctx.lineWidth = 2
           ctx.strokeRect(frame.x + 0.5, frame.y + 0.5, fw - 1, fh - 1)
 
-          // Direction and frame index badge
           ctx.fillStyle = dir === activeDirectionTab ? '#3b82f6' : '#10b981'
           ctx.fillRect(frame.x, frame.y, 24, 11)
           ctx.fillStyle = '#ffffff'
@@ -579,14 +552,12 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
       })
     }
 
-    // Draw highlighted selection box
     ctx.lineWidth = 2
     ctx.strokeStyle = '#f59e0b'
     ctx.fillStyle = 'rgba(245, 158, 11, 0.22)'
     ctx.fillRect(selection.x, selection.y, selection.w, selection.h)
     ctx.strokeRect(selection.x + 0.5, selection.y + 0.5, selection.w - 1, selection.h - 1)
 
-    // Selection dimension tag overlay
     const tagText = `${selection.w}×${selection.h}px`
     ctx.fillStyle = '#f59e0b'
     const tagW = tagText.length * 6.2 + 8
@@ -597,7 +568,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     ctx.fillText(tagText, selection.x + 4, tagY + 9)
   }, [sourceImg, showGrid, gridSnapSize, selection, presets, activePresetIndex, activeDirectionTab])
 
-  // Handle Canvas Mouse Down (Left click = Drag Select, Right click = Pan)
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!sourceImg) return
     const canvas = canvasRef.current
@@ -623,7 +593,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
       const clientX = (e.clientX - rect.left) * scaleX
       const clientY = (e.clientY - rect.top) * scaleY
 
-      // If in Eyedropper mode: sample pixel directly from canvas
       if (isPickingColor) {
         e.preventDefault()
         e.stopPropagation()
@@ -640,7 +609,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
         return
       }
 
-      // Check if clicking inside the existing selection box to drag/move it
       const isInside =
         clientX >= selection.x &&
         clientX <= selection.x + selection.w &&
@@ -691,7 +659,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     const clientX = (e.clientX - rect.left) * scaleX
     const clientY = (e.clientY - rect.top) * scaleY
 
-    // Moving existing selection box
     if (isMovingSelectionRef.current) {
       const snap = Math.max(1, gridSnapSize)
       const rawX = clientX - moveOffsetRef.current.offsetX
@@ -708,7 +675,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
       return
     }
 
-    // Creating new drag selection
     if (isSelectingRef.current) {
       const snap = Math.max(1, gridSnapSize)
       const curTileX = Math.max(0, Math.min(canvas.width - snap, Math.floor(clientX / snap) * snap))
@@ -726,7 +692,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
       return
     }
 
-    // Update hover state for cursor
     const isInside =
       clientX >= selection.x &&
       clientX <= selection.x + selection.w &&
@@ -749,7 +714,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     }
   }
 
-  // Keyboard arrow nudge support to move selection box on canvas
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isOpen || !sourceImg) return
@@ -776,7 +740,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, sourceImg, gridSnapSize, sliceRegion])
 
-  // Adjust selection dimensions to exact pixel sizes (from 1px up to max image size)
   const setExactDimensions = (w: number, h: number) => {
     if (!sourceImg) return
     const maxW = sourceImg.naturalWidth - selection.x
@@ -793,7 +756,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     sliceRegion(sourceImg, updated.x, updated.y, updated.w, updated.h)
   }
 
-  // Update grid size (1 to 64px) and automatically synchronize selector dimensions!
   const handleUpdateGridSize = (newGridSize: number) => {
     const safeSize = Math.max(1, Math.min(64, Math.round(newGridSize)))
     setGridSnapSize(safeSize)
@@ -804,7 +766,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
       const targetW = Math.min(safeSize, maxW)
       const targetH = Math.min(safeSize, maxH)
 
-      // Snap current selection coordinates to new grid size
       const snappedX = Math.max(0, Math.min(maxW - targetW, Math.floor(selection.x / safeSize) * safeSize))
       const snappedY = Math.max(0, Math.min(maxH - targetH, Math.floor(selection.y / safeSize) * safeSize))
 
@@ -825,7 +786,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     }
   }
 
-  // Add individual blocks sequentially (Walk Cycle)
   const handleAddSequentialFrames = (dir: Direction) => {
     if (!sourceImg) return
     const step = Math.max(1, gridSnapSize)
@@ -862,7 +822,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     })
   }
 
-  // Add entire selection as 1 composite frame
   const handleAddCompositeFrame = (dir: Direction) => {
     if (!sourceImg) return
     const dataUrl = sliceRegion(sourceImg, selection.x, selection.y, selection.w, selection.h)
@@ -889,7 +848,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     })
   }
 
-  // Remove a frame from a direction
   const handleRemoveDirectionFrame = (dir: Direction, frameIndex: number) => {
     setPresets((prev) => {
       const updated = [...prev]
@@ -904,7 +862,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     })
   }
 
-  // Move frame order (left or right in walk animation loop)
   const handleMoveFrameOrder = (dir: Direction, fromIndex: number, toIndex: number) => {
     setPresets((prev) => {
       const updated = [...prev]
@@ -924,7 +881,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     })
   }
 
-  // Move a frame to another direction (Frente, Costas, Esquerda, Direita)
   const handleMoveFrameToDirection = (fromDir: Direction, frameIndex: number, targetDir: Direction) => {
     if (fromDir === targetDir) return
     setPresets((prev) => {
@@ -945,7 +901,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     setDirectionMenuIndex(null)
   }
 
-  // Mirror lateral direction (Left <-> Right)
   const handleMirrorLateral = (fromDir: 'left' | 'right', toDir: 'left' | 'right') => {
     const currentPreset = presets[activePresetIndex]
     const sourceFrames = currentPreset?.directions[fromDir] || []
@@ -988,7 +943,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     })
   }
 
-  // Add new preset
   const handleAddNewPreset = () => {
     const newIdx = presets.length + 1
     const newPreset: SlicedPreset = {
@@ -1005,7 +959,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     setActivePresetIndex(presets.length)
   }
 
-  // Remove preset
   const handleRemovePreset = (idx: number) => {
     if (presets.length <= 1) return
     const next = presets.filter((_, i) => i !== idx)
@@ -1013,7 +966,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     setActivePresetIndex(Math.max(0, idx - 1))
   }
 
-  // Generate Sparrow XML
   const generateXmlString = (): string => {
     const subTextures: PackedSubTexture[] = []
     const imagePath = imageFileName.endsWith('.png') ? imageFileName : `${category}.png`
@@ -1037,14 +989,12 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     return generateSparrowXml(imagePath, subTextures)
   }
 
-  // Download Generated XML
   const handleDownloadXml = () => {
     const xml = generateXmlString()
     const xmlFileName = imageFileName.replace(/\.[^/.]+$/, '') + '.xml'
     downloadFile(xmlFileName, xml, 'application/xml')
   }
 
-  // Save Presets into Store
   const handleSaveAndEquip = async () => {
     const createdAssets: CustomAsset[] = []
     const store = useCustomAssetsStore.getState()
@@ -1143,7 +1093,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
       }
     }
 
-    // Save XML and PNG directly to appropriate subfolder so they are tracked in Git
     const subfolder =
       category === 'pet'
         ? 'pet'
@@ -1184,7 +1133,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
   const activePreset = presets[activePresetIndex]
   const activeDirectionFrames = activePreset?.directions[activeDirectionTab] || []
 
-  // Current active frame in animated preview
   const currentPreviewFrame =
     activeDirectionFrames.length > 0
       ? isPlayingWalk
@@ -1192,7 +1140,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
         : activeDirectionFrames[0]?.dataUrl
       : selectedRegionDataUrl
 
-  // Selection step calculations
   const snapStep = Math.max(1, gridSnapSize)
   const isMultiBlock = selection.w > snapStep || selection.h > snapStep
   const totalBlocks = Math.max(1, Math.round(selection.w / snapStep) * Math.round(selection.h / snapStep))
@@ -1205,7 +1152,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
       onContextMenu={(e) => e.preventDefault()}
     >
       <div className="bg-[#1e1f22] border border-[#383a40] w-full max-w-7xl h-[92vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden">
-        {/* Top Header */}
         <div className="px-6 py-3 border-b border-[#2b2d31] flex items-center justify-between bg-[#18191c]">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-[#3b82f6]/20 border border-[#3b82f6]/40 flex items-center justify-center text-[#3b82f6]">
@@ -1271,14 +1217,11 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Main Body */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Center Stage: Interactive Spritesheet Canvas */}
           <div
             ref={stageRef}
             className="flex-1 relative bg-[#121316] flex items-center justify-center overflow-hidden cursor-crosshair"
           >
-            {/* Stage Controls Overlay */}
             <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 bg-[#18191c]/90 border border-[#383a40] backdrop-blur-md p-1.5 rounded-2xl shadow-xl">
               <button
                 type="button"
@@ -1311,7 +1254,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               </button>
             </div>
 
-            {/* Bottom Status Tips */}
             {isPickingColor ? (
               <div className="absolute bottom-4 z-10 flex items-center gap-2 bg-amber-500 text-slate-950 font-bold px-4 py-2 rounded-2xl text-xs shadow-xl animate-bounce">
                 <Pipette className="w-4 h-4" />
@@ -1341,7 +1283,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               </div>
             )}
 
-            {/* Canvas Container with Pan & Zoom */}
             <div
               style={{
                 transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoom})`,
@@ -1360,9 +1301,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Right Inspector & Assignment Panel */}
           <div className="w-96 border-l border-[#2b2d31] bg-[#18191c]/90 flex flex-col p-4 gap-3.5 overflow-y-auto">
-            {/* 1. Background Removal Controls */}
             <div className="flex flex-col gap-2.5 bg-[#2b2d31]/70 border border-[#383a40] p-3 rounded-2xl">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1384,9 +1323,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
 
               {enableBgRemoval && (
                 <div className="flex flex-col gap-2.5 pt-1 border-t border-[#383a40]/60">
-                  {/* Conta-gotas, Modo Automático e Amostra de Cor */}
                   <div className="flex items-center gap-2">
-                    {/* Botão Modo Automático */}
                     <button
                       type="button"
                       onClick={handleAutoDetectBg}
@@ -1397,7 +1334,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                       <span>Modo Automático</span>
                     </button>
 
-                    {/* Botão Conta-gotas */}
                     <button
                       type="button"
                       onClick={handleToggleEyedropper}
@@ -1412,7 +1348,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                       <span>{isPickingColor ? 'Clique...' : 'Conta-gotas'}</span>
                     </button>
 
-                    {/* Preview e ajuste da cor selecionada */}
                     <div className="relative group/picker shrink-0">
                       <div
                         className="w-7 h-7 rounded-xl border border-white/30 shadow-inner flex items-center justify-center cursor-pointer overflow-hidden transition-transform hover:scale-105"
@@ -1429,7 +1364,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                     </div>
                   </div>
 
-                  {/* Slider de Tolerância */}
                   <div className="flex items-center justify-between text-xs text-slate-300 bg-[#1e1f22]/60 px-2.5 py-1.5 rounded-xl border border-[#383a40]/40">
                     <span className="text-[11px] font-semibold text-slate-400">Tolerância:</span>
                     <input
@@ -1446,7 +1380,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               )}
             </div>
 
-            {/* 2. Preset Selector / Management */}
             <div className="flex flex-col gap-2 bg-[#2b2d31]/70 border border-[#383a40] p-3 rounded-2xl">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
@@ -1509,7 +1442,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               )}
             </div>
 
-            {/* 3. Seletor de Tamanho Livre & Grade (1x1 até 64x64) */}
             <div className="bg-[#2b2d31]/70 border border-[#383a40] p-3 rounded-2xl flex flex-col gap-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
@@ -1525,7 +1457,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* Snap da Grade (1 a 64px) com sincronização automática do seletor */}
               <div className="flex flex-col gap-1.5 bg-[#1e1f22] p-2 rounded-xl border border-[#383a40]/60">
                 <div className="flex items-center justify-between text-xs text-slate-400">
                   <span className="text-[10px] font-bold text-slate-300">Grade / Snap (1 a 64px):</span>
@@ -1557,7 +1488,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                   </span>
                 </div>
 
-                {/* Botões Rápidos de Grade */}
                 <div className="flex items-center justify-between gap-1 pt-1 border-t border-white/5">
                   {[1, 8, 16, 24, 32, 48, 64].map((s) => (
                     <button
@@ -1577,7 +1507,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* Presets Rápidos de Tamanho (1x1 até 64x64) */}
               <div className="flex flex-wrap gap-1">
                 {[
                   { label: '1×1', w: 1, h: 1 },
@@ -1612,7 +1541,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                 ))}
               </div>
 
-              {/* Ajuste Numérico Direto em Pixels */}
               <div className="grid grid-cols-2 gap-2 bg-[#1e1f22] p-2 rounded-xl border border-[#383a40]/60">
                 <div className="flex items-center justify-between text-xs text-slate-400">
                   <span className="text-[10px] font-semibold">Largura:</span>
@@ -1647,7 +1575,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* Preview & Botões de Captura */}
               <div className="flex items-center gap-3 bg-[#1e1f22] p-2.5 rounded-xl border border-[#383a40]/60">
                 <div className="w-16 h-16 rounded-lg bg-[#141517] border border-[#383a40] flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
                   {selectedRegionDataUrl ? (
@@ -1704,9 +1631,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               </div>
             </div>
 
-            {/* 4. Direction Tabs & Captured Frames List */}
             <div className="bg-[#2b2d31]/70 border border-[#383a40] p-3 rounded-2xl flex flex-col gap-3">
-              {/* Direction Tabs */}
               <div className="grid grid-cols-4 gap-1.5">
                 {DIRECTIONS.map((d) => {
                   const frameCount = activePreset?.directions[d.id]?.length || 0
@@ -1740,7 +1665,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                 })}
               </div>
 
-              {/* Frames List for Active Direction */}
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between text-[11px] text-slate-300 font-bold uppercase tracking-wider">
                   <span>Frames de {DIRECTIONS.find((d) => d.id === activeDirectionTab)?.label}:</span>
@@ -1803,7 +1727,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                               : 'border-slate-700 hover:border-slate-500'
                           }`}
                         >
-                          {/* Top Drag Grip & Delete */}
                           <div className="w-full flex items-center justify-between pb-1 cursor-grab active:cursor-grabbing">
                             <span className="text-slate-600 hover:text-slate-400" title="Arraste para mover de lugar">
                               <GripVertical className="w-3 h-3" />
@@ -1818,7 +1741,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                             </button>
                           </div>
 
-                          {/* Thumbnail (Click to Focus / Select Region on Spritesheet) */}
                           <button
                             type="button"
                             onClick={() => {
@@ -1859,7 +1781,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                             <span>Pintar</span>
                           </button>
 
-                          {/* Move Controls Strip (Move Left, Move Right, Transfer Direction) */}
                           <div className="flex items-center gap-1 mt-1.5 pt-1 border-t border-slate-800/80 w-full justify-center">
                             <button
                               type="button"
@@ -1903,7 +1824,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                             </button>
                           </div>
 
-                          {/* Move to Direction Popover */}
                           {isMenuOpen && (
                             <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-30 bg-[#1e1f22] border border-indigo-500/40 rounded-xl p-1.5 shadow-2xl flex flex-col gap-1 w-28 animate-in fade-in zoom-in-95">
                               <span className="text-[9px] font-bold text-slate-400 px-1 border-b border-white/10 pb-0.5">
@@ -1936,7 +1856,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                 )}
               </div>
 
-              {/* Mirror Helper */}
               {(activeDirectionTab === 'left' || activeDirectionTab === 'right') && (
                 <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#383a40]/60">
                   <button
@@ -1960,7 +1879,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               )}
             </div>
 
-            {/* 5. Live Walk Animation Preview */}
             <div className="bg-[#2b2d31]/70 border border-[#383a40] p-3 rounded-2xl flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
@@ -1995,7 +1913,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               </div>
             </div>
 
-            {/* Success Feedback */}
             {savedSuccessCount !== null && (
               <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs animate-in fade-in">
                 <CheckCircle className="w-4 h-4 shrink-0 text-emerald-400" />
@@ -2007,7 +1924,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               </div>
             )}
 
-            {/* Bottom Final Action Button */}
             <div className="mt-auto pt-2 flex flex-col gap-2">
               <button
                 type="button"
@@ -2022,7 +1938,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Generated XML Preview Modal */}
       {showXmlModal && (
         <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-[#1e1f22] border border-[#383a40] w-full max-w-xl rounded-3xl shadow-2xl flex flex-col overflow-hidden max-h-[80vh]">
@@ -2064,7 +1979,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Pixel Art Painting Studio Modal */}
       {isPixelStudioOpen && (
         <AvatarPixelArtModal
           isOpen={isPixelStudioOpen}

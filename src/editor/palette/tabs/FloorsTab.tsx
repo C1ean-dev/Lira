@@ -39,7 +39,6 @@ export const FloorsTab: React.FC<Props> = ({
 
   return (
     <div className="space-y-3">
-      {/* Creator Suite Actions Bar */}
       <div className="grid grid-cols-4 gap-1 p-1 bg-slate-900/80 border border-slate-800 rounded-xl">
         <button
           type="button"
@@ -101,7 +100,6 @@ export const FloorsTab: React.FC<Props> = ({
               }`}
               title={floor.name}
             >
-              {/* Top Badge / Actions */}
               <div className="w-full flex items-center justify-between z-10 pointer-events-none">
                 <div>
                   {((floor.width && floor.width > 1) || (floor.height && floor.height > 1)) && (
@@ -166,7 +164,6 @@ export const FloorsTab: React.FC<Props> = ({
                 )}
               </div>
 
-              {/* Center Floor Thumbnail */}
               <div className="flex-1 flex items-center justify-center w-full min-h-0 overflow-hidden py-0.5">
                 <PixelArtThumbnail
                   key={`${floor.id}_${floor.updatedAt || ''}`}
@@ -176,7 +173,6 @@ export const FloorsTab: React.FC<Props> = ({
                 />
               </div>
 
-              {/* Bottom Label */}
               <div className="w-full text-center px-0.5">
                 <div className="text-[11px] font-semibold text-slate-200 truncate leading-tight">
                   {floor.name.replace(/^✨\s*/, '')}
@@ -187,7 +183,6 @@ export const FloorsTab: React.FC<Props> = ({
         })}
       </div>
 
-      {/* Confirm Delete Floor Modal */}
       <ConfirmModal
         isOpen={!!assetToDelete}
         title="Excluir Piso"

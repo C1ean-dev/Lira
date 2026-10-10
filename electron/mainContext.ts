@@ -1,11 +1,5 @@
 import { normalizeFramePath } from '../src/utils/stackFrames'
 
-/**
- * What the main process says about itself in an error report and at the start
- * of a session: the app and runtime versions, the machine, the process and the
- * state of each window. Pure: everything it needs is passed in.
- */
-
 interface WindowLike {
   id: number
   isDestroyed(): boolean
@@ -28,11 +22,9 @@ export interface MainContextInput {
   uptimeSec: number
   memory: { rss: number; heapUsed: number }
   windows: WindowLike[]
-  /** State of the main process that is worth a line (helpers running, pending captures...). */
   extra?: Record<string, unknown>
 }
 
-/** The page a window shows, without the room in the query or the folders of the user. */
 function pageOf(url: string): string {
   if (/^https?:\/\//i.test(url)) return url.replace(/[?#].*$/, '')
   return normalizeFramePath(url)
@@ -58,11 +50,6 @@ export function summarizeWindow(win: WindowLike): Record<string, unknown> {
 
 const hex = (value: unknown) => (typeof value === 'number' ? `0x${value.toString(16).padStart(4, '0')}` : undefined)
 
-/**
- * The graphics adapters and the GPU features that are not plainly enabled
- * (`app.getGPUInfo('basic')` and `app.getGPUFeatureStatus()`): what matters
- * for a black screen share or a video that does not decode.
- */
 export function summarizeGpu(info: unknown, features: unknown): Record<string, unknown> {
   const raw = info && typeof info === 'object' ? (info as Record<string, unknown>) : {}
   const devices = Array.isArray(raw.gpuDevice) ? raw.gpuDevice : []

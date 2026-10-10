@@ -46,7 +46,6 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [presenceTick, setPresenceTick] = useState(0)
 
-  // Subscribe to live presence changes
   useEffect(() => {
     const unsub = FriendsPresenceService.getInstance().subscribe(() => {
       setPresenceTick((t) => t + 1)
@@ -54,7 +53,6 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
     return () => unsub()
   }, [])
 
-  // Build list of all friends with live presence
   const friendsList = useMemo(() => {
     return friends.map((id) => {
       const profile: FriendProfile = friendProfiles[id] || {
@@ -75,7 +73,6 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
     })
   }, [friends, friendProfiles, presenceTick])
 
-  // Filtered friends
   const filteredFriends = useMemo(() => {
     let list = friendsList
     if (searchQuery.trim()) {
@@ -90,7 +87,6 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
     return list
   }, [friendsList, searchQuery])
 
-  // List of online users in the network/lobby who are NOT friends yet
   const nonFriendOnlineUsers = useMemo(() => {
     const allPresences = FriendsPresenceService.getInstance().getAllPresences()
     const myId = localPlayer.id
@@ -98,7 +94,6 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
 
     return allPresences.filter((p) => {
       if (p.userId === myId || (myGameId && p.userId === myGameId)) return false
-      // Exclude if already in friends list
       const isAlreadyFriend = friends.some((fid) => {
         const fp = friendProfiles[fid]
         return (
@@ -111,11 +106,9 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
     })
   }, [friends, friendProfiles, localPlayer, presenceTick])
 
-  // Split into Online and Offline
   const onlineFriends = filteredFriends.filter((f) => f.isOnline)
   const offlineFriends = filteredFriends.filter((f) => !f.isOnline)
 
-  // Get unread count for a friend matching by ID, actualUserId, or Name
   const getUnreadCount = (friend: FriendProfile) => {
     return getUnreadCountForFriend(friend)
   }
@@ -125,7 +118,6 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
     const name = newFriendName.trim()
     if (!name) return
 
-    // 1. Check if already a friend
     const isAlreadyFriend = friends.some((id) => {
       const p = friendProfiles[id]
       return (
@@ -139,7 +131,6 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
       return
     }
 
-    // 2. Check if already pending
     const existingReq = getFriendRequestStatus(name)
     if (existingReq?.status === 'pending') {
       setAddFeedback('Solicitação de amizade já está pendente no chat!')
@@ -147,7 +138,6 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
       return
     }
 
-    // 3. Find if person is online to match avatar/id
     const allPresences = FriendsPresenceService.getInstance().getAllPresences()
     const targetPresence = allPresences.find(
       (p) =>
@@ -159,14 +149,12 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
       ? targetPresence.userId
       : `friend-${name.toLowerCase().replace(/\s+/g, '-')}`
 
-    // 4. Send friend request (interactive chat message)
     sendFriendRequest({
       id: targetId,
       name,
       avatar: targetPresence?.avatar,
     })
 
-    // 5. Open chat modal for this person
     onOpenChat({
       id: targetId,
       name,
@@ -186,7 +174,6 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
 
   return (
     <div className="flex-1 overflow-y-auto p-5 space-y-4">
-      {/* Top Controls: Search + Add Button */}
       <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between">
         <div className="relative flex-1">
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -209,7 +196,6 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
         </button>
       </div>
 
-      {/* Add Friend Collapsible Form */}
       {showAddForm && (
         <form
           onSubmit={handleAddFriend}
@@ -257,7 +243,6 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
         </form>
       )}
 
-      {/* Suggestions: Online Users in Network who are not friends yet */}
       {nonFriendOnlineUsers.length > 0 && (
         <div className="p-3.5 bg-gradient-to-r from-indigo-950/30 via-[#141824] to-[#12151d] border border-indigo-500/20 rounded-2xl space-y-2.5 animate-in fade-in duration-200">
           <div className="flex items-center justify-between text-xs font-bold text-indigo-300">
@@ -348,7 +333,6 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
         </div>
       )}
 
-      {/* Friends Count Banner */}
       <div className="flex items-center justify-between text-xs text-slate-400 px-1">
         <div className="flex items-center gap-2">
           <Users className="w-3.5 h-3.5 text-indigo-400" />
@@ -363,7 +347,6 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
         </div>
       </div>
 
-      {/* Friends List */}
       {friends.length === 0 ? (
         <div className="text-center py-12 px-4 rounded-3xl bg-[#12151d]/60 border border-[#2a3142] border-dashed space-y-3">
           <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 mx-auto flex items-center justify-center text-indigo-400">
@@ -390,7 +373,6 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Section: ONLINE FRIENDS */}
           {onlineFriends.length > 0 && (
             <div className="space-y-2">
               <div className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5 px-1">
@@ -416,7 +398,6 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                           : 'border border-emerald-500/25 hover:border-emerald-500/40'
                       }`}
                     >
-                      {/* Left: Avatar & Details */}
                       <div className="flex items-center gap-3 min-w-0">
                         <PlayerAvatar
                           player={friend}
@@ -474,7 +455,6 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                         </div>
                       </div>
 
-                      {/* Right Actions */}
                       <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                         {friend.inRoom && friend.roomCode && (
                           <button
@@ -539,7 +519,6 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
             </div>
           )}
 
-          {/* Section: OFFLINE FRIENDS */}
           {offlineFriends.length > 0 && (
             <div className="space-y-2">
               <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 px-1">
@@ -561,7 +540,6 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                           : 'border border-[#2a3142] opacity-80 hover:opacity-100'
                       }`}
                     >
-                      {/* Left: Avatar & Details */}
                       <div className="flex items-center gap-3 min-w-0">
                         <PlayerAvatar
                           player={friend}
@@ -610,7 +588,6 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                         </div>
                       </div>
 
-                      {/* Right Actions */}
                       <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                         <button
                           type="button"

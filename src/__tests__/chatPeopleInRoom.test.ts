@@ -12,7 +12,6 @@ const DAN = 'u-dddddddddddddddddddd'
 const player = (id: string, gameId: string, name: string) =>
   ({ id, gameId, name, x: 0, y: 0, direction: 'down', isMoving: false, status: 'available' }) as any
 
-// The chat sidebar's own wiring: stores, DM channel ids and live presence.
 const people = () => {
   const game = useGameStore.getState()
   const chat = useChatStore.getState()

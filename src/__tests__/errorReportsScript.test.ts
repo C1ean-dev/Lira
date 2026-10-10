@@ -6,12 +6,6 @@ import { spawnSync } from 'node:child_process'
 import { buildErrorReport } from '../utils/errorReport'
 import { buildZip } from '../../electron/zipWriter'
 
-/**
- * scripts/error-reports.js runs src/utils/reportDigest.ts straight from the
- * sources, which Node can do from 22.18 on. Older Node (the release workflow
- * runs the suite on 20) cannot run the script; the digest itself is covered by
- * reportDigest.test.ts everywhere.
- */
 const [major, minor] = process.versions.node.split('.').map(Number)
 const canRun = major > 22 || (major === 22 && minor >= 18)
 

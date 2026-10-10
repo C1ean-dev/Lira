@@ -11,7 +11,6 @@ describe('Pet Editing & Custom Pet Assets', () => {
     expect(frames).toHaveProperty('left')
     expect(frames).toHaveProperty('right')
 
-    // In a browser/jsdom environment with canvas, these return data URLs
     expect(frames.down).toBeDefined()
   })
 

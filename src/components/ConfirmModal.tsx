@@ -27,7 +27,6 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   onCancel,
 }) => {
   const activeVariant = variant || confirmVariant
-  // Close on ESC key
   useEffect(() => {
     if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -49,11 +48,9 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         className="relative w-full max-w-md bg-[#12151d] border border-[#2a3142] rounded-3xl shadow-2xl overflow-hidden p-6 space-y-5 animate-in zoom-in-95 duration-150"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Decorative Glow Background */}
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-rose-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Top Header & Close */}
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3.5">
             <div
@@ -84,12 +81,10 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           </button>
         </div>
 
-        {/* Description Body */}
         <div className="p-3.5 bg-[#181c26]/90 border border-[#2a3142] rounded-2xl">
           <p className="text-xs text-slate-300 leading-relaxed">{message}</p>
         </div>
 
-        {/* Action Buttons */}
         <div className="flex items-center justify-end gap-2.5 pt-1">
           <button
             onClick={onCancel}

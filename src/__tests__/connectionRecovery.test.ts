@@ -5,7 +5,6 @@ import { useGameStore } from '../store/useGameStore'
 import { useMediaStore } from '../store/useMediaStore'
 import { Player } from '../types/game'
 
-// Global polyfills for node environment
 class MockMediaStream {
   private tracks: any[] = []
   id = 'mock-stream-' + Math.random()
@@ -110,20 +109,16 @@ describe('Connection Recovery & Call Resilience Tests', () => {
       ;(pm as any).roomCode = 'TEST-ROOM'
       ;(pm as any).isIntentionalDisconnect = false
 
-      // Trigger signaling disconnect handler
       ;(pm as any).setupSignalingListeners(mockPeer as any)
 
-      // Find the 'disconnected' listener
       const disconnectedCall = mockPeer.on.mock.calls.find((call) => call[0] === 'disconnected')
       expect(disconnectedCall).toBeDefined()
 
-      // Execute disconnected callback
       const onDisconnected = disconnectedCall[1]
       onDisconnected()
 
       expect(useGameStore.getState().connectionStatus).toBe('reconnecting')
 
-      // Fast forward past the backoff timer
       vi.advanceTimersByTime(2000)
 
       expect(mockPeer.reconnect).toHaveBeenCalled()
@@ -229,13 +224,11 @@ describe('Connection Recovery & Call Resilience Tests', () => {
         endMediaCallWithPeer: vi.fn(),
       })
 
-      // Simulate initial connect
       mockPc.iceConnectionState = 'connected'
       listeners['iceconnectionstatechange']()
       callListeners.stream(new MockMediaStream([audioTrack, videoTrack]))
       expect(useGameStore.getState().callStates['remote-peer-1']).toBe('connected')
 
-      // Simulate transient ICE disconnection
       mockPc.iceConnectionState = 'disconnected'
       listeners['iceconnectionstatechange']()
       expect(useGameStore.getState().callStates['remote-peer-1']).toBe('reconnecting')
@@ -279,14 +272,12 @@ describe('Connection Recovery & Call Resilience Tests', () => {
         attemptRedialIfEligible: redialSpy,
       })
 
-      // Simulate ICE failure
       mockPc.iceConnectionState = 'failed'
       listeners['iceconnectionstatechange']()
 
       expect(endMediaCallSpy).toHaveBeenCalledWith('remote-peer-1')
       expect(useGameStore.getState().callStates['remote-peer-1']).toBe('reconnecting')
 
-      // Advance timers for first retry backoff (~1000ms)
       vi.advanceTimersByTime(1100)
       expect(redialSpy).toHaveBeenCalled()
     })
@@ -314,7 +305,6 @@ describe('Connection Recovery & Call Resilience Tests', () => {
         close: vi.fn(),
       }
 
-      // Pre-set 3 prior retries
       MediaCallHandler.callRetryCounts.set('remote-peer-1', 3)
       mediaCalls.set('remote-peer-1', mockCall)
 
@@ -327,7 +317,6 @@ describe('Connection Recovery & Call Resilience Tests', () => {
         endMediaCallWithPeer: endMediaCallSpy,
       })
 
-      // Simulate 4th failure
       mockPc.iceConnectionState = 'failed'
       listeners['iceconnectionstatechange']()
 

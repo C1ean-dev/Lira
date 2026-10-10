@@ -45,19 +45,16 @@ export const ZonesTab: React.FC<Props> = ({
 
   return (
     <div className="space-y-4">
-      {/* Modal for Configuring Selected Private Zone */}
       {selectedZoneForConfig && (
         <RoomSettingsModal
           zone={selectedZoneForConfig}
           isOpen={true}
           onClose={() => {
-            // Refresh with updated zone if still exists
             setSelectedZoneForConfig(null)
           }}
         />
       )}
 
-      {/* Draw with Mouse Hero Box */}
       <div className="p-3.5 bg-[#12151d]/85 rounded-2xl border-2 border-indigo-500/40 space-y-3.5 shadow-lg">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs font-bold text-slate-100">
@@ -82,7 +79,6 @@ export const ZonesTab: React.FC<Props> = ({
           />
         </div>
 
-        {/* Zone Walls & Texture Config */}
         <div className="pt-2 border-t border-slate-800 space-y-2.5">
           <div className="flex items-center justify-between">
             <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-200">
@@ -102,7 +98,6 @@ export const ZonesTab: React.FC<Props> = ({
                 <div className="text-[10px] font-semibold text-slate-400">Textura das Paredes da Sala:</div>
               </div>
 
-              {/* Creator Suite Actions Bar for Walls */}
               <div className="grid grid-cols-4 gap-1 p-1 bg-slate-900/80 border border-slate-800 rounded-xl">
                 <button
                   type="button"
@@ -157,7 +152,6 @@ export const ZonesTab: React.FC<Props> = ({
                       }`}
                       title={wall.name}
                     >
-                      {/* Top Actions */}
                       <div className="w-full flex items-center justify-end z-10 pointer-events-none">
                         {isCustom && (
                           <div className="flex items-center gap-0.5 pointer-events-auto">
@@ -202,7 +196,6 @@ export const ZonesTab: React.FC<Props> = ({
                         )}
                       </div>
 
-                      {/* Center Wall Thumbnail */}
                       <div className="flex-1 flex items-center justify-center w-full min-h-0 overflow-hidden py-0.5">
                         <PixelArtThumbnail
                           key={`${wall.id}_${(wall as any).updatedAt || ''}`}
@@ -212,7 +205,6 @@ export const ZonesTab: React.FC<Props> = ({
                         />
                       </div>
 
-                      {/* Bottom Label */}
                       <div className="w-full text-center px-0.5">
                         <div className="text-[11px] font-semibold text-slate-200 truncate leading-tight">
                           {wall.name.replace(/^✨\s*/, '')}
@@ -226,7 +218,6 @@ export const ZonesTab: React.FC<Props> = ({
           )}
         </div>
 
-        {/* Drag Tool Activation Button */}
         <button
           type="button"
           onClick={() => setActiveTool('draw_zone')}
@@ -245,7 +236,6 @@ export const ZonesTab: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* List of Existing Zones */}
       <div className="space-y-2">
         <div className="text-[11px] font-bold text-slate-400">Salas & Zonas Ativas ({mapData.zones.length})</div>
         {mapData.zones.length === 0 ? (
@@ -312,14 +302,12 @@ export const ZonesTab: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* Welcome Message Preview if set */}
               {zone.welcomeMessage && (
                 <div className="text-[10px] text-slate-400 bg-slate-950/60 p-1.5 rounded-lg border border-slate-800/60 italic truncate">
                   💬 "{zone.welcomeMessage}"
                 </div>
               )}
 
-              {/* Zone Wall Configuration Switcher */}
               <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs">
                 <button
                   type="button"
@@ -369,7 +357,6 @@ export const ZonesTab: React.FC<Props> = ({
           ))
         )}
       </div>
-      {/* Confirm Delete Custom Wall Modal */}
       <ConfirmModal
         isOpen={!!assetToDelete}
         title="Excluir Parede Customizada"

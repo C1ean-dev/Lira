@@ -5,11 +5,6 @@ import { fileURLToPath } from 'url'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { App } from '../App'
 
-// The first screen is the menu. Everything that belongs to being inside a space
-// (the world canvas and its render loop, the editor palette, chat, calls, the
-// heavy modals) used to be mounted behind it from the first moment, and was the
-// bulk of the work before the menu showed up. It now loads when it is needed.
-
 const read = (relative: string) => fs.readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf-8')
 const appSource = read('../App.tsx')
 
@@ -57,7 +52,6 @@ describe('what App does not load up front', () => {
   })
 
   it('mounts the space only outside the menu', () => {
-    // SSR cannot show it (a lazy component renders its fallback), so the condition is checked in the source.
     expect(appSource).toMatch(/\{!inLobby && \(\s*<Suspense fallback=\{null\}>\s*<SpaceShell\b/)
     expect(appSource).toMatch(/\{inLobby && \(\s*<LobbyModal\b/)
   })

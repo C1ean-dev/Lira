@@ -11,7 +11,6 @@ import { CustomAsset } from '../types/customAsset'
 
 describe('Furniture Direction & Rotation', () => {
   beforeEach(() => {
-    // Reset placement direction to 'down'
     useMapStore.setState({ placementDirection: 'down' })
   })
 
@@ -56,7 +55,7 @@ describe('Furniture Direction & Rotation', () => {
         x: 2,
         y: 2,
         direction: 'up',
-        rotation: 90, // legacy or desynced
+        rotation: 90,
       }
       expect(resolveFurnitureDirection(furn)).toBe('up')
     })
@@ -111,7 +110,6 @@ describe('Furniture Direction & Rotation', () => {
       expect(found?.direction).toBe('left')
       expect(found?.rotation).toBe(90)
 
-      // Rotate furniture to 'up'
       useMapStore.getState().updateFurniture('test-chair-1', {
         direction: 'up',
         rotation: 180,
@@ -208,7 +206,6 @@ describe('Furniture Direction & Rotation', () => {
         directionalDimensions: {
           down: { width: 3, height: 2, pixelWidth: 96, pixelHeight: 64 },
           left: { width: 1, height: 2, pixelWidth: 32, pixelHeight: 64 },
-          // Note: 'right' is intentionally omitted to test auto-mirror fallback
         },
         frameRateMs: 160,
         createdAt: Date.now(),
@@ -285,7 +282,6 @@ describe('Furniture Direction & Rotation', () => {
       expect(resRight.frames).toEqual(['data:left-sprite'])
       expect(resRight.mirrorH).toBe(true)
 
-      // Test with empty array []
       const assetWithEmptyArray: CustomAsset = {
         ...assetWithOmitted,
         directionalFrames: {
@@ -366,7 +362,6 @@ describe('Furniture Direction & Rotation', () => {
         createdAt: Date.now(),
       }
 
-      // 1. Front view (down): 3x2 (96x64 px)
       const furnDown: PlacedFurniture = { id: 'b1', defId: 'bathtub', x: 5, y: 5, direction: 'down' }
       const downDims = resolveFurnitureDimensions(furnDown, bathtub)
       expect(downDims.tileW).toBe(3)
@@ -374,7 +369,6 @@ describe('Furniture Direction & Rotation', () => {
       expect(downDims.targetW).toBe(96)
       expect(downDims.targetH).toBe(64)
 
-      // 2. Left view: 1x3 (32x96 px)
       const furnLeft: PlacedFurniture = { id: 'b1', defId: 'bathtub', x: 5, y: 5, direction: 'left' }
       const leftDims = resolveFurnitureDimensions(furnLeft, bathtub)
       expect(leftDims.tileW).toBe(1)
@@ -382,7 +376,6 @@ describe('Furniture Direction & Rotation', () => {
       expect(leftDims.targetW).toBe(32)
       expect(leftDims.targetH).toBe(96)
 
-      // 3. Up view: 3x2 (96x64 px)
       const furnUp: PlacedFurniture = { id: 'b1', defId: 'bathtub', x: 5, y: 5, direction: 'up' }
       const upDims = resolveFurnitureDimensions(furnUp, bathtub)
       expect(upDims.tileW).toBe(3)
@@ -390,7 +383,6 @@ describe('Furniture Direction & Rotation', () => {
       expect(upDims.targetW).toBe(96)
       expect(upDims.targetH).toBe(64)
 
-      // 4. Right view: 1x3 (32x96 px)
       const furnRight: PlacedFurniture = { id: 'b1', defId: 'bathtub', x: 5, y: 5, direction: 'right' }
       const rightDims = resolveFurnitureDimensions(furnRight, bathtub)
       expect(rightDims.tileW).toBe(1)

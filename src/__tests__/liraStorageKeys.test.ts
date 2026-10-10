@@ -1,10 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
-/**
- * Saved data lives under `lira_` keys and app events under the `lira:` prefix.
- * Nothing is read from, or announced under, any other name.
- */
-
 let readKeys: string[]
 let dispatched: { type: string; detail: unknown }[]
 
@@ -31,7 +26,6 @@ const installFakeWindow = () => {
   })
 }
 
-// The first test loads the stores from scratch, which takes seconds on a busy machine.
 describe('lira storage keys and events', { timeout: 30000 }, () => {
   beforeEach(() => {
     vi.resetModules()

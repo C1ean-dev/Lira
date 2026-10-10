@@ -55,10 +55,10 @@ describe('attachStreamToVideo', () => {
     })
     expect(video.srcObject).toBe(stream)
     expect(video.play).toHaveBeenCalledTimes(1)
-    expect(diagStats().buffered - before).toBe(1) // attach only (play-ok is async)
+    expect(diagStats().buffered - before).toBe(1)
 
     await tick()
-    expect(diagStats().buffered - before).toBe(2) // attach + play-ok
+    expect(diagStats().buffered - before).toBe(2)
   })
 
   it('re-attaching the same stream does not reset srcObject or re-log attach', async () => {
@@ -76,9 +76,8 @@ describe('attachStreamToVideo', () => {
       peer: 'Bob',
     })
     expect(video.srcObject).toBe(stream)
-    expect(video.play).toHaveBeenCalledTimes(2) // silent play retry, no new attach
+    expect(video.play).toHaveBeenCalledTimes(2)
     await tick()
-    // Only the reattach play-ok, no second attach event.
     expect(diagStats().buffered - before).toBe(1)
   })
 
@@ -92,19 +91,16 @@ describe('attachStreamToVideo', () => {
       peer: 'Bob',
     })
     await tick()
-    // attach + play-failed
     expect(diagStats().buffered).toBe(2)
     expect(video.play).toHaveBeenCalledTimes(1)
 
-    // The old code only listened to VIDEO unmute: audio unmute did nothing.
-    // Find the unmute listener registered on the AUDIO track and fire it.
     const unmuteCall = stream.audio.addEventListener.mock.calls.find((c) => c[0] === 'unmute')
     expect(unmuteCall).toBeDefined()
     video.play.mockImplementation(() => Promise.resolve())
     ;(unmuteCall as unknown as [string, () => void])[1]()
     expect(video.play).toHaveBeenCalledTimes(2)
     await tick()
-    expect(diagStats().buffered).toBe(3) // + play-ok via track-event
+    expect(diagStats().buffered).toBe(3)
   })
 
   it('retries play on click (user gesture unlock)', async () => {

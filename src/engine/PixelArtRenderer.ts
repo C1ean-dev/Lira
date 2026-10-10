@@ -15,9 +15,6 @@ export { ZoneRenderer } from './rendering/zoneRenderer'
 export { FurnitureRenderer } from './rendering/furnitureRenderer'
 
 export class PixelArtRenderer {
-  /**
-   * Draw 2D Floor Tile
-   */
   static drawFloor(
     ctx: CanvasRenderingContext2D,
     type: FloorType | string,
@@ -31,9 +28,6 @@ export class PixelArtRenderer {
     FloorRenderer.drawFloor(ctx, type, x, y, size, tileX, tileY, mapFloors)
   }
 
-  /**
-   * Draw 2D Wall Tile
-   */
   static drawWall(
     ctx: CanvasRenderingContext2D,
     type: WallType | string,
@@ -45,9 +39,6 @@ export class PixelArtRenderer {
     WallRenderer.drawWall(ctx, type, x, y, size, direction)
   }
 
-  /**
-   * Draw Exact Lira Room Architecture Textured with Zone Wall Type
-   */
   static drawLiraRoom(
     ctx: CanvasRenderingContext2D,
     zone: PrivateZone,
@@ -56,16 +47,10 @@ export class PixelArtRenderer {
     WallRenderer.drawLiraRoom(ctx, zone, zones)
   }
 
-  /**
-   * Draw 2D Furniture & Wall Decors
-   */
   static drawFurniture(ctx: CanvasRenderingContext2D, furn: PlacedFurniture) {
     FurnitureRenderer.drawFurniture(ctx, furn)
   }
 
-  /**
-   * Draw 2D Private Zone
-   */
   static drawPrivateZone(
     ctx: CanvasRenderingContext2D,
     zone: PrivateZone,

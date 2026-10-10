@@ -25,10 +25,6 @@ class MockMediaStream {
   }
 }
 
-/**
- * A call whose video sender records, in order, what was done to it. Each
- * setParameters call is kept as a snapshot, the way the browser would see it.
- */
 function fakeCall(track: any = { kind: 'video', id: 'camera', enabled: true, readyState: 'live' }) {
   const ops: string[] = []
   const applied: any[] = []
@@ -167,7 +163,6 @@ describe('screen share start', () => {
       await vi.advanceTimersByTimeAsync(3000)
       MediaCallHandler.replaceVideoTrack(calls, screenTrack(), true, 5_500_000, 60)
 
-      // 4.5s after the preparation, 1.5s after the swap.
       await vi.advanceTimersByTimeAsync(1500)
       expect(a.last().degradationPreference).toBe('maintain-resolution')
 
@@ -189,7 +184,6 @@ describe('screen share start', () => {
       expect(a.last()).toMatchObject({ ...CAMERA_CAPS, degradationPreference: 'maintain-framerate' })
       expect(activeScreenCaps()).toBeNull()
 
-      // The pending release of the hold must not bring the screen caps back.
       const callsBefore = a.sender.setParameters.mock.calls.length
       await vi.advanceTimersByTimeAsync(SCREEN_START_HOLD_MS * 2)
       expect(a.sender.setParameters).toHaveBeenCalledTimes(callsBefore)
@@ -464,7 +458,6 @@ describe('screen share start', () => {
       ).not.toThrow()
       await vi.advanceTimersByTimeAsync(RAMP_SAMPLE_OFFSETS_MS[RAMP_SAMPLE_OFFSETS_MS.length - 1])
       expect(await ramp()).toEqual([])
-      // A failing log must never cost the viewer the picture.
       for (const c of [noStats, failing, throwing]) expect(c.sender.track).toBe(screen)
     })
   })

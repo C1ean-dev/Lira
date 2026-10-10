@@ -1,13 +1,6 @@
-/**
- * Reads Electron's "process gone" details (render-process-gone,
- * child-process-gone) into a log line and the data of an error report: how bad
- * it is, and the Windows exit code decoded. Pure.
- */
 
 export interface ProcessGoneDetails {
-  /** Child processes only: GPU, Utility, Zygote... */
   type?: string
-  /** clean-exit, abnormal-exit, killed, crashed, oom, launch-failed, integrity-failure */
   reason?: string
   exitCode?: number
   name?: string
@@ -16,13 +9,11 @@ export interface ProcessGoneDetails {
 
 export interface ProcessGoneReport {
   level: 'info' | 'warn' | 'error'
-  /** Set when the window is dead. */
   severity?: 'fatal'
   message: string
   data: Record<string, unknown>
 }
 
-// NTSTATUS values, plus the exception code Chromium raises when it runs out of memory.
 const EXIT_CODE_NAMES: Record<number, string> = {
   0x80000003: 'BREAKPOINT',
   0xc0000005: 'ACCESS_VIOLATION',
@@ -49,7 +40,6 @@ export function describeProcessGone(kind: 'renderer' | 'child', details: Process
   const reason = details?.reason || 'unknown'
   const code = typeof details?.exitCode === 'number' ? details.exitCode : undefined
   const name = exitCodeName(code)
-  // Exit codes that are a status (negative as a signed number) only make sense in hex.
   const hex = code !== undefined && (name || code < 0 || code > 0xffff) ? exitCodeHex(code) : undefined
   const exit = code === undefined ? '' : hex ? `${hex}${name ? ` ${name}` : ''}` : String(code)
 
@@ -68,7 +58,6 @@ export function describeProcessGone(kind: 'renderer' | 'child', details: Process
       ? `Render process gone: ${reason}${exit ? ` (exit ${exit})` : ''}`
       : `Child process gone: ${data.process}${details?.name ? ` ${details.name}` : ''} (${reason}${exit ? `, exit ${exit}` : ''})`
 
-  // Ended on purpose, or from outside (Task Manager, the Ctrl+C that stops a dev run): not a bug of the app.
   if (reason === 'clean-exit') return { level: 'info', message, data }
   if (reason === 'killed') return { level: 'warn', message, data }
   return { level: 'error', ...(kind === 'renderer' ? { severity: 'fatal' as const } : {}), message, data }

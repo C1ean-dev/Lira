@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 
-// Mock global localStorage
 const mockStorage: Record<string, string> = {}
 const localStorageMock = {
   getItem: (key: string) => mockStorage[key] || null,
@@ -17,7 +16,6 @@ const localStorageMock = {
   },
 }
 
-// Attach to global window
 ;(globalThis as any).window = {
   localStorage: localStorageMock,
 }
@@ -153,18 +151,15 @@ describe('Storage Persistence - Expected Behaviors', () => {
   it('should allow host to toggle room privacy and sync with available rooms', () => {
     const { setRoomSession, toggleRoomPrivacy } = useGameStore.getState()
     
-    // 1. Start room as host
     setRoomSession('LIRA-HOST-ROOM', true)
     expect(useGameStore.getState().isRoomPublic).toBe(false)
 
-    // 2. Toggle to public
     toggleRoomPrivacy()
     expect(useGameStore.getState().isRoomPublic).toBe(true)
     let raw = localStorageMock.getItem('lira_available_rooms')
     let parsed = JSON.parse(raw!)
     expect(parsed.some((r: any) => r.code === 'LIRA-HOST-ROOM')).toBe(true)
 
-    // 3. Toggle back to private
     toggleRoomPrivacy()
     expect(useGameStore.getState().isRoomPublic).toBe(false)
     raw = localStorageMock.getItem('lira_available_rooms')
@@ -204,7 +199,6 @@ describe('Storage Persistence - Expected Behaviors', () => {
     expect(savedZone.isLocked).toBe(true)
     expect(savedZone.welcomeMessage).toBe('Bem-vindo à Diretoria! Reunião em andamento.')
 
-    // Update room settings
     updateZone('room-executiva-01', {
       name: 'Sala Executiva Principal',
       admins: ['Alice', 'Bob', 'Eve'],

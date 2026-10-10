@@ -1,12 +1,5 @@
 import { reportError } from './logger'
 
-/**
- * Saved data that could not be read or written. Without a report the app just
- * starts with defaults (a profile, the friends, the spaces "disappear") or stops
- * saving, and nothing says why. A failed write also says how full the storage
- * is and what takes the room: the usual cause is the quota.
- */
-
 interface StorageLike {
   readonly length: number
   key(index: number): string | null
@@ -15,7 +8,6 @@ interface StorageLike {
 
 export interface StorageUsage {
   keys: number
-  /** Characters stored, keys included (the quota is counted in characters). */
   totalChars: number
   largest: { key: string; chars: number }[]
 }
@@ -34,7 +26,6 @@ export function measureStorage(storage: StorageLike | null | undefined): Storage
     return {
       keys: sizes.length,
       totalChars: sizes.reduce((total, entry) => total + entry.chars, 0),
-      // Stable order for equal sizes: the order the storage lists them in.
       largest: sizes
         .map((entry, index) => ({ entry, index }))
         .sort((a, b) => b.entry.chars - a.entry.chars || a.index - b.index)
@@ -54,7 +45,6 @@ function currentStorage(): StorageLike | null {
   }
 }
 
-/** Call it from the `catch` around a localStorage read or write. Never throws. */
 export function reportStorageFailure(
   action: 'read' | 'write',
   key: string,
@@ -69,6 +59,5 @@ export function reportStorageFailure(
       data: { action, key, ...details, ...(usage ? { storage: usage } : {}) },
     })
   } catch {
-    // reporting must never break the app
   }
 }

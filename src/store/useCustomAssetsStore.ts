@@ -7,8 +7,6 @@ import { Direction } from '../types/game'
 import { bakeLayersToDataUrl } from '../utils/imageResize'
 import { unpackImages } from '../utils/imageTable'
 
-// The file keeps each distinct image once, in a table (see utils/imageTable);
-// expand it back into the data URLs the rest of the app works with.
 const nativeAssetsData = unpackImages(rawNativeAssetsData as unknown as Record<string, unknown>) as {
   categories?: string[]
   assets?: CustomAsset[]
@@ -19,10 +17,8 @@ const CATEGORIES_STORAGE_KEY = 'lira_custom_categories'
 
 const DEFAULT_CATEGORIES = ['Geral', 'pokemon']
 
-// In-memory HTMLImageElement cache for fast canvas rendering
 const imageCache: Map<string, HTMLImageElement> = new Map()
 
-// Change listener for external renderers (e.g. staticLayerCache) to bust caches immediately
 type AssetChangeListener = () => void
 const assetChangeListeners = new Set<AssetChangeListener>()
 
@@ -43,9 +39,6 @@ export function notifyCustomAssetsChanged(): void {
   })
 }
 
-// O(1) id → asset lookup for hot render/collision paths.
-// Rebuilt whenever the asset array identity changes; getAssetById keeps it
-// in sync as a fallback so external mutations can't leave it stale.
 let assetByIdCache = new Map<string, CustomAsset>()
 let assetByIdCacheSource: CustomAsset[] | null = null
 
@@ -82,7 +75,6 @@ export const syncToNativeFile = async (
 
     let saved = false
 
-    // 1. Electron IPC (desktop app)
     if ((window as any).electronAPI?.saveNativeAssets) {
       try {
         saved = await (window as any).electronAPI.saveNativeAssets(payload)
@@ -91,7 +83,6 @@ export const syncToNativeFile = async (
       }
     }
 
-    // 2. HTTP Dev Server endpoint (browser / Vite dev mode, saves directly to src/data/nativeAssets.json)
     if (typeof fetch !== 'undefined') {
       try {
         const res = await fetch('/api/save-native-assets', {
@@ -104,7 +95,6 @@ export const syncToNativeFile = async (
           console.info('[useCustomAssetsStore] Synced assets to src/data/nativeAssets.json (tracked by Git)')
         }
       } catch (err) {
-        // Dev server not reachable (standalone/offline)
       }
     }
 
@@ -132,7 +122,6 @@ const loadSavedCustomAssets = (): CustomAsset[] => {
     console.error('Failed to load custom assets:', e)
   }
 
-  // Merge native and saved assets (saved assets take precedence)
   const map = new Map<string, CustomAsset>()
   nativeAssets.forEach((a) => map.set(a.id, a))
   savedAssets.forEach((a) => map.set(a.id, a))
@@ -167,7 +156,6 @@ const loadSavedCustomAssets = (): CustomAsset[] => {
     }
   })
 
-  // If there are assets saved in localStorage, automatically sync them to disk so they appear in Git
   if (savedAssets.length > 0 && typeof window !== 'undefined') {
     setTimeout(() => {
       syncToNativeFile(merged, loadSavedCategories())
@@ -344,7 +332,6 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
     set({ isCustomModalOpen: true, editingAssetId: id, initialStudioMode: mode }),
 
   addCustomAsset: (asset) => {
-    // Cache frames
     if (Array.isArray(asset.frames)) {
       asset.frames.forEach(getCustomAssetImage)
     }
@@ -360,7 +347,6 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
     const updated = [...get().customAssets.filter((a) => a.id !== asset.id), asset]
     saveCustomAssets(updated)
 
-    // Automatically ensure the category is saved in the category list
     let newCats = get().customCategories
     if (asset.category && !newCats.includes(asset.category)) {
       newCats = [...newCats, asset.category]
@@ -371,7 +357,6 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
     syncToNativeFile(updated, newCats)
     notifyCustomAssetsChanged()
 
-    // Broadcast new custom asset across P2P mesh
     PeerManager.getInstance().sendCustomAssetAddOrUpdate(asset)
   },
 
@@ -410,7 +395,6 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
     syncToNativeFile(updated, updatedCats)
     notifyCustomAssetsChanged()
 
-    // Broadcast updated custom asset across P2P mesh
     if (fullAsset) {
       PeerManager.getInstance().sendCustomAssetAddOrUpdate(fullAsset)
     }
@@ -423,14 +407,12 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
     syncToNativeFile(updated, get().customCategories)
     notifyCustomAssetsChanged()
 
-    // Broadcast asset deletion across P2P mesh
     PeerManager.getInstance().sendCustomAssetDelete(id)
   },
 
   syncRemoteCustomAssets: (incomingAssets, incomingCategories) => {
     if (!Array.isArray(incomingAssets)) return
 
-    // Preload image frames for all incoming assets
     incomingAssets.forEach((asset) => {
       if (Array.isArray(asset.frames)) {
         asset.frames.forEach(getCustomAssetImage)
@@ -446,7 +428,6 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
       }
     })
 
-    // Merge incoming assets with existing assets (overwriting matching IDs, preserving others)
     const current = get().customAssets
     const incomingMap = new Map(incomingAssets.map((a) => [a.id, a]))
     const merged = current.map((a) => incomingMap.get(a.id) || a)
@@ -458,7 +439,6 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
 
     saveCustomAssets(merged)
 
-    // Merge categories
     let updatedCats = get().customCategories
     if (Array.isArray(incomingCategories)) {
       const mergedCats = Array.from(new Set([...updatedCats, ...incomingCategories]))
@@ -522,7 +502,6 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
     const updatedCats = get().customCategories.filter((c) => c !== categoryName)
     saveCategories(updatedCats)
 
-    // Safely reassign any assets that used this category to 'Geral'
     let assetsChanged = false
     const updatedAssets = get().customAssets.map((asset) => {
       if (asset.category === categoryName) {
@@ -560,7 +539,6 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
     syncAssetByIdCache(assets)
     const hit = assetByIdCache.get(id)
     if (hit) return hit
-    // Fallback (shouldn't happen): linear scan then re-sync.
     return assets.find((a) => a.id === id)
   },
 

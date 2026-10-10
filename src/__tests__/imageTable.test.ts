@@ -4,7 +4,6 @@ import nativeAssets from '../data/nativeAssets.json'
 
 type Tree = Record<string, unknown>
 
-// A data URL long enough to be worth a reference; `tag` makes each one different.
 const image = (tag: string) => `data:image/png;base64,${tag}${'A'.repeat(300)}`
 const A = image('a')
 const B = image('b')
@@ -24,7 +23,6 @@ const sample = (): Tree => ({
   assets: [asset('one'), asset('two', { thumbnail: C })],
 })
 
-/** Every string value in the tree (keys are not included). */
 function strings(value: unknown, into: string[] = []): string[] {
   if (typeof value === 'string') into.push(value)
   else if (Array.isArray(value)) value.forEach((v) => strings(v, into))
@@ -186,8 +184,6 @@ describe('unpackImages', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-
 function mulberry32(seed: number): () => number {
   let state = seed | 0
   return () => {
@@ -311,14 +307,14 @@ describe('packImagesAsync', () => {
       budgetMs: 5,
       now: () => clock,
       transform: (url) => {
-        clock += 6 // every image takes longer than the slice
+        clock += 6
         return url
       },
       pause: async () => {
         pauses++
       },
     })
-    expect(pauses).toBe(2) // between 3 images, not after the last
+    expect(pauses).toBe(2)
   })
 
   it('does not pause while it stays inside the slice', async () => {
@@ -347,7 +343,7 @@ describe('packImagesAsync', () => {
         budgetMs: 10,
         now: () => clock,
         transform: (url) => {
-          clock += 6 // two images fill a slice
+          clock += 6
           return url
         },
         pause: async () => {
@@ -355,7 +351,7 @@ describe('packImagesAsync', () => {
         },
       }
     )
-    expect(pauses).toBe(2) // after the 2nd and the 4th of 5
+    expect(pauses).toBe(2)
   })
 
   it('does not touch what it is given', async () => {

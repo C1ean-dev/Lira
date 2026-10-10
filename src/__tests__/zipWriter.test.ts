@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import zlib from 'node:zlib'
 import { buildZip, crc32 } from '../../electron/zipWriter'
 
-/** A reader for what the writer produces, written from the ZIP format: end record, central directory, local headers. */
 const readZip = (zip: Buffer) => {
   const end = zip.length - 22
   expect(zip.readUInt32LE(end)).toBe(0x06054b50)
@@ -29,7 +28,6 @@ const readZip = (zip: Buffer) => {
     const name = zip.subarray(position + 46, position + 46 + nameLength).toString('utf8')
     position += 46 + nameLength + extraLength + commentLength
 
-    // The local header has to say the same as the directory.
     expect(zip.readUInt32LE(localOffset)).toBe(0x04034b50)
     expect(zip.readUInt16LE(localOffset + 8)).toBe(method)
     expect(zip.readUInt32LE(localOffset + 14)).toBe(crc)

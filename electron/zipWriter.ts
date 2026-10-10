@@ -1,15 +1,7 @@
 import zlib from 'node:zlib'
 import { promisify } from 'node:util'
 
-/**
- * Writes a ZIP archive: enough of the format for a handful of text files that
- * Windows Explorer, macOS and every unzip tool open (deflate, UTF-8 names, no
- * ZIP64). The app has no dependency for this and needs only this much.
- * Compression runs off the main thread (zlib's thread pool).
- */
-
 export interface ZipEntry {
-  /** Path inside the archive. */
   name: string
   data: Buffer
   modified?: Date
@@ -30,7 +22,6 @@ export function crc32(data: Uint8Array): number {
   return (crc ^ 0xffffffff) >>> 0
 }
 
-/** A path that stays inside the archive: forward slashes, no drive, no "..", no leading slash. */
 function safeName(name: string): string {
   const parts = String(name)
     .replace(/\\/g, '/')
@@ -40,7 +31,6 @@ function safeName(name: string): string {
   return parts.join('/')
 }
 
-/** MS-DOS date and time, as the format wants them (local time, two-second steps). */
 function dosDateTime(when: Date): { date: number; time: number } {
   const year = Math.min(Math.max(when.getFullYear(), 1980), 2107)
   return {
@@ -49,7 +39,7 @@ function dosDateTime(when: Date): { date: number; time: number } {
   }
 }
 
-const VERSION = 20 // deflate
+const VERSION = 20
 const UTF8_NAMES = 0x0800
 const MAX_ENTRIES = 0xffff
 const MAX_SIZE = 0xffffffff
@@ -64,7 +54,6 @@ export async function buildZip(entries: ZipEntry[]): Promise<Buffer> {
     const name = Buffer.from(safeName(entry.name), 'utf8')
     const data = entry.data
     const deflated = data.length > 0 ? ((await deflateRaw(data, { level: 6 })) as Buffer) : data
-    // What does not shrink is stored as it is.
     const compress = deflated.length < data.length
     const body = compress ? deflated : data
     const method = compress ? 8 : 0
@@ -97,7 +86,6 @@ export async function buildZip(entries: ZipEntry[]): Promise<Buffer> {
     central.writeUInt32LE(body.length, 20)
     central.writeUInt32LE(data.length, 24)
     central.writeUInt16LE(name.length, 28)
-    // extra, comment, disk, internal and external attributes: none
     central.writeUInt32LE(offset, 42)
 
     chunks.push(local, name, body)

@@ -11,7 +11,6 @@ interface Props {
   onJoin: () => void
 }
 
-/** An invite to a space, as shown inside a private conversation. */
 export const RoomInviteCard: React.FC<Props> = ({ invite, state, senderName, recipientName, onJoin }) => {
   const isSent = state === 'sent'
   const isClosed = state === 'closed'

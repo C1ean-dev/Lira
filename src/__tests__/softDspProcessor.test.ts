@@ -28,8 +28,6 @@ describe('SoftDspProcessor - Expected DSP Behaviors', () => {
   it('should use a responsive baseline in auto mode (≥ 0.0035)', () => {
     const p = new SoftDspProcessor()
     p.setSensitivity('auto', 20)
-    // Soft DSP uses a responsive baseline of 0.0035 so quiet voices (RMS 0.004-0.008)
-    // are not falsely gated out.
     expect(p.getCurrentThreshold()).toBeGreaterThanOrEqual(0.0035)
   })
 

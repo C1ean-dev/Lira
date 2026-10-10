@@ -1,8 +1,3 @@
-/**
- * Turns any value into small, JSON-safe data for a log line or an error report:
- * bounded depth and size, no cycles, no live objects (streams, sockets, DOM
- * nodes are written as `[TheirClass]`). Pure, and never throws.
- */
 
 export interface PlainLimits {
   maxDepth: number
@@ -28,7 +23,6 @@ function isErrorLike(value: object): value is { name?: unknown; message: string;
   return typeof v.message === 'string' && typeof v.stack === 'string'
 }
 
-/** `[Peer]`, `[Map(2)]`, `[Uint8Array(480)]`: what the object is, not what is in it. */
 function describeObject(value: object): string {
   const name = (value as { constructor?: { name?: string } }).constructor?.name || 'Object'
   if (value instanceof Map || value instanceof Set) return `[${name}(${value.size})]`
@@ -106,7 +100,6 @@ export function toPlainData(value: unknown, limits: Partial<PlainLimits> = {}): 
   }
 }
 
-/** The plain version of an object; any other value goes under `value`. Nothing for null/undefined. */
 export function toPlainRecord(value: unknown, limits: Partial<PlainLimits> = {}): Record<string, unknown> | undefined {
   if (value === null || value === undefined) return undefined
   const plain = toPlainData(value, limits)

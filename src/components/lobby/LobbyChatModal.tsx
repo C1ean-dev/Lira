@@ -39,11 +39,9 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Channel ID between me and friend (their stable user id whenever it is known)
   const friendUserId = getFriendUserId(friend)
   const channelId = getLocalDmChannelId(friendUserId || friend.id)
 
-  // Keep presence updated
   useEffect(() => {
     const unsub = FriendsPresenceService.getInstance().subscribe(() => {
       setPresence(FriendsPresenceService.getInstance().getFriendStatus(friend))
@@ -51,14 +49,12 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
     return () => unsub()
   }, [friend])
 
-  // Mark channel & peer as read on open and emit read receipts
   useEffect(() => {
     markChannelAsRead(channelId)
     const peerIdentifiers = [friend.name, friend.id, friend.actualUserId || ''].filter(Boolean)
     markPeerAsRead(peerIdentifiers)
     inputRef.current?.focus()
 
-    // Send read receipts immediately to friend
     peerIdentifiers.forEach((id) => {
       FriendsPresenceService.getInstance().sendReadReceipt(id, friend.name, channelId)
       try {
@@ -67,27 +63,21 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
     })
   }, [channelId, friend, markChannelAsRead, markPeerAsRead])
 
-  // Filter messages for this conversation
   const chatMessages = messages.filter((m) => {
     if (m.channelId === channelId) return true
-    // Only private messages belong here, never what the friend said in a room channel.
     if (!m.channelId?.startsWith('dm-') && !m.recipientId) return false
-    // Ids are matched exactly; the name is a fallback for history saved
-    // before stable user ids (see isSameParticipant).
     return (
       isSameParticipant(friend, m.senderId, m.senderName) ||
       isSameParticipant(friend, m.recipientId, m.recipientName)
     )
   })
 
-  // Auto-scroll to bottom & mark as read
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     const peerIdentifiers = [friend.name, friend.id, friend.actualUserId || ''].filter(Boolean)
     markPeerAsRead(peerIdentifiers)
     markChannelAsRead(channelId)
 
-    // Notify sender that incoming messages were read
     peerIdentifiers.forEach((id) => {
       FriendsPresenceService.getInstance().sendReadReceipt(id, friend.name, channelId)
       try {
@@ -134,10 +124,8 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#07090e]/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
       <div className="bg-[#161a24] border border-[#2b3345] rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col h-[580px] max-h-[92vh] animate-in zoom-in-95 duration-200">
-        {/* Header */}
         <div className="bg-[#12151e] border-b border-[#262e40] p-4 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
-            {/* Friend Avatar */}
             <div className="relative shrink-0">
               <div
                 className="w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-sm text-white border border-white/20 shadow-md"
@@ -161,7 +149,6 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
               </span>
             </div>
 
-            {/* Info */}
             <div className="min-w-0">
               {(() => {
                 const statusKey = (presence.status as PresenceStatus) || friend.status || 'available'
@@ -215,7 +202,6 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
             </div>
           </div>
 
-          {/* Top Actions */}
           <div className="flex items-center gap-2">
             {presence.isOnline && presence.roomCode && onJoinRoom && (
               <button
@@ -239,7 +225,6 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
           </div>
         </div>
 
-        {/* Message History */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#11141c]/50">
           {chatMessages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400 space-y-3 select-none">
@@ -380,7 +365,6 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Quick Reactions Bar */}
         <div className="px-4 py-1.5 bg-[#12151e]/80 border-t border-[#22293a] flex items-center gap-2 overflow-x-auto">
           <span className="text-[10px] text-slate-500 font-semibold flex items-center gap-1">
             <Smile className="w-3 h-3 text-slate-400" />
@@ -398,7 +382,6 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
           ))}
         </div>
 
-        {/* Input Footer */}
         <form
           onSubmit={handleSendMessage}
           className="p-3 bg-[#12151e] border-t border-[#262e40] flex items-center gap-2"

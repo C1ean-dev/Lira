@@ -13,11 +13,6 @@ import { MapControlsWidget } from './MapControlsWidget'
 import { SimplifiedMapView } from './SimplifiedMapView'
 import { FurnitureContextMenu } from '../editor/FurnitureContextMenu'
 
-/**
- * Enquadramento inicial / restauração: usa o zoom persistido do usuário
- * quando existir; só faz fit automático (reset) quando nunca houve zoom
- * (primeiro acesso). Redimensionamentos (resize/focus) NÃO devem resetar.
- */
 function restoreZoomOrFit(engine: CanvasEngine) {
   const saved = useGameStore.getState().cameraZoom
   if (saved !== null && saved !== undefined) {
@@ -31,7 +26,6 @@ export const MapViewport: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const engineRef = useRef<CanvasEngine | null>(null)
 
-  // Granular selectors so 60Hz player-position updates don't re-render the viewport.
   const mapViewMode = useGameStore((s) => s.mapViewMode)
   const setMapViewMode = useGameStore((s) => s.setMapViewMode)
   const isManualSimplified = useGameStore((s) => s.isManualSimplified)
@@ -75,7 +69,6 @@ export const MapViewport: React.FC = () => {
   const [isDraggingFurniture, setIsDraggingFurniture] = useState(false)
   const [hoveredFurnitureId, setHoveredFurnitureId] = useState<string | null>(null)
 
-  // Touch gesture & Mobile controls states
   const touchPinchDistRef = useRef<number | null>(null)
   const touchPinchStartZoomRef = useRef<number>(1.6)
   const touchStartPosRef = useRef<{ x: number; y: number; time: number } | null>(null)
@@ -114,7 +107,6 @@ export const MapViewport: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isEditorOpen, activeTool, rotatePlacementDirection])
 
-  // Global Escape key in editor: Deselect placed furniture or palette item
   useEffect(() => {
     if (!isEditorOpen) return
 
@@ -142,7 +134,6 @@ export const MapViewport: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isEditorOpen, setSelectedPlacedFurnitureId, setIsMovingFurniture, setSelectedFurnitureDefId, setActiveTool, updateFurniture])
 
-  // Window mouseup listener to ensure drops are caught even if released outside canvas
   useEffect(() => {
     const handleGlobalMouseUp = () => {
       if (draggedFurnitureRef.current?.isDragging) {
@@ -160,11 +151,6 @@ export const MapViewport: React.FC = () => {
     const engine = new CanvasEngine(canvas)
     engineRef.current = engine
 
-    // Cap the backing store (~2MP, e.g. 1920×1080) — full 4K canvases cost
-    // ~4× fill-rate per frame with zero visual gain for 32px pixel art.
-    // CSS (w-full h-full) upscales; imageSmoothingEnabled=false keeps it crisp.
-    // NOTA: só dimensiona o canvas — NUNCA mexe no zoom aqui. Reset de zoom
-    // em resize/focus era o bug "câmera volta ao estado inicial toda hora".
     const MAX_CANVAS_PIXELS = 1920 * 1080
     const applySize = () => {
       let w = canvas.parentElement?.clientWidth || window.innerWidth
@@ -183,8 +169,6 @@ export const MapViewport: React.FC = () => {
 
     let resizeRaf = 0
     const handleResize = () => {
-      // rAF-throttle the hot path. Apenas redimensiona: o zoom do usuário
-      // é preservado (sem fitToScreen aqui).
       if (resizeRaf) return
       resizeRaf = requestAnimationFrame(() => {
         resizeRaf = 0
@@ -196,8 +180,6 @@ export const MapViewport: React.FC = () => {
     restoreZoomOrFit(engine)
     window.addEventListener('resize', handleResize)
 
-    // Re-check canvas dimensions and repaint when the window regains focus or visibility (e.g. restoring from system tray).
-    // Apenas redimensiona — sem fitToScreen (preserva zoom/posição do usuário).
     const handleFocusOrVisibility = () => {
       applySize()
     }
@@ -206,8 +188,6 @@ export const MapViewport: React.FC = () => {
 
     engine.start()
 
-    // Auto-fit tardio caso o layout ainda estivesse se assentando na montagem.
-    // Restaura o zoom persistido quando existir (sem reset).
     setTimeout(() => {
       if (!engineRef.current) return
       const parentW = canvas.parentElement?.clientWidth || 0
@@ -241,15 +221,12 @@ export const MapViewport: React.FC = () => {
     }
   }, [])
 
-  // Auto-fit when mapData template changes
   useEffect(() => {
     if (engineRef.current) {
       engineRef.current.fitToScreen(0.95)
     }
   }, [mapData.width, mapData.height])
 
-  // Re-adjust canvas size when switching back to Immersive mode.
-  // Recentraliza no jogador mas RESTAURA o zoom do usuário (sem reset).
   useEffect(() => {
     if (mapViewMode === 'immersive' && engineRef.current && canvasRef.current) {
       const canvas = canvasRef.current
@@ -270,11 +247,6 @@ export const MapViewport: React.FC = () => {
     }
   }, [mapViewMode])
 
-  // Apply a floor to the zone the user just clicked. The user can't
-  // paint a single cell — clicking inside a zone repaints the whole
-  // zone footprint. If the click is outside any zone, the action is
-  // a no-op (the cursor preview shows a "forbidden" outline so the
-  // user knows why nothing happened).
   const applyFloorToZoneAt = (tileX: number, tileY: number, floor: string) => {
     const zone = findZoneAt(tileX, tileY)
     if (!zone) return false
@@ -287,7 +259,7 @@ export const MapViewport: React.FC = () => {
   }
 
   const getPlacementSnapStep = (shiftPressed: boolean, defId?: string) => {
-    if (shiftPressed) return 1 / 32 // 100% free continuous pixel placement
+    if (shiftPressed) return 1 / 32
     if (defId) {
       const custom = useCustomAssetsStore.getState().getAssetById(defId)
       if (custom) {
@@ -300,10 +272,9 @@ export const MapViewport: React.FC = () => {
         }
       }
     }
-    return 1 // standard 1-tile grid
+    return 1
   }
 
-  // Handle Canvas Mouse Clicks & Editor Interactions
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!engineRef.current || !canvasRef.current) return
     const rect = canvasRef.current.getBoundingClientRect()
@@ -324,7 +295,6 @@ export const MapViewport: React.FC = () => {
     lastPaintedTileRef.current = `${tile.x},${tile.y}`
 
     if (isEditorOpen) {
-      // 1. Check if user clicked directly on an existing furniture
       const customAssets = useCustomAssetsStore.getState().customAssets
       const clickedFurn = mapData.furniture.find((f) => {
         const custom = customAssets.find((a) => a.id === f.defId)
@@ -338,7 +308,6 @@ export const MapViewport: React.FC = () => {
         )
       })
 
-      // If clicked on furniture and not painting floors/walls or drawing zone:
       if (clickedFurn && activeTool !== 'paint_floor' && activeTool !== 'paint_wall' && activeTool !== 'draw_zone') {
         if (activeTool === 'eraser') {
           if (eraserTarget === 'furniture') {
@@ -347,7 +316,6 @@ export const MapViewport: React.FC = () => {
             return
           }
         } else {
-          // Select this furniture and prepare for drag-and-drop
           const custom = customAssets.find((a) => a.id === clickedFurn.defId)
           const def = custom || FURNITURE_CATALOG.find((cat) => cat.id === clickedFurn.defId)
           const { tileW, tileH } = resolveFurnitureDimensions(clickedFurn, custom, def)
@@ -370,7 +338,6 @@ export const MapViewport: React.FC = () => {
         }
       }
 
-      // 2. If clicked on empty space without moving, deselect furniture (do NOT teleport)
       if (
         !clickedFurn &&
         selectedPlacedFurnitureId &&
@@ -448,7 +415,6 @@ export const MapViewport: React.FC = () => {
         }
       }
     } else {
-      // Regular mode: Click to move
       engineRef.current.setClickTarget(tile.x, tile.y)
     }
   }
@@ -487,7 +453,6 @@ export const MapViewport: React.FC = () => {
       setHoveredFurnitureId(hovered ? hovered.id : null)
     }
 
-    // Live dragging of selected furniture across the map
     if (isEditorOpen && isMouseDownRef.current && draggedFurnitureRef.current) {
       const drag = draggedFurnitureRef.current
       const dist = Math.hypot(exactTile.x - drag.startTile.x, exactTile.y - drag.startTile.y)
@@ -522,7 +487,6 @@ export const MapViewport: React.FC = () => {
       }
     }
 
-    // Continuous drag painting when mouse button is held down
     if (isEditorOpen && isMouseDownRef.current) {
       const tileKey = `${tile.x},${tile.y}`
       if (lastPaintedTileRef.current !== tileKey) {
@@ -564,7 +528,6 @@ export const MapViewport: React.FC = () => {
       }
     }
 
-    // Update drag preview if drawing zone
     if (isEditorOpen && activeTool === 'draw_zone' && engineRef.current.zoneDragStart) {
       engineRef.current.zoneDragCurrent = tile
     }
@@ -574,14 +537,12 @@ export const MapViewport: React.FC = () => {
     isMouseDownRef.current = false
     lastPaintedTileRef.current = null
 
-    // Finalize furniture drag & drop
     if (isEditorOpen && draggedFurnitureRef.current) {
       const drag = draggedFurnitureRef.current
       draggedFurnitureRef.current = null
       setIsDraggingFurniture(false)
 
       if (drag.isDragging) {
-        // Broadcast final position of moved furniture across P2P
         const currentFurn = useMapStore.getState().mapData.furniture.find((f) => f.id === drag.id)
         if (currentFurn) {
           PeerManager.getInstance().sendMapEdit('add_furniture', {
@@ -590,8 +551,6 @@ export const MapViewport: React.FC = () => {
         }
         return
       } else {
-        // Simple click without drag:
-        // If it was already selected prior to this click, deselect it!
         if (drag.wasAlreadySelected) {
           setSelectedPlacedFurnitureId(null)
           setIsMovingFurniture(false)
@@ -602,7 +561,6 @@ export const MapViewport: React.FC = () => {
 
     if (!engineRef.current) return
 
-    // Finalize drag-to-draw zone
     if (isEditorOpen && activeTool === 'draw_zone' && engineRef.current.zoneDragStart && engineRef.current.zoneDragCurrent) {
       const start = engineRef.current.zoneDragStart
       const current = engineRef.current.zoneDragCurrent
@@ -612,27 +570,21 @@ export const MapViewport: React.FC = () => {
       let minY = Math.min(start.y, current.y)
       let maxY = Math.max(start.y, current.y)
 
-      // Magnetic alignment with existing zones to prevent gaps or interior overlaps
       for (const z of mapData.zones) {
         const zRight = z.x + z.width
         const zBottom = z.y + z.height
 
-        // Snap adjacent right (starts right where existing zone ends)
         if (Math.abs(minX - zRight) <= 1) minX = zRight
-        // Snap adjacent left (ends right where existing zone starts)
         if (Math.abs((maxX + 1) - z.x) <= 1) maxX = z.x - 1
 
-        // Snap Y alignment
         if (Math.abs(minY - z.y) <= 1) minY = z.y
         if (Math.abs(maxY - (zBottom - 1)) <= 1) maxY = zBottom - 1
-        // Snap adjacent bottom
         if (Math.abs(minY - zBottom) <= 1) minY = zBottom
       }
 
       const width = maxX - minX + 1
       const height = maxY - minY + 1
 
-      // Allow touching/shared walls, but forbid interior area intersections
       const hasOverlap = mapData.zones.some((z) => {
         const zMaxX = z.x + z.width - 1
         const zMaxY = z.y + z.height - 1
@@ -658,7 +610,6 @@ export const MapViewport: React.FC = () => {
 
         addOrUpdateZone(newZone)
 
-        // Automatically update the draft color for the next zone to create
         const nextZones = [...(mapData.zones || []), newZone]
         useMapStore.getState().setZoneDraft({
           ...zoneDraft,
@@ -679,9 +630,7 @@ export const MapViewport: React.FC = () => {
   }
 
   const handleZoom = (delta: number) => {
-    // Se estiver no modo simplificado:
     if (mapViewMode === 'simplified') {
-      // Se adicionar zoom (delta > 0) e NÃO foi ativado manualmente pelo botão:
       if (delta > 0 && !isManualSimplified) {
         if (engineRef.current) {
           engineRef.current.camera.setZoom(0.6)
@@ -692,19 +641,16 @@ export const MapViewport: React.FC = () => {
     }
 
     if (!engineRef.current) return
-    // setZoom aplica clamp e persiste (sobrevive a focus/resize/remontagem).
     engineRef.current.camera.setZoom(
       Number((engineRef.current.camera.zoom + delta).toFixed(2))
     )
 
-    // Quando o usuário der zoom no mínimo (<= 0.4), altera de imersivo para simplificado (automático via zoom)
     if (engineRef.current.camera.zoom <= 0.4 && mapViewMode === 'immersive') {
       setMapViewMode('simplified', false)
     }
   }
 
   const handleWheel = (e: React.WheelEvent) => {
-    // Smooth zoom in / out with mouse scroll
     const delta = e.deltaY < 0 ? 0.15 : -0.15
     handleZoom(delta)
   }
@@ -850,9 +796,6 @@ export const MapViewport: React.FC = () => {
       onWheel={handleWheel}
       className="relative flex-1 w-full h-[calc(100vh-56px)] overflow-hidden bg-[#0c0e14]"
     >
-      {/* 2D Canvas Engine (Always mounted to preserve rendering context).
-          Wheel zoom lives ONLY on the wrapper div below — a second handler
-          here would apply every scroll tick twice (bubble). */}
       <canvas
         ref={canvasRef}
         onMouseDown={handleCanvasMouseDown}
@@ -876,7 +819,6 @@ export const MapViewport: React.FC = () => {
         }`}
       />
 
-      {/* Recenter Camera Floating Button */}
       {isCameraPanned && mapViewMode !== 'simplified' && (
         <button
           onClick={handleRecenterCamera}
@@ -888,7 +830,6 @@ export const MapViewport: React.FC = () => {
         </button>
       )}
 
-      {/* Selected Furniture Drag & Move Floating Banner */}
       {isEditorOpen && selectedPlacedFurnitureId && !isDraggingFurniture && mapViewMode !== 'simplified' && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-md border border-slate-700/60 text-white px-4 py-2 rounded-2xl shadow-xl flex items-center gap-3 text-xs font-semibold select-none z-30">
           <span className="text-slate-300">💡 Dica:</span>
@@ -900,7 +841,6 @@ export const MapViewport: React.FC = () => {
         </div>
       )}
 
-      {/* Floor paint active banner */}
       {isEditorOpen && activeTool === 'paint_floor' && mapViewMode !== 'simplified' && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-emerald-600/90 backdrop-blur-md border border-emerald-400/40 text-white px-4 py-2 rounded-2xl shadow-xl flex items-center gap-2.5 text-xs font-semibold select-none z-30">
           <Sparkles className="w-4 h-4 text-amber-300" />
@@ -908,7 +848,6 @@ export const MapViewport: React.FC = () => {
         </div>
       )}
 
-      {/* Furniture Placement Active Floating Banner with Direction & Rotate button */}
       {isEditorOpen && activeTool === 'place_furniture' && mapViewMode !== 'simplified' && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-md border border-slate-700/60 text-white px-4 py-2 rounded-2xl shadow-xl flex items-center gap-3 text-xs font-semibold select-none z-30">
           <span className="text-slate-300">Direção:</span>
@@ -929,13 +868,10 @@ export const MapViewport: React.FC = () => {
         </div>
       )}
 
-      {/* Simplified Vector Map View */}
       {mapViewMode === 'simplified' && <SimplifiedMapView />}
 
-      {/* Furniture Contextual Action Menu (Move / Color / Delete) */}
       <FurnitureContextMenu />
 
-      {/* Floating Bottom-Right Map Controls Widget (Modes + Zoom) */}
       <div className="absolute bottom-4 right-4 z-40">
         <MapControlsWidget
           onZoomIn={() => handleZoom(0.2)}

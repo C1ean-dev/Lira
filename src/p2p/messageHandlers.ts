@@ -21,7 +21,6 @@ export function processNetworkMessage(
 ) {
   switch (msg.type) {
     case 'HEARTBEAT': {
-      // Respond with HEARTBEAT_ACK so sender computes round-trip latency
       broadcast({
         type: 'HEARTBEAT_ACK',
         senderId: useGameStore.getState().localPlayer.id,
@@ -41,9 +40,6 @@ export function processNetworkMessage(
     }
 
     case 'PLAYER_JOIN': {
-      // In star-mesh relay topology, peerId is the transport connection (Host on clients).
-      // The true sender and unique peer identity of the joining player is msg.senderId
-      // (falling back to msg.payload.player?.id, and finally peerId).
       const remotePeerId = msg.senderId || msg.payload.player?.id || peerId
       const isPeerHost = remotePeerId.endsWith('-host')
       const incomingGameId: string | undefined =
@@ -52,8 +48,6 @@ export function processNetworkMessage(
       const localId = localPlayer.id
       const localGameId = localPlayer.gameId
 
-      // 1. Never register our own echo as a remote player — it would render
-      // as a frozen copy of ourselves stuck at the join position (ghost).
       if (
         remotePeerId === localId ||
         (localGameId && remotePeerId === localGameId) ||
@@ -63,9 +57,6 @@ export function processNetworkMessage(
         break
       }
 
-      // 2. Same human reconnected with a new connection id (ICE churn, flap):
-      // drop the stale entry so the old frozen clone disappears instead of
-      // lingering next to the live one.
       if (incomingGameId) {
         const st = useGameStore.getState()
         for (const [key, p] of Object.entries(st.remotePlayers)) {
@@ -75,10 +66,6 @@ export function processNetworkMessage(
         }
       }
 
-      // 3. Duplicate name resolution:
-      // If we are Host, any incoming remote player is a newcomer, so ensure their name is unique.
-      // If we are Client, incoming players are already established in the room, so we keep their name
-      // and instead adjust our own local name if there's a collision with them.
       const incomingName = msg.payload.player?.name || 'Player'
       const state = useGameStore.getState()
       const existingNames = [
@@ -117,7 +104,6 @@ export function processNetworkMessage(
         })
       }
 
-      // If we are a non-host client and our own name conflicts with an existing player in the room:
       if (!isHost && incomingName.trim().toLowerCase() === state.localPlayer.name.trim().toLowerCase()) {
         const roomNames = [
           incomingName,
@@ -153,8 +139,6 @@ export function processNetworkMessage(
       const localPlayer = useGameStore.getState().localPlayer
       const localId = localPlayer.id
       const localGameId = localPlayer.gameId
-      // Defensive: movement allegedly from ourselves must never create or
-      // move a remote entry (would mirror/freeze a clone of the local avatar).
       if (
         sender === localId ||
         (localGameId && sender === localGameId) ||
@@ -182,7 +166,6 @@ export function processNetworkMessage(
       const localGameId = localPlayer.gameId
       const targetPayloadPlayer = msg.payload?.player
 
-      // If this is a name reconciliation directed at ourselves from the host:
       if (
         (targetPayloadPlayer?.id === localId || (localGameId && targetPayloadPlayer?.gameId === localGameId)) &&
         targetPayloadPlayer?.name &&
@@ -203,7 +186,6 @@ export function processNetworkMessage(
       const updated = msg.payload.player
       const remotePlayers = useGameStore.getState().remotePlayers
       const targetSender = msg.senderId || updated?.id
-      // Target the sender specifically; never default to peerId if peerId is the relay host!
       let existingKey = targetSender && remotePlayers[targetSender] ? targetSender : undefined
       if (!existingKey) {
         existingKey = Object.keys(remotePlayers).find(
@@ -244,7 +226,6 @@ export function processNetworkMessage(
       if (msg.payload.mapData) {
         useMapStore.getState().setMapData(msg.payload.mapData)
 
-        // Verify local player authorization for all locked zones
         const local = useGameStore.getState().localPlayer
         for (const zone of msg.payload.mapData.zones || []) {
           if (zone.isLocked) {
@@ -322,9 +303,6 @@ export function processNetworkMessage(
       if (action === 'set_floor') {
         useMapStore.getState().setFloorTile(data.x, data.y, data.floor)
       } else if (action === 'paint_floor_in_zone') {
-        // A remote peer clicked inside a zone with paint_floor
-        // selected; replicate the same "fill the whole zone" effect
-        // locally so both sides stay in sync.
         useMapStore.getState().paintFloorInZone(data.zoneId, data.floor)
       } else if (action === 'set_wall') {
         useMapStore.getState().setWallTile(data.x, data.y, data.wall)
@@ -345,7 +323,6 @@ export function processNetworkMessage(
     case 'CHAT_MESSAGE': {
       const chatMsg = msg.payload.message
       const local = useGameStore.getState().localPlayer
-      // If this is a DM, only process if addressed to me or sent by me
       if (chatMsg?.recipientId) {
         const isForMe =
           chatMsg.recipientId === local.id ||
@@ -372,8 +349,6 @@ export function processNetworkMessage(
     }
 
     case 'CHANNELS_SYNC': {
-      // The channels of a space come from whoever hosts it, over the
-      // connection to them: never from another visitor, never relayed.
       if (isHost || !peerId.endsWith('-host') || msg.senderId !== peerId) break
       const channels = sanitizeRoomChannels(msg.payload?.channels)
       if (channels) useChatStore.getState().setRoomChannels(channels)
@@ -392,7 +367,6 @@ export function processNetworkMessage(
       } = msg.payload || {}
       const local = useGameStore.getState().localPlayer
 
-      // Verify this status receipt is meant for me
       const isForMe =
         !recipientId ||
         recipientId === local.id ||
@@ -432,12 +406,9 @@ export function processNetworkMessage(
       const local = useGameStore.getState().localPlayer
       const isAuth = useMapStore.getState().isPeerAuthorizedForZone(zoneId, local.id, local.name)
 
-      // If room is locked and local player is not authorized:
       if (isLocked && !isAuth) {
-        // Reset any stale knock status so they cannot enter
         useGameStore.getState().setMyKnockStatus(zoneId, 'idle')
 
-        // If local player was physically inside the room when permission was revoked, eject to outside the doorway
         if (local.currentZoneId === zoneId) {
           const zoneObj = useMapStore.getState().mapData.zones.find((z) => z.id === zoneId)
           if (zoneObj) {
@@ -517,7 +488,6 @@ export function processNetworkMessage(
       const { targetUserId, targetGameId, mute, adminName } = msg.payload
       const local = useGameStore.getState().localPlayer
 
-      // Sender is the admin who triggered this; never apply it to self
       if (msg.senderId === local.id || (myPeerId && msg.senderId === myPeerId)) {
         break
       }
@@ -541,7 +511,6 @@ export function processNetworkMessage(
           type: 'mute',
         })
       }
-      // Update remote player state for everyone in the room
       const remotePlayers = useGameStore.getState().remotePlayers
       for (const [rId, rPlayer] of Object.entries(remotePlayers)) {
         if (
@@ -564,7 +533,6 @@ export function processNetworkMessage(
       const { targetUserId, targetGameId, deafen, adminName } = msg.payload
       const local = useGameStore.getState().localPlayer
 
-      // Sender is the admin who triggered this; never apply it to self
       if (msg.senderId === local.id || (myPeerId && msg.senderId === myPeerId)) {
         break
       }
@@ -585,7 +553,6 @@ export function processNetworkMessage(
           type: 'deafen',
         })
       }
-      // Update remote player state for everyone in the room
       const remotePlayers = useGameStore.getState().remotePlayers
       for (const [rId, rPlayer] of Object.entries(remotePlayers)) {
         if (
@@ -604,7 +571,6 @@ export function processNetworkMessage(
     }
   }
 
-  // If host, forward to other peers in mesh
   if (
     isHost &&
     msg.type !== 'MAP_SYNC' &&

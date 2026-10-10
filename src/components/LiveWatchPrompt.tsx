@@ -2,24 +2,14 @@ import React from 'react'
 import { Loader2, Play, Radio } from 'lucide-react'
 
 interface LiveWatchPromptProps {
-  /** tile: the small call tiles; card: the mini player; stage: the grid and the full screen. */
   size: 'tile' | 'card' | 'stage'
-  /** Who is live. */
   name: string
-  /** The click was made and the first frame has not arrived yet. */
   connecting?: boolean
   onWatch?: () => void
 }
 
-/**
- * What takes the place of a live until this user clicks to watch it. A live
- * does not start on its own: until the click, who is live sends this user no
- * video and only the microphone. After the click it says that the picture is
- * on its way, over the still empty video.
- */
 export const LiveWatchPrompt: React.FC<LiveWatchPromptProps> = ({ size, name, connecting = false, onWatch }) => {
   const watch = (e: React.MouseEvent) => {
-    // The tile under it opens the grid on a click.
     e.stopPropagation()
     onWatch?.()
   }

@@ -26,10 +26,6 @@ interface Props {
   onCreatePreset?: (category: AvatarComponentSlot) => void
 }
 
-/**
- * Renders an auto-cropped close-up preview of the pixel art,
- * eliminating all surrounding empty space and centering the item.
- */
 const AutoCroppedThumbnail: React.FC<{
   src: string
   alt: string
@@ -75,7 +71,6 @@ export const OptionSelectorGrid: React.FC<Props> = ({
   const [deletingAsset, setDeletingAsset] = useState<CustomAsset | null>(null)
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false)
 
-  // Direct Spritesheet Slicer state
   const directSlicerInputRef = useRef<HTMLInputElement | null>(null)
   const [slicerImageSrc, setSlicerImageSrc] = useState<string>('')
   const [slicerImageName, setSlicerImageName] = useState<string>('')
@@ -96,7 +91,6 @@ export const OptionSelectorGrid: React.FC<Props> = ({
     reader.readAsDataURL(file)
   }
 
-  // Opens the exact same editor modal that created the asset!
   const handleEditAsset = async (asset: CustomAsset) => {
     const source = detectAssetCreationSource(asset)
     if (source === 'slicer' || source === 'atlas') {
@@ -115,7 +109,6 @@ export const OptionSelectorGrid: React.FC<Props> = ({
       return
     }
 
-    // Default to Studio (Pixel Art Editor)
     if (onEditPreset) {
       onEditPreset(activeCategory as AvatarComponentSlot, asset.id, asset.name)
     }
@@ -206,7 +199,6 @@ export const OptionSelectorGrid: React.FC<Props> = ({
               : 'border-[#383a40] bg-[#1e1f22] hover:border-slate-500'
           }`}
         >
-          {/* Pintar Pixels no Estúdio Pixel Art */}
           {onEditPreset && (
             <div
               onClick={(e) => {
@@ -220,7 +212,6 @@ export const OptionSelectorGrid: React.FC<Props> = ({
             </div>
           )}
 
-          {/* Fatiar Folha de Sprites (se possuir spritesheet fonte) */}
           {(detectAssetCreationSource(asset) === 'slicer' || detectAssetCreationSource(asset) === 'atlas') && (
             <div
               onClick={(e) => {
@@ -245,7 +236,6 @@ export const OptionSelectorGrid: React.FC<Props> = ({
             <Trash2 className="w-3.5 h-3.5" />
           </div>
 
-          {/* Close-up Cropped Thumbnail Preview */}
           <AutoCroppedThumbnail
             src={asset.thumbnail || asset.frames[0]}
             alt={asset.name}
@@ -269,12 +259,10 @@ export const OptionSelectorGrid: React.FC<Props> = ({
 
   return (
     <div className="flex-1 overflow-y-auto pr-1">
-      {/* Top action bar with Export, Import and Slicer Buttons */}
       {activeCategory === 'other' && (
         <div className="flex flex-wrap items-center justify-between mb-3 px-1 gap-2">
           <span className="text-xs font-bold text-slate-300">Modelos & Presets</span>
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-            {/* Hidden input for direct Spritesheet Slicer */}
             <input
               ref={directSlicerInputRef}
               type="file"
@@ -316,7 +304,6 @@ export const OptionSelectorGrid: React.FC<Props> = ({
         </div>
       )}
 
-      {/* CATEGORY: PERSONAGEM */}
       {activeCategory === 'other' && (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3">
           {renderCreateCard()}
@@ -324,7 +311,6 @@ export const OptionSelectorGrid: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
       {deletingAsset && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 animate-in fade-in duration-150 select-none">
           <div className="bg-[#1e1f22] border border-[#383a40] rounded-2xl p-5 max-w-sm w-full shadow-2xl flex flex-col gap-4 text-slate-100">
@@ -360,7 +346,6 @@ export const OptionSelectorGrid: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Atlas Import Modal */}
       {isImportModalOpen && (
         <AtlasImportModal
           isOpen={isImportModalOpen}
@@ -369,7 +354,6 @@ export const OptionSelectorGrid: React.FC<Props> = ({
         />
       )}
 
-      {/* Direct Interactive Spritesheet Slicer Modal */}
       {isDirectSlicerOpen && slicerImageSrc && (
         <AvatarSpritesheetSlicerModal
           isOpen={isDirectSlicerOpen}

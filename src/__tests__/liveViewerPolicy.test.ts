@@ -48,10 +48,6 @@ const screenTrack = (height = 1080) =>
   }) as any
 const cameraTrack = () => ({ kind: 'video', id: 'camera', enabled: true, contentHint: '', readyState: 'live' }) as any
 
-/**
- * A call with a video sender and an audio sender. Every setParameters is kept
- * as a snapshot, in order with the track swaps, the way the browser sees them.
- */
 function fakeCall(videoTrack: any = cameraTrack(), audioTrack: any = micTrack()) {
   const ops: string[] = []
   const applied: any[] = []
@@ -79,7 +75,6 @@ function fakeCall(videoTrack: any = cameraTrack(), audioTrack: any = micTrack())
   }
   const pc: any = {
     getSenders: () => [audio, sender],
-    // A sender with no track is still the audio sender of its transceiver.
     getTransceivers: () => [
       { sender: audio, receiver: { track: { kind: 'audio' } } },
       { sender, receiver: { track: { kind: 'video' } } },
@@ -93,7 +88,6 @@ function fakeCall(videoTrack: any = cameraTrack(), audioTrack: any = micTrack())
 type Fake = ReturnType<typeof fakeCall>
 const callsOf = (...entries: Array<[string, Fake]>) => new Map<string, any>(entries.map(([id, c]) => [id, c.call]))
 
-/** Who is in the room, and which of them wait for a click before a live reaches them. */
 const room = (players: Record<string, { liveOptIn?: boolean }>) => {
   useGameStore.setState({
     remotePlayers: Object.fromEntries(
@@ -102,7 +96,6 @@ const room = (players: Record<string, { liveOptIn?: boolean }>) => {
   })
 }
 
-/** The local side while it is live: microphone, and a screen stream with the live's own audio. */
 const goLive = (options: { mic?: any | null; liveAudio?: any | null; screen?: any } = {}) => {
   const mic = options.mic === undefined ? micTrack() : options.mic
   const liveAudio = options.liveAudio === undefined ? liveAudioTrack() : options.liveAudio
@@ -117,7 +110,6 @@ const goLive = (options: { mic?: any | null; liveAudio?: any | null; screen?: an
   return { mic, liveAudio, screen }
 }
 
-/** Start the live on the open calls the way MediaManager.startScreenShare does. */
 const startLive = (calls: Map<string, any>, media: ReturnType<typeof goLive>, bitrate = 5_500_000, fps = 60) => {
   MediaCallHandler.primeScreenShare(calls, bitrate, fps)
   if (media.liveAudio) MediaCallHandler.replaceAudioTrack(calls, media.liveAudio)
@@ -190,7 +182,6 @@ describe('who a live is sent to', () => {
       const viewer = fakeCall()
       MediaCallHandler.primeScreenShare(callsOf(['viewer', viewer]), 5_500_000, 60)
 
-      // Preparing the live must not switch off a sender that still carries the camera.
       expect(viewer.sender.setParameters).not.toHaveBeenCalled()
     })
 
@@ -206,7 +197,6 @@ describe('who a live is sent to', () => {
       await vi.advanceTimersByTimeAsync(0)
 
       expect(viewer.applied.every((p) => p.active === false)).toBe(true)
-      // Switched off once: an encoder that is off has nothing to be told again.
       expect(viewer.sender.setParameters).toHaveBeenCalledTimes(1)
     })
   })
@@ -292,7 +282,6 @@ describe('who a live is sent to', () => {
       expect(viewer.last()).toMatchObject({ active: true, scaleResolutionDownBy: 1, maxBitrate: 5_500_000 })
       expect(viewer.audio.track).toBe(media.liveAudio)
 
-      // And goes back to a size when the viewer says one.
       MediaCallHandler.applyViewerRequest(calls, 'viewer', true, 180)
       await vi.advanceTimersByTimeAsync(0)
       expect(viewer.last()).toMatchObject({ scaleResolutionDownBy: 4 })
@@ -308,7 +297,6 @@ describe('who a live is sent to', () => {
 
     it('follows the height of what is being captured', async () => {
       const { viewer } = await watching(180, screenTrack(720))
-      // 720 / 3 = 240 lines is the smallest layer above 198.
       expect(viewer.last()).toMatchObject({ scaleResolutionDownBy: 3 })
     })
 
@@ -323,8 +311,6 @@ describe('who a live is sent to', () => {
       await vi.advanceTimersByTimeAsync(SCREEN_START_HOLD_MS)
       expect(viewer.last().degradationPreference).toBe('maintain-framerate')
 
-      // The bitrate has to climb to the new size; without the hold the
-      // encoder answers a still-low bitrate by scaling the picture down.
       MediaCallHandler.applyViewerRequest(calls, 'viewer', true, 630)
       await vi.advanceTimersByTimeAsync(0)
       expect(viewer.last()).toMatchObject({
@@ -356,7 +342,6 @@ describe('who a live is sent to', () => {
         maxBitrate: 374_000,
         degradationPreference: 'maintain-framerate',
       })
-      // One write for the new size, and none later: there was no hold to release.
       expect(viewer.sender.setParameters).toHaveBeenCalledTimes(writes + 1)
     })
 
@@ -411,7 +396,6 @@ describe('who a live is sent to', () => {
         maxBitrate: 187_000,
         maxFramerate: 15,
       })
-      // Still watching: the sound of the live goes on.
       expect(viewer.audio.track).toBe(media.liveAudio)
     })
 
@@ -423,7 +407,6 @@ describe('who a live is sent to', () => {
       expect(viewerMode('viewer')).toBe('off')
       expect(viewer.last().active).toBe(false)
       expect(viewer.audio.track).toBe(media.mic)
-      // The screen stays on the sender, ready for the next click.
       expect(viewer.sender.track).toBe(media.screen)
       expect(viewer.ops.filter((op) => op === 'replaceTrack')).toHaveLength(1)
     })
@@ -432,7 +415,6 @@ describe('who a live is sent to', () => {
       const { viewer, other, calls } = await watching(180)
       await vi.advanceTimersByTimeAsync(SCREEN_START_HOLD_MS)
 
-      // Changing what is shared starts with the same preparation as a new live.
       MediaCallHandler.primeScreenShare(calls, 5_500_000, 60)
       expect(viewer.last()).toMatchObject({ active: true, scaleResolutionDownBy: 4, maxBitrate: 688_000 })
       expect(other.applied.every((p) => p.active === false)).toBe(true)
@@ -453,7 +435,6 @@ describe('who a live is sent to', () => {
       MediaCallHandler.updateScreenShareBitrate(calls, 3_000_000)
       await vi.advanceTimersByTimeAsync(0)
 
-      // 3 Mbps at a quarter of the height: 3 / 4^1.5 = 375 kbps.
       expect(viewer.last()).toMatchObject({ active: true, scaleResolutionDownBy: 4, maxBitrate: 375_000 })
       expect(other.last().active).toBe(false)
     })
@@ -614,7 +595,6 @@ describe('who a live is sent to', () => {
       const calls = callsOf(['viewer', viewer])
       startLive(calls, media)
       MediaCallHandler.applyViewerRequest(calls, 'viewer', true, 180)
-      // One second past the 30 s, before the next tick of the clock.
       await vi.advanceTimersByTimeAsync(VIEW_REQUEST_TTL_MS + 1000)
       expect(viewer.last()).toMatchObject({ scaleResolutionDownBy: 4 })
 
@@ -762,7 +742,6 @@ describe('who a live is sent to', () => {
       const calls = callsOf(['watcher', watcher])
       startLive(calls, media)
       MediaCallHandler.replaceVideoTrack(calls, cameraTrack(), false)
-      // The next live starts at once, and this call is not one of its calls.
       MediaCallHandler.replaceVideoTrack(new Map(), screenTrack(), true, 5_500_000, 60)
       await vi.advanceTimersByTimeAsync(0)
 
@@ -847,7 +826,6 @@ describe('who a live is sent to', () => {
       await vi.advanceTimersByTimeAsync(0)
 
       expect(dialed.getAudioTracks()).toEqual([media.mic])
-      // The screen is on the sender from the start: the click only switches it on.
       expect(dialed.getVideoTracks()).toEqual([media.screen])
       expect(placed.last().active).toBe(false)
     })
@@ -899,7 +877,6 @@ describe('who a live is sent to', () => {
     })
 
     it('is answered with the live for a viewer that already asked to watch (its call was replaced)', async () => {
-      // The request came before there was a call to apply it to.
       const { media, placed, answered } = answer('viewer', true, () =>
         MediaCallHandler.applyViewerRequest(new Map(), 'viewer', true, 180)
       )
@@ -920,7 +897,6 @@ describe('who a live is sent to', () => {
       expect(placed.last().active).toBe(false)
     })
 
-    /** Drive a call to "connected" the way the lifecycle does. */
     const connect = (id: string, c: Fake, calls: Map<string, any>) => {
       const remoteAudio = { kind: 'audio', enabled: true, readyState: 'live', id: 'remote-audio' }
       const remoteVideo = { kind: 'video', enabled: true, readyState: 'live', id: 'remote-video' }
@@ -969,7 +945,6 @@ describe('who a live is sent to', () => {
 
       expect(useGameStore.getState().callStates['viewer']).toBe('connected')
       expect(onCallConnected).toHaveBeenCalledWith('viewer')
-      // Switched off when the call was made; connecting has nothing to add to that.
       expect(viewer.applied).toHaveLength(1)
       expect(viewer.applied[0].active).toBe(false)
       expect(viewer.audio.track).toBe(media.mic)
@@ -1018,10 +993,8 @@ describe('who a live is sent to', () => {
       MediaCallHandler.applyViewerRequest(calls, 'viewer', true, 180)
       await vi.advanceTimersByTimeAsync(0)
 
-      // Another call takes the place of the first one in the map.
       const second = fakeCall(media.screen, media.mic)
       connect('viewer', second, calls)
-      // Past the hold the first call started with: nothing of its own is pending.
       await vi.advanceTimersByTimeAsync(SCREEN_START_HOLD_MS)
       const writes = first.sender.setParameters.mock.calls.length
       await vi.advanceTimersByTimeAsync(VIEW_REQUEST_TTL_MS * 2)
@@ -1066,7 +1039,6 @@ describe('who a live is sent to', () => {
       MediaCallHandler.applyViewerRequest(calls, 'viewer', false, 0)
       await vi.advanceTimersByTimeAsync(0)
       expect(viewer.audio.track).toBe(silent)
-      // One silent track for the whole app, however many viewers.
       expect(AudioContext).toHaveBeenCalledTimes(1)
     })
 
@@ -1100,8 +1072,6 @@ describe('who a live is sent to', () => {
   })
 
   describe('a live that got its sound but no picture', () => {
-    // The capture came back with no video: the sound was already put on the
-    // calls, and the calls go back to the camera caps.
     const soundOnly = async () => {
       room({ viewer: { liveOptIn: true }, old: {} })
       const media = goLive()

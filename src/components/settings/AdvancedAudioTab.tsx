@@ -8,8 +8,6 @@ import { MultiEngineAudioPlayer } from './MultiEngineAudioPlayer'
 import { ProcessedSampleInfo } from '../../media/MicCalibrator'
 
 export const AdvancedAudioTab: React.FC = () => {
-  // Granular selectors — whole-store would re-render this tab on each
-  // VU-meter tick (~10Hz) while the mic is live.
   const echoCancellation = useMediaStore((s) => s.echoCancellation)
   const autoGainControl = useMediaStore((s) => s.autoGainControl)
   const isNoiseSuppressionEnabled = useMediaStore((s) => s.isNoiseSuppressionEnabled)
@@ -32,9 +30,8 @@ export const AdvancedAudioTab: React.FC = () => {
   const rnnoiseError = useMediaStore((s) => s.rnnoiseError)
   const rnnoiseStage = useMediaStore((s) => s.rnnoiseStage)
 
-  // Local UI state for the calibration wizard.
   const INITIAL_LIVE_BARS = 64
-  const [calProgress, setCalProgress] = useState(0) // 0..1
+  const [calProgress, setCalProgress] = useState(0)
   const [calSecondsLeft, setCalSecondsLeft] = useState(0)
   const [liveWaveform, setLiveWaveform] = useState<number[]>(() =>
     Array.from({ length: INITIAL_LIVE_BARS }, (_, i) => {
@@ -76,7 +73,6 @@ export const AdvancedAudioTab: React.FC = () => {
     }
   }
 
-  // Cleanup audio blob URLs when component unmounts
   useEffect(() => {
     return () => {
       revokeCalibrationUrls(lastCalibration)
@@ -86,12 +82,9 @@ export const AdvancedAudioTab: React.FC = () => {
   const currentCalibration = micCalibrations[selectedAudioInput] || null
 
   const handleCalibrate = async () => {
-    // Revoke any previous calibration blob URLs
     revokeCalibrationUrls(lastCalibration)
 
     const mgr = MediaManager.getInstance()
-    // Grab the raw mic stream directly so we measure the actual environment,
-    // not the post-processed output.
     let rawStream: MediaStream
     try {
       rawStream = await navigator.mediaDevices.getUserMedia({
@@ -163,7 +156,6 @@ export const AdvancedAudioTab: React.FC = () => {
     setLastCalibration(null)
   }
 
-  // Label describing what's currently in effect (manual vs auto).
   const engineLabel = hasUserChosenProcessorMode
     ? 'Escolha manual'
     : currentCalibration
@@ -176,11 +168,6 @@ export const AdvancedAudioTab: React.FC = () => {
     return 'DSP Clássico'
   }
 
-  /**
-   * Single-line "Label: current_value [Aplicar]" row. The button is only
-   * shown when the suggestion isn't already in effect, so it never feels
-   * like a no-op. Clicking applies the suggestion with one click.
-   */
   const SuggestedActionRow: React.FC<{
     label: string
     current: React.ReactNode
@@ -209,11 +196,9 @@ export const AdvancedAudioTab: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* 1. Processamento DSP & Cancelamento */}
       <div className="bg-[#12151d]/70 rounded-2xl p-4 border border-[#2a3142] space-y-3">
         <div className="text-xs font-bold text-slate-200 mb-2">Processamento de Voz & Filtros</div>
 
-        {/* Calibration Wizard */}
         <div className="space-y-2 pb-3 border-b border-[#2a3142]">
           <div className="flex items-center gap-1.5">
             <Mic className="w-3.5 h-3.5 text-emerald-400" />
@@ -279,7 +264,6 @@ export const AdvancedAudioTab: React.FC = () => {
             )}
           </div>
 
-          {/* Live Recording Card with Realtime Waveform */}
           {isCalibrating && (
             <div className="bg-[#121620] border border-rose-500/30 rounded-2xl p-3.5 space-y-2.5 shadow-lg shadow-rose-950/20 animate-in fade-in duration-200">
               <div className="flex items-center justify-between">
@@ -303,7 +287,6 @@ export const AdvancedAudioTab: React.FC = () => {
                 </div>
               </div>
 
-              {/* Realtime live waveform reacting to microphone input (Symmetrical Soundwave SVG) */}
               <div className="h-16 bg-slate-950/95 rounded-xl px-2.5 py-1.5 flex items-center relative border border-slate-800/90 shadow-inner overflow-hidden">
                 <svg
                   viewBox="0 0 640 56"
@@ -320,7 +303,6 @@ export const AdvancedAudioTab: React.FC = () => {
                     </linearGradient>
                   </defs>
 
-                  {/* Symmetrical Waveform Vertical Bars (Centered around Y = 28) */}
                   {liveWaveform.map((val, idx) => {
                     const step = 640 / liveWaveform.length
                     const barWidth = 3.2
@@ -346,7 +328,6 @@ export const AdvancedAudioTab: React.FC = () => {
                 </svg>
               </div>
 
-              {/* Progress bar under waveform */}
               <div className="h-1 bg-slate-900 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-gradient-to-r from-rose-500 via-amber-400 to-emerald-400 transition-all duration-100"
@@ -356,7 +337,6 @@ export const AdvancedAudioTab: React.FC = () => {
             </div>
           )}
 
-          {/* Calibration summary + Audio Players */}
           {(currentCalibration || lastCalibration) && (
             <div className="text-[10px] text-slate-300 bg-[#1b202c] rounded-xl p-2.5 border border-[#2a3142] leading-snug space-y-2.5">
               <div className="flex items-center gap-1 text-emerald-300 font-bold">
@@ -383,7 +363,6 @@ export const AdvancedAudioTab: React.FC = () => {
                 </span>
               </div>
 
-              {/* Suggested engine with 1-click apply */}
               <SuggestedActionRow
                 label="Motor sugerido:"
                 current={
@@ -408,7 +387,6 @@ export const AdvancedAudioTab: React.FC = () => {
                 applyLabel="Aplicar motor"
               />
 
-              {/* Suggested sensitivity with 1-click apply */}
               <SuggestedActionRow
                 label="Sensibilidade (Gate):"
                 current={
@@ -445,7 +423,6 @@ export const AdvancedAudioTab: React.FC = () => {
                 applyLabel="Aplicar no Gate (Ativar Manual)"
               />
 
-              {/* Audio Sample Preview & Comparison */}
               {lastCalibration?.rawAudioUrl && (
                 <div className="space-y-2 pt-2 border-t border-[#2a3142]/80">
                   <div className="text-[10.5px] font-bold text-slate-200 flex items-center gap-1.5">
@@ -453,7 +430,6 @@ export const AdvancedAudioTab: React.FC = () => {
                     <span>Comparação da Amostra Gravada</span>
                   </div>
 
-                  {/* 1. Raw recorded audio */}
                   <AudioSamplePlayer
                     title="Amostra Original Gravada"
                     subtitle="Áudio bruto sem nenhum filtro aplicado"
@@ -463,7 +439,6 @@ export const AdvancedAudioTab: React.FC = () => {
                     waveform={lastCalibration.rawWaveform}
                   />
 
-                  {/* 2. Processed audio tracks (All 3 engines occupying the same space) */}
                   {lastCalibration.processedSamples ? (
                     <MultiEngineAudioPlayer
                       recommendedMode={lastCalibration.recommendedMode}
@@ -502,7 +477,6 @@ export const AdvancedAudioTab: React.FC = () => {
           )}
         </div>
 
-        {/* Engine Selector: Classic / Soft DSP / RNNoise (neural) */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div>
@@ -513,8 +487,6 @@ export const AdvancedAudioTab: React.FC = () => {
                 Escolha entre DSP clássico, DSP suave (sem cortes duros) e
                 rede neural RNNoise
               </div>
-              {/* Live RNNoise engine state — ground truth, not the setting.
-                  Previously a failed init was silent and the mic ran raw. */}
               {audioProcessorMode === 'rnnoise' && (
                 <div className="mt-1.5 space-y-1">
                   <div
@@ -641,7 +613,6 @@ export const AdvancedAudioTab: React.FC = () => {
           </div>
         </div>
 
-        {/* Supressor de Ruído */}
         <div className="flex items-center justify-between py-1 border-t border-[#2a3142] pt-3 mt-1">
           <div>
             <div className="text-xs font-semibold text-slate-200">Supressor de Ruído DSP</div>
@@ -663,7 +634,6 @@ export const AdvancedAudioTab: React.FC = () => {
           </label>
         </div>
 
-        {/* Cancelamento de Eco AEC */}
         <div className="flex items-center justify-between py-1 border-t border-[#2a3142]">
           <div>
             <div className="text-xs font-semibold text-slate-200">Cancelamento de Eco Acústico (AEC)</div>
@@ -682,7 +652,6 @@ export const AdvancedAudioTab: React.FC = () => {
           </label>
         </div>
 
-        {/* Controle Automático de Ganho AGC */}
         <div className="flex items-center justify-between py-1 border-t border-[#2a3142]">
           <div>
             <div className="text-xs font-semibold text-slate-200">Controle Automático de Ganho (AGC)</div>

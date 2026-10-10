@@ -1,33 +1,12 @@
 import { ViewCounters, readViewStats } from '../p2p/liveQualityLog'
 import { diagLog } from '../utils/diagnosticLogger'
 
-/**
- * What a viewer tells who is live: whether it is watching, and how tall the
- * picture is on its screen.
- *
- * Who is live sends each viewer its own stream, so it can send this one only
- * what this one shows: nothing before the click to watch, a small picture for
- * the mini player, the full one for the full screen (see videoSendPolicy for
- * the other end). A larger picture is asked for at once; a smaller one only
- * after it stayed smaller for a while, so walking through the layouts does not
- * make the picture go soft and sharp again. What was asked is repeated every
- * 10 s: who is live lets go of a size that stops being confirmed.
- */
-
-/** Long enough for the picture of a click to be on screen and measured. */
 export const VIEW_SEND_DELAY_MS = 50
-/** How long the picture has to stay smaller before less is asked for. */
 export const VIEW_SHRINK_DELAY_MS = 2500
 export const VIEW_RENEW_MS = 10_000
 
 export interface LiveViewDeps {
-  /**
-   * Tell `sharerId` what this viewer wants of its live. `h` is the height of
-   * the picture in device pixels, 0 while this window shows nothing, null when
-   * the size is not known (everything is asked for).
-   */
   send: (sharerId: string, watch: boolean, h: number | null) => void
-  /** The stats of the call with `sharerId`, for the log of what arrives. */
   stats?: (sharerId: string) => Promise<any> | null | undefined
 }
 
@@ -42,7 +21,6 @@ const unref = (timer: Timer) => {
   ;(timer as unknown as { unref?: () => void })?.unref?.()
 }
 
-/** null is "everything": more than any size. */
 const rank = (h: number | null) => (h === null ? Number.POSITIVE_INFINITY : h)
 
 export class LiveViewReporter {
@@ -60,7 +38,6 @@ export class LiveViewReporter {
 
   constructor(private deps: LiveViewDeps) {}
 
-  /** The lives this viewer is asked before being sent: running, in its call. */
   setSharers(ids: string[]): void {
     if (this.disposed) return
     const next = new Set(ids)
@@ -80,24 +57,17 @@ export class LiveViewReporter {
     this.syncRenewTimer()
   }
 
-  /** The lives this user clicked to watch. */
   setWatching(ids: string[]): void {
     if (this.disposed) return
     const next = new Set(ids)
     const changed = [...this.watching].filter((id) => !next.has(id)).concat(ids.filter((id) => !this.watching.has(id)))
     this.watching = next
     for (const id of changed) {
-      // What arrives is compared from the click on, not with an earlier watch.
       this.viewCounters.delete(id)
       this.reconsider(id)
     }
   }
 
-  /**
-   * A place on screen that shows the live of `sharerId`, `height` device
-   * pixels tall. A place with no size shows nothing and does not count: zero
-   * is what is asked for a window that shows nothing at all.
-   */
   setBox(key: string, sharerId: string, height: number): void {
     if (this.disposed) return
     if (!(height > 0)) {
@@ -118,14 +88,12 @@ export class LiveViewReporter {
     this.reconsider(before.sharerId)
   }
 
-  /** Whether the window of the app shows anything (false while minimized or in the tray). */
   setWindowVisible(visible: boolean): void {
     if (this.disposed || this.visible === visible) return
     this.visible = visible
     for (const id of this.sharers) this.reconsider(id)
   }
 
-  /** The call with a sharer connected: what was asked before went to a call that is gone. */
   callConnected(sharerId: string): void {
     if (this.disposed || !this.sharers.has(sharerId)) return
     this.markDirty(sharerId)
@@ -136,7 +104,6 @@ export class LiveViewReporter {
     this.disposed = true
   }
 
-  /** Back to the start: nobody live, nothing watched, nothing on screen, no timer left. */
   reset(): void {
     if (this.flushTimer) clearTimeout(this.flushTimer)
     if (this.renewTimer) clearInterval(this.renewTimer)
@@ -163,7 +130,6 @@ export class LiveViewReporter {
     return { watch: true, h: tallest }
   }
 
-  /** Something that decides what is asked of `sharerId` changed. */
   private reconsider(sharerId: string): void {
     if (!this.sharers.has(sharerId)) return
     const want = this.wanted(sharerId)
@@ -177,7 +143,6 @@ export class LiveViewReporter {
       this.cancelShrink(sharerId)
       this.markDirty(sharerId)
     } else if (rank(want.h) < rank(sent.h)) {
-      // Counted from the first moment it got smaller, not from each resize after.
       if (this.shrinkTimers.has(sharerId)) return
       const timer = setTimeout(() => {
         this.shrinkTimers.delete(sharerId)
@@ -212,7 +177,6 @@ export class LiveViewReporter {
     this.dirty.clear()
     for (const sharerId of ids) {
       if (!this.sharers.has(sharerId)) continue
-      // While a smaller size waits its turn, the size in force is the one sent before.
       const waiting = this.shrinkTimers.has(sharerId) ? this.sent.get(sharerId) : undefined
       const ask = waiting ?? this.wanted(sharerId)
       this.sent.set(sharerId, ask)

@@ -1,21 +1,10 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
 import { buildWorkletSource, getRnnoiseGlueSource, getWasmBytes } from '../media/RnnoiseProcessor'
 
-/**
- * Runs the audio-thread code exactly as it ships: the same text that goes
- * into the worklet Blob (shim + Emscripten loader + processor) is evaluated
- * here against a minimal AudioWorkletGlobalScope.
- *
- * Most cases swap the WASM module for a fake "denoiser" so the framing can
- * be checked sample by sample; the last block runs the real RNNoise binary.
- */
-
 const QUANTUM = 128
 const FRAME = 480
 const SAMPLE_RATE = 48000
-/** Input-to-output delay of the denoised path, in samples. */
 const LATENCY = 448
-/** By this sample the denoised path has fully taken over from the raw one. */
 const SETTLED = 1024
 
 const g = globalThis as any
@@ -26,7 +15,6 @@ let nextPort: any
 
 type FrameFn = (input: Float32Array, output: Float32Array, frameIndex: number) => number
 
-/** A stand-in for the WASM module: `processFrame` is the whole "network". */
 function fakeModule(processFrame: FrameFn) {
   const HEAPF32 = new Float32Array(4096)
   let nextPtr = 64
@@ -83,7 +71,6 @@ async function createReadyProcessor(factory: unknown) {
   return created
 }
 
-/** Feed `input` through the processor one render quantum at a time. */
 function render(proc: any, input: Float32Array): Float32Array {
   const out = new Float32Array(input.length)
   for (let offset = 0; offset < input.length; offset += QUANTUM) {
@@ -97,7 +84,6 @@ function render(proc: any, input: Float32Array): Float32Array {
 
 const constant = (samples: number, value: number) => new Float32Array(samples).fill(value)
 
-/** Every value is k/1024, so the trip through 16-bit PCM scale is exact. */
 function pattern(samples: number): Float32Array {
   const x = new Float32Array(samples)
   for (let n = 0; n < samples; n++) x[n] = (((n * 7919) % 2001) - 1000) / 1024
@@ -110,7 +96,6 @@ function rms(samples: Float32Array): number {
   return Math.sqrt(sum / samples.length)
 }
 
-/** Deterministic white noise in [-amplitude, amplitude]. */
 function whiteNoise(samples: number, amplitude: number, seed = 1234): Float32Array {
   let state = seed >>> 0
   const out = new Float32Array(samples)
@@ -124,11 +109,6 @@ function whiteNoise(samples: number, amplitude: number, seed = 1234): Float32Arr
   return out
 }
 
-/**
- * Steady low-frequency rumble (a fan, an air conditioner): white noise
- * through a one-pole low-pass. This is the kind of noise the network was
- * trained on; flat synthetic white noise is not and is barely attenuated.
- */
 function fanNoise(samples: number, amplitude: number): Float32Array {
   const white = whiteNoise(samples, 1)
   const out = new Float32Array(samples)
@@ -152,7 +132,6 @@ beforeAll(() => {
   }
   g.sampleRate = SAMPLE_RATE
   Object.defineProperty(g, 'currentTime', { configurable: true, get: () => clock.time })
-  // eslint-disable-next-line @typescript-eslint/no-implied-eval
   new Function(buildWorkletSource('rnnoise-worklet-under-test').join(''))()
   realFactory = g.createRNNWasmModule
 })
@@ -270,14 +249,13 @@ describe('RNNoise worklet', () => {
 
   describe('voice activity reports', () => {
     it('reports every 5 frames, averaging all of them', async () => {
-      // Frames 0-4 say 0.2, frames 5-9 say 0.8, and so on.
       const { factory } = fakeModule((input, output, frame) => {
         output.set(input)
         return frame % 10 < 5 ? 0.2 : 0.8
       })
       const { proc, ofType } = await createReadyProcessor(factory)
 
-      render(proc, constant(FRAME * 100, 0.1)) // 100 frames = 1 second
+      render(proc, constant(FRAME * 100, 0.1))
 
       const reports = ofType('vad').map((m) => m.probability)
       expect(reports).toHaveLength(20)
@@ -297,7 +275,6 @@ describe('RNNoise worklet', () => {
 
       const reports = ofType('vad').map((m) => m.probability)
       expect(reports.length).toBeGreaterThan(0)
-      // NaN counts as 0 and 7 is clamped to 1: three NaN frames, two clamped.
       expect(reports[0]).toBeCloseTo(0.4, 6)
     })
   })
@@ -418,9 +395,7 @@ describe('RNNoise worklet', () => {
 
       const output = render(proc, input)
 
-      // The user is never muted by the failure...
       expect(Array.from(output)).toEqual(Array.from(input))
-      // ...and the main thread is told, once, so it can swap engines.
       const errors = ofType('error')
       expect(errors).toHaveLength(1)
       expect(errors[0].fatal).toBe(true)
@@ -479,10 +454,8 @@ describe('RNNoise worklet', () => {
 
       expect(glue).toContain('createRNNWasmModuleSync')
       expect(glue).toContain('_rnnoise_process_frame')
-      // Neither a worklet Blob built from text nor `new Function` can take these.
       expect(glue).not.toContain('import.meta')
       expect(glue).not.toMatch(/export\s+default/)
-      // The binary travels separately, as bytes: it must not be parsed as text.
       expect(glue.length).toBeLessThan(50_000)
       expect(buildWorkletSource('rnnoise-worklet-size').join('').length).toBeLessThan(100_000)
     })
@@ -500,8 +473,6 @@ describe('RNNoise worklet', () => {
 
       const output = render(proc, input)
 
-      // Judge the last second, after the network has adapted to the noise.
-      // Measured: about -99 dB; the bound leaves room for a rebuilt binary.
       const tailIn = input.subarray(SAMPLE_RATE * 2)
       const tailOut = output.subarray(SAMPLE_RATE * 2)
       const attenuationDb = 20 * Math.log10(rms(tailOut) / rms(tailIn))
@@ -519,7 +490,6 @@ describe('RNNoise worklet', () => {
 
       const output = render(proc, input)
 
-      // Measured in the third second: about -83 dB with 0.2, -4 dB with 0.1.
       const attenuationDb =
         20 * Math.log10(rms(output.subarray(SAMPLE_RATE * 2)) / rms(input.subarray(SAMPLE_RATE * 2)))
       expect(attenuationDb).toBeLessThan(-30)

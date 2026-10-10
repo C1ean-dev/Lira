@@ -4,22 +4,13 @@ import { isAndroid } from '../utils/platform'
 
 export type UpdateStatus = 'idle' | 'checking' | 'downloading' | 'ready' | 'installing' | 'error'
 
-/** Feedback for a check the user asked for by clicking the version badge. */
 export type ManualCheckState = 'checking' | 'up-to-date' | 'failed' | null
 
-/** How often an open app asks GitHub for a new release. */
 export const UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000
-/**
- * When the user is looking (window focused, back in the lobby), a check
- * older than this is redone. GitHub allows 60 anonymous requests per hour
- * per IP; this keeps one app well under that.
- */
 export const UPDATE_STALE_AFTER_MS = 10 * 60 * 1000
-/** Waits after a check that could not reach GitHub, before the normal pace resumes. */
 export const UPDATE_RETRY_DELAYS_MS = [60 * 1000, 2 * 60 * 1000, 5 * 60 * 1000]
 export const MANUAL_CHECK_FEEDBACK_MS = 4000
 
-/** What the version badge shows: the version, or the outcome of a manual check. */
 export function versionBadgeLabel(manualCheck: ManualCheckState, version: string): string {
   if (manualCheck === 'checking') return 'Verificando...'
   if (manualCheck === 'up-to-date') return 'Atualizado'
@@ -33,24 +24,19 @@ export interface UpdateStore {
   progress: UpdateProgress
   error: string | null
   isUpdateScreenOpen: boolean
-  /** When the last check finished, whether it reached GitHub or not. */
   lastCheckAt: number | null
   lastCheckFailed: boolean
   consecutiveCheckFailures: number
   manualCheck: ManualCheckState
 
-  // State setters
   setUpdateInfo: (info: UpdateInfo | null) => void
   setStatus: (status: UpdateStatus) => void
   setProgress: (progress: UpdateProgress) => void
   setError: (error: string | null) => void
   setIsUpdateScreenOpen: (open: boolean) => void
 
-  // Flows
   checkForUpdatesAndDownload: (inLobbyGetter?: () => boolean) => Promise<void>
-  /** Check only if the last one is older than `maxAgeMs` (or its retry wait is over). */
   checkIfDue: (maxAgeMs?: number) => Promise<void>
-  /** Check now, on the user's request, and report the outcome in `manualCheck`. */
   checkNow: () => Promise<void>
   applyUpdate: () => Promise<boolean>
   startInteractiveUpdate: () => Promise<void>
@@ -58,7 +44,6 @@ export interface UpdateStore {
 
 let unsubProgress: (() => void) | null = null
 let unsubDownloaded: (() => void) | null = null
-/** The check in flight, shared by everyone who asks while it runs. */
 let checkInFlight: Promise<void> | null = null
 let manualFeedbackTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -93,9 +78,6 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
       try {
         const info = await UpdateService.checkForUpdates()
         if (!info || info.checkFailed) {
-          // GitHub was not reached: this says nothing about updates. Keep what
-          // was known (an update found earlier, a failed download) so the
-          // update button does not vanish, and let checkIfDue retry soon.
           set({
             status: known.status === 'checking' ? 'idle' : known.status,
             error: known.error,
@@ -120,7 +102,6 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
           return
         }
 
-        // Check if update was already downloaded for this specific version
         const alreadyDownloaded = await UpdateService.isUpdateDownloaded(info.latestVersion)
         if (alreadyDownloaded) {
           set({
@@ -130,7 +111,6 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
           return
         }
 
-        // Automatically download in background when detected (silent)
         set({
           status: 'downloading',
           progress: { percent: 0, downloaded: 0, total: 0 },
@@ -190,8 +170,6 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
     if (checkInFlight) return checkInFlight
     const { lastCheckAt, lastCheckFailed, consecutiveCheckFailures } = get()
     if (lastCheckAt !== null) {
-      // After a failure the retry schedule decides, not the caller: a
-      // focused window must not hammer GitHub while it is unreachable.
       const wait = lastCheckFailed
         ? UPDATE_RETRY_DELAYS_MS[consecutiveCheckFailures - 1] ?? UPDATE_CHECK_INTERVAL_MS
         : maxAgeMs
@@ -209,7 +187,6 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
     await get().checkForUpdatesAndDownload()
 
     const { lastCheckFailed, updateInfo } = get()
-    // An update that was found speaks for itself: the update button appears.
     const outcome: ManualCheckState = lastCheckFailed
       ? 'failed'
       : updateInfo?.hasUpdate
@@ -270,7 +247,6 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
       }
     }
 
-    // If update installer is not yet downloaded locally, download it first
     const isDownloaded = await UpdateService.isUpdateDownloaded(targetVer)
     if (!isDownloaded) {
       set({ status: 'downloading', isUpdateScreenOpen: true, error: null })
@@ -286,7 +262,6 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
 
     set({ status: 'installing', isUpdateScreenOpen: true, error: null })
     try {
-      // Keep UI visible for a brief moment so user sees the progress screen before app closes
       await new Promise((r) => setTimeout(r, 1200))
       const success = await UpdateService.applyUpdate(info?.releaseUrl, targetVer)
       if (!success) {
@@ -323,7 +298,6 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
     if (currentStatus === 'ready') {
       await get().applyUpdate()
     } else if (currentStatus === 'downloading') {
-      // Screen is already opened with progress bar; will auto-apply when finished
     } else if (info?.hasUpdate) {
       await get().checkForUpdatesAndDownload()
       if (get().status === 'ready' && get().status !== 'installing') {

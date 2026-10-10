@@ -3,11 +3,6 @@ import { appTrail } from '../utils/breadcrumbs'
 import { useGameStore } from '../store/useGameStore'
 import { useMediaStore } from '../store/useMediaStore'
 
-/**
- * The transitions of the stores that matter to read an error: they enter the
- * trail (and logs/call-debug-<day>.log) wherever the change came from.
- */
-
 const trail = () => appTrail.list().map((crumb) => [`${crumb.cat}/${crumb.event}`, crumb.data])
 const player = (id: string) => ({ id, name: id, x: 0, y: 0, direction: 'down', isMoving: false }) as never
 

@@ -1,40 +1,13 @@
 import zlib from 'zlib'
 
-// Lossless PNG re-encoder for the images kept in src/data/nativeAssets.json.
-//
-// The canvas writes every picture as 8-bit RGBA with no filtering, and most of the
-// app's pictures are pixel art with a handful of colours. Re-encoded as an indexed
-// PNG (or, past 256 colours, with the best filter chosen for each row) they come out
-// about a third smaller, with exactly the same pixels.
-//
-// - Only plain 8-bit RGBA, non-interlaced, non-animated PNGs are touched. Anything
-//   else, anything damaged (bad CRC, no IEND, bytes after it, bad zlib data) and
-//   anything too big is returned as it came.
-// - Chunks that change how colours are shown (sRGB, iCCP, gAMA, cHRM, cICP) are
-//   copied as they are; metadata that does not change what is drawn (pHYs, text,
-//   time...) is dropped.
-// - Every image it has looked at gets an empty private chunk, so the next save skips
-//   it without decoding anything. That keeps the writes at app start and after each
-//   edit cheap; only a new image costs time.
-// - It is synchronous and runs in the main process, hence the limit on the size.
-
 const SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
 const DATA_URL_PREFIX = 'data:image/png;base64,'
 
-/**
- * Private, empty ancillary chunk written on every PNG this module has looked at.
- * (Lowercase first two letters: ancillary and private; uppercase third: reserved;
- * lowercase fourth: safe to copy. Decoders that do not know it skip it.)
- */
 export const OPTIMIZED_CHUNK = 'liRa'
 
-/** Bigger images are left alone. */
 export const MAX_PIXELS = 2000000
 
 const COLOUR_CHUNKS = new Set(['sRGB', 'iCCP', 'gAMA', 'cHRM', 'cICP'])
-
-// ---------------------------------------------------------------------------
-// chunks
 
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256)
@@ -64,11 +37,9 @@ function makeChunk(type: string, data: Buffer = Buffer.alloc(0)): Buffer {
 interface Chunk {
   type: string
   data: Buffer
-  /** The whole chunk as it is in the file: length, type, data, CRC. */
   raw: Buffer
 }
 
-/** The chunks of a PNG, or null unless it is well formed: signature, CRCs, IEND last, nothing after it. */
 function parseChunks(png: Buffer): Chunk[] | null {
   if (png.length < SIGNATURE.length + 12 || !png.subarray(0, SIGNATURE.length).equals(SIGNATURE)) return null
   const chunks: Chunk[] = []
@@ -85,9 +56,6 @@ function parseChunks(png: Buffer): Chunk[] | null {
   return null
 }
 
-// ---------------------------------------------------------------------------
-// pixels
-
 function paeth(a: number, b: number, c: number): number {
   const p = a + b - c
   const pa = Math.abs(p - a)
@@ -96,7 +64,6 @@ function paeth(a: number, b: number, c: number): number {
   return pa <= pb && pa <= pc ? a : pb <= pc ? b : c
 }
 
-/** What PNG filter `type` predicts for a byte, given the one to its left (a), above (b) and above-left (c). */
 function predict(type: number, a: number, b: number, c: number): number {
   switch (type) {
     case 1:
@@ -112,7 +79,6 @@ function predict(type: number, a: number, b: number, c: number): number {
   }
 }
 
-/** The RGBA pixels of 8-bit RGBA image data, or null if the data does not have the size it should. */
 function decodeRgba(compressed: Buffer, width: number, height: number): Buffer | null {
   const stride = width * 4
   const expected = height * (stride + 1)
@@ -140,18 +106,13 @@ function decodeRgba(compressed: Buffer, width: number, height: number): Buffer |
   return pixels
 }
 
-// ---------------------------------------------------------------------------
-// encoders
-
 interface Indexed {
   bitDepth: number
   palette: Buffer
-  /** Alpha of the first entries of the palette, as long as it is not opaque; null when all are. */
   transparency: Buffer | null
   scanlines: Buffer
 }
 
-/** The image as palette indices, or null if it has more than 256 different colours. */
 function indexColours(pixels: Buffer, width: number, height: number): Indexed | null {
   const seen = new Set<number>()
   for (let i = 0; i < width * height; i++) {
@@ -161,7 +122,6 @@ function indexColours(pixels: Buffer, width: number, height: number): Indexed | 
       seen.add(colour)
     }
   }
-  // Translucent entries first, so the transparency table stays short.
   const colours = [...seen].sort((a, b) => (a & 255) - (b & 255))
   const indexOf = new Map(colours.map((colour, i) => [colour, i]))
 
@@ -196,7 +156,6 @@ function indexColours(pixels: Buffer, width: number, height: number): Indexed | 
   return { bitDepth, palette, transparency, scanlines }
 }
 
-/** 8-bit RGBA scanlines, each with the filter that leaves the smallest numbers (the usual heuristic). */
 function filterTruecolour(pixels: Buffer, width: number, height: number): Buffer {
   const stride = width * 4
   const out = Buffer.alloc(height * (stride + 1))
@@ -238,9 +197,6 @@ function assemble(header: Buffer, colourChunks: Buffer[], paletteChunks: Buffer[
   ])
 }
 
-// ---------------------------------------------------------------------------
-
-/** The bytes of the optimized image, or null when the image should be kept exactly as it is. */
 function optimizePng(png: Buffer): Buffer | null {
   const chunks = parseChunks(png)
   if (!chunks) return null
@@ -275,7 +231,6 @@ function optimizePng(png: Buffer): Buffer | null {
     candidate = assemble(ihdr.data, colourChunks, [], filterTruecolour(pixels, width, height))
   }
 
-  // The image as it was, plus the marker: what is left when there is nothing to gain.
   const afterHeader = SIGNATURE.length + ihdr.raw.length
   const keep = Buffer.concat([png.subarray(0, afterHeader), makeChunk(OPTIMIZED_CHUNK), png.subarray(afterHeader)])
   return candidate.length < keep.length ? candidate : keep
@@ -285,10 +240,6 @@ const MEMO_MAX_CHARS = 32 * 1024 * 1024
 const memo = new Map<string, string>()
 let memoChars = 0
 
-/**
- * The same picture in fewer bytes, as a data URL; the input itself when it is not a PNG
- * this module can re-encode, or when it already carries the marker.
- */
 export function optimizePngDataUrl(dataUrl: string): string {
   if (!dataUrl.startsWith(DATA_URL_PREFIX)) return dataUrl
   const known = memo.get(dataUrl)
@@ -299,10 +250,8 @@ export function optimizePngDataUrl(dataUrl: string): string {
     const optimized = optimizePng(Buffer.from(dataUrl.slice(DATA_URL_PREFIX.length), 'base64'))
     if (optimized) result = DATA_URL_PREFIX + optimized.toString('base64')
   } catch {
-    // Anything unexpected: the image stays as it was.
   }
 
-  // The renderer sends the same unoptimized pictures again on every save; remember the answer.
   if (memoChars > MEMO_MAX_CHARS) {
     memo.clear()
     memoChars = 0

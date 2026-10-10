@@ -6,7 +6,6 @@ import { CATEGORIES } from '../components/avatar-customizer/CategoryTabs'
 
 describe('Profile Picture & Avatar Fallback System', () => {
   beforeEach(() => {
-    // Reset localPlayer
     useGameStore.setState({
       localPlayer: {
         id: 'local-test',
@@ -70,7 +69,6 @@ describe('Profile Picture & Avatar Fallback System', () => {
   })
 
   it('setRemotePlayer synchronizes remote player profilePicture into friendProfiles', () => {
-    // Setup existing friend profile
     const friendId = 'peer-friend-1'
     useGameStore.setState({
       friends: [friendId],
@@ -84,7 +82,6 @@ describe('Profile Picture & Avatar Fallback System', () => {
       },
     })
 
-    // Remote player joins or updates with custom profile picture
     const customPic = 'data:image/webp;base64,FRIEND_CUSTOM_AVATAR'
     useGameStore.getState().setRemotePlayer({
       id: friendId,
@@ -99,11 +96,9 @@ describe('Profile Picture & Avatar Fallback System', () => {
       lastUpdated: Date.now(),
     })
 
-    // Check remotePlayers
     const remote = useGameStore.getState().remotePlayers[friendId]
     expect(remote.profilePicture).toBe(customPic)
 
-    // Check friendProfiles sync
     const friendProfile = useGameStore.getState().friendProfiles[friendId]
     expect(friendProfile).toBeDefined()
     expect(friendProfile.profilePicture).toBe(customPic)

@@ -12,7 +12,7 @@ describe('CameraManager - Zoom Minimum and Return to Immersive Mode', () => {
     camera.zoom = 1.0
 
     const mockWheelEvent = {
-      deltaY: 100, // zoom out
+      deltaY: 100,
       preventDefault: () => {},
     } as unknown as WheelEvent
 
@@ -26,7 +26,7 @@ describe('CameraManager - Zoom Minimum and Return to Immersive Mode', () => {
     camera.zoom = 0.5
 
     const mockWheelEvent = {
-      deltaY: 100, // zoom out
+      deltaY: 100,
       preventDefault: () => {},
     } as unknown as WheelEvent
 
@@ -41,7 +41,7 @@ describe('CameraManager - Zoom Minimum and Return to Immersive Mode', () => {
     useGameStore.setState({ mapViewMode: 'simplified', isManualSimplified: false })
 
     const mockWheelEvent = {
-      deltaY: -100, // zoom in
+      deltaY: -100,
       preventDefault: () => {},
     } as unknown as WheelEvent
 
@@ -54,7 +54,7 @@ describe('CameraManager - Zoom Minimum and Return to Immersive Mode', () => {
     useGameStore.setState({ mapViewMode: 'simplified', isManualSimplified: true })
 
     const mockWheelEvent = {
-      deltaY: -100, // zoom in
+      deltaY: -100,
       preventDefault: () => {},
     } as unknown as WheelEvent
 

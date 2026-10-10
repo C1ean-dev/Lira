@@ -31,16 +31,13 @@ export const SimplifiedMapView: React.FC = () => {
   const [isPanning, setIsPanning] = useState(false)
   const panStartRef = useRef({ x: 0, y: 0 })
 
-  // Map dimensions from real space data
   const mapWidth = Math.max(20, mapData.width || 70)
   const mapHeight = Math.max(15, mapData.height || 45)
 
-  // Real user-created zones ONLY
   const zones: PrivateZone[] = useMemo(() => {
     return mapData.zones || []
   }, [mapData.zones])
 
-  // Get zone icon based on name
   const getZoneIcon = (name: string) => {
     const n = name.toLowerCase()
     if (n.includes('team') || n.includes('reuni') || n.includes('central')) return '👥'
@@ -51,7 +48,6 @@ export const SimplifiedMapView: React.FC = () => {
     return '🚪'
   }
 
-  // Handle clicking on a room/zone to move into it
   const handleRoomClick = (zone: PrivateZone, e: React.MouseEvent) => {
     e.stopPropagation()
 
@@ -87,7 +83,6 @@ export const SimplifiedMapView: React.FC = () => {
     useMapStore.getState().checkAndUnlockEmptyZones()
   }
 
-  // Click on Corredor Geral floor to move freely
   const handleFloorClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
     const clickX = (e.clientX - rect.left) / rect.width
@@ -96,7 +91,6 @@ export const SimplifiedMapView: React.FC = () => {
     const targetX = Math.max(1, Math.min(mapWidth - 1, Math.floor(clickX * mapWidth)))
     const targetY = Math.max(1, Math.min(mapHeight - 1, Math.floor(clickY * mapHeight)))
 
-    // Detect if clicked inside an existing zone
     const targetZone = zones.find(
       (z) =>
         targetX >= z.x &&
@@ -113,7 +107,6 @@ export const SimplifiedMapView: React.FC = () => {
     const newZoneId = targetZone ? targetZone.id : null
     const prevZoneId = localPlayer.currentZoneId
 
-    // If leaving a private zone into general corridor, close screen share and media
     if (prevZoneId && prevZoneId !== newZoneId) {
       if (useMediaStore.getState().isScreenSharing) {
         MediaManager.getInstance().stopScreenShare()
@@ -137,7 +130,6 @@ export const SimplifiedMapView: React.FC = () => {
     useMapStore.getState().checkAndUnlockEmptyZones()
   }
 
-  // Mouse pan handlers
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 0 && e.target === e.currentTarget) {
       setIsPanning(true)
@@ -176,7 +168,6 @@ export const SimplifiedMapView: React.FC = () => {
         backgroundImage: `radial-gradient(circle at 50% 50%, #0d383c 0%, #061c1f 100%)`,
       }}
     >
-      {/* Top Banner Indicator */}
       <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-[#0c2428]/90 backdrop-blur-md border border-[#1a4a4f] text-teal-200 px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 text-xs font-semibold pointer-events-none z-20">
         <Zap className="w-3.5 h-3.5 text-emerald-400" />
         <span>Modo Simplificado (Baixo Consumo)</span>
@@ -185,7 +176,6 @@ export const SimplifiedMapView: React.FC = () => {
         </span>
       </div>
 
-      {/* Schematic Map Stage (Corredor Geral Area) */}
       <div
         onClick={handleFloorClick}
         className="relative transition-transform duration-75 rounded-3xl bg-[#0e2a2e]/60 border border-[#194c52]/70 shadow-2xl overflow-hidden"
@@ -197,7 +187,6 @@ export const SimplifiedMapView: React.FC = () => {
           transformOrigin: 'center center',
         }}
       >
-        {/* Architectural Floor Grid (Corredor Geral Blueprint) */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
@@ -206,12 +195,10 @@ export const SimplifiedMapView: React.FC = () => {
           }}
         />
 
-        {/* Corredor Geral Label Watermark */}
         <div className="absolute top-3 left-3 text-[11px] font-bold text-teal-400/50 uppercase tracking-widest pointer-events-none flex items-center gap-1.5">
           <span>🏢 Corredor Geral ({mapWidth}x{mapHeight})</span>
         </div>
 
-        {/* User-Created Rooms / Zones Only */}
         {zones.map((zone) => {
           const leftPercent = (zone.x / mapWidth) * 100
           const topPercent = (zone.y / mapHeight) * 100
@@ -246,7 +233,6 @@ export const SimplifiedMapView: React.FC = () => {
                 height: `${heightPercent}%`,
               }}
             >
-              {/* Room Badge Header */}
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#0d121c]/80 border border-[#232c3d] text-slate-200 text-xs font-bold shadow-sm pointer-events-none max-w-[90%] truncate">
                 {zone.isLocked ? (
                   <Lock className="w-3 h-3 text-rose-400 shrink-0" />
@@ -269,9 +255,7 @@ export const SimplifiedMapView: React.FC = () => {
                 )}
               </div>
 
-              {/* Avatars inside this Room */}
               <div className="flex items-center gap-2 mt-auto flex-wrap justify-center pointer-events-none pb-1">
-                {/* Local Player Speech Bubble & Avatar if inside */}
                 {isLocalInside && (
                   <div className="flex flex-col items-center animate-in zoom-in-90 duration-150">
                     <div className="flex items-center gap-1.5 bg-[#5b50e6] text-white px-2 py-0.5 rounded-lg shadow-md border border-[#7268f2] text-[11px] font-bold">
@@ -291,7 +275,6 @@ export const SimplifiedMapView: React.FC = () => {
                   </div>
                 )}
 
-                {/* Remote Players inside this Room */}
                 {playersInZone.map((remote) => (
                   <div key={remote.id} className="flex flex-col items-center">
                     <div className="flex items-center gap-1 bg-[#1e2738] text-slate-200 px-1.5 py-0.5 rounded-lg border border-[#324058] text-[10px] font-medium shadow-sm">
@@ -309,7 +292,6 @@ export const SimplifiedMapView: React.FC = () => {
                 ))}
               </div>
 
-              {/* Active Room Badge */}
               {isLocalInside && (
                 <div className="absolute -top-2.5 -right-2.5 bg-emerald-500 text-slate-950 font-extrabold text-[9px] px-2 py-0.5 rounded-full shadow-lg border border-emerald-300 flex items-center gap-1">
                   <div className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />
@@ -317,7 +299,6 @@ export const SimplifiedMapView: React.FC = () => {
                 </div>
               )}
 
-              {/* Room Entrance Door Threshold Marker */}
               <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1/3 max-w-[48px] h-1.5 bg-[#1c1917] border-t border-indigo-400/50 rounded-t-sm flex items-center justify-center pointer-events-none shadow-sm">
                 <div className="w-2.5 h-0.5 bg-amber-400/70 rounded-full" />
               </div>
@@ -325,7 +306,6 @@ export const SimplifiedMapView: React.FC = () => {
           )
         })}
 
-        {/* Local Player Marker in Corredor Geral (Outside any zone) */}
         {!localPlayer.currentZoneId && (
           <div
             className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none z-30 transition-all duration-100"
@@ -334,7 +314,6 @@ export const SimplifiedMapView: React.FC = () => {
               top: `${(localPlayer.y / mapHeight) * 100}%`,
             }}
           >
-            {/* Speech Bubble Tag */}
             <div className="flex items-center gap-1.5 bg-[#5b50e6] text-white px-2.5 py-1 rounded-xl shadow-xl border border-[#7268f2] text-xs font-bold">
               <div className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[9px]">
                 {localPlayer.name.charAt(0).toUpperCase()}
@@ -342,9 +321,7 @@ export const SimplifiedMapView: React.FC = () => {
               <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm" />
               <span className="truncate max-w-[90px]">{localPlayer.name}</span>
             </div>
-            {/* Pointer Tail */}
             <div className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[5px] border-t-[#5b50e6]" />
-            {/* Avatar Circle */}
             <div
               className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white border-2 border-white shadow-lg mt-0.5 ring-4 ring-[#5b50e6]/30"
               style={{ backgroundColor: localPlayer.avatar?.shirtColor || '#4c6ef5' }}
@@ -354,7 +331,6 @@ export const SimplifiedMapView: React.FC = () => {
           </div>
         )}
 
-        {/* Remote Players Markers in Corredor Geral */}
         {allRemotePlayers
           .filter((p) => !p.currentZoneId)
           .map((remote) => (

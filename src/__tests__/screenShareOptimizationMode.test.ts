@@ -93,10 +93,8 @@ describe('Screen Share Optimization Mode (Qualidade vs Fluidez)', () => {
       applyScreenCaps(fakeSender)
       expect(appliedParams?.degradationPreference).toBe('maintain-resolution')
 
-      // Fast-forward past SCREEN_START_HOLD_MS (4000ms)
       await vi.advanceTimersByTimeAsync(5000)
 
-      // When setScreenDegradationPreference is 'maintain-resolution', it stays maintain-resolution!
       expect(appliedParams?.degradationPreference).toBe('maintain-resolution')
     } finally {
       endScreenShare()

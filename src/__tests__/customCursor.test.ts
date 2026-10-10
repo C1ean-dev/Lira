@@ -2,17 +2,9 @@ import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
 
-// The app draws its own mouse cursor: a faceted arrow, the arrow with a ring at its tip (link), the
-// arrow with a clock (busy) and an I-beam (text), in src/assets/cursors/*.svg, declared once as CSS
-// variables in src/styles/cursors.css. Tailwind's cursor-default / cursor-pointer / cursor-wait /
-// cursor-text and the base rules read those variables. These tests keep the pieces wired together, and
-// keep the images something the browser will actually use as a cursor.
-
 const read = (relative: string) => fs.readFileSync(fileURLToPath(new URL(`../../${relative}`, import.meta.url)), 'utf-8')
 const css = read('src/styles/cursors.css')
 
-// Chromium draws a cursor image bigger than 32x32 only while it stays inside the page, and falls back
-// to the keyword at the edge of the window; the cursors have to fit in 32x32 to always show.
 const MAX_CURSOR_SIZE = 32
 
 const declaration = (name: 'default' | 'pointer' | 'wait' | 'text') => {
@@ -85,8 +77,6 @@ describe('where the cursors are used', () => {
     expect(selectors).toMatch(/\btextarea\b/)
     expect(selectors).toContain('[contenteditable]')
     expect(selectors).toContain('.select-text')
-    // the inputs are picked by what they are not, so text, search, email, password, number... and an
-    // input with no type at all get it
     const excluded = selectors.match(/input:where\(:not\(([^)]*)\)\)/)?.[1] ?? ''
     for (const type of ['checkbox', 'radio', 'range', 'color', 'file', 'button', 'submit', 'reset', 'image', 'hidden']) {
       expect(excluded).toContain(`[type='${type}']`)

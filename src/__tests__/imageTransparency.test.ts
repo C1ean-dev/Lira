@@ -20,7 +20,6 @@ describe('Image Transparency & Background Detection', () => {
 
   it('detects background color when canvas document is available', () => {
     if (typeof document === 'undefined') {
-      // Node environment without DOM canvas: gracefully returns null
       const fakeImg = { naturalWidth: 10, naturalHeight: 10, width: 10, height: 10 } as any
       expect(detectBackgroundColor(fakeImg)).toBeNull()
       return
@@ -31,11 +30,9 @@ describe('Image Transparency & Background Detection', () => {
     canvas.height = 32
     const ctx = canvas.getContext('2d')!
 
-    // Fill background with magenta (#ff00ff)
     ctx.fillStyle = '#ff00ff'
     ctx.fillRect(0, 0, 32, 32)
 
-    // Put a character in the middle with blue
     ctx.fillStyle = '#0000ff'
     ctx.fillRect(10, 10, 12, 12)
 

@@ -62,7 +62,6 @@ interface MapStore {
   mapData: MapData
   setMapData: (map: MapData) => void
 
-  // Editor State
   isEditorOpen: boolean
   toggleEditor: () => void
   setEditorOpen: (open: boolean) => void
@@ -71,7 +70,6 @@ interface MapStore {
   eraserTarget: EraserTarget
   setEraserTarget: (target: EraserTarget) => void
 
-  // Selected brush items
   selectedFloor: FloorType
   setSelectedFloor: (floor: FloorType) => void
   selectedWall: WallType
@@ -82,7 +80,6 @@ interface MapStore {
   setPlacementDirection: (dir: Direction) => void
   rotatePlacementDirection: () => void
 
-  // Interactive Furniture Selection & Context Actions
   selectedPlacedFurnitureId: string | null
   setSelectedPlacedFurnitureId: (id: string | null) => void
   isMovingFurniture: boolean
@@ -90,32 +87,11 @@ interface MapStore {
   updateFurniture: (id: string, partial: Partial<PlacedFurniture>) => void
   removeFurnitureById: (id: string) => void
 
-  // Zone Draft (for click-and-drag drawing)
   zoneDraft: { name: string; color: string; hasWalls: boolean; wallType: WallType | string }
   setZoneDraft: (draft: { name: string; color: string; hasWalls: boolean; wallType: WallType | string }) => void
 
-  // Editing Actions
   setFloorTile: (x: number, y: number, floor: FloorType) => void
-  /**
-   * Find the zone that owns the cell at (x, y), or null if the cell
-   * is not inside any zone. Used by the editor to decide whether a
-   * paint-floor click should fill the whole zone or do nothing.
-   *
-   * The "winner" when zones overlap is the one with the smallest
-   * area (the more specific zone wins) — matches the existing
-   * "furniture" overlap rules in the engine.
-   */
   findZoneAt: (x: number, y: number) => PrivateZone | null
-  /**
-   * Fill the entire footprint of `zoneId` with `floor`. Used by the
-   * paint-floor tool: when the user clicks a cell inside a zone,
-   * the whole zone is repainted with the selected floor in one
-   * operation. Cells outside the zone are left alone.
-   *
-   * If `zoneId` doesn't exist, no-op. The map is saved and a P2P
-   * message is broadcast by the caller (MapViewport) so peers stay
-   * in sync.
-   */
   paintFloorInZone: (zoneId: string, floor: FloorType) => void
   replaceFloorGlobally: (oldFloorId: string, replacementFloorId?: string) => void
   setWallTile: (x: number, y: number, wall: WallType | null) => void
@@ -154,7 +130,6 @@ export const autoSaveCurrentSpace = () => {
 }
 
 export const useMapStore = create<MapStore>((set, get) => ({
-  // Default Map: Loaded from localStorage or Empty Workspace
   mapData: initialMap,
 
   setMapData: (mapData) => {
@@ -265,8 +240,6 @@ export const useMapStore = create<MapStore>((set, get) => ({
 
   findZoneAt: (x, y) => {
     const zones = get().mapData.zones || []
-    // Smallest-area zone wins (matches the furniture overlap
-    // resolution). This matters when zones are nested.
     let best: PrivateZone | null = null
     let bestArea = Number.POSITIVE_INFINITY
     for (const z of zones) {
@@ -285,8 +258,6 @@ export const useMapStore = create<MapStore>((set, get) => ({
     set((state) => {
       const zone = (state.mapData.zones || []).find((z) => z.id === zoneId)
       if (!zone) return state
-      // Clip the zone footprint to the map so we never write past
-      // the map grid. Same convention as drawZone.
       const x0 = Math.max(0, zone.x)
       const y0 = Math.max(0, zone.y)
       const x1 = Math.min(state.mapData.width, zone.x + zone.width)
@@ -417,7 +388,6 @@ export const useMapStore = create<MapStore>((set, get) => ({
     return false
   },
 
-  // Automatically snap and enclose zones with clean walls and smart doorways
   addOrUpdateZone: (zone) =>
     set((state) => {
       const alignedZone = snapAndAlignZone(
@@ -427,7 +397,6 @@ export const useMapStore = create<MapStore>((set, get) => ({
         state.mapData.height
       )
 
-      // Allow touching/shared walls, but forbid interior area intersections
       const hasOverlap = state.mapData.zones.some((z) => {
         if (z.id === alignedZone.id) return false
         const aMaxX = alignedZone.x + alignedZone.width - 1
@@ -480,9 +449,6 @@ export const useMapStore = create<MapStore>((set, get) => ({
       if (!zone) return state
       nextLocked = !zone.isLocked
 
-      // A lock is a snapshot of the people who are already in the room.
-      // Keep both stable profile IDs and names: connection IDs can change
-      // after a reconnect, while older maps may only have names persisted.
       const { localPlayer, remotePlayers } = useGameStore.getState()
       const occupants = [localPlayer, ...Object.values(remotePlayers)].filter(
         (player) => player.id === localPlayer.id || player.currentZoneId === id
@@ -504,8 +470,6 @@ export const useMapStore = create<MapStore>((set, get) => ({
           addUnique(members, player.name)
         })
 
-        // The room/session owner and users explicitly assigned the admin role
-        // remain allowed even when they are not part of the occupant snapshot.
         if (
           localPlayer.isOwner ||
           localPlayer.role === 'owner' ||
@@ -578,11 +542,9 @@ export const useMapStore = create<MapStore>((set, get) => ({
     if (!zone) return true
     if (!zone.isLocked) return true
 
-    // Dynamically authorized via knocking or permanent list
     if (zone.authorizedPeers && zone.authorizedPeers.includes(peerId)) return true
     if (playerName && zone.authorizedPeers && zone.authorizedPeers.includes(playerName)) return true
 
-    // Room admins and members
     if (playerName) {
       if (zone.admins && zone.admins.includes(playerName)) return true
       if (zone.members && zone.members.includes(playerName)) return true
@@ -590,9 +552,6 @@ export const useMapStore = create<MapStore>((set, get) => ({
     if (zone.admins && zone.admins.includes(peerId)) return true
     if (zone.members && zone.members.includes(peerId)) return true
 
-    // The global room owner/admin must never be locked out by an incomplete
-    // or legacy zone permission list. This is intentionally limited to the
-    // local identity being checked, not arbitrary remote IDs.
     const local = useGameStore.getState().localPlayer
     const isLocalAdmin =
       peerId === local.id &&
@@ -671,7 +630,6 @@ export const useMapStore = create<MapStore>((set, get) => ({
       saveMap(updatedMap)
       autoSaveCurrentSpace()
 
-      // If the local player was inside the deleted zone, exit the zone cleanly
       try {
         const local = useGameStore.getState().localPlayer
         if (local && local.currentZoneId === id) {

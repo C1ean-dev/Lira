@@ -33,24 +33,24 @@ export const DEFAULT_AVATAR: AvatarConfig = {
 export const FURNITURE_CATALOG: FurnitureDefinition[] = []
 
 export const ZONE_COLOR_PALETTE = [
-  '#4c6ef5', // Indigo
-  '#20c997', // Teal / Mint
-  '#fab005', // Gold / Amber
-  '#ff6b6b', // Coral / Red
-  '#be4bdb', // Purple / Orchid
-  '#339af0', // Sky Blue
-  '#ff922b', // Orange
-  '#51cf66', // Emerald
-  '#f06595', // Rose / Pink
-  '#845ef7', // Violet
-  '#22b8cf', // Cyan
-  '#94d82d', // Lime
-  '#e8590c', // Rust
-  '#cc5de8', // Magenta
-  '#12b886', // Aquamarine
-  '#e64980', // Ruby
-  '#7048e8', // Deep Violet
-  '#15aabf', // Ocean
+  '#4c6ef5',
+  '#20c997',
+  '#fab005',
+  '#ff6b6b',
+  '#be4bdb',
+  '#339af0',
+  '#ff922b',
+  '#51cf66',
+  '#f06595',
+  '#845ef7',
+  '#22b8cf',
+  '#94d82d',
+  '#e8590c',
+  '#cc5de8',
+  '#12b886',
+  '#e64980',
+  '#7048e8',
+  '#15aabf',
 ]
 
 function hslToHex(h: number, s: number, l: number): string {
@@ -66,9 +66,6 @@ function hslToHex(h: number, s: number, l: number): string {
   return `#${f(0)}${f(8)}${f(4)}`
 }
 
-/**
- * Generate a distinct room identification color that is NOT in use by any existing room.
- */
 export function getNextAvailableZoneColor(existingZones: { color?: string }[] = []): string {
   const usedColors = new Set(
     existingZones
@@ -76,14 +73,12 @@ export function getNextAvailableZoneColor(existingZones: { color?: string }[] = 
       .filter(Boolean)
   )
 
-  // 1. Pick the first preset color not yet taken
   for (const c of ZONE_COLOR_PALETTE) {
     if (!usedColors.has(c.toLowerCase())) {
       return c
     }
   }
 
-  // 2. If all presets are in use, generate a distinct golden-angle HSL hue not in use
   const count = existingZones.length
   for (let i = 0; i < 360; i += 20) {
     const hue = Math.floor((count * 137.508 + i) % 360)
@@ -95,5 +90,4 @@ export function getNextAvailableZoneColor(existingZones: { color?: string }[] = 
 
   return ZONE_COLOR_PALETTE[count % ZONE_COLOR_PALETTE.length]
 }
-
 

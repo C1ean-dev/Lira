@@ -2,9 +2,6 @@ import { PrivateZone } from '../../types/map'
 import { TILE_SIZE } from '../Constants'
 
 export class ZoneRenderer {
-  /**
-   * Draw 2D Private Zone
-   */
   static drawPrivateZone(ctx: CanvasRenderingContext2D, zone: PrivateZone, isCurrent: boolean = false) {
     const px = Math.floor(zone.x * TILE_SIZE)
     const py = Math.floor(zone.y * TILE_SIZE)
@@ -13,7 +10,6 @@ export class ZoneRenderer {
 
     ctx.save()
 
-    // Translucent zone floor tint
     ctx.fillStyle = zone.color
       ? `${zone.color}${isCurrent ? '28' : '10'}`
       : isCurrent
@@ -21,13 +17,11 @@ export class ZoneRenderer {
       : 'rgba(76, 110, 245, 0.07)'
     ctx.fillRect(px, py, w, h)
 
-    // Dashed border line
     ctx.strokeStyle = zone.color || '#4c6ef5'
     ctx.lineWidth = isCurrent ? 2.5 : 1.5
     ctx.setLineDash([6, 4])
     ctx.strokeRect(px + 1, py + 1, w - 2, h - 2)
 
-    // Header badge
     ctx.setLineDash([])
     const label = zone.name.toUpperCase()
     ctx.font = 'bold 9px sans-serif'

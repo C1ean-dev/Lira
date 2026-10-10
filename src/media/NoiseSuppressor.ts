@@ -17,24 +17,18 @@ export class NoiseSuppressor {
   private levelIntervalId: ReturnType<typeof setInterval> | null = null
   private onLevelCallback: ((level: number, gateOpen: boolean, rawRms: number, dynamicThresholdPercent?: number) => void) | null = null
 
-  // Sensitivity & Gate Parameters
   private sensitivityMode: SensitivityMode = 'auto'
   private manualThresholdPercent: number = 20
-  private currentThreshold: number = 0.015 // Current active RMS threshold
-  // Auto mode: learns the room's noise floor; never opens under RMS 0.0045
+  private currentThreshold: number = 0.015
   private autoGate = new AutoGate({ minOpenRms: 0.0045, minCloseRms: 0.0045 * 0.6 })
   private isGateOpen: boolean = false
   private isSuppressionActive: boolean = true
 
-  // Hold Time: keeps the gate open through the natural micro-pauses of speech
   private holdTimeMs: number = 220
   private lastSpeechTime: number = 0
 
   constructor() {}
 
-  /**
-   * Process an input raw microphone MediaStream and return a noise-suppressed stream
-   */
   public processStream(
     inputStream: MediaStream,
     enableSuppression: boolean = true,
@@ -44,7 +38,7 @@ export class NoiseSuppressor {
     onAudioLevel?: (level: number, gateOpen: boolean, rawRms: number, dynamicThresholdPercent?: number) => void
   ): MediaStream {
     try {
-      this.dispose() // Clean up any previous context
+      this.dispose()
 
       const audioTrack = inputStream.getAudioTracks()[0]
       if (!audioTrack) return inputStream
@@ -54,7 +48,6 @@ export class NoiseSuppressor {
       this.manualThresholdPercent = manualThresholdPercent
       this.isSuppressionActive = enableSuppression
 
-      // Create AudioContext
       const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext
       this.audioCtx = new AudioContextClass({ sampleRate: 48000 })
 
@@ -65,30 +58,25 @@ export class NoiseSuppressor {
       this.sourceNode = this.audioCtx.createMediaStreamSource(inputStream)
       this.destination = this.audioCtx.createMediaStreamDestination()
 
-      // 1. Input Gain Node (Microphone software gain, 0% to 200%)
       this.inputGainNode = this.audioCtx.createGain()
       this.inputGainNode.gain.setValueAtTime(initialInputVolume / 100, this.audioCtx.currentTime)
 
-      // 2. Highpass Filter (Cut out fan hum, desk rumble < 90Hz)
       this.highpassFilter = this.audioCtx.createBiquadFilter()
       this.highpassFilter.type = 'highpass'
       this.highpassFilter.frequency.setValueAtTime(90, this.audioCtx.currentTime)
       this.highpassFilter.Q.setValueAtTime(0.7, this.audioCtx.currentTime)
 
-      // 3. High Shelf Filter (Slightly tame harsh high-frequency typing clicks > 6500Hz)
       this.notchFilter = this.audioCtx.createBiquadFilter()
       this.notchFilter.type = 'highshelf'
       this.notchFilter.frequency.setValueAtTime(6500, this.audioCtx.currentTime)
       this.notchFilter.gain.setValueAtTime(-4, this.audioCtx.currentTime)
 
-      // 4. Dynamic Spectral Noise Gate
       this.gateGain = this.audioCtx.createGain()
       const initialGain =
         sensitivityMode === 'manual' && manualThresholdPercent >= 100 ? 0.0 : 1.0
       this.gateGain.gain.setValueAtTime(initialGain, this.audioCtx.currentTime)
       this.isGateOpen = initialGain > 0
 
-      // 5. Dynamics Compressor (Voice Leveler & Peak Limiter)
       this.compressor = this.audioCtx.createDynamicsCompressor()
       this.compressor.threshold.setValueAtTime(-24, this.audioCtx.currentTime)
       this.compressor.knee.setValueAtTime(12, this.audioCtx.currentTime)
@@ -96,17 +84,13 @@ export class NoiseSuppressor {
       this.compressor.attack.setValueAtTime(0.005, this.audioCtx.currentTime)
       this.compressor.release.setValueAtTime(0.18, this.audioCtx.currentTime)
 
-      // 6. Analyser for volume metering and gate control
       this.analyser = this.audioCtx.createAnalyser()
       this.analyser.fftSize = 512
       this.analyser.smoothingTimeConstant = 0.2
 
-      // 7. Test Loopback Gain (for "Testar Microfone" feature)
       this.testGainNode = this.audioCtx.createGain()
-      this.testGainNode.gain.setValueAtTime(0, this.audioCtx.currentTime) // Muted by default
+      this.testGainNode.gain.setValueAtTime(0, this.audioCtx.currentTime)
 
-      // Connect graph:
-      // Source -> InputGain -> Highpass -> Shelf -> GateGain -> Compressor -> Destination
       this.sourceNode.connect(this.inputGainNode)
       this.inputGainNode.connect(this.highpassFilter)
       this.highpassFilter.connect(this.notchFilter)
@@ -114,19 +98,15 @@ export class NoiseSuppressor {
       this.gateGain.connect(this.compressor)
       this.compressor.connect(this.destination)
 
-      // Connect Analyser in parallel after input gain to measure actual adjusted signal
       this.inputGainNode.connect(this.analyser)
 
-      // Connect Test Loopback from Compressor to AudioContext output speakers/headphones
       this.compressor.connect(this.testGainNode)
       this.testGainNode.connect(this.audioCtx.destination)
 
       this.updateCalculatedThreshold()
 
-      // Start Realtime Processing Loop
       this.startGateProcessing()
 
-      // Preserve any video tracks from original stream
       const outputStream = this.destination.stream
       if (typeof inputStream.getVideoTracks === 'function') {
         inputStream.getVideoTracks().forEach((vTrack) => {
@@ -143,12 +123,10 @@ export class NoiseSuppressor {
 
   private updateCalculatedThreshold() {
     if (this.sensitivityMode === 'manual') {
-      // Map 0 - 100 slider to RMS range [0.002, 0.12]
       const minRMS = 0.002
       const maxRMS = 0.12
       this.currentThreshold = minRMS + (this.manualThresholdPercent / 100) * (maxRMS - minRMS)
     } else {
-      // Auto mode: learned from the room, never under 0.0045 RMS so quiet microphones still get through
       this.currentThreshold = this.autoGate.openLevel
     }
   }
@@ -168,33 +146,27 @@ export class NoiseSuppressor {
 
       this.analyser.getFloatTimeDomainData(buffer)
 
-      // Calculate RMS (Root Mean Square) energy
       let sum = 0
       for (let i = 0; i < buffer.length; i++) {
         sum += buffer[i] * buffer[i]
       }
       const rms = Math.sqrt(sum / buffer.length)
 
-      // Ambient noise floor, with continuous speech protection. Learns in
-      // manual mode too, so switching to auto starts from the room as it is now.
       this.autoGate.update(rms, nowMs)
       if (this.sensitivityMode === 'auto') this.updateCalculatedThreshold()
 
-      // Normalized level for UI VU Meter (0.0 to 1.0)
       const normalizedLevel = Math.min(1, rms * 6)
 
-      // Gate Logic with hysteresis and Hold Time (Hangover)
       if (this.gateGain && this.isSuppressionActive) {
         const now = this.audioCtx.currentTime
         let shouldOpen = false
 
         if (this.sensitivityMode === 'manual') {
           if (this.manualThresholdPercent >= 100) {
-            shouldOpen = false // 100% = Maximum gate (completely muted)
+            shouldOpen = false
           } else if (this.manualThresholdPercent <= 0) {
-            shouldOpen = true // 0% = Always open
+            shouldOpen = true
           } else {
-            // Align with VU meter scale (normalizedLevel = rms * 6)
             const targetLevel = this.manualThresholdPercent / 100
             const openLevel = targetLevel / 6
             const closeLevel = openLevel * 0.75
@@ -214,7 +186,6 @@ export class NoiseSuppressor {
           shouldOpen = this.isGateOpen
         }
 
-        // Hold Time tracking: keep gate open during natural micro-pauses in human speech
         if (shouldOpen) {
           this.lastSpeechTime = now
         }
@@ -224,24 +195,22 @@ export class NoiseSuppressor {
 
         if (!this.isGateOpen && effectiveOpen) {
           this.gateGain.gain.cancelScheduledValues(now)
-          this.gateGain.gain.setTargetAtTime(1.0, now, 0.01) // 10ms fast attack
+          this.gateGain.gain.setTargetAtTime(1.0, now, 0.01)
           this.isGateOpen = true
         } else if (this.isGateOpen && !effectiveOpen) {
           this.gateGain.gain.cancelScheduledValues(now)
-          this.gateGain.gain.setTargetAtTime(0.0, now, 0.15) // 150ms smooth release to 0.0
+          this.gateGain.gain.setTargetAtTime(0.0, now, 0.15)
           this.isGateOpen = false
         }
       } else {
         this.isGateOpen = true
       }
 
-      // Dynamic threshold percent for VU meter alignment (0 - 100%)
       const dynamicThresholdPercent =
         this.sensitivityMode === 'manual'
           ? this.manualThresholdPercent
           : Math.min(100, Math.max(0, Math.round(this.currentThreshold * 6 * 100)))
 
-      // Notify callback for visual VU Meter & Speaker Aura
       if (this.onLevelCallback) {
         this.onLevelCallback(normalizedLevel, this.isGateOpen, rms, dynamicThresholdPercent)
       }

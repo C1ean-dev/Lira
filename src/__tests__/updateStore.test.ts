@@ -35,15 +35,12 @@ describe('useUpdateStore - Silent Background Download & Direct Button Update Flo
 
     const checkPromise = useUpdateStore.getState().checkForUpdatesAndDownload()
 
-    // While download is ongoing, status is downloading
     await new Promise((r) => setTimeout(r, 10))
     expect(useUpdateStore.getState().status).toBe('downloading')
 
-    // Complete the background download
     resolveDownload(true)
     await checkPromise
 
-    // Status becomes ready, enabling the Atualizar Agora button on UI
     expect(useUpdateStore.getState().status).toBe('ready')
   })
 

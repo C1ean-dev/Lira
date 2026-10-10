@@ -2,11 +2,6 @@ import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
 
-// The pixel art studio keeps as little as possible over the canvas. The frames of the active direction
-// (thumbnails, Novo / Duplicar / Mover) and the direction selector used to be floating bars over the
-// bottom of the drawing; both live in the right column now, and only the status bar stays over the canvas.
-// This keeps them there.
-
 const studio = fs.readFileSync(
   fileURLToPath(new URL('../editor/avatar/AvatarPixelArtModal.tsx', import.meta.url)),
   'utf-8'
@@ -77,7 +72,6 @@ describe('pixel art studio: the direction selector', () => {
   it('has the mirror button, which used to be in the bar over the canvas, under it', () => {
     expect(selector).toContain('handleMirrorOppositeSide')
     expect(studio.split('onClick={handleMirrorOppositeSide}').length - 1).toBe(1)
-    // offered only while a side is the active direction
     expect(selector).toMatch(/activeDirection === 'left' \|\| activeDirection === 'right'\) && \(\s*<button/)
   })
 

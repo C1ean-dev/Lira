@@ -8,7 +8,6 @@ import { buildErrorReport } from '../utils/errorReport'
 
 const file = (name: string, size = 1000) => ({ name, size })
 
-/** Names and contents of the files in a zip (see zipWriter.test.ts for the format checks). */
 const unzip = (zip: Buffer) => {
   const end = zip.length - 22
   let position = zip.readUInt32LE(end + 16)
@@ -87,7 +86,6 @@ describe('selectLogFiles', () => {
       { maxBytes: 1000 }
     )
 
-    // In order of usefulness, each file enters if it still fits.
     expect(included.map((entry) => entry.name)).toEqual([
       'lira-reports-2026-10-04.jsonl',
       'lira-errors-2026-10-04.log',

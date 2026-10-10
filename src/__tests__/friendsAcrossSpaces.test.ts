@@ -12,7 +12,6 @@ const CAIO = 'u-cccccccccccccccccccc'
 
 const service = FriendsPresenceService.getInstance()
 
-/** Stands in for the P2P transport: which users are linked and what was sent to them. */
 function installFakeNetwork() {
   const linked = new Set<string>()
   const sent: Array<{ userId: string; packet: any }> = []
@@ -40,7 +39,6 @@ function installFakeNetwork() {
     sent,
     packetsTo: (userId: string, type: string) =>
       sent.filter((s) => s.userId === userId && s.packet.t === type).map((s) => s.packet),
-    /** The friend's app came online and a link opened. */
     open: (userId: string) => {
       linked.add(userId)
       internals.handleLinkOpen(userId)
@@ -150,7 +148,6 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
         roomCode: 'ROOM-42',
         roomName: 'Escritório da Bia',
       })
-      // The saved profile keeps the last known room for when she goes offline
       expect(useGameStore.getState().friendProfiles[BIA].lastRoomName).toBe('Escritório da Bia')
     })
 
@@ -183,7 +180,6 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
       useGameStore.getState().addFriend(biaFriend)
       useGameStore.getState().addFriend({ id: CAIO, name: 'Caio', actualUserId: CAIO, lastSeen: 1 })
 
-      // CAIO is linked and claims to be BIA
       net.open(CAIO)
       net.receive(CAIO, { t: 'presence', presence: { userId: BIA, name: 'Bia', inRoom: false } })
 
@@ -198,7 +194,6 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
         roomId: 'ROOM-7',
         roomName: 'Sala 7',
         remotePlayers: {
-          // New connection id on every join; the gameId is what stays the same
           'lira-ROOM-7-peer-zz9zz': { id: 'lira-ROOM-7-peer-zz9zz', gameId: BIA, name: 'Bia #2', status: 'focusing' } as Player,
         },
       })
@@ -223,7 +218,7 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
       useGameStore.setState({ roomId: 'ROOM-9', roomName: 'Minha Sala' })
 
       net.open(BIA)
-      net.open(CAIO) // linked (e.g. sent us a friend request) but not a friend
+      net.open(CAIO)
 
       const [presence] = net.packetsTo(BIA, 'presence')
       expect(presence.presence).toMatchObject({
@@ -241,7 +236,6 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
 
     it('announces no room while we are on the home screen', () => {
       useGameStore.getState().addFriend(biaFriend)
-      // What the store holds after leaving a room: no code, but a default name
       useGameStore.setState({ roomId: '', roomName: 'Espaço de Alice' })
       net.open(BIA)
       expect(net.packetsTo(BIA, 'presence')[0].presence).toMatchObject({ inRoom: false, roomName: null })
@@ -261,7 +255,6 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
 
       await net.heartbeat()
       await net.heartbeat()
-      // First heartbeat establishes the baseline; nothing changed afterwards
       const baseline = net.packetsTo(BIA, 'presence').length
       await net.heartbeat()
       expect(net.packetsTo(BIA, 'presence')).toHaveLength(baseline)
@@ -305,7 +298,6 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
 
     it('keeps a link to friends, pending requests and undelivered messages only', () => {
       useGameStore.getState().addFriend(biaFriend)
-      // Saved before stable ids existed: nobody to connect to
       useGameStore.getState().addFriend({ id: 'lira-OLD-peer-abcde', name: 'Antigo', actualUserId: 'lira-OLD-peer-abcde', lastSeen: 1 })
       expect(net.contacts()).toEqual([BIA])
 
@@ -336,7 +328,6 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
       net.open(BIA)
       const attachment = { id: 'att-1', name: 'foto.png', size: 2_000_000, type: 'image/png', dataUrl: 'data:image/png;base64,AAAA' }
 
-      // Same space: the room mesh carries it
       useGameStore.setState({
         roomId: 'ROOM-7',
         remotePlayers: { 'lira-ROOM-7-peer-zz9zz': { id: 'lira-ROOM-7-peer-zz9zz', gameId: BIA, name: 'Bia' } as Player },
@@ -344,11 +335,9 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
       await service.sendDirectMessage({ ...dmFromMe('dm-file-room', BIA), attachment })
       expect(net.packetsTo(BIA, 'dm')).toHaveLength(0)
 
-      // A plain text message still takes both paths (cheap, and more reliable)
       await service.sendDirectMessage(dmFromMe('dm-text-room', BIA))
       expect(net.packetsTo(BIA, 'dm').map((p) => p.message.id)).toEqual(['dm-text-room'])
 
-      // The friend left the space: the link is the only way
       useGameStore.setState({ remotePlayers: {} })
       await service.sendDirectMessage({ ...dmFromMe('dm-file-away', BIA), attachment })
       expect(net.packetsTo(BIA, 'dm').map((p) => p.message.id)).toEqual(['dm-text-room', 'dm-file-away'])
@@ -377,7 +366,6 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
       net.open(BIA)
       expect(net.packetsTo(BIA, 'dm').map((p) => p.message.id)).toEqual(['dm-offline'])
 
-      // Bia's app confirms delivery: nothing left to re-send next time
       net.receive(BIA, { t: 'receipt', receipt: { messageId: 'dm-offline', status: 'delivered', timestamp: Date.now() } })
       expect(useChatStore.getState().messages.find((m) => m.id === 'dm-offline')?.status).toBe('delivered')
 
@@ -427,12 +415,10 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
         net.receive(BIA, { t: 'dm', message })
         expect(net.packetsTo(BIA, 'receipt')).toHaveLength(1)
 
-        // Our receipt got lost, so Bia's app sends the message again later
         vi.advanceTimersByTime(30000)
         net.receive(BIA, { t: 'dm', message })
 
         expect(useChatStore.getState().messages.filter((m) => m.id === 'dm-in-dup')).toHaveLength(1)
-        // The sender only stops retrying once it sees the receipt
         const receipts = net.packetsTo(BIA, 'receipt')
         expect(receipts).toHaveLength(2)
         expect(receipts[1].receipt).toMatchObject({ messageId: 'dm-in-dup', status: 'delivered' })
@@ -519,7 +505,6 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
     })
 
     it('reaches a friend inside the room after they reconnected with a new connection id', () => {
-      // We joined a room: our entry is now keyed by this session's connection id
       useGameStore.getState().setLocalPlayer({ id: 'lira-ROOM-peer-new01', gameId: ME })
       const deliver = (recipientId: string, id: string) =>
         processNetworkMessage(
@@ -537,11 +522,9 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
           'lira-ROOM-peer-new01'
         )
 
-      // Addressed to the connection id we had when the friendship was made: lost
       deliver('lira-ROOM-peer-old99', 'dm-stale')
       expect(useChatStore.getState().messages.find((m) => m.id === 'dm-stale')).toBeUndefined()
 
-      // Addressed to the stable user id: arrives no matter how often we reconnect
       deliver(ME, 'dm-stable')
       expect(useChatStore.getState().messages.find((m) => m.id === 'dm-stable')).toBeDefined()
     })
@@ -558,7 +541,6 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
       expect(message.recipientId).toBe(BIA)
       expect(message.friendRequest).toMatchObject({ fromUserId: ME, toUserId: BIA, status: 'pending' })
       expect(message.channelId).toBe(`dm-${[ME, BIA].sort().join('-')}`)
-      // We stay reachable for the answer
       expect(net.contacts()).toContain(BIA)
     })
 
@@ -576,7 +558,6 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
       const request = useChatStore.getState().messages.find((m) => m.friendRequest?.requestId === requestId)!
       expect(useGameStore.getState().friends).toHaveLength(0)
 
-      // Bia's app sends back the same message with the request resolved
       net.open(BIA)
       net.receive(BIA, { t: 'dm', message: { ...request, friendRequest: { ...request.friendRequest!, status: 'accepted' } } })
 
@@ -589,7 +570,6 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
       const requestId = useChatStore.getState().sendFriendRequest({ id: BIA, name: 'Bia' })
       const request = useChatStore.getState().messages.find((m) => m.friendRequest?.requestId === requestId)!
 
-      // CAIO replays our request to BIA as if it had been accepted
       net.open(CAIO)
       net.receive(CAIO, { t: 'dm', message: { ...request, friendRequest: { ...request.friendRequest!, status: 'accepted' } } })
 
@@ -636,7 +616,6 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
     })
 
     it('is not auto-accepted because a friend happens to share our own name', () => {
-      // A friend called "Alice", like us
       useGameStore.getState().addFriend({ id: BIA, name: 'Alice', actualUserId: BIA, lastSeen: 1 })
 
       useChatStore.getState().addMessage({
@@ -685,7 +664,6 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
         profilePicture: 'data:image/png;base64,BBBB',
       } as Player)
 
-      // The saved profile is refreshed from the live player entry
       expect(useGameStore.getState().friendProfiles[BIA].profilePicture).toBe('data:image/png;base64,BBBB')
     })
   })

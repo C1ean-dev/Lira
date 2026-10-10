@@ -32,7 +32,6 @@ describe('WebRTC Hardware Codec Acceleration (H.264 Priority)', () => {
       getTransceivers: vi.fn().mockReturnValue([mockTransceiver]),
     } as unknown as RTCPeerConnection
 
-    // Mock global RTCRtpReceiver.getCapabilities
     ;(globalThis as any).RTCRtpReceiver = {
       getCapabilities: vi.fn().mockReturnValue({
         codecs: mockCodecs,
@@ -44,7 +43,6 @@ describe('WebRTC Hardware Codec Acceleration (H.264 Priority)', () => {
     expect(setCodecPreferencesMock).toHaveBeenCalledTimes(1)
     const passedCodecs = setCodecPreferencesMock.mock.calls[0][0]
 
-    // Verify H264 is at index 0 (first in preference list)
     expect(passedCodecs[0].mimeType).toBe('video/H264')
     expect(passedCodecs.length).toBe(4)
   })
@@ -144,19 +142,15 @@ describe('WebRTC Hardware Codec Acceleration (H.264 Priority)', () => {
       'a=fmtp:102 profile-level-id=42e01f;packetization-mode=1',
     ].join('\r\n')
 
-    // Disable HW acceleration
     setHardwareAccelerationEnabled(false)
     expect(isHardwareAccelerationEnabled()).toBe(false)
 
-    // With HW disabled, SDP should prioritize VP8 (software)
     const disabledSdp = prioritizeCodecInSdp(sampleSdp)
     expect(disabledSdp).toContain('m=video 9 UDP/TLS/RTP/SAVPF 96 102')
 
-    // Re-enable HW acceleration
     setHardwareAccelerationEnabled(true)
     expect(isHardwareAccelerationEnabled()).toBe(true)
 
-    // With HW enabled, SDP should prioritize H.264
     const enabledSdp = prioritizeCodecInSdp(sampleSdp)
     expect(enabledSdp).toContain('m=video 9 UDP/TLS/RTP/SAVPF 102 96')
   })
@@ -194,7 +188,6 @@ describe('WebRTC Hardware Codec Acceleration (H.264 Priority)', () => {
     expect(passedCodecs[1].mimeType).toBe('video/VP9')
     expect(passedCodecs[2].mimeType).toBe('video/H264')
 
-    // Reset back to default true
     setHardwareAccelerationEnabled(true)
   })
 })

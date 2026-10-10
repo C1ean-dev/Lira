@@ -4,7 +4,6 @@ import { buildErrorReport, sanitizeErrorReport } from '../utils/errorReport'
 import type { StackFrame } from '../utils/stackFrames'
 import { makeSourceMap } from './helpers/sourceMapFixture'
 
-// The renderer bundle: our code, then a dependency, then code that came from no source.
 const APP_MAP = makeSourceMap(
   ['../../src/p2p/PeerManager.ts', '../../node_modules/peerjs/dist/bundler.mjs', '\u0000vite/preload-helper.js'],
   [
@@ -16,7 +15,6 @@ const APP_MAP = makeSourceMap(
     ],
   ]
 )
-// The main process bundle.
 const MAIN_MAP = makeSourceMap(['../electron/main.ts', '../src/utils/logFormat.ts'], [[], [[0, 0, 400, 2]], [[0, 1, 50, 4]]])
 
 const APP = 'dist/assets/bootstrap-B3a7s0Ga.js'
@@ -55,12 +53,12 @@ describe('symbolicator', () => {
   it('leaves alone what it cannot translate', () => {
     const { symbolicator } = setup()
     const untouched = [
-      frame('src/p2p/PeerManager.ts', 883, 15, 'PeerManager.promoteToHost'), // a dev run: already the source
-      { fn: 'Array.map', app: false }, // no place
-      { fn: 'run', file: APP, app: true }, // no line
-      frame(APP, 1, 9500, 'gone'), // code that came from no source
-      frame(APP, 7, 1, 'beyond'), // outside the map
-      frame('dist/assets/other-123.js', 1, 1, 'unknown'), // a bundle with no map
+      frame('src/p2p/PeerManager.ts', 883, 15, 'PeerManager.promoteToHost'),
+      { fn: 'Array.map', app: false },
+      { fn: 'run', file: APP, app: true },
+      frame(APP, 1, 9500, 'gone'),
+      frame(APP, 7, 1, 'beyond'),
+      frame('dist/assets/other-123.js', 1, 1, 'unknown'),
       frame('node_modules/peerjs/dist/bundler.mjs', 10, 2, 'vendor'),
     ]
     expect(symbolicator.frames(untouched)).toEqual(untouched)
@@ -135,7 +133,6 @@ describe('symbolicator', () => {
       { fn: 'Wt', file: 'src/p2p/PeerManager.ts', line: 883, col: 15, app: true, min: `${APP}:1:2000` },
       { fn: 'div', app: false },
     ])
-    // The id of the error is the one the window computed: the text log refers to it.
     expect(report.fingerprint).toBe(fingerprint)
   })
 

@@ -2,21 +2,10 @@ import { Breadcrumb, boundCrumbData } from './breadcrumbs'
 import { toPlainData, toPlainRecord } from './plainData'
 import { MAX_STACK_FRAMES, StackFrame, parseStack } from './stackFrames'
 
-/**
- * The structured report of one error: what failed, where in the code, what the
- * app was doing (context) and what led to it (breadcrumbs). One JSON object per
- * line of logs/lira-reports-<day>.jsonl. Shared by the main process and the
- * renderer; pure functions only.
- *
- * `fingerprint` is the same for every occurrence of the same error (ids, numbers
- * and line numbers do not count), so reports can be grouped and counted.
- */
-
 export const REPORT_VERSION = 1
 export const MAX_REPORT_BREADCRUMBS = 80
 export const MAX_REPORT_STATS = 24
 export const MAX_REPORT_MESSAGE = 2000
-/** Upper bound for one report written as JSON. */
 export const MAX_REPORT_CHARS = 60000
 
 const MAX_ERROR_CHAIN = 3
@@ -28,7 +17,6 @@ export type ReportSeverity = 'error' | 'fatal'
 export interface ReportedError {
   name: string
   message: string
-  /** DOMException code, PeerJS error type or Node error code. */
   code?: string
   frames: StackFrame[]
   cause?: ReportedError
@@ -37,31 +25,22 @@ export interface ReportedError {
 export interface ErrorReport {
   v: number
   id: string
-  /** When it happened (the last time, for a report that stands for several occurrences). */
   t: string
   fingerprint: string
-  /** How it was caught: uncaught, unhandled-rejection, react, console, handled, process-gone, ipc... */
   kind: string
   severity: ReportSeverity
   source: ReportSource
-  /** The process run that produced it; the same id is on the lines of lira-<day>.log and call-debug-<day>.log. */
   session: string
   scope?: string
   message: string
-  /** Occurrences this report stands for. */
   count: number
-  /** Written after the fact: context and breadcrumbs are from when it was written, not from `t`. */
   late?: boolean
   error?: ReportedError
-  /** Where the error was logged, when that is not where it was thrown. */
   loggedAt?: StackFrame[]
   componentStack?: StackFrame[]
-  /** What the code that reported it knew about the operation. */
   data?: Record<string, unknown>
-  /** Snapshot of the app state, by area (room, media, p2p...). */
   context: Record<string, unknown>
   breadcrumbs: Breadcrumb[]
-  /** Latest periodic measurements. */
   stats?: Record<string, Breadcrumb>
 }
 
@@ -89,7 +68,6 @@ function cut(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}…` : text
 }
 
-/** The message without what changes from one occurrence to the next. */
 export function normalizeErrorMessage(message: string): string {
   return String(message)
     .replace(/\blira-[A-Za-z0-9-]+/g, '<peer>')
@@ -112,13 +90,6 @@ function fnv1a(text: string): string {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
-/**
- * Same error, same fingerprint: kind of error, scope, message without ids and
- * the first frames of our own code (function and file, not the line: lines move
- * with every edit). `logged` is the line the error was logged with, which says
- * what was being done: the same JSON error reading two different keys is two
- * different problems.
- */
 export function fingerprintOf(parts: {
   name?: string
   message?: string
@@ -214,13 +185,10 @@ export function buildErrorReport(input: ReportInput): ErrorReport {
   return report
 }
 
-// --- Reports arriving over IPC are untrusted input -------------------------
-
 function asObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
 }
 
-/** A line, a column or a count: whole, not negative and not absurd. */
 function wholeNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 1_000_000_000 ? value : undefined
 }
@@ -279,7 +247,6 @@ function size(report: ErrorReport): number {
   return JSON.stringify(report).length
 }
 
-/** Keeps a well-formed report, bounded in every part, and marks where it came from. */
 export function sanitizeErrorReport(input: unknown, source: ReportSource): ErrorReport | null {
   const raw = asObject(input)
   if (!raw || typeof raw.message !== 'string') return null
@@ -335,7 +302,6 @@ export function sanitizeErrorReport(input: unknown, source: ReportSource): Error
     if (Object.keys(kept).length > 0) report.stats = kept
   }
 
-  // Too large: give up the least useful parts first. The error itself always stays.
   if (size(report) > MAX_REPORT_CHARS) delete report.stats
   if (size(report) > MAX_REPORT_CHARS) for (const crumb of report.breadcrumbs) delete crumb.data
   if (size(report) > MAX_REPORT_CHARS) report.context = { dropped: 'report too large' }
@@ -343,7 +309,6 @@ export function sanitizeErrorReport(input: unknown, source: ReportSource): Error
   return report
 }
 
-/** What a line of the text log says to point at its report. */
 export function reportReference(report: Pick<ErrorReport, 'id' | 'fingerprint' | 'count'>): string {
   return `report ${report.id} fp=${report.fingerprint}${report.count > 1 ? ` x${report.count}` : ''}`
 }

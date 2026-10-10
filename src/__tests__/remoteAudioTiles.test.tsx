@@ -5,7 +5,6 @@ import { RemoteAudio } from '../components/common/RemoteAudio'
 import { GridParticipantTile, ParticipantData } from '../components/grid/GridParticipantTile'
 import { VideoTile } from '../components/MiniCallOverlay'
 
-// A peer with the camera off: a mic plus the placeholder video track.
 const peerStream = () =>
   ({
     getAudioTracks: () => [{ kind: 'audio', id: 'mic', enabled: true, readyState: 'live' }],
@@ -25,8 +24,6 @@ const remoteUser = (extra: Partial<ParticipantData> = {}): ParticipantData => ({
   ...extra,
 })
 
-// Server rendering reads the stores' initial state, so only what comes from
-// props can be checked here (deafen and per-person volume come from the store).
 describe('who plays the sound of a call tile', () => {
   describe('RemoteAudio', () => {
     it('is an autoplaying audio element, not a video', () => {

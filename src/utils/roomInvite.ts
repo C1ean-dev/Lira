@@ -5,11 +5,6 @@ import { sanitizeRoomCode } from './roomCode'
 const ROOM_CODE_PATTERN = /^[A-Z0-9][A-Z0-9_-]{0,99}$/
 const MAX_ROOM_NAME_LENGTH = 80
 
-/**
- * Reads the invite carried by a message. Messages come from other machines,
- * so the invite is rebuilt field by field; anything that could not be the code
- * of a room is not an invite.
- */
 export function readRoomInvite(raw: unknown): RoomInviteData | undefined {
   if (!raw || typeof raw !== 'object') return undefined
   const { roomCode, roomName } = raw as { roomCode?: unknown; roomName?: unknown }
@@ -36,7 +31,6 @@ export function buildRoomInviteMessage(input: {
     channelId: input.channelId,
     recipientId: to.id,
     recipientName: to.name,
-    // Shown as is wherever the invite card is not (notifications, older versions).
     content: `📨 Convite para o espaço "${room.name}"`,
     timestamp: input.timestamp,
     avatarConfig: from.avatar,
@@ -45,22 +39,11 @@ export function buildRoomInviteMessage(input: {
   }
 }
 
-/**
- * - sent: I am the one who invited.
- * - here: I am already in that space.
- * - open: the invite can be accepted.
- * - closed: whoever invited is not in that space anymore.
- */
 export type RoomInviteState = 'sent' | 'here' | 'open' | 'closed'
 
 const sameRoom = (a?: string | null, b?: string | null): boolean =>
   !!a && !!b && a.toUpperCase() === b.toUpperCase()
 
-/**
- * Joining a room nobody hosts creates an empty one under that code, so an
- * invite is only worth accepting while the person who sent it is still there.
- * Without any presence for them the invite stays open.
- */
 export function getRoomInviteState(input: {
   invite: RoomInviteData
   isMine: boolean

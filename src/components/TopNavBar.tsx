@@ -45,8 +45,6 @@ export const TopNavBar: React.FC<Props> = ({
   isUpdating,
   onDisconnect,
 }) => {
-  // Granular selectors: subscribing to whole localPlayer/remotePlayers would
-  // re-render this bar at 60Hz on every movement frame. Select only UI fields.
   const localPlayerName = useGameStore((s) => s.localPlayer.name)
   const localPlayerProfilePicture = useGameStore((s) => s.localPlayer.profilePicture)
   const localPlayerAvatar = useGameStore((s) => s.localPlayer.avatar)
@@ -117,14 +115,12 @@ export const TopNavBar: React.FC<Props> = ({
 
   return (
     <header className="h-14 bg-[#12151d]/90 backdrop-blur-md border-b border-[#2a3142] px-3 sm:px-4 flex items-center justify-between z-30 select-none relative">
-      {/* Left: Brand + Room Code + Privacy Toggle */}
       <div className="flex items-center gap-2 sm:gap-3">
         <div className="flex items-center">
           <LiraLogo size={32} showText={true} className="hidden sm:inline-flex" />
           <LiraLogo size={28} showText={false} className="sm:hidden" />
         </div>
 
-        {/* Room ID Badge */}
         {roomId && (
           <button
             onClick={handleCopyCode}
@@ -144,7 +140,6 @@ export const TopNavBar: React.FC<Props> = ({
           </button>
         )}
 
-        {/* Room Privacy Toggle Badge (Owner can switch Public / Private) */}
         {roomId && (
           <button
             onClick={isOwner ? toggleRoomPrivacy : undefined}
@@ -184,7 +179,6 @@ export const TopNavBar: React.FC<Props> = ({
           </button>
         )}
 
-        {/* Network / Connection Health Badge */}
         {connectionStatus === 'reconnecting' && (
           <div
             className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/15 border border-amber-500/40 rounded-xl text-xs font-semibold text-amber-300 animate-pulse"
@@ -208,7 +202,6 @@ export const TopNavBar: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Center: Current Zone indicator (Desktop/Tablet) */}
       <div className="hidden lg:flex items-center gap-2">
         <div className="flex items-center gap-2 px-4 py-1.5 bg-[#1b202c]/60 border border-[#2a3142] rounded-full">
           <div
@@ -221,9 +214,7 @@ export const TopNavBar: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Desktop Right Controls (>= lg) */}
       <div className="hidden lg:flex items-center gap-2.5">
-        {/* Auto-saved Feedback indicator */}
         {autoSavedNotice && (
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-xs font-semibold text-emerald-300 animate-in fade-in duration-200">
             <Check className="w-3.5 h-3.5 text-emerald-400" />
@@ -231,7 +222,6 @@ export const TopNavBar: React.FC<Props> = ({
           </div>
         )}
 
-        {/* Edit Space Toggle */}
         <button
           onClick={toggleEditor}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
@@ -245,7 +235,6 @@ export const TopNavBar: React.FC<Props> = ({
           <span>{isEditorOpen ? 'Fechar Editor' : 'Editar Espaço'}</span>
         </button>
 
-        {/* Chat Drawer Toggle */}
         <button
           onClick={toggleChat}
           className={`relative p-2 rounded-xl border transition-all ${
@@ -263,7 +252,6 @@ export const TopNavBar: React.FC<Props> = ({
           )}
         </button>
 
-        {/* Online People Toggle Button */}
         <button
           onClick={toggleOnlineUsers}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all relative ${
@@ -286,7 +274,6 @@ export const TopNavBar: React.FC<Props> = ({
           )}
         </button>
 
-        {/* Available Update Notification Download Icon OR Current Version Badge */}
         {hasUpdate && onApplyUpdate ? (
           <button
             onClick={onApplyUpdate}
@@ -317,7 +304,6 @@ export const TopNavBar: React.FC<Props> = ({
           </button>
         )}
 
-        {/* Real-time Network Quality Indicator */}
         <div
           className="flex items-center px-2.5 py-1.5 bg-[#1b202c] border border-[#2a3142] rounded-xl hover:bg-slate-800 transition-colors"
           title={`Sua Conexão:\nPing: ${localQuality.pingMs > 0 ? `${localQuality.pingMs}ms` : '<10ms'}\nPerda de pacotes: ${localQuality.lossPct}%\nQualidade: ${localQuality.rating}`}
@@ -331,7 +317,6 @@ export const TopNavBar: React.FC<Props> = ({
           />
         </div>
 
-        {/* Audio & Video Settings Button */}
         <button
           onClick={() => useMediaStore.getState().setSettingsModalOpen(true)}
           className="p-2 rounded-xl bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] text-slate-300 hover:text-white transition-all group"
@@ -340,7 +325,6 @@ export const TopNavBar: React.FC<Props> = ({
           <Settings className="w-4 h-4 text-slate-400 group-hover:text-indigo-400 group-hover:rotate-45 transition-transform" />
         </button>
 
-        {/* User Profile / Avatar Button */}
         <button
           onClick={onOpenAvatarModal}
           className="flex items-center gap-2 pl-2 pr-3 py-1 bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] rounded-xl transition-all group"
@@ -363,7 +347,6 @@ export const TopNavBar: React.FC<Props> = ({
           </div>
         </button>
 
-        {/* Disconnect / Leave Space Button */}
         {onDisconnect && (
           <button
             onClick={onDisconnect}
@@ -376,9 +359,7 @@ export const TopNavBar: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Mobile / Compact Controls (< lg) */}
       <div className="flex lg:hidden items-center gap-1.5">
-        {/* Chat Drawer Toggle */}
         <button
           onClick={toggleChat}
           className={`relative p-2 rounded-xl border transition-all ${
@@ -396,7 +377,6 @@ export const TopNavBar: React.FC<Props> = ({
           )}
         </button>
 
-        {/* Online People Toggle Button */}
         <button
           onClick={toggleOnlineUsers}
           className={`flex items-center gap-1 p-2 rounded-xl border text-xs font-semibold transition-all relative ${
@@ -415,7 +395,6 @@ export const TopNavBar: React.FC<Props> = ({
           )}
         </button>
 
-        {/* Mobile Menu Dropdown Toggle */}
         <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className={`p-2 rounded-xl border transition-all relative ${
@@ -432,10 +411,8 @@ export const TopNavBar: React.FC<Props> = ({
         </button>
       </div>
 
-      {/* Mobile Floating Drawer Menu (< lg) */}
       {isMobileMenuOpen && (
         <div className="absolute inset-x-0 top-14 bg-[#12151d]/98 backdrop-blur-2xl border-b border-[#2a3142] p-4 z-50 shadow-2xl flex flex-col gap-3 animate-in slide-in-from-top-2 duration-150 max-h-[calc(100vh-60px)] overflow-y-auto select-none lg:hidden">
-          {/* User Profile Card */}
           <div
             onClick={() => {
               setIsMobileMenuOpen(false)
@@ -462,7 +439,6 @@ export const TopNavBar: React.FC<Props> = ({
             </span>
           </div>
 
-          {/* Current Zone Info */}
           <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#181d28] border border-[#242b3d] text-xs">
             <span className="text-slate-400">Local Atual:</span>
             <span className="font-bold text-slate-200 flex items-center gap-1.5">
@@ -474,9 +450,7 @@ export const TopNavBar: React.FC<Props> = ({
             </span>
           </div>
 
-          {/* Actions List */}
           <div className="flex flex-col gap-1.5 pt-1">
-            {/* Audio & Settings Button */}
             <button
               onClick={() => {
                 setIsMobileMenuOpen(false)
@@ -488,7 +462,6 @@ export const TopNavBar: React.FC<Props> = ({
               <span>Configurações de Áudio e Chamada</span>
             </button>
 
-            {/* Edit Space Toggle */}
             <button
               onClick={() => {
                 setIsMobileMenuOpen(false)
@@ -504,7 +477,6 @@ export const TopNavBar: React.FC<Props> = ({
               <span>{isEditorOpen ? 'Fechar Editor do Espaço' : 'Editar Mobílias e Salas'}</span>
             </button>
 
-            {/* Room Privacy Toggle (if Owner) */}
             {roomId && isOwner && (
               <button
                 onClick={() => {
@@ -520,7 +492,6 @@ export const TopNavBar: React.FC<Props> = ({
               </button>
             )}
 
-            {/* Network Quality Badge */}
             <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#181d28] border border-[#242b3d] text-xs">
               <span className="text-slate-400">Qualidade da Conexão:</span>
               <NetworkSignalIcon
@@ -532,7 +503,6 @@ export const TopNavBar: React.FC<Props> = ({
               />
             </div>
 
-            {/* Update Button */}
             {hasUpdate && onApplyUpdate && (
               <button
                 onClick={() => {
@@ -550,7 +520,6 @@ export const TopNavBar: React.FC<Props> = ({
               </button>
             )}
 
-            {/* Disconnect Button */}
             {onDisconnect && (
               <button
                 onClick={() => {

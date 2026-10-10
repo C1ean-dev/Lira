@@ -26,7 +26,6 @@ describe('avatarSpritesheetSlicer - Interactive Slicer and XML Generator', () =>
     expect(xml).toContain('<SubTexture name="hair_afro_right_0" x="96" y="0" width="32" height="32"')
     expect(xml).toContain('</TextureAtlas>')
 
-    // Verify it is directly parseable by AvatarAtlasManager
     const parsed = AvatarAtlasManager.parseAtlasXml(xml)
     expect(parsed.imagePath).toBe('hair_custom_sheet.png')
     expect(parsed.subTextures.size).toBe(4)
@@ -95,7 +94,6 @@ describe('avatarSpritesheetSlicer - Interactive Slicer and XML Generator', () =>
   })
 
   it('should support reordering frames within a direction sequence', () => {
-    // Simulating the reorder helper logic
     const moveFrameOrder = (frames: { id: string }[], fromIndex: number, toIndex: number) => {
       const list = [...frames]
       const [item] = list.splice(fromIndex, 1)
@@ -104,17 +102,14 @@ describe('avatarSpritesheetSlicer - Interactive Slicer and XML Generator', () =>
     }
 
     const initial = [{ id: 'step_0' }, { id: 'step_1' }, { id: 'step_2' }]
-    // Move step_2 to index 0
     const reordered = moveFrameOrder(initial, 2, 0)
     expect(reordered.map((f) => f.id)).toEqual(['step_2', 'step_0', 'step_1'])
 
-    // Move step_0 to index 2
     const reordered2 = moveFrameOrder(reordered, 1, 2)
     expect(reordered2.map((f) => f.id)).toEqual(['step_2', 'step_1', 'step_0'])
   })
 
   it('should support moving frames between directions (e.g. from down to up)', () => {
-    // Simulating transferring frame across direction slots
     const transferFrame = (
       directions: Record<string, { id: string }[]>,
       fromDir: string,
@@ -144,7 +139,6 @@ describe('avatarSpritesheetSlicer - Interactive Slicer and XML Generator', () =>
   })
 
   it('should synchronize selector dimensions whenever the grid size is changed from 1 to 64', () => {
-    // Logic matching handleUpdateGridSize in AvatarSpritesheetSlicerModal
     const updateGridAndSelector = (
       currentSelection: { x: number; y: number; w: number; h: number },
       newGridSize: number,
@@ -164,13 +158,11 @@ describe('avatarSpritesheetSlicer - Interactive Slicer and XML Generator', () =>
     const img = { w: 256, h: 256 }
     let state = { x: 35, y: 40, w: 16, h: 16 }
 
-    // Test 1px grid
     const res1 = updateGridAndSelector(state, 1, img)
     expect(res1.gridSnapSize).toBe(1)
     expect(res1.selection.w).toBe(1)
     expect(res1.selection.h).toBe(1)
 
-    // Test 64px grid
     const res64 = updateGridAndSelector(res1.selection, 64, img)
     expect(res64.gridSnapSize).toBe(64)
     expect(res64.selection.w).toBe(64)
@@ -178,7 +170,6 @@ describe('avatarSpritesheetSlicer - Interactive Slicer and XML Generator', () =>
     expect(res64.selection.x % 64).toBe(0)
     expect(res64.selection.y % 64).toBe(0)
 
-    // Clamping boundaries (e.g. trying 0 or 100)
     const resClampMin = updateGridAndSelector(state, 0, img)
     expect(resClampMin.gridSnapSize).toBe(1)
     expect(resClampMin.selection.w).toBe(1)

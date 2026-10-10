@@ -32,9 +32,6 @@ export interface PackOptions {
   imagePath?: string
 }
 
-/**
- * Generate standard Sparrow XML string from a list of subtextures
- */
 export function generateSparrowXml(
   imagePath: string,
   subTextures: PackedSubTexture[]
@@ -51,9 +48,6 @@ export function generateSparrowXml(
   return xml
 }
 
-/**
- * Packs multiple sprite inputs into a grid layout and computes exact coordinates
- */
 export function packSpritesheet(
   sprites: SpriteInput[],
   options: PackOptions = {}
@@ -69,7 +63,6 @@ export function packSpritesheet(
     }
   }
 
-  // Calculate grid columns and rows
   const columns = options.columns || Math.max(1, Math.min(8, Math.ceil(Math.sqrt(totalSprites))))
   const rows = Math.ceil(totalSprites / columns)
 
@@ -78,7 +71,6 @@ export function packSpritesheet(
 
   const subTextures: PackedSubTexture[] = []
 
-  // Create canvas if running in browser / DOM
   let canvas: HTMLCanvasElement | null = null
   let ctx: CanvasRenderingContext2D | null = null
   if (typeof document !== 'undefined') {
@@ -127,9 +119,6 @@ export function packSpritesheet(
   }
 }
 
-/**
- * Trigger download of files in browser or save to disk
- */
 export function downloadFile(filename: string, content: string, mimeType: string = 'text/plain') {
   if (typeof document === 'undefined') return
   const blob = content.startsWith('data:')
@@ -157,9 +146,6 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([u8arr], { type: mime })
 }
 
-/**
- * Export consolidated Spritesheet and Sparrow XML for a given category
- */
 export async function exportCategoryAtlas(
   category: string,
   customAssets: any[],
@@ -167,7 +153,6 @@ export async function exportCategoryAtlas(
 ): Promise<{ xmlString: string; pngDataUrl?: string }> {
   const spritesToPack: { name: string; image?: HTMLImageElement; width: number; height: number }[] = []
 
-  // 1. Collect custom assets in this category
   const categoryAssets = customAssets.filter((a) => {
     if (category === 'furniture' || category === 'floor' || category === 'wall') {
       return a.type === category
@@ -215,7 +200,6 @@ export async function exportCategoryAtlas(
     }
   }
 
-  // If no custom assets, provide a fallback placeholder sprite
   if (spritesToPack.length === 0) {
     spritesToPack.push({
       name: `${category}_sample_down_0`,

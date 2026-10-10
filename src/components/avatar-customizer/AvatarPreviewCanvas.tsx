@@ -32,7 +32,6 @@ export const AvatarPreviewCanvas: React.FC<Props> = ({
 }) => {
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
-  // Live Canvas Preview Animation with Room Background
   useEffect(() => {
     if (!isOpen || !previewCanvasRef.current) return
     const canvas = previewCanvasRef.current
@@ -45,15 +44,12 @@ export const AvatarPreviewCanvas: React.FC<Props> = ({
     const render = (tick: number) => {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-      // 1. Draw Aesthetic Lira Pastel Room Background (Floor, Wall, Baseboard)
       const w = canvas.width
       const h = canvas.height
 
-      // Top Wall
       ctx.fillStyle = '#e9ecef'
       ctx.fillRect(0, 0, w, h * 0.45)
 
-      // Window / Wall trim
       ctx.fillStyle = '#dee2e6'
       ctx.fillRect(w * 0.65, 12, w * 0.3, h * 0.35)
       ctx.strokeStyle = '#ced4da'
@@ -61,15 +57,12 @@ export const AvatarPreviewCanvas: React.FC<Props> = ({
       ctx.strokeRect(w * 0.65, 12, w * 0.3, h * 0.35)
       ctx.strokeRect(w * 0.1, 12, w * 0.45, h * 0.35)
 
-      // Baseboard Trim
       ctx.fillStyle = '#adb5bd'
       ctx.fillRect(0, h * 0.45 - 3, w, 3)
 
-      // Bottom Floor (Pastel Greenish Mint Floor)
       ctx.fillStyle = '#d3f9d8'
       ctx.fillRect(0, h * 0.45, w, h * 0.55)
 
-      // Subtle Floor Grid Lines
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.05)'
       ctx.lineWidth = 1
       for (let x = 0; x < w; x += 28) {
@@ -79,7 +72,6 @@ export const AvatarPreviewCanvas: React.FC<Props> = ({
         ctx.stroke()
       }
 
-      // 2. Render Scaled Character in Room Center with smooth Idle / Walk loop
       ctx.save()
       ctx.translate(w / 2 - 56, h * 0.48)
       ctx.scale(3.5, 3.5)
@@ -97,7 +89,6 @@ export const AvatarPreviewCanvas: React.FC<Props> = ({
 
       AvatarRenderer.drawPlayer(ctx, tempPlayer, true, tick, 32, showNameTags)
 
-      // Draw companion pet beside avatar if equipped
       if (avatar.pet && avatar.pet.type !== 'none') {
         const previewPet: PetState = {
           playerId: 'preview',
@@ -122,7 +113,6 @@ export const AvatarPreviewCanvas: React.FC<Props> = ({
     return () => cancelAnimationFrame(frameId)
   }, [isOpen, avatar, name, status, localPlayer, showNameTags])
 
-  // Export / Download PNG of Avatar
   const handleDownloadPNG = () => {
     if (!previewCanvasRef.current) return
     const canvas = document.createElement('canvas')
@@ -152,11 +142,9 @@ export const AvatarPreviewCanvas: React.FC<Props> = ({
 
   return (
     <div className={className || "w-80 bg-[#1e1f22] border-l border-[#2b2d31] relative flex items-center justify-center p-4 shrink-0 overflow-hidden"}>
-      {/* Live 2D Canvas Stage */}
       <div className="w-full h-full rounded-2xl overflow-hidden shadow-2xl relative border border-[#2b2d31]">
         <canvas ref={previewCanvasRef} width={canvasWidth} height={canvasHeight} className="w-full h-full pixelated" />
 
-        {/* Floating Top-Right Action Buttons */}
         <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
           <button
             onClick={handleDownloadPNG}
@@ -167,7 +155,6 @@ export const AvatarPreviewCanvas: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* Floating Bottom-Right Randomize (Dice) Button */}
         <button
           onClick={onRandomize}
           className="absolute bottom-2.5 right-2.5 p-2 sm:p-2.5 rounded-xl bg-[#18191c]/90 hover:bg-[#3b82f6] text-slate-300 hover:text-white border border-[#2b2d31] backdrop-blur-md shadow-xl transition-all hover:rotate-12 active:scale-95"

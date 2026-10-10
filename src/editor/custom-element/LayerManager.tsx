@@ -54,7 +54,6 @@ export const LayerManager: React.FC<Props> = ({
         )}
       </div>
 
-
       {compositeLayers.length === 0 ? (
         <div className="text-center py-6 border border-dashed border-[#2b2d31] rounded-xl p-3 space-y-1">
           <Layers className="w-5 h-5 text-slate-500 mx-auto" />
@@ -94,7 +93,6 @@ export const LayerManager: React.FC<Props> = ({
                   </div>
                 </div>
 
-                {/* Layer Quick Actions */}
                 <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                   <button
                     type="button"

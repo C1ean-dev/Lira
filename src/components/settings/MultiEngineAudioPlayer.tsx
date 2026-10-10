@@ -83,7 +83,6 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
     return rnnoiseRef
   }
 
-  // Cleanup on unmount only
   useEffect(() => {
     return () => {
       classicRef.current?.pause()
@@ -100,7 +99,6 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
       targetAudio.pause()
       setPlayingEngine(null)
     } else {
-      // Pause any previously playing track
       ENGINES.forEach(({ id }) => {
         if (id !== engine) {
           const other = getAudioRef(id).current
@@ -108,7 +106,6 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
         }
       })
 
-      // Sync playhead time across tracks for instant A/B ear comparison
       const dur = durations[engine] || 5
       const syncTime =
         currentPlayTime > 0 && currentPlayTime < dur - 0.1
@@ -141,13 +138,11 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
 
     setCurrentPlayTime(newTime)
 
-    // Update target audio
     const audio = getAudioRef(engine).current
     if (audio) {
       audio.currentTime = newTime
     }
 
-    // Sync other tracks as well
     ENGINES.forEach(({ id }) => {
       if (id !== engine) {
         const other = getAudioRef(id).current
@@ -180,7 +175,6 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
 
   return (
     <div className="rounded-xl p-3 border bg-gradient-to-r from-emerald-950/40 via-[#131a24] to-[#101720] border-emerald-500/30 shadow-lg shadow-emerald-950/20 space-y-2.5">
-      {/* Native HTML5 audio elements with direct React event listeners */}
       <audio
         ref={classicRef}
         src={samples.classic.audioUrl}
@@ -248,7 +242,6 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
         }}
       />
 
-      {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 min-w-0">
           <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
@@ -271,7 +264,6 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
         Ouça a mesma gravação tratada individualmente por cada motor de supressão com o Noise Gate calibrado:
       </div>
 
-      {/* 3 Compact Audio Tracks occupying the exact same card footprint */}
       <div className="bg-slate-950/90 rounded-xl p-1.5 border border-slate-800/90 shadow-inner divide-y divide-slate-800/60">
         {ENGINES.map(({ id, name, desc, icon: Icon }) => {
           const isPlayingThis = playingEngine === id
@@ -302,7 +294,6 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
                   : 'hover:bg-slate-900/50'
               }`}
             >
-              {/* Left: Engine Identifier Chip */}
               <div className="w-28 shrink-0 flex flex-col justify-center">
                 <div className="flex items-center gap-1">
                   <Icon className="w-3 h-3 text-emerald-400 shrink-0" />
@@ -322,7 +313,6 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* Play/Pause Button */}
               <button
                 type="button"
                 onClick={() => togglePlay(id)}
@@ -340,7 +330,6 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
                 )}
               </button>
 
-              {/* Restart Button */}
               <button
                 type="button"
                 onClick={() => handleRestart(id)}
@@ -350,7 +339,6 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
                 <RotateCcw className="w-3 h-3" />
               </button>
 
-              {/* Compact Waveform (SVG) */}
               <div className="flex-1 h-7 flex items-center relative select-none">
                 <svg
                   viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
@@ -381,11 +369,10 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
                     </linearGradient>
                   </defs>
 
-                  {/* Symmetrical Waveform Bars */}
                   {waveform.map((normHeight, idx) => {
                     const barFraction = idx / waveform.length
                     const isPlayed = isPlayingThis && barFraction <= progressFraction
-                    const maxH = viewBoxHeight - 4 // 24px
+                    const maxH = viewBoxHeight - 4
                     const barHeight = Math.max(3, Math.round(normHeight * maxH))
                     const y = centerY - barHeight / 2
                     const x = idx * step + (step - barWidth) / 2
@@ -405,7 +392,6 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
                     )
                   })}
 
-                  {/* Hover Scrubber Line */}
                   {hoverScrubber && hoverScrubber.engine === id && (
                     <line
                       x1={hoverScrubber.percent * viewBoxWidth}
@@ -419,7 +405,6 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
                     />
                   )}
 
-                  {/* Current Active Playhead Scrubber */}
                   {isPlayingThis && (
                     <g transform={`translate(${progressFraction * viewBoxWidth}, 0)`}>
                       <line
@@ -439,12 +424,10 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
                 </svg>
               </div>
 
-              {/* Time Display */}
               <div className="text-[9.5px] font-mono font-medium text-slate-400 shrink-0 w-14 text-right tabular-nums">
                 {formatTime(isPlayingThis ? currentPlayTime : 0)} / {formatTime(trackDuration)}
               </div>
 
-              {/* Apply / Active Action Button */}
               <div className="shrink-0 w-20 flex justify-end">
                 {isActive ? (
                   <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">

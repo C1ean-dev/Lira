@@ -54,9 +54,6 @@ const BUILTIN_PETS: BuiltinPetOption[] = [
   },
 ]
 
-/**
- * Auto-cropped close-up thumbnail preview for pixel art assets
- */
 const AutoCroppedThumbnail: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
   const [displayUrl, setDisplayUrl] = useState<string>(src)
 
@@ -92,12 +89,10 @@ export const PetSelectorPanel: React.FC<Props> = ({
   const { customAssets, deleteCustomAsset } = useCustomAssetsStore()
   const currentPet: PetConfig = avatar.pet || { type: 'none' }
 
-  // Custom assets that belong to the pet slot
   const petCustomAssets = customAssets.filter(
     (a) => a.type === 'avatar' && a.avatarSlot === 'pet'
   )
 
-  // Reset any legacy procedural pet type (cat, dog, slime, chick) to none
   useEffect(() => {
     if (avatar.pet && ['cat', 'dog', 'slime', 'chick'].includes(avatar.pet.type)) {
       onChangeAvatar({
@@ -107,7 +102,6 @@ export const PetSelectorPanel: React.FC<Props> = ({
     }
   }, [avatar.pet, onChangeAvatar])
 
-  // Auto-sync custom pets to public/assets/pet/ on disk
   useEffect(() => {
     for (const asset of petCustomAssets) {
       if (asset.directionalFrames) {
@@ -119,11 +113,9 @@ export const PetSelectorPanel: React.FC<Props> = ({
     }
   }, [petCustomAssets])
 
-  // Modals state
   const [deletingAsset, setDeletingAsset] = useState<CustomAsset | null>(null)
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false)
 
-  // Direct Spritesheet Slicer state
   const directSlicerInputRef = useRef<HTMLInputElement | null>(null)
   const [slicerImageSrc, setSlicerImageSrc] = useState<string>('')
   const [slicerImageName, setSlicerImageName] = useState<string>('')
@@ -144,7 +136,6 @@ export const PetSelectorPanel: React.FC<Props> = ({
     reader.readAsDataURL(file)
   }
 
-  // Opens the exact same editor modal that created the pet!
   const handleEditAsset = async (asset: CustomAsset) => {
     const source = detectAssetCreationSource(asset)
     if (source === 'slicer' || source === 'atlas') {
@@ -163,13 +154,11 @@ export const PetSelectorPanel: React.FC<Props> = ({
       return
     }
 
-    // Default to Studio (Pixel Art Editor)
     if (onEditPreset) {
       onEditPreset('pet', asset.id, asset.name)
     }
   }
 
-  // Edit built-in pet (cat, slime, chick) in Pixel Art Studio
   const handleEditBuiltinPet = (pet: BuiltinPetOption) => {
     if (onEditPreset) {
       onEditPreset('pet', pet.id, pet.name)
@@ -229,14 +218,11 @@ export const PetSelectorPanel: React.FC<Props> = ({
     })
   }
 
-
   return (
     <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-      {/* Top action bar with Slicer, Import, and Export buttons */}
       <div className="flex flex-wrap items-center justify-between mb-3 px-1 shrink-0 gap-2">
         <span className="text-xs font-bold text-slate-300">Opções & Presets</span>
         <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-          {/* Hidden input for direct Spritesheet Slicer */}
           <input
             ref={directSlicerInputRef}
             type="file"
@@ -277,10 +263,8 @@ export const PetSelectorPanel: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Grid of Pets - 2 cols on mobile, 3 cols on sm+ */}
       <div className="flex-1 overflow-y-auto pr-1 min-h-0 mb-3">
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-3 pb-2">
-          {/* 1. Create New Pet Button (Pixel Art Studio) */}
           {onCreatePreset && (
             <button
               type="button"
@@ -295,7 +279,6 @@ export const PetSelectorPanel: React.FC<Props> = ({
             </button>
           )}
 
-          {/* 2. Builtin Pets */}
           {BUILTIN_PETS.map((pet) => {
             const isSelected =
               currentPet.type === pet.id && !currentPet.customAssetId
@@ -311,7 +294,6 @@ export const PetSelectorPanel: React.FC<Props> = ({
                     : 'border-[#383a40] bg-[#1e1f22] hover:border-slate-500'
                 }`}
               >
-                {/* Edit Button for built-in pets (except 'none') */}
                 {pet.id !== 'none' && onEditPreset && (
                   <div
                     onClick={(e) => {
@@ -346,7 +328,6 @@ export const PetSelectorPanel: React.FC<Props> = ({
             )
           })}
 
-          {/* 3. Custom Pets Created by User (via Studio, Slicer, or Atlas) */}
           {petCustomAssets.map((asset) => {
             const isSelected = currentPet.customAssetId === asset.id
             const thumbSrc =
@@ -368,7 +349,6 @@ export const PetSelectorPanel: React.FC<Props> = ({
                     : 'border-[#383a40] bg-[#1e1f22] hover:border-slate-500'
                 }`}
               >
-                {/* Pintar Pixels no Estúdio Pixel Art */}
                 {onEditPreset && (
                   <div
                     onClick={(e) => {
@@ -382,7 +362,6 @@ export const PetSelectorPanel: React.FC<Props> = ({
                   </div>
                 )}
 
-                {/* Fatiar Folha de Sprites (se possuir spritesheet fonte) */}
                 {(detectAssetCreationSource(asset) === 'slicer' || detectAssetCreationSource(asset) === 'atlas') && (
                   <div
                     onClick={(e) => {
@@ -396,7 +375,6 @@ export const PetSelectorPanel: React.FC<Props> = ({
                   </div>
                 )}
 
-                {/* Delete Button */}
                 <div
                   onClick={(e) => {
                     e.stopPropagation()
@@ -408,7 +386,6 @@ export const PetSelectorPanel: React.FC<Props> = ({
                   <Trash2 className="w-3.5 h-3.5" />
                 </div>
 
-                {/* Cropped Thumbnail */}
                 <AutoCroppedThumbnail src={thumbSrc} alt={asset.name} />
 
                 <span className="text-[11px] font-bold text-[#60a5fa] truncate max-w-[80px]">
@@ -426,7 +403,6 @@ export const PetSelectorPanel: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Bottom Customization: Pet Name */}
       {currentPet.type !== 'none' && (
         <div className="pt-2 sm:pt-3 border-t border-[#383a40] flex flex-wrap items-center justify-between gap-2 sm:gap-3 shrink-0">
           <div className="flex items-center gap-2 flex-1 min-w-[200px] max-w-sm">
@@ -456,7 +432,6 @@ export const PetSelectorPanel: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Delete Custom Pet Confirmation Modal */}
       {deletingAsset && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <div className="bg-[#1e1f22] border border-[#2b2d31] rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4">
@@ -487,7 +462,6 @@ export const PetSelectorPanel: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Atlas Import Modal for Pets */}
       {isImportModalOpen && (
         <AtlasImportModal
           isOpen={isImportModalOpen}
@@ -496,7 +470,6 @@ export const PetSelectorPanel: React.FC<Props> = ({
         />
       )}
 
-      {/* Spritesheet Slicer Modal for Pets */}
       {isDirectSlicerOpen && slicerImageSrc && (
         <AvatarSpritesheetSlicerModal
           isOpen={isDirectSlicerOpen}

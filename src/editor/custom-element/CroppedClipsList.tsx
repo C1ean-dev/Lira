@@ -56,13 +56,11 @@ export const CroppedClipsList: React.FC<Props> = ({
                 {clip.width}x{clip.height}px
               </div>
 
-              {/* Hover Plus Button */}
               <div className="absolute inset-0 bg-emerald-600/80 rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white font-bold text-xs gap-1 backdrop-blur-xs">
                 <Plus className="w-4 h-4" />
                 <span>Adicionar</span>
               </div>
 
-              {/* Top-Right Delete Clip Button */}
               <button
                 type="button"
                 onClick={(e) => {

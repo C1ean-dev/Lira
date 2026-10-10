@@ -120,7 +120,6 @@ export const AtlasImportModal: React.FC<Props> = ({
     if (parsedPresets.length === 0) return
     const created = importPresetsIntoStore(category, parsedPresets)
 
-    // Save XML and PNG directly to appropriate subfolder so they are tracked in Git
     const subfolder =
       category === 'pet'
         ? 'pet'
@@ -172,7 +171,6 @@ export const AtlasImportModal: React.FC<Props> = ({
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <div className="bg-[#1e1f22] border border-[#383a40] w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col overflow-hidden max-h-[85vh]">
-        {/* Header */}
         <div className="px-6 py-4 border-b border-[#2b2d31] flex items-center justify-between bg-[#18191c]">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-[#3b82f6]/20 border border-[#3b82f6]/40 flex items-center justify-center text-[#3b82f6]">
@@ -199,9 +197,7 @@ export const AtlasImportModal: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* Content Body */}
         <div className="p-6 overflow-y-auto flex flex-col gap-5">
-          {/* File Upload / Dropzone */}
           <div
             onClick={() => fileInputRef.current?.click()}
             className="border-2 border-dashed border-[#383a40] hover:border-[#3b82f6] bg-[#18191c]/50 hover:bg-[#18191c] rounded-2xl p-6 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all group"
@@ -228,7 +224,6 @@ export const AtlasImportModal: React.FC<Props> = ({
               </span>
             </div>
 
-            {/* File status indicators */}
             <div className="flex items-center gap-3 mt-2">
               <div
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-semibold ${
@@ -256,7 +251,6 @@ export const AtlasImportModal: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Slicer CTA when only PNG is uploaded */}
           {pngFile && !xmlFile && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 rounded-2xl bg-gradient-to-r from-blue-500/15 via-indigo-500/15 to-blue-500/15 border border-blue-500/35 text-xs animate-in fade-in">
               <div className="flex items-center gap-3">
@@ -284,7 +278,6 @@ export const AtlasImportModal: React.FC<Props> = ({
             </div>
           )}
 
-          {/* Error message */}
           {errorMessage && (
             <div className="flex items-center gap-2.5 p-3.5 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
@@ -292,7 +285,6 @@ export const AtlasImportModal: React.FC<Props> = ({
             </div>
           )}
 
-          {/* Success banner */}
           {successCount !== null && (
             <div className="flex items-center gap-2.5 p-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs animate-in fade-in">
               <CheckCircle className="w-4 h-4 shrink-0 text-emerald-400" />
@@ -302,7 +294,6 @@ export const AtlasImportModal: React.FC<Props> = ({
             </div>
           )}
 
-          {/* Parsed Presets Preview List */}
           {parsedPresets.length > 0 && (
             <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
@@ -330,7 +321,6 @@ export const AtlasImportModal: React.FC<Props> = ({
                       </span>
                     </div>
 
-                    {/* 4 directions miniature strip */}
                     <div className="grid grid-cols-4 gap-1 bg-[#1e1f22] p-1.5 rounded-xl border border-[#383a40]/40">
                       {(['down', 'up', 'left', 'right'] as const).map((dir) => {
                         const frame = preset.directionalFrames[dir]
@@ -360,7 +350,6 @@ export const AtlasImportModal: React.FC<Props> = ({
           )}
         </div>
 
-        {/* Footer */}
         <div className="px-6 py-4 border-t border-[#2b2d31] bg-[#18191c] flex items-center justify-end gap-3">
           <button
             type="button"
@@ -382,7 +371,6 @@ export const AtlasImportModal: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Interactive Spritesheet Slicer Studio Modal */}
       {isSlicerOpen && pngDataUrl && (
         <AvatarSpritesheetSlicerModal
           isOpen={isSlicerOpen}

@@ -1,8 +1,3 @@
-/**
- * MicCalibrator — measures ambient noise floor for ~3-5 seconds, records
- * an audio sample, and recommends the best engine + sensitivity for the
- * user's environment. Also produces raw and processed sample preview audio.
- */
 
 import {
   audioBufferToWav,
@@ -21,8 +16,8 @@ export interface CalibrationResult {
   peakRmsDb: number
   snrDb: number
   recommendedMode: 'classic' | 'soft' | 'rnnoise'
-  recommendedSensitivity: number // 0..100, fed to manualThresholdPercent
-  durationMs: number // how long we actually measured (may be less if aborted)
+  recommendedSensitivity: number
+  durationMs: number
   rawAudioUrl?: string
   processedAudioUrl?: string
   rawWaveform?: number[]
@@ -65,11 +60,6 @@ export class MicCalibrator {
     this.activeUrls = []
   }
 
-  /**
-   * Run the calibration against the given raw mic stream. Reports progress
-   * via the optional callback (roughly every animation frame) and resolves
-   * with the final CalibrationResult including raw & processed audio samples.
-   */
   public async calibrate(
     inputStream: MediaStream,
     durationMs: number = DEFAULT_DURATION_MS,
@@ -91,7 +81,6 @@ export class MicCalibrator {
       await this.audioCtx.resume().catch(() => {})
     }
 
-    // Re-wrap the input stream so disposing it doesn't kill the user's mic.
     this.stream = new MediaStream([audioTrack])
     this.source = this.audioCtx.createMediaStreamSource(this.stream)
     this.analyser = this.audioCtx.createAnalyser()
@@ -99,7 +88,6 @@ export class MicCalibrator {
     this.analyser.smoothingTimeConstant = 0.1
     this.source.connect(this.analyser)
 
-    // Capture PCM chunks for audio sample preview
     const recordedChunks: Float32Array[] = []
     try {
       if (typeof this.audioCtx.createScriptProcessor === 'function') {
@@ -147,7 +135,6 @@ export class MicCalibrator {
         const elapsed = performance.now() - start
         const currentDb = rms > 0 ? 20 * Math.log10(rms) : -120
 
-        // Realtime 64-bar frequency spectrum + dynamic audio soundwave
         const numBars = 64
         const liveWaveform: number[] = []
         const minBin = 2
@@ -156,7 +143,6 @@ export class MicCalibrator {
         const chunkSize = Math.max(1, Math.floor(buffer.length / numBars))
 
         for (let i = 0; i < numBars; i++) {
-          // Time-domain local peak for instant audio transients
           let timePeak = 0
           const offset = i * chunkSize
           for (let j = 0; j < chunkSize; j++) {
@@ -164,7 +150,6 @@ export class MicCalibrator {
             if (mag > timePeak) timePeak = mag
           }
 
-          // Frequency-domain spectral energy for vocal body
           const centerBin = Math.min(maxBin, Math.round(minBin * Math.pow(ratio, i)))
           const startBin = Math.max(0, centerBin - 1)
           const endBin = Math.min(freqBuffer.length - 1, centerBin + 1)
@@ -177,14 +162,12 @@ export class MicCalibrator {
           const avg = countBin > 0 ? sumBin / countBin : 0
           const normFreq = avg / 255
 
-          // Gentle ambient wave oscillation so it never collapses into flat dots
           const waveTime = elapsed * 0.006
           const idleWave =
             Math.sin(i * 0.26 + waveTime) * 0.04 +
             Math.cos(i * 0.52 - waveTime * 0.7) * 0.03 +
             0.11
 
-          // Boost voice frequency envelope + time-domain peaks + RMS
           const voiceReaction = Math.pow(normFreq, 0.75) * 1.7 + timePeak * 3.5 + rms * 2.5
           const combined = Math.min(1.0, Math.max(idleWave, voiceReaction))
           liveWaveform.push(combined)
@@ -258,7 +241,6 @@ export class MicCalibrator {
       result.rawAudioUrl = URL.createObjectURL(rawBlob)
       this.activeUrls.push(result.rawAudioUrl)
 
-      // Render all 3 engines offline concurrently
       const [classicBuffer, softBuffer, rnnoiseBuffer] = await Promise.all([
         processAudioBufferOffline(rawBuffer, 'classic', result.recommendedSensitivity),
         processAudioBufferOffline(rawBuffer, 'soft', result.recommendedSensitivity),
@@ -295,7 +277,6 @@ export class MicCalibrator {
         },
       }
 
-      // Backward compatibility with single-player views
       const rec = result.processedSamples[result.recommendedMode]
       result.processedAudioUrl = rec.audioUrl
       result.processedWaveform = rec.waveform
@@ -308,9 +289,6 @@ export class MicCalibrator {
     this.aborted = true
   }
 
-  /**
-   * Derive the recommendation from the collected RMS samples.
-   */
   private buildResult(
     samples: number[],
     peakRms: number,
@@ -327,7 +305,6 @@ export class MicCalibrator {
       }
     }
 
-    // Lower-half median = robust noise floor estimate.
     const sorted = [...samples].sort((a, b) => a - b)
     const lowerHalf = sorted.slice(0, Math.max(1, Math.floor(sorted.length / 2)))
     const median = lowerHalf[Math.floor(lowerHalf.length / 2)] || 0.0001
@@ -337,18 +314,13 @@ export class MicCalibrator {
 
     let recommendedMode: 'classic' | 'soft' | 'rnnoise'
     if (noiseFloorDb > -45) {
-      // Loud room: vent, traffic, keyboard.
       recommendedMode = 'rnnoise'
     } else if (noiseFloorDb > -60) {
-      // Medium room: gentle hum.
       recommendedMode = 'soft'
     } else {
-      // Quiet room: home / headset in a closed space.
       recommendedMode = 'classic'
     }
 
-    // Map noise floor to sensitivity slider. Higher noise → higher
-    // threshold so voice isn't mistakenly gated.
     const sensitivity = Math.round(
       Math.max(10, Math.min(35, (noiseFloorDb + 90) * 0.8))
     )

@@ -35,11 +35,9 @@ export class WorldRenderer {
     const remotePlayers = useGameStore.getState().remotePlayers
     const reactions = useGameStore.getState().reactions
 
-    // Clear background
     ctx.fillStyle = '#0c0e14'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-    // Ensure camera values are sane
     if (isNaN(camera.zoom) || camera.zoom <= 0) camera.zoom = 1.0
     if (isNaN(camera.x)) camera.x = 34 * TILE_SIZE
     if (isNaN(camera.y)) camera.y = 20 * TILE_SIZE
@@ -48,7 +46,6 @@ export class WorldRenderer {
     ctx.imageSmoothingEnabled = false
 
     try {
-      // Center camera on player
       const viewWidth = canvas.width / camera.zoom
       const viewHeight = canvas.height / camera.zoom
 
@@ -59,8 +56,6 @@ export class WorldRenderer {
         viewHeight / 2 - camera.y
       )
 
-      // 1. Static world (floors + walls + static furniture) via offscreen cache:
-      // 1 drawImage instead of ~800 tiles × save/restore + per-zone gradients.
       const mapH = map.height || 40
       const mapW = map.width || 68
       const enableCulling = useSettingsStore.getState().enableCulling
@@ -70,7 +65,6 @@ export class WorldRenderer {
       let startY = 0
       let endY = mapH
 
-      // Visible world bounds in pixels (computed once, reused for all culling).
       const camMinX = camera.x - viewWidth / 2
       const camMaxX = camera.x + viewWidth / 2
       const camMinY = camera.y - viewHeight / 2
@@ -86,7 +80,6 @@ export class WorldRenderer {
       const staticLayer = getStaticLayer(map)
       if (staticLayer) {
         ctx.drawImage(staticLayer.canvas, 0, 0)
-        // Dynamic overdraw only for animated assets (usually empty).
         for (const t of staticLayer.animatedFloorTiles) {
           if (enableCulling && (t.x < startX || t.x >= endX || t.y < startY || t.y >= endY)) continue
           PixelArtRenderer.drawFloor(ctx, t.type, t.x * TILE_SIZE, t.y * TILE_SIZE, TILE_SIZE, t.x, t.y, map.floors)
@@ -95,7 +88,6 @@ export class WorldRenderer {
           PixelArtRenderer.drawLiraRoom(ctx, zone, map.zones || [])
         }
         for (const item of staticLayer.animatedFurniture) {
-          // Cheap tile-margin cull without def lookup (max furniture ~4 tiles).
           if (
             enableCulling &&
             (item.x + 4 < startX || item.x - 1 > endX || item.y + 4 < startY || item.y - 1 > endY)
@@ -104,8 +96,6 @@ export class WorldRenderer {
           PixelArtRenderer.drawFurniture(ctx, item)
         }
       } else {
-        // Fallback (huge maps / no DOM): culled direct render.
-        // Base solid underlay to guarantee zero subpixel background bleed across entire visible area
         ctx.fillStyle = '#f6e7d2'
         ctx.fillRect(
           startX * TILE_SIZE,
@@ -121,7 +111,6 @@ export class WorldRenderer {
           }
         }
 
-        // 2. Draw Lira Room Architecture (culled per zone)
         for (const zone of map.zones || []) {
           if (enableCulling) {
             const zx0 = zone.x * TILE_SIZE
@@ -133,7 +122,6 @@ export class WorldRenderer {
           PixelArtRenderer.drawLiraRoom(ctx, zone, map.zones || [])
         }
 
-        // 4. Draw Placed Furniture (culled)
         for (const item of map.furniture || []) {
           if (
             enableCulling &&
@@ -144,7 +132,6 @@ export class WorldRenderer {
         }
       }
 
-      // 3. Draw Zone Header Badges & Dashed Overlays (Only in Editor Mode, culled)
       if (isEditorOpen) {
         for (const zone of map.zones || []) {
           if (enableCulling) {
@@ -159,7 +146,6 @@ export class WorldRenderer {
         }
       }
 
-      // 4b. Draw Click-to-Move Path Destination Indicator
       if (destination && !isEditorOpen) {
         ctx.save()
         const destX = destination.x * TILE_SIZE + 16
@@ -167,14 +153,12 @@ export class WorldRenderer {
         const pulse = (Math.sin(currentTime / 160) + 1) / 2
         const ringRadius = 7 + pulse * 5
 
-        // Outer glowing pulse ring
         ctx.strokeStyle = `rgba(99, 102, 241, ${0.4 + pulse * 0.45})`
         ctx.lineWidth = 2
         ctx.beginPath()
         ctx.arc(destX, destY, ringRadius, 0, Math.PI * 2)
         ctx.stroke()
 
-        // Inner solid core
         ctx.fillStyle = '#6366f1'
         ctx.beginPath()
         ctx.arc(destX, destY, 3, 0, Math.PI * 2)
@@ -182,7 +166,6 @@ export class WorldRenderer {
         ctx.restore()
       }
 
-      // 4c. Draw Selected Furniture Highlight (in Editor Mode)
       if (isEditorOpen && mapStore.selectedPlacedFurnitureId) {
         const selFurn = (map.furniture || []).find((f) => f.id === mapStore.selectedPlacedFurnitureId)
         if (selFurn) {
@@ -199,7 +182,6 @@ export class WorldRenderer {
           ctx.setLineDash([6, 3])
           ctx.strokeRect(fx - 1, fy - 1, fw + 2, fh + 2)
 
-          // Corner handles
           ctx.setLineDash([])
           ctx.fillStyle = '#ffffff'
           const handleSz = 5
@@ -211,7 +193,6 @@ export class WorldRenderer {
         }
       }
 
-      // 5. Sort and Draw Players & Companion Pets by Y-depth (culled, single pass)
       type RenderableEntity =
         | { kind: 'player'; y: number; player: Player; isLocal: boolean }
         | { kind: 'pet'; y: number; pet: PetState; petConfig: PetConfig }
@@ -222,10 +203,7 @@ export class WorldRenderer {
       ]
       for (let i = 0; i < remoteList.length; i++) {
         const p = remoteList[i]
-        // Never draw ourselves as a remote: a stale/self echo entry renders
-        // as a frozen clone of the local avatar stuck at an old position.
         if (p.id === localPlayer.id || (p.gameId && p.gameId === localPlayer.id)) continue
-        // Cull off-screen players early (64px margin for avatar + nametag).
         if (enableCulling) {
           const ppx = (p.x + 0.5) * TILE_SIZE
           const ppy = (p.y + 0.5) * TILE_SIZE
@@ -236,13 +214,9 @@ export class WorldRenderer {
       }
 
       const petManager = PetManager.getInstance()
-      // Reuse remoteList to avoid a second Object.values allocation.
       for (let i = -1; i < remoteList.length; i++) {
         const p = i === -1 ? localPlayer : remoteList[i]
-        // Skip pets of filtered self-echo entries (same ghost reason as above).
         if (i !== -1 && (p.id === localPlayer.id || (p.gameId && p.gameId === localPlayer.id))) continue
-        // Local player already passed culling implicitly (camera follows them);
-        // still cull remote pets.
         if (p.avatar?.pet && p.avatar.pet.type !== 'none') {
           const pet = petManager.getPet(p.id)
           if (pet) {
@@ -274,7 +248,6 @@ export class WorldRenderer {
         }
       }
 
-      // 6. Draw Floating Reactions
       for (const r of reactions) {
         const age = currentTime - r.createdAt
         if (age < 3000) {
@@ -284,7 +257,6 @@ export class WorldRenderer {
         }
       }
 
-      // 7. Draw Live Drag-to-Draw Zone Preview
       if (isEditorOpen && activeTool === 'draw_zone' && zoneDragStart && zoneDragCurrent) {
         const minX = Math.min(zoneDragStart.x, zoneDragCurrent.x)
         const maxX = Math.max(zoneDragStart.x, zoneDragCurrent.x)
@@ -305,7 +277,6 @@ export class WorldRenderer {
         })
 
         ctx.save()
-        // Fill
         ctx.fillStyle = isOverlapping
           ? 'rgba(239, 68, 68, 0.35)'
           : zoneDraft.color
@@ -313,13 +284,11 @@ export class WorldRenderer {
           : 'rgba(76, 110, 245, 0.25)'
         ctx.fillRect(px, py, w, h)
 
-        // Dashed border
         ctx.strokeStyle = isOverlapping ? '#ef4444' : zoneDraft.color || '#4c6ef5'
         ctx.lineWidth = 3
         ctx.setLineDash([8, 4])
         ctx.strokeRect(px + 1.5, py + 1.5, w - 3, h - 3)
 
-        // Dimension badge
         ctx.setLineDash([])
         const badgeText = isOverlapping
           ? `🚫 SOBREPOSIÇÃO NÃO PERMITIDA (${maxX - minX + 1}x${maxY - minY + 1})`
@@ -336,7 +305,6 @@ export class WorldRenderer {
         ctx.fillText(badgeText, px + 11, py - 6)
         ctx.restore()
       }
-      // Draw Editor Hover Tile Preview with Asset Dimensions
       else if (isEditorOpen && hoverTile) {
         ctx.save()
         const tx = hoverTile.x
@@ -354,14 +322,12 @@ export class WorldRenderer {
           const px = Math.round(tx * TILE_SIZE)
           const py = Math.round(ty * TILE_SIZE)
 
-          // Semi-transparent ghost furniture preview
           ctx.fillStyle = furnDef?.iconColor ? `${furnDef.iconColor}33` : 'rgba(76, 110, 245, 0.25)'
           ctx.fillRect(px, py, targetW, targetH)
           ctx.strokeStyle = furnDef?.iconColor || '#4c6ef5'
           ctx.lineWidth = 1.5
           ctx.strokeRect(px + 0.5, py + 0.5, targetW - 1, targetH - 1)
 
-          // Draw the ghost sprite preview reflecting selected direction and rotation
           const rotMap: Record<Direction, 0 | 90 | 180 | 270> = {
             down: 0,
             left: 90,
@@ -388,11 +354,9 @@ export class WorldRenderer {
           const floorH = Math.max(1, Math.round(customAsset?.height || 1))
 
           if (floorW > 1 || floorH > 1) {
-            // Multi-tile floor preview (e.g. 2x1, 4x4)
             const footprintW = floorW * TILE_SIZE
             const footprintH = floorH * TILE_SIZE
 
-            // Ghost image of floor
             if (customAsset && customAsset.frames && customAsset.frames.length > 0) {
               const img = getCustomAssetImage(customAsset.frames[0])
               if (img && img.complete && img.naturalWidth > 0) {
@@ -403,14 +367,12 @@ export class WorldRenderer {
               }
             }
 
-            // Outer footprint bounding box
             ctx.fillStyle = 'rgba(32, 201, 151, 0.2)'
             ctx.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, footprintW, footprintH)
             ctx.strokeStyle = '#20c997'
             ctx.lineWidth = 2
             ctx.strokeRect(tx * TILE_SIZE + 0.5, ty * TILE_SIZE + 0.5, footprintW - 1, footprintH - 1)
 
-            // Inner grid dividers
             ctx.strokeStyle = 'rgba(32, 201, 151, 0.45)'
             ctx.lineWidth = 1
             for (let gx = 1; gx < floorW; gx++) {
@@ -426,7 +388,6 @@ export class WorldRenderer {
               ctx.stroke()
             }
 
-            // Size badge tag
             ctx.save()
             ctx.fillStyle = 'rgba(15, 23, 42, 0.85)'
             ctx.strokeStyle = '#20c997'
@@ -445,7 +406,6 @@ export class WorldRenderer {
             ctx.fillText(badgeText, badgeX + 4, badgeY + badgeH / 2)
             ctx.restore()
           } else {
-            // 1x1 floor: if Shift is held over a zone, show zone outline for full-room fill; otherwise show 1x1 placement tile
             const zones = (mapStore as any).mapData?.zones as
               | { id: string; x: number; y: number; width: number; height: number }[]
               | undefined
@@ -481,7 +441,6 @@ export class WorldRenderer {
                 insideZone.height * TILE_SIZE - 1
               )
             } else {
-              // 1x1 tile placement (inside or outside zone)
               if (customAsset && customAsset.frames && customAsset.frames.length > 0) {
                 const img = getCustomAssetImage(customAsset.frames[0])
                 if (img && img.complete && img.naturalWidth > 0) {
@@ -561,7 +520,6 @@ export class WorldRenderer {
               ctx.strokeRect(tx * TILE_SIZE + 0.5, ty * TILE_SIZE + 0.5, TILE_SIZE - 1, TILE_SIZE - 1)
             }
           } else {
-            // 'floor' or 'wall'
             ctx.fillStyle = 'rgba(239, 68, 68, 0.22)'
             ctx.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE)
             ctx.strokeStyle = '#ef4444'
@@ -581,7 +539,6 @@ export class WorldRenderer {
       ctx.restore()
     }
 
-    // 8. On-Screen FPS Counter HUD Overlay
     if (useSettingsStore.getState().showFpsCounter) {
       ctx.save()
       const fpsText = `${fps} FPS`

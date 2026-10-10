@@ -6,11 +6,10 @@ export interface Channel {
   type: ChannelType
   description?: string
   unreadCount: number
-  recipientId?: string // for DMs
-  zoneId?: string      // for zone chat
+  recipientId?: string
+  zoneId?: string
 }
 
-/** A channel of a space, as shared with everyone in it and saved with it. */
 export interface RoomChannel {
   id: string
   name: string
@@ -21,8 +20,8 @@ export interface ChatAttachment {
   id: string
   name: string
   size: number
-  type: string // MIME type e.g. 'image/png', 'application/pdf'
-  dataUrl: string // base64 data url for direct download or image rendering
+  type: string
+  dataUrl: string
 }
 
 export type FriendRequestStatus = 'pending' | 'accepted' | 'declined'
@@ -36,7 +35,6 @@ export interface FriendRequestData {
   status: FriendRequestStatus
 }
 
-/** An invite to enter the space its sender is in. */
 export interface RoomInviteData {
   roomCode: string
   roomName: string
@@ -52,9 +50,9 @@ export interface ChatMessage {
   content: string
   timestamp: number
   avatarConfig?: any
-  reactions?: Record<string, string[]> // emoji -> array of userIds
+  reactions?: Record<string, string[]>
   attachment?: ChatAttachment
-  recipientId?: string // for direct messages
+  recipientId?: string
   recipientName?: string
   friendRequest?: FriendRequestData
   roomInvite?: RoomInviteData

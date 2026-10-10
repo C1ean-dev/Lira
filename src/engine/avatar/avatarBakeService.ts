@@ -4,9 +4,6 @@ import {
 } from '../../types/game'
 import { AvatarAtlasManager } from './AvatarAtlasManager'
 
-/**
- * Bake on Demand: Isolates and rasterizes a preset to an offscreen 32x32 transparent PNG dataUrl
- */
 export function bakeAvatarPreset(
   category: string,
   presetId: string,
@@ -17,9 +14,7 @@ export function bakeAvatarPreset(
     return ''
   }
 
-  // Check if running in browser / DOM
   if (typeof document === 'undefined') {
-    // Return a valid mock transparent 32x32 PNG data URL for test environments
     return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAA'
   }
 
@@ -32,7 +27,6 @@ export function bakeAvatarPreset(
   ctx.imageSmoothingEnabled = false
   ctx.clearRect(0, 0, 32, 32)
 
-  // 2. Check if subtexture exists in AvatarAtlasManager
   let searchDir = direction
   let flipX = false
   if (direction === 'left') {
@@ -71,9 +65,6 @@ export function bakeAvatarPreset(
   return canvas.toDataURL('image/png')
 }
 
-/**
- * Bakes all 4 standard directions (down, up, left, right) for a native avatar preset
- */
 export function bakeAllAvatarDirections(
   category: string,
   presetId: string,
@@ -87,10 +78,6 @@ export function bakeAllAvatarDirections(
   }
 }
 
-/**
- * Scans an image canvas and crops tightly to the bounding box of non-transparent pixels,
- * eliminating all empty margins so the item is brought close-up and centered.
- */
 export function cropContentBoundingBox(
   sourceCanvas: HTMLCanvasElement,
   padding: number = 1
@@ -124,7 +111,6 @@ export function cropContentBoundingBox(
     }
   }
 
-  // If entirely empty (all transparent)
   if (maxX < minX || maxY < minY) {
     return sourceCanvas.toDataURL()
   }
@@ -160,9 +146,6 @@ export function cropContentBoundingBox(
   return cropCanvas.toDataURL('image/png')
 }
 
-/**
- * Loads a data URL and returns an auto-cropped version with empty space removed
- */
 export function cropContentDataUrl(
   dataUrl: string,
   padding: number = 1

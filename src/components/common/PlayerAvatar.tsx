@@ -68,7 +68,6 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
     )
   }, [effectiveName, effectiveCustomPic, effectiveAvatar, size])
 
-  // Reset imgError whenever avatarSrc or customPic changes
   React.useEffect(() => {
     setImgError(false)
   }, [avatarSrc, effectiveCustomPic])
@@ -81,7 +80,6 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
 
   const bgColor = effectiveAvatar?.shirtColor || effectiveAvatar?.topColor || '#3b82f6'
 
-  // Gentle padding for 2D character avatar snapshot (already pre-fitted to 72% diameter)
   const characterPadding =
     size === '4xl' || size === '3xl' ? 'p-1.5' : size === '2xl' || size === 'xl' ? 'p-1' : 'p-0.5'
 

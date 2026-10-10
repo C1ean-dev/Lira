@@ -47,7 +47,6 @@ export const TransparencyControls: React.FC<Props> = ({
 
       {enableBgRemoval && (
         <div className="space-y-3 pt-1 border-t border-[#2b2d31]">
-          {/* Target Color Swatch & Eyedropper */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-300">Cor de Fundo Alvo:</span>
@@ -81,9 +80,6 @@ export const TransparencyControls: React.FC<Props> = ({
             </button>
           </div>
 
-
-
-          {/* Tolerance Slider */}
           <div className="space-y-1">
             <div className="flex items-center justify-between text-xs text-slate-300">
               <span className="flex items-center gap-1">
@@ -102,7 +98,6 @@ export const TransparencyControls: React.FC<Props> = ({
             />
           </div>
 
-          {/* White Fringe Removal */}
           <div className="flex items-center justify-between pt-1">
             <span className="text-xs text-slate-300">Suavizar Bordas e Halos</span>
             <input

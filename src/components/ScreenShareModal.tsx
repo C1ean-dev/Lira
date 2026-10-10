@@ -36,8 +36,6 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [audioCapabilityError, setAudioCapabilityError] = useState<string | null>(null)
 
-  // No navegador (sem Electron) não há desktopCapturer — a lista de
-  // miniaturas não existe e o caminho correto é o seletor nativo.
   const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI?.getSources
 
   const isScreenSharing = useMediaStore((s) => s.isScreenSharing)
@@ -50,7 +48,6 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const optimizationMode = useMediaStore((s) => s.screenShareOptimizationMode)
   const setScreenShareOptimizationMode = useMediaStore((s) => s.setScreenShareOptimizationMode)
 
-  // Source-only audio is mandatory. It is never a user-selectable mode.
   const includeAudio = true
   const [resolution, setResolution] = useState<'auto' | '480p' | '720p' | '1080p'>('auto')
   const [fps, setFps] = useState<'auto' | 30 | 60>('auto')
@@ -62,8 +59,6 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
     const electronAPI = (window as any).electronAPI
     if (electronAPI && electronAPI.getSources) {
       try {
-        // Race contra o IPC: o desktopCapturer pode TRAVAR (não só falhar)
-        // em alguns drivers/GPUs — sem timeout o modal gira para sempre.
         const items = (await Promise.race([
           electronAPI.getSources(),
           new Promise<never>((_, reject) =>
@@ -110,7 +105,6 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const selectedSource = sources.find((s) => s.id === selectedSourceId)
   const isSharingWholeScreen = selectedSource?.id.startsWith('screen:')
   const effectiveAudioSourceId = isSharingWholeScreen ? selectedSourceId : (selectedAudioSourceId || selectedSourceId)
-  const selectedAudioSource = windows.find((source) => source.id === effectiveAudioSourceId)
 
   const handleConfirm = async () => {
     if (isElectron && (!effectiveAudioSourceId || audioCapabilityError)) return
@@ -130,7 +124,7 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
   const handleNativePicker = async () => {
     const config: ScreenShareConfig = {
-      sourceId: undefined, // Browser-only native picker
+      sourceId: undefined,
       sourceName: undefined,
       includeAudio,
       resolution,
@@ -144,7 +138,6 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200 select-none">
       <div className="bg-[#1b202c] border border-[#2a3142] rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#2a3142] bg-[#12151d]/70">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
@@ -185,7 +178,6 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
           </div>
         </div>
 
-        {/* Tab Selection */}
         <div className="flex gap-2 px-6 pt-3 border-b border-[#2a3142] bg-[#12151d]/40">
           <button
             onClick={() => {
@@ -222,9 +214,7 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
           </button>
         </div>
 
-        {/* Modal Body */}
         <div className="p-6 overflow-y-auto flex-1 space-y-5">
-          {/* Source Thumbnails Grid */}
           <div>
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-semibold text-slate-300">
@@ -319,7 +309,6 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                           : 'border-[#2a3142] bg-[#12151d]/60 hover:border-slate-600'
                       }`}
                     >
-                      {/* Thumbnail Image or Monitor/Window Icon Fallback */}
                       <div className="h-28 bg-black/60 overflow-hidden flex items-center justify-center p-2 relative">
                         {source.thumbnail && source.thumbnail.length > 30 ? (
                           <img
@@ -348,7 +337,6 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                         )}
                       </div>
 
-                      {/* Label */}
                       <div className="p-2.5 bg-[#1b202c] border-t border-[#2a3142] flex items-center justify-between gap-1.5">
                         <span className="text-[11px] font-medium text-slate-200 truncate">{source.name}</span>
                         {isSelected && <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0" />}
@@ -360,7 +348,6 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
             )}
           </div>
 
-          {/* Selected Target Feedback */}
           {selectedSource && (
             <div className="flex items-center gap-2 px-3.5 py-2 bg-indigo-950/30 border border-indigo-500/30 rounded-xl text-xs text-indigo-200">
               <AppWindow className="w-4 h-4 text-indigo-400 shrink-0" />
@@ -380,7 +367,6 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
             </div>
           )}
 
-          {/* Settings Section: Resolution, FPS and Sound */}
           <div className="bg-[#12151d]/60 rounded-2xl p-4 border border-[#2a3142] space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
@@ -422,7 +408,6 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
             </div>
 
             <div className="space-y-4">
-              {/* Prioridade da Transmissão: Qualidade vs Fluidez */}
               <div>
                 <div className="mb-2 flex items-center justify-between">
                   <label className="text-[11px] font-semibold text-slate-300">Prioridade da Transmissão</label>
@@ -501,7 +486,6 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 </div>
               </div>
 
-              {/* Resolution Options: Auto, 1080p, 720p, 480p */}
               <div>
                 <div className="mb-1.5">
                   <label className="text-[11px] font-semibold text-slate-300">Resolução de Vídeo</label>
@@ -530,7 +514,6 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 </div>
               </div>
 
-              {/* Frame Rate (FPS) Options: Auto, 60, 30 */}
               <div>
                 <div className="mb-1.5">
                   <label className="text-[11px] font-semibold text-slate-300">Taxa de Quadros (FPS)</label>
@@ -559,7 +542,6 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
               </div>
             </div>
 
-            {/* Volume Control & Smart Ducking */}
             <div className="pt-2 border-t border-[#2a3142]/60">
               <div className="bg-[#1b202c] p-3.5 rounded-xl border border-[#2a3142] space-y-3">
                 <div className="space-y-1.5">
@@ -585,7 +567,6 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                   />
                 </div>
 
-                {/* Ducking de Voz Inteligente */}
                 <div className="flex items-center justify-between pt-2.5 border-t border-[#2a3142]/70">
                   <div className="space-y-0.5 pr-2">
                     <div className="text-xs font-semibold text-slate-200">Ducking de Voz Inteligente</div>
@@ -608,7 +589,6 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
           </div>
         </div>
 
-        {/* Footer */}
         <div className="p-4 border-t border-[#2a3142] bg-[#12151d]/90 flex items-center justify-between">
           <div className="text-xs text-slate-400">
             Transmissão:{' '}
@@ -654,4 +634,3 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
     </div>
   )
 }
-

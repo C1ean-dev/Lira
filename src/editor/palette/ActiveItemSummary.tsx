@@ -110,7 +110,6 @@ export const ActiveItemSummary: React.FC<Props> = ({
         ),
       }
     }
-    // Place Furniture
     if (currentFurniture) {
       return {
         title: currentFurniture.name,

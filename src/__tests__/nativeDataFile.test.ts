@@ -22,13 +22,11 @@ import {
 
 type Tree = Record<string, unknown>
 
-// Three different images, the way the canvas would have written them: RGBA, filter 0.
 const sprite = (seed: number) => toDataUrl(makeRgbaPng(paletteImage(32, 48, distinctColours(6 + seed), seed)))
 const A = sprite(1)
 const B = sprite(2)
 const C = toDataUrl(makeRgbaPng(spriteImage(64, 64, distinctColours(10))))
 
-/** What the app sends to be saved: images repeated wherever they are used. */
 const payload = (): Tree => ({
   categories: ['Geral', 'Pokémon'],
   assets: [
@@ -44,7 +42,6 @@ const payload = (): Tree => ({
   ],
 })
 
-/** Same tree, with PNG strings compared by the picture they show instead of by their bytes. */
 function samePictures(actual: unknown, expected: unknown, where = '$'): void {
   if (typeof expected === 'string' && expected.startsWith('data:image/png')) {
     expect(typeof actual, where).toBe('string')
@@ -114,10 +111,8 @@ describe('serializeNativeDataAsync', () => {
   })
 
   it('lets other work run while it recodes the images', async () => {
-    // an event-loop turn between images: a timer scheduled before the call gets to run before it ends
     let ticked = false
     setTimeout(() => (ticked = true), 0)
-    // enough work to use up several time slices
     const many = {
       categories: [],
       assets: Array.from({ length: 40 }, (_, i) => ({
@@ -189,7 +184,6 @@ describe('writeNativeDataFileAsync and writeNativeDataFileLatest', () => {
   })
 })
 
-// what readNativeDataFile does to parsed text
 function readBack(parsed: Tree): Tree {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lira-native-readback-'))
   try {

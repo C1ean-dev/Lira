@@ -2,10 +2,6 @@ import { describe, it, expect } from 'vitest'
 import { MicCalibrator } from '../media/MicCalibrator'
 
 describe('MicCalibrator - Shape & lifecycle', () => {
-  // Real calibration runs in the browser (needs getUserMedia + Web Audio).
-  // jsdom doesn't implement either, so we only assert the public surface
-  // and the lifecycle contract here. End-to-end calibration is verified
-  // manually in the UI tab.
 
   it('should instantiate without errors', () => {
     const c = new MicCalibrator()
@@ -18,7 +14,7 @@ describe('MicCalibrator - Shape & lifecycle', () => {
   it('should safely dispose without crashing', () => {
     const c = new MicCalibrator()
     expect(() => c.dispose()).not.toThrow()
-    expect(() => c.dispose()).not.toThrow() // idempotent
+    expect(() => c.dispose()).not.toThrow()
   })
 
   it('abort() should be safe to call before any calibrate() run', () => {

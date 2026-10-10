@@ -2,11 +2,6 @@ import type React from 'react'
 import type { AudioDeviceInfo } from '../../types/audio'
 import type { DropdownOption } from '../common/CustomDropdown'
 
-/**
- * Chromium lists the OS default a second time, as a device whose id is
- * literally "default" ("Default - <name>"). It is the same thing as our own
- * "Padrão do Sistema" option, so it is left out.
- */
 const SYSTEM_DEFAULT_ID = 'default'
 
 export function toDeviceOptions(

@@ -51,7 +51,6 @@ describe('resolveUniquePlayerName', () => {
 
   it('fills gaps or advances when multiple numbered players exist', () => {
     expect(resolveUniquePlayerName('Player', ['Player', 'Player #2', 'Player #3'])).toBe('Player #4')
-    // If #2 left or was missing, it takes #2
     expect(resolveUniquePlayerName('Player', ['Player', 'Player #3'])).toBe('Player #2')
   })
 
@@ -82,7 +81,7 @@ describe('P2P Duplicate Name Resolution in Room', () => {
     processNetworkMessage(
       makeJoinMsg(remotePeer, 'remote-peer-1'),
       'remote-peer-1',
-      true, // isHost
+      true,
       noopBroadcast,
       noopRemovePeer,
       noopEligibility,
@@ -95,7 +94,6 @@ describe('P2P Duplicate Name Resolution in Room', () => {
   })
 
   it('renames subsequent newcomer with #3 when Player and Player #2 already exist', () => {
-    // 1st newcomer
     processNetworkMessage(
       makeJoinMsg(makePlayer('remote-peer-1', 'Player'), 'remote-peer-1'),
       'remote-peer-1',
@@ -107,7 +105,6 @@ describe('P2P Duplicate Name Resolution in Room', () => {
     )
     expect(useGameStore.getState().remotePlayers['remote-peer-1'].name).toBe('Player #2')
 
-    // 2nd newcomer
     processNetworkMessage(
       makeJoinMsg(makePlayer('remote-peer-2', 'Player'), 'remote-peer-2'),
       'remote-peer-2',
@@ -136,7 +133,6 @@ describe('P2P Duplicate Name Resolution in Room', () => {
   })
 
   it('reconciles local client name to #2 when joining a room where host is already named Player', () => {
-    // Local player is client
     useGameStore.setState({
       localPlayer: makePlayer('client-id', 'Player'),
       remotePlayers: {},
@@ -146,7 +142,7 @@ describe('P2P Duplicate Name Resolution in Room', () => {
     processNetworkMessage(
       makeJoinMsg(hostPeer, 'host-id'),
       'host-id',
-      false, // client, not host
+      false,
       noopBroadcast,
       noopRemovePeer,
       noopEligibility,

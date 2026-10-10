@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { createLatestWriter } from '../../electron/latestWriter'
 
-/** A write that stays open until the test finishes it. */
 function controlledWrite() {
   const started: string[] = []
   const finish: Record<string, { ok: () => void; fail: (e: unknown) => void }> = {}

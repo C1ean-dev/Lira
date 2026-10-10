@@ -1,15 +1,8 @@
-// Where the time goes between opening the window and the menu being on screen.
-//
-// Marks are taken on the way (see startupEntry.ts, main.tsx and App.tsx); once the menu has
-// painted, one line goes to the log with everything the browser recorded: the marks, the
-// page's own timings, the slowest requests (in dev these are the modules served by Vite) and
-// the long tasks. All times are milliseconds since the page started loading.
 
 export type StartupMark = 'entry' | 'splash' | 'graph' | 'commit' | 'painted'
 const MARK_ORDER: StartupMark[] = ['entry', 'splash', 'graph', 'commit', 'painted']
 const SLOWEST_SHOWN = 5
 
-/** What localStorage holds, and what its first access cost (it loads the whole area, from disk). */
 export interface StorageStats {
   firstAccessMs: number
   keys: number
@@ -26,7 +19,6 @@ export interface StartupSnapshot {
   storage?: StorageStats
 }
 
-/** The last two path segments of a URL (the host too when there is only one), without the query. */
 export function shortResourceName(name: string): string {
   let url: URL
   try {
@@ -45,7 +37,6 @@ const chars = (value: number) =>
 export function formatStartupReport(snapshot: StartupSnapshot): string {
   const sections: string[] = []
 
-  // marks: the first one as it is, the others as the time since the one before
   const steps: string[] = []
   let previous: number | undefined
   for (const mark of MARK_ORDER) {
@@ -97,18 +88,11 @@ export function formatStartupReport(snapshot: StartupSnapshot): string {
   return `[Startup] renderer: ${sections.join(' | ')}`
 }
 
-// ---------------------------------------------------------------------------
-// In the page
-
 const marks: StartupSnapshot['marks'] = {}
 const longTasks: StartupSnapshot['longTasks'] = []
 let storageStats: StorageStats | undefined
 let reported = false
 
-/**
- * Times the first localStorage access (the browser loads the whole area for the origin, from disk, and
- * the call waits for it) and sizes what is stored. Called before the app touches the storage itself.
- */
 export function probeStorage(): void {
   try {
     const storage = window.localStorage
@@ -127,16 +111,13 @@ export function probeStorage(): void {
     sizes.sort((a, b) => b.chars - a.chars)
     storageStats = { firstAccessMs, keys: sizes.length, totalChars, largest: sizes.slice(0, 3) }
   } catch {
-    // storage not available: the report has no storage section
   }
 }
 
-/** Takes the time of a start-up step, the first time it is asked for. */
 export function markStartup(name: StartupMark): void {
   if (marks[name] === undefined && typeof performance !== 'undefined') marks[name] = performance.now()
 }
 
-/** Collects the long tasks of the page, including the ones that happened before this call. */
 export function observeLongTasks(): void {
   try {
     if (typeof PerformanceObserver === 'undefined') return
@@ -145,7 +126,6 @@ export function observeLongTasks(): void {
     })
     observer.observe({ type: 'longtask', buffered: true })
   } catch {
-    // not supported: the report just has no long tasks
   }
 }
 
@@ -171,7 +151,6 @@ function collectSnapshot(): StartupSnapshot {
   }
 }
 
-/** Once what was just rendered has painted (two frames later), log the report. Once only. */
 export function reportStartupAfterPaint(): void {
   if (reported || typeof requestAnimationFrame === 'undefined') return
   reported = true
@@ -181,7 +160,6 @@ export function reportStartupAfterPaint(): void {
       try {
         console.info(formatStartupReport(collectSnapshot()))
       } catch {
-        // measuring must never break the app
       }
     })
   )

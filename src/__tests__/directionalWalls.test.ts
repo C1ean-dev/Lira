@@ -70,10 +70,10 @@ describe('Custom Directional Walls (Estúdio Pixel Art: Parede)', () => {
       isObstacle: true,
       frames: ['data:image/png;base64,mockBlueFront'],
       directionalFrames: {
-        down: 'data:image/png;base64,mockBlueFront', // Frente (Blue)
-        up: 'data:image/png;base64,mockBlackBack', // Costas (Black)
-        left: 'data:image/png;base64,mockRedLeft', // Esquerda (Red)
-        right: 'data:image/png;base64,mockGreenRight', // Direita (Green)
+        down: 'data:image/png;base64,mockBlueFront',
+        up: 'data:image/png;base64,mockBlackBack',
+        left: 'data:image/png;base64,mockRedLeft',
+        right: 'data:image/png;base64,mockGreenRight',
       },
       frameRateMs: 160,
       createdAt: Date.now(),
@@ -95,10 +95,8 @@ describe('Custom Directional Walls (Estúdio Pixel Art: Parede)', () => {
       wallType: customWallId,
     }
 
-    // Call drawLiraRoom
     WallRenderer.drawLiraRoom(ctx, zone, [zone])
 
-    // Verify patterns were created from all 4 directional frames
     expect(patterns).toContain('data:image/png;base64,mockBlackBack')
     expect(patterns).toContain('data:image/png;base64,mockRedLeft')
     expect(patterns).toContain('data:image/png;base64,mockGreenRight')
@@ -129,21 +127,17 @@ describe('Custom Directional Walls (Estúdio Pixel Art: Parede)', () => {
 
     const { ctx, drawn } = createMockCtx()
 
-    // Draw wall for 'left' direction
     WallRenderer.drawWall(ctx, customWallId, 0, 0, 32, 'left')
     expect(drawn).toContain('data:image/png;base64,mockRedLeft')
 
-    // Draw wall for 'up' direction
     drawn.length = 0
     WallRenderer.drawWall(ctx, customWallId, 0, 0, 32, 'up')
     expect(drawn).toContain('data:image/png;base64,mockBlackBack')
 
-    // Draw wall for 'right' direction
     drawn.length = 0
     WallRenderer.drawWall(ctx, customWallId, 0, 0, 32, 'right')
     expect(drawn).toContain('data:image/png;base64,mockGreenRight')
 
-    // Draw wall for 'down' direction
     drawn.length = 0
     WallRenderer.drawWall(ctx, customWallId, 0, 0, 32, 'down')
     expect(drawn).toContain('data:image/png;base64,mockBlueFront')

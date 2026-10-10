@@ -4,9 +4,6 @@ import { MediaManager } from '../media/MediaManager'
 import { PeerManager } from '../p2p/PeerManager'
 import { useMediaStore } from '../store/useMediaStore'
 
-// Web Audio stand-ins. Unlike the ones in quietVoiceAudioGating.test.ts the
-// worklet here says nothing on its own: each test decides when (and whether)
-// it reports 'ready' or 'error', and when module loading finishes.
 class MockAudioParam {
   value = 1
   setValueAtTime = vi.fn((v: number) => { this.value = v })
@@ -86,7 +83,6 @@ class MockAudioWorkletNode extends MockAudioNode {
     super()
     workletNodes.push(this)
   }
-  /** What the audio thread would post to the main thread. */
   emit(data: unknown) {
     this.port.onmessage?.({ data })
   }
@@ -110,14 +106,12 @@ const makeMicStream = () =>
     getTracks: () => [],
   }) as any
 
-/** Let pending promise continuations run (timers stay frozen). */
 const flush = async () => {
   for (let i = 0; i < 20; i++) await Promise.resolve()
 }
 
 const lastNode = () => workletNodes[workletNodes.length - 1]
 
-/** Observe a promise without awaiting it, so a hang shows up as "not settled". */
 function track<T>(promise: Promise<T>) {
   const state: { settled: boolean; value?: T } = { settled: false }
   promise.then((value) => {
@@ -161,7 +155,6 @@ describe('RNNoise engine lifecycle', () => {
       expect(useMediaStore.getState().rnnoiseStatus).toBe('error')
       expect(useMediaStore.getState().rnnoiseError).toBe('wasm instantiate failed')
 
-      // "Tentar de novo": this time the worklet comes up fine.
       const second = track(rnn.processStream(mic))
       await flush()
       expect(second.settled).toBe(false)
@@ -194,7 +187,6 @@ describe('RNNoise engine lifecycle', () => {
 
       expect(start.settled).toBe(true)
       expect(start.value).toBe(mic)
-      // A cancelled start is not a failure: nothing to fall back from.
       expect(useMediaStore.getState().rnnoiseStatus).toBe('idle')
       expect(vi.getTimerCount()).toBe(0)
     })
@@ -233,7 +225,6 @@ describe('RNNoise engine lifecycle', () => {
 
       const second = track(rnn.processStream(mic))
       await flush()
-      // The old worklet's message must not complete the new start.
       staleNode.emit({ type: 'ready' })
       await flush()
       expect(second.settled).toBe(false)
@@ -309,7 +300,6 @@ describe('RNNoise engine lifecycle', () => {
       await flush()
       expect(start.settled).toBe(true)
       const analyser = (rnn as any).analyser as MockAnalyserNode
-      /** Hold the (denoised) signal at `rms` for a while and return the last reading. */
       const settleAt = (rms: number) => {
         analyser.mockValue = rms
         vi.advanceTimersByTime(200)
@@ -328,8 +318,6 @@ describe('RNNoise engine lifecycle', () => {
       const justAbove = settleAt(0.0043)
       expect(justAbove.gateOpen).toBe(true)
 
-      // The marker sits between the last level that kept the gate shut and
-      // the first one that opened it (both on the meter's 0..1 scale).
       const marker = (justAbove.threshold ?? 0) / 100
       expect(marker).toBeGreaterThan(justBelow.level)
       expect(marker).toBeLessThanOrEqual(justAbove.level)
@@ -354,9 +342,9 @@ describe('RNNoise engine lifecycle', () => {
       const { rnn, settleAt } = await startWithMeter('manual', 20)
 
       expect(settleAt(0).gateOpen).toBe(false)
-      const below = settleAt(0.03) // level 0.18
+      const below = settleAt(0.03)
       expect(below.gateOpen).toBe(false)
-      const above = settleAt(0.035) // level 0.21
+      const above = settleAt(0.035)
       expect(above.gateOpen).toBe(true)
       expect(above.threshold).toBe(20)
 
@@ -395,7 +383,6 @@ describe('RNNoise engine lifecycle', () => {
       lastNode().emit({ type: 'error', fatal: true, message: 'processing keeps failing: boom' })
       await flush()
 
-      // The badge tells the truth: Soft DSP is what the peers now hear.
       expect(useMediaStore.getState().rnnoiseStatus).toBe('fallback')
       expect(useMediaStore.getState().rnnoiseError).toBe('processing keeps failing: boom')
       expect((mm as any).activeEngine).toBe((mm as any).softEngine)
@@ -403,7 +390,6 @@ describe('RNNoise engine lifecycle', () => {
       expect((mm as any).rnnoiseEngine.audioCtx).toBeNull()
       expect(replaceAudioTrack).toHaveBeenCalledTimes(2)
 
-      // "Tentar de novo" goes back to RNNoise.
       const retried = track(mm.reprocessStream())
       await flush()
       lastNode().emit({ type: 'ready' })
@@ -432,7 +418,6 @@ describe('RNNoise engine lifecycle', () => {
       expect(start.settled).toBe(true)
       expect(useMediaStore.getState().rnnoiseStatus).not.toBe('fallback')
       expect((mm as any).softEngine.audioCtx).toBeNull()
-      // Every context that was opened for the cancelled start is closed again.
       expect(contexts.every((ctx) => ctx.state === 'closed')).toBe(true)
       expect(vi.getTimerCount()).toBe(0)
     })

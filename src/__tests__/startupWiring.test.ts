@@ -2,9 +2,6 @@ import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
 
-// The pieces are tested on their own (startupTrace, startupTimer). This checks they are
-// hooked up where the measurements have to be taken.
-
 const read = (relative: string) => fs.readFileSync(fileURLToPath(new URL(`../../${relative}`, import.meta.url)), 'utf-8')
 
 describe('start-up measurements', () => {
@@ -16,7 +13,6 @@ describe('start-up measurements', () => {
 
   it('main.tsx is tiny: it lets the splash paint, then loads the app', () => {
     const main = read('src/main.tsx')
-    // nothing of the app is imported up front, or its evaluation would run before the splash is painted
     const imports = main.split(/\r?\n/).filter((l) => l.startsWith('import '))
     expect(imports.filter((l) => /from '\.\/(App|components|store|p2p|media|engine|editor)/.test(l))).toEqual([])
     expect(imports.some((l) => /react-dom/.test(l))).toBe(false)

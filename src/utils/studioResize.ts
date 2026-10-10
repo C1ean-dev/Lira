@@ -1,16 +1,11 @@
-// Resizing the canvas of the pixel art studio. Each frame keeps an "unclipped" image: the drawing as it was
-// before a smaller canvas cut it, so that a bigger canvas gets the cut part back. What was drawn on the
-// canvas since then has to go into it as well, or the next resize throws the new drawing away.
 
 export const MAX_SIZE = 4096
 
-/** The size typed in a field, 1 to MAX_SIZE; null while the field is empty or below 1. */
 export function parseSizeInput(typedText: string): number | null {
   const parsedSize = parseInt(typedText, 10)
   return isNaN(parsedSize) || parsedSize < 1 ? null : Math.min(MAX_SIZE, parsedSize)
 }
 
-/** What a field shows for what was typed: above MAX_SIZE it becomes MAX_SIZE, anything else is left as typed. */
 export function clampedSizeText(typedText: string): string {
   return parseInt(typedText, 10) > MAX_SIZE ? String(MAX_SIZE) : typedText
 }
@@ -25,7 +20,6 @@ export interface Point {
   y: number
 }
 
-/** Where `source` goes to be centred in an area of size `target`. */
 export function centerOffset(target: Size, source: Size): Point {
   return {
     x: Math.round((target.width - source.width) / 2),
@@ -34,18 +28,11 @@ export function centerOffset(target: Size, source: Size): Point {
 }
 
 export interface FrameSourceLayout {
-  /** Size of the image that holds both. */
   size: Size
-  /** Where the old unclipped image goes in it (null when the frame had none). */
   unclipped: Point | null
-  /** Where the drawing of the canvas goes in it. */
   current: Point
 }
 
-/**
- * The image to resize a frame from: the old unclipped image and the drawing of the canvas, centred on each
- * other, in an image as big as the bigger of the two in each direction.
- */
 export function layoutFrameSource(unclippedSize: Size | null, currentSize: Size): FrameSourceLayout {
   const size = {
     width: Math.max(currentSize.width, unclippedSize?.width ?? 0),
@@ -58,10 +45,6 @@ export function layoutFrameSource(unclippedSize: Size | null, currentSize: Size)
   }
 }
 
-/**
- * The unclipped image of a frame brought up to date: the old one, with the part the canvas shows replaced
- * by the drawing in `frameUrl`. Null if the drawing cannot be read.
- */
 export async function composeFrameSource(
   unclippedCanvas: HTMLCanvasElement | undefined,
   frameUrl: string

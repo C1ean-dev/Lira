@@ -6,7 +6,6 @@ import { FloatingScreenPreview, VideoTile } from '../components/MiniCallOverlay'
 import { GridParticipantTile, ParticipantData } from '../components/grid/GridParticipantTile'
 import { FullScreenLiveOverlay } from '../components/grid/FullScreenLiveOverlay'
 
-// The stream of somebody who is live: the sound of the call and the screen.
 const liveStream = () =>
   ({
     getAudioTracks: () => [{ kind: 'audio', id: 'mic', enabled: true, readyState: 'live' }],
@@ -22,10 +21,6 @@ const WATCH = 'Assistir'
 const STOP = 'Parar de assistir'
 const CONNECTING = 'Conectando'
 
-/**
- * Server rendering reads the stores' initial state, so who is being watched
- * comes in through props here, the way the overlays pass it down.
- */
 describe('the click to watch a live', () => {
   describe('LiveWatchPrompt', () => {
     for (const size of ['tile', 'card', 'stage'] as const) {
@@ -87,12 +82,10 @@ describe('the click to watch a live', () => {
       expect(videoTags(html)).toHaveLength(1)
       expect(buttonsNamed(html, WATCH)).toHaveLength(0)
       expect(html).toContain(STOP)
-      // No frame arrived yet.
       expect(html).toContain(CONNECTING)
     })
 
     it('shows a live of a version without the click right away, as before', () => {
-      // Whatever the list of watched lives says: there is nothing to stop or to wait for.
       for (const html of [tile(), tile({ liveWatching: true })]) {
         expect(videoTags(html)).toHaveLength(1)
         expect(html).not.toContain(WATCH)
@@ -176,7 +169,6 @@ describe('the click to watch a live', () => {
         expect(buttonsNamed(html, WATCH)).toHaveLength(1)
         expect(videoTags(html)).toHaveLength(0)
         expect(html).not.toContain(STOP)
-        // The microphone of who is live goes on.
         expect(audioTags(html)).toHaveLength(1)
       })
 

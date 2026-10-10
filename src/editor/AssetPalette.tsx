@@ -71,7 +71,6 @@ export const AssetPalette: React.FC = () => {
   const [furnitureCategory, setFurnitureCategory] = useState<string>(() => categories[0] || 'Geral')
   const [isCollapsed, setIsCollapsed] = useState(false)
 
-  // Modals state for Pixel Art Studio, Slicer and Atlas Importer
   const [pixelArtModal, setPixelArtModal] = useState<{
     isOpen: boolean
     category: 'furniture' | 'floor' | 'wall'
@@ -321,7 +320,6 @@ export const AssetPalette: React.FC = () => {
       pixelWidth,
       pixelHeight,
       isObstacle,
-      // Furniture: the hitbox follows the drawing, so the transparent parts do not block (spriteHitbox.ts)
       ...(cat === 'furniture' ? resolveStudioHitbox(existing, isObstacle, options?.spriteCollision) : {}),
       directionalFrames,
       thumbnail: previewUrl || undefined,
@@ -372,7 +370,6 @@ export const AssetPalette: React.FC = () => {
 
   return (
     <>
-      {/* Hidden file input for Spritesheet Slicer image selection */}
       <input
         ref={directSlicerInputRef}
         type="file"
@@ -386,7 +383,6 @@ export const AssetPalette: React.FC = () => {
           isCollapsed ? 'max-h-none' : 'max-h-[52vh] sm:max-h-[calc(100vh-100px)]'
         } animate-in fade-in slide-in-from-right-4 duration-200 select-none`}
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b border-[#2a3142] bg-[#12151d]/70">
           <div className="flex items-center gap-1.5 sm:gap-2">
             <Layers className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-400" />
@@ -422,7 +418,6 @@ export const AssetPalette: React.FC = () => {
           </div>
         </div>
 
-        {/* ACTIVE SELECTED OBJECT CARD */}
         <ActiveItemSummary
           activeTool={activeTool}
           zoneDraft={zoneDraft}
@@ -436,7 +431,6 @@ export const AssetPalette: React.FC = () => {
 
         {!isCollapsed && (
           <>
-            {/* Tabs */}
             <div className="grid grid-cols-3 p-1.5 gap-1 bg-[#12151d]/40 border-b border-[#2a3142]">
           <button
             onClick={() => {
@@ -496,7 +490,6 @@ export const AssetPalette: React.FC = () => {
           </button>
         </div>
 
-        {/* Content Area */}
         <div className="p-2 sm:p-4 overflow-y-auto flex-1 space-y-3 sm:space-y-4">
           {activeTab === 'furniture' && (
             <FurnitureTab
@@ -563,7 +556,6 @@ export const AssetPalette: React.FC = () => {
           )}
         </div>
 
-        {/* Footer Tools: Borracha e Limpar Espaço */}
         <PaletteFooterActions
           activeTool={activeTool}
           setActiveTool={setActiveTool}
@@ -573,7 +565,6 @@ export const AssetPalette: React.FC = () => {
         )}
       </div>
 
-      {/* Confirm Reset Space Modal */}
       <ConfirmModal
         isOpen={isResetConfirmOpen}
         title="Limpar Espaço de Trabalho"
@@ -584,7 +575,6 @@ export const AssetPalette: React.FC = () => {
         onCancel={() => setIsResetConfirmOpen(false)}
       />
 
-      {/* Pixel Art Studio Modal (Furniture, Floors, Walls) */}
       {pixelArtModal.isOpen && (
         <AvatarPixelArtModal
           isOpen={pixelArtModal.isOpen}
@@ -603,7 +593,6 @@ export const AssetPalette: React.FC = () => {
         />
       )}
 
-      {/* Interactive Spritesheet Slicer Modal */}
       {isDirectSlicerOpen && slicerImageSrc && (
         <AvatarSpritesheetSlicerModal
           isOpen={isDirectSlicerOpen}
@@ -622,7 +611,6 @@ export const AssetPalette: React.FC = () => {
         />
       )}
 
-      {/* Atlas Importer Modal */}
       {atlasImportModal.isOpen && (
         <AtlasImportModal
           isOpen={atlasImportModal.isOpen}

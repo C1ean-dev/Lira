@@ -1,8 +1,5 @@
 import { Capacitor } from '@capacitor/core'
 
-/**
- * Returns true if running in Android (either native Capacitor or Android browser/WebView)
- */
 export const isAndroid = (): boolean => {
   if (typeof window === 'undefined') return false
   try {

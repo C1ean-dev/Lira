@@ -3,13 +3,6 @@ import path from 'node:path'
 import { formatDigest, formatReport, groupReports, parseReportLines } from '../src/utils/reportDigest'
 import { ZipEntry, buildZip } from './zipWriter'
 
-/**
- * One file a person can send when something went wrong: a zip with the error
- * reports and the logs of the last days of use, a summary of the errors on top
- * and a note (in Portuguese, for whoever sends it) saying what is inside.
- * Everything is read and compressed off the main thread.
- */
-
 export interface LogFileInfo {
   name: string
   size: number
@@ -18,16 +11,13 @@ export interface LogFileInfo {
 export interface LogSelection {
   included: LogFileInfo[]
   skipped: LogFileInfo[]
-  /** The days the bundle covers, newest first. */
   days: string[]
 }
 
 export interface LogBundleOptions {
   logsDir: string
-  /** Where the zip is written (created when missing). */
   outDir: string
   now?: Date
-  /** What is running: version, system... Goes into info.json and the summary. */
   info?: Record<string, unknown>
   days?: number
   maxBytes?: number
@@ -41,11 +31,9 @@ export interface LogBundleResult {
 }
 
 export const BUNDLE_DAYS = 3
-/** Uncompressed. Text logs shrink about ten times, so the zip stays easy to send. */
 export const BUNDLE_MAX_BYTES = 64 * 1024 * 1024
 const FULL_REPORTS_IN_SUMMARY = 10
 
-// Most useful first: when everything together is too much, the tail of this list stays out.
 const KINDS = ['lira-reports', 'lira-errors', 'lira', 'call-debug']
 const LOG_FILE = /^(lira-reports|lira-errors|lira|call-debug)-(\d{4}-\d{2}-\d{2})\.(jsonl|log)(?:\.(\d+))?$/
 const DESCRIPTIONS: Record<string, string> = {
@@ -69,7 +57,6 @@ function parse(file: LogFileInfo): Parsed | null {
   return { file, kind: KINDS.indexOf(match[1]), day: match[2], rotation: match[4] ? Number(match[4]) : 0 }
 }
 
-/** The log files of the last days that have any, most useful first, within the size limit. */
 export function selectLogFiles(files: LogFileInfo[], options: { days?: number; maxBytes?: number } = {}): LogSelection {
   const parsed = files.map(parse).filter((entry): entry is Parsed => entry !== null)
   const days = [...new Set(parsed.map((entry) => entry.day))]
@@ -85,7 +72,6 @@ export function selectLogFiles(files: LogFileInfo[], options: { days?: number; m
   const skipped: LogFileInfo[] = []
   let total = 0
   for (const entry of ordered) {
-    // The reports are the point of the bundle: they always go.
     if (entry.kind === 0 || total + entry.file.size <= maxBytes) {
       included.push(entry.file)
       total += entry.file.size
@@ -167,7 +153,6 @@ async function listFiles(dir: string): Promise<(LogFileInfo & { modified: Date }
   }
 }
 
-/** A name that is free in the folder: a second bundle in the same minute gets "-2". */
 function freePath(dir: string, name: string): string {
   const base = name.replace(/\.zip$/, '')
   for (let attempt = 1; ; attempt++) {
@@ -190,7 +175,6 @@ export async function createLogBundle(options: LogBundleOptions): Promise<LogBun
       logs.push({ name: file.name, data, modified: available.find((entry) => entry.name === file.name)?.modified })
       if (file.name.startsWith('lira-reports-')) reportText += `${data.toString('utf8')}\n`
     } catch {
-      // gone or locked since it was listed: the bundle goes without it
       selection.included = selection.included.filter((entry) => entry !== file)
     }
   }

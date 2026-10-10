@@ -42,7 +42,6 @@ export const PublicRoomsTab: React.FC<Props> = ({
     const raw = searchQuery.trim()
     if (!raw) return
 
-    // 1. Check if matches any active public room by code (case-insensitive)
     const matchByCode = publicRooms.find(
       (r) => r.code.trim().toUpperCase() === raw.toUpperCase()
     )
@@ -51,7 +50,6 @@ export const PublicRoomsTab: React.FC<Props> = ({
       return
     }
 
-    // 2. Check if matches any active public room by name (case-insensitive)
     const matchByName = publicRooms.find(
       (r) => r.name.trim().toUpperCase() === raw.toUpperCase()
     )
@@ -60,19 +58,16 @@ export const PublicRoomsTab: React.FC<Props> = ({
       return
     }
 
-    // 3. If filtered list currently has exactly 1 room matching the query, enter it
     if (filteredPublicRooms.length === 1) {
       handleJoinPublicRoom(filteredPublicRooms[0])
       return
     }
 
-    // 4. Default: behave like "entrar por código" for direct/private/public room codes
     handleJoinByCode(raw)
   }
 
   return (
     <div className="p-5 space-y-3.5 overflow-y-auto flex-1 flex flex-col">
-      {/* Top Hub Bar: Status, Count, Refresh */}
       <div className="space-y-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -132,7 +127,6 @@ export const PublicRoomsTab: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Error message if any */}
         {error && (
           <div className="text-xs p-2.5 rounded-xl border border-rose-500/40 bg-rose-500/15 text-rose-300 flex items-center justify-between gap-2 animate-in fade-in">
             <div className="flex items-center gap-2">
@@ -152,7 +146,6 @@ export const PublicRoomsTab: React.FC<Props> = ({
           </div>
         )}
 
-        {/* Feedback message if any */}
         {feedback && (
           <div
             className={`text-xs p-2.5 rounded-xl border flex items-center justify-between gap-2 animate-in fade-in ${
@@ -178,7 +171,6 @@ export const PublicRoomsTab: React.FC<Props> = ({
           </div>
         )}
 
-        {/* Search & Direct Join by Code Form */}
         <form
           onSubmit={(e) => {
             e.preventDefault()
@@ -223,7 +215,6 @@ export const PublicRoomsTab: React.FC<Props> = ({
         </form>
       </div>
 
-      {/* Public Rooms List */}
       <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1 flex-1">
         {filteredPublicRooms.length === 0 ? (
           <div className="text-center py-9 bg-[#12151d]/70 rounded-2xl border border-[#2a3142] p-6 space-y-3">
@@ -261,13 +252,11 @@ export const PublicRoomsTab: React.FC<Props> = ({
                 key={room.code}
                 className="p-3.5 rounded-2xl bg-[#12151d] border border-[#2a3142] hover:border-indigo-500/60 transition-all group flex flex-col gap-2 relative overflow-hidden shadow-sm"
               >
-                {/* Left accent color bar */}
                 <div
                   className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl"
                   style={{ backgroundColor: room.color || '#3b82f6' }}
                 />
 
-                {/* Header row: Room Name, Live status */}
                 <div className="flex items-center justify-between gap-2 pl-1">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-xs font-bold text-slate-100 truncate group-hover:text-indigo-300 transition-colors">
@@ -275,7 +264,6 @@ export const PublicRoomsTab: React.FC<Props> = ({
                     </span>
                   </div>
 
-                  {/* Online count badge */}
                   <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-300 shrink-0">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                     <Users className="w-3 h-3" />
@@ -283,16 +271,13 @@ export const PublicRoomsTab: React.FC<Props> = ({
                   </div>
                 </div>
 
-                {/* Description snippet if any */}
                 {room.description && (
                   <p className="text-[11px] text-slate-400 pl-1 line-clamp-1">
                     {room.description}
                   </p>
                 )}
 
-                {/* Footer row: Host info, Code, Enter Button */}
                 <div className="flex items-center justify-between gap-2 pl-1 pt-1 border-t border-[#2a3142]/60 mt-0.5">
-                  {/* Host avatar & nickname */}
                   <div className="flex items-center gap-1.5 min-w-0">
                     <div
                       className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 border border-white/20"
@@ -305,7 +290,6 @@ export const PublicRoomsTab: React.FC<Props> = ({
                     </span>
                   </div>
 
-                  {/* Actions: Copy Code & Enter Room */}
                   <div className="flex items-center gap-2 shrink-0">
                     <button
                       type="button"

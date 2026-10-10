@@ -2,11 +2,6 @@ import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
 
-// The window opens at once but the app needs seconds to load (its modules keep the main thread
-// busy), and until then all there was to see was a black window. index.html now carries a splash
-// that needs nothing from the app: plain markup and CSS written inline, so it is painted as soon as
-// the page arrives. React replaces it when the app renders into #root.
-
 const read = (relative: string) => fs.readFileSync(fileURLToPath(new URL(`../../${relative}`, import.meta.url)), 'utf-8')
 const html = read('index.html')
 

@@ -4,12 +4,6 @@ export interface VersionResolution {
   releaseTitle: string
 }
 
-/**
- * Calculates the next version based on package.json version and the latest git tag.
- * - If current package version is strictly higher than latest tag, respect the user's manual bump.
- * - If current package version <= latest tag, auto-increment the patch number of the latest tag.
- * - If no git tag exists, use current version.
- */
 export function calculateNextVersion(
   currentVersion: string = '1.1.80',
   latestGitTag: string = ''

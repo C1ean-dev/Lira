@@ -90,15 +90,12 @@ describe('room entry (createRoom)', () => {
     expect(FakePeer.instances).toHaveLength(1)
     FakePeer.instances[0].emit('open', 'lira-CODE-AAA-host')
     await expect(pending).resolves.toBe('CODE-AAA')
-    // create-begin + create-open at minimum.
     expect(diagStats().buffered).toBeGreaterThanOrEqual(2)
   })
 
   it('a stale host timeout never destroys the newer run peer', async () => {
     const pm = PeerManager.getInstance()
-    // Run 1 starts and hangs (broker never answers).
     const run1 = pm.createRoom('code-aaa', player() as any)
-    // Silence the dangling promise: it must stay pending, never settle.
     let run1Settled: string | null = null
     run1.then(
       () => (run1Settled = 'resolved'),
@@ -107,19 +104,15 @@ describe('room entry (createRoom)', () => {
     expect(FakePeer.instances).toHaveLength(1)
     const peerA = FakePeer.instances[0]
 
-    // Run 2 replaces it (fast room switch / retry after guard reset).
     const run2 = pm.createRoom('code-bbb', player() as any)
-    // Pre-cleanup of run 2 legitimately destroys the stale peer A.
     expect(peerA.destroyed).toBe(true)
     FakePeer.instances[1].emit('open', 'lira-CODE-BBB-host')
     await expect(run2).resolves.toBe('CODE-BBB')
     const peerB = FakePeer.instances[1]
     const destroysAfterOpen = peerB.destroyedCount
 
-    // Let run 1's 7s host timeout fire: it must not touch peer B...
     await vi.advanceTimersByTimeAsync(8000)
     expect(peerB.destroyedCount).toBe(destroysAfterOpen)
-    // ...and must not settle run 1 (run 2 owns the outcome).
     expect(run1Settled).toBeNull()
   })
 
@@ -130,7 +123,7 @@ describe('room entry (createRoom)', () => {
     FakePeer.instances[0].emit('error', { type: 'unavailable-id', message: 'ID is taken' })
     await pending
     expect(joinSpy).toHaveBeenCalledTimes(1)
-    expect(diagStats().buffered).toBeGreaterThanOrEqual(2) // begin + error
+    expect(diagStats().buffered).toBeGreaterThanOrEqual(2)
   })
 })
 
@@ -162,7 +155,6 @@ describe('room entry (joinRoom)', () => {
     expect(FakeConn.instances).toHaveLength(1)
     FakeConn.instances[0].emit('open')
     await expect(pending).resolves.toBeUndefined()
-    // join-begin + join-open + join-host-open at minimum.
     expect(diagStats().buffered).toBeGreaterThanOrEqual(3)
   })
 
@@ -170,18 +162,15 @@ describe('room entry (joinRoom)', () => {
     const pm = PeerManager.getInstance()
     const pending = pm.joinRoom('code-aaa', player() as any)
     FakePeer.instances[0].emit('open', 'client-id-1')
-    // Host never answers the data connection: force the error path.
     FakePeer.instances[0].emit('error', { type: 'peer-unavailable', message: 'Could not connect to peer' })
-    // Auto-host creates a real second peer (host id); open it.
     expect(FakePeer.instances).toHaveLength(2)
     FakePeer.instances[1].emit('open', 'lira-CODE-AAA-host')
     await expect(pending).resolves.toBeUndefined()
-    expect(diagStats().buffered).toBeGreaterThanOrEqual(4) // begin + error + autohost + create-*
+    expect(diagStats().buffered).toBeGreaterThanOrEqual(4)
   })
 
   it('a stale join timeout never auto-hosts over the newer session', async () => {
     const pm = PeerManager.getInstance()
-    // Run 1 hangs before peer open (broker silent).
     const run1 = pm.joinRoom('code-aaa', player() as any)
     let run1Settled: string | null = null
     run1.then(
@@ -190,14 +179,12 @@ describe('room entry (joinRoom)', () => {
     )
     expect(FakePeer.instances).toHaveLength(1)
 
-    // Run 2 replaces it and connects as host.
     const run2 = pm.createRoom('code-bbb', player() as any)
     FakePeer.instances[1].emit('open', 'lira-CODE-BBB-host')
     await expect(run2).resolves.toBe('CODE-BBB')
     const peerB = FakePeer.instances[1]
     const destroysAfterOpen = peerB.destroyedCount
 
-    // Past run 1's 7.5s join timeout: no auto-host, no new peer, no destroy.
     await vi.advanceTimersByTimeAsync(9000)
     expect(FakePeer.instances).toHaveLength(2)
     expect(peerB.destroyedCount).toBe(destroysAfterOpen)

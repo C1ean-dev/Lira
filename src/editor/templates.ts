@@ -1,10 +1,6 @@
 import { MapData, FloorType, WallType } from '../types/map'
 import { TILE_SIZE } from '../engine/Constants'
 
-/**
- * Espaço em Branco / Workspace Vazio para Edição Livre
- * 100% editável, limpo e transitável.
- */
 export function createEmptyWorkspace(): MapData {
   const width = 68
   const height = 40
@@ -18,7 +14,6 @@ export function createEmptyWorkspace(): MapData {
     floors.push(row)
   }
 
-  // Outer border walls
   const walls: (WallType | null)[][] = []
   for (let y = 0; y < height; y++) {
     const row: (WallType | null)[] = []
@@ -46,9 +41,6 @@ export function createEmptyWorkspace(): MapData {
   }
 }
 
-/**
- * Modelo Pronto de Forja Medieval / Oficina do Ferreiro (LPC Blacksmith Workshop)
- */
 export function createBlacksmithWorkshopTemplate(): MapData {
   const width = 48
   const height = 32
@@ -93,26 +85,22 @@ export function createBlacksmithWorkshopTemplate(): MapData {
     floors,
     walls,
     furniture: [
-      // Forjas e Fornalhas
       { id: 'f-1', defId: 'forge_smelter_large_anim', x: 4, y: 3 },
       { id: 'f-2', defId: 'forge_smelter_brick_anim', x: 10, y: 3 },
       { id: 'f-3', defId: 'forge_bellows_large', x: 2, y: 8 },
       { id: 'f-4', defId: 'forge_crucible_pot_anim', x: 14, y: 8 },
 
-      // Bigornas & Têmpera
       { id: 'f-5', defId: 'forge_anvil_hot_iron', x: 6, y: 9 },
       { id: 'f-6', defId: 'forge_anvil_iron', x: 10, y: 9 },
       { id: 'f-7', defId: 'forge_water_trough', x: 8, y: 12 },
       { id: 'f-8', defId: 'forge_grindstone_wheel', x: 14, y: 12 },
 
-      // Bancadas & Armamentos
       { id: 'f-9', defId: 'forge_workbench_tools', x: 22, y: 4 },
       { id: 'f-10', defId: 'forge_weapon_rack_swords', x: 28, y: 4 },
       { id: 'f-11', defId: 'forge_armor_display_stand', x: 34, y: 4 },
       { id: 'f-12', defId: 'forge_tool_rack_wall', x: 24, y: 1 },
       { id: 'f-13', defId: 'forge_hanging_sign', x: 20, y: 1 },
 
-      // Depósito de Recursos
       { id: 'f-14', defId: 'forge_ingots_pyramid', x: 24, y: 9 },
       { id: 'f-15', defId: 'forge_coal_ore_crates', x: 30, y: 9 },
       { id: 'f-16', defId: 'forge_coal_ore_crates', x: 34, y: 9 },

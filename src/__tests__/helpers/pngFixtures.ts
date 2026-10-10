@@ -1,17 +1,12 @@
 import zlib from 'zlib'
 import { expect } from 'vitest'
 
-// A small, independent PNG toolbox for tests: it builds files and reads them back
-// without sharing a line with electron/pngOptimizer.ts, so a bug there cannot
-// hide behind the same bug here. Node's own zlib.crc32 checks every chunk.
-
 export const SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
 export const DATA_URL_PREFIX = 'data:image/png;base64,'
 
 export interface Rgba {
   width: number
   height: number
-  /** RGBA, row by row, 4 bytes per pixel */
   pixels: Buffer
 }
 
@@ -37,7 +32,6 @@ export function ihdr(width: number, height: number, bitDepth: number, colourType
   return out
 }
 
-/** One scanline the way PNG encoders write it, with filter `type` (0-4). */
 export function filterRow(type: number, row: Buffer, previous: Buffer | null, bytesPerPixel: number): Buffer {
   const out = Buffer.alloc(row.length + 1)
   out[0] = type
@@ -62,13 +56,9 @@ export function filterRow(type: number, row: Buffer, previous: Buffer | null, by
 }
 
 export interface RgbaPngOptions {
-  /** PNG filter type (0-4) for each row. Default: 0 for all. */
   filter?: (row: number) => number
-  /** Chunks written right after IHDR. */
   before?: Buffer[]
-  /** Split the compressed data over IDAT chunks of at most this many bytes. */
   idatSize?: number
-  /** Overrides what the header claims (the pixel data stays RGBA 8-bit). */
   header?: { bitDepth?: number; colourType?: number; interlace?: number }
 }
 
@@ -96,7 +86,6 @@ export function makeRgbaPng(img: Rgba, options: RgbaPngOptions = {}): Buffer {
   return Buffer.concat([SIGNATURE, chunk('IHDR', header), ...(options.before ?? []), ...idat, chunk('IEND')])
 }
 
-/** An 8-bit indexed PNG, as an image editor would export it. */
 export function makeIndexedPng(width: number, height: number, palette: number[][], indices: number[]): Buffer {
   const plte = Buffer.from(palette.flatMap((c) => [c[0], c[1], c[2]]))
   const trns = Buffer.from(palette.map((c) => c[3]))
@@ -114,7 +103,6 @@ export function makeIndexedPng(width: number, height: number, palette: number[][
   ])
 }
 
-/** Every chunk of a PNG, checking the signature, the CRCs and that nothing is left over. */
 export function readChunks(png: Buffer): { type: string; data: Buffer }[] {
   expect(png.subarray(0, 8).equals(SIGNATURE), 'PNG signature').toBe(true)
   const chunks: { type: string; data: Buffer }[] = []
@@ -131,7 +119,6 @@ export function readChunks(png: Buffer): { type: string; data: Buffer }[] {
   return chunks
 }
 
-/** RGBA pixels of a PNG (8-bit RGBA or indexed with any bit depth), after checking its structure. */
 export function decodePng(png: Buffer): Rgba & { colourType: number; bitDepth: number } {
   const chunks = readChunks(png)
   expect(chunks[0].type).toBe('IHDR')
@@ -207,7 +194,6 @@ export function mulberry32(seed: number): () => number {
   }
 }
 
-/** `count` different RGBA colours, with every kind of alpha (0 included, with colour under it). */
 export function distinctColours(count: number): number[][] {
   return Array.from({ length: count }, (_, i) => [i & 255, (i >> 8) & 255, (i * 7) & 255, i % 4 === 0 ? 255 : (i * 37) % 256])
 }
@@ -224,7 +210,6 @@ export function solidImage(width: number, height: number, colour: number[]): Rgb
   return { width, height, pixels }
 }
 
-/** Random pixels from `colours`, with every colour used at least once. */
 export function paletteImage(width: number, height: number, colours: number[][], seed = 1): Rgba {
   const rand = mulberry32(seed)
   const pixels = Buffer.alloc(width * height * 4)
@@ -234,7 +219,6 @@ export function paletteImage(width: number, height: number, colours: number[][],
   return { width, height, pixels }
 }
 
-/** Flat 5x7 blocks of `colours`, like pixel art. */
 export function spriteImage(width: number, height: number, colours: number[][]): Rgba {
   const pixels = Buffer.alloc(width * height * 4)
   const cellsPerRow = Math.ceil(width / 5)
@@ -247,7 +231,6 @@ export function spriteImage(width: number, height: number, colours: number[][]):
   return { width, height, pixels }
 }
 
-/** Every pixel different, no pattern: nothing to gain from re-encoding. */
 export function noiseImage(width: number, height: number, seed = 1): Rgba {
   const rand = mulberry32(seed)
   const pixels = Buffer.alloc(width * height * 4)
@@ -255,7 +238,6 @@ export function noiseImage(width: number, height: number, seed = 1): Rgba {
   return { width, height, pixels }
 }
 
-/** A smooth gradient with a different colour per pixel: filters (not a palette) are what shrink it. */
 export function gradientImage(width: number, height: number): Rgba {
   const pixels = Buffer.alloc(width * height * 4)
   for (let y = 0; y < height; y++) {

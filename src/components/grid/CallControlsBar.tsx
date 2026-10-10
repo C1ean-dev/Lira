@@ -60,8 +60,6 @@ export const CallControlsBar: React.FC<Props> = ({
   onToggleScreenShare,
   onLeaveCall,
 }) => {
-  // Granular selectors — booleans/toggles only change on user action, but
-  // whole-store would also re-render this bar on every VU-meter tick.
   const isMuted = useMediaStore((s) => s.isMuted)
   const isDeafened = useMediaStore((s) => s.isDeafened)
   const isCameraOff = useMediaStore((s) => s.isCameraOff)
@@ -101,7 +99,6 @@ export const CallControlsBar: React.FC<Props> = ({
   const streamMenuRef = React.useRef<HTMLDivElement>(null)
   const noiseMenuRef = React.useRef<HTMLDivElement>(null)
 
-  // Fecha os mini-menus ao clicar fora ou pressionar ESC
   React.useEffect(() => {
     if (!isActiveStreamMenuOpen && !isNoiseMenuOpen) return
     const handleClickOutside = (e: MouseEvent) => {
@@ -129,7 +126,6 @@ export const CallControlsBar: React.FC<Props> = ({
   return (
     <>
       <div className="flex items-center justify-between px-6 py-2.5 bg-[#12151d]/95 backdrop-blur-xl rounded-2xl border border-[#2a3142] max-w-3xl mx-auto w-full shadow-2xl shrink-0 mt-2">
-        {/* Left Side: Audio Settings & Room Permissions Shield */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => useMediaStore.getState().setSettingsModalOpen(true)}
@@ -150,9 +146,7 @@ export const CallControlsBar: React.FC<Props> = ({
           )}
         </div>
 
-      {/* Center: Main Call Buttons */}
       <div className="flex items-center gap-2.5">
-        {/* Mic */}
         <button
           onClick={toggleMute}
           className={`p-3 rounded-xl flex items-center justify-center transition-all ${
@@ -177,7 +171,6 @@ export const CallControlsBar: React.FC<Props> = ({
           )}
         </button>
 
-        {/* Mutar som para mim (Ensurdecer / Deafen) */}
         <button
           onClick={toggleDeafen}
           className={`p-3 rounded-xl flex items-center justify-center transition-all ${
@@ -194,7 +187,6 @@ export const CallControlsBar: React.FC<Props> = ({
           <Headphones className="w-4 h-4" />
         </button>
 
-        {/* Supressor de Ruído (Noise Suppression) com Menu Suspenso */}
         <div className="relative">
           <button
             onClick={() => setIsNoiseMenuOpen((prev) => !prev)}
@@ -218,7 +210,6 @@ export const CallControlsBar: React.FC<Props> = ({
             <AudioLines className={`w-4 h-4 ${isNoiseSuppressionEnabled ? 'text-emerald-400' : ''}`} />
           </button>
 
-          {/* Menu compacto para alternar entre os supressores de ruído */}
           {isNoiseMenuOpen && (
             <div
               ref={noiseMenuRef}
@@ -300,38 +291,37 @@ export const CallControlsBar: React.FC<Props> = ({
 
               <div className="my-1 border-t border-[#2a3142]/60" />
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsNoiseMenuOpen(false)
-                      if (isNoiseSuppressionEnabled) {
-                        toggleNoiseSuppression()
-                        MediaManager.getInstance().updateNoiseSuppression(false)
-                      }
-                    }}
-                    className={`w-full flex items-center justify-between px-2 py-1.5 rounded-xl text-xs font-medium transition-all text-left ${
-                      !isNoiseSuppressionEnabled
-                        ? 'bg-rose-500/15 text-rose-300 border border-rose-500/30 font-bold'
-                        : 'text-slate-400 hover:text-rose-300 hover:bg-rose-950/30 border border-transparent'
+              <button
+                type="button"
+                onClick={() => {
+                  setIsNoiseMenuOpen(false)
+                  if (isNoiseSuppressionEnabled) {
+                    toggleNoiseSuppression()
+                    MediaManager.getInstance().updateNoiseSuppression(false)
+                  }
+                }}
+                className={`w-full flex items-center justify-between px-2 py-1.5 rounded-xl text-xs font-medium transition-all text-left ${
+                  !isNoiseSuppressionEnabled
+                    ? 'bg-rose-500/15 text-rose-300 border border-rose-500/30 font-bold'
+                    : 'text-slate-400 hover:text-rose-300 hover:bg-rose-950/30 border border-transparent'
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Power
+                    className={`w-3.5 h-3.5 shrink-0 ${
+                      !isNoiseSuppressionEnabled ? 'text-rose-400' : 'text-slate-500'
                     }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Power
-                        className={`w-3.5 h-3.5 shrink-0 ${
-                          !isNoiseSuppressionEnabled ? 'text-rose-400' : 'text-slate-500'
-                        }`}
-                      />
-                      <span>Supressor desligado</span>
-                    </div>
-                    {!isNoiseSuppressionEnabled && (
-                      <Check className="w-3.5 h-3.5 text-rose-400 shrink-0 ml-1.5" />
-                    )}
-                  </button>
+                  />
+                  <span>Supressor desligado</span>
+                </div>
+                {!isNoiseSuppressionEnabled && (
+                  <Check className="w-3.5 h-3.5 text-rose-400 shrink-0 ml-1.5" />
+                )}
+              </button>
             </div>
           )}
         </div>
 
-        {/* Camera */}
         <button
           onClick={toggleCamera}
           className={`p-3 rounded-xl flex items-center justify-center transition-all ${
@@ -344,7 +334,6 @@ export const CallControlsBar: React.FC<Props> = ({
           {isCameraOff ? <VideoOff className="w-4 h-4" /> : <Video className="w-4 h-4" />}
         </button>
 
-        {/* Screen Share */}
         <div className="relative">
           <button
             onClick={() => {
@@ -364,7 +353,6 @@ export const CallControlsBar: React.FC<Props> = ({
             <ScreenShare className="w-4 h-4" />
           </button>
 
-          {/* Menu compacto em lista de opções da transmissão */}
           {isScreenSharing && isActiveStreamMenuOpen && (
             <div
               ref={streamMenuRef}
@@ -444,7 +432,6 @@ export const CallControlsBar: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Right Side: Chat & Leave */}
       <div className="flex items-center gap-2">
         <button
           onClick={handleOpenRoomChat}

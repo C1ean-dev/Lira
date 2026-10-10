@@ -3,9 +3,6 @@ import fs from 'fs'
 import { fileURLToPath } from 'url'
 import { COPY_SUFFIX, presetNameForStudio } from '../utils/studioNaming'
 
-// Editing something in the pixel art studio used to rename it: the studio opened with "<name> (Custom)"
-// and saving wrote that back, so the suffix piled up on every edit ("Mesa (Custom) (Custom)").
-
 const read = (relative: string) => fs.readFileSync(fileURLToPath(new URL(`../../${relative}`, import.meta.url)), 'utf-8')
 
 describe('presetNameForStudio', () => {

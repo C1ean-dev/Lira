@@ -2,12 +2,6 @@ import { useGameStore } from '../store/useGameStore'
 import { useLiveWatchStore } from '../store/useLiveWatchStore'
 import { LiveViewDeps, LiveViewReporter } from './liveViewReporter'
 
-/**
- * The reporter of this app (see liveViewReporter), fed by what the stores and
- * the window say. The places on screen that show a live register their size on
- * it (useLiveViewBox), and PeerManager gives it the way to send.
- */
-
 let deps: LiveViewDeps = { send: () => {} }
 
 export const liveViewReporter = new LiveViewReporter({
@@ -15,18 +9,12 @@ export const liveViewReporter = new LiveViewReporter({
   stats: (sharerId) => deps.stats?.(sharerId),
 })
 
-/** PeerManager has the room to send through, and the calls. */
 export function connectLiveView(next: LiveViewDeps): void {
   deps = next
 }
 
 type GameState = ReturnType<typeof useGameStore.getState>
 
-/**
- * The lives this viewer is asked before being sent: running, in the call this
- * user is in, from an app that waits for the click. A live from a version
- * without the click is sent whole whatever is said to it.
- */
 export function liveSharers(state: Pick<GameState, 'remotePlayers' | 'localPlayer'>): string[] {
   const zoneId = state.localPlayer.currentZoneId
   if (zoneId === null || zoneId === undefined) return []
@@ -38,8 +26,6 @@ export function liveSharers(state: Pick<GameState, 'remotePlayers' | 'localPlaye
   return ids
 }
 
-// The game store changes many times a second (people walking): the list is
-// only handed over when it is another list.
 let sharersKey = ''
 const syncSharers = (state: GameState) => {
   const ids = liveSharers(state)
@@ -62,13 +48,9 @@ useLiveWatchStore.subscribe((state, previous) => {
   if (state.watching !== previous.watching) liveViewReporter.setWatching(Object.keys(state.watching))
 })
 
-// What the stores already hold when this module loads (the page reloaded in development).
 syncSharers(useGameStore.getState())
 liveViewReporter.setWatching(Object.keys(useLiveWatchStore.getState().watching))
 
-// The app is never throttled in the background (see electron/main.ts), so the
-// page cannot tell on its own that its window is minimized or in the tray: the
-// main process says it. In a browser the page does know.
 let windowShown = true
 let pageShown = true
 const tellVisibility = () => liveViewReporter.setWindowVisible(windowShown && pageShown)
@@ -88,7 +70,6 @@ try {
   }
 } catch {}
 
-/** Test-only reset. */
 export function __resetLiveViewForTests(): void {
   liveViewReporter.reset()
   sharersKey = ''

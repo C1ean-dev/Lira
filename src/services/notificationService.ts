@@ -1,8 +1,3 @@
-/**
- * Notification Service with Web Audio Synthesizer & Windows Native Toasts
- * Handles door knocks, direct messages, and call invitations with custom audio chimes
- * and native Windows actionable notifications.
- */
 
 export type NotificationSoundType = 'knock' | 'message' | 'call'
 
@@ -25,10 +20,6 @@ function getAudioContext(): AudioContext | null {
   }
 }
 
-/**
- * Synthesizes delightful, non-jarring audio chimes via Web Audio API.
- * No external mp3 files required — guaranteed zero 404s and instant playback.
- */
 export function playNotificationSound(type: NotificationSoundType = 'message') {
   try {
     const ctx = getAudioContext()
@@ -37,7 +28,6 @@ export function playNotificationSound(type: NotificationSoundType = 'message') {
     const now = ctx.currentTime
 
     if (type === 'knock') {
-      // Warm, realistic double wooden door knock
       const playTap = (time: number, freq: number) => {
         const osc = ctx.createOscillator()
         const gain = ctx.createGain()
@@ -54,7 +44,6 @@ export function playNotificationSound(type: NotificationSoundType = 'message') {
       playTap(now, 195)
       playTap(now + 0.13, 165)
     } else if (type === 'message') {
-      // Pleasant bright bell double-chime (D6 -> A6)
       const playTone = (time: number, freq: number, duration: number, vol: number) => {
         const osc = ctx.createOscillator()
         const gain = ctx.createGain()
@@ -67,10 +56,9 @@ export function playNotificationSound(type: NotificationSoundType = 'message') {
         osc.start(time)
         osc.stop(time + duration)
       }
-      playTone(now, 587.33, 0.28, 0.2) // D5
-      playTone(now + 0.09, 880, 0.42, 0.25) // A5
+      playTone(now, 587.33, 0.28, 0.2)
+      playTone(now + 0.09, 880, 0.42, 0.25)
     } else if (type === 'call') {
-      // Elegant harp-style ringtone pulse (A4 -> C#5 -> E5)
       const notes = [440, 554.37, 659.25]
       notes.forEach((freq, idx) => {
         const osc = ctx.createOscillator()
@@ -86,7 +74,6 @@ export function playNotificationSound(type: NotificationSoundType = 'message') {
       })
     }
   } catch (err) {
-    // Autoplay restrictions or audio context not allowed yet
     console.debug('[NotificationSound] Audio playback ignored:', err)
   }
 }
@@ -103,7 +90,6 @@ export interface NativeNotificationOptions {
 
 const actionCallbacks = new Map<string, { onAction?: (index: number) => void; onClick?: () => void }>()
 
-// Listen to Electron notification action events if available
 if (typeof window !== 'undefined' && (window as any).electronAPI?.onNotificationAction) {
   ;(window as any).electronAPI.onNotificationAction(
     (event: { tag?: string; action: 'click' | 'button'; buttonIndex?: number }) => {
@@ -121,11 +107,7 @@ if (typeof window !== 'undefined' && (window as any).electronAPI?.onNotification
   )
 }
 
-/**
- * Dispatches a native Windows notification with sound if the window is hidden or blurred.
- */
 export async function sendNotification(options: NativeNotificationOptions) {
-  // Always play customized sound chime if desired
   if (options.soundType) {
     playNotificationSound(options.soundType)
   }
@@ -134,7 +116,6 @@ export async function sendNotification(options: NativeNotificationOptions) {
     typeof document !== 'undefined' && typeof document.hasFocus === 'function'
       ? document.hasFocus() && !document.hidden
       : false
-  // If user is actively looking at the window, native toast is not necessary
   if (isWindowActive) {
     return
   }
@@ -146,7 +127,6 @@ export async function sendNotification(options: NativeNotificationOptions) {
       onAction: options.onAction,
       onClick: options.onClick,
     })
-    // Auto cleanup callback after 30 seconds
     setTimeout(() => actionCallbacks.delete(tag), 30000)
   }
 
@@ -156,7 +136,7 @@ export async function sendNotification(options: NativeNotificationOptions) {
       await electronAPI.showNativeNotification({
         title: options.title,
         body: options.body,
-        sound: false, // Sound played via WebAudio above
+        sound: false,
         tag,
         actions: options.actions,
       })
@@ -166,7 +146,6 @@ export async function sendNotification(options: NativeNotificationOptions) {
     }
   }
 
-  // Web Notification fallback (for web browser mode)
   if (typeof window !== 'undefined' && 'Notification' in window) {
     if (Notification.permission === 'granted') {
       try {

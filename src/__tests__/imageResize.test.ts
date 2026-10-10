@@ -21,21 +21,17 @@ describe('imageResize - calculateFitDimensions & resizeImageToTarget', () => {
 
     it('preserves aspect ratio for wide crops (e.g. 320x160 into 64x64) and bottom-aligns', () => {
       const result = calculateFitDimensions(320, 160, 64, 64, 'fit', 'bottom')
-      // Scale is 64 / 320 = 0.2
-      // drawW = 64, drawH = 32
       expect(result.drawW).toBe(64)
       expect(result.drawH).toBe(32)
       expect(result.offX).toBe(0)
-      expect(result.offY).toBe(32) // bottom-aligned: 64 - 32 = 32
+      expect(result.offY).toBe(32)
     })
 
     it('preserves aspect ratio for tall crops (e.g. 160x320 into 64x64) and centers horizontally', () => {
       const result = calculateFitDimensions(160, 320, 64, 64, 'fit', 'bottom')
-      // Scale is 64 / 320 = 0.2
-      // drawW = 32, drawH = 64
       expect(result.drawW).toBe(32)
       expect(result.drawH).toBe(64)
-      expect(result.offX).toBe(16) // (64 - 32)/2 = 16
+      expect(result.offX).toBe(16)
       expect(result.offY).toBe(0)
     })
 
@@ -44,7 +40,7 @@ describe('imageResize - calculateFitDimensions & resizeImageToTarget', () => {
       expect(result.drawW).toBe(64)
       expect(result.drawH).toBe(32)
       expect(result.offX).toBe(0)
-      expect(result.offY).toBe(16) // (64 - 32)/2 = 16
+      expect(result.offY).toBe(16)
     })
 
     it('handles zero or negative dimensions safely', () => {
@@ -67,8 +63,6 @@ describe('imageResize - calculateFitDimensions & resizeImageToTarget', () => {
       const { scale, bakeWidth, bakeHeight, useSmoothing } = calculateHighFidelityBakeScale(16, 16, [
         { width: 16, height: 16, origWidth: 352, origHeight: 352 },
       ])
-      // Target max is 352, boardMax is 16 => scale is ceil(352/16) = 22, capped at 16 => scale 16
-      // bakeWidth = 256, bakeHeight = 256
       expect(scale).toBeGreaterThanOrEqual(10)
       expect(bakeWidth).toBeGreaterThanOrEqual(160)
       expect(bakeHeight).toBeGreaterThanOrEqual(160)

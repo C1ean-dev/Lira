@@ -8,7 +8,6 @@ import { ChatMessage } from '../types/chat'
 
 describe('Friends Presence & Lobby Chat Integration', () => {
   beforeEach(() => {
-    // Reset game store
     useGameStore.setState({
       localPlayer: {
         id: 'player-alice',
@@ -25,7 +24,6 @@ describe('Friends Presence & Lobby Chat Integration', () => {
       roomName: 'Lobby',
     })
 
-    // Reset chat store
     useChatStore.setState({
       channels: [
         { id: 'general', name: 'general', type: 'general', unreadCount: 0 },
@@ -41,7 +39,6 @@ describe('Friends Presence & Lobby Chat Integration', () => {
   it('manages friend profiles in useGameStore', () => {
     const { addFriend, updateFriendProfile, removeFriend } = useGameStore.getState()
 
-    // 1. Add friend
     addFriend({
       id: 'friend-bob',
       name: 'Bob',
@@ -54,7 +51,6 @@ describe('Friends Presence & Lobby Chat Integration', () => {
     expect(state.friendProfiles['friend-bob']).toBeDefined()
     expect(state.friendProfiles['friend-bob'].name).toBe('Bob')
 
-    // 2. Update friend profile
     updateFriendProfile('friend-bob', {
       lastRoomName: 'Sala de Testes',
       lastRoomCode: 'test-room-123',
@@ -64,7 +60,6 @@ describe('Friends Presence & Lobby Chat Integration', () => {
     expect(state.friendProfiles['friend-bob'].lastRoomName).toBe('Sala de Testes')
     expect(state.friendProfiles['friend-bob'].lastRoomCode).toBe('test-room-123')
 
-    // 3. Remove friend
     removeFriend('friend-bob')
     state = useGameStore.getState()
     expect(state.friends).not.toContain('friend-bob')
@@ -80,11 +75,9 @@ describe('Friends Presence & Lobby Chat Integration', () => {
       lastSeen: Date.now() - 50000,
     }
 
-    // Initially Bob is offline
     const statusBefore = service.getFriendStatus(bobProfile)
     expect(statusBefore.isOnline).toBe(false)
 
-    // Simulate incoming heartbeat from Bob
     const handleMsg = (service as any).handleIncomingMessage.bind(service)
     handleMsg({
       type: 'PRESENCE_HEARTBEAT',
@@ -99,14 +92,12 @@ describe('Friends Presence & Lobby Chat Integration', () => {
       timestamp: Date.now(),
     })
 
-    // Now Bob is online in a room
     const statusAfter = service.getFriendStatus(bobProfile)
     expect(statusAfter.isOnline).toBe(true)
     expect(statusAfter.inRoom).toBe(true)
     expect(statusAfter.roomCode).toBe('code-xyz')
     expect(statusAfter.roomName).toBe('Espaço dos Desenvolvedores')
 
-    // Simulate Bob going offline
     handleMsg({
       type: 'PRESENCE_OFFLINE',
       userId: 'bob-123',
@@ -121,7 +112,6 @@ describe('Friends Presence & Lobby Chat Integration', () => {
     const service = FriendsPresenceService.getInstance()
     const hub = PublicRoomsService.getInstance()
 
-    // Mock public room hosted by Charlie
     vi.spyOn(hub, 'getRooms').mockReturnValue([
       {
         id: 'room-1',
@@ -185,7 +175,6 @@ describe('Friends Presence & Lobby Chat Integration', () => {
       lastSeen: Date.now(),
     })
 
-    // Bob sends a message to Alice
     const incomingDm: ChatMessage = {
       id: 'dm-bob-to-alice-1',
       senderId: 'bob-real-id',
@@ -216,7 +205,6 @@ describe('Friends Presence & Lobby Chat Integration', () => {
     expect(lastMsg).toBeDefined()
     expect(lastMsg?.content).toBe('E aí Alice!')
 
-    // Mark as read
     chatState.markPeerAsRead(['Bob', 'friend-bob-xyz', 'bob-real-id'])
 
     const afterReadState = useChatStore.getState()
@@ -246,7 +234,6 @@ describe('Friends Presence & Lobby Chat Integration', () => {
   })
 
   it('handles accepting friend request with mutual friendship addition', () => {
-    // 1. Bob sends friend request to Alice
     const incomingRequest: ChatMessage = {
       id: 'dm-req-bob-1',
       senderId: 'player-bob',
@@ -268,26 +255,20 @@ describe('Friends Presence & Lobby Chat Integration', () => {
 
     useChatStore.getState().addMessage(incomingRequest)
 
-    // Alice checks status: pending
     expect(useChatStore.getState().getFriendRequestStatus('Bob')?.status).toBe('pending')
     expect(useGameStore.getState().friends).not.toContain('player-bob')
 
-    // 2. Alice accepts the request
     useChatStore.getState().respondToFriendRequest('freq-bob-to-alice-101', 'accepted')
 
-    // Alice's store: request is accepted and Bob is added as friend
     expect(useChatStore.getState().getFriendRequestStatus('Bob')?.status).toBe('accepted')
     expect(useGameStore.getState().friends).toContain('player-bob')
     expect(useGameStore.getState().friendProfiles['player-bob']?.name).toBe('Bob')
 
-    // 3. Verify original request card was updated in-place to accepted
     const msgs = useChatStore.getState().messages
     const acceptedMsg = msgs.find((m) => m.friendRequest?.requestId === 'freq-bob-to-alice-101')
     expect(acceptedMsg).toBeDefined()
     expect(acceptedMsg?.friendRequest?.status).toBe('accepted')
 
-    // 4. Test mutual friendship on Bob's side:
-    // Bob receives the acceptedMsg update
     useGameStore.setState({
       localPlayer: {
         id: 'player-bob',
@@ -302,7 +283,6 @@ describe('Friends Presence & Lobby Chat Integration', () => {
     })
 
     useChatStore.getState().addMessage(acceptedMsg!)
-    // Bob's store should now also have Alice as friend!
     expect(useGameStore.getState().friends).toContain('player-alice')
     expect(useGameStore.getState().friendProfiles['player-alice']?.name).toBe('Alice')
   })
@@ -330,7 +310,6 @@ describe('Friends Presence & Lobby Chat Integration', () => {
     useChatStore.getState().addMessage(incomingRequest)
     expect(useChatStore.getState().getFriendRequestStatus('Eve')?.status).toBe('pending')
 
-    // Alice declines
     useChatStore.getState().respondToFriendRequest('freq-eve-to-alice-202', 'declined')
 
     expect(useChatStore.getState().getFriendRequestStatus('Eve')?.status).toBe('declined')

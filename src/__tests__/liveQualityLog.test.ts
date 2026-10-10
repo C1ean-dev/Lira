@@ -10,7 +10,6 @@ import { flushDiagLogs, __resetDiagForTests } from '../utils/diagnosticLogger'
 
 const H264_BASELINE = 'level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f'
 
-/** What the browser reports the n-th time it is asked: 10 s of a 5 Mbps live per step. */
 const report = (n: number, over: Record<string, unknown> = {}) =>
   new Map<string, any>([
     ['codec-1', { id: 'codec-1', type: 'codec', mimeType: 'video/H264', sdpFmtpLine: H264_BASELINE }],
@@ -39,14 +38,12 @@ const report = (n: number, over: Record<string, unknown> = {}) =>
         ...over,
       },
     ],
-    // What this side receives is not what it sends, wherever it comes in the report.
     ['in-video-after', { type: 'inbound-rtp', kind: 'video', frameWidth: 16, frameHeight: 16, qpSum: 1 }],
     ['remote-in', { type: 'remote-inbound-rtp', kind: 'video', fractionLost: 0.0123, roundTripTime: 0.045 }],
     ['idle-pair', { type: 'candidate-pair', nominated: false, availableOutgoingBitrate: 300_000 }],
     ['pair', { type: 'candidate-pair', nominated: true, availableOutgoingBitrate: 8_000_000 }],
   ])
 
-/** A connection whose stats advance one step each time they are read. */
 const connection = (step: (n: number) => Map<string, any> = (n) => report(n)) => {
   let reads = 0
   const pc: any = { getStats: vi.fn(async () => step(reads++)) }
@@ -130,7 +127,6 @@ describe('live quality log', () => {
       })
       await vi.advanceTimersByTimeAsync(LIVE_QUALITY_INTERVAL_MS * 2)
 
-      // The first sample is the first reading; the second has an interval behind it.
       expect((await samples())[1]).toEqual(
         {
           toPeer: 'viewer-1',
@@ -163,7 +159,6 @@ describe('live quality log', () => {
 
     it('gives the QP of each interval, not the average since the call started', async () => {
       const samples = captureDiag()
-      // 600 frames at QP 20, then 600 at QP 30, then 600 at QP 26.5.
       const qpSums = [0, 12_000, 30_000, 45_900]
       const pc = connection((n) => report(n, { qpSum: qpSums[n] }))
       watchLiveQuality({ pc, peerId: 'viewer-1', isActive: () => true })
@@ -215,7 +210,6 @@ describe('live quality log', () => {
       watchLiveQuality({ pc, peerId: 'viewer-1', isActive: () => true })
       await vi.advanceTimersByTimeAsync(LIVE_QUALITY_INTERVAL_MS * 3)
 
-      // Readings 0 and 2 are 20 s apart: the bitrate is still 5 Mbps.
       expect((await samples()).map((s) => s.sentKbps)).toEqual([null, 5000])
     })
 
@@ -249,7 +243,6 @@ describe('live quality log', () => {
       live = false
       const reads = pc.getStats.mock.calls.length
       await vi.advanceTimersByTimeAsync(LIVE_QUALITY_INTERVAL_MS * 5)
-      // Back on: a watch that ended does not come back.
       live = true
       await vi.advanceTimersByTimeAsync(LIVE_QUALITY_INTERVAL_MS * 5)
 
@@ -350,7 +343,6 @@ describe('live quality log', () => {
     describe('a viewer that is not watching', () => {
       it('is logged once to show that nothing is sent, then only if something is', async () => {
         const samples = captureDiag()
-        // Nothing sent for 30 s, then 10 s of video, then nothing again.
         const bytes = [1000, 1000, 1000, 126_000, 126_000, 126_000]
         const pc = connection((n) => report(n, { bytesSent: bytes[n], framesPerSecond: 0 }))
         watchLiveQuality({

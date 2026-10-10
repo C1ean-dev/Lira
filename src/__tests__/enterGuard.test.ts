@@ -7,7 +7,6 @@ describe('enterGuard', () => {
     expect(guard.inFlight).toBe(false)
     expect(guard.tryEnter()).toBe(true)
     expect(guard.inFlight).toBe(true)
-    // Second concurrent entry (card double-click while button disabled).
     expect(guard.tryEnter()).toBe(false)
     expect(guard.inFlight).toBe(true)
   })
@@ -17,7 +16,6 @@ describe('enterGuard', () => {
     expect(guard.tryEnter()).toBe(true)
     guard.release()
     expect(guard.inFlight).toBe(false)
-    // Double release is harmless.
     guard.release()
     expect(guard.tryEnter()).toBe(true)
   })

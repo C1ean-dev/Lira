@@ -1,11 +1,3 @@
-/**
- * Stable user identity.
- *
- * `Player.id` is the P2P connection id while inside a room and changes on
- * every (re)connect, so it cannot identify a person. The user id generated
- * here is created once per profile, persisted, and is what friendships,
- * direct messages and presence are addressed to.
- */
 
 const USER_ID_PREFIX = 'u-'
 const USER_ID_BODY_LENGTH = 20
@@ -30,18 +22,10 @@ export function isUserId(value: unknown): value is string {
   return typeof value === 'string' && USER_ID_PATTERN.test(value)
 }
 
-/**
- * The stable identity behind a player entry: `gameId` when the entry is keyed
- * by a connection id (inside a room), otherwise the id itself.
- */
 export function getPlayerUserId(player: { id: string; gameId?: string }): string {
   return player.gameId || player.id
 }
 
-/**
- * Resolves the stable user id of a friend entry, or null when the entry was
- * created from a connection id / placeholder and was never linked to a user.
- */
 export function getFriendUserId(friend: {
   id: string
   actualUserId?: string
@@ -53,10 +37,6 @@ export function getFriendUserId(friend: {
   return null
 }
 
-/**
- * Finds the friends-list key of a person given any of their known ids
- * (connection id, stable user id). Never matches by name.
- */
 export function findFriendKey(
   friends: string[],
   friendProfiles: Record<string, { actualUserId?: string; gameId?: string }>,
@@ -83,13 +63,6 @@ const sameName = (a?: string | null, b?: string | null): boolean => {
   return !!left && left === (b || '').trim().toLowerCase()
 }
 
-/**
- * Whether a message participant (`id` + display name) is the given person.
- *
- * Ids are compared exactly. A display name only counts when the participant
- * has no stable user id to compare — entries saved before stable ids existed —
- * so nobody can pass for someone else just by using the same name.
- */
 export function isSameParticipant(
   person: { id: string; actualUserId?: string; gameId?: string; name?: string },
   participantId?: string | null,

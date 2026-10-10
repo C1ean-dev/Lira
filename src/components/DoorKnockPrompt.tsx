@@ -12,7 +12,6 @@ export const DoorKnockPrompt: React.FC = () => {
   const myKnockStatus = useGameStore((s) => s.myKnockStatus)
   const setMyKnockStatus = useGameStore((s) => s.setMyKnockStatus)
 
-  // Find if player is standing right outside a locked room
   const lockedZone = useMemo(() => {
     const px = localPlayer.x
     const py = localPlayer.y
@@ -20,13 +19,11 @@ export const DoorKnockPrompt: React.FC = () => {
     for (const zone of zones) {
       if (!zone.isLocked) continue
 
-      // If already inside, skip
       if (localPlayer.currentZoneId === zone.id) continue
 
       const isAuth = isPeerAuthorizedForZone(zone.id, localPlayer.id, localPlayer.name)
       const currentStatus = myKnockStatus[zone.id] || 'idle'
 
-      // If already authorized permanently (and not currently in 'approved' status awaiting entry), skip
       if (isAuth && currentStatus !== 'approved') continue
 
       const doorW = Math.min(zone.width * 0.38, 2.0)
@@ -34,14 +31,12 @@ export const DoorKnockPrompt: React.FC = () => {
       const doorEndX = doorStartX + doorW
       const maxY = zone.y + zone.height
 
-      // Check proximity in front of south entrance door
       const inFrontOfDoor =
         px >= doorStartX - 0.8 &&
         px <= doorEndX + 0.8 &&
         py >= maxY - 0.5 &&
         py <= maxY + 2.2
 
-      // Check perimeter proximity (within 1.5 tiles outside the room walls)
       const nearPerimeter =
         px >= zone.x - 1.5 &&
         px <= zone.x + zone.width + 1.5 &&
@@ -64,14 +59,12 @@ export const DoorKnockPrompt: React.FC = () => {
     myKnockStatus,
   ])
 
-  // Security: If player is NOT authorized for lockedZone, they CANNOT have 'approved' status
   const isAuth = lockedZone
     ? isPeerAuthorizedForZone(lockedZone.id, localPlayer.id, localPlayer.name)
     : false
   const rawStatus = lockedZone ? myKnockStatus[lockedZone.id] || 'idle' : 'idle'
   const status = !isAuth && rawStatus === 'approved' ? 'idle' : rawStatus
 
-  // Automatically reset stale 'approved' status if authorization was revoked by an admin
   React.useEffect(() => {
     if (lockedZone && !isAuth && myKnockStatus[lockedZone.id] === 'approved') {
       setMyKnockStatus(lockedZone.id, 'idle')
@@ -101,7 +94,6 @@ export const DoorKnockPrompt: React.FC = () => {
   }
 
   const handleEnterApproved = () => {
-    // Security check: Must be authorized to enter the room
     if (!isPeerAuthorizedForZone(lockedZone.id, localPlayer.id, localPlayer.name)) {
       setMyKnockStatus(lockedZone.id, 'idle')
       return
@@ -147,7 +139,6 @@ export const DoorKnockPrompt: React.FC = () => {
           </p>
         </div>
 
-        {/* Action Button */}
         <div className="shrink-0">
           {status === 'idle' && (
             <button

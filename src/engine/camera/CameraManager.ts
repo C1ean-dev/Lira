@@ -11,18 +11,12 @@ export class CameraManager {
     const local = useGameStore.getState().localPlayer
     this.x = (local?.x ?? 34) * TILE_SIZE
     this.y = (local?.y ?? 20) * TILE_SIZE
-    // Restaura o zoom do usuário (ex.: remontagem do viewport) em vez de
-    // voltar ao 1.6 padrão. null = primeiro acesso → fit inicial decide.
     const savedZoom = useGameStore.getState().cameraZoom
     if (savedZoom !== null && savedZoom !== undefined) {
       this.zoom = savedZoom
     }
   }
 
-  /**
-   * Único ponto de escrita do zoom pelo usuário/código: aplica clamp e
-   * persiste na store para sobreviver a focus/resize/remontagem.
-   */
   public setZoom(value: number) {
     this.zoom = Math.max(0.4, Math.min(4.0, Number(value.toFixed(2))))
     try {
@@ -35,9 +29,7 @@ export class CameraManager {
     const zoomDelta = e.deltaY < 0 ? 0.15 : -0.15
     const store = useGameStore.getState()
 
-    // Se já estiver no modo simplificado:
     if (store.mapViewMode === 'simplified') {
-      // Se adicionar zoom (scroll para cima) e o usuário NÃO ativou pelo botão manual:
       if (zoomDelta > 0 && !store.isManualSimplified) {
         this.setZoom(0.6)
         store.setMapViewMode('immersive', false)
@@ -47,7 +39,6 @@ export class CameraManager {
 
     this.setZoom(this.zoom + zoomDelta)
 
-    // Quando o usuário der zoom no mínimo (<= 0.4), altera de imersivo para simplificado (automático via zoom)
     if (this.zoom <= 0.4 && store.mapViewMode === 'immersive') {
       store.setMapViewMode('simplified', false)
     }
@@ -55,18 +46,12 @@ export class CameraManager {
 
   public isManualPan: boolean = false
 
-  /**
-   * Panning manual da câmera (ex: arrasto com o dedo ou mouse)
-   */
   public pan(deltaPixelsX: number, deltaPixelsY: number) {
     this.isManualPan = true
     this.x -= deltaPixelsX / this.zoom
     this.y -= deltaPixelsY / this.zoom
   }
 
-  /**
-   * Reseta o pan manual e reativa o rastreamento automático do jogador
-   */
   public resetPan(localX?: number, localY?: number) {
     this.isManualPan = false
     if (localX !== undefined && localY !== undefined) {
@@ -81,9 +66,6 @@ export class CameraManager {
     }
   }
 
-  /**
-   * Smooth, jitter-free Camera Following of Local Player with exponential decay
-   */
   public followPlayer(localX: number, localY: number, deltaTime: number = 0.016) {
     if (this.isManualPan) return
 
@@ -95,9 +77,6 @@ export class CameraManager {
     this.y += (targetY - this.y) * factor
   }
 
-  /**
-   * Auto-fit camera zoom to occupy 95%+ of screen viewport
-   */
   public fitToScreen(canvas: HTMLCanvasElement, percentage: number = 0.95) {
     const map = useMapStore.getState().mapData
     const mapPixelWidth = (map.width || 68) * TILE_SIZE

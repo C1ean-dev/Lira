@@ -41,13 +41,11 @@ export const PixelArtThumbnail: React.FC<PixelArtThumbnailProps> = ({
           const furnWidthPx = (customAsset && customAsset.pixelWidth) ? customAsset.pixelWidth : def.width * TILE_SIZE
           const furnHeightPx = (customAsset && customAsset.pixelHeight) ? customAsset.pixelHeight : def.height * TILE_SIZE
 
-          // Scale to fit within thumbnail box (padding 4px)
           const maxDim = Math.max(furnWidthPx, furnHeightPx)
           const availableSize = size - 8
           const scale = availableSize / maxDim
 
           ctx.save()
-          // Center in canvas
           const offsetX = (size - furnWidthPx * scale) / 2
           const offsetY = (size - furnHeightPx * scale) / 2
 
@@ -148,7 +146,6 @@ export const PixelArtThumbnail: React.FC<PixelArtThumbnailProps> = ({
     }
 
     render()
-    // Trigger follow-up renders in case sprites finish loading
     const timer = setTimeout(render, 50)
     const timer2 = setTimeout(render, 200)
 

@@ -102,7 +102,6 @@ describe('getRoomInviteState', () => {
     const elsewhere = { isOnline: true, inRoom: true, roomCode: 'ROOM-7' }
     const lobby = { isOnline: true, inRoom: false, roomCode: null }
     const offline = { isOnline: false, inRoom: true, roomCode: 'ROOM-42' }
-    // Back on the home screen, with the last room still reported.
     const leftTheRoom = { isOnline: true, inRoom: false, roomCode: 'ROOM-42' }
     for (const inviterPresence of [elsewhere, lobby, offline, leftTheRoom]) {
       expect(getRoomInviteState({ invite, isMine: false, currentRoomId: null, inviterPresence })).toBe('closed')

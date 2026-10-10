@@ -35,7 +35,6 @@ describe('100-Player Scale & Performance Stress Test', () => {
   const noopRemovePeer = vi.fn()
   const noopEligibility = vi.fn()
 
-  // Generate 100 distinct players
   const PLAYERS: Player[] = []
   for (let i = 0; i < TOTAL_PLAYERS; i++) {
     const isHost = i === 0
@@ -76,7 +75,7 @@ describe('100-Player Scale & Performance Stress Test', () => {
 
     useGameStore.setState({
       localPlayer: {
-        ...PLAYERS[1], // Client 1
+        ...PLAYERS[1],
         id: LOCAL_CLIENT_PEER_ID,
         gameId: LOCAL_GAME_ID,
       },
@@ -87,9 +86,8 @@ describe('100-Player Scale & Performance Stress Test', () => {
   it('1. Connects and registers 99 remote players via Host relay without identity collisions', () => {
     const start = performance.now()
 
-    // Client 1 receives join messages for all 99 other players (1 Host + 98 other clients)
     for (let i = 0; i < TOTAL_PLAYERS; i++) {
-      if (i === 1) continue // Skip self
+      if (i === 1) continue
       const p = PLAYERS[i]
       const msg: NetworkMessage = {
         type: 'PLAYER_JOIN',
@@ -100,7 +98,7 @@ describe('100-Player Scale & Performance Stress Test', () => {
 
       processNetworkMessage(
         msg,
-        HOST_PEER_ID, // All arrive over Host transport
+        HOST_PEER_ID,
         false,
         noopBroadcast,
         noopRemovePeer,
@@ -118,7 +116,6 @@ describe('100-Player Scale & Performance Stress Test', () => {
 
     expect(remoteKeys).toHaveLength(99)
 
-    // Verify 100% collision-free identity mapping
     for (let i = 0; i < TOTAL_PLAYERS; i++) {
       if (i === 1) continue
       const p = PLAYERS[i]
@@ -137,7 +134,6 @@ describe('100-Player Scale & Performance Stress Test', () => {
   })
 
   it('2. Processes high-volume movement for 100 players (1,000 movement updates)', () => {
-    // Register players first
     for (let i = 0; i < TOTAL_PLAYERS; i++) {
       if (i === 1) continue
       const p = PLAYERS[i]
@@ -152,7 +148,6 @@ describe('100-Player Scale & Performance Stress Test', () => {
       )
     }
 
-    // Send 10 movements per player = 990 total movement messages
     const MOVES_PER_PLAYER = 10
     const TOTAL_MOVES = 99 * MOVES_PER_PLAYER
 
@@ -191,7 +186,6 @@ describe('100-Player Scale & Performance Stress Test', () => {
     collectedMetrics.movementTotalMs = Math.round(elapsed * 100) / 100
     collectedMetrics.movesPerSec = Math.round((TOTAL_MOVES / (elapsed / 1000)))
 
-    // Verify all players reached their final coordinates accurately
     const remotes = useGameStore.getState().remotePlayers
     for (let i = 0; i < TOTAL_PLAYERS; i++) {
       if (i === 1) continue
@@ -201,12 +195,10 @@ describe('100-Player Scale & Performance Stress Test', () => {
       expect(remotes[p.id].isMoving).toBe(false)
     }
 
-    // Local player was never modified
     expect(useGameStore.getState().localPlayer.x).toBe(PLAYERS[1].x)
   })
 
   it('3. Processes simultaneous avatar customization updates across 99 players without skin bleeding', () => {
-    // Register players
     for (let i = 0; i < TOTAL_PLAYERS; i++) {
       if (i === 1) continue
       const p = PLAYERS[i]
@@ -223,7 +215,6 @@ describe('100-Player Scale & Performance Stress Test', () => {
 
     const start = performance.now()
 
-    // 99 players each send a unique avatar skin update
     for (let i = 0; i < TOTAL_PLAYERS; i++) {
       if (i === 1) continue
       const p = PLAYERS[i]
@@ -262,7 +253,6 @@ describe('100-Player Scale & Performance Stress Test', () => {
 
     const remotes = useGameStore.getState().remotePlayers
 
-    // Verify each player has their OWN unique custom skin without affecting any other player
     for (let i = 0; i < TOTAL_PLAYERS; i++) {
       if (i === 1) continue
       const p = PLAYERS[i]
@@ -273,7 +263,6 @@ describe('100-Player Scale & Performance Stress Test', () => {
   })
 
   it('4. Delivers live screenshare video tracks to 99 peer connections simultaneously', async () => {
-    // Setup 99 media call connections
     const mediaCalls = new Map<string, any>()
     const replacedTracks = new Map<string, MediaStreamTrack>()
 
@@ -315,7 +304,7 @@ describe('100-Player Scale & Performance Stress Test', () => {
     MediaCallHandler.replaceVideoTrack(
       mediaCalls,
       liveScreenTrack,
-      true, // isScreenShare
+      true,
       2_500_000,
       30
     )
@@ -327,7 +316,6 @@ describe('100-Player Scale & Performance Stress Test', () => {
     collectedMetrics.screenShareDeliveryMs = Math.round(elapsed * 100) / 100
     collectedMetrics.screenShareSuccessRate = `${((replacedTracks.size / 99) * 100).toFixed(1)}%`
 
-    // Verify all 99 peers received the live screen track with 100% success rate
     expect(replacedTracks.size).toBe(99)
     for (let i = 0; i < TOTAL_PLAYERS; i++) {
       if (i === 1) continue
@@ -338,7 +326,6 @@ describe('100-Player Scale & Performance Stress Test', () => {
   })
 
   it('5. Executes host failover election among 99 remaining candidates upon host departure', () => {
-    // Setup 99 peers in room
     for (let i = 0; i < TOTAL_PLAYERS; i++) {
       if (i === 1) continue
       const p = PLAYERS[i]
@@ -355,17 +342,14 @@ describe('100-Player Scale & Performance Stress Test', () => {
 
     useGameStore.getState().setRoomSession(ROOM_CODE, false)
 
-    // Host departs!
     const start = performance.now()
 
     const remainingPeers = PLAYERS.slice(2).map((p) => p.id)
     const myId = LOCAL_CLIENT_PEER_ID
 
-    // Deterministic election among 99 remaining clients
     const candidateList = [myId, ...remainingPeers].filter(Boolean).sort()
     const electedCandidate = candidateList[0]
 
-    // Promotion of elected host
     if (electedCandidate === myId) {
       useGameStore.getState().setRoomSession(ROOM_CODE, true)
       useGameStore.getState().updatePlayerRole(myId, 'host', {
@@ -404,8 +388,8 @@ describe('100-Player Scale & Performance Stress Test', () => {
     console.log('================================================================\n')
 
     expect(collectedMetrics.totalPlayers).toBe(100)
-    expect(collectedMetrics.joinsPerSec).toBeGreaterThan(500) // Expect > 500 joins/sec
-    expect(collectedMetrics.movesPerSec).toBeGreaterThan(1000) // Expect > 1000 moves/sec
+    expect(collectedMetrics.joinsPerSec).toBeGreaterThan(500)
+    expect(collectedMetrics.movesPerSec).toBeGreaterThan(1000)
     expect(collectedMetrics.screenShareSuccessRate).toBe('100.0%')
   })
 })

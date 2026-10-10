@@ -4,10 +4,10 @@ import { reportStorageFailure } from '../utils/storageReport'
 const SETTINGS_STORAGE_KEY = 'lira_graphics_settings'
 
 export interface GraphicsSettings {
-  targetFps: number // 30, 60, 120, 144, 0 (0 = uncapped / monitor refresh)
+  targetFps: number
   showFpsCounter: boolean
   enableCulling: boolean
-  moveSpeed: number // tiles per second, fixed at 8.0
+  moveSpeed: number
   currentFps: number
   showNameTags: boolean
 }
@@ -36,10 +36,10 @@ const loadSavedSettings = (): Partial<GraphicsSettings> => {
 const saved = loadSavedSettings()
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
-  targetFps: 0, // Padrão fixo: V-Sync (Taxa nativa do monitor)
+  targetFps: 0,
   showFpsCounter: false,
-  enableCulling: true, // Padrão fixo: Culling de câmera ativado
-  moveSpeed: 8.0, // Fixed at 8.0 tiles/s
+  enableCulling: true,
+  moveSpeed: 8.0,
   currentFps: 60,
   showNameTags: saved.showNameTags ?? true,
 

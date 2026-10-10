@@ -42,7 +42,6 @@ export const AnimationTimeline: React.FC<Props> = ({
           </span>
         </div>
 
-        {/* Capture Frame Button */}
         <button
           type="button"
           onClick={onCaptureFrame}
@@ -54,7 +53,6 @@ export const AnimationTimeline: React.FC<Props> = ({
       </div>
 
       <div className="flex gap-4 items-center">
-        {/* Filmstrip Frames List */}
         <div className="flex-1 flex gap-2 overflow-x-auto pb-1 min-h-[72px] items-center p-2 bg-[#12151d] rounded-xl border border-[#2b2d31]">
           {frames.length === 0 ? (
             <div className="text-xs text-slate-500 px-3">
@@ -84,7 +82,6 @@ export const AnimationTimeline: React.FC<Props> = ({
                     Q{idx + 1}
                   </span>
 
-                  {/* Delete Frame Button */}
                   {frames.length > 1 && (
                     <button
                       type="button"
@@ -104,7 +101,6 @@ export const AnimationTimeline: React.FC<Props> = ({
           )}
         </div>
 
-        {/* Live Animation Player Mini Box */}
         {frames.length > 1 && (
           <div className="w-48 bg-[#12151d] p-2.5 rounded-xl border border-[#2b2d31] flex flex-col items-center gap-2 shrink-0">
             <div className="w-14 h-14 rounded-lg bg-[#18191c] border border-white/10 flex items-center justify-center overflow-hidden">
@@ -130,7 +126,6 @@ export const AnimationTimeline: React.FC<Props> = ({
               </div>
             </div>
 
-            {/* Frame rate slider */}
             <input
               type="range"
               min={60}

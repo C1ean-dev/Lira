@@ -32,7 +32,6 @@ const newVersion: UpdateInfo = {
   releaseUrl: 'https://github.com/example/releases',
 }
 
-/** What the service answers when GitHub could not be reached. */
 const failedCheck: UpdateInfo = { ...upToDate, latestVersion: '1.0.0', checkFailed: true }
 
 function resetStore() {
@@ -122,7 +121,6 @@ describe('update checks while the app stays open', () => {
         expect(check).toHaveBeenCalledTimes(attempt + 2)
       }
 
-      // Retries used up: no more quick attempts, even when the window is focused.
       vi.advanceTimersByTime(UPDATE_CHECK_INTERVAL_MS - 1000)
       await store().checkIfDue(UPDATE_STALE_AFTER_MS)
       expect(check).toHaveBeenCalledTimes(4)
@@ -292,7 +290,6 @@ describe('update checks while the app stays open', () => {
       },
     })
 
-    /** Let the async check triggered by a timer or an event finish. */
     const settle = async () => {
       for (let i = 0; i < 20; i++) await Promise.resolve()
     }

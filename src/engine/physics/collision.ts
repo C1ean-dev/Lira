@@ -9,12 +9,6 @@ import { useMediaStore } from '../../store/useMediaStore'
 import { MediaManager } from '../../media/MediaManager'
 import { PeerManager } from '../../p2p/PeerManager'
 
-/**
- * Cached adjacent-zone relations. checkCollision runs up to ~6× per frame
- * (sub-stepping + midpoint + wall-slide axes) and used to .find() both
- * neighbors per zone per call — O(Z²) per call. Relations only change when
- * the zones array identity changes, so memoize them here.
- */
 let neighborCacheMap: MapData | null = null
 let neighborCacheZones: PrivateZone[] | null = null
 const leftNeighborCache = new Map<string, PrivateZone | undefined>()
@@ -83,21 +77,8 @@ function getCachedNeighbors(
   }
 }
 
-/**
- * Precise Thin-Wall & Furniture Collision Checking
- * Only collides with the exact physical 6px partition beams and obstacle items,
- * completely eliminating invisible block boundaries.
- *
- * Zone side-wall collision band: visually 0.15 tiles thick, but the player's
- * footprint extends 0.22 tiles around its center. The band therefore remains
- * active until the complete footprint is outside the wall. This pairs with
- * the engine's MAX_SUBSTEP=0.05 sub-stepping to prevent tunneling.
- */
 export function checkCollision(x: number, y: number, map: MapData): boolean {
   const playerRadius = 0.22
-  // Inner side-wall thickness — at least the visual 0.15, but grown so a sample
-  // taken at any sub-step boundary is still inside the wall whenever the player
-  // is touching it.
   const sideWallThickness = Math.max(0.15, playerRadius + 0.05)
 
   const pcx = x + 0.5
@@ -108,12 +89,10 @@ export function checkCollision(x: number, y: number, map: MapData): boolean {
   const pMinY = pcy - playerRadius
   const pMaxY = pcy + playerRadius
 
-  // Map bounds checking
   if (pMinX < 0.5 || pMaxX >= map.width - 0.5 || pMinY < 0.5 || pMaxY >= map.height - 0.5) {
     return true
   }
 
-  // 1. Precise Room Architecture Collision (Exact 1:1 Lira Architecture)
   for (const zone of map.zones) {
     if (zone.hasWalls === false) continue
 
@@ -132,10 +111,8 @@ export function checkCollision(x: number, y: number, map: MapData): boolean {
     const doorStartX = minX + (w - doorW) / 2
     const doorEndX = doorStartX + doorW
 
-    // Helper to find adjacent neighbor zones (memoized per map — see above).
     const { left: leftNeighbor, right: rightNeighbor, top: topNeighbor, bottom: bottomNeighbor } = getCachedNeighbors(map, zone)
 
-    // Calculate doorway opening on shared back wall when topNeighbor exists
     let hasTopDoorway = false
     let topDoorwayStartX = 0
     let topDoorwayEndX = 0
@@ -162,7 +139,6 @@ export function checkCollision(x: number, y: number, map: MapData): boolean {
       }
     }
 
-    // Align front door with bottomNeighbor overlap if present
     let finalDoorStartX = doorStartX
     let finalDoorEndX = doorEndX
 
@@ -179,23 +155,19 @@ export function checkCollision(x: number, y: number, map: MapData): boolean {
       }
     }
 
-    // A. Back Wall Collision (Top block)
     if (hasTopDoorway && topNeighbor) {
-      // Left Back Wall Block Collision
       if (topDoorwayStartX > minX) {
         if (pMaxX > minX && pMinX < topDoorwayStartX && pMaxY > minY && pMinY < minY + backWallH) {
           return true
         }
       }
 
-      // Right Back Wall Block Collision
       if (maxX > topDoorwayEndX) {
         if (pMaxX > topDoorwayEndX && pMinX < maxX && pMaxY > minY && pMinY < minY + backWallH) {
           return true
         }
       }
 
-      // Doorway Passage Collision (only if locked and unauthorized)
       if (zone.isLocked || topNeighbor.isLocked) {
         const local = useGameStore.getState()?.localPlayer
         const isAuthZone = !zone.isLocked || (local && (local.currentZoneId === zone.id || useMapStore.getState()?.isPeerAuthorizedForZone(zone.id, local.id, local.name)))
@@ -212,7 +184,6 @@ export function checkCollision(x: number, y: number, map: MapData): boolean {
       }
     }
 
-    // B. Left Thin Side Wall Collision (Respects Doorway Opening to Left Room)
     if (leftNeighbor) {
       const overlapMinY = Math.max(minY, leftNeighbor.y)
       const overlapMaxY = Math.min(maxY, leftNeighbor.y + leftNeighbor.height)
@@ -259,11 +230,6 @@ export function checkCollision(x: number, y: number, map: MapData): boolean {
       }
     }
 
-    // C. Right Thin Side Wall Collision. The collision band is extended outside
-    // the zone by playerRadius so the wall remains active while the player's
-    // left edge is still inside the zone (pMinX < maxX). The inner edge uses
-    // sideWallThickness so the player cannot overlap the wall from inside.
-    // Combined with sub-stepping, this closes the tunnel gap at the boundary.
     if (rightNeighbor) {
       const overlapMinY = Math.max(minY, rightNeighbor.y)
       const overlapMaxY = Math.min(maxY, rightNeighbor.y + rightNeighbor.height)
@@ -310,17 +276,14 @@ export function checkCollision(x: number, y: number, map: MapData): boolean {
       }
     }
 
-    // D. Left Front Wall Block Collision
     if (pMaxX > minX && pMinX < finalDoorStartX && pMaxY > frontWallY && pMinY < maxY) {
       return true
     }
 
-    // E. Right Front Wall Block Collision
     if (pMaxX > finalDoorEndX && pMinX < maxX && pMaxY > frontWallY && pMinY < maxY) {
       return true
     }
 
-    // F. Locked Room Front Doorway Block Collision
     if (zone.isLocked) {
       const local = useGameStore.getState()?.localPlayer
       const isAuth = local && (local.currentZoneId === zone.id || useMapStore.getState()?.isPeerAuthorizedForZone(zone.id, local.id, local.name))
@@ -330,12 +293,10 @@ export function checkCollision(x: number, y: number, map: MapData): boolean {
     }
   }
 
-  // Outer Map Boundary Collision
   if (pMinX < 1 || pMaxX > map.width - 1 || pMinY < 1 || pMaxY > map.height - 1) {
     return true
   }
 
-  // 2. Check Furniture Obstacle Collisions (Supports Per-Tile Collision Grid & Directional Dimensions)
   for (const furn of map.furniture || []) {
     const customAsset = useCustomAssetsStore.getState().getAssetById(furn.defId)
     const def = customAsset || FURNITURE_CATALOG.find((f) => f.id === furn.defId)
@@ -386,7 +347,6 @@ export function checkCollision(x: number, y: number, map: MapData): boolean {
     }
   }
 
-  // 3. Check Painted Wall Tiles Collision
   if (map.walls) {
     const minTileX = Math.max(0, Math.floor(pMinX))
     const maxTileX = Math.min(map.width - 1, Math.floor(pMaxX))
@@ -396,9 +356,6 @@ export function checkCollision(x: number, y: number, map: MapData): boolean {
     for (let ty = minTileY; ty <= maxTileY; ty++) {
       for (let tx = minTileX; tx <= maxTileX; tx++) {
         if (map.walls[ty]?.[tx]) {
-          // If this tile falls within an architectural room zone, skip it here.
-          // Section 1 (Precise Room Architecture Collision) already calculates
-          // thin-wall partitions, doorways (top, bottom, side), and permissions.
           const inArchitecturalZone = map.zones?.some((z) => {
             if (z.hasWalls === false) return false
             return tx >= z.x - 0.05 && tx < z.x + z.width + 0.05 && ty >= z.y - 0.05 && ty < z.y + z.height + 0.05
@@ -420,17 +377,6 @@ export function checkCollision(x: number, y: number, map: MapData): boolean {
   return false
 }
 
-/**
- * Test whether a player at (playerX, playerY) is physically inside a private zone.
- *
- * `playerX` and `playerY` represent the top-left coordinate of the 1x1 grid tile
- * where the avatar is placed. The avatar's physical center is (playerX + 0.5, playerY + 0.5),
- * and its feet (ground contact point) are at (playerX + 0.5, playerY + 0.75).
- *
- * Using top-left (playerX, playerY) previously caused an avatar standing OUTSIDE the room
- * (e.g. leaning against the south or east wall) to have its top-left coordinate fall
- * inside the zone bounds, erroneously connecting them to the room call.
- */
 export function isPlayerInZone(playerX: number, playerY: number, zone: PrivateZone, map?: MapData): boolean {
   if (zone.isLocked) {
     const local = useGameStore.getState()?.localPlayer
@@ -453,17 +399,14 @@ export function isPlayerInZone(playerX: number, playerY: number, zone: PrivateZo
   const minY = zone.y
   const maxY = zone.y + zone.height
 
-  // 1. Overall zone horizontal bounds check
   if (pcx < minX || pcx > maxX) {
     return false
   }
 
-  // 2. Overall zone vertical bounds check (center and feet)
   if (pcy < minY || pcy > maxY || feetY > maxY + 0.05) {
     return false
   }
 
-  // 3. For rooms with physical walls (Lira Room Architecture):
   if (zone.hasWalls !== false) {
     const h = zone.height
     const w = zone.width
@@ -473,25 +416,16 @@ export function isPlayerInZone(playerX: number, playerY: number, zone: PrivateZo
     const doorStartX = minX + (w - doorW) / 2
     const doorEndX = doorStartX + doorW
 
-    // A. Front Wall Band:
-    // If the player's center is in the front-wall Y band (frontWallY to maxY),
-    // they can ONLY be inside the zone if they are within the doorway opening!
-    // Leaning on the solid front wall blocks (left or right of the door) is OUTSIDE the room.
     if (pcy >= frontWallY) {
       const inDoorway = pcx >= doorStartX && pcx <= doorEndX
       if (!inDoorway) {
         return false
       }
-      // In the doorway, their feet must have crossed the south threshold into the room
       if (feetY >= maxY) {
         return false
       }
     }
 
-    // B. Back Wall Band:
-    // The back wall is from minY to minY + backWallH (solid wall block).
-    // An avatar above the back wall is outside behind the room, UNLESS passing through
-    // a vertical doorway connecting to a topNeighbor.
     const backWallH = Math.min(h * 0.32, 2.0)
     if (pcy < minY + backWallH * 0.4) {
       const targetMap = map || useMapStore.getState()?.mapData
@@ -512,7 +446,6 @@ export function isPlayerInZone(playerX: number, playerY: number, zone: PrivateZo
             dEndX = dStartX + dW
           }
           if (pcx >= dStartX && pcx <= dEndX && pcy >= minY) {
-            // Inside connecting doorway to upper zone
           } else {
             return false
           }
@@ -528,9 +461,6 @@ export function isPlayerInZone(playerX: number, playerY: number, zone: PrivateZo
   return true
 }
 
-/**
- * Check if player has entered a Private Zone
- */
 export function checkZonePresence(playerX: number, playerY: number, map: MapData) {
   const local = useGameStore.getState().localPlayer
   let detectedZone: string | null = null
@@ -547,7 +477,6 @@ export function checkZonePresence(playerX: number, playerY: number, map: MapData
   if (local.currentZoneId !== detectedZone) {
     const prevZoneId = local.currentZoneId
 
-    // When leaving a private zone, immediately close screen sharing and terminate zone calls
     if (prevZoneId && prevZoneId !== detectedZone) {
       console.log(`[Zone Exit] Player exited zone ${prevZoneId}. Closing screen share and resetting media.`)
       if (useMediaStore.getState().isScreenSharing) {

@@ -30,8 +30,6 @@ const section = (html: string, label: string): string | null => {
   return match ? match[1] : null
 }
 
-// Names are read from the rows: the avatar images are base64 and can contain
-// any short name by chance.
 const namesIn = (html: string | null): string[] =>
   [...(html || '').matchAll(/<span class="truncate text-xs">(.*?)<\/span>/g)].map((m) => m[1])
 

@@ -81,14 +81,8 @@ export const CropStudio: React.FC<Props> = ({
   onAutoCropToContent,
   scaleFitMode,
 }) => {
-  // Track drag-and-drop hover state so the placeholder gives visual feedback
-  // and the canvas wrapper can highlight when the user drags a file over it.
   const [isDragOverFile, setIsDragOverFile] = useState(false)
 
-  // React passes a synthetic event whose dataTransfer is typed DataTransfer.
-  // We use the standard HTML5 drag/drop contract: preventDefault on dragover
-  // tells the browser this element accepts the drop (otherwise the cursor
-  // shows "not-allowed" and the drop never fires).
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     if (Array.from(e.dataTransfer.types).includes('Files')) {
       e.preventDefault()
@@ -98,8 +92,6 @@ export const CropStudio: React.FC<Props> = ({
   }, [isDragOverFile])
 
   const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    // Only clear when the cursor actually leaves the wrapper (not when it
-    // crosses into a child element).
     if (e.currentTarget === e.target) {
       setIsDragOverFile(false)
     }
@@ -150,7 +142,6 @@ export const CropStudio: React.FC<Props> = ({
 
   return (
     <div className="flex-1 flex flex-col bg-[#12151d] rounded-2xl border border-[#2b2d31] overflow-hidden">
-      {/* Top Toolbar */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b2d31] bg-[#18191c]/80 shrink-0">
         <div className="flex items-center gap-2">
           <button
@@ -176,9 +167,7 @@ export const CropStudio: React.FC<Props> = ({
           )}
         </div>
 
-        {/* Zoom & Grid Controls */}
         <div className="flex items-center gap-2">
-          {/* Zoom Buttons */}
           <div className="flex items-center gap-1 bg-[#12151d] p-1 rounded-xl border border-[#2b2d31]">
             <button
               type="button"
@@ -219,7 +208,6 @@ export const CropStudio: React.FC<Props> = ({
             )}
           </div>
 
-          {/* Crop Mode / Grid Snap Selection */}
           <div className="flex items-center gap-1 bg-[#12151d] p-1 rounded-xl border border-[#2b2d31]">
             <span className="text-[10px] text-slate-400 font-semibold px-1 flex items-center gap-1">
               <Grid className="w-3 h-3 text-indigo-400" />
@@ -291,7 +279,6 @@ export const CropStudio: React.FC<Props> = ({
             </button>
           </div>
 
-          {/* Auto Trim / Content Fit Action */}
           {onAutoCropToContent && (
             <button
               type="button"
@@ -318,7 +305,6 @@ export const CropStudio: React.FC<Props> = ({
             </button>
           )}
 
-          {/* Quick Match Target Size */}
           {pixelWidth && pixelHeight && (
             <button
               type="button"
@@ -339,8 +325,6 @@ export const CropStudio: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Main Image Canvas Stage — always a drop target so the user can drop a
-          file whether or not an image is already loaded. */}
       <div
         ref={stageRef}
         className="flex-1 overflow-auto p-4 relative bg-[#0e1015] flex"
@@ -406,12 +390,9 @@ export const CropStudio: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Bottom Selection Info & Precision Numeric Controls */}
       {sourceImageSrc && (
         <div className="p-3 bg-[#18191c] border-t border-[#2b2d31] flex flex-wrap items-center justify-between gap-3 shrink-0">
-          {/* Dynamic Precision Coordinate and Size Inputs */}
           <div className="flex items-center flex-wrap gap-2.5 text-xs text-slate-300">
-            {/* Direct Position Inputs */}
             <div className="flex items-center gap-1.5 bg-[#12151d] px-2.5 py-1 rounded-xl border border-[#2b2d31]">
               <span className="text-[11px] font-semibold text-slate-400">Posição:</span>
               <span className="text-[10px] text-slate-500">X</span>
@@ -452,7 +433,6 @@ export const CropStudio: React.FC<Props> = ({
               />
             </div>
 
-            {/* Direct Crop Dimension Inputs */}
             <div className="flex items-center gap-1.5 bg-[#12151d] px-2.5 py-1 rounded-xl border border-[#2b2d31]">
               <span className="text-[11px] font-semibold text-slate-400">Recorte:</span>
               <input
@@ -493,7 +473,6 @@ export const CropStudio: React.FC<Props> = ({
               <span className="text-[10px] text-slate-500">px</span>
             </div>
 
-            {/* Apply Crop to Final Size Button */}
             {onSetPixelSize && (
               <button
                 type="button"
@@ -505,7 +484,6 @@ export const CropStudio: React.FC<Props> = ({
               </button>
             )}
 
-            {/* Final Target Badge */}
             {(pixelWidth || (tileWidth && tileHeight)) && (
               <div className="flex items-center gap-1.5 bg-[#12151d] px-2.5 py-1 rounded-xl border border-[#2b2d31]">
                 <span className="text-[11px] font-semibold text-slate-400">Mobília Final:</span>
@@ -519,7 +497,6 @@ export const CropStudio: React.FC<Props> = ({
             )}
           </div>
 
-          {/* Action Buttons */}
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -535,5 +512,4 @@ export const CropStudio: React.FC<Props> = ({
     </div>
   )
 }
-
 

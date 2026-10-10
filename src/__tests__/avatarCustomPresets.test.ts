@@ -6,7 +6,6 @@ import { AvatarConfig } from '../types/game'
 
 describe('Custom Avatar Presets & Persistence', () => {
   beforeEach(() => {
-    // Reset or ensure clean test state
   })
 
   it('should persist and query custom avatar presets by slot', () => {
@@ -43,7 +42,6 @@ describe('Custom Avatar Presets & Persistence', () => {
 
     const customHairDataUrl = 'data:image/png;base64,customHairPixelArt'
 
-    // Equipping custom preset
     const equippedAvatar: AvatarConfig = {
       ...avatar,
       customComponents: {
@@ -54,7 +52,6 @@ describe('Custom Avatar Presets & Persistence', () => {
 
     expect(equippedAvatar.customComponents?.hair).toBe(customHairDataUrl)
 
-    // Selecting a standard preset clears the customComponent slot
     const resetComponents = { ...equippedAvatar.customComponents }
     delete resetComponents.hair
 
@@ -87,7 +84,6 @@ describe('Custom Avatar Presets & Persistence', () => {
     store.addCustomAsset(testAsset)
     expect(useCustomAssetsStore.getState().customAssets.some((a) => a.id === 'avatar_jacket_test_del')).toBe(true)
 
-    // Setup avatar wearing this jacket
     let avatar: AvatarConfig = {
       ...DEFAULT_AVATAR,
       jacketType: 'cardigan',
@@ -96,11 +92,9 @@ describe('Custom Avatar Presets & Persistence', () => {
       },
     }
 
-    // Simulate delete workflow:
     store.deleteCustomAsset('avatar_jacket_test_del')
     expect(useCustomAssetsStore.getState().customAssets.some((a) => a.id === 'avatar_jacket_test_del')).toBe(false)
 
-    // Safe fallback reset
     if (avatar.customComponents?.jacket === testAsset.frames[0]) {
       const updatedComponents = { ...avatar.customComponents }
       delete updatedComponents.jacket
@@ -145,7 +139,6 @@ describe('Custom Avatar Presets & Persistence', () => {
     expect(stored?.directionalFrames?.down).toHaveLength(4)
     expect(stored?.directionalFrames?.left).toHaveLength(4)
 
-    // Equip onto avatar customComponents
     const avatar: AvatarConfig = {
       ...DEFAULT_AVATAR,
       customComponents: {
@@ -158,5 +151,4 @@ describe('Custom Avatar Presets & Persistence', () => {
     expect(equippedFrames.down[1]).toBe('data:image/png;base64,down1')
   })
 })
-
 

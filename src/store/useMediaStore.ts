@@ -10,6 +10,7 @@ import {
 import { MediaManager } from '../media/MediaManager'
 import { PeerManager } from '../p2p/PeerManager'
 import { reportStorageFailure } from '../utils/storageReport'
+import { playSoundEffect, setSoundEffectsOptionsProvider } from '../utils/soundEffects'
 
 export interface MicCalibration {
   noiseFloorDb: number
@@ -17,26 +18,24 @@ export interface MicCalibration {
   snrDb: number
   recommendedMode: AudioProcessorMode
   recommendedSensitivity: number
-  calibratedAt: number // timestamp ms
+  calibratedAt: number
 }
 
 interface MediaStore {
-  // Local Streams
   localStream: MediaStream | null
   localScreenStream: MediaStream | null
   setLocalStream: (stream: MediaStream | null) => void
   setLocalScreenStream: (stream: MediaStream | null) => void
 
-  // Toggles
   isMuted: boolean
   isCameraOff: boolean
   isScreenSharing: boolean
   isNoiseSuppressionEnabled: boolean
   isGridCallOpen: boolean
   isSettingsModalOpen: boolean
-  isDeafened: boolean // Mutes all incoming call sound for self
-  silencedUsers: Record<string, boolean> // Users mutually silenced by self
-  mutuallySilencedBy: Record<string, boolean> // Users who have silenced self
+  isDeafened: boolean
+  silencedUsers: Record<string, boolean>
+  mutuallySilencedBy: Record<string, boolean>
   adminNotice: { message: string; type: 'mute' | 'deafen'; timestamp: number } | null
 
   toggleMute: () => void
@@ -57,30 +56,25 @@ interface MediaStore {
   toggleLocalMuteUser: (userId: string, userName?: string) => boolean
   setAdminNotice: (notice: { message: string; type: 'mute' | 'deafen' } | null) => void
 
-  // Audio & Video Device & Control Settings
   selectedAudioInput: string
   selectedAudioOutput: string
   selectedVideoInput: string
-  inputVolume: number // 0 to 200 (percentage, 100 is unity)
-  outputVolume: number // 0 to 100 (percentage)
+  inputVolume: number
+  outputVolume: number
   sensitivityMode: SensitivityMode
-  manualSensitivityThreshold: number // 0 to 100
+  manualSensitivityThreshold: number
   echoCancellation: boolean
   autoGainControl: boolean
   audioProcessorMode: AudioProcessorMode
-  /**
-   * When true, audioProcessorMode reflects the user's *manual* choice and
-   * must not be auto-overridden by a stored calibration. When false, the
-   * MediaManager is allowed to apply the calibrated recommendation as
-   * the default engine on startup.
-   */
   hasUserChosenProcessorMode: boolean
-  screenShareAudioVolume: number // 0 to 200 (percentage, default 100)
-  duckingEnabled: boolean // Auto-reduce screen sound when user talks
-  screenShareIsolateCallAudio: boolean // Isolate call audio: prevent remote peers' voices from leaking into screen share
-  screenShareTargetTitle: string | null // Name of target window/app being shared
-  screenShareAudioMode: 'app_only' | 'app_and_mic' // 'app_only' = pure app sound, 'app_and_mic' = app + user voice
-  screenShareOptimizationMode: 'quality' | 'smoothness' // 'quality' = maintain-resolution, 'smoothness' = maintain-framerate
+  screenShareAudioVolume: number
+  duckingEnabled: boolean
+  screenShareIsolateCallAudio: boolean
+  screenShareTargetTitle: string | null
+  screenShareAudioMode: 'app_only' | 'app_and_mic'
+  screenShareOptimizationMode: 'quality' | 'smoothness'
+  soundEffectsEnabled: boolean
+  soundEffectsVolume: number
 
   setSelectedAudioInput: (deviceId: string) => void
   setSelectedAudioOutput: (deviceId: string) => void
@@ -98,30 +92,25 @@ interface MediaStore {
   setScreenShareTargetTitle: (title: string | null) => void
   setScreenShareAudioMode: (mode: 'app_only' | 'app_and_mic') => void
   setScreenShareOptimizationMode: (mode: 'quality' | 'smoothness') => void
+  setSoundEffectsEnabled: (enabled: boolean) => void
+  setSoundEffectsVolume: (volume: number) => void
 
-  // WebRTC GPU Hardware Acceleration
   isHardwareAccelerationEnabled: boolean
   setHardwareAccelerationEnabled: (enabled: boolean) => void
   toggleHardwareAcceleration: () => void
 
-  // RNNoise engine lifecycle (surfaced so the UI can show ground truth —
-  // previously a failed init was silent and the user got raw mic audio).
   rnnoiseStatus: 'idle' | 'loading' | 'ready' | 'fallback' | 'error'
   rnnoiseError: string | null
   setRnnoiseStatus: (status: 'idle' | 'loading' | 'ready' | 'fallback' | 'error', error?: string | null) => void
-  // Last init stage reached (blob → addModule → node → waiting ready).
-  // Narrows the next failure to an exact step.
   rnnoiseStage: string
   setRnnoiseStage: (stage: string) => void
 
-  // Mic calibration per deviceId
   micCalibrations: Record<string, MicCalibration>
   isCalibrating: boolean
   setMicCalibration: (deviceId: string, cal: MicCalibration) => void
   clearMicCalibration: (deviceId: string) => void
   setIsCalibrating: (calibrating: boolean) => void
 
-  // Audio Level meter & Gate state (for visual speaker aura & settings VU meter)
   localAudioLevel: number
   isGateOpen: boolean
   isTestingMic: boolean
@@ -129,33 +118,24 @@ interface MediaStore {
   setLocalAudioLevel: (level: number, gateOpen?: boolean, autoThresholdPercent?: number) => void
   setIsTestingMic: (testing: boolean) => void
 
-  // Remote Streams map: peerId -> MediaStream
   peerStreams: Record<string, MediaStream>
   peerScreenStreams: Record<string, MediaStream>
-  participantVolumes: Record<string, number> // peerId or streamId -> 0 to 200
+  participantVolumes: Record<string, number>
   setParticipantVolume: (id: string, volume: number) => void
   getEffectiveParticipantVolume: (id: string) => number
-  liveStreamVolume: number // shared persisted volume for live / screen share
+  liveStreamVolume: number
   setLiveStreamVolume: (volume: number) => void
   liveBufferMode: 'dynamic' | 'manual'
-  liveBufferDelay: number // in ms, legacy single-number mirror of the adaptive VIDEO buffer
+  liveBufferDelay: number
   dynamicBufferMetrics: {
     calculatedMs: number
     jitterMs: number
     frameDropRate: number
     statusText: string
-    /** Adaptive AUDIO buffer in ms (independent from video). */
     audioMs?: number
   }
   setLiveBufferMode: (mode: 'dynamic' | 'manual') => void
   setLiveBufferDelay: (ms: number) => void
-  /**
-   * Written by DynamicBufferManager every evaluation tick. Unlike
-   * setLiveBufferDelay it does NOT dispatch 'lira:live-buffer-changed'
-   * (the manager already applied both values straight to the peer
-   * connections) — dispatching would make PeerManager re-apply a
-   * video-only value and clobber the adaptive audio number.
-   */
   setAdaptiveBuffers: (audioMs: number, videoMs: number, jitterMs: number, lossPct: number) => void
   setDynamicBufferMetrics: (
     metrics: Partial<{ calculatedMs: number; jitterMs: number; frameDropRate: number; statusText: string }>
@@ -203,10 +183,6 @@ const saveAudioSettings = (settings: Record<string, any>) => {
   }
 }
 
-// Trailing-debounce for localStorage persistence. Volume sliders fire
-// setState per pixel while dragging — a synchronous read+parse+stringify+write
-// per tick janks the drag. State updates stay immediate; only the disk write
-// is debounced.
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 let pendingPersist: Record<string, any> = {}
 const saveAudioSettingsDebounced = (settings: Record<string, any>, delayMs: number = 300) => {
@@ -239,7 +215,6 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   isGridCallOpen: false,
   isSettingsModalOpen: false,
 
-  // Device & Volume Config
   selectedAudioInput: saved.selectedAudioInput || 'default',
   selectedAudioOutput: saved.selectedAudioOutput || 'default',
   selectedVideoInput: saved.selectedVideoInput || 'default',
@@ -250,8 +225,6 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   echoCancellation: saved.echoCancellation !== undefined ? saved.echoCancellation : true,
   autoGainControl: saved.autoGainControl !== undefined ? saved.autoGainControl : true,
   audioProcessorMode: isValidMode(saved.audioProcessorMode) ? saved.audioProcessorMode : 'rnnoise',
-  // Default false: on first launch MediaManager is allowed to apply the
-  // calibrated recommendation (if any) to pick the initial engine.
   hasUserChosenProcessorMode: saved.hasUserChosenProcessorMode === true,
   screenShareAudioVolume: saved.screenShareAudioVolume !== undefined ? saved.screenShareAudioVolume : 100,
   duckingEnabled: saved.duckingEnabled !== undefined ? saved.duckingEnabled : true,
@@ -260,12 +233,13 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   screenShareAudioMode: saved.screenShareAudioMode === 'app_and_mic' ? 'app_and_mic' : 'app_only',
   screenShareOptimizationMode:
     saved.screenShareOptimizationMode === 'smoothness' ? 'smoothness' : 'quality',
+  soundEffectsEnabled: saved.soundEffectsEnabled !== undefined ? Boolean(saved.soundEffectsEnabled) : true,
+  soundEffectsVolume: typeof saved.soundEffectsVolume === 'number' ? saved.soundEffectsVolume : 80,
   isHardwareAccelerationEnabled:
     saved.isHardwareAccelerationEnabled !== undefined
       ? Boolean(saved.isHardwareAccelerationEnabled)
       : getHwCodecEnabled(),
 
-  // Per-device calibrations, persisted as a flat map.
   micCalibrations: (saved.micCalibrations as Record<string, MicCalibration>) || {},
   isCalibrating: false,
 
@@ -327,7 +301,7 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   setAudioProcessorMode: (audioProcessorMode) => {
     saveAudioSettings({
       audioProcessorMode,
-      hasUserChosenProcessorMode: true, // any user click is a manual override
+      hasUserChosenProcessorMode: true,
     })
     set({ audioProcessorMode, hasUserChosenProcessorMode: true })
   },
@@ -353,6 +327,15 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
     saveAudioSettings({ screenShareOptimizationMode: mode })
     set({ screenShareOptimizationMode: mode })
     MediaManager.getInstance().updateScreenShareOptimizationMode(mode)
+  },
+  setSoundEffectsEnabled: (soundEffectsEnabled: boolean) => {
+    saveAudioSettings({ soundEffectsEnabled })
+    set({ soundEffectsEnabled })
+  },
+  setSoundEffectsVolume: (soundEffectsVolume: number) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(soundEffectsVolume)))
+    saveAudioSettingsDebounced({ soundEffectsVolume: clamped })
+    set({ soundEffectsVolume: clamped })
   },
   setHardwareAccelerationEnabled: (enabled: boolean) => {
     saveAudioSettings({ isHardwareAccelerationEnabled: enabled })
@@ -381,6 +364,7 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
 
   toggleMute: () => {
     const nextMute = !get().isMuted
+    playSoundEffect(nextMute ? 'mute' : 'unmute')
     const { localStream } = get()
     if (localStream) {
       localStream.getAudioTracks().forEach((track) => {
@@ -400,6 +384,10 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   },
 
   setMuted: (isMuted) => {
+    const prev = get().isMuted
+    if (prev !== isMuted) {
+      playSoundEffect(isMuted ? 'mute' : 'unmute')
+    }
     const { localStream } = get()
     if (localStream) {
       localStream.getAudioTracks().forEach((track) => {
@@ -441,7 +429,13 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
     }
   },
 
-  setScreenSharing: (sharing) => set({ isScreenSharing: sharing }),
+  setScreenSharing: (sharing) => {
+    const prev = get().isScreenSharing
+    if (prev !== sharing) {
+      playSoundEffect(sharing ? 'live_start' : 'live_stop')
+    }
+    set({ isScreenSharing: sharing })
+  },
 
   toggleNoiseSuppression: () => {
     const nextState = !get().isNoiseSuppressionEnabled
@@ -461,6 +455,7 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   isDeafened: false,
   toggleDeafen: () => {
     const next = !get().isDeafened
+    playSoundEffect(next ? 'deafen' : 'undeafen')
     set({ isDeafened: next })
     useGameStore.getState().setLocalPlayer({ isDeafened: next })
     try {
@@ -468,6 +463,10 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
     } catch {}
   },
   setDeafened: (isDeafened) => {
+    const prev = get().isDeafened
+    if (prev !== isDeafened) {
+      playSoundEffect(isDeafened ? 'deafen' : 'undeafen')
+    }
     set({ isDeafened })
     useGameStore.getState().setLocalPlayer({ isDeafened })
     try {
@@ -563,10 +562,6 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   },
 
   liveBufferMode: (saved.liveBufferMode as any) || 'dynamic',
-  // Default jitter buffer is 1ms. The DynamicBufferManager grows this
-  // every 1.5s based on real RTCStats — a clean LAN stays at 1ms,
-  // a jittery link grows to whatever's needed. Hard-coding anything
-  // higher here was the source of the user-reported voice lag.
   liveBufferDelay: typeof saved.liveBufferDelay === 'number' ? saved.liveBufferDelay : 1,
   dynamicBufferMetrics: {
     calculatedMs: typeof saved.liveBufferDelay === 'number' ? saved.liveBufferDelay : 1,
@@ -581,12 +576,6 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   },
 
   setLiveBufferDelay: (ms) => {
-    // Range now matches DynamicBufferManager: 1ms floor (true minimum),
-    // 1500ms ceiling (was 5s — tightened because real WebRTC never needs
-    // more than ~1s to absorb 99th-percentile home-network jitter).
-    // NOTE: this is the USER-SLIDER path — it dispatches an event so
-    // PeerManager re-applies the value to live calls. The adaptive engine
-    // uses setAdaptiveBuffers instead (no event, no clobber).
     const clamped = Math.max(1, Math.min(1500, Math.round(ms)))
     saveAudioSettings({ liveBufferDelay: clamped })
     set({ liveBufferDelay: clamped })
@@ -607,9 +596,6 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
         statusText: `Dinâmico · áudio ${a}ms · vídeo ${v}ms`,
         audioMs: a,
       }
-      // Persist the video mirror (slider reads it on reload) without
-      // dispatching the live-buffer event — the manager applied both
-      // values directly to the peer connections already.
       if (state.liveBufferDelay !== v) {
         saveAudioSettings({ liveBufferDelay: v })
       }
@@ -628,8 +614,6 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
 
   setDynamicBufferMetrics: (metrics) =>
     set((state) => {
-      // Guard: DynamicBufferManager evaluates every 2s during calls. Skip the
-      // notify when nothing changed so subscribers don't re-render on a timer.
       const prev = state.dynamicBufferMetrics
       if (
         (metrics.calculatedMs === undefined || metrics.calculatedMs === prev.calculatedMs) &&
@@ -668,22 +652,28 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
       return { peerScreenStreams: copy }
     }),
 
-  clearAllPeerStreams: () => set({ peerStreams: {}, peerScreenStreams: {} }),
+  clearAllPeerStreams: () =>
+    set({
+      peerStreams: {},
+      peerScreenStreams: {},
+    }),
 
   stopAllMedia: () => {
     const { localStream, localScreenStream } = get()
     if (localStream) {
-      localStream.getTracks().forEach((t) => t.stop())
+      localStream.getTracks().forEach((track) => track.stop())
     }
     if (localScreenStream) {
-      localScreenStream.getTracks().forEach((t) => t.stop())
+      localScreenStream.getTracks().forEach((track) => track.stop())
     }
     set({
       localStream: null,
       localScreenStream: null,
-      isScreenSharing: false,
       peerStreams: {},
       peerScreenStreams: {},
+      isMuted: true,
+      isCameraOff: true,
+      isScreenSharing: false,
     })
   },
 
@@ -693,9 +683,6 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   autoThresholdPercent: 0,
   setLocalAudioLevel: (localAudioLevel, isGateOpen = false, autoThresholdPercent?: number) => {
     const prev = get()
-    // Guard: DSP engines report the level at ~60Hz (rAF). Skip the zustand
-    // notify when nothing perceptible changed — every set() re-renders all
-    // media-store subscribers (grid, tiles, overlays).
     const gate = isGateOpen ?? prev.isGateOpen
     const threshold = typeof autoThresholdPercent === 'number'
       ? Math.round(autoThresholdPercent)
@@ -713,8 +700,6 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   setIsTestingMic: (isTestingMic) => set({ isTestingMic }),
 }))
 
-// What an error report says about microphone, camera and screen share: states and
-// track summaries, never the streams themselves.
 registerReportContext('media', () => {
   const state = useMediaStore.getState()
   return {
@@ -722,9 +707,13 @@ registerReportContext('media', () => {
     cameraOff: state.isCameraOff,
     screenSharing: state.isScreenSharing,
     deafened: state.isDeafened,
-    noiseSuppression: state.isNoiseSuppressionEnabled,
     processor: state.audioProcessorMode,
-    sensitivity: state.sensitivityMode,
+    processorMode: state.audioProcessorMode,
+    userChosenMode: state.hasUserChosenProcessorMode,
+    rnnoise: { status: state.rnnoiseStatus, stage: state.rnnoiseStage, error: state.rnnoiseError },
+    noiseSuppression: state.isNoiseSuppressionEnabled,
+    sensitivityMode: state.sensitivityMode,
+    threshold: state.manualSensitivityThreshold,
     echoCancellation: state.echoCancellation,
     autoGainControl: state.autoGainControl,
     hwAcceleration: state.isHardwareAccelerationEnabled,
@@ -746,9 +735,6 @@ registerReportContext('media', () => {
   }
 })
 
-// Changes to how audio and video are captured and sent, and the two windows that change
-// what plays (the call grid, the settings): in logs/call-debug-<day>.log and in the trail of
-// error reports. Levels and volumes change all the time and stay out.
 const TRACKED_MEDIA_SETTINGS = [
   'audioProcessorMode',
   'isNoiseSuppressionEnabled',
@@ -773,5 +759,15 @@ useMediaStore.subscribe((state, previous) => {
   }
   if (state.isSettingsModalOpen !== previous.isSettingsModalOpen) {
     diagLog('ui', 'settings', { open: state.isSettingsModalOpen }, String(state.isSettingsModalOpen))
+  }
+})
+
+setSoundEffectsOptionsProvider(() => {
+  const s = useMediaStore.getState()
+  return {
+    enabled: s.soundEffectsEnabled,
+    volume: s.soundEffectsVolume,
+    isDeafened: s.isDeafened,
+    selectedAudioOutput: s.selectedAudioOutput,
   }
 })

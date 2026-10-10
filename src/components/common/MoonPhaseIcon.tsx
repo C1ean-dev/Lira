@@ -20,7 +20,6 @@ export const MoonPhaseIcon: React.FC<MoonPhaseIconProps> = ({
 }) => {
   switch (status) {
     case 'available':
-      // Disponível: Terra (Imagem Pixel Art fornecida pelo usuário, ocupando 100% do espaço)
       return (
         <img
           src={TERRA_IMAGE_DATA_URL}
@@ -31,7 +30,6 @@ export const MoonPhaseIcon: React.FC<MoonPhaseIconProps> = ({
       )
 
     case 'focusing':
-      // Em foco: Lua e silêncio (Imagem Pixel Art da lua roxa com estrela fornecida pelo usuário)
       return (
         <div
           className={`${className} rounded-full overflow-hidden flex items-center justify-center shrink-0`}
@@ -47,7 +45,6 @@ export const MoonPhaseIcon: React.FC<MoonPhaseIconProps> = ({
       )
 
     case 'away':
-      // Ausente: Lua dourada (Imagem Pixel Art fornecida pelo usuário, ocupando 100% do espaço)
       return (
         <div
           className={`${className} rounded-full overflow-hidden flex items-center justify-center shrink-0`}
@@ -63,7 +60,6 @@ export const MoonPhaseIcon: React.FC<MoonPhaseIconProps> = ({
       )
 
     case 'busy':
-      // Ocupado: Marte (Imagem Pixel Art de Marte fornecida pelo usuário, ocupando 100% do espaço)
       return (
         <div
           className={`${className} rounded-full overflow-hidden flex items-center justify-center shrink-0`}

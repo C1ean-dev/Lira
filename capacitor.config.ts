@@ -5,8 +5,6 @@ const config: CapacitorConfig = {
   appName: 'Lira',
   webDir: 'dist',
   android: {
-    // The app is served from https://localhost inside the WebView; PeerJS/WebRTC
-    // signalling still goes out over the network.
     allowMixedContent: false,
   },
 }

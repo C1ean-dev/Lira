@@ -16,10 +16,10 @@ export interface CustomAssetLayer {
 }
 
 export interface DirectionalDimension {
-  width: number // in tiles (1 to 32)
-  height: number // in tiles (1 to 32)
-  pixelWidth?: number // exact width in pixels (1 to 4096)
-  pixelHeight?: number // exact height in pixels (1 to 4096)
+  width: number
+  height: number
+  pixelWidth?: number
+  pixelHeight?: number
 }
 
 export interface CustomAsset {
@@ -29,23 +29,20 @@ export interface CustomAsset {
   category: string
   avatarSlot?: AvatarComponentSlot
   thumbnail?: string
-  width: number // in tiles (1 to 32)
-  height: number // in tiles (1 to 32)
-  pixelWidth?: number // exact width in pixels (1 to 2048+)
-  pixelHeight?: number // exact height in pixels (1 to 2048+)
-  isObstacle: boolean // general flag for backward compatibility
-  collisionGrid?: boolean[][] // 2D matrix [row][col] of tile collisions
-  // True when the grids were worked out from the drawing by the pixel art studio (a tile blocks only
-  // where there are visible pixels), so saving there again works them out again. Absent when the grids
-  // were painted by hand in the composition studio: the pixel art studio leaves those alone.
+  width: number
+  height: number
+  pixelWidth?: number
+  pixelHeight?: number
+  isObstacle: boolean
+  collisionGrid?: boolean[][]
   collisionFromSprite?: boolean
-  frames: string[] // base64 PNG dataURLs with alpha channel
+  frames: string[]
   directionalFrames?: Partial<Record<Direction, string | string[]>>
   directionalFrameLayers?: Partial<Record<Direction, CustomAssetLayer[][]>>
   directionalDimensions?: Partial<Record<Direction, DirectionalDimension>>
   directionalCollisionGrids?: Partial<Record<Direction, boolean[][]>>
-  frameLayers?: CustomAssetLayer[][] // Separate layers preserved for each frame
-  frameRateMs?: number // default 160ms
+  frameLayers?: CustomAssetLayer[][]
+  frameRateMs?: number
   iconColor?: string
   createdAt: number
   updatedAt?: number

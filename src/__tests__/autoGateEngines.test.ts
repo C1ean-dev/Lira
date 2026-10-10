@@ -3,9 +3,6 @@ import { SoftDspProcessor } from '../media/SoftDspProcessor'
 import { NoiseSuppressor } from '../media/NoiseSuppressor'
 import { RnnoiseProcessor } from '../media/RnnoiseProcessor'
 
-// Web Audio stand-ins. Unlike the ones in quietVoiceAudioGating.test.ts the
-// context clock moves with the (fake) wall clock: the gates' hold time is
-// measured on it, so a frozen clock would keep every gate open forever.
 class MockAudioParam {
   value = 1
   setValueAtTime = vi.fn((v: number) => { this.value = v })
@@ -103,7 +100,6 @@ type Engine = SoftDspProcessor | NoiseSuppressor | RnnoiseProcessor
 const engines: { name: string; create: () => Engine; minOpenRms: number }[] = [
   { name: 'SoftDspProcessor', create: () => new SoftDspProcessor(), minOpenRms: 0.0035 },
   { name: 'NoiseSuppressor', create: () => new NoiseSuppressor(), minOpenRms: 0.0045 },
-  // RNNoise: level 0.025 on the VU meter scale (RMS x 6).
   { name: 'RnnoiseProcessor', create: () => new RnnoiseProcessor(), minOpenRms: 0.025 / 6 },
 ]
 
@@ -112,7 +108,6 @@ const mockStream = {
   getVideoTracks: () => [],
 } as any
 
-/** Starts the engine on the mock graph and returns what it reports to the UI. */
 async function start(
   engine: Engine,
   mode: 'auto' | 'manual' = 'auto',
@@ -167,10 +162,9 @@ describe.each(engines)('Automatic gate learns the room - $name', ({ create, minO
     engine = create()
     const { seen, analyser } = await start(engine)
 
-    // A fan / AC: RMS 0.01 is about 2x the fixed threshold of every engine.
     analyser.mockValue = 0.01
     vi.advanceTimersByTime(100)
-    expect(seen.gateOpen).toBe(true) // not learned yet: it is indistinguishable from a voice
+    expect(seen.gateOpen).toBe(true)
 
     vi.advanceTimersByTime(10000)
     expect(seen.gateOpen).toBe(false)
@@ -238,12 +232,12 @@ describe.each(engines)('Automatic gate learns the room - $name', ({ create, minO
     engine = create()
     const { seen, analyser } = await start(engine, 'manual', 30)
 
-    analyser.mockValue = 0.01 // level 0.06, under the 30% marker
+    analyser.mockValue = 0.01
     vi.advanceTimersByTime(10000)
     expect(seen.gateOpen).toBe(false)
     expect(seen.thresholdPercent).toBe(30)
 
-    analyser.mockValue = 0.1 // level 0.6, over it
+    analyser.mockValue = 0.1
     vi.advanceTimersByTime(100)
     expect(seen.gateOpen).toBe(true)
   })
@@ -256,7 +250,6 @@ describe.each(engines)('Automatic gate learns the room - $name', ({ create, minO
     vi.advanceTimersByTime(10000)
     expect(engine.getCurrentThreshold()).toBeGreaterThan(0.01)
 
-    // New stream (another microphone, or an engine restart): new room.
     const second = await start(engine)
     second.analyser.mockValue = 0.0005
     vi.advanceTimersByTime(50)

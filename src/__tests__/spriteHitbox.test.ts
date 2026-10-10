@@ -14,11 +14,6 @@ import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import type { CustomAsset } from '../types/customAsset'
 import type { MapData } from '../types/map'
 
-// The "Obstáculo" of the pixel art studio used to block the whole width x height of the furniture, the
-// transparent parts of the drawing included. It now works out a collision grid (one cell per 32 px tile)
-// from the drawing, and only the tiles with something visible in them block.
-
-/** A frame of `width` x `height` px where `alphaAt(pixelX, pixelY)` says how visible each pixel is (0-255). */
 const makeFrame = (
   width: number,
   height: number,
@@ -37,13 +32,11 @@ const makeFrame = (
   return { data, width, height }
 }
 
-/** The blocked tiles of a grid as "row,column". */
 const blockedCells = (grid: TileGrid) =>
   grid.flatMap((row, rowIndex) =>
     row.map((cell, columnIndex) => (cell ? `${rowIndex},${columnIndex}` : null)).filter(Boolean)
   )
 
-/** A cone on a round base: narrow at the top (16 px of half width), wide at the bottom (64 px). */
 const makeFurnaceFrame = (width: number, height: number) =>
   makeFrame(width, height, (pixelX, pixelY) => {
     const halfWidth = 16 + (pixelY / height) * 48
@@ -68,7 +61,6 @@ describe('tileGridFromPixels', () => {
   })
 
   it('leaves free the tiles that are blank and blocks the ones with drawing in them', () => {
-    // only the top-left 32x32 is drawn
     const drawing = makeFrame(64, 64, (pixelX, pixelY) => (pixelX < 32 && pixelY < 32 ? 255 : 0))
     expect(blockedCells(tileGridFromPixels(drawing, 64, 64))).toEqual(['0,0'])
   })
@@ -88,7 +80,6 @@ describe('tileGridFromPixels', () => {
   })
 
   it('covers a partial last tile when the area is not a multiple of 32 px', () => {
-    // 40 x 40 px is 2 x 2 tiles; the pixel at (35, 35) is in the second tile of each axis
     const drawing = makeFrame(40, 40, (pixelX, pixelY) => (pixelX === 35 && pixelY === 35 ? 255 : 0))
     const grid = tileGridFromPixels(drawing, 40, 40)
     expect(grid.length).toBe(2)
@@ -96,7 +87,6 @@ describe('tileGridFromPixels', () => {
   })
 
   it('puts a drawing smaller than the area where the renderer draws it: centred, on the bottom edge', () => {
-    // a 32x32 drawing in a 96x64 area is drawn at x 32, y 32: the middle column of the bottom row
     const grid = tileGridFromPixels(makeFrame(32, 32, () => 255), 96, 64)
     expect(grid.length).toBe(2)
     expect(grid[0].length).toBe(3)
@@ -104,23 +94,19 @@ describe('tileGridFromPixels', () => {
   })
 
   it('follows a drawing that is scaled down to fit the area', () => {
-    // 128x128 drawn at 64x64 (half size): its right half (pixelX >= 64) lands in the right tile only
     const drawing = makeFrame(128, 128, (pixelX) => (pixelX >= 64 ? 255 : 0))
     expect(blockedCells(tileGridFromPixels(drawing, 64, 64))).toEqual(['0,1', '1,1'])
   })
 
   it('leaves the empty corners of a round, tall drawing free (a furnace: 4 x 6 tiles)', () => {
     const grid = tileGridFromPixels(makeFurnaceFrame(128, 192), 128, 192)
-    // the top corners and the sides of the narrow top are not drawn, so they do not block
     expect(grid[0][0]).toBe(false)
     expect(grid[0][3]).toBe(false)
     expect(grid[1][0]).toBe(false)
     expect(grid[1][3]).toBe(false)
-    // the middle of the body does
     expect(grid[0][1]).toBe(true)
     expect(grid[0][2]).toBe(true)
     expect(grid[3][1]).toBe(true)
-    // the wide base covers every tile of the bottom row
     expect(grid[5]).toEqual([true, true, true, true])
   })
 })
@@ -135,7 +121,6 @@ describe('resolveSpritePlacement (shared by the renderer and the hitbox)', () =>
   })
 
   it('scales a bigger drawing down to fit, without distortion', () => {
-    // 32 x 64 into 16 x 16: scale 0.25, 8 x 16, centred horizontally
     expect(resolveSpritePlacement(32, 64, 16, 16)).toEqual({ offsetX: 4, offsetY: 0, drawWidth: 8, drawHeight: 16 })
   })
 })
@@ -155,13 +140,12 @@ describe('mergeTileGrids', () => {
 })
 
 describe('spriteCollisionFromFrames', () => {
-  const leftHalfFrame = makeFrame(64, 32, (pixelX) => (pixelX < 32 ? 255 : 0)) // tile 0,0
-  const rightHalfFrame = makeFrame(64, 32, (pixelX) => (pixelX >= 32 ? 255 : 0)) // tile 0,1
+  const leftHalfFrame = makeFrame(64, 32, (pixelX) => (pixelX < 32 ? 255 : 0))
+  const rightHalfFrame = makeFrame(64, 32, (pixelX) => (pixelX >= 32 ? 255 : 0))
   const blankFrame = makeFrame(64, 32, () => 0)
   const LEFT_HALF = 'left-half.png'
   const RIGHT_HALF = 'right-half.png'
   const BLANK = 'blank.png'
-  // frames are told apart by their data URL
   const decodeFrom = (framesByUrl: Record<string, DecodedFrame | null>) => async (frameUrl: string) =>
     framesByUrl[frameUrl] ?? null
 
@@ -306,7 +290,6 @@ describe('what the engine does with a hitbox from the drawing', () => {
   })
 
   it('lets a player walk through the transparent corners of the furniture and stops them at the drawing', async () => {
-    // a furnace, 4 x 6 tiles, round: narrow at the top, wide at the bottom
     const furnaceWidth = 128
     const furnaceHeight = 192
     const furnaceFrame = makeFurnaceFrame(furnaceWidth, furnaceHeight)
@@ -337,15 +320,14 @@ describe('what the engine does with a hitbox from the drawing', () => {
       ],
     })
 
-    // a player standing in the middle of a tile of the furniture
     const isBlockedAt = (tileColumn: number, tileRow: number) =>
       checkCollision(FURNITURE_TILE_X + tileColumn, FURNITURE_TILE_Y + tileRow, makeMap('furnace'))
-    expect(isBlockedAt(0, 0)).toBe(false) // top-left corner: blank
-    expect(isBlockedAt(3, 0)).toBe(false) // top-right corner: blank
+    expect(isBlockedAt(0, 0)).toBe(false)
+    expect(isBlockedAt(3, 0)).toBe(false)
     expect(isBlockedAt(0, 1)).toBe(false)
-    expect(isBlockedAt(1, 0)).toBe(true) // the chimney
-    expect(isBlockedAt(1, 3)).toBe(true) // the body
-    expect(isBlockedAt(0, 5)).toBe(true) // the base
+    expect(isBlockedAt(1, 0)).toBe(true)
+    expect(isBlockedAt(1, 3)).toBe(true)
+    expect(isBlockedAt(0, 5)).toBe(true)
   })
 
   it('still blocks the whole area for a piece with no grid, which is what older furniture does', () => {

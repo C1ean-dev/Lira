@@ -27,28 +27,23 @@ export const LiraLogo: React.FC<LiraLogoProps> = ({
           xmlns="http://www.w3.org/2000/svg"
           className="w-full h-full drop-shadow-sm"
         >
-          {/* Lyre Arms & Frame in pure white (no background) */}
           <g stroke={iconColor} strokeLinecap="round" strokeLinejoin="round">
-            {/* Crossbar (Yoke) */}
             <line x1="28" y1="28" x2="72" y2="28" strokeWidth="6" />
             <circle cx="28" cy="28" r="3.5" fill={iconColor} stroke="none" />
             <circle cx="72" cy="28" r="3.5" fill={iconColor} stroke="none" />
 
-            {/* Left curved arm with classical horn/scroll */}
             <path
               d="M 31 28 C 21 28 16 17 24 13 C 30 10 36 17 31 28 C 23 45 22 61 40 73"
               strokeWidth="5.5"
               fill="none"
             />
 
-            {/* Right curved arm with classical horn/scroll */}
             <path
               d="M 69 28 C 79 28 84 17 76 13 C 70 10 64 17 69 28 C 77 45 78 61 60 73"
               strokeWidth="5.5"
               fill="none"
             />
 
-            {/* Base Soundbox / Pedestal */}
             <path
               d="M 37 72 L 63 72 L 68 85 L 32 85 Z"
               strokeWidth="4"
@@ -58,7 +53,6 @@ export const LiraLogo: React.FC<LiraLogoProps> = ({
             <line x1="30" y1="85" x2="70" y2="85" strokeWidth="5" />
           </g>
 
-          {/* Vertical Pure White Lyre Strings */}
           <g stroke={iconColor} strokeWidth="2.8" strokeLinecap="round" opacity="0.95">
             <line x1="39" y1="29" x2="39" y2="72" />
             <line x1="46" y1="29" x2="46" y2="72" />

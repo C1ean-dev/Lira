@@ -31,7 +31,6 @@ export function useFirewallStatus() {
           } catch (e) {}
         }
       } catch (err) {
-        // ignore
       } finally {
         setIsChecking(false)
       }

@@ -9,8 +9,6 @@ import { AdvancedAudioTab } from './settings/AdvancedAudioTab'
 import { SystemSettingsTab } from './settings/SystemSettingsTab'
 
 export const AudioSettingsModal: React.FC = () => {
-  // Selectors only — whole-store would re-render this modal (and enumerate
-  // effects) on every VU-meter tick while the mic is live.
   const isSettingsModalOpen = useMediaStore((s) => s.isSettingsModalOpen)
   const setSettingsModalOpen = useMediaStore((s) => s.setSettingsModalOpen)
   const isTestingMic = useMediaStore((s) => s.isTestingMic)
@@ -21,7 +19,6 @@ export const AudioSettingsModal: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'devices' | 'advanced' | 'system'>('devices')
   const [isPlayingTestSound, setIsPlayingTestSound] = useState(false)
 
-  // Enumerate all media devices
   const refreshDevices = async () => {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return
@@ -70,7 +67,6 @@ export const AudioSettingsModal: React.FC = () => {
         }
       }
     } else {
-      // Auto-stop mic test if modal is closed
       if (isTestingMic) {
         MediaManager.getInstance().setTestMic(false)
       }
@@ -95,7 +91,6 @@ export const AudioSettingsModal: React.FC = () => {
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200 select-none">
       <div className="bg-[#1b202c] border border-[#2a3142] rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-        {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#2a3142] bg-[#12151d]/70">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
@@ -116,7 +111,6 @@ export const AudioSettingsModal: React.FC = () => {
           </button>
         </div>
 
-        {/* Tab Selector */}
         <div className="flex gap-2 px-6 pt-3 border-b border-[#2a3142] bg-[#12151d]/40">
           <button
             onClick={() => setActiveTab('devices')}
@@ -153,7 +147,6 @@ export const AudioSettingsModal: React.FC = () => {
           </button>
         </div>
 
-        {/* Modal Body */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
           {activeTab === 'devices' && (
             <AudioDevicesTab
@@ -168,7 +161,6 @@ export const AudioSettingsModal: React.FC = () => {
           {activeTab === 'system' && <SystemSettingsTab />}
         </div>
 
-        {/* Modal Footer */}
         <div className="p-4 border-t border-[#2a3142] bg-[#12151d]/90 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="text-[11px] text-slate-400 flex items-center gap-1.5">

@@ -93,7 +93,6 @@ export const ProfileSettingsPanel: React.FC<Props> = ({
 
   return (
     <div className="flex-1 flex flex-col gap-3 sm:gap-5 overflow-y-auto pr-1 select-none animate-in fade-in duration-200">
-      {/* Header Banner */}
       <div className="flex items-center justify-between pb-2 sm:pb-3 border-b border-[#383a40]">
         <div>
           <h3 className="text-xs sm:text-sm font-extrabold text-white flex items-center gap-1.5 sm:gap-2">
@@ -106,7 +105,6 @@ export const ProfileSettingsPanel: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Profile Picture Section */}
       <div className="bg-[#1e1f22] p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-[#383a40] flex flex-col sm:flex-row items-center sm:items-start gap-3 sm:gap-4 shadow-sm">
         <div className="relative group shrink-0">
           <div className="hidden sm:block">
@@ -165,7 +163,6 @@ export const ProfileSettingsPanel: React.FC<Props> = ({
             </div>
           )}
 
-          {/* Action Buttons */}
           <div className="flex items-center justify-center sm:justify-start gap-1.5 sm:gap-2 pt-1 flex-wrap">
             <input
               ref={fileInputRef}
@@ -211,7 +208,6 @@ export const ProfileSettingsPanel: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Display Name Section */}
       <div className="bg-[#1e1f22] p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-[#383a40] flex flex-col gap-1.5 sm:gap-2">
         <label className="text-xs font-bold text-slate-200 flex items-center justify-between">
           <span>Nome de Exibição (Nickname)</span>
@@ -232,7 +228,6 @@ export const ProfileSettingsPanel: React.FC<Props> = ({
         </span>
       </div>
 
-      {/* Presence Status Quick Selection */}
       <div className="bg-[#1e1f22] p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-[#383a40] flex flex-col gap-2 sm:gap-3">
         <div className="flex items-center justify-between">
           <label className="text-xs font-bold text-slate-200">
@@ -255,14 +250,12 @@ export const ProfileSettingsPanel: React.FC<Props> = ({
                     : 'bg-[#161719] hover:bg-[#202226] border-[#2e3035] text-slate-300'
                 }`}
               >
-                {/* Active checkmark */}
                 {isSelected && (
                   <div className="absolute top-1.5 right-1.5 sm:top-2.5 sm:right-2.5 w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-blue-500/20 border border-blue-400/40 flex items-center justify-center">
                     <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-blue-400 shrink-0" />
                   </div>
                 )}
 
-                {/* Circular celestial illustration badge */}
                 <div
                   className="w-10 h-10 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mb-1.5 sm:mb-2 shadow-md overflow-hidden transition-transform group-hover:scale-105 shrink-0"
                   style={{ backgroundColor: opt.bgColor }}
@@ -270,12 +263,10 @@ export const ProfileSettingsPanel: React.FC<Props> = ({
                   <MoonPhaseIcon status={opt.value} className="w-full h-full" withBackground={true} />
                 </div>
 
-                {/* Title */}
                 <span className="text-xs sm:text-sm font-bold text-white tracking-wide">
                   {opt.label}
                 </span>
 
-                {/* Subtitle */}
                 <span className="text-[10px] sm:text-xs text-slate-400 font-medium mt-0.5 leading-snug">
                   {opt.moonPhase}
                 </span>
@@ -285,7 +276,6 @@ export const ProfileSettingsPanel: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Interactive Image Crop Modal */}
       <ImageCropModal
         isOpen={cropModalOpen}
         imageSrc={rawImageToCrop}

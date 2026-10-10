@@ -203,7 +203,6 @@ describe('error reporter', () => {
     for (let i = 0; i < 5; i++) reporter.capture({ error: errorAt(name(i)) })
 
     clock.ms += 1000
-    // The oldest two were forgotten: they are reported as new, the newest three are folded.
     expect(reporter.capture({ error: errorAt(name(4)) }).report).toBeNull()
     expect(reporter.capture({ error: errorAt(name(0)) }).report).not.toBeNull()
   })

@@ -56,14 +56,11 @@ interface Props {
       pixelHeight?: number
       isObstacle?: boolean
       category?: string
-      /** Furniture with "Obstáculo" on: the tiles that have something visible in the drawing, per direction.
-       *  null if the drawing could not be read; absent otherwise. */
       spriteCollision?: SpriteCollision | null
     }
   ) => void
 }
 
-// How long the canvas waits after the last key typed in Dimensões before it is resized
 const LIVE_RESIZE_DELAY_MS = 180
 
 const PRESET_PALETTE = [
@@ -116,7 +113,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 }) => {
   if (!isOpen) return null
 
-  // Canvas Dimensions in Pixels (allows from 1x1 up to any arbitrary size)
   const [pixelWidth, setPixelWidth] = useState<number>(() => {
     if (initialPixelWidth && initialPixelWidth > 0) return initialPixelWidth
     if (initialWidth && initialWidth > 0) return initialWidth * 32
@@ -128,7 +124,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     return 32
   })
   const initialLoadedRef = useRef<boolean>(false)
-  // Saving reads the drawing to work out the hitbox, which takes a moment: a second click must not save twice
   const savingRef = useRef<boolean>(false)
 
   useEffect(() => {
@@ -137,7 +132,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
   const [inputWidthStr, setInputWidthStr] = useState<string>(() => String(pixelWidth))
   const [inputHeightStr, setInputHeightStr] = useState<string>(() => String(pixelHeight))
 
-  // In-Game Display Size (Tamanho real no mapa em pixels)
   const [tamanhoWidth, setTamanhoWidth] = useState<number>(() => {
     if (initialPixelWidth && initialPixelWidth > 0) return initialPixelWidth
     if (initialWidth && initialWidth > 0) return initialWidth * 32
@@ -159,9 +153,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     setInputTamanhoHStr(String(tamanhoHeight))
   }, [tamanhoHeight])
 
-  // The Dimensões fields show the size applied to the canvas, except while one of them is being edited
   const dimensionsFocusedRef = useRef<boolean>(false)
-  // Size typed in Dimensões that the canvas has still to follow
   const [requestedCanvasSize, setRequestedCanvasSize] = useState<{ width: number; height: number } | null>(null)
 
   useEffect(() => {
@@ -179,7 +171,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
   const tileWidth = Math.max(1, Math.ceil(canvasPixelWidth / 32))
   const tileHeight = Math.max(1, Math.ceil(canvasPixelHeight / 32))
 
-  // Directional Multi-Frames State
   const [activeDirection, setActiveDirection] = useState<Direction>('down')
   const [activeFrameIndex, setActiveFrameIndex] = useState<number>(0)
   const [frameEpoch, setFrameEpoch] = useState<number>(0)
@@ -188,7 +179,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
   const activeFrameIndexRef = useRef(activeFrameIndex)
   activeFrameIndexRef.current = activeFrameIndex
 
-  // Drag & drop state for reordering frames in the timeline
   const [draggedFrameIndex, setDraggedFrameIndex] = useState<number | null>(null)
   const [dragOverFrameIndex, setDragOverFrameIndex] = useState<number | null>(null)
 
@@ -210,7 +200,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     }
   })
 
-  // Master/original resolution frames cache (allows resampling from highest quality when resizing repeatedly)
   const masterFramesRef = useRef<Record<Direction, string[]>>({
     down: [],
     up: [],
@@ -219,9 +208,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
   })
   const isResizingRef = useRef<boolean>(false)
 
-
-
-  // Tools & Styling
   const [tool, setTool] = useState<DrawTool>('pencil')
   const toolRef = useRef<DrawTool>(tool)
   toolRef.current = tool
@@ -237,7 +223,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     '#ffd1a4',
   ])
 
-  // View state & Panning
   const [zoom, setZoom] = useState<number>(14)
   const [defaultZoom, setDefaultZoom] = useState<number>(14)
   const zoomRef = useRef(zoom)
@@ -246,13 +231,10 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
   defaultZoomRef.current = defaultZoom
 
   const [showGrid, setShowGrid] = useState<boolean>(true)
-  // The name is what the caller gives: editing something keeps its name. A caller that saves a copy of a
-  // built-in preset says so in the name it passes (utils/studioNaming.ts).
   const [customName, setCustomName] = useState<string>(
     presetName || `Novo ${CATEGORY_LABELS[category]}`
   )
 
-  // Canvas Panning (Right Click Drag, Middle Click Drag, Space + Left Click, Mouse Scroll)
   const [panOffset, setPanOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const panOffsetRef = useRef(panOffset)
   panOffsetRef.current = panOffset
@@ -266,7 +248,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     startY: 0,
   })
 
-  // Image Content Transform Mode (Move Tool: Pan & Scale Artwork)
   const [scaleDisplay, setScaleDisplay] = useState<string | null>(null)
   const [transformScaleState, setTransformScaleState] = useState<number>(1.0)
   const transformSourceCanvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -312,28 +293,21 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     return 1
   }
 
-
-
-  // Drawing state
   const [isDrawing, setIsDrawing] = useState<boolean>(false)
   const [hoverPixel, setHoverPixel] = useState<{ x: number; y: number } | null>(null)
   const [previewDataUrl, setPreviewDataUrl] = useState<string>('')
 
-  // Right Panel Animation Player Loop
   const [isPlaying, setIsPlaying] = useState<boolean>(true)
   const [animSpeedMs, setAnimSpeedMs] = useState<number>(160)
   const [animFrameIndex, setAnimFrameIndex] = useState<number>(0)
 
-  // Canvas Refs
   const drawCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
-  // Undo / Redo History per active frame
   const historyRef = useRef<ImageData[]>([])
   const historyStepRef = useRef<number>(-1)
   const [canUndo, setCanUndo] = useState(false)
   const [canRedo, setCanRedo] = useState(false)
 
-  // Save current canvas state to history and sync with directionalFrames
   const pushHistoryState = useCallback(() => {
     const canvas = drawCanvasRef.current
     if (!canvas) return
@@ -373,7 +347,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     setCanRedo(historyStepRef.current < historyRef.current.length - 1)
   }, [activeDirection, activeFrameIndex, canvasPixelWidth, canvasPixelHeight])
 
-  // Capture a pristine unclipped snapshot of current drawing canvas as the baseline for Move/Scale
   const captureTransformSource = useCallback(() => {
     const frameKey = `${activeDirection}_${activeFrameIndex}`
     const existingUnclipped = unclippedFramesMapRef.current.get(frameKey)
@@ -408,7 +381,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     setScaleDisplay(null)
   }, [activeDirection, activeFrameIndex])
 
-  // Redraw image from pristine source with exact scale and offset (centered within canvas)
   const redrawTransformedImage = useCallback(
     (
       source: HTMLCanvasElement,
@@ -430,7 +402,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       const S = scale
       const destW = Math.round(srcW * S)
       const destH = Math.round(srcH * S)
-      // Scale anchored symmetrically to the center of the canvas:
       const destX = Math.round((w - destW) / 2 + offsetX)
       const destY = Math.round((h - destH) / 2 + offsetY)
 
@@ -443,7 +414,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     []
   )
 
-  // Commit transform result to history and directionalFrames
   const commitTransform = useCallback(() => {
     if (transformCommitTimerRef.current) {
       clearTimeout(transformCommitTimerRef.current)
@@ -452,7 +422,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     pushHistoryState()
   }, [pushHistoryState])
 
-  // Reset transform to 100% scale and center offset
   const resetTransform = useCallback(() => {
     if (!transformSourceCanvasRef.current) return
     transformOffsetRef.current = { x: 0, y: 0 }
@@ -463,7 +432,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     commitTransform()
   }, [redrawTransformedImage, commitTransform])
 
-  // Fit entire source image inside the canvas dimensions without cropping
   const fitTransform = useCallback(() => {
     if (!transformSourceCanvasRef.current) {
       captureTransformSource()
@@ -482,7 +450,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     commitTransform()
   }, [captureTransformSource, redrawTransformedImage, commitTransform])
 
-  // Nudge transform by (dx, dy) pixels (via arrows or keys)
   const nudgeTransform = useCallback(
     (dx: number, dy: number) => {
       if (!transformSourceCanvasRef.current) {
@@ -507,7 +474,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     [captureTransformSource, redrawTransformedImage, commitTransform]
   )
 
-  // Step scale transform by multiplier (+10% or -10%)
   const stepScaleTransform = useCallback(
     (multiplier: number) => {
       if (!transformSourceCanvasRef.current) {
@@ -540,7 +506,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     [captureTransformSource, redrawTransformedImage, commitTransform]
   )
 
-  // Animation Loop for Right Panel Preview
   useEffect(() => {
     if (!isPlaying) return
     const activeFrames = directionalFrames[activeDirection] || []
@@ -553,7 +518,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     return () => clearInterval(timer)
   }, [isPlaying, animSpeedMs, activeDirection, directionalFrames])
 
-  // Sync toolRef and capture/flush transform when switching tools
   useEffect(() => {
     toolRef.current = tool
     if (tool === 'move') {
@@ -567,7 +531,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     }
   }, [tool, captureTransformSource])
 
-  // Spacebar tracking for Photoshop/Figma-style Space+Drag pan & Move Tool Nudge / Scale
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -578,7 +541,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
         return
       }
 
-      // Keyboard shortcut to move active frame in timeline: Alt + ArrowLeft / Alt + ArrowRight
       if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault()
         const curIdx = activeFrameIndexRef.current
@@ -590,7 +552,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
         return
       }
 
-      // Keyboard pixel nudge & image scale when Move Tool is active
       if (toolRef.current === 'move') {
         if (e.key === '+' || e.key === '=') {
           e.preventDefault()
@@ -655,7 +616,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     }
   }, [stepScaleTransform, nudgeTransform])
 
-  // Mouse Wheel (Ctrl/Meta + Wheel = Zoom at Cursor, Normal Wheel = Pan/Scroll, Move Tool = Scale Artwork Image)
   useEffect(() => {
     const stage = stageRef.current
     if (!stage) return
@@ -664,8 +624,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       e.preventDefault()
       e.stopPropagation()
 
-      // Case 0: When Move Tool is active ('mover espaço'), mouse scroll scales the artwork IMAGE itself!
-      // Always scales from the unclipped pristine source canvas anchored to the center; does NOT zoom or pan viewport.
       if (toolRef.current === 'move') {
         if (!transformSourceCanvasRef.current) {
           captureTransformSource()
@@ -673,7 +631,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
         const source = transformSourceCanvasRef.current
         if (!source) return
 
-        // Step by 5% per standard wheel notch (or 12% if Shift is held)
         const step = e.shiftKey ? 0.12 : 0.05
         const multiplier = e.deltaY < 0 ? (1 + step) : (1 / (1 + step))
         const newScale = Math.max(0.1, Math.min(10.0, Math.round(transformScaleRef.current * multiplier * 100) / 100))
@@ -699,7 +656,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
         return
       }
 
-      // Case 1: Zooming with Ctrl/Meta (or touchpad pinch-to-zoom)
       if (e.ctrlKey || e.metaKey) {
         const stageRect = stage.getBoundingClientRect()
         const stageCenterX = stageRect.left + stageRect.width / 2
@@ -712,10 +668,8 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 
         let deltaZoom = 0
         if (e.deltaY < 0) {
-          // Zoom IN
           deltaZoom = currentZoom < 4 ? 1 : currentZoom < 12 ? 2 : 4
         } else if (e.deltaY > 0) {
-          // Zoom OUT
           deltaZoom = currentZoom <= 4 ? -1 : currentZoom <= 12 ? -2 : -4
         }
 
@@ -725,7 +679,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
         if (nextZoom === currentZoom) return
 
         const k = nextZoom / currentZoom
-        // Keep the exact pixel under mouse cursor stationary!
         const nextPanX = relMouseX - (relMouseX - currentPan.x) * k
         const nextPanY = relMouseY - (relMouseY - currentPan.y) * k
 
@@ -734,7 +687,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
         return
       }
 
-      // Case 2: Normal Wheel = Pan/Scroll
       const currentPan = panOffsetRef.current
       if (e.shiftKey) {
         setPanOffset({
@@ -755,13 +707,11 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     }
   }, [captureTransformSource, redrawTransformedImage, commitTransform])
 
-  // Global mouse tracking while panning (Right Click, Middle Click, or Space + Left Click)
   useEffect(() => {
     if (!isPanning) return
 
     const onGlobalMouseMove = (e: MouseEvent) => {
       if (!isPanningRef.current) return
-      // If mouse buttons are released without triggering mouseup (e.g. outside window)
       if (e.buttons === 0) {
         setIsPanning(false)
         isPanningRef.current = false
@@ -783,7 +733,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     }
 
     const onGlobalContextMenu = (e: MouseEvent) => {
-      // Prevent browser context menu on right-click drag release
       e.preventDefault()
     }
 
@@ -797,7 +746,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     }
   }, [isPanning])
 
-  // Global mouse tracking while dragging content with Move Tool
   useEffect(() => {
     if (!isMovingContent) return
 
@@ -841,7 +789,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     }
   }, [isMovingContent, redrawTransformedImage, commitTransform])
 
-  // Load artwork for activeDirection and activeFrameIndex onto drawing canvas
   useEffect(() => {
     if (isResizingRef.current) return
     const canvas = drawCanvasRef.current
@@ -860,7 +807,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       const img = new Image()
       img.src = currentImgUrl
       img.onload = () => {
-        // On initial load of an image, the canvas dimensions MUST adapt to the image's actual resolution!
         if (!initialLoadedRef.current && img.naturalWidth > 0 && img.naturalHeight > 0) {
           initialLoadedRef.current = true
           if (img.naturalWidth !== canvasPixelWidth || img.naturalHeight !== canvasPixelHeight) {
@@ -872,17 +818,15 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
             setZoom(bestZ)
             setDefaultZoom(bestZ)
             setPanOffset({ x: 0, y: 0 })
-            return // Re-runs effect with the exact canvas dimensions!
+            return
           }
         }
 
         ctx.imageSmoothingEnabled = false
         ctx.clearRect(0, 0, canvasPixelWidth, canvasPixelHeight)
 
-        // Draw 1:1 pixel perfect!
         ctx.drawImage(img, 0, 0)
 
-        // Store unclipped version in map
         const fKey = `${activeDirection}_${safeIndex}`
         if (!unclippedFramesMapRef.current.has(fKey)) {
           const uCanvas = document.createElement('canvas')
@@ -920,7 +864,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     }
   }, [activeDirection, activeFrameIndex, canvasPixelWidth, canvasPixelHeight, frameEpoch])
 
-  // Helper to commit current drawing canvas to state
   const commitCurrentCanvas = () => {
     const canvas = drawCanvasRef.current
     if (!canvas) return
@@ -941,7 +884,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     setScaleDisplay(null)
   }
 
-  // Resize Dimensions handler with smart high-fidelity downsampling / upsampling
   const handleResizeDimensions = async (newW: number, newH: number) => {
     const targetW = Math.max(1, Math.round(newW))
     const targetH = Math.max(1, Math.round(newH))
@@ -956,7 +898,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 
     const activeFrameUrl = canvas ? canvas.toDataURL('image/png') : ''
 
-    // Current working snapshot across all directions
     const currentFramesSnapshot: Record<Direction, string[]> = {
       down: [...(directionalFrames.down || [])],
       up: [...(directionalFrames.up || [])],
@@ -972,7 +913,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 
     const directions: Direction[] = ['down', 'up', 'left', 'right']
 
-    // Keep artwork at 1:1 pixel scale centered within the new canvas dimensions (no stretching or distortion)
     const resizedCanvasFrames: Record<Direction, string[]> = {
       down: [],
       up: [],
@@ -987,7 +927,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
           list.map(async (frameUrl, fIdx) => {
             if (!frameUrl) return ''
 
-            // The frame as it is on the canvas now, plus whatever of it lies outside a smaller canvas
             const fKey = `${dir}_${fIdx}`
             const source = await composeFrameSource(unclippedFramesMapRef.current.get(fKey), frameUrl)
             if (!source) return ''
@@ -1020,7 +959,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       right: [...resizedCanvasFrames.right],
     }
 
-    // Update active drawing canvas directly with newly placed image
     if (canvas) {
       canvas.width = targetW
       canvas.height = targetH
@@ -1057,7 +995,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       }
     }
 
-    // Keep the pristine unclipped source active for the Move Tool!
     if (activeUnclipped) {
       transformSourceCanvasRef.current = activeUnclipped
       transformOffsetRef.current = { x: 0, y: 0 }
@@ -1072,11 +1009,9 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       setScaleDisplay(null)
     }
 
-    // Automatically switch to 'move' tool so user can immediately scroll to scale or reposition
     setTool('move')
     toolRef.current = 'move'
 
-    // Adaptive zoom scaling for comfortable editing
     const bestZ = calcBestZoom(targetW, targetH)
     setZoom(bestZ)
     setDefaultZoom(bestZ)
@@ -1096,7 +1031,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     setInputWidthStr(String(safeW))
     setInputHeightStr(String(safeH))
     if (isResizingRef.current) {
-      // a resize is running: this one is applied when it ends
       setRequestedCanvasSize({ width: safeW, height: safeH })
       return
     }
@@ -1112,8 +1046,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     handleApplyDimensions()
   }
 
-  // Dimensões and Tamanho follow what is typed: the size is applied while typing, not only on blur / Enter.
-  // A field that is empty or below 1 changes nothing until it holds a valid size; above 4096 it becomes 4096.
   const handleDimensionsInput = (axis: 'width' | 'height', typedText: string) => {
     const shownText = clampedSizeText(typedText)
     if (axis === 'width') setInputWidthStr(shownText)
@@ -1138,7 +1070,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     else setTamanhoHeight(typedSize)
   }
 
-  // The canvas follows the size typed in Dimensões once the typing pauses, one resize at a time
   const resizeHandlerRef = useRef(handleResizeDimensions)
   resizeHandlerRef.current = handleResizeDimensions
 
@@ -1146,7 +1077,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     const requestedSize = requestedCanvasSize
     if (!requestedSize || (requestedSize.width === pixelWidth && requestedSize.height === pixelHeight)) return
     const timer = setTimeout(() => {
-      // a resize that is running re-runs this effect when it ends (the applied size changes)
       if (isResizingRef.current) return
       initialLoadedRef.current = true
       void resizeHandlerRef.current(requestedSize.width, requestedSize.height).finally(() => {
@@ -1167,7 +1097,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     setTamanhoHeight(safeH)
   }
 
-  // Direction Switcher
   const switchDirection = (newDir: Direction) => {
     if (newDir === activeDirection) return
     commitCurrentCanvas()
@@ -1176,14 +1105,12 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     setActiveFrameIndex((prevIdx) => Math.min(prevIdx, Math.max(0, targetFrames.length - 1)))
   }
 
-  // Frame Navigation
   const switchFrame = (newIndex: number) => {
     if (newIndex === activeFrameIndex) return
     commitCurrentCanvas()
     setActiveFrameIndex(newIndex)
   }
 
-  // Add a new blank frame
   const handleAddFrame = () => {
     commitCurrentCanvas()
     const currentList = directionalFrames[activeDirection] || ['']
@@ -1199,7 +1126,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     setActiveFrameIndex(newIndex)
   }
 
-  // Duplicate current active frame (crucial for walk cycles!)
   const handleDuplicateFrame = () => {
     const canvas = drawCanvasRef.current
     const currentData = canvas ? canvas.toDataURL('image/png') : ''
@@ -1232,7 +1158,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       ]
     }
 
-    // Duplicate unclipped canvas if present
     const map = unclippedFramesMapRef.current
     const activeUnclipped = map.get(`${activeDirection}_${activeFrameIndex}`)
     const listLen = currentList.length
@@ -1263,7 +1188,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     setActiveFrameIndex(newIndex)
   }
 
-  // Delete a frame
   const handleDeleteFrame = (e: React.MouseEvent, indexToDelete: number) => {
     e.stopPropagation()
     const currentList = directionalFrames[activeDirection] || ['']
@@ -1284,7 +1208,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       )
     }
 
-    // Re-key unclipped pristine canvases
     const map = unclippedFramesMapRef.current
     const listLen = currentList.length
     const remainingCanvases: (HTMLCanvasElement | undefined)[] = []
@@ -1308,7 +1231,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     setFrameEpoch((prev) => prev + 1)
   }
 
-  // Move / Reorder animation frames in active direction
   const handleMoveFrame = (fromIndex: number, toIndex: number) => {
     const dir = activeDirectionRef.current
     const list = directionalFrames[dir] || ['']
@@ -1324,7 +1246,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 
     const currentActiveIndex = activeFrameIndexRef.current
 
-    // Commit current canvas state so in-progress pixel edits are preserved
     const canvas = drawCanvasRef.current
     const currentData = canvas ? canvas.toDataURL('image/png') : ''
 
@@ -1354,7 +1275,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       masterFramesRef.current[dir] = reorder(masterList, fromIndex, toIndex)
     }
 
-    // Re-key unclipped pristine canvases in unclippedFramesMapRef for this direction
     const map = unclippedFramesMapRef.current
     const listLen = list.length
     const extractedCanvases: (HTMLCanvasElement | undefined)[] = []
@@ -1371,7 +1291,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       }
     }
 
-    // Update activeFrameIndex so selection stays with the moved frame
     if (currentActiveIndex === fromIndex) {
       setActiveFrameIndex(toIndex)
     } else if (fromIndex < currentActiveIndex && toIndex >= currentActiveIndex) {
@@ -1382,7 +1301,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
   }
   handleMoveFrameRef.current = handleMoveFrame
 
-  // Mirror Left/Right Side (mirrors all frames of current direction to opposite side)
   const handleMirrorOppositeSide = () => {
     const canvas = drawCanvasRef.current
     const currentData = canvas ? canvas.toDataURL('image/png') : ''
@@ -1450,7 +1368,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     })
   }
 
-  // Pixel Coordinates calculation
   const getCanvasPixelCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = drawCanvasRef.current
     if (!canvas) return null
@@ -1466,7 +1383,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     return { x: px, y: py }
   }
 
-  // Draw Pixel onto Context
   const applyPixel = useCallback(
     (x: number, y: number, currentTool: DrawTool, paintColor: string) => {
       const canvas = drawCanvasRef.current
@@ -1484,7 +1400,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     []
   )
 
-  // Flood Fill (Bucket)
   const floodFill = (startX: number, startY: number, fillColor: string) => {
     const canvas = drawCanvasRef.current
     if (!canvas) return
@@ -1500,7 +1415,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     const targetB = data[startIndex + 2]
     const targetA = data[startIndex + 3]
 
-    // Convert fillColor hex to RGBA
     const hex = fillColor.replace('#', '')
     const fillR = parseInt(hex.substring(0, 2), 16) || 0
     const fillG = parseInt(hex.substring(2, 4), 16) || 0
@@ -1549,7 +1463,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     pushHistoryState()
   }
 
-  // Pipette (Eyedropper)
   const pickColor = (x: number, y: number) => {
     const canvas = drawCanvasRef.current
     if (!canvas) return
@@ -1570,10 +1483,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     setTool('pencil')
   }
 
-  // Mouse Handlers
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    // Panning ONLY on Right Click (2), Middle Click (1), or Space + Left Click
-    // Regular Left Click (0) on canvas NEVER drags where we are editing!
     if (
       e.button === 2 ||
       e.button === 1 ||
@@ -1643,7 +1553,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     }
   }
 
-  // Undo & Redo
   const handleUndo = () => {
     if (historyStepRef.current <= 0) return
     const canvas = drawCanvasRef.current
@@ -1696,7 +1605,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     }
   }
 
-  // Clear Canvas
   const handleClear = () => {
     const canvas = drawCanvasRef.current
     if (!canvas) return
@@ -1710,7 +1618,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     }
   }
 
-  // Final Save Handler
   const handleFinalSave = () => {
     const canvas = drawCanvasRef.current
     const currentData = canvas ? canvas.toDataURL('image/png') : ''
@@ -1736,7 +1643,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       category: furnitureCategory,
     }
 
-    // The hitbox follows the drawing: only the tiles with something visible in them block (spriteHitbox.ts)
     const commit = async (frames: Record<Direction, string[]>) => {
       if (savingRef.current) return
       savingRef.current = true
@@ -1761,7 +1667,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       return
     }
 
-    // Auto-mirror: If left was drawn but right is completely empty, mirror left into right
     const hasLeft = finalFrames.left.some((f) => !!f)
     const hasRight = finalFrames.right.some((f) => !!f)
 
@@ -1813,7 +1718,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       }
     }
 
-    // Auto-mirror: If right was drawn but left is completely empty, mirror right into left
     if (hasRight && !hasLeft) {
       const flipCanvas = document.createElement('canvas')
       flipCanvas.width = canvasPixelWidth
@@ -1876,7 +1780,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
       <div className="relative w-full max-w-6xl h-[92vh] max-h-[860px] bg-[#1e1f22] border border-[#383a40] rounded-3xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
-        {/* Top Header */}
         <div className="flex items-center justify-between px-6 py-2.5 border-b border-[#2b2d31] bg-[#18191c]">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-2xl bg-[#3b82f6]/20 border border-[#3b82f6]/40 flex items-center justify-center text-[#3b82f6]">
@@ -1890,9 +1793,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
           </div>
           
           <div className="flex items-center gap-3">
-            {/* Dimensions & Tamanho Controls */}
             <div className="flex flex-col gap-1">
-              {/* Row 1: Dimensions Input (Resolução da Tela de Desenho / Canvas) */}
               <div className="flex items-center justify-between gap-1.5 bg-[#2b2d31] border border-[#3f4147] px-2.5 py-1 rounded-xl text-xs">
                 <span className="text-[10px] font-bold text-slate-400 min-w-[55px]" title="Resolução da tela trabalhada (área de desenho)">Dimensões:</span>
                 <div className="flex items-center gap-1">
@@ -1939,7 +1840,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* Row 2: Tamanho Input (Tamanho final de exibição no mapa / jogo e preview) */}
               <div className="flex items-center justify-between gap-1.5 bg-[#2b2d31] border border-[#3f4147] px-2.5 py-1 rounded-xl text-xs">
                 <span className="text-[10px] font-bold text-slate-400 min-w-[55px]" title="Tamanho final de exibição do asset no mapa/jogo e no preview">Tamanho:</span>
                 <div className="flex items-center gap-1">
@@ -1981,7 +1881,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               </div>
             </div>
 
-            {/* Obstacle Checkbox for Furniture and Walls */}
             {(category === 'furniture' || category === 'wall') && (
               <label
                 className="flex items-center gap-1.5 cursor-pointer bg-[#2b2d31] border border-[#3f4147] px-2.5 py-1 rounded-xl text-xs"
@@ -2024,11 +1923,8 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Main Work Area */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Left Toolbar */}
           <div className="w-20 border-r border-[#2b2d31] bg-[#18191c]/80 flex flex-col items-center py-4 gap-3">
-            {/* Draw Tools */}
             <div className="flex flex-col gap-1.5 bg-[#2b2d31] p-1.5 rounded-2xl border border-[#383a40]">
               <button
                 onClick={() => setTool('pencil')}
@@ -2079,7 +1975,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 
             <div className="w-10 h-px bg-[#2b2d31]" />
 
-            {/* History Actions */}
             <div className="flex flex-col gap-1.5">
               <button
                 onClick={handleUndo}
@@ -2112,7 +2007,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 
             <div className="w-10 h-px bg-[#2b2d31]" />
 
-            {/* Active Color Preview & Free Color Picker */}
             <div className="flex flex-col items-center gap-1.5">
               <input
                 type="color"
@@ -2130,13 +2024,10 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Center Canvas Stage */}
           <div
             ref={stageRef}
             onContextMenu={(e) => e.preventDefault()}
             onMouseDown={(e) => {
-              // Dragging ONLY works with Right click (2), Middle click (1), or Space + Left click.
-              // Regular Left click (0) must NEVER drag!
               if (e.button === 2 || e.button === 1 || (e.button === 0 && isSpacePressedRef.current)) {
                 e.preventDefault()
                 startPanning(e.clientX, e.clientY)
@@ -2150,7 +2041,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                 : 'cursor-default'
             }`}
           >
-            {/* Real-time Image Scale Badge Indicator */}
             {scaleDisplay && (
               <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 bg-blue-600/90 text-white font-bold text-xs px-3.5 py-1.5 rounded-full shadow-2xl backdrop-blur-md pointer-events-none flex items-center gap-1.5 border border-blue-400/50 animate-pulse">
                 <span>🔍 Redimensionando Imagem:</span>
@@ -2160,7 +2050,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               </div>
             )}
 
-            {/* Stage Controls Float Bar (Top Left) */}
             <div className="absolute top-4 left-6 z-10 flex items-center gap-2 bg-[#18191c]/90 border border-[#383a40] backdrop-blur-md px-3 py-1.5 rounded-2xl shadow-lg">
               <button
                 onClick={() => {
@@ -2220,7 +2109,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               </button>
             </div>
 
-            {/* Viewport Canvas Wrapper - Absolute Centered (Never shrunk by flexbox, keeps true dimensions) */}
             <div
               className="absolute rounded-2xl shadow-2xl overflow-hidden border-2 border-[#383a40] shrink-0"
               style={{
@@ -2243,7 +2131,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                 backgroundColor: '#232428',
               }}
             >
-              {/* Interactive Drawing Canvas */}
               <canvas
                 ref={drawCanvasRef}
                 width={canvasPixelWidth}
@@ -2271,7 +2158,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                 }}
               />
 
-              {/* Pixel Grid Lines Overlay */}
               {showGrid && (
                 <div
                   className="absolute inset-0 pointer-events-none"
@@ -2285,7 +2171,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                 />
               )}
 
-              {/* Pixel Hover Cursor */}
               {hoverPixel && !isPanning && tool !== 'move' && (
                 <div
                   className="absolute pointer-events-none border border-white/80 shadow-xs"
@@ -2300,10 +2185,8 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               )}
             </div>
 
-            {/* Bottom Dock: Status & Controls (the direction selector is in the right column) */}
-            <div className="absolute bottom-3 z-10 flex flex-col items-center gap-2 max-w-[95%] pointer-events-none">
-              {/* Status & Controls Bar */}
-              <div className="flex items-center gap-4 bg-[#18191c]/90 border border-[#383a40] backdrop-blur-md px-4 py-1.5 rounded-2xl text-xs text-slate-400 shadow-lg pointer-events-auto">
+            <div data-section="Bottom Dock: Status & Controls" className="absolute bottom-3 z-10 flex flex-col items-center gap-2 max-w-[95%] pointer-events-none">
+              <div data-section="Status & Controls Bar" className="flex items-center gap-4 bg-[#18191c]/90 border border-[#383a40] backdrop-blur-md px-4 py-1.5 rounded-2xl text-xs text-slate-400 shadow-lg pointer-events-auto">
                 <span>
                   Pixel: <strong className="text-white">{hoverPixel ? `${hoverPixel.x}, ${hoverPixel.y}` : '-'}</strong>
                 </span>
@@ -2399,9 +2282,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Right Panel: Palette & Live Animation Preview */}
-          <div className="w-72 border-l border-[#2b2d31] bg-[#18191c]/80 flex flex-col p-4 gap-4 overflow-y-auto">
-            {/* Live Animation Player & Size Previews */}
+          <div data-section="Right Panel: Palette & Live Animation Preview" className="w-72 border-l border-[#2b2d31] bg-[#18191c]/80 flex flex-col p-4 gap-4 overflow-y-auto">
             <div className="bg-[#2b2d31] border border-[#383a40] rounded-2xl p-3 flex flex-col gap-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
@@ -2414,7 +2295,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                 )}
               </div>
 
-              {/* Display 1x and 2x */}
               <div className="flex items-center justify-around bg-[#1e1f22] p-3 rounded-xl border border-[#383a40]/60">
                 <div className="flex flex-col items-center gap-1">
                   <div
@@ -2441,7 +2321,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* Animation Play/Pause & Speed Selector */}
               {isMultiFrame && (
                 <div className="flex items-center justify-between bg-[#1e1f22] px-2.5 py-1.5 rounded-xl border border-[#383a40]/60 text-xs">
                   <button
@@ -2480,14 +2359,11 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                 </div>
               )}
 
-              {/* Animation frames of the active direction. They used to be a floating bar over the canvas,
-                  which hid part of the drawing: they live in this column now. */}
-              <div className="flex flex-col gap-1.5 mt-1">
+              <div data-section="Animation frames of the active direction" className="flex flex-col gap-1.5 mt-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                   {category === 'floor' ? 'Quadros' : `Quadros (${DIRECTIONS.find((direction) => direction.id === activeDirection)?.label})`}
                 </span>
                 <div className="flex flex-col gap-2 bg-[#1e1f22] p-2 rounded-xl border border-[#383a40]/60">
-                  {/* Frame List */}
                   <div className="flex flex-wrap items-start gap-1 max-h-[9.5rem] overflow-y-auto px-0.5 pt-2 pb-1">
                     {currentDirectionFrames.map((frameData, idx) => {
                       const isFrameActive = idx === activeFrameIndex
@@ -2615,7 +2491,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                             </span>
                           )}
 
-                          {/* Delete Frame Button */}
                           {currentDirectionFrames.length > 1 && (
                             <button
                               type="button"
@@ -2633,7 +2508,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                     })}
                   </div>
 
-                  {/* Timeline Action Buttons */}
                   <div className="grid grid-cols-2 gap-1.5">
                     <button
                       onClick={handleAddFrame}
@@ -2653,7 +2527,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                       <span>Duplicar</span>
                     </button>
 
-                    {/* Reorder / Move Active Frame Buttons: only with 2+ frames, there is nothing to move otherwise */}
                     {currentDirectionFrames.length > 1 && (
                       <div
                         className="col-span-2 flex items-center justify-between bg-[#2b2d31] border border-[#383a40] rounded-xl p-0.5"
@@ -2684,7 +2557,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* 4 Directions Mini Previews (Hidden when editing floors) */}
+              <span className="hidden" aria-hidden="true">4 Directions Mini Previews</span>
               {category !== 'floor' && (
                 <div className="flex flex-col gap-1.5 mt-1">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
@@ -2730,7 +2603,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                     })}
                   </div>
 
-                  {/* Mirror the sides into each other: only while a side is the active direction */}
                   {(activeDirection === 'left' || activeDirection === 'right') && (
                     <button
                       onClick={handleMirrorOppositeSide}
@@ -2749,8 +2621,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               )}
             </div>
 
-            {/* Curated Color Swatches & Color Wheel */}
-            <div className="flex flex-col gap-2">
+            <div data-section="Curated Color Swatches & Color Wheel" className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
                   Paleta Pixel Art
@@ -2809,7 +2680,6 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               </div>
             </div>
 
-            {/* Recent Colors */}
             <div className="flex flex-col gap-1.5">
               <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Cores Recentes</span>
               <div className="flex gap-1.5 flex-wrap">

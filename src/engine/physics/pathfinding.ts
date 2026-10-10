@@ -9,10 +9,6 @@ export interface Point {
   y: number
 }
 
-/**
- * Checks if a straight ray between point (x1, y1) and (x2, y2) is clear of collisions.
- * Uses fractional step sampling (0.1 tiles) to check character footprint clearance.
- */
 export function hasLineOfSight(
   x1: number,
   y1: number,
@@ -23,9 +19,6 @@ export function hasLineOfSight(
   const dist = Math.hypot(x2 - x1, y2 - y1)
   if (dist === 0) return !checkCollision(x1, y1, map)
 
-  // Step every ~0.1 tiles (approx 3.2 pixels). This is deliberately smaller
-  // than the thinnest zone wall so a segment cannot jump over a corner or a
-  // wall band between two otherwise walkable nodes.
   const stepCount = Math.max(1, Math.ceil(dist / 0.1))
   for (let i = 0; i <= stepCount; i++) {
     const t = i / stepCount
@@ -38,9 +31,6 @@ export function hasLineOfSight(
   return true
 }
 
-/**
- * Finds the nearest walkable tile to a target point if target is inside an obstacle.
- */
 function findNearestWalkableTile(
   targetX: number,
   targetY: number,
@@ -65,7 +55,6 @@ function findNearestWalkableTile(
 
         if (nx >= 0 && nx < map.width && ny >= 0 && ny < map.height) {
           if (!checkCollision(nx, ny, map)) {
-            // Distance from origin to neighbor + small penalty for distance from target
             const distFromOrigin = Math.hypot(nx - originX, ny - originY)
             const distFromTarget = Math.hypot(dx, dy)
             const score = distFromOrigin + distFromTarget * 0.5
@@ -83,7 +72,6 @@ function findNearestWalkableTile(
   return bestPoint
 }
 
-// Min-Heap implementation for fast A* Priority Queue
 class MinHeap<T> {
   private data: { item: T; priority: number }[] = []
 
@@ -147,10 +135,6 @@ class MinHeap<T> {
   }
 }
 
-/**
- * A* Pathfinding Algorithm with 8-directional movement, obstacle avoidance,
- * and Line-of-Sight Path Smoothing (String Pulling).
- */
 export function findPath(
   startX: number,
   startY: number,
@@ -161,8 +145,6 @@ export function findPath(
   let goalX = targetX
   let goalY = targetY
 
-  // If destination is inside a locked room and player is not authorized/inside,
-  // redirect target to the entrance doorway outside the room
   const targetZone = map.zones?.find(
     (z) =>
       targetX >= z.x &&
@@ -194,13 +176,10 @@ export function findPath(
     }
   }
 
-  // 1. Direct Line-of-Sight Check (Fast Path)
-  // If no obstacle exists between start and target, return straight line target immediately!
   if (hasLineOfSight(startX, startY, goalX, goalY, map)) {
     return [{ x: goalX, y: goalY }]
   }
 
-  // 2. Adjust target if target is inside an obstacle
   const walkableTarget = findNearestWalkableTile(
     Math.round(goalX),
     Math.round(goalY),
@@ -221,14 +200,12 @@ export function findPath(
     return [{ x: walkableTarget.x, y: walkableTarget.y }]
   }
 
-  // A* Data structures
   const key = (x: number, y: number) => `${x},${y}`
   const openSet = new MinHeap<{ x: number; y: number }>()
   const cameFrom = new Map<string, Point>()
   const gScore = new Map<string, number>()
   const closedSet = new Set<string>()
 
-  // Heuristic: Octile Distance
   const heuristic = (x: number, y: number) => {
     const dx = Math.abs(x - goalGridX)
     const dy = Math.abs(y - goalGridY)
@@ -239,7 +216,6 @@ export function findPath(
   gScore.set(startKey, 0)
   openSet.push({ x: startGridX, y: startGridY }, heuristic(startGridX, startGridY))
 
-  // 8 Neighbor offsets: 4 Cardinal + 4 Diagonal
   const neighbors = [
     { dx: 0, dy: -1, cost: 1.0 },
     { dx: 0, dy: 1, cost: 1.0 },
@@ -278,21 +254,13 @@ export function findPath(
       if (closedSet.has(nKey)) continue
       if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue
 
-      // A walkable destination is not enough for thin zone walls: two
-      // neighbouring grid points can be free while the segment between them
-      // crosses a wall (this is especially common at zone corners). Validate
-      // the complete edge with the same footprint-aware raycast used by the
-      // path smoother so A* never emits a waypoint jump through geometry.
       if (!hasLineOfSight(current.x, current.y, nx, ny, map)) continue
 
-      // For diagonal movement, prevent cutting through wall corners:
-      // Both adjacent orthogonal neighbors must be walkable
       if (offset.dx !== 0 && offset.dy !== 0) {
         if (checkCollision(current.x + offset.dx, current.y, map)) continue
         if (checkCollision(current.x, current.y + offset.dy, map)) continue
       }
 
-      // Check collision on the tile
       if (checkCollision(nx, ny, map)) continue
 
       const tentativeG = currentG + offset.cost
@@ -311,7 +279,6 @@ export function findPath(
     return []
   }
 
-  // 3. Reconstruct raw path from goal to start
   const rawPath: Point[] = []
   let curr: Point | undefined = { x: goalGridX, y: goalGridY }
   while (curr) {
@@ -320,11 +287,8 @@ export function findPath(
   }
   rawPath.reverse()
 
-  // Replace end point with exact desired destination
   rawPath[rawPath.length - 1] = { x: walkableTarget.x, y: walkableTarget.y }
 
-  // 4. Line-of-Sight Path Smoothing (Funnel / Raycast Simplification)
-  // Eliminates zig-zag steps and produces smooth, natural trajectories around corners
   const smoothedPath: Point[] = []
   let currentIdx = 0
   let fromPoint: Point = { x: startX, y: startY }
@@ -332,7 +296,6 @@ export function findPath(
   while (currentIdx < rawPath.length - 1) {
     let furthestIdx = -1
 
-    // Look as far ahead as possible with clear line of sight
     for (let checkIdx = rawPath.length - 1; checkIdx > currentIdx; checkIdx--) {
       const toPoint = rawPath[checkIdx]
 
@@ -342,9 +305,6 @@ export function findPath(
       }
     }
 
-    // A* edges are validated, so this should only fail when the actual
-    // fractional player position differs from its rounded start cell. Return
-    // no route instead of emitting a blocked first waypoint in that case.
     if (furthestIdx === -1) {
       return []
     }

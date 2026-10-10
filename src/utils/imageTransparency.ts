@@ -1,6 +1,3 @@
-/**
- * Utility functions for cropping and removing background colors (transparency) from images
- */
 
 export interface RGBColor {
   r: number
@@ -9,7 +6,7 @@ export interface RGBColor {
 }
 
 export const PRESET_BG_COLORS = {
-  LPC_DARK: { r: 33, g: 35, b: 42 }, // Standard dark purple/blue background in LPC blacksmith
+  LPC_DARK: { r: 33, g: 35, b: 42 },
   PURE_BLACK: { r: 0, g: 0, b: 0 },
   PURE_WHITE: { r: 255, g: 255, b: 255 },
   DARK_GRAY: { r: 32, g: 32, b: 32 },
@@ -20,9 +17,6 @@ export const PRESET_BG_COLORS = {
   CYAN: { r: 0, g: 255, b: 255 },
 }
 
-/**
- * Crops a specific region from an image or canvas
- */
 export function cropImage(
   source: HTMLImageElement | HTMLCanvasElement,
   sx: number,
@@ -42,13 +36,10 @@ export function cropImage(
   return canvas
 }
 
-/**
- * Removes a specific background color from a canvas using chroma-key distance and tolerance
- */
 export function applyBackgroundRemoval(
   sourceCanvas: HTMLCanvasElement,
   targetColor: RGBColor,
-  tolerance: number, // 0 to 100
+  tolerance: number,
   removeWhiteFringe: boolean = false
 ): HTMLCanvasElement {
   const canvas = document.createElement('canvas')
@@ -62,8 +53,6 @@ export function applyBackgroundRemoval(
   const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height)
   const data = imgData.data
 
-  // Calculate Euclidean distance threshold based on tolerance (0 to 100)
-  // Max Euclidean distance in RGB is sqrt(255^2 * 3) ~= 441.67
   const maxDistance = (tolerance / 100) * 260
 
   const isTargetWhite = targetColor.r > 230 && targetColor.g > 230 && targetColor.b > 230
@@ -76,16 +65,14 @@ export function applyBackgroundRemoval(
 
     if (a === 0) continue
 
-    // Euclidean color distance for superior chroma keying
     const dr = r - targetColor.r
     const dg = g - targetColor.g
     const db = b - targetColor.b
     const dist = Math.sqrt(dr * dr + dg * dg + db * db)
 
     if (dist <= maxDistance) {
-      data[i + 3] = 0 // Transparent
+      data[i + 3] = 0
     } else if (removeWhiteFringe && isTargetWhite && r > 240 && g > 240 && b > 240) {
-      // Only clean white fringe if background was white
       data[i + 3] = 0
     }
   }
@@ -94,9 +81,6 @@ export function applyBackgroundRemoval(
   return canvas
 }
 
-/**
- * Gets the bounding box of non-transparent pixels in a canvas, or null if completely transparent
- */
 export function getTrimmedBounds(
   sourceCanvas: HTMLCanvasElement
 ): { x: number; y: number; w: number; h: number } | null {
@@ -138,27 +122,17 @@ export function getTrimmedBounds(
   }
 }
 
-/**
- * Automatically trims empty transparent borders from a canvas
- */
 export function trimTransparentBorders(sourceCanvas: HTMLCanvasElement): HTMLCanvasElement {
   const bounds = getTrimmedBounds(sourceCanvas)
   if (!bounds) return sourceCanvas
   return cropImage(sourceCanvas, bounds.x, bounds.y, bounds.w, bounds.h)
 }
 
-
-/**
- * Converts RGBColor to hex string #rrggbb
- */
 export function rgbToHex(color: RGBColor): string {
   const toHex = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0')
   return `#${toHex(color.r)}${toHex(color.g)}${toHex(color.b)}`
 }
 
-/**
- * Converts hex string to RGBColor
- */
 export function hexToRgb(hex: string): RGBColor {
   let clean = hex.replace('#', '')
   if (clean.length === 3) {
@@ -172,10 +146,6 @@ export function hexToRgb(hex: string): RGBColor {
   }
 }
 
-/**
- * Automatically detects the background color of an image or cropped region
- * by analyzing corner pixels and outer perimeter borders.
- */
 export function detectBackgroundColor(
   source: HTMLImageElement | HTMLCanvasElement,
   region?: { x: number; y: number; w: number; h: number }
@@ -210,13 +180,12 @@ export function detectBackgroundColor(
     const clampedY = Math.max(0, Math.min(sh - 1, py))
     const idx = (clampedY * sw + clampedX) * 4
     const a = data[idx + 3]
-    if (a < 30) return // Already transparent
+    if (a < 30) return
 
     const r = data[idx]
     const g = data[idx + 1]
     const b = data[idx + 2]
 
-    // Quantize slightly (step of 4) to group minor compression artifacts
     const qr = Math.round(r / 4) * 4
     const qg = Math.round(g / 4) * 4
     const qb = Math.round(b / 4) * 4
@@ -230,13 +199,11 @@ export function detectBackgroundColor(
     }
   }
 
-  // 1. Four corners
   sample(0, 0)
   sample(sw - 1, 0)
   sample(0, sh - 1)
   sample(sw - 1, sh - 1)
 
-  // 2. Perimeter steps (top, bottom, left, right edges)
   const stepX = Math.max(1, Math.floor(sw / 30))
   const stepY = Math.max(1, Math.floor(sh / 30))
 

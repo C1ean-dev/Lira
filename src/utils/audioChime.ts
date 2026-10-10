@@ -1,7 +1,3 @@
-/**
- * Synthesizes a subtle, pleasant notification chime using the Web Audio API.
- * No external media files or network calls needed.
- */
 let audioCtx: AudioContext | null = null
 
 export function playMessageNotificationChime() {
@@ -20,7 +16,6 @@ export function playMessageNotificationChime() {
 
     const now = audioCtx.currentTime
 
-    // First note: G5 (784Hz)
     const osc1 = audioCtx.createOscillator()
     const gain1 = audioCtx.createGain()
     osc1.type = 'sine'
@@ -33,7 +28,6 @@ export function playMessageNotificationChime() {
     osc1.start(now)
     osc1.stop(now + 0.16)
 
-    // Second note: C6 (1046.5Hz) - harmonious higher pitch
     const osc2 = audioCtx.createOscillator()
     const gain2 = audioCtx.createGain()
     osc2.type = 'sine'
@@ -46,6 +40,5 @@ export function playMessageNotificationChime() {
     osc2.start(now + 0.08)
     osc2.stop(now + 0.28)
   } catch (err) {
-    // Gracefully ignore audio autoplay block or unsupported environment
   }
 }

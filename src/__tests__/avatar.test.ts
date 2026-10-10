@@ -49,18 +49,14 @@ describe('Avatar Customizer & Pixel Art Renderer - Expected Behaviors', () => {
       lastUpdated: Date.now(),
     }
 
-    // Direction DOWN
     expect(() => AvatarRenderer.drawPlayer(mockCtx, fakePlayer, true, 100)).not.toThrow()
 
-    // Direction UP
     fakePlayer.direction = 'up'
     expect(() => AvatarRenderer.drawPlayer(mockCtx, fakePlayer, true, 200)).not.toThrow()
 
-    // Direction LEFT
     fakePlayer.direction = 'left'
     expect(() => AvatarRenderer.drawPlayer(mockCtx, fakePlayer, true, 300)).not.toThrow()
 
-    // Direction RIGHT
     fakePlayer.direction = 'right'
     expect(() => AvatarRenderer.drawPlayer(mockCtx, fakePlayer, true, 400)).not.toThrow()
   })
@@ -168,7 +164,6 @@ describe('Avatar Customizer & Pixel Art Renderer - Expected Behaviors', () => {
 
     AvatarRenderer.drawPlayer(mockCtx, fakePlayer, false, 0)
 
-    // Verify drawImage was invoked with the subtexture source coordinates (10, 20, 32, 32)
     const atlasDrawCall = drawCalls.find(
       (call) => call[1] === 10 && call[2] === 20 && call[3] === 32 && call[4] === 32
     )

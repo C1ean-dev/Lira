@@ -35,22 +35,12 @@ let processAudioCaptureBytes = 0
 let processAudioCaptureChunks = 0
 let processAudioCaptureStatsTimer: ReturnType<typeof setInterval> | null = null
 
-// Pre-selected DesktopCapturerSource id for the NEXT getDisplayMedia call.
-// Written by the 'set-screen-source' IPC (renderer picked a thumbnail),
-// consumed by setDisplayMediaRequestHandler (with a 15s grace window for retries).
-//
-// IMPORTANT: Electron's `audio: 'loopback'` is the complete system output on
-// Windows. It cannot be constrained to a DesktopCapturerSource, so using it
-// for a selected window leaks sound from unrelated applications into a call.
-// The selected process is captured separately by the bundled Windows helper;
-// this Electron request handler remains video-only by design.
 let pendingScreenCapture: { sourceId: string | null; withAudio: boolean; captureMethod: string } | null = null
 let lastSelectedSourceId: string | null = null
 let lastSelectedSourceTime = 0
 
 const GITHUB_REPO = 'C1ean-dev/Lira'
 const CURRENT_VERSION = app.getVersion() || '1.0.0'
-// Identifies this run of the main process on its log lines, diagnostic entries and error reports.
 const MAIN_SESSION = `electron-${process.pid}`
 
 type ProcessAudioCaptureResult = { ok: true } | { ok: false; error: string }
@@ -62,12 +52,6 @@ type ProcessAudioCaptureInfo = {
   error?: string
 }
 
-/**
- * A transition of the main process (window created, helper spawned, IPC handler
- * that blocked...): one JSON line in logs/call-debug-<day>.log next to the
- * renderer's, a line in the timeline, and an entry in the trail that the error
- * reports of this process carry.
- */
 function writeMainDiagnostic(cat: string, event: string, data?: Record<string, unknown>) {
   const entry = {
     t: new Date().toISOString(),
@@ -154,11 +138,6 @@ async function resolveScreenBounds(sourceId: string): Promise<{ x: number; y: nu
     const byId = displays.find((d) => String(d.id) === candidateId)
     if (byId) return byId.bounds
 
-    // `screen:<id>:<index>` normally carries Electron's display id, but on
-    // some Windows/Electron combinations the id is an ordinal-like value.
-    // Resolve the exact DesktopCapturerSource first so we do not accidentally
-    // associate the selected thumbnail with a different monitor merely
-    // because its numeric value happens to be a valid array index.
     const sources = await desktopCapturer.getSources({ types: ['screen'], fetchWindowIcons: false })
     const found = sources.find((s) => s.id === sourceId)
     const displayId = found && (found as any).display_id
@@ -247,9 +226,6 @@ async function startProcessAudioCapture(sourceId: string): Promise<ProcessAudioC
         processAudioCaptureBytes += data.byteLength
         processAudioCaptureChunks++
         if (mainWindow && !mainWindow.isDestroyed()) {
-          // The helper writes only 48 kHz stereo signed-16 PCM. Forwarding a
-          // Buffer preserves the bytes across Electron IPC without writing it
-          // to disk or routing it through the system audio device.
           mainWindow.webContents.send('process-audio-data', data)
         }
       })
@@ -301,9 +277,6 @@ async function startProcessAudioCapture(sourceId: string): Promise<ProcessAudioC
   })
 }
 
-// Error reports: every error of this process and of the renderer becomes one
-// JSON line in logs/lira-reports-<day>.jsonl, with the state of the app and the
-// trail of what happened before it (src/utils/errorReport.ts).
 function mainReportContext(): Record<string, unknown> {
   return buildMainContext({
     version: CURRENT_VERSION,
@@ -332,14 +305,11 @@ const mainReporter = createErrorReporter({
   stats: () => appTrail.stats(),
 })
 
-// The installed app runs from minified bundles: the maps the build puts next to them
-// (vite.config.ts) turn the stack frames of a report back into source files and lines.
 const symbolicator = createSymbolicator({
   loadMap: (file) => {
     const mapPath = path.join(app.getAppPath(), `${file}.map`)
     if (!fs.existsSync(mapPath)) return null
     const map = JSON.parse(fs.readFileSync(mapPath, 'utf-8'))
-    // Only what the lookup reads: a whole map is several megabytes.
     return { sources: map.sources, names: map.names, mappings: map.mappings, sourceRoot: map.sourceRoot }
   },
 })
@@ -347,13 +317,11 @@ let forgetMapsTimer: ReturnType<typeof setTimeout> | null = null
 
 function translateReport(report: ErrorReport) {
   symbolicator.report(report)
-  // Errors come in bursts: keep the maps for the next ones, then give the memory back.
   if (forgetMapsTimer) clearTimeout(forgetMapsTimer)
   forgetMapsTimer = setTimeout(() => symbolicator.forget(), 120000)
   forgetMapsTimer.unref()
 }
 
-/** The first lines of a session: what is running, where, and on which graphics hardware. */
 function logSessionStart() {
   console.info('[Session] started', {
     session: MAIN_SESSION,
@@ -366,7 +334,6 @@ function logSessionStart() {
     .catch((error) => console.warn('[Session] could not read the GPU info:', error))
 }
 
-/** A renderer, GPU or utility process went away: an error only when it was not ended on purpose. */
 function logProcessGone(
   kind: 'renderer' | 'child',
   details: { type?: string; reason?: string; exitCode?: number; name?: string; serviceName?: string }
@@ -381,7 +348,6 @@ function logProcessGone(
   }
 }
 
-/** What happens to a window between "created" and "closed", for the trail of later errors. */
 function watchWindow(win: BrowserWindow) {
   const id = win.id
   writeMainDiagnostic('main', 'window-created', { id })
@@ -394,12 +360,8 @@ function watchWindow(win: BrowserWindow) {
   win.on('minimize', () => writeMainDiagnostic('main', 'window-minimize', { id }))
   win.on('restore', () => writeMainDiagnostic('main', 'window-restore', { id }))
   win.on('closed', () => writeMainDiagnostic('main', 'window-closed', { id }))
-  // A second "loaded" for the same window is a reload: the renderer started over.
   win.webContents.on('did-finish-load', () => writeMainDiagnostic('main', 'window-loaded', { id }))
 
-  // The page is never throttled in the background (backgroundThrottling: false),
-  // so it cannot tell on its own that nobody sees it. It is told here, and asks
-  // for a smaller picture of a live it is watching while minimized or in the tray.
   const tellVisibility = () => {
     if (win.isDestroyed()) return
     win.webContents.send('window-visibility', { visible: win.isVisible() && !win.isMinimized() })
@@ -410,10 +372,6 @@ function watchWindow(win: BrowserWindow) {
   win.on('restore', tellVisibility)
 }
 
-// App log: console output of this process and of the renderer goes to
-// logs/lira-<day>.log; errors (also uncaught ones) additionally go to
-// logs/lira-errors-<day>.log. The folder is resolved on each write, after
-// userData has its final location.
 const appLog = createLogWriter({
   dir: () => getLogsDirectory(),
   session: MAIN_SESSION,
@@ -423,10 +381,8 @@ const appLog = createLogWriter({
   onFailure: (error) => process.stderr.write(`[Log] could not write log file: ${String(error)}
 `),
 })
-// An error that repeats is reported once and then counted; the count is written here.
 setInterval(() => appLog.flushReports(), 15000).unref()
 app.on('will-quit', () => appLog.flushReports())
-// From here on, a failing IPC handler is reported with its channel, and one that blocks this process is noted.
 guardIpcMain(ipcMain, {
   onError: (channel, error, ms) =>
     logErrorWith(console, { kind: 'ipc', data: { channel, ms } }, `[IPC] ${channel} failed:`, error),
@@ -435,27 +391,22 @@ guardIpcMain(ipcMain, {
 app.whenReady().then(logSessionStart)
 installConsoleCapture(console as any, appLog, 'main')
 installProcessErrorCapture(process, appLog, 'main')
-// Start-up steps of the main process, in the same log ("[Startup] main: ..."); the renderer adds its own line.
 const startupStep = createStartupTimer({ log: (line) => console.log(line) })
 let startupProfiled = false
 app.on('child-process-gone', (_event, details) => {
   logProcessGone('child', details)
 })
 
-// Multi-instance testing support (--instance=2 or env INSTANCE=2 or --multi)
 const instanceArg = process.argv.find((a) => a.startsWith('--instance='))?.split('=')[1]
 const isMultiFlag = process.argv.includes('--multi')
 const instanceId = process.env.INSTANCE || instanceArg || (isMultiFlag ? '2' : '1')
 const isMultiInstance = isMultiFlag || instanceId !== '1'
 
 if (isMultiInstance) {
-  // Isolate userData directory so Chromium doesn't fight over GPUCache, LevelDB or local storage
   const defaultUserData = app.getPath('userData')
   app.setPath('userData', `${defaultUserData}-inst-${instanceId}`)
   console.log(`[Electron] Modo multi-instância ativo (Instância ${instanceId}). UserData isolado em: ${app.getPath('userData')}`)
 } else {
-  // 0. Single-instance lock: if another instance is already running without --instance, focus it and exit.
-  // This MUST happen before any GPU switches, sockets, or cache operations are touched.
   const gotSingleInstanceLock = setupSingleInstanceLock({
     requestLock: () => app.requestSingleInstanceLock(),
     quit: () => {
@@ -470,10 +421,8 @@ if (isMultiInstance) {
   }
 }
 
-// Prevent AMD GPU DirectComposition video overlay driver conflict on Windows
 app.commandLine.appendSwitch('disable-direct-composition-video-overlays')
 
-// Enable full GPU hardware acceleration for live video encoding/decoding and canvas
 app.commandLine.appendSwitch('ignore-gpu-blocklist')
 app.commandLine.appendSwitch('enable-gpu-rasterization')
 app.commandLine.appendSwitch('enable-accelerated-video-decode')
@@ -481,20 +430,8 @@ app.commandLine.appendSwitch('enable-accelerated-video-encode')
 app.commandLine.appendSwitch('enable-accelerated-mjpeg-decode')
 app.commandLine.appendSwitch('enable-zero-copy')
 app.commandLine.appendSwitch('enable-native-gpu-memory-buffers')
-// Remote call audio is rendered by the video elements created as soon as a
-// MediaStream arrives. Chromium's default autoplay policy can leave those
-// elements paused until the user clicks the grid/participant tile, which made
-// a connected participant appear silent until "Expandir chamada" was used.
-// The desktop client is the trusted call surface, so allow autoplay of the
-// already-negotiated remote media without coupling playback to the grid UI.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
-// Explicitly disable WebRtcAllowWgcScreenCapturer & WebRtcAllowWgcWindowCapturer:
-// On Windows with AMD Radeon graphics (and multi-instance / hybrid setups), Chromium's WGC
-// implementation produces "[ERROR:wgc_capture_session.cc(228)] ProcessFrame failed, using existing frame: -2147467259"
-// resulting in pitch black screen shares.
-// Disabling WGC allows WebRTC to use DXGI Desktop Duplication (ScreenCapturerWinDirectx) for screens
-// and GDI/D3D for windows, which run reliably with zero black screens.
 app.commandLine.appendSwitch('disable-features', 'WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer')
 app.commandLine.appendSwitch(
   'enable-features',
@@ -526,12 +463,10 @@ function createWindow() {
     autoHideMenuBar: true,
   })
 
-  // Inicializa a bandeja do sistema (ícones ocultos no Windows)
   trayManager = new TrayManager(instanceId, isMultiInstance)
   trayManager.init(mainWindow)
   watchWindow(mainWindow)
 
-  // Grant media permissions automatically
   session.defaultSession.setPermissionCheckHandler(() => {
     return true
   })
@@ -540,12 +475,6 @@ function createWindow() {
     callback(true)
   })
 
-  // Handle getDisplayMedia natively in Electron.
-  // The renderer pre-selects a source via 'set-screen-source' IPC (see
-  // below) and then calls getDisplayMedia — this handler resolves that
-  // selection to the actual DesktopCapturerSource. Without a pre-selection
-  // (e.g. direct getDisplayMedia calls) it falls back to the primary screen
-  // so capture never silently fails.
   session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
     const now = Date.now()
     const requestedAudio = pendingScreenCapture?.withAudio ?? !!(request as any)?.audio
@@ -569,9 +498,6 @@ function createWindow() {
           )
         }
 
-        // Never use `audio: loopback` here. It is system-wide audio, rather
-        // than audio belonging to `picked`, and caused the cross-application
-        // sound leak reported during screen sharing.
         try {
           callback({ video: picked })
         } catch (err) {
@@ -586,10 +512,6 @@ function createWindow() {
       })
   })
 
-  // Pre-selected screen/window source for the next getDisplayMedia request.
-  // Set by the renderer's ScreenShareModal before calling getDisplayMedia so
-  // the EXACT source the user picked is shared (legacy chromeMediaSource
-  // constraints were removed in modern Electron/Chromium and no longer work).
   ipcMain.handle('set-screen-source', (_event, payload: { sourceId?: string | null; withAudio?: boolean; captureMethod?: string }) => {
     lastSelectedSourceId = payload?.sourceId ?? null
     lastSelectedSourceTime = Date.now()
@@ -616,14 +538,12 @@ function createWindow() {
     return true
   })
 
-  // Enable F12 or Ctrl+Shift+I for DevTools
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i')) {
       mainWindow?.webContents.toggleDevTools()
     }
   })
 
-  // The steps between the window and the first paint, to see where the time before the app code goes.
   mainWindow.webContents.once('did-start-loading', () => startupStep('did-start-loading'))
   mainWindow.webContents.once('did-start-navigation', () => startupStep('did-start-navigation'))
   mainWindow.webContents.once('did-navigate', () => startupStep('did-navigate'))
@@ -647,9 +567,6 @@ function createWindow() {
     }
   }
 
-  // LIRA_PROFILE_STARTUP=1: sample the renderer's CPU while the app loads and log where the time went
-  // ("[Startup] profile ..." lines), for the first window only. The profiler is started once the page has
-  // committed: before that the renderer is replaced and the debugger target closes ("target closed").
   if (process.env.LIRA_PROFILE_STARTUP === '1' && !startupProfiled) {
     startupProfiled = true
     const contents = mainWindow.webContents
@@ -669,7 +586,6 @@ function createWindow() {
   loadApp()
 }
 
-// Compare semantic versions (v1 > v2 => true)
 function isNewerVersion(latestTag: string, currentVer: string): boolean {
   const clean = (v: string) => v.replace(/^v/i, '').trim().split('.').map(Number)
   const l = clean(latestTag)
@@ -683,12 +599,6 @@ function isNewerVersion(latestTag: string, currentVer: string): boolean {
   return false
 }
 
-// 1. IPC handler for Screen Sharing sources with resilient fallbacks.
-// desktopCapturer.getSources can HANG (not just throw) on some Windows
-// GPU/driver combos when fetchWindowIcons:true touches elevated/UWP app
-// icons — the picker then spins on "Detectando..." forever. Every attempt
-// below races a 6s timeout, and the no-icons path (which almost never
-// throws) is preferred after the first failure.
 const GET_SOURCES_TIMEOUT_MS = 6000
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -711,9 +621,6 @@ function toSourcePayload(source: any, withIcon: boolean) {
 }
 
 ipcMain.handle('get-sources', async () => {
-  // Fast path first: thumbnails WITHOUT window icons. Icons are the #1
-  // hang/throw source and the modal already renders a Monitor/AppWindow
-  // fallback glyph when appIcon is null.
   try {
     const sources = await withTimeout(
       desktopCapturer.getSources({
@@ -725,10 +632,6 @@ ipcMain.handle('get-sources', async () => {
       'getSources(no-icons)'
     )
     const mapped = sources.map((s) => toSourcePayload(s, false))
-    // Best-effort icon upgrade in the background is NOT possible over a
-    // single invoke — instead do one icons attempt only when the fast path
-    // returned very few sources (likely a partial failure). Otherwise ship
-    // the fast result immediately (latency beats icons here).
     if (mapped.length <= 1) {
       try {
         const withIcons = await withTimeout(
@@ -768,7 +671,6 @@ ipcMain.handle('get-sources', async () => {
   }
 })
 
-// Native Electron Window Fullscreen Handlers
 ipcMain.handle('set-fullscreen', (_event, flag: boolean) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.setFullScreen(flag)
@@ -781,7 +683,6 @@ ipcMain.handle('is-fullscreen', () => {
   return mainWindow && !mainWindow.isDestroyed() ? mainWindow.isFullScreen() : false
 })
 
-// 2. IPC handler for checking GitHub Releases
 ipcMain.handle('check-update', async () => {
   const currentVersion = app.getVersion() || '1.0.0'
   try {
@@ -806,7 +707,6 @@ ipcMain.handle('check-update', async () => {
         releaseNotes: '',
         downloadUrl: null,
         releaseUrl: `https://github.com/${GITHUB_REPO}/releases`,
-        // Not "no update": the renderer keeps what it knew and retries soon.
         checkFailed: true,
       }
     }
@@ -815,7 +715,6 @@ ipcMain.handle('check-update', async () => {
     const latestTag = data.tag_name || ''
     const hasUpdate = isNewerVersion(latestTag, currentVersion)
 
-    // Find executable installer asset (.exe)
     let downloadUrl: string | null = null
     if (Array.isArray(data.assets)) {
       const exeAsset = data.assets.find(
@@ -851,7 +750,6 @@ ipcMain.handle('check-update', async () => {
   }
 })
 
-// Helper to follow HTTP/HTTPS redirects when downloading assets
 function downloadFileWithRedirects(
   fileUrl: string,
   destPath: string,
@@ -877,7 +775,6 @@ function downloadFileWithRedirects(
             },
           },
           (response) => {
-            // Handle redirects (301, 302, 303, 307, 308)
             if (
               response.statusCode &&
               response.statusCode >= 300 &&
@@ -970,7 +867,6 @@ function findExistingInstaller(version?: string): string | null {
     }
   }
 
-  // Fallback: check temp directory for any valid installer matching the version
   try {
     const files = fs.readdirSync(tempDir)
     for (const file of files) {
@@ -1014,7 +910,6 @@ function checkIsUpdateDownloaded(targetVersion?: string): boolean {
   if (!installerPath || !fs.existsSync(installerPath)) return false
   try {
     const stats = fs.statSync(installerPath)
-    // A complete Lira installer is ~80MB, definitely > 10MB
     const valid = stats.size > 10 * 1024 * 1024
     if (valid) {
       downloadedInstallerPath = installerPath
@@ -1035,7 +930,6 @@ async function performDownloadUpdate(downloadUrl: string, targetVersion?: string
   const installerPath = getInstallerPath(ver)
   const tempInstallerPath = `${installerPath}.tmp`
 
-  // Clean up older installer versions from temp
   cleanupOldInstallers(installerPath)
 
   if (checkIsUpdateDownloaded(ver)) {
@@ -1106,11 +1000,7 @@ async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
     console.log('[Updater] Applying update. Installer:', installerPath, 'Current App:', appExePath)
 
     if (isWindows) {
-      // Inicia o instalador NSIS em modo normal (com interface de usuário).
-      // O instalador nsh (build/installer.nsh) fecha o aplicativo automaticamente,
-      // atualiza os arquivos e reinicia o app executando ExecShell "" "$appExe".
       let launched = false
-      // Prefer spawn with detached and unref so Windows launches the installer independent of Electron
       try {
         const child = spawn(installerPath, [], {
           detached: true,
@@ -1141,9 +1031,6 @@ async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
       shell.openPath(installerPath)
     }
 
-    // Fecha o aplicativo atual imediatamente (após 500ms para o SO criar o processo desanexado).
-    // Isso libera o singleton do Chromium (process_singleton_win), GPUCache e portas,
-    // evitando conflito de instâncias (erro 32) e tela preta na inicialização da nova versão.
     setTimeout(() => {
       app.exit(0)
     }, 500)
@@ -1155,7 +1042,6 @@ async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
   }
 }
 
-// 3. IPC handlers for Download and Run installer
 ipcMain.handle('download-update', async (_event, downloadUrl: string, targetVersion?: string) => {
   return await performDownloadUpdate(downloadUrl, targetVersion)
 })
@@ -1176,7 +1062,6 @@ ipcMain.handle('download-and-install-update', async (_event, downloadUrl: string
   return false
 })
 
-// 4. IPC handler to open URL externally
 ipcMain.handle('open-external', async (event, url: string) => {
   if (url) {
     await shell.openExternal(url)
@@ -1184,7 +1069,6 @@ ipcMain.handle('open-external', async (event, url: string) => {
 })
 
 function getDataDirectory(): string {
-  // In development, write directly to the project's src/data folder
   const projectSrcData = path.join(process.cwd(), 'src', 'data')
   if (fs.existsSync(path.join(process.cwd(), 'src'))) {
     if (!fs.existsSync(projectSrcData)) {
@@ -1192,7 +1076,6 @@ function getDataDirectory(): string {
     }
     return projectSrcData
   }
-  // In production package, use userData directory
   const userDataDir = path.join(app.getPath('userData'), 'data')
   if (!fs.existsSync(userDataDir)) {
     fs.mkdirSync(userDataDir, { recursive: true })
@@ -1200,8 +1083,6 @@ function getDataDirectory(): string {
   return userDataDir
 }
 
-// 4b. Diagnostic call logs: renderer ships JSONL batches here; main appends
-// to logs/call-debug-<date>.log (rotated at ~5MB, keeps 3 files).
 function getLogsDirectory(): string {
   const base = path.join(process.cwd(), 'src')
   const dir = fs.existsSync(base)
@@ -1247,12 +1128,10 @@ ipcMain.handle('diagnostic-log-batch', async (_event, entries: unknown[]) => {
   }
 })
 
-// Renderer console output, uncaught errors and rejections, in batches.
 const rendererSessions = new Set<string>()
 ipcMain.handle('renderer-log-batch', (event, records: unknown) => {
   const batch = sanitizeRecords(records)
   for (const record of batch) {
-    // Which window a renderer session is: a reload starts a new session in the same window.
     if (record.session && !rendererSessions.has(record.session)) {
       rendererSessions.add(record.session)
       writeMainDiagnostic('main', 'renderer-session', {
@@ -1260,7 +1139,6 @@ ipcMain.handle('renderer-log-batch', (event, records: unknown) => {
         window: BrowserWindow.fromWebContents(event.sender)?.id ?? null,
       })
     }
-    // A later error of this process (a renderer that died) shows the renderer errors that came before it.
     if (record.level === 'error') {
       appTrail.add({
         t: record.t,
@@ -1286,8 +1164,6 @@ ipcMain.handle('open-logs-folder', async () => {
   }
 })
 
-// One zip with the error reports and the logs of the last days, in the Downloads
-// folder and shown there: the file a person sends when something went wrong.
 ipcMain.handle('export-log-bundle', async () => {
   try {
     appLog.flushReports()
@@ -1305,13 +1181,10 @@ ipcMain.handle('export-log-bundle', async () => {
   }
 })
 
-// 5. IPC handlers to save and load native project assets
 ipcMain.handle('save-native-assets', async (_event, data: { categories: string[]; assets: any[] }) => {
   try {
     const dataDir = getDataDirectory()
     const filePath = path.join(dataDir, 'nativeAssets.json')
-    // In time slices, one write at a time (see nativeDataFile): the main process stays responsive while this
-    // runs at start-up. The installed app does not recode the pictures: nothing reads this file back there.
     await writeNativeDataFileLatest(filePath, data, { optimize: !app.isPackaged })
     console.log('[NativeAssets] Saved to', filePath)
     return true
@@ -1334,7 +1207,6 @@ ipcMain.handle('load-native-assets', async () => {
   return null
 })
 
-// 6. IPC handlers to save and load native spaces
 ipcMain.handle('save-native-spaces', async (_event, spaces: any[]) => {
   try {
     const dataDir = getDataDirectory()
@@ -1362,7 +1234,6 @@ ipcMain.handle('load-native-spaces', async () => {
   return null
 })
 
-// 7. IPC handler to save binary or text asset files directly to disk (e.g. public/assets/avatar/*.xml or *.png)
 ipcMain.handle(
   'save-asset-file',
   async (_event, relativePath: string, content: string, encoding: 'utf-8' | 'base64' = 'utf-8') => {
@@ -1387,8 +1258,6 @@ ipcMain.handle(
   }
 )
 
-
-// 8. Cross-process presence and direct messaging for multi-instance desktop
 function getPresenceDirectory(): string {
   const dir = path.join(app.getPath('temp'), 'lira_presence')
   if (!fs.existsSync(dir)) {
@@ -1453,7 +1322,6 @@ ipcMain.handle('send-cross-message', async (_event, message: any) => {
     const file = path.join(dir, `msg_${message.id}.json`)
     fs.writeFileSync(file, JSON.stringify({ ...message, savedAt: Date.now() }), 'utf-8')
 
-    // If this is a friend request update, sync any existing files with matching requestId
     if (message.friendRequest?.requestId) {
       try {
         const files = fs.readdirSync(dir)
@@ -1472,7 +1340,6 @@ ipcMain.handle('send-cross-message', async (_event, message: any) => {
       } catch (e) {}
     }
 
-    // If this is a message delivery/read status update, sync original message file if present
     if (message.targetMessageId && message.status) {
       try {
         const targetPath = path.join(dir, `msg_${message.targetMessageId}.json`)
@@ -1506,7 +1373,6 @@ ipcMain.handle('fetch-cross-messages', async (_event, payload: { forUserId: stri
       try {
         const raw = fs.readFileSync(filePath, 'utf-8')
         const data = JSON.parse(raw)
-        // Clean up messages older than 10 minutes
         if (now - data.savedAt > 600000) {
           try { fs.unlinkSync(filePath) } catch (e) {}
           continue
@@ -1526,8 +1392,6 @@ ipcMain.handle('fetch-cross-messages', async (_event, payload: { forUserId: stri
   }
 })
 
-
-// Socket UDP para descoberta local e disparo da janela nativa do Windows Defender Firewall
 let lanSocket: dgram.Socket | null = null
 
 function initNetworkTriggerAndLanDiscovery() {
@@ -1547,7 +1411,6 @@ function initNetworkTriggerAndLanDiscovery() {
         socket.setBroadcast(true)
       } catch (e) {}
     })
-    // Se for instância secundária, usa porta efêmera (0) para não colidir com a porta 41234
     const portToBind = isMultiInstance ? 0 : 41234
     socket.bind(portToBind, '0.0.0.0')
     lanSocket = socket
@@ -1556,13 +1419,10 @@ function initNetworkTriggerAndLanDiscovery() {
   }
 }
 
-// Função auxiliar para verificar se as regras do Lira já estão liberadas no Firewall do Windows
 async function isFirewallRuleAllowed(): Promise<boolean> {
   if (process.platform !== 'win32') return true
   return new Promise((resolve) => {
     const currentExe = process.execPath.replace(/'/g, "''")
-    // Consulta via COM HNetCfg.FwPolicy2 (não requer privilégios de Administrador)
-    // com fallback para netsh advfirewall
     const query = `
 $isAllowed = $false
 try {
@@ -1598,7 +1458,6 @@ Write-Output $isAllowed
   })
 }
 
-// IPCs para checagem e solicitação de liberação do Firewall do Windows
 ipcMain.handle('check-firewall-status', async () => {
   if (process.platform !== 'win32') return { isAllowed: true }
   const isAllowed = await isFirewallRuleAllowed()
@@ -1608,7 +1467,6 @@ ipcMain.handle('check-firewall-status', async () => {
 ipcMain.handle('request-firewall-access', async () => {
   if (process.platform !== 'win32') return { success: true }
 
-  // 1. Se já estiver permitido, retorna sucesso imediatamente sem abrir UAC desnecessário
   const alreadyAllowed = await isFirewallRuleAllowed()
   if (alreadyAllowed) {
     console.log('[Firewall] Regras já existentes e permitidas no Firewall.')
@@ -1617,7 +1475,6 @@ ipcMain.handle('request-firewall-access', async () => {
 
   return new Promise((resolve) => {
     const currentExe = process.execPath.replace(/'/g, "''")
-    // Script executado em processo com privilégios de Administrador (RunAs)
     const innerScript = `
 $paths = @(
   '${currentExe}',
@@ -1634,7 +1491,6 @@ exit 0
 `
     const innerB64 = Buffer.from(innerScript, 'utf16le').toString('base64')
 
-    // Dispara processo elevado (UAC) usando Start-Process -Verb RunAs
     const outerScript = `
 try {
   $p = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -ArgumentList '-NoProfile', '-EncodedCommand', '${innerB64}'
@@ -1650,7 +1506,6 @@ try {
     const outerB64 = Buffer.from(outerScript, 'utf16le').toString('base64')
 
     exec(`powershell.exe -NoProfile -EncodedCommand ${outerB64}`, async (error) => {
-      // Verifica se a regra passou a existir mesmo se houver sinalização de erro
       const isNowAllowed = await isFirewallRuleAllowed()
       if (isNowAllowed) {
         console.log('[Firewall] Regra verificada com sucesso no Firewall do Windows!')
@@ -1673,7 +1528,6 @@ try {
   })
 })
 
-// IPCs para configurações do sistema (Inicialização com Windows e Bandeja)
 ipcMain.handle('get-app-settings', () => {
   return trayManager?.getSettings() || {
     openAtLogin: false,
@@ -1703,7 +1557,6 @@ ipcMain.handle('quit-app', () => {
   return true
 })
 
-// Native Windows Notifications
 ipcMain.handle(
   'show-native-notification',
   async (
@@ -1757,7 +1610,6 @@ ipcMain.handle(
   }
 )
 
-// System Idle Time (for OS-level inactivity detection)
 ipcMain.handle('get-system-idle-time', () => {
   try {
     return powerMonitor.getSystemIdleTime()

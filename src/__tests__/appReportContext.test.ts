@@ -6,11 +6,6 @@ import { useChatStore } from '../store/useChatStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { getBufferedLogs, __resetLoggerForTests } from '../utils/logger'
 
-/**
- * Each part of the app that owns state describes it for error reports
- * (reportContext.ts). These snapshots are what a report shows under `context`.
- */
-
 const player = (id: string) => ({ id, name: id, x: 0, y: 0, direction: 'down', isMoving: false }) as never
 
 const fakeTrack = (kind: string, enabled: boolean) => ({ kind, enabled, muted: false, readyState: 'live', label: `${kind} device` })

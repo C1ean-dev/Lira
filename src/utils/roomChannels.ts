@@ -7,7 +7,6 @@ export const MAX_CHANNEL_NAME_LENGTH = 24
 const MAX_CHANNEL_DESCRIPTION_LENGTH = 120
 const CHANNEL_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,39}$/
 
-/** The channels every space starts with. */
 export const DEFAULT_ROOM_CHANNELS: RoomChannel[] = [
   {
     id: GENERAL_CHANNEL_ID,
@@ -21,7 +20,6 @@ export const DEFAULT_ROOM_CHANNELS: RoomChannel[] = [
   },
 ]
 
-/** Channel names are written like #nome-do-canal: lowercase, no spaces. */
 export function normalizeChannelName(raw: string): string {
   const cleaned = raw
     .trim()
@@ -32,12 +30,10 @@ export function normalizeChannelName(raw: string): string {
   return cleaned.replace(/^-+/, '').slice(0, MAX_CHANNEL_NAME_LENGTH).replace(/-+$/, '')
 }
 
-/** A channel of the space itself: not a private conversation, not the zone channel. */
 export const isRoomChannel = (channel: Channel): boolean => channel.type !== 'dm' && channel.type !== 'zone'
 
 export const canRenameChannel = (channel: Channel): boolean => isRoomChannel(channel)
 
-/** The general channel is where everything falls back to, so it always exists. */
 export const canDeleteChannel = (channel: Channel): boolean =>
   isRoomChannel(channel) && channel.id !== GENERAL_CHANNEL_ID
 
@@ -51,7 +47,6 @@ export function validateChannelName(raw: string, channels: Channel[], ignoreChan
   return { ok: true, name }
 }
 
-/** What the owner shares with everyone in the space and saves with it. */
 export function getRoomChannels(channels: Channel[]): RoomChannel[] {
   return channels.filter(isRoomChannel).map((c) => {
     const shared: RoomChannel = { id: c.id, name: c.name }
@@ -60,11 +55,6 @@ export function getRoomChannels(channels: Channel[]): RoomChannel[] {
   })
 }
 
-/**
- * Rebuilds a channel list that came from the network or from storage. Returns
- * null when it is not a list at all; otherwise only well-formed channels
- * survive, and the general channel is always there.
- */
 export function sanitizeRoomChannels(raw: unknown): RoomChannel[] | null {
   if (!Array.isArray(raw)) return null
   const ids = new Set<string>()
@@ -95,10 +85,6 @@ export function sanitizeRoomChannels(raw: unknown): RoomChannel[] | null {
 const channelTypeOf = (id: string): ChannelType =>
   id === GENERAL_CHANNEL_ID ? 'general' : id === 'social' ? 'social' : 'custom'
 
-/**
- * The local channel list after the space's channels changed: the zone channel
- * and private conversations are untouched, and unread counts are kept.
- */
 export function applyRoomChannels(current: Channel[], room: RoomChannel[]): Channel[] {
   const previous = new Map(current.map((c) => [c.id, c]))
   const roomChannels: Channel[] = room.map((rc) => ({
@@ -124,10 +110,6 @@ export interface ChannelMenuItem {
   disabled?: boolean
 }
 
-/**
- * Right-click menu of the channel list. `channel` is null on the empty part
- * of the list. Only the owner of the space changes its channels.
- */
 export function getChannelMenu(
   channel: Channel | null,
   ctx: { canManage: boolean }

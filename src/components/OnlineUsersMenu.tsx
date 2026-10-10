@@ -38,10 +38,6 @@ import { goToPlayer } from '../utils/goToPlayer'
 import { PlayerAvatar } from './common/PlayerAvatar'
 import { getPlayerUserId, findFriendKey } from '../utils/userId'
 
-/**
- * Outer gate: subscribes ONLY to isOnlineUsersOpen so 60Hz position updates
- * don't re-render this drawer while it's closed (the common case).
- */
 export const OnlineUsersMenu: React.FC = () => {
   const isOnlineUsersOpen = useGameStore((s) => s.isOnlineUsersOpen)
   if (!isOnlineUsersOpen) return null
@@ -159,7 +155,6 @@ const OnlineUsersMenuInner: React.FC = () => {
 
   return (
     <div className="fixed top-16 left-3 right-3 sm:left-auto sm:right-4 w-auto sm:w-96 bg-[#161922]/98 backdrop-blur-xl border border-[#2a3142] rounded-3xl shadow-2xl z-50 overflow-hidden flex flex-col max-h-[calc(100vh-76px)] animate-in fade-in slide-in-from-right-4 duration-200 select-none">
-      {/* Header */}
       <div className="p-4 border-b border-[#2a3142] bg-[#12151d]/80 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-md shadow-emerald-500/20">
@@ -186,7 +181,6 @@ const OnlineUsersMenuInner: React.FC = () => {
         </button>
       </div>
 
-      {/* Invite Banner / Quick Share */}
       <div className="p-3 bg-indigo-950/40 border-b border-indigo-500/20 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <Share2 className="w-4 h-4 text-indigo-400 shrink-0" />
@@ -207,7 +201,6 @@ const OnlineUsersMenuInner: React.FC = () => {
         </button>
       </div>
 
-      {/* Search & Tabs */}
       <div className="p-3 space-y-2.5 border-b border-[#2a3142] bg-[#12151d]/40">
         <div className="relative">
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -220,7 +213,6 @@ const OnlineUsersMenuInner: React.FC = () => {
           />
         </div>
 
-        {/* Tab Pills */}
         <div className="flex gap-1.5 bg-[#12151d] p-1 rounded-xl border border-[#2a3142]">
           <button
             onClick={() => setFilterTab('all')}
@@ -246,7 +238,6 @@ const OnlineUsersMenuInner: React.FC = () => {
         </div>
       </div>
 
-      {/* Members List */}
       <div className="p-3 overflow-y-auto flex-1 space-y-2">
         {filteredPlayers.length === 0 ? (
           <div className="text-center py-8 text-xs text-slate-500 space-y-1">
@@ -258,8 +249,6 @@ const OnlineUsersMenuInner: React.FC = () => {
             const isPlayerOwner = isLocal ? isOwner : (player.id.endsWith('-host') || player.isOwner || player.role === 'owner')
             const isPlayerConnectionHost = connectionHostId ? player.id === connectionHostId : (isLocal ? isHost : (player.isHost ?? false))
             const roleBadge = getRoleBadge(player.role, isPlayerOwner, isPlayerConnectionHost && !isPlayerOwner)
-            // Friendships and DMs are tied to the stable user id, not to the
-            // connection id of this room session.
             const playerUserId = getPlayerUserId(player)
             const friendKey = isLocal
               ? undefined
@@ -277,14 +266,12 @@ const OnlineUsersMenuInner: React.FC = () => {
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    {/* Avatar Icon */}
                     <PlayerAvatar
                       player={player}
                       showStatus={true}
                       size="md"
                     />
 
-                    {/* Name, Status & Location */}
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-xs font-bold text-slate-100 truncate">
@@ -338,11 +325,7 @@ const OnlineUsersMenuInner: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Right Media Status & Quick Actions */}
                   <div className="flex items-center gap-1">
-                    {/* Connecting badge — shown while WebRTC ICE/codecs are
-                        still negotiating so users see "handshake happening"
-                        instead of "frozen / delayed avatar". */}
                     {!isLocal && callStates[player.id] === 'connecting' && (
                       <span
                         className="text-[8px] bg-amber-500/15 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded font-bold flex items-center gap-1 animate-pulse"
@@ -360,7 +343,6 @@ const OnlineUsersMenuInner: React.FC = () => {
                         Sem áudio
                       </span>
                     )}
-                    {/* Media Badges */}
                     <div className="flex items-center gap-0.5 text-slate-400 bg-slate-900/60 p-1 rounded-lg border border-slate-800">
                       {player.isMuted ? (
                         <MicOff className="w-3 h-3 text-rose-400" />
@@ -377,7 +359,6 @@ const OnlineUsersMenuInner: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Quick Message Button */}
                     {!isLocal && (() => {
                       const friendUnread = getUnreadCountForFriend({ id: player.id, name: player.name, actualUserId: playerUserId })
                       return (
@@ -402,7 +383,6 @@ const OnlineUsersMenuInner: React.FC = () => {
                       )
                     })()}
 
-                    {/* Friend Toggle / Request */}
                     {!isLocal && (() => {
                       const req =
                         getFriendRequestStatus(playerUserId) ||
@@ -444,7 +424,6 @@ const OnlineUsersMenuInner: React.FC = () => {
                       )
                     })()}
 
-                    {/* More Menu Dropdown Toggle */}
                     {!isLocal && (
                       <button
                         onClick={() =>
@@ -463,7 +442,6 @@ const OnlineUsersMenuInner: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Dropdown Action Menu */}
                 {isMenuOpen && !isLocal && (
                   <div className="p-3 bg-[#181c26] rounded-xl border border-indigo-500/30 space-y-2.5 animate-in fade-in duration-150">
                     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
@@ -508,14 +486,12 @@ const OnlineUsersMenuInner: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Permissions (Owner only) */}
                     {isOwner && (
                       <div className="pt-2 border-t border-slate-800 space-y-2">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                           Gerenciar Participante (Dono da Sala)
                         </div>
 
-                        {/* Assign as Connection Host */}
                         <button
                           onClick={() => {
                             setConnectionHostId(player.id)
@@ -596,7 +572,6 @@ const OnlineUsersMenuInner: React.FC = () => {
         )}
       </div>
 
-      {/* Styled Kick Confirmation Modal */}
       <ConfirmModal
         isOpen={!!kickConfirmPlayer}
         title={`Expulsar ${kickConfirmPlayer?.name}?`}

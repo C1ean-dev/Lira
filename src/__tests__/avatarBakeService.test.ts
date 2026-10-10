@@ -57,7 +57,6 @@ describe('avatarBakeService - Bake on Demand', () => {
     const directions = bakeAllAvatarDirections('skin', 'blush')
     expect(directions.down).toBeDefined()
     expect(directions.down.startsWith('data:image/png')).toBe(true)
-    // Makeup does not appear on the back of head
     expect(directions.up).toBeDefined()
   })
 })

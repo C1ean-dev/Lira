@@ -51,20 +51,15 @@ const STORAGE_CACHE_KEY = 'lira_presence_cache'
 const BROADCAST_CHANNEL_NAME = 'lira_presence_channel'
 const HEARTBEAT_INTERVAL_MS = 2000
 const STALE_PRESENCE_THRESHOLD_MS = 8000
-/** Undelivered direct messages are re-sent when the friend comes online, up to this age. */
 const UNDELIVERED_RETRY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
-/** A pending friend request keeps us reachable for its answer for this long. */
 const PENDING_REQUEST_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
 const RECEIPT_DEDUPE_WINDOW_MS = 500
 
-// Anyone who knows our user id can open a link to us, so what arrives over one
-// is rebuilt field by field instead of being trusted as-is.
 const linkText = (value: unknown, maxLength: number): string | undefined =>
   typeof value === 'string' ? value.slice(0, maxLength) : undefined
 
 const linkAttachment = (raw: any): ChatAttachment | undefined => {
   if (!raw || typeof raw !== 'object') return undefined
-  // Rendered as an <img src> / download link: inline data only.
   if (typeof raw.dataUrl !== 'string' || !raw.dataUrl.startsWith('data:')) return undefined
   return {
     id: linkText(raw.id, 64) || '',
@@ -77,7 +72,6 @@ const linkAttachment = (raw: any): ChatAttachment | undefined => {
 
 export class FriendsPresenceService {
   private static instance: FriendsPresenceService | null = null
-  /** Presences seen on this machine (other app instances / browser tabs). */
   private presenceMap: Map<string, UserPresence> = new Map()
   private listeners: Set<(presenceMap: Record<string, UserPresence>) => void> = new Set()
   private broadcastChannel: BroadcastChannel | null = null
@@ -85,11 +79,8 @@ export class FriendsPresenceService {
   private pruneTimer: any = null
   private messagePollTimer: any = null
 
-  /** Direct P2P links to friends on other machines (see FriendsNetwork). */
   private network: FriendsNetwork | null = null
-  /** Presence details received over a link; the open link itself is the online signal. */
   private linkPresence: Map<string, UserPresence> = new Map()
-  /** Linked users that already hold our current presence. */
   private presenceSharedWith: Set<string> = new Set()
   private sharedSignature = ''
   private sharedAvatar: unknown = undefined
@@ -127,7 +118,6 @@ export class FriendsPresenceService {
         }
       }
     } catch (e) {
-      // Ignore
     }
   }
 
@@ -138,7 +128,6 @@ export class FriendsPresenceService {
         window.localStorage.setItem(STORAGE_CACHE_KEY, JSON.stringify(list))
       }
     } catch (e) {
-      // Ignore
     }
   }
 
@@ -163,10 +152,6 @@ export class FriendsPresenceService {
     }
   }
 
-  /**
-   * Opens the direct P2P links to friends. Called once by the app shell;
-   * without it the service only sees other app instances on this machine.
-   */
   public connectFriendsNetwork() {
     if (this.network) return
     if (typeof window === 'undefined' || typeof RTCPeerConnection === 'undefined') return
@@ -194,7 +179,6 @@ export class FriendsPresenceService {
     return !!findFriendKey(friends, friendProfiles, [userId])
   }
 
-  /** Stable user id behind a friends-list key or an id, when one is known. */
   private resolveUserId(value?: string | null): string | null {
     if (!value) return null
     if (isUserId(value)) return value
@@ -203,7 +187,6 @@ export class FriendsPresenceService {
     return key ? getFriendUserId(friendProfiles[key] || { id: key }) : null
   }
 
-  /** The other participant of a direct message, as a stable user id. */
   private resolveMessagePeer(message: ChatMessage): string | null {
     const req = message.friendRequest
     const candidates = [req?.toUserId, req?.fromUserId, message.recipientId, message.senderId]
@@ -214,20 +197,12 @@ export class FriendsPresenceService {
     return null
   }
 
-  /**
-   * The room mesh already delivers messages to people inside the same space;
-   * a file attachment (megabytes) should not be uploaded to them twice.
-   */
   private isAttachmentCarriedByRoom(message: ChatMessage, peerUserId: string): boolean {
     if (!message.attachment) return false
     const { roomId, remotePlayers } = useGameStore.getState()
     return !!roomId && Object.values(remotePlayers).some((p) => p.gameId === peerUserId)
   }
 
-  /**
-   * Who we need a link with: friends, the other side of a pending friend
-   * request, and anyone we still owe a direct message to.
-   */
   private collectContacts(): string[] {
     const contacts = new Set<string>()
     const { friends, friendProfiles } = useGameStore.getState()
@@ -282,7 +257,6 @@ export class FriendsPresenceService {
     } else if (packet.t === 'receipt') {
       const receipt = packet.receipt as MessageStatusReceipt | undefined
       if (receipt && typeof receipt === 'object' && receipt.status) {
-        // The link tells us who is on the other end; never trust the payload for it.
         this.applyStatusReceipt({ ...receipt, senderId: userId, senderName: undefined })
       }
     }
@@ -294,7 +268,6 @@ export class FriendsPresenceService {
     } else {
       const picture = linkText(raw.profilePicture, 2_000_000)
       const presence: UserPresence = {
-        // Identity comes from the link itself, never from the payload.
         userId,
         gameId: userId,
         name: linkText(raw.name, 60)?.trim() || 'Amigo',
@@ -306,7 +279,6 @@ export class FriendsPresenceService {
         roomCode: linkText(raw.roomCode, 100) || null,
         roomName: linkText(raw.roomName, 100) || null,
         inRoom: !!raw.inRoom,
-        // Our clock: the sender's may be off, and staleness is judged locally.
         lastHeartbeat: Date.now(),
       }
       this.linkPresence.set(userId, presence)
@@ -315,11 +287,6 @@ export class FriendsPresenceService {
     this.notifyListeners()
   }
 
-  /**
-   * Turns what a linked user sent into a direct message we are willing to
-   * store, or null. The link says who they are; the payload cannot speak for
-   * anyone else, pick another channel, or resolve a friend request by itself.
-   */
   private readLinkMessage(userId: string, raw: any): ChatMessage | null {
     if (!raw || typeof raw !== 'object' || typeof raw.id !== 'string') return null
     const local = useGameStore.getState().localPlayer
@@ -331,7 +298,6 @@ export class FriendsPresenceService {
       )
       const ours = stored?.friendRequest
       if (stored && ours && this.isSelf(ours.fromUserId)) {
-        // Their answer to a request we sent them: only its outcome is taken.
         if (ours.toUserId !== userId) return null
         if (req.status !== 'accepted' && req.status !== 'declined') return null
         return { ...stored, friendRequest: { ...ours, status: req.status } }
@@ -344,21 +310,17 @@ export class FriendsPresenceService {
       id: raw.id,
       senderId: userId,
       senderName: linkText(raw.senderName, 60)?.trim() || 'Amigo',
-      // Always the private conversation with that user, whatever was sent.
       channelId: getLocalDmChannelId(userId),
       recipientId: getLocalUserId(),
       recipientName: local.name,
       content: typeof raw.content === 'string' ? raw.content : '',
-      // A clock ahead of ours would keep the message "newer than last read".
       timestamp: Math.min(Number(raw.timestamp) || now, now),
       attachment: linkAttachment(raw.attachment),
-      // An invite puts a button that leads into a space: friends only.
       roomInvite: this.isFriendUser(userId) ? readRoomInvite(raw.roomInvite) : undefined,
     }
 
     if (req && typeof req === 'object') {
       if (typeof req.requestId !== 'string' || req.fromUserId !== userId) return null
-      // A request from them: only we can resolve it, whatever the payload claims.
       message.friendRequest = {
         requestId: req.requestId,
         fromUserId: userId,
@@ -376,7 +338,6 @@ export class FriendsPresenceService {
     if (!incoming) return
 
     if (this.ingestDirectMessage(incoming) === 'duplicate') {
-      // Our first ACK may have been lost; without it the sender retries forever.
       this.sendMessageStatusReceipt({
         senderId: getLocalUserId(),
         senderName: useGameStore.getState().localPlayer.name,
@@ -389,7 +350,6 @@ export class FriendsPresenceService {
     }
   }
 
-  /** Re-sends what a user missed while there was no link to them. */
   private flushPendingFor(userId: string) {
     const network = this.network
     if (!network) return
@@ -399,7 +359,6 @@ export class FriendsPresenceService {
     for (const m of chatStore.messages) {
       const req = m.friendRequest
       if (req && req.status !== 'pending' && req.fromUserId === userId && this.isSelf(req.toUserId)) {
-        // Our answer to their request: without it they stay "pending" forever.
         network.send(userId, { t: 'dm', message: m })
       } else if (
         m.recipientId === userId &&
@@ -432,10 +391,6 @@ export class FriendsPresenceService {
     }
   }
 
-  /**
-   * Adds a direct message received from any transport, de-duplicated by id.
-   * A friend-request answer is applied even when the request was ours.
-   */
   private ingestDirectMessage(incoming: ChatMessage): 'added' | 'duplicate' | 'ignored' {
     const chatStore = useChatStore.getState()
     const existing = chatStore.messages.find(
@@ -528,14 +483,9 @@ export class FriendsPresenceService {
     }
   }
 
-  /**
-   * Refreshes saved friend data from a live presence. Matching by name is only
-   * safe for presences seen on this machine, never for ones from the network.
-   */
   private syncFriendMetadata(p: UserPresence, allowNameMatch: boolean = true) {
     const gameStore = useGameStore.getState()
 
-    // 1. Direct ID match
     const friendKey = findFriendKey(gameStore.friends, gameStore.friendProfiles, [p.userId, p.gameId])
     if (friendKey) {
       gameStore.updateFriendProfile(friendKey, {
@@ -552,13 +502,11 @@ export class FriendsPresenceService {
       })
     }
 
-    // 2. Name match (friends added by username)
     if (allowNameMatch && p.name) {
       const pNameLower = p.name.toLowerCase()
       for (const [friendId, profile] of Object.entries(gameStore.friendProfiles)) {
         if (friendId === friendKey) continue
         if (profile.name.toLowerCase() === pNameLower) {
-          // Already linked to someone else who merely shares the name.
           const knownUserId = getFriendUserId(profile)
           if (knownUserId && knownUserId !== p.userId) continue
           gameStore.updateFriendProfile(friendId, {
@@ -591,7 +539,6 @@ export class FriendsPresenceService {
     const gameState = useGameStore.getState()
     const local = gameState.localPlayer
     return {
-      // The stable user id, not the connection id used inside a room.
       userId: getPlayerUserId(local),
       gameId: local.gameId,
       name: local.name,
@@ -601,17 +548,12 @@ export class FriendsPresenceService {
       statusText: local.statusText,
       statusEmoji: local.statusEmoji,
       roomCode: gameState.roomId,
-      // Outside a room the store still holds a default room name.
       roomName: gameState.roomId ? gameState.roomName : null,
       inRoom: !!gameState.roomId,
       lastHeartbeat: Date.now(),
     }
   }
 
-  /**
-   * Sends the local presence to linked friends when it changed, and to friends
-   * that have not received it on their current link yet.
-   */
   private sharePresenceWithFriends(presence: UserPresence) {
     const network = this.network
     if (!network) return
@@ -636,7 +578,6 @@ export class FriendsPresenceService {
     for (const userId of network.getLinkedUserIds()) {
       if (this.isFriendUser(userId)) {
         if (!this.presenceSharedWith.has(userId)) {
-          // Just became a friend while linked: what they already told us counts now.
           const known = this.linkPresence.get(userId)
           if (known) this.syncFriendMetadata(known, false)
         } else if (!changed) {
@@ -646,7 +587,6 @@ export class FriendsPresenceService {
           this.presenceSharedWith.add(userId)
         }
       } else if (this.presenceSharedWith.has(userId)) {
-        // No longer a friend: stop exposing our status and current room.
         network.send(userId, { t: 'presence', presence: null })
         this.presenceSharedWith.delete(userId)
       }
@@ -659,10 +599,8 @@ export class FriendsPresenceService {
     this.presenceMap.set(presence.userId, presence)
     this.saveToLocalStorage()
 
-    // 1. Share over the direct P2P links to friends
     this.sharePresenceWithFriends(presence)
 
-    // 2. Broadcast via Electron cross-instance IPC if in Electron
     if (typeof window !== 'undefined' && (window as any).electronAPI?.broadcastPresence) {
       try {
         const list = await (window as any).electronAPI.broadcastPresence(presence)
@@ -683,11 +621,9 @@ export class FriendsPresenceService {
           }
         }
       } catch (e) {
-        // Ignore
       }
     }
 
-    // 3. Broadcast via standard BroadcastChannel (for browser tabs)
     if (this.broadcastChannel) {
       try {
         const msg: PresenceMessage = {
@@ -697,7 +633,6 @@ export class FriendsPresenceService {
         }
         this.broadcastChannel.postMessage(msg)
       } catch (e) {
-        // Ignore
       }
     }
   }
@@ -732,7 +667,6 @@ export class FriendsPresenceService {
             })
           }
         } catch (e) {
-          // Ignore
         }
       }
     }, 1000)
@@ -769,14 +703,11 @@ export class FriendsPresenceService {
         }
         this.broadcastChannel.postMessage(msg)
       } catch (e) {
-        // Ignore
       }
     }
   }
 
   public async sendDirectMessage(message: ChatMessage) {
-    // 1. Send over the direct P2P link to that person. When they are not
-    // linked the message stays "sent" and is delivered once the link opens.
     const peerUserId = this.resolveMessagePeer(message)
     if (
       peerUserId &&
@@ -787,16 +718,13 @@ export class FriendsPresenceService {
       this.network.syncContacts()
     }
 
-    // 2. Send via Electron cross-instance IPC if available
     if (typeof window !== 'undefined' && (window as any).electronAPI?.sendCrossProcessMessage) {
       try {
         await (window as any).electronAPI.sendCrossProcessMessage(message)
       } catch (e) {
-        // Ignore
       }
     }
 
-    // 3. Broadcast via standard BroadcastChannel (for browser tabs)
     if (this.broadcastChannel) {
       try {
         const msg: PresenceMessage = {
@@ -806,19 +734,16 @@ export class FriendsPresenceService {
         }
         this.broadcastChannel.postMessage(msg)
       } catch (e) {
-        // Ignore
       }
     }
   }
 
   public async sendMessageStatusReceipt(receipt: MessageStatusReceipt) {
-    // 1. Send over the direct P2P link to that person
     const peerUserId = this.resolveUserId(receipt.recipientId)
     if (peerUserId && !this.isSelf(peerUserId) && this.network && !this.isRepeatedReceipt(peerUserId, receipt)) {
       this.network.send(peerUserId, { t: 'receipt', receipt })
     }
 
-    // 2. Send via Electron cross-instance IPC if available
     if (typeof window !== 'undefined' && (window as any).electronAPI?.sendCrossProcessMessage) {
       try {
         await (window as any).electronAPI.sendCrossProcessMessage({
@@ -835,11 +760,9 @@ export class FriendsPresenceService {
           timestamp: Date.now(),
         })
       } catch (e) {
-        // Ignore
       }
     }
 
-    // 3. Broadcast via standard BroadcastChannel (for browser tabs)
     if (this.broadcastChannel) {
       try {
         const msg: PresenceMessage = {
@@ -849,15 +772,10 @@ export class FriendsPresenceService {
         }
         this.broadcastChannel.postMessage(msg)
       } catch (e) {
-        // Ignore
       }
     }
   }
 
-  /**
-   * Callers emit one read receipt per known identifier of a friend (name, id,
-   * user id); all of them resolve to the same link.
-   */
   private isRepeatedReceipt(peerUserId: string, receipt: MessageStatusReceipt): boolean {
     const now = Date.now()
     for (const [key, at] of this.recentReceipts) {
@@ -921,7 +839,6 @@ export class FriendsPresenceService {
     const now = Date.now()
     const friendUserId = getFriendUserId(friend)
 
-    // 0. Active room check: If this friend is currently in the same room as local player
     try {
       const gameState = useGameStore.getState()
       if (gameState.roomId) {
@@ -932,7 +849,6 @@ export class FriendsPresenceService {
             (friend.actualUserId && p.id === friend.actualUserId) ||
             (friend.gameId && p.gameId === friend.gameId) ||
             (friendUserId && p.gameId === friendUserId) ||
-            // A name alone identifies nobody once the friend has a stable id.
             (!friendUserId && p.name.trim().toLowerCase() === targetName)
         )
         if (inRoomPeer) {
@@ -950,7 +866,6 @@ export class FriendsPresenceService {
       }
     } catch {}
 
-    // 1. Direct P2P link: the friend's app is running, wherever they are
     if (friendUserId && this.network?.isLinked(friendUserId)) {
       const linked = this.linkPresence.get(friendUserId)
       return {
@@ -965,15 +880,12 @@ export class FriendsPresenceService {
       }
     }
 
-    // 2. Direct match by ID in presenceMap
     let presence = this.presenceMap.get(friend.id)
 
-    // 3. Match by actualUserId if known
     if (!presence && friend.actualUserId) {
       presence = this.presenceMap.get(friend.actualUserId)
     }
 
-    // 4. Fallback match by gameId
     if (!presence && friend.gameId) {
       for (const p of this.presenceMap.values()) {
         if (p.gameId && p.gameId === friend.gameId) {
@@ -983,7 +895,6 @@ export class FriendsPresenceService {
       }
     }
 
-    // 5. Fallback match by Name (e.g. friend added as "clean" or "Player")
     if (!presence && !friendUserId && friend.name) {
       const targetName = friend.name.toLowerCase()
       for (const p of this.presenceMap.values()) {
@@ -1007,7 +918,6 @@ export class FriendsPresenceService {
       }
     }
 
-    // 6. Fallback: check PublicRoomsService to see if this friend is hosting a public room
     const publicRooms = PublicRoomsService.getInstance().getRooms()
     const matchingRoom = publicRooms.find(
       (r) =>
@@ -1041,7 +951,6 @@ export class FriendsPresenceService {
   public subscribe(listener: (presenceMap: Record<string, UserPresence>) => void): () => void {
     this.listeners.add(listener)
     listener(this.getPresenceSnapshot())
-    // Someone is looking at friends right now: re-check the ones that are offline.
     this.network?.refresh()
     return () => {
       this.listeners.delete(listener)

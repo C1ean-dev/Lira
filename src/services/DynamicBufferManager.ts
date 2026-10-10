@@ -8,11 +8,6 @@ export interface QualityProfile {
   fps: number
 }
 
-/**
- * Per-track RTCStats snapshot. We keep one of these per (peerId, kind) so the
- * adaptive logic can compute deltas (drops/s, jitter trend) instead of acting
- * on instantaneous single samples that are noisy and would over-correct.
- */
 interface TrackStatsSnapshot {
   framesDropped: number
   framesReceived: number
@@ -22,32 +17,16 @@ interface TrackStatsSnapshot {
   timestamp: number
 }
 
-/**
- * One adaptive buffer entry. We hold TWO of these per kind (audio + video)
- * so each pipeline can shrink/grow independently based on its own network
- * condition. The previous design used ONE number for everything, which made
- * audio "ride along" on video quality decisions and produce the 2-3s lag.
- */
 export interface AdaptiveBuffer {
-  /** Current jitter buffer target in ms (what we feed WebRTC). */
   currentMs: number
-  /** Lowest we will let this kind of track fall to (no point below this). */
   floorMs: number
-  /** Highest we will let this kind of track grow to (latency ceiling). */
   ceilingMs: number
-  /** Number of consecutive clean samples — used to slowly relax the buffer. */
   cleanSamples: number
-  /** Last computed target (for hysteresis, prevents flapping). */
   lastTargetMs: number
 }
 
 export const DYNAMIC_BUFFER_DEFAULT: Record<'audio' | 'video', AdaptiveBuffer> = {
   audio: {
-    // Floor = 1ms. WebRTC's playoutDelayHint accepts 1ms increments on all
-    // major browsers (Chromium, Firefox, Safari 17+). Starting at the
-    // absolute minimum lets the adaptive loop grow organically from real
-    // network measurements instead of paying 40-80ms of latency "just in
-    // case" on every call.
     currentMs: 1,
     floorMs: 1,
     ceilingMs: 500,
@@ -67,19 +46,15 @@ export class DynamicBufferManager {
   private static instance: DynamicBufferManager | null = null
   private monitorInterval: any = null
 
-  /** Per-(peerId, kind) RTC stats history used for delta-based decisions. */
   private lastStats: Map<string, TrackStatsSnapshot> = new Map()
 
-  /** Per-kind adaptive state. */
   private buffers: Record<'audio' | 'video', AdaptiveBuffer> = {
     audio: { ...DYNAMIC_BUFFER_DEFAULT.audio },
     video: { ...DYNAMIC_BUFFER_DEFAULT.video },
   }
 
-  /** Set true once we have at least one successful evaluation — UI shows it. */
   private hasEvaluatedOnce = false
 
-  /** Public read-only access for tests / debugging. */
   public getBuffers(): Record<'audio' | 'video', AdaptiveBuffer> {
     return this.buffers
   }
@@ -95,11 +70,6 @@ export class DynamicBufferManager {
     return DynamicBufferManager.instance
   }
 
-  /**
-   * Force a baseline reset — called whenever a brand-new MediaConnection is
-   * established. We start at the floor and let the network tell us how much
-   * we actually need (instead of pre-loading 3 seconds "just in case").
-   */
   public resetForNewCall() {
     this.buffers.audio = { ...DYNAMIC_BUFFER_DEFAULT.audio }
     this.buffers.video = { ...DYNAMIC_BUFFER_DEFAULT.video }
@@ -108,21 +78,12 @@ export class DynamicBufferManager {
     useNetworkQualityStore.getState().clearAll()
   }
 
-  /**
-   * @deprecated Kept for backwards compat with tests / external callers.
-   * The new model is network-driven, not quality-driven, so this just
-   * returns the 1ms floor — the adaptive loop will grow from there if
-   * the network actually needs more.
-   */
   public static calculateBaseBufferForQuality(_width?: number, _height?: number, _fps: number = 30): number {
     return 1
   }
 
   public startMonitoring() {
     if (this.monitorInterval) return
-    // Sample every 1.5s. WebRTC `getStats()` is async and a tight loop
-    // (e.g. 250ms) wastes CPU without giving meaningfully different numbers
-    // — jitter and packet-loss only shift on the order of hundreds of ms.
     this.monitorInterval = setInterval(async () => {
       await this.evaluateAndAdjustBuffer()
     }, 1500)
@@ -135,23 +96,6 @@ export class DynamicBufferManager {
     }
   }
 
-  /**
-   * Read all peer connections' RTCStats and adapt audio + video jitter
-   * buffers to the LOWEST value that absorbs current network conditions.
-   *
-   * Algorithm (per kind, audio and video independently):
-   *   1. Aggregate observed jitter (max across peers) and packet-loss
-   *      ratio (max across peers, smoothed over the last sample window).
-   *   2. Target = max(observedJitter * SAFETY, baseForQuality) + lossPenalty.
-   *      - SAFETY = 2.5x covers the worst-case gap-arrival scenario; the
-          previous hard-coded 3000ms was 60-100x the typical 30-50ms jitter.
-   *      - lossPenalty scales with loss ratio (capped to ceiling).
-   *   3. If current is below target: grow immediately (under-buffering
-   *      causes stutter, which is more annoying than added delay).
-   *   4. If current is above target AND we've had >=3 clean samples:
-   *      relax by 15ms per clean sample (slow decay so we don't flap).
-   *   5. Clamp to [floor, ceiling] and apply via MediaCallHandler.
-   */
   public async evaluateAndAdjustBuffer(): Promise<{ audio: number; video: number }> {
     const store = useMediaStore.getState()
     if (store.liveBufferMode === 'manual') {
@@ -161,8 +105,6 @@ export class DynamicBufferManager {
     const peerManager = PeerManager.getInstance()
     const mediaCalls = peerManager.getMediaCalls()
     if (!mediaCalls || mediaCalls.size === 0) {
-      // No active calls — keep the buffer at floor so the next call starts
-      // with no latency penalty. No measurements exist, so report zeros.
       this.applyToStore(store, this.buffers.audio.currentMs, this.buffers.video.currentMs, 0, 0)
       useNetworkQualityStore.getState().setLocalQuality({
         pingMs: 0,
@@ -173,7 +115,6 @@ export class DynamicBufferManager {
       return { audio: this.buffers.audio.currentMs, video: this.buffers.video.currentMs }
     }
 
-    // Accumulators per kind (audio and video are tracked independently).
     let maxJitterAudioMs = 0
     let maxJitterVideoMs = 0
     let maxLossRatioAudio = 0
@@ -200,7 +141,6 @@ export class DynamicBufferManager {
       try {
         const stats = await pc.getStats()
         stats.forEach((report) => {
-          // Extract RTT (Round Trip Time / Ping) from candidate-pair
           if (
             report.type === 'candidate-pair' &&
             ((report as any).state === 'succeeded' || (report as any).currentRoundTripTime !== undefined)
@@ -229,8 +169,6 @@ export class DynamicBufferManager {
           const width = (report.frameWidth as number) || 0
           const height = (report.frameHeight as number) || 0
 
-          // Loss ratio over the LAST sample window (delta), not cumulative.
-          // Cumulative loss is meaningless after 10 minutes — it just grows.
           let lossRatio = 0
           if (prev) {
             const deltaLost = Math.max(0, packetsLost - prev.packetsLost)
@@ -265,7 +203,6 @@ export class DynamicBufferManager {
           })
         })
 
-        // Update real-time network quality for this peer
         useNetworkQualityStore.getState().setPeerQuality(peerId, {
           pingMs: peerPingMs,
           lossPct: Math.round(peerLossRatio * 100),
@@ -277,11 +214,9 @@ export class DynamicBufferManager {
           peerPingCount++
         }
       } catch (err) {
-        // Stats can throw on closed connections — safe to skip.
       }
     }
 
-    // Clean up disconnected peers from network quality store
     const storedPeerQualities = useNetworkQualityStore.getState().peerQualities
     for (const storedPeerId of Object.keys(storedPeerQualities)) {
       if (!mediaCalls.has(storedPeerId)) {
@@ -289,21 +224,15 @@ export class DynamicBufferManager {
       }
     }
 
-    // Adapt AUDIO buffer
     if (hasAudio) {
       this.adaptBuffer('audio', maxJitterAudioMs, maxLossRatioAudio, 0, 0, 0)
     } else {
-      // No audio receivers: relax audio back to floor so it's ready for next call.
       this.buffers.audio.currentMs = this.buffers.audio.floorMs
       this.buffers.audio.lastTargetMs = this.buffers.audio.floorMs
       this.buffers.audio.cleanSamples = 0
     }
 
-    // Adapt VIDEO buffer
     if (hasVideo) {
-      // Frame budget: at 60fps a frame is 16.6ms; at 30fps it's 33ms.
-      // We need at least one frame plus jitter headroom. The previous code
-      // assumed 3 seconds here unconditionally.
       const frameMs = maxVideoFps > 0 ? 1000 / maxVideoFps : 16.6
       this.adaptBuffer('video', maxJitterVideoMs, maxLossRatioVideo, frameMs, maxVideoWidth, maxVideoHeight)
     } else {
@@ -315,19 +244,13 @@ export class DynamicBufferManager {
     const audioMs = this.buffers.audio.currentMs
     const videoMs = this.buffers.video.currentMs
 
-    // Apply to every active receiver. We pass BOTH audio + video numbers so
-    // each pipeline is independently capped — `applyReceiverBuffer` clamps
-    // them to their own ceilings.
     MediaCallHandler.applyJitterBuffer(mediaCalls, videoMs, audioMs)
 
-    // Persist via setAdaptiveBuffers (NO live-buffer event) so PeerManager
-    // doesn't re-apply a video-only value on top and clobber `audioMs`.
     const peakJitter = Math.max(maxJitterAudioMs, maxJitterVideoMs)
     const peakLossPct = Math.max(maxLossRatioAudio, maxLossRatioVideo) * 100
     this.applyToStore(store, audioMs, videoMs, peakJitter, peakLossPct)
     this.hasEvaluatedOnce = true
 
-    // Update aggregated local connection quality
     const avgPing = peerPingCount > 0 ? Math.round(totalPeerPing / peerPingCount) : 0
     useNetworkQualityStore.getState().setLocalQuality({
       pingMs: avgPing,
@@ -338,18 +261,6 @@ export class DynamicBufferManager {
     return { audio: audioMs, video: videoMs }
   }
 
-  /**
-   * Core adaptation loop for one media kind.
-   *
-   * Starts from the FLOOR (1ms) and grows only when network measurements
-   * (jitter + packet loss) require it. On a clean LAN the buffer stays
-   * near 1ms; on a jittery link it grows to whatever's needed to absorb
-   * the gap arrivals.
-   *
-   * `jitterMs` is the max observed inter-arrival jitter across all peers of
-   * this kind. `lossRatio` is the max delta-window packet-loss ratio.
-   * `frameMs` is the video frame duration (audio passes 0).
-   */
   private adaptBuffer(
     kind: 'audio' | 'video',
     jitterMs: number,
@@ -360,63 +271,40 @@ export class DynamicBufferManager {
   ) {
     const buf = this.buffers[kind]
 
-    // Target = safety headroom over observed jitter + frame + loss penalty.
-    // SAFETY=2.5 because RFC 3550 jitter is a 1-sigma estimate; worst-case
-    // packet can be 2-3 sigma late on a healthy connection.
     const SAFETY = 2.5
     const jitterTarget = jitterMs * SAFETY
     const frameTarget = frameMs > 0 ? frameMs * 1.5 : 0
-    // Loss penalty: every 1% loss adds 30ms (linear, capped at 500ms).
     const lossPenalty = Math.min(500, Math.round(lossRatio * 100 * 30))
-    // Add a tiny startup headroom (5ms) so the very first packet doesn't
-    // land exactly at the 1ms floor on a just-opened connection; this gets
-    // absorbed back toward 1ms after the first clean sample.
     const startupHeadroom = buf.cleanSamples === 0 ? 5 : 0
     const target = Math.round(
       Math.max(jitterTarget + frameTarget, buf.floorMs) + lossPenalty + startupHeadroom
     )
 
-    // Clamp target to ceiling.
     const clampedTarget = Math.min(buf.ceilingMs, Math.max(buf.floorMs, target))
 
-    // Decide whether to grow, hold, or relax.
     if (clampedTarget > buf.currentMs) {
-      // Need more buffer — grow IMMEDIATELY (under-buffering = stutter).
-      // On the very first sample we step directly to the target instead of
-      // creeping, because there's no history to interpolate from.
       if (buf.cleanSamples === 0 && buf.currentMs === buf.floorMs) {
         buf.currentMs = clampedTarget
       } else {
-        // Grow at most 50ms per sample to avoid oscillation.
         buf.currentMs = Math.min(clampedTarget, buf.currentMs + 50)
       }
       buf.cleanSamples = 0
     } else if (clampedTarget < buf.currentMs) {
-      // Have headroom — wait for sustained clean network before relaxing.
-      // Because the floor is 1ms we need MORE clean samples before relaxing,
-      // so the buffer doesn't flap back down the instant the network hiccup
-      // is over.
       const relaxThreshold = kind === 'audio' ? 8 : 6
       buf.cleanSamples++
       if (buf.cleanSamples >= relaxThreshold) {
-        // Relax by 5ms per clean sample, but not below target. Hysteresis
-        // via lastTargetMs prevents rapid flapping between floor and target.
         const next = Math.max(clampedTarget, buf.currentMs - 5)
         buf.currentMs = Math.max(next, Math.min(buf.currentMs, buf.lastTargetMs))
         if (buf.currentMs === clampedTarget) buf.lastTargetMs = clampedTarget
       }
     } else {
-      // Exactly at target — clean sample, reset counter.
       buf.cleanSamples++
-      // Aggressive relax when sitting at target for many samples — the
-      // network has been clean, so nibble back toward the floor.
       const nibbleThreshold = kind === 'audio' ? 5 : 8
       if (buf.cleanSamples >= nibbleThreshold && buf.currentMs > buf.floorMs) {
         buf.currentMs = Math.max(buf.floorMs, buf.currentMs - 2)
       }
     }
 
-    // Final clamp.
     buf.currentMs = Math.max(buf.floorMs, Math.min(buf.ceilingMs, Math.round(buf.currentMs)))
   }
 
@@ -427,9 +315,6 @@ export class DynamicBufferManager {
     jitterMs: number,
     lossPct: number
   ) {
-    // Mirror into the legacy single-number field so the settings slider
-    // keeps working — but via setAdaptiveBuffers (no event dispatch, so
-    // PeerManager can't clobber the audio value we just applied).
     store.setAdaptiveBuffers(audioMs, videoMs, jitterMs, lossPct)
   }
 }

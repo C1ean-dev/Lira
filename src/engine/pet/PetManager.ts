@@ -33,9 +33,6 @@ export class PetManager {
     return Array.from(this.pets.values())
   }
 
-  /**
-   * Update all pets following their respective players
-   */
   public update(deltaTime: number, players: Player[]) {
     const activePlayerIds = new Set<string>()
 
@@ -50,7 +47,6 @@ export class PetManager {
       let pet = this.pets.get(player.id)
 
       if (!pet) {
-        // Initial spawn beside player
         const offsetX = player.direction === 'right' ? -0.8 : player.direction === 'left' ? 0.8 : 0.6
         const offsetY = player.direction === 'down' ? -0.6 : player.direction === 'up' ? 0.6 : 0.2
         pet = {
@@ -70,7 +66,6 @@ export class PetManager {
       this.updatePetFollowing(pet, player, deltaTime)
     }
 
-    // Remove pets for players that are no longer present
     for (const id of Array.from(this.pets.keys())) {
       if (!activePlayerIds.has(id)) {
         this.pets.delete(id)
@@ -78,15 +73,11 @@ export class PetManager {
     }
   }
 
-  /**
-   * Core trail-following logic for a single pet
-   */
   private updatePetFollowing(pet: PetState, player: Player, deltaTime: number) {
     const dx = player.x - pet.x
     const dy = player.y - pet.y
     const distToPlayer = Math.sqrt(dx * dx + dy * dy)
 
-    // 1. If distance is extreme (> 6 tiles, e.g. player teleported / changed room), snap directly
     if (distToPlayer > 6.0) {
       const offsetX = player.direction === 'right' ? -0.8 : player.direction === 'left' ? 0.8 : 0.5
       const offsetY = player.direction === 'down' ? -0.6 : player.direction === 'up' ? 0.6 : 0.2
@@ -98,7 +89,6 @@ export class PetManager {
       return
     }
 
-    // 2. Track player breadcrumbs into history
     const lastPoint = pet.history[pet.history.length - 1]
     const distToLast = lastPoint ? Math.hypot(player.x - lastPoint.x, player.y - lastPoint.y) : 1
     if (!lastPoint || distToLast >= 0.2) {
@@ -108,8 +98,6 @@ export class PetManager {
       }
     }
 
-    // 3. Determine target position
-    // If player is moving or pet is far, follow trail. If player stopped, stay beside player.
     const STOP_DIST = 0.85
     const START_DIST = 1.15
 
@@ -117,7 +105,6 @@ export class PetManager {
     let targetY = player.y
 
     if (player.isMoving || distToPlayer > START_DIST) {
-      // Pick trail target ~1.0 tile back
       let trailIdx = -1
       let accDist = 0
       for (let i = pet.history.length - 1; i >= 0; i--) {
@@ -133,13 +120,11 @@ export class PetManager {
         targetX = pet.history[trailIdx].x
         targetY = pet.history[trailIdx].y
       } else {
-        // Fallback trailing offset behind player direction
         const offset = this.getTrailingOffset(player.direction)
         targetX = player.x + offset.x
         targetY = player.y + offset.y
       }
     } else {
-      // Idle resting offset beside player
       const offset = this.getTrailingOffset(player.direction)
       targetX = player.x + offset.x
       targetY = player.y + offset.y
@@ -153,7 +138,6 @@ export class PetManager {
       pet.isMoving = true
       pet.idleTime = 0
 
-      // Speed scales up if falling behind to ensure it never gets left behind
       const baseSpeed = 7.5
       const catchupMultiplier = distToPlayer > 2.5 ? 1.5 : distToPlayer > 1.8 ? 1.25 : 1.0
       const moveDist = baseSpeed * catchupMultiplier * deltaTime
@@ -162,7 +146,6 @@ export class PetManager {
       pet.x += (toTargetX / distToTarget) * step
       pet.y += (toTargetY / distToTarget) * step
 
-      // Update orientation
       if (Math.abs(toTargetX) > Math.abs(toTargetY)) {
         pet.direction = toTargetX > 0 ? 'right' : 'left'
       } else {
@@ -175,12 +158,10 @@ export class PetManager {
       pet.isMoving = false
       pet.idleTime += deltaTime
 
-      // When stopped, prune old history so it stays fresh
       if (pet.history.length > 3) {
         pet.history = pet.history.slice(-3)
       }
 
-      // Face the player when idle and looking at them
       if (distToPlayer > 0.3) {
         if (Math.abs(dx) > Math.abs(dy)) {
           pet.direction = dx > 0 ? 'right' : 'left'

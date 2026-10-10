@@ -3,7 +3,6 @@ import { useMediaStore } from '../store/useMediaStore'
 
 describe('Audio & Media Store - Expected Behaviors', () => {
   beforeEach(() => {
-    // Reset store state before each test
     useMediaStore.setState({
       selectedAudioInput: 'default',
       selectedAudioOutput: 'default',
@@ -69,15 +68,12 @@ describe('Audio & Media Store - Expected Behaviors', () => {
   it('should switch between automatic and manual sensitivity modes', () => {
     const { setSensitivityMode, setManualSensitivityThreshold } = useMediaStore.getState()
     
-    // Switch to manual mode
     setSensitivityMode('manual')
     expect(useMediaStore.getState().sensitivityMode).toBe('manual')
 
-    // Adjust threshold
     setManualSensitivityThreshold(45)
     expect(useMediaStore.getState().manualSensitivityThreshold).toBe(45)
 
-    // Switch back to auto mode
     setSensitivityMode('auto')
     expect(useMediaStore.getState().sensitivityMode).toBe('auto')
   })
@@ -192,33 +188,26 @@ describe('Audio & Media Store - Expected Behaviors', () => {
   it('should adjust and calculate individual participant volumes for viewers', () => {
     const { setParticipantVolume, getEffectiveParticipantVolume, setOutputVolume } = useMediaStore.getState()
 
-    // Default 100% volume
     expect(getEffectiveParticipantVolume('presenter-1')).toBe(1)
 
-    // Set presenter volume to 60%
     setParticipantVolume('presenter-1', 60)
     expect(useMediaStore.getState().participantVolumes['presenter-1']).toBe(60)
     expect(getEffectiveParticipantVolume('presenter-1')).toBeCloseTo(0.6, 2)
 
-    // Mute presenter (0%)
     setParticipantVolume('presenter-1', 0)
     expect(getEffectiveParticipantVolume('presenter-1')).toBe(0)
 
-    // Unmute to 80% with master output at 50%
     setOutputVolume(50)
     setParticipantVolume('presenter-1', 80)
-    // 0.5 * 0.8 = 0.4
     expect(getEffectiveParticipantVolume('presenter-1')).toBeCloseTo(0.4, 2)
   })
 
   it('should manage live buffer delay settings', () => {
     const { setLiveBufferDelay } = useMediaStore.getState()
 
-    // Default or set to 500ms (was 3000ms — tightened to fix voice lag)
     setLiveBufferDelay(500)
     expect(useMediaStore.getState().liveBufferDelay).toBe(500)
 
-    // Clamps to min 1ms (true minimum) and max 1500ms
     setLiveBufferDelay(0)
     expect(useMediaStore.getState().liveBufferDelay).toBe(1)
 
@@ -227,10 +216,6 @@ describe('Audio & Media Store - Expected Behaviors', () => {
   })
 
   it('setAdaptiveBuffers should persist audio+video WITHOUT dispatching live-buffer-changed (no event clobber)', () => {
-    // Regression test: DynamicBufferManager applies (video,audio) straight
-    // to the peer connections and then persists. If persisting re-dispatched
-    // the legacy event, PeerManager would re-apply a video-only value and
-    // wipe the adaptive audio number on every 1.5s tick.
     const dispatched: any[] = []
     const prevWindow = (globalThis as any).window
     const prevCE = (globalThis as any).CustomEvent
@@ -251,7 +236,6 @@ describe('Audio & Media Store - Expected Behaviors', () => {
       }
     }
     try {
-      // Control: the user-slider path MUST still dispatch.
       useMediaStore.getState().setLiveBufferDelay(400)
       expect(dispatched.length).toBe(1)
       expect(dispatched[0].detail).toBe(400)
@@ -280,7 +264,6 @@ describe('Audio & Media Store - Expected Behaviors', () => {
     expect(useMediaStore.getState().liveStreamVolume).toBe(42)
     expect(useMediaStore.getState().participantVolumes['live']).toBe(42)
 
-    // Clamping (0 to 200%)
     setLiveStreamVolume(150)
     expect(useMediaStore.getState().liveStreamVolume).toBe(150)
     setLiveStreamVolume(250)
@@ -289,7 +272,6 @@ describe('Audio & Media Store - Expected Behaviors', () => {
     setLiveStreamVolume(-10)
     expect(useMediaStore.getState().liveStreamVolume).toBe(0)
 
-    // Reset to default 100%
     setLiveStreamVolume(100)
     expect(useMediaStore.getState().liveStreamVolume).toBe(100)
   })
@@ -300,7 +282,6 @@ describe('Audio & Media Store - Expected Behaviors', () => {
     setScreenShareAudioVolume(180)
     expect(useMediaStore.getState().screenShareAudioVolume).toBe(180)
 
-    // Clamping to 200%
     setScreenShareAudioVolume(250)
     expect(useMediaStore.getState().screenShareAudioVolume).toBe(200)
 

@@ -1,11 +1,5 @@
 import { getTrimmedBounds, cropImage } from './imageTransparency'
 
-/**
- * Utility for resizing canvas graphics with aspect-ratio preservation,
- * alignment options (floor/bottom alignment for furniture vs center),
- * and pixel-art crispness.
- */
-
 export interface ResizeImageOptions {
   targetWidth: number
   targetHeight: number
@@ -21,10 +15,6 @@ export interface FitDimensions {
   offY: number
 }
 
-/**
- * Calculates the bounding box and offsets for rendering an image of size (srcW, srcH)
- * into a target container (targetW, targetH).
- */
 export function calculateFitDimensions(
   srcW: number,
   srcH: number,
@@ -50,12 +40,6 @@ export function calculateFitDimensions(
   return { drawW, drawH, offX, offY }
 }
 
-/**
- * Resizes an HTMLCanvasElement to a target width and height.
- * In 'fit' mode, preserves the source aspect ratio and fits within target dimensions,
- * placing the image bottom-aligned (ideal for furniture on grid floor) or centered.
- * In 'stretch' mode, fills the entire target dimensions.
- */
 export function resizeImageToTarget(
   sourceCanvas: HTMLCanvasElement,
   targetWidth: number,
@@ -107,10 +91,6 @@ export interface LayerBounds {
   origHeight?: number
 }
 
-/**
- * Rescales a layer's bounds when the board dimensions change or when fitting to board,
- * ensuring the layer expands and shrinks cleanly without clipping or losing original proportions.
- */
 export function fitLayerToBounds<T extends LayerBounds>(
   layer: T,
   boardWidth: number,
@@ -142,10 +122,6 @@ export function fitLayerToBounds<T extends LayerBounds>(
   }
 }
 
-/**
- * Scales all layers proportionally when the board changes to new dimensions (newBoardW, newBoardH).
- * If oldBoardW/oldBoardH are provided, preserves relative positioning while scaling layer dimensions.
- */
 export function rescaleLayersForNewBoard<T extends LayerBounds>(
   layers: T[],
   newBoardW: number,
@@ -196,9 +172,6 @@ export function rescaleLayersForNewBoard<T extends LayerBounds>(
   })
 }
 
-/**
- * Snap a floating-point coordinate to a specific grid increment (e.g. 0.25 for 8px sub-grid, 1/32 for 1px).
- */
 export function snapCoordinateToGrid(val: number, snapStep: number): number {
   if (snapStep <= 0) return val
   return Math.round(val / snapStep) * snapStep
@@ -211,11 +184,6 @@ export interface BakeScaleResult {
   useSmoothing: boolean
 }
 
-/**
- * Calculates high-fidelity bake resolution for a composition or crop,
- * ensuring micro-items (e.g. 8x8, 16x16, 32x32) don't decimate high-res artwork (e.g. 352x352),
- * while preserving 1:1 crispness for genuine pixel art.
- */
 export function calculateHighFidelityBakeScale(
   boardWidth: number,
   boardHeight: number,
@@ -234,8 +202,6 @@ export function calculateHighFidelityBakeScale(
     if (oH > maxOrigDim) maxOrigDim = oH
   })
 
-  // If layers originated from higher resolution, upscale the raster grid proportionally
-  // so the saved PNG frame retains high graphical fidelity instead of becoming a crude 8x8 or 16x16 blob.
   const targetMax = Math.min(maxBakeDimension, Math.max(boardMax, maxOrigDim))
   const rawScale = targetMax / boardMax
   const scale = Math.max(1, Math.min(16, Math.ceil(rawScale)))
@@ -260,10 +226,6 @@ export interface LayerBakeInput {
   opacity?: number
 }
 
-/**
- * Synchronously bakes layers onto a canvas if images are already cached/loaded.
- * Returns null if document is undefined or if any image is not ready yet.
- */
 export function bakeLayersToDataUrlSync(
   boardWidth: number,
   boardHeight: number,
@@ -327,9 +289,6 @@ export function bakeLayersToDataUrlSync(
   return offscreen.toDataURL('image/png')
 }
 
-/**
- * Asynchronously bakes layers onto a canvas, loading any unloaded images from dataUrl first.
- */
 export async function bakeLayersToDataUrl(
   boardWidth: number,
   boardHeight: number,
@@ -418,15 +377,6 @@ export interface SmartRescaleOptions {
   cleanAlpha?: boolean
 }
 
-/**
- * Intelligently rescales pixel art or high-resolution source sprites to a target dimension (e.g. 128x128 -> 8x16, 8x8, 16x24, 32x32),
- * preserving visual fidelity with minimal or zero quality loss:
- * 1. Trims empty transparent padding so the actual artwork fills the new bounding box proportionally.
- * 2. Preserves aspect ratio so objects never stretch or squash.
- * 3. Uses multi-step downsampling with high-quality bicubic interpolation when downscaling (blending outlines and tones cleanly).
- * 4. Uses crisp nearest-neighbor sampling when upscaling (keeping pixel art razor-sharp).
- * 5. Cleans up semi-transparent fuzzy alpha fringes into solid pixel art edges.
- */
 export function smartRescalePixelArt(
   source: HTMLCanvasElement | HTMLImageElement,
   targetWidth: number,
@@ -456,7 +406,6 @@ export function smartRescalePixelArt(
     return destCanvas
   }
 
-  // Create temporary source canvas to analyze pixels
   const srcCanvas = document.createElement('canvas')
   srcCanvas.width = srcW
   srcCanvas.height = srcH
@@ -471,10 +420,8 @@ export function smartRescalePixelArt(
   if (trimPadding) {
     const bounds = getTrimmedBounds(srcCanvas)
     if (!bounds) {
-      // Entirely empty/transparent image
       return destCanvas
     }
-    // Only crop if there is significant transparent padding (> 2px) to optimize framing
     if (bounds.w < srcW - 2 || bounds.h < srcH - 2) {
       contentCanvas = cropImage(srcCanvas, bounds.x, bounds.y, bounds.w, bounds.h)
       contentW = bounds.w
@@ -494,8 +441,6 @@ export function smartRescalePixelArt(
   const isDownscaling = contentW > drawW || contentH > drawH
 
   if (isDownscaling) {
-    // Multi-step high-quality downsampling:
-    // Repeatedly halve resolution down to within 2x of target to prevent sampling aliasing
     let curCanvas = contentCanvas
     let curW = contentW
     let curH = contentH
@@ -518,28 +463,25 @@ export function smartRescalePixelArt(
       curH = nextH
     }
 
-    // Final render into destCanvas at the fitted dimensions and alignment
     destCtx.imageSmoothingEnabled = true
     destCtx.imageSmoothingQuality = 'high'
     destCtx.drawImage(curCanvas, 0, 0, curW, curH, offX, offY, drawW, drawH)
 
     if (cleanAlpha) {
-      // Clean fuzzy alpha fringe into crisp pixel-art opacity
       const imgData = destCtx.getImageData(0, 0, targetW, targetH)
       const data = imgData.data
       for (let i = 0; i < data.length; i += 4) {
         const a = data[i + 3]
         if (a === 0) continue
         if (a < 30) {
-          data[i + 3] = 0 // Remove noisy transparent halos
+          data[i + 3] = 0
         } else if (a > 180) {
-          data[i + 3] = 255 // Crisp solid pixel art
+          data[i + 3] = 255
         }
       }
       destCtx.putImageData(imgData, 0, 0)
     }
   } else {
-    // Upscaling: Keep crisp pixel art integer scaling with nearest-neighbor!
     destCtx.imageSmoothingEnabled = false
     destCtx.drawImage(contentCanvas, 0, 0, contentW, contentH, offX, offY, drawW, drawH)
   }
@@ -547,9 +489,6 @@ export function smartRescalePixelArt(
   return destCanvas
 }
 
-/**
- * Asynchronously rescales a base64/dataURL image to target dimensions using smartRescalePixelArt.
- */
 export async function smartRescaleDataUrl(
   dataUrl: string,
   targetWidth: number,
@@ -569,5 +508,4 @@ export async function smartRescaleDataUrl(
     }
   })
 }
-
 

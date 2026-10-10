@@ -13,7 +13,6 @@ interface Props {
   y: number
   title: string
   items: ChatMenuItem[]
-  /** Shown under the items: why something is missing or unavailable. */
   note?: string
   onSelect: (id: string) => void
   onClose: () => void
@@ -25,7 +24,6 @@ const HEADER_HEIGHT = 44
 const ITEM_HEIGHT = 36
 const NOTE_HEIGHT = 44
 
-/** Keeps a menu opened at the pointer inside the window. */
 export function placeContextMenu(
   pointer: { x: number; y: number },
   size: { width: number; height: number },
@@ -40,7 +38,6 @@ export function placeContextMenu(
 const itemClass =
   'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left text-xs font-semibold transition-colors'
 
-/** Right-click menu of the chat sidebar (people and channels). */
 export const ChatContextMenu: React.FC<Props> = ({ x, y, title, items, note, onSelect, onClose }) => {
   const menuRef = useRef<HTMLDivElement>(null)
 

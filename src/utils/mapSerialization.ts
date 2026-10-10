@@ -4,13 +4,6 @@ import { createEmptyWorkspace } from '../editor/templates'
 export const DEFAULT_FLOOR: FloorType = 'wood_parquet'
 export const DEFAULT_BORDER_WALL: WallType = 'drywall_white'
 
-/**
- * Compresses full 2D floors and walls arrays into a lightweight stored format.
- * - If floors are 100% the default floor, the 2D array is omitted entirely.
- * - If specific tiles were customized, only sparse overrides ({ "x,y": "type" }) are stored.
- * - Walls follow the standard perimeter rule: border is drywall_white, interior is null.
- *   Only custom or zone walls are saved into wallOverrides.
- */
 export function compressMapDataForStorage(mapData: MapData): StoredMapData {
   if (!mapData) return mapData
 
@@ -28,9 +21,7 @@ export function compressMapDataForStorage(mapData: MapData): StoredMapData {
     zones: mapData.zones || [],
   }
 
-  // 1. Compress floors
   if (Array.isArray(mapData.floors) && mapData.floors.length > 0 && Array.isArray(mapData.floors[0])) {
-    // Find most frequent floor
     const counts: Record<string, number> = {}
     for (let y = 0; y < height; y++) {
       const row = mapData.floors[y]
@@ -76,7 +67,6 @@ export function compressMapDataForStorage(mapData: MapData): StoredMapData {
     stored.defaultFloor = DEFAULT_FLOOR
   }
 
-  // 2. Compress walls
   if (Array.isArray(mapData.walls) && mapData.walls.length > 0 && Array.isArray(mapData.walls[0])) {
     const wallOverrides: Record<string, WallType | null> = {}
     let wallOverrideCount = 0
@@ -104,10 +94,6 @@ export function compressMapDataForStorage(mapData: MapData): StoredMapData {
   return stored
 }
 
-/**
- * Hydrates a stored or raw map data object into full 2D floors and walls grids.
- * Ensures the game engine, canvas layers, and editor always have complete 2D arrays.
- */
 export function hydrateMapData(raw: any): MapData {
   if (!raw || typeof raw !== 'object') {
     return createEmptyWorkspace()
@@ -116,7 +102,6 @@ export function hydrateMapData(raw: any): MapData {
   const width = typeof raw.width === 'number' && raw.width > 0 ? raw.width : 68
   const height = typeof raw.height === 'number' && raw.height > 0 ? raw.height : 40
 
-  // 1. Hydrate floors
   let floors: FloorType[][]
   if (Array.isArray(raw.floors) && raw.floors.length > 0 && Array.isArray(raw.floors[0])) {
     floors = raw.floors
@@ -134,7 +119,6 @@ export function hydrateMapData(raw: any): MapData {
     }
   }
 
-  // 2. Hydrate walls
   let walls: (WallType | null)[][]
   if (Array.isArray(raw.walls) && raw.walls.length > 0 && Array.isArray(raw.walls[0])) {
     walls = raw.walls

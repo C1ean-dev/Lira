@@ -43,7 +43,6 @@ export interface IElectronAPI {
   stopProcessAudioCapture: () => Promise<boolean>
   onProcessAudioData: (callback: (data: Uint8Array) => void) => () => void
   onProcessAudioStatus: (callback: (event: { status: 'started' | 'stopped' | 'error'; detail?: string }) => void) => () => void
-  /** Whether the window shows anything: false while it is minimized or in the tray. */
   onWindowVisibility: (callback: (visible: boolean) => void) => () => void
   isElectron: boolean
   checkForUpdates: () => Promise<UpdateInfo>
@@ -96,9 +95,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopProcessAudioCapture: () => ipcRenderer.invoke('stop-process-audio-capture'),
   onProcessAudioData: (callback: (data: Uint8Array) => void) => {
     const handler = (_event: unknown, data: Uint8Array | { data?: number[] } | number[]) => {
-      // Electron normally transfers Node Buffers as Uint8Array. Keep a
-      // defensive conversion for older Electron/structured-clone versions
-      // that deserialize a Buffer as { data: number[] }.
       if (data instanceof Uint8Array) {
         callback(new Uint8Array(data))
       } else if (Array.isArray(data)) {

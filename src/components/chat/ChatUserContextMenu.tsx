@@ -19,7 +19,6 @@ const MENU_HEIGHT = 150
 const itemClass =
   'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left text-xs font-semibold transition-colors'
 
-/** Right-click menu for the author of a chat message. */
 export const ChatUserContextMenu: React.FC<Props> = ({
   x,
   y,

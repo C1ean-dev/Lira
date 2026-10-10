@@ -33,9 +33,6 @@ export class InputHandler {
     this.keysPressed.delete(key)
   }
 
-  /**
-   * Permite que controles virtuais na tela (D-Pad, botões móveis) simulem teclas
-   */
   public simulateKey = (key: string, pressed: boolean) => {
     const k = key.toLowerCase()
     if (pressed) {
@@ -56,12 +53,6 @@ export class InputHandler {
     this.finalDestination = null
   }
 
-  /**
-   * Consumes the active waypoint when it becomes unreachable due to wall corners.
-   * Called by the engine when sliding axis-by-axis results in zero movement but the
-   * current waypoint is adjacent (the typical "stuck against a thin wall corner" case).
-   * Returns true if a waypoint was actually consumed.
-   */
   public advanceWaypoint(): boolean {
     if (this.path.length === 0) return false
     this.path.shift()
@@ -71,7 +62,6 @@ export class InputHandler {
     return true
   }
 
-  /** Distance to the active (next) waypoint, or Infinity if path is empty. */
   public distanceToActiveWaypoint(localX: number, localY: number): number {
     if (this.path.length === 0) return Infinity
     const wp = this.path[0]
@@ -87,7 +77,6 @@ export class InputHandler {
     let dy = 0
     let nextDirection: Direction = currentDirection
 
-    // 1. Keyboard Movement (Takes Priority)
     if (this.keysPressed.has('w') || this.keysPressed.has('arrowup')) {
       dy -= 1
       nextDirection = 'up'
@@ -105,16 +94,13 @@ export class InputHandler {
       nextDirection = 'right'
     }
 
-    // 2. Intelligent Pathfinding Waypoint Traversal
     if (dx === 0 && dy === 0 && this.path.length > 0) {
-      // Consume reached waypoints until we find the next target waypoint
       while (this.path.length > 0) {
         const nextWaypoint = this.path[0]
         const diffX = nextWaypoint.x - localX
         const diffY = nextWaypoint.y - localY
         const dist = Math.hypot(diffX, diffY)
 
-        // If close enough to waypoint, pop it and move to the next
         if (dist < 0.16) {
           this.path.shift()
           if (this.path.length === 0) {
@@ -124,7 +110,6 @@ export class InputHandler {
           continue
         }
 
-        // Steer towards active waypoint
         dx = diffX / dist
         dy = diffY / dist
 
@@ -137,7 +122,6 @@ export class InputHandler {
       }
     }
 
-    // Normalize diagonal keyboard movement
     if (dx !== 0 && dy !== 0 && this.keysPressed.size > 0) {
       const length = Math.hypot(dx, dy)
       dx /= length

@@ -72,7 +72,6 @@ describe('Room Settings Permissions & Admin/Member Deletion', () => {
     const { updateZone } = useMapStore.getState()
     const zone = useMapStore.getState().mapData.zones[0]
 
-    // Simulate removing 'OtherAdmin' and saving
     const newAdmins = zone.admins!.filter((a) => a !== 'OtherAdmin')
     updateZone(zone.id, { admins: newAdmins })
 
@@ -85,7 +84,6 @@ describe('Room Settings Permissions & Admin/Member Deletion', () => {
     const { updateZone } = useMapStore.getState()
     const zone = useMapStore.getState().mapData.zones[0]
 
-    // Simulate removing 'Player #2' and 'Player #3' from members
     const newMembers = zone.members!.filter((m) => m !== 'Player #2')
     updateZone(zone.id, { members: newMembers })
 
@@ -98,10 +96,9 @@ describe('Room Settings Permissions & Admin/Member Deletion', () => {
     const localPlayer = useGameStore.getState().localPlayer
     const currentAdmins = ['Player', 'OtherAdmin']
 
-    // Simulates the protection in handleRemoveAdmin and handleSave:
     const handleRemoveAdminAttempt = (adminNameToRemove: string, list: string[]) => {
       if (adminNameToRemove === localPlayer.name || adminNameToRemove === localPlayer.id) {
-        return list // blocked!
+        return list
       }
       return list.filter((a) => a !== adminNameToRemove)
     }
@@ -121,10 +118,8 @@ describe('Room Settings Permissions & Admin/Member Deletion', () => {
     const { mapData } = useMapStore.getState()
     const zone = mapData.zones[0]
 
-    // Player #2 is initially in members and authorizedPeers
     expect(useMapStore.getState().isPeerAuthorizedForZone(zone.id, 'remote-peer-2', 'Player #2')).toBe(true)
 
-    // Simulate saving without Player #2
     const effectiveAdmins = ['Player']
     const effectiveMembers = ['Player #3']
     const allKnownPlayers = [useGameStore.getState().localPlayer, ...Object.values(useGameStore.getState().remotePlayers)]
@@ -144,12 +139,10 @@ describe('Room Settings Permissions & Admin/Member Deletion', () => {
       authorizedPeers: updatedAuthorized,
     })
 
-    // Now Player #2 must NOT be authorized!
     expect(useMapStore.getState().isPeerAuthorizedForZone(zone.id, 'remote-peer-2', 'Player #2')).toBe(false)
   })
 
   it('ROOM_LOCK_TOGGLE resets myKnockStatus to idle when permissions are revoked for local player', () => {
-    // Setup local player as Player #2 with a prior 'approved' knock status
     useGameStore.setState({
       localPlayer: {
         id: 'remote-peer-2',
@@ -170,7 +163,6 @@ describe('Room Settings Permissions & Admin/Member Deletion', () => {
       },
     })
 
-    // Simulate receiving ROOM_LOCK_TOGGLE where Player #2 is excluded
     const togglePayload = {
       zoneId: 'test-zone-1',
       isLocked: true,
@@ -190,7 +182,6 @@ describe('Room Settings Permissions & Admin/Member Deletion', () => {
     const isAuth = useMapStore.getState().isPeerAuthorizedForZone(togglePayload.zoneId, local.id, local.name)
     expect(isAuth).toBe(false)
 
-    // Emulate messageHandlers ROOM_LOCK_TOGGLE logic
     if (togglePayload.isLocked && !isAuth) {
       useGameStore.getState().setMyKnockStatus(togglePayload.zoneId, 'idle')
     }

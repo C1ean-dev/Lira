@@ -2,11 +2,6 @@ import { useGameStore } from '../store/useGameStore'
 import { useMapStore } from '../store/useMapStore'
 import { knockOnLockedDoor } from './doorKnockHelper'
 
-/**
- * Moves the local player next to someone in this space. A locked room the
- * local player may not enter is not entered: they are left at its door,
- * knocking.
- */
 export function goToPlayer(playerId: string): 'moved' | 'knocked' | 'missing' {
   const { remotePlayers, localPlayer, teleportToPlayer } = useGameStore.getState()
   const target = remotePlayers[playerId]

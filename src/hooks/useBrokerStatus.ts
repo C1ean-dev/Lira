@@ -21,17 +21,14 @@ export function useBrokerStatus() {
     setFeedback(null)
 
     try {
-      // If running in Electron, also attempt to grant firewall permissions in the background
       const api = (window as any).electronAPI
       if (api && typeof api.requestFirewallAccess === 'function') {
         try {
           await api.requestFirewallAccess()
         } catch (e) {
-          // Continue to broker test even if UAC prompt was dismissed
         }
       }
 
-      // Retest broker connection
       const isConnected = await service.testConnection()
       if (isConnected) {
         setFeedback({

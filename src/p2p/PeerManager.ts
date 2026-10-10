@@ -40,7 +40,6 @@ export class PeerManager {
 
   private constructor() {
     registerReportContext('p2p', () => this.describeForReport())
-    // What this user watches of the lives of the others goes out through the room.
     connectLiveView({
       send: (sharerId, watch, h) => this.sendLiveView(sharerId, watch, h),
       stats: (sharerId) => {
@@ -72,7 +71,6 @@ export class PeerManager {
     return this.peer ? this.peer.id : null
   }
 
-  /** What an error report says about the connection to the room. */
   private describeForReport() {
     const peer = this.peer
     let open = 0
@@ -94,9 +92,6 @@ export class PeerManager {
     }
   }
 
-  /**
-   * Host a new Room
-   */
   public async createRoom(
     roomCode: string,
     localPlayer: Player,
@@ -114,7 +109,6 @@ export class PeerManager {
     this.isIntentionalDisconnect = false
     const hostPeerId = `lira-${this.roomCode}-host`
 
-    // Clean up any stale peer connection first
     if (this.peer) {
       try {
         this.peer.destroy()
@@ -133,8 +127,6 @@ export class PeerManager {
           resolved = true
           console.warn(`[P2P Host] Host registration timeout (${hostPeerId})`)
           diagLog('room', 'create-timeout', { roomCode: this.roomCode, hostPeerId })
-          // Never destroy a NEWER run's peer: a stale timeout must not kill
-          // a session that already replaced this one (fast room switching).
           if (this.peer !== myPeer) return
           try {
             if (this.peer) {
@@ -156,8 +148,6 @@ export class PeerManager {
       }, 7000)
 
       const myPeer = new Peer(hostPeerId, {
-        // STUN + TURN fallback (see SHARED_RTC_CONFIG): without the TURN
-        // leg, symmetric-NAT users spin ICE for 10-20s ("delay").
         config: SHARED_RTC_CONFIG,
       })
       this.peer = myPeer
@@ -165,7 +155,6 @@ export class PeerManager {
 
       this.peer.on('open', (id) => {
         if (resolved) {
-          // Re-opened after signaling disconnect/reconnect
           if (this.peer === myPeer) {
             this.signalingReconnectAttempts = 0
             if (this.signalingReconnectTimer) {
@@ -178,7 +167,6 @@ export class PeerManager {
           }
           return
         }
-        // Stale open (a newer run replaced this peer): quietly drop it.
         if (this.peer !== myPeer) {
           try {
             myPeer.destroy()
@@ -222,7 +210,6 @@ export class PeerManager {
           }
           return
         }
-        // Stale error from a replaced peer: ignore entirely.
         if (this.peer !== myPeer) return
         if (hostTimeout) clearTimeout(hostTimeout)
         console.warn('[P2P] Error hosting room, checking fallback:', err)
@@ -232,7 +219,6 @@ export class PeerManager {
           message: String(err?.message || err || '').slice(0, 160),
         })
 
-        // If ID is already taken or unavailable (e.g. active room already hosted or lingering session)
         if (
           (err?.type === 'unavailable-id' || err?.message?.includes('is taken') || err?.type === 'server-error') &&
           retryCount === 0
@@ -293,9 +279,6 @@ export class PeerManager {
     })
   }
 
-  /**
-   * Join an existing Room (with Smart Auto-Host Fallback if unhosted)
-   */
   public async joinRoom(roomCode: string, localPlayer: Player, retryCount: number = 0): Promise<void> {
     this.roomCode = sanitizeRoomCode(roomCode)
     this.isHost = false
@@ -303,7 +286,6 @@ export class PeerManager {
     const clientPeerId = `lira-${this.roomCode}-peer-${Math.random().toString(36).substring(2, 7)}`
     const hostPeerId = `lira-${this.roomCode}-host`
 
-    // Clean up any stale peer connection first
     if (this.peer) {
       try {
         this.peer.destroy()
@@ -320,7 +302,6 @@ export class PeerManager {
 
       const triggerAutoHost = async () => {
         if (isResolved) return
-        // Stale run (a newer session replaced this peer): stay out of the way.
         if (this.peer !== myPeer) return
         isResolved = true
         if (fallbackTimer) clearTimeout(fallbackTimer)
@@ -385,7 +366,6 @@ export class PeerManager {
       }, 10000)
 
       const myPeer = new Peer(clientPeerId, {
-        // STUN + TURN fallback (see SHARED_RTC_CONFIG).
         config: SHARED_RTC_CONFIG,
       })
       this.peer = myPeer
@@ -394,7 +374,6 @@ export class PeerManager {
       this.peer.on('open', (id) => {
         console.log('[P2P] Joined peer network with ID:', id)
         if (isResolved) {
-          // Re-opened after signaling reconnect
           if (this.peer === myPeer) {
             this.signalingReconnectAttempts = 0
             if (this.signalingReconnectTimer) {
@@ -417,14 +396,12 @@ export class PeerManager {
           isOwner: false,
         })
         useGameStore.getState().setRoomSession(this.roomCode!, false)
-        // The host sends this space's channels once the connection is up.
         useChatStore.getState().resetRoomChannels()
         useGameStore.getState().setConnected(true)
         useGameStore.getState().setConnectionStatus('connecting')
         this.setupPeerListeners()
         this.startHeartbeat()
 
-        // Connect to Host with minimal metadata (avoid sending large base64 profile pictures or avatar frames over WebSocket signaling)
         const minimalMetadata = {
           id: currentLocal.id || id,
           name: currentLocal.name,
@@ -435,7 +412,6 @@ export class PeerManager {
           reliable: true,
         })
 
-        // Wait up to 6s for host connection confirmation before auto-hosting
         fallbackTimer = setTimeout(() => {
           if (!isResolved && this.connections.size === 0) {
             triggerAutoHost()
@@ -487,7 +463,6 @@ export class PeerManager {
           return
         }
 
-        // Stale error from a replaced peer: ignore entirely.
         if (this.peer !== myPeer) return
         diagLog('room', 'join-error', {
           roomCode: this.roomCode,
@@ -600,12 +575,10 @@ export class PeerManager {
   private setupPeerListeners() {
     if (!this.peer) return
 
-    // Incoming Data Connection
     this.peer.on('connection', (conn) => {
       this.setupDataConnection(conn)
     })
 
-    // Incoming Media Call (WebRTC Audio/Video)
     this.peer.on('call', (call) => {
       MediaCallHandler.handleIncomingCall({
         call,
@@ -630,7 +603,6 @@ export class PeerManager {
       this.connections.set(conn.peer, conn)
       this.peerLastSeen.set(conn.peer, Date.now())
 
-      // Send our local player join message
       const localPlayer = useGameStore.getState().localPlayer
       this.sendToPeer(conn, {
         type: 'PLAYER_JOIN',
@@ -641,15 +613,12 @@ export class PeerManager {
             isCameraOff: localPlayer.isCameraOff !== undefined ? localPlayer.isCameraOff : true,
             id: this.peer!.id,
             gameId: localPlayer.gameId || localPlayer.id,
-            // This app asks before watching a live: who is live sends it no
-            // video, and not the sound of the live, until LIVE_VIEW says so.
             liveOptIn: true,
           },
         },
         timestamp: Date.now(),
       })
 
-      // If we are Host, send current map, custom assets, and all existing players to the newcomer
       if (this.isHost) {
         const currentMap = useMapStore.getState().mapData
         this.sendToPeer(conn, {
@@ -669,12 +638,6 @@ export class PeerManager {
         const customAssets = useCustomAssetsStore.getState().customAssets
         const customCategories = useCustomAssetsStore.getState().customCategories
         if (customAssets && customAssets.length > 0) {
-          // Chunked delivery: one giant CUSTOM_ASSETS_SYNC (MBs of dataURL
-          // pixel-art frames) saturates the host uplink for seconds and the
-          // resulting router bufferbloat delays LIVE audio/video for everyone
-          // mid-call. Batches of 8 assets every 120ms leave headroom for
-          // media. syncRemoteCustomAssets MERGES by id, so batches are
-          // protocol-compatible with receivers expecting a single message.
           const ASSET_BATCH_SIZE = 8
           const ASSET_BATCH_GAP_MS = 120
           for (let i = 0; i < customAssets.length; i += ASSET_BATCH_SIZE) {
@@ -692,14 +655,12 @@ export class PeerManager {
               sendBatch()
             } else {
               setTimeout(() => {
-                // sendToPeer already no-ops on closed connections.
                 sendBatch()
               }, (i / ASSET_BATCH_SIZE) * ASSET_BATCH_GAP_MS)
             }
           }
         }
 
-        // Also send existing peers to the newcomer
         const remotePlayers = useGameStore.getState().remotePlayers
         Object.values(remotePlayers).forEach((p) => {
           this.sendToPeer(conn, {
@@ -731,7 +692,6 @@ export class PeerManager {
       console.warn('[P2P Data] Peer connection error:', conn.peer, err)
     })
 
-    // Monitor underlying RTCPeerConnection states with a grace period for transient disconnections
     const pc = (conn as any).peerConnection as RTCPeerConnection
     if (pc) {
       let dataConnDisconnectTimer: any = null
@@ -789,9 +749,6 @@ export class PeerManager {
     }
   }
 
-  /**
-   * Centralized Peer Removal & Cleanup
-   */
   private removePeer(peerId: string) {
     this.peerLastSeen.delete(peerId)
     const conn = this.connections.get(peerId)
@@ -813,7 +770,6 @@ export class PeerManager {
         const totalPlayers = Object.keys(useGameStore.getState().remotePlayers).length + 1
         PublicRoomsService.getInstance().updateHosting({ playerCount: totalPlayers })
       }
-      // Broadcast player leave to other peers
       this.broadcast(
         {
           type: 'PLAYER_LEAVE',
@@ -828,15 +784,11 @@ export class PeerManager {
     }
   }
 
-  /**
-   * Automatic Host Migration & Failover Election
-   */
   private handleHostDisconnected(hostPeerId: string) {
     console.log('[P2P Failover] Host disconnected from room:', this.roomCode)
     if (!this.roomCode) return
     useGameStore.getState().setConnectionStatus('reconnecting')
 
-    // Identify remaining candidates
     const remainingPeers = Array.from(this.connections.keys()).filter((pid) => pid !== hostPeerId)
     const myId = this.peer ? this.peer.id : ''
     const candidateList = [myId, ...remainingPeers].filter(Boolean).sort()
@@ -861,7 +813,6 @@ export class PeerManager {
     this.isHost = true
     const localPlayer = useGameStore.getState().localPlayer
 
-    // Update store state
     useGameStore.getState().setConnectionHostId(localPlayer.id)
     useGameStore.getState().updatePlayerRole(localPlayer.id, 'host', {
       canEditMap: true,
@@ -870,7 +821,6 @@ export class PeerManager {
       canKick: true,
     })
 
-    // Clean up old client peer instance
     this.stopHeartbeat()
     if (this.peer) {
       try {
@@ -882,7 +832,6 @@ export class PeerManager {
 
     const hostPeerId = `lira-${this.roomCode}-host`
     this.peer = new Peer(hostPeerId, {
-      // STUN + TURN fallback (see SHARED_RTC_CONFIG).
       config: SHARED_RTC_CONFIG,
     })
 
@@ -963,8 +912,6 @@ export class PeerManager {
         }
       }
     } catch (error) {
-      // One message that breaks its handler must not throw into the connection it came from:
-      // the next messages of that peer still have to be handled. Report which one it was.
       const type = typeof (msg as { type?: unknown } | null)?.type === 'string' ? String(msg.type).slice(0, 40) : 'none'
       reportError(error, {
         scope: 'P2P Message',
@@ -974,11 +921,6 @@ export class PeerManager {
     }
   }
 
-  /**
-   * A viewer says whether it watches the live of this peer and at what size.
-   * The message travels through the room, so it reaches everybody: only who
-   * it is for acts on it (see MediaCallHandler.applyViewerRequest).
-   */
   private handleLiveView(msg: NetworkMessage) {
     const myId = this.peer?.id
     const payload = msg.payload
@@ -989,10 +931,6 @@ export class PeerManager {
     MediaCallHandler.applyViewerRequest(this.mediaCalls, viewerId, payload.watch === true, height)
   }
 
-  /**
-   * Tell who is live (`sharerId`) whether this user watches its live, and how
-   * tall the picture is on this screen (see liveViewReporter).
-   */
   public sendLiveView(sharerId: string, watch: boolean, h: number | null) {
     if (!this.peer) return
     this.broadcast({
@@ -1003,18 +941,13 @@ export class PeerManager {
     })
   }
 
-  /** What was asked of a live went to a call that is gone: it is asked again on the new one. */
   private onMediaCallConnected(peerId: string) {
     liveViewReporter.callConnected(peerId)
   }
 
-  /**
-   * Heartbeat System to Detect Stale/Disconnected Peers Automatically
-   */
   private startHeartbeat() {
     this.stopHeartbeat()
 
-    // 1. Send heartbeat packet every 3s
     this.heartbeatInterval = setInterval(() => {
       if (!this.peer || this.connections.size === 0) return
       const pingMsg: NetworkMessage = {
@@ -1026,7 +959,6 @@ export class PeerManager {
       this.broadcast(pingMsg)
     }, 3000)
 
-    // 2. Prune silent peers (no message for >18s, or 25s if actively engaged in a media call)
     this.staleCheckInterval = setInterval(() => {
       const now = Date.now()
 
@@ -1052,9 +984,6 @@ export class PeerManager {
     }
   }
 
-  /**
-   * Broadcast message to all connected peers
-   */
   public broadcast(msg: NetworkMessage, excludePeerId?: string) {
     this.connections.forEach((conn, pid) => {
       if (pid !== excludePeerId && conn.open) {
@@ -1073,9 +1002,6 @@ export class PeerManager {
     }
   }
 
-  /**
-   * Check if local player and remote peer are in the same Private Zone and manage MediaCall
-   */
   public checkZoneCallEligibility(remotePlayer: Player) {
     MediaCallHandler.checkZoneCallEligibility(
       remotePlayer,
@@ -1086,12 +1012,6 @@ export class PeerManager {
     )
   }
 
-  /**
-   * Re-evaluate zone calls against every known remote player. Called when
-   * the local media stream becomes ready AFTER the data channel already
-   * delivered PLAYER_JOIN messages (parallel room-join path) — without this,
-   * calls that "should" exist are silently missed until someone moves zones.
-   */
   public recheckZoneCalls() {
     const remotePlayers = useGameStore.getState().remotePlayers
     Object.values(remotePlayers).forEach((p) => {
@@ -1103,9 +1023,6 @@ export class PeerManager {
     MediaCallHandler.endMediaCall(this.mediaCalls, peerId)
   }
 
-  /**
-   * Manually retry zone call with peer (clears fail state and dials again)
-   */
   public retryZoneCall(peerId: string) {
     const remotePlayer = useGameStore.getState().remotePlayers[peerId]
     if (remotePlayer) {
@@ -1119,12 +1036,6 @@ export class PeerManager {
     }
   }
 
-  /**
-   * Log what this side is actually SENDING on every live call (sender track
-   * state + outbound-rtp counters). Called on media transitions (mute,
-   * camera, screenshare) so the next diagnostic log shows whether a black
-   * tile is a sender problem (bytesSent flat) or a receiver/tile problem.
-   */
   public logSenderSnapshot(reason: string) {
     MediaCallHandler.logSenderSnapshot(this.mediaCalls, reason)
   }
@@ -1133,9 +1044,6 @@ export class PeerManager {
     MediaCallHandler.endAllMediaCalls(this.mediaCalls)
   }
 
-  /**
-   * Replace active video track (Switching between Camera & Screen Share with High Bitrate)
-   */
   public replaceVideoTrack(
     newTrack: MediaStreamTrack | null,
     isScreenShare: boolean = false,
@@ -1146,45 +1054,27 @@ export class PeerManager {
     MediaCallHandler.replaceVideoTrack(this.mediaCalls, newTrack, isScreenShare, maxBitrate, maxFramerate, degradationPreference)
   }
 
-  /**
-   * Dynamically switch active screen share between Quality (maintain-resolution)
-   * and Smoothness (maintain-framerate) without reconnecting
-   */
   public updateScreenShareOptimizationMode(mode: 'quality' | 'smoothness') {
     const degradation: VideoDegradation = mode === 'quality' ? 'maintain-resolution' : 'maintain-framerate'
     MediaCallHandler.updateScreenDegradationPreference(this.mediaCalls, degradation)
   }
 
-  /**
-   * A live is about to start: raise the video caps of the open calls before
-   * the screen is captured (see MediaCallHandler.primeScreenShare).
-   */
   public primeScreenShare(maxBitrate: number, maxFramerate: number) {
     MediaCallHandler.primeScreenShare(this.mediaCalls, maxBitrate, maxFramerate)
   }
 
-  /** The capture was cancelled or failed: back to the camera caps. */
   public cancelScreenSharePrime() {
     MediaCallHandler.cancelScreenSharePrime(this.mediaCalls)
   }
 
-  /**
-   * Dynamically adjust active video encoding bitrate on all active calls
-   */
   public updateScreenShareBitrate(maxBitrate: number) {
     MediaCallHandler.updateScreenShareBitrate(this.mediaCalls, maxBitrate)
   }
 
-  /**
-   * Replace active audio track (When mixing system audio with microphone)
-   */
   public replaceAudioTrack(newTrack: MediaStreamTrack | null) {
     MediaCallHandler.replaceAudioTrack(this.mediaCalls, newTrack)
   }
 
-  /**
-   * Explicitly synchronize the enabled state on all WebRTC audio senders across active calls.
-   */
   public syncSenderTracksMuteState(enabled: boolean): void {
     this.mediaCalls.forEach((call) => {
       try {
@@ -1200,9 +1090,6 @@ export class PeerManager {
     })
   }
 
-  /**
-   * Broadcast Local Movement
-   */
   public sendPlayerMove(x: number, y: number, direction: 'up' | 'down' | 'left' | 'right', isMoving: boolean) {
     if (!this.peer) return
     const msg: NetworkMessage = {
@@ -1218,9 +1105,6 @@ export class PeerManager {
     this.sendPlayerMove(x, y, direction, isMoving)
   }
 
-  /**
-   * Broadcast Local Player Status / Presence / Zone changes
-   */
   public sendPlayerUpdate(player: Partial<Player>) {
     if (!this.peer) return
     const msg: NetworkMessage = {
@@ -1231,16 +1115,12 @@ export class PeerManager {
     }
     this.broadcast(msg)
 
-    // Re-check zone call status for all peers
     const remotePlayers = useGameStore.getState().remotePlayers
     Object.values(remotePlayers).forEach((p) => {
       this.checkZoneCallEligibility(p)
     })
   }
 
-  /**
-   * Broadcast Custom Asset Creation or Update across P2P Mesh
-   */
   public sendCustomAssetAddOrUpdate(asset: CustomAsset) {
     if (!this.peer) return
     const msg: NetworkMessage = {
@@ -1252,9 +1132,6 @@ export class PeerManager {
     this.broadcast(msg)
   }
 
-  /**
-   * Broadcast Custom Asset Deletion across P2P Mesh
-   */
   public sendCustomAssetDelete(id: string) {
     if (!this.peer) return
     const msg: NetworkMessage = {
@@ -1266,9 +1143,6 @@ export class PeerManager {
     this.broadcast(msg)
   }
 
-  /**
-   * Broadcast Full Custom Assets List
-   */
   public sendCustomAssetsSync(customAssets: CustomAsset[], categories?: string[]) {
     if (!this.peer) return
     const msg: NetworkMessage = {
@@ -1280,9 +1154,6 @@ export class PeerManager {
     this.broadcast(msg)
   }
 
-  /**
-   * Broadcast Map Edit
-   */
   public sendMapEdit(action: string, data: any) {
     if (!this.peer) return
     const msg: NetworkMessage = {
@@ -1294,9 +1165,6 @@ export class PeerManager {
     this.broadcast(msg)
   }
 
-  /**
-   * Broadcast Chat Message
-   */
   public sendChatMessage(message: any) {
     if (!this.peer) return
     const msg: NetworkMessage = {
@@ -1308,9 +1176,6 @@ export class PeerManager {
     this.broadcast(msg)
   }
 
-  /**
-   * Broadcast the chat channels of the space. They are the host's to tell.
-   */
   public sendRoomChannels(channels: RoomChannel[]) {
     if (!this.peer || !this.isHost) return
     const msg: NetworkMessage = {
@@ -1322,9 +1187,6 @@ export class PeerManager {
     this.broadcast(msg)
   }
 
-  /**
-   * Broadcast Chat Message Delivery / Read Status
-   */
   public sendMessageStatus(
     recipientId?: string,
     channelId?: string,
@@ -1338,8 +1200,6 @@ export class PeerManager {
       type: 'CHAT_MESSAGE_STATUS',
       senderId: this.peer.id,
       payload: {
-        // Stable user id: direct messages are addressed to it, and the
-        // receipt must match them after either side reconnects.
         senderId: getPlayerUserId(local),
         senderName: local.name,
         recipientId,
@@ -1354,9 +1214,6 @@ export class PeerManager {
     this.broadcast(msg)
   }
 
-  /**
-   * Broadcast Reaction
-   */
   public sendReaction(reaction: any) {
     if (!this.peer) return
     const msg: NetworkMessage = {
@@ -1368,9 +1225,6 @@ export class PeerManager {
     this.broadcast(msg)
   }
 
-  /**
-   * Broadcast Room Lock Toggle
-   */
   public sendRoomLockToggle(zoneId: string, isLocked: boolean) {
     const senderId = this.peer ? this.peer.id : useGameStore.getState().localPlayer.id
     const zone = useMapStore.getState().mapData.zones.find((candidate) => candidate.id === zoneId)
@@ -1380,8 +1234,6 @@ export class PeerManager {
       payload: {
         zoneId,
         isLocked,
-        // Send the permission snapshot with the lock state so peers cannot
-        // see the room as locked while missing the members who were inside.
         authorizedPeers: zone?.authorizedPeers || [],
         members: zone?.members || [],
         admins: zone?.admins || [],
@@ -1391,9 +1243,6 @@ export class PeerManager {
     this.broadcast(msg)
   }
 
-  /**
-   * Broadcast Door Knock Request to room occupants
-   */
   public sendRoomKnockRequest(request: RoomKnockRequest) {
     const senderId = this.peer ? this.peer.id : useGameStore.getState().localPlayer.id
     const msg: NetworkMessage = {
@@ -1405,9 +1254,6 @@ export class PeerManager {
     this.broadcast(msg)
   }
 
-  /**
-   * Broadcast Door Knock Response (permit/deny)
-   */
   public sendRoomKnockResponse(
     zoneId: string,
     requesterId: string,
@@ -1425,9 +1271,6 @@ export class PeerManager {
     this.broadcast(msg)
   }
 
-  /**
-   * Send mutual audio isolation signal (bidirectional silence)
-   */
   public sendUserAudioIsolation(targetUserId: string, isSilenced: boolean) {
     const localPlayer = useGameStore.getState().localPlayer
     const senderId = this.peer ? this.peer.id : localPlayer.id
@@ -1445,13 +1288,9 @@ export class PeerManager {
     this.broadcast(msg)
   }
 
-  /**
-   * Broadcast Admin Mute Participant command
-   */
   public sendAdminMuteParticipant(targetUserId: string, mute: boolean, targetUserName?: string, targetGameId?: string) {
     const localPlayer = useGameStore.getState().localPlayer
     const senderId = this.peer ? this.peer.id : localPlayer.id
-    // Update local perception immediately for the admin
     const remotePlayers = useGameStore.getState().remotePlayers
     for (const [rId, rPlayer] of Object.entries(remotePlayers)) {
       if (
@@ -1482,13 +1321,9 @@ export class PeerManager {
     this.broadcast(msg)
   }
 
-  /**
-   * Broadcast Admin Deafen Participant command
-   */
   public sendAdminDeafenParticipant(targetUserId: string, deafen: boolean, targetUserName?: string, targetGameId?: string) {
     const localPlayer = useGameStore.getState().localPlayer
     const senderId = this.peer ? this.peer.id : localPlayer.id
-    // Update local perception immediately for the admin
     const remotePlayers = useGameStore.getState().remotePlayers
     for (const [rId, rPlayer] of Object.entries(remotePlayers)) {
       if (
@@ -1528,7 +1363,6 @@ export class PeerManager {
     this.stopHeartbeat()
     PublicRoomsService.getInstance().stopHosting()
 
-    // Send immediate PLAYER_LEAVE broadcast so peers remove us instantly
     if (this.peer && this.connections.size > 0) {
       const leaveMsg: NetworkMessage = {
         type: 'PLAYER_LEAVE',
@@ -1562,7 +1396,6 @@ export class PeerManager {
       this.peer = null
     }
 
-    // Reset adaptive buffer state so a future room join starts fresh.
     DynamicBufferManager.getInstance().resetForNewCall()
 
     this.roomCode = null
@@ -1577,9 +1410,7 @@ export class PeerManager {
     useGameStore.getState().setConnectionStatus('disconnected')
     useGameStore.getState().setRoomSession('', false)
     useGameStore.getState().clearRemotePlayers()
-    // clearRemotePlayers already clears callStates (defined in same set()).
     useMediaStore.getState().clearAllPeerStreams()
-    // The next space has channels of its own.
     useChatStore.getState().resetRoomChannels()
   }
 }

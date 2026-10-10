@@ -4,7 +4,6 @@ import { MoonPhaseIcon } from './MoonPhaseIcon'
 
 export interface StatusBadgeProps {
   status: PresenceStatus | 'offline' | string
-  /** Status text to show; defaults to the status name. */
   label?: string
   className?: string
 }
@@ -17,7 +16,6 @@ const TONE: Record<string, string> = {
   offline: 'bg-slate-800 text-slate-400 border-slate-700',
 }
 
-/** Presence pill: the status image (not a colored dot) followed by the status text. */
 export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, label, className = '' }) => {
   const isOffline = status === 'offline'
   const meta = STATUS_META[status as PresenceStatus]

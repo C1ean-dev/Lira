@@ -20,21 +20,17 @@ import {
   toDataUrl,
 } from './helpers/pngFixtures'
 
-// An empty chunk: 4 bytes of length, 4 of type, 4 of CRC.
 const MARKER_BYTES = 12
-// Where the first chunk after IHDR starts: signature (8) + IHDR chunk (25).
 const AFTER_IHDR = 33
 
 const depthFor = (colours: number) => (colours <= 2 ? 1 : colours <= 4 ? 2 : colours <= 16 ? 4 : 8)
 const typesOf = (png: Buffer) => readChunks(png).map((c) => c.type)
 const optimize = (png: Buffer) => fromDataUrl(optimizePngDataUrl(toDataUrl(png)))
 
-/** The image went through the optimizer (and not just back out unchanged): it carries the marker. */
 const expectLookedAt = (png: Buffer, label?: string) => expect(typesOf(png), label).toContain(OPTIMIZED_CHUNK)
 
 describe('optimizePngDataUrl: the pixels never change', () => {
   describe.each([1, 2, 3, 4, 5, 16, 17, 100, 255, 256, 257, 1000])('an image with %i colours', (colours) => {
-    // 37 wide: rows of 1, 2 and 4 bit pixels end in the middle of a byte
     const img = paletteImage(37, 29, distinctColours(colours), colours)
     const original = makeRgbaPng(img)
     const out = optimize(original)
@@ -172,7 +168,6 @@ describe('optimizePngDataUrl: the file it writes', () => {
   })
 
   it('writes a transparency table only as long as needed', () => {
-    // one transparent colour, the rest opaque; the transparent one is not the first the image uses
     const colours = [[255, 0, 0, 255], [0, 0, 0, 0], [0, 255, 0, 255], [0, 0, 255, 255]]
     const out = optimize(makeRgbaPng(paletteImage(40, 40, colours, 5)))
     expect(readChunks(out).find((c) => c.type === 'tRNS')?.data.length).toBe(1)
@@ -220,9 +215,9 @@ describe('optimizePngDataUrl: the file it writes', () => {
 describe('optimizePngDataUrl: looking at an image once', () => {
   it('marks what it has seen and gives the same answer when asked again', () => {
     const sources = [
-      makeRgbaPng(paletteImage(48, 48, distinctColours(6), 11)), // goes indexed
-      makeRgbaPng(gradientImage(40, 40)), // better filters
-      makeRgbaPng(noiseImage(30, 30, 9)), // nothing to gain
+      makeRgbaPng(paletteImage(48, 48, distinctColours(6), 11)),
+      makeRgbaPng(gradientImage(40, 40)),
+      makeRgbaPng(noiseImage(30, 30, 9)),
     ]
     for (const source of sources) {
       const once = optimizePngDataUrl(toDataUrl(source))
@@ -232,7 +227,6 @@ describe('optimizePngDataUrl: looking at an image once', () => {
   })
 
   it('does not look again at an image that already carries the marker', () => {
-    // It would go indexed if it were looked at: the marker says it already was.
     const png = makeRgbaPng(paletteImage(48, 48, distinctColours(6), 11))
     const marked = Buffer.concat([png.subarray(0, AFTER_IHDR), chunk(OPTIMIZED_CHUNK), png.subarray(AFTER_IHDR)])
     const url = toDataUrl(marked)
@@ -282,7 +276,7 @@ describe('optimizePngDataUrl: what it does not touch', () => {
 
   it('does not take a damaged chunk (bad CRC) for a valid one', () => {
     const flipped = Buffer.from(bytes)
-    flipped[AFTER_IHDR - 1] ^= 0xff // last byte of the IHDR CRC
+    flipped[AFTER_IHDR - 1] ^= 0xff
     const url = toDataUrl(flipped)
     expect(optimizePngDataUrl(url)).toBe(url)
   })
@@ -303,27 +297,24 @@ describe('optimizePngDataUrl: on damaged files', () => {
     for (let seed = 0; seed < 300; seed++) {
       let mutated = Buffer.from(source)
       switch (seed % 5) {
-        case 0: // flip some bytes
+        case 0:
           for (let i = 1 + Math.floor(rand() * 8); i > 0; i--) mutated[Math.floor(rand() * mutated.length)] ^= 1 + Math.floor(rand() * 255)
           break
-        case 1: // cut it short
+        case 1:
           mutated = mutated.subarray(0, Math.floor(rand() * mutated.length))
           break
         case 2: {
-          // remove a piece
           const from = Math.floor(rand() * mutated.length)
           mutated = Buffer.concat([mutated.subarray(0, from), mutated.subarray(from + 1 + Math.floor(rand() * 20))])
           break
         }
         case 3: {
-          // insert some noise
           const at = Math.floor(rand() * mutated.length)
           const noise = Buffer.from(Array.from({ length: 1 + Math.floor(rand() * 16) }, () => Math.floor(rand() * 256)))
           mutated = Buffer.concat([mutated.subarray(0, at), noise, mutated.subarray(at)])
           break
         }
         default: {
-          // still a valid file, with an extra chunk of random content: this one does get rewritten
           const extra = Buffer.from(Array.from({ length: Math.floor(rand() * 30) }, () => Math.floor(rand() * 256)))
           mutated = makeRgbaPng(sprite, { before: [chunk('sRGB', Buffer.from([0])), chunk('prVt', extra)] })
         }
@@ -337,17 +328,14 @@ describe('optimizePngDataUrl: on damaged files', () => {
 
       if (out !== url) {
         rewritten++
-        // Whatever it chose to rewrite must show the same picture as before.
         let before: Buffer | null = null
         try {
           before = decodePng(mutated).pixels
         } catch {
-          // this strict reader refuses the input too: nothing to compare with
         }
         if (before) expect(decodePng(fromDataUrl(out)).pixels.equals(before), `mutation ${seed}`).toBe(true)
       }
     }
-    // the damaged cases must not all have been trivially left alone
     expect(rewritten).toBeGreaterThan(0)
   })
 })

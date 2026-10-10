@@ -19,7 +19,6 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isInteractingWithVolumeRef = useRef(false)
 
-  // Granular selectors — same VU-tick reason as the tiles.
   const participantVolumes = useMediaStore((s) => s.participantVolumes)
   const setParticipantVolume = useMediaStore((s) => s.setParticipantVolume)
   const liveStreamVolume = useMediaStore((s) => s.liveStreamVolume)
@@ -39,7 +38,6 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
   const [prevVolume, setPrevVolume] = useState<number>(rawVolume > 0 ? rawVolume : 100)
 
   const activeStream = user.screenStream || user.stream
-  // The full screen also shows a camera; only a live of somebody else waits for a click.
   const isLive = Boolean(user.screenStream || user.isScreenSharing)
   const liveGate = useLiveGate(user.id, Boolean(!user.isLocal && isLive && user.liveOptIn), !!user.liveWatching)
 
@@ -49,24 +47,19 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
 
     video.srcObject = activeStream
 
-    // Apply audio output device if supported
     if (selectedAudioOutput && typeof (video as any).setSinkId === 'function') {
       ;(video as any).setSinkId(selectedAudioOutput === 'default' ? '' : selectedAudioOutput).catch(() => {})
     }
 
-    // Shared attach with play-failure recovery (retry on audio/video unmute
-    // and click). See attachVideoElement.ts.
     return attachStreamToVideo(video, activeStream, {
       tile: 'theater',
       peer: user.id,
       isLocal: !!user.isLocal,
     })
-    // The <video> is a new element after the click to watch.
   }, [activeStream, selectedAudioOutput, liveGate.needsClick])
 
   useLiveViewBox(user.id, theaterVideoRef, 'contain', liveGate.watching)
 
-  // Update volume in real-time
   useEffect(() => {
     const video = theaterVideoRef.current
     if (!video) return
@@ -108,7 +101,6 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
   const prevVolumeRef = useRef(prevVolume)
   prevVolumeRef.current = prevVolume
 
-  // Native Electron Window Fullscreen / Theater Mode
   useEffect(() => {
     if (window.electronAPI && typeof window.electronAPI.setFullScreen === 'function') {
       window.electronAPI.setFullScreen(true).catch(() => {})
@@ -124,7 +116,6 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
     }
   }, [])
 
-  // Keyboard shortcut handlers (ESC, Mute, Volume Up/Down)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -151,7 +142,6 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
     }
   }, [onClose])
 
-  // Auto hide floating controls after 3.5 seconds of inactivity
   const handleMouseMove = () => {
     setControlsVisible(true)
     if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current)
@@ -164,7 +154,6 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
 
   const mountedAtRef = useRef(Date.now())
   const handleDoubleClickVideo = () => {
-    // Only close if at least 500ms have passed since mount, preventing double-click bounce
     if (Date.now() - mountedAtRef.current > 500) {
       onClose()
     }
@@ -176,7 +165,6 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
       onMouseMove={handleMouseMove}
       className="fixed inset-0 z-[100] bg-black flex items-center justify-center overflow-hidden select-none cursor-default"
     >
-      {/* A live starts with a click: until then only the microphone arrives */}
       {!liveGate.needsClick && (
         <video
           ref={theaterVideoRef}
@@ -195,7 +183,6 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
         <LiveWatchPrompt size="stage" name={user.name} connecting={liveGate.connecting} onWatch={liveGate.watch} />
       )}
 
-      {/* Floating Top Control Bar */}
       <div
         className={`absolute top-6 left-6 right-6 flex items-center justify-between transition-opacity duration-300 z-50 ${
           controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
@@ -212,7 +199,6 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
           </div>
         </div>
 
-        {/* Right Actions: Stop watching + Volume + Exit */}
         <div className="flex items-center gap-3">
           {liveGate.watching && (
             <button
@@ -225,7 +211,6 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
             </button>
           )}
 
-          {/* Volume Control for Viewer */}
           {!user.isLocal && !liveGate.needsClick && (
             <div
               className="flex items-center gap-2.5 bg-black/80 backdrop-blur-xl px-4 py-2 rounded-2xl border border-white/15 shadow-2xl"
@@ -282,7 +267,6 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
         </div>
       </div>
 
-      {/* Floating Bottom Info Pill */}
       <div
         className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-black/80 backdrop-blur-xl px-6 py-3 rounded-3xl border border-white/15 shadow-2xl transition-opacity duration-300 z-50 ${
           controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'

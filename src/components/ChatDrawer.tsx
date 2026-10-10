@@ -101,10 +101,6 @@ function downloadAttachment(att: ChatAttachment) {
   }
 }
 
-/**
- * Outer gate: subscribes ONLY to isChatOpen so 60Hz position updates don't
- * re-render the chat drawer while it's closed (the common case).
- */
 export const ChatDrawer: React.FC = () => {
   const isChatOpen = useChatStore((s) => s.isChatOpen)
   if (!isChatOpen) return null
@@ -193,7 +189,6 @@ const ChatDrawerInner: React.FC = () => {
   const channelsWidthRef = useRef(channelsWidth)
   channelsWidthRef.current = channelsWidth
 
-  // Clamp width and track mobile state when window is resized
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 640)
@@ -205,7 +200,6 @@ const ChatDrawerInner: React.FC = () => {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  // Cursor and user-select styles while dragging
   useEffect(() => {
     if (isResizingDrawer || isResizingChannels) {
       document.body.style.cursor = 'col-resize'
@@ -298,7 +292,6 @@ const ChatDrawerInner: React.FC = () => {
     getFriendPresence: (friend) => FriendsPresenceService.getInstance().getFriendStatus(friend),
   })
 
-  // Only the owner of the space creates, renames and deletes its channels.
   const canManageChannels = !!roomId && isOwner
 
   const isRequestPending = (person: ChatPerson) =>
@@ -376,20 +369,17 @@ const ChatDrawerInner: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [filteredMessages.length])
 
-  // A DM that is open on screen is being read: keep its read state (and the
-  // sender's receipts) current so it is not counted as unread on the home screen.
   const isDmOpen = activeChannel?.type === 'dm'
   useEffect(() => {
     if (isDmOpen) markChannelAsRead(activeChannelId)
   }, [isDmOpen, activeChannelId, filteredMessages.length, markChannelAsRead])
 
-  // Friends outside this space can come online or leave at any moment.
   const [, setPresenceTick] = useState(0)
   useEffect(() => FriendsPresenceService.getInstance().subscribe(() => setPresenceTick((t) => t + 1)), [])
 
   const handleFileSelect = (file: File) => {
     setUploadError(null)
-    const MAX_BYTES = 15 * 1024 * 1024 // 15MB limit for P2P safety
+    const MAX_BYTES = 15 * 1024 * 1024
     if (file.size > MAX_BYTES) {
       setUploadError(`Arquivo excede o limite máximo de 15MB (${(file.size / (1024 * 1024)).toFixed(1)}MB)`)
       return
@@ -419,8 +409,6 @@ const ChatDrawerInner: React.FC = () => {
     const isDm = activeChannel?.type === 'dm'
     const newMsg: ChatMessage = {
       id: 'msg-' + Math.random().toString(36).substring(2, 9),
-      // A DM outlives this room session, so it is signed with the stable user
-      // id; room channels keep the connection id the room knows us by.
       senderId: isDm ? getPlayerUserId(localPlayer) : localPlayer.id,
       senderName: localPlayer.name,
       channelId: activeChannelId,
@@ -474,12 +462,10 @@ const ChatDrawerInner: React.FC = () => {
         isGridCallOpen ? 'top-0 z-[60]' : 'top-14 z-50'
       }`}
     >
-      {/* Transparent full-screen overlay during drag to capture pointer events smoothly */}
       {!isMobile && (isResizingDrawer || isResizingChannels) && (
         <div className="fixed inset-0 z-[9999] cursor-col-resize select-none bg-transparent" />
       )}
 
-      {/* Right Edge Resize Handle (Desktop only) */}
       {!isMobile && (
         <div
           onPointerDown={handleDrawerResizeStart}
@@ -514,7 +500,6 @@ const ChatDrawerInner: React.FC = () => {
         </div>
       )}
 
-      {/* Drag & Drop Visual Overlay */}
       {isDragging && (
         <div className="absolute inset-0 z-50 bg-indigo-950/85 backdrop-blur-sm border-2 border-dashed border-indigo-400 flex flex-col items-center justify-center gap-2 text-indigo-200 pointer-events-none animate-in fade-in duration-150">
           <Paperclip className="w-10 h-10 text-indigo-400 animate-bounce" />
@@ -523,14 +508,12 @@ const ChatDrawerInner: React.FC = () => {
         </div>
       )}
 
-      {/* Top Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a3142] bg-[#1a1f2c] shrink-0">
         <div className="flex items-center gap-2">
           <MessageSquare className="w-5 h-5 text-indigo-400" />
           <span className="font-bold text-sm text-slate-100">Chat & Canais</span>
         </div>
 
-        {/* Mobile Tab Toggle */}
         {isMobile && (
           <div className="flex gap-1 bg-[#12151d] p-0.5 rounded-xl border border-[#2a3142]">
             <button
@@ -594,7 +577,6 @@ const ChatDrawerInner: React.FC = () => {
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Sub-sidebar: Channels & DMs */}
         <div
           style={isMobile ? undefined : { width: `${channelsWidth}px` }}
           className={`${
@@ -607,7 +589,6 @@ const ChatDrawerInner: React.FC = () => {
             isResizingChannels ? '' : 'transition-[width] duration-150 ease-out'
           }`}
         >
-          {/* Channels of the space; right-click to manage them */}
           <ChatChannelList
             channels={channels.filter((c) => c.type !== 'dm')}
             activeChannelId={activeChannelId}
@@ -627,7 +608,6 @@ const ChatDrawerInner: React.FC = () => {
             onCancelEdit={() => startChannelEdit(null)}
           />
 
-          {/* Friends, the other people in this space, other saved conversations */}
           <ChatPeopleList
             people={people}
             onOpen={(person) => {
@@ -641,7 +621,6 @@ const ChatDrawerInner: React.FC = () => {
           />
         </div>
 
-        {/* Channels divider resize handle (Desktop only) */}
         {!isMobile && (
           <div
             onPointerDown={handleChannelsResizeStart}
@@ -666,7 +645,6 @@ const ChatDrawerInner: React.FC = () => {
           </div>
         )}
 
-        {/* Right: Message Stream & Input */}
         <div
           className={`${
             isMobile
@@ -676,7 +654,6 @@ const ChatDrawerInner: React.FC = () => {
               : 'flex-1 flex'
           } flex-col bg-[#12151d] overflow-hidden`}
         >
-          {/* Channel Info Bar */}
           <div className="px-3 py-2 border-b border-[#2a3142] flex items-center justify-between bg-[#161a24] shrink-0">
             <div className="flex items-center gap-1.5 truncate">
               {isMobile && (
@@ -706,7 +683,6 @@ const ChatDrawerInner: React.FC = () => {
             </span>
           </div>
 
-          {/* Messages List */}
           <div className="flex-1 p-3 overflow-y-auto space-y-3">
             {filteredMessages.length === 0 ? (
               <div className="text-center text-xs text-slate-400 py-8 space-y-1">
@@ -778,7 +754,6 @@ const ChatDrawerInner: React.FC = () => {
                   )
                 }
 
-                // An invite is offered only from a friend (or shown as sent, when it is mine).
                 const invite = readRoomInvite(msg.roomInvite)
                 const inviterKey = isMine ? undefined : findFriendKey(friends, friendProfiles, [msg.senderId])
                 if (invite && (isMine || inviterKey)) {
@@ -841,10 +816,8 @@ const ChatDrawerInner: React.FC = () => {
                     </div>
 
                     <div className="text-xs text-slate-200 bg-[#1b202c] p-2.5 rounded-xl border border-[#2a3142]/60 break-words space-y-2">
-                      {/* Text content if present */}
                       {msg.content && <div>{msg.content}</div>}
 
-                      {/* File / Image Attachment */}
                       {hasAttachment && msg.attachment && (
                         <div>
                           {isImage ? (
@@ -917,7 +890,6 @@ const ChatDrawerInner: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Reactions List */}
                     {msg.reactions && Object.keys(msg.reactions).length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1">
                         {Object.entries(msg.reactions).map(([emoji, users]) => (
@@ -943,9 +915,7 @@ const ChatDrawerInner: React.FC = () => {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Message Input & Attachment Bar */}
           <form onSubmit={handleSendMessage} className="p-3 border-t border-[#2a3142] bg-[#161a24] shrink-0">
-            {/* Error banner if upload exceeds limit */}
             {uploadError && (
               <div className="mb-2 px-2.5 py-1.5 bg-rose-500/10 border border-rose-500/30 rounded-lg flex items-center justify-between text-xs text-rose-300 animate-in fade-in duration-150">
                 <div className="flex items-center gap-1.5">
@@ -962,7 +932,6 @@ const ChatDrawerInner: React.FC = () => {
               </div>
             )}
 
-            {/* Pending Attachment Preview Chip */}
             {pendingAttachment && (
               <div className="mb-2 p-2 bg-[#1b202c] border border-indigo-500/40 rounded-xl flex items-center justify-between gap-2 shadow-lg animate-in slide-in-from-bottom-1 duration-150">
                 <div className="flex items-center gap-2 overflow-hidden">
@@ -998,7 +967,6 @@ const ChatDrawerInner: React.FC = () => {
             )}
 
             <div className="flex items-center gap-2 bg-[#12151d] border border-[#2a3142] rounded-xl px-2.5 py-1.5 focus-within:border-indigo-500 transition-colors">
-              {/* Hidden File Input */}
               <input
                 type="file"
                 ref={fileInputRef}
@@ -1011,7 +979,6 @@ const ChatDrawerInner: React.FC = () => {
                 className="hidden"
               />
 
-              {/* Attach File Button */}
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -1021,7 +988,6 @@ const ChatDrawerInner: React.FC = () => {
                 <Paperclip className="w-4 h-4" />
               </button>
 
-              {/* Text Input with Paste listener */}
               <input
                 type="text"
                 value={inputMessage}
@@ -1042,7 +1008,6 @@ const ChatDrawerInner: React.FC = () => {
                 className="flex-1 bg-transparent text-xs text-slate-100 placeholder-slate-400 focus:outline-none"
               />
 
-              {/* Send Button */}
               <button
                 type="submit"
                 disabled={!inputMessage.trim() && !pendingAttachment}
@@ -1056,7 +1021,6 @@ const ChatDrawerInner: React.FC = () => {
         </div>
       </div>
 
-      {/* Lightbox Modal for Full Image View */}
       {lightboxImage && (
         <div
           className="fixed inset-0 z-[120] bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-in fade-in duration-150"
@@ -1103,7 +1067,6 @@ const ChatDrawerInner: React.FC = () => {
         </div>
       )}
 
-      {/* Right-click menu on a message's author */}
       {userMenu && (() => {
         const { state, target, friendKey } = getChatUserFriendState({
           senderId: userMenu.msg.senderId,
@@ -1130,7 +1093,6 @@ const ChatDrawerInner: React.FC = () => {
         )
       })()}
 
-      {/* Right-click menu on a person of the sidebar */}
       {personMenu && (
         <ChatContextMenu
           x={personMenu.x}
@@ -1151,7 +1113,6 @@ const ChatDrawerInner: React.FC = () => {
         />
       )}
 
-      {/* Right-click menu on the channel list */}
       {channelMenu && (() => {
         const menu = getChannelMenu(channelMenu.channel, { canManage: canManageChannels })
         return (
