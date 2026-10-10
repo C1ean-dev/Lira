@@ -72,6 +72,23 @@ describe('main process logging wiring', () => {
     expect(main).toContain('watchWindow(mainWindow)')
   })
 
+  it('tells the page when its window stops being shown, and when it is shown again', () => {
+    // The page is never throttled in the background, so it cannot tell on its
+    // own that nobody sees it; a live being watched is asked for smaller meanwhile.
+    expect(main).toContain('backgroundThrottling: false')
+    const watch = between('function watchWindow(', '\n}\n')
+    expect(watch).toContain("win.webContents.send('window-visibility', { visible: win.isVisible() && !win.isMinimized() })")
+    for (const event of ['show', 'hide', 'minimize', 'restore']) {
+      expect(watch).toContain(`win.on('${event}', tellVisibility)`)
+    }
+    expect(watch).toContain('if (win.isDestroyed()) return')
+
+    const preload = fs.readFileSync('electron/preload.ts', 'utf8')
+    expect(preload).toContain("ipcRenderer.on('window-visibility', handler)")
+    expect(preload).toContain("ipcRenderer.removeListener('window-visibility', handler)")
+    expect(preload).toContain('onWindowVisibility: (callback: (visible: boolean) => void) => () => void')
+  })
+
   it('opens every session with a line that says what is running', () => {
     const start = between('function logSessionStart(', '\n}\n')
     expect(start).toContain("'[Session] started'")

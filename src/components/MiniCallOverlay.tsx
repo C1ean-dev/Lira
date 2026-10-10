@@ -28,6 +28,7 @@ import {
   Check,
   Power,
   AudioLines,
+  EyeOff,
   GripHorizontal,
 } from 'lucide-react'
 
@@ -70,6 +71,10 @@ import { useUserNetworkQuality } from '../store/useNetworkQualityStore'
 import { AvatarConfig } from '../types/game'
 import { PlayerAvatar } from './common/PlayerAvatar'
 import { RemoteAudio } from './common/RemoteAudio'
+import { LiveWatchPrompt } from './LiveWatchPrompt'
+import { useLiveGate } from '../hooks/useLiveGate'
+import { useLiveViewBox } from '../hooks/useLiveViewBox'
+import { useLiveWatchStore } from '../store/useLiveWatchStore'
 
 interface VideoTileProps {
   id?: string
@@ -90,6 +95,10 @@ interface VideoTileProps {
   onClick?: () => void
   onContextMenu?: (e: React.MouseEvent) => void
   suppressAudio?: boolean
+  /** The app of this peer waits for a click before a live is sent to it, and before showing one. */
+  liveOptIn?: boolean
+  /** This user clicked to watch the live of this peer. */
+  liveWatching?: boolean
 }
 
 export const VideoTile: React.FC<VideoTileProps> = ({
@@ -111,8 +120,12 @@ export const VideoTile: React.FC<VideoTileProps> = ({
   onClick,
   onContextMenu,
   suppressAudio = false,
+  liveOptIn = false,
+  liveWatching = false,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  // A live of somebody else is shown after a click to watch it.
+  const liveGate = useLiveGate(id, Boolean(!isLocal && isScreenTrack && liveOptIn), liveWatching)
   // Granular selectors — whole-store here re-rendered every tile on each
   // VU-meter tick (~10Hz) and every peer-stream change.
   const outputVolume = useMediaStore((s) => s.outputVolume)
@@ -133,7 +146,8 @@ export const VideoTile: React.FC<VideoTileProps> = ({
   }, [stream])
 
   const isCameraEffectivelyOff = isCameraOff ?? !hasLiveVideoTrack
-  const shouldShowVideo = (isScreenSharing || isScreenTrack) || (!isCameraEffectivelyOff && hasLiveVideoTrack)
+  const shouldShowVideo =
+    !liveGate.needsClick && ((isScreenSharing || isScreenTrack) || (!isCameraEffectivelyOff && hasLiveVideoTrack))
 
   useEffect(() => {
     const video = videoRef.current
@@ -149,7 +163,11 @@ export const VideoTile: React.FC<VideoTileProps> = ({
       isLocal: !!isLocal,
       muted: true,
     })
-  }, [stream, isLocal])
+    // The <video> is a new element after the click to watch.
+  }, [stream, isLocal, liveGate.needsClick])
+
+  // While the grid is open this tile is not on screen: its size does not count.
+  useLiveViewBox(id, videoRef, 'contain', liveGate.watching && !suppressAudio)
 
   return (
     <div
@@ -166,18 +184,23 @@ export const VideoTile: React.FC<VideoTileProps> = ({
       }`}
       title={isScreenTrack ? 'Transmissão de Tela - Clique para expandir' : 'Clique para expandir em tela cheia'}
     >
-      {/* Video Feed */}
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
-        onCanPlay={() => videoRef.current?.play().catch(() => {})}
-        className={`w-full h-full ${isScreenTrack ? 'object-contain bg-black' : 'object-cover'} ${
-          shouldShowVideo ? 'block' : 'hidden'
-        } ${isLocal && !isScreenSharing && !isScreenTrack ? '-scale-x-100' : ''}`}
-      />
+      {/* Video Feed. Left out while a live waits for the click: the element
+          would keep showing the last frame it got before the live. */}
+      {!liveGate.needsClick && (
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
+          onCanPlay={() => videoRef.current?.play().catch(() => {})}
+          onLoadedData={liveGate.onFrame}
+          onPlaying={liveGate.onFrame}
+          className={`w-full h-full ${isScreenTrack ? 'object-contain bg-black' : 'object-cover'} ${
+            shouldShowVideo ? 'block' : 'hidden'
+          } ${isLocal && !isScreenSharing && !isScreenTrack ? '-scale-x-100' : ''}`}
+        />
+      )}
 
       {/* Sound of a remote participant. Silent for the local tile (no echo)
           and while the grid is open (it plays the same audio). */}
@@ -201,6 +224,11 @@ export const VideoTile: React.FC<VideoTileProps> = ({
           size="xl"
           className="w-14 h-14 rounded-full shadow-lg border-2 border-white/20"
         />
+      )}
+
+      {/* A live starts with a click: until then only the microphone arrives */}
+      {(liveGate.needsClick || liveGate.connecting) && (
+        <LiveWatchPrompt size="tile" name={name} connecting={liveGate.connecting} onWatch={liveGate.watch} />
       )}
 
       {/* Top Live Badge */}
@@ -242,15 +270,29 @@ export const VideoTile: React.FC<VideoTileProps> = ({
       )}
 
       {/* Live viewer volume control (hover, top-right) */}
-      {isScreenTrack && !isLocal && (
+      {isScreenTrack && !isLocal && !liveGate.needsClick && (
         <div
           className="absolute top-1.5 right-1.5 group/vol flex items-center bg-black/70 hover:bg-black/90 backdrop-blur-md border border-white/15 rounded-lg px-1 py-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
           onClick={(e) => e.stopPropagation()}
         >
+          {liveGate.watching && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                liveGate.stop()
+              }}
+              className="text-slate-200 hover:text-rose-300 transition-colors p-0.5"
+              title="Parar de assistir"
+            >
+              <EyeOff className="w-3 h-3" />
+            </button>
+          )}
           <button
             onClick={(e) => {
               e.stopPropagation()
-              setParticipantVolume(name, rawVolume === 0 ? 100 : 0)
+              const nextVol = rawVolume === 0 ? 100 : 0
+              setParticipantVolume(name, nextVol)
+              if (isScreenTrack) setLiveStreamVolume(nextVol)
             }}
             className="text-slate-200 hover:text-white transition-colors p-0.5"
             title={rawVolume === 0 ? 'Desmutar transmissão' : 'Mutar transmissão'}
@@ -270,7 +312,11 @@ export const VideoTile: React.FC<VideoTileProps> = ({
               max="200"
               value={rawVolume}
               onClick={(e) => e.stopPropagation()}
-              onChange={(e) => setParticipantVolume(name, Number(e.target.value))}
+              onChange={(e) => {
+                const val = Number(e.target.value)
+                setParticipantVolume(name, val)
+                if (isScreenTrack) setLiveStreamVolume(val)
+              }}
               className="w-12 h-1 bg-slate-600 rounded appearance-none cursor-pointer accent-indigo-500"
               title={`Volume da live: ${rawVolume}%`}
             />
@@ -333,20 +379,27 @@ interface FloatingScreenPreviewProps {
   presenterName: string
   isLocal: boolean
   suppressAudio?: boolean
+  /** The live comes from an app that waits for a click before sending and showing it. */
+  asksFirst?: boolean
+  /** This user clicked to watch it. */
+  watching?: boolean
   onExpand: () => void
   onClose: () => void
 }
 
-const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
+export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
   stream,
   presenterId,
   presenterName,
   isLocal,
   suppressAudio = false,
+  asksFirst = false,
+  watching = false,
   onExpand,
   onClose,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const liveGate = useLiveGate(presenterId, Boolean(!isLocal && asksFirst), watching)
   // Granular selectors — same VU-tick reason as VideoTile above.
   const outputVolume = useMediaStore((s) => s.outputVolume)
   const selectedAudioOutput = useMediaStore((s) => s.selectedAudioOutput)
@@ -365,7 +418,7 @@ const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
       : 100
 
   const handleVolumeChange = (val: number) => {
-    const clamped = Math.max(0, Math.min(100, Math.round(val)))
+    const clamped = Math.max(0, Math.min(200, Math.round(val)))
     setLiveStreamVolume(clamped)
     if (presenterId) setParticipantVolume(presenterId, clamped)
     if (presenterName) setParticipantVolume(presenterName, clamped)
@@ -386,7 +439,11 @@ const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
       isLocal: !!isLocal,
       muted: !!isLocal || suppressAudio,
     })
-  }, [stream, isLocal, suppressAudio])
+    // The <video> is a new element after the click to watch.
+  }, [stream, isLocal, suppressAudio, liveGate.needsClick])
+
+  // While the grid is open this player is not on screen: its size does not count.
+  useLiveViewBox(presenterId, videoRef, 'contain', liveGate.watching && !suppressAudio)
 
   useEffect(() => {
     if (videoRef.current && !isLocal) {
@@ -398,7 +455,7 @@ const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
           .catch(() => {})
       }
     }
-  }, [rawVolume, outputVolume, selectedAudioOutput, isLocal])
+  }, [rawVolume, outputVolume, selectedAudioOutput, isLocal, liveGate.needsClick])
 
   return (
     <div className="mb-2 w-72 sm:w-80 bg-[#12151d] rounded-2xl overflow-hidden border-2 border-indigo-500/80 shadow-2xl animate-in slide-in-from-bottom-2 duration-200">
@@ -412,8 +469,18 @@ const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
         </div>
 
         <div className="flex items-center gap-1">
+          {liveGate.watching && (
+            <button
+              onClick={liveGate.stop}
+              className="p-1 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-slate-700 transition-colors"
+              title="Parar de assistir"
+            >
+              <EyeOff className="w-3.5 h-3.5" />
+            </button>
+          )}
+
           {/* Volume Control for Viewer */}
-          {!isLocal && (
+          {!isLocal && !liveGate.needsClick && (
             <div className="group/vol relative flex items-center bg-[#12151d] border border-[#2a3142] rounded-lg px-1.5 py-0.5">
               <button
                 onClick={() => {
@@ -434,16 +501,19 @@ const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
                   <Volume2 className="w-3 h-3 text-indigo-400" />
                 )}
               </button>
-              <div className="w-0 group-hover/vol:w-16 transition-all duration-200 overflow-hidden flex items-center pl-1">
+              <div className="w-0 group-hover/vol:w-28 transition-all duration-200 overflow-hidden flex items-center pl-1 gap-1">
                 <input
                   type="range"
                   min="0"
-                  max="100"
+                  max="200"
                   value={rawVolume}
                   onChange={(e) => handleVolumeChange(Number(e.target.value))}
                   className="w-14 h-1 bg-slate-700 rounded appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400"
                   title={`Volume: ${rawVolume}%`}
                 />
+                <span className="text-[10px] font-mono text-slate-200 min-w-[28px]">
+                  {rawVolume}%
+                </span>
               </div>
             </div>
           )}
@@ -471,23 +541,38 @@ const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
         className="relative w-full h-40 bg-black flex items-center justify-center cursor-pointer group"
         title="Clique para expandir em tela cheia"
       >
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted={isLocal || suppressAudio}
-          onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
-          onCanPlay={() => videoRef.current?.play().catch(() => {})}
-          className="w-full h-full object-contain bg-black"
-        />
+        {/* A live starts with a click: until then only the microphone arrives */}
+        {!liveGate.needsClick && (
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted={isLocal || suppressAudio}
+            onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
+            onCanPlay={() => videoRef.current?.play().catch(() => {})}
+            onLoadedData={liveGate.onFrame}
+            onPlaying={liveGate.onFrame}
+            className="w-full h-full object-contain bg-black"
+          />
+        )}
+        {(liveGate.needsClick || liveGate.connecting) && (
+          <LiveWatchPrompt
+            size="card"
+            name={presenterName}
+            connecting={liveGate.connecting}
+            onWatch={liveGate.watch}
+          />
+        )}
 
         {/* Hover Overlay with Expand Action */}
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-          <span className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 backdrop-blur-md">
-            <Maximize2 className="w-3.5 h-3.5" />
-            Expandir Apresentação
-          </span>
-        </div>
+        {!liveGate.needsClick && !liveGate.connecting && (
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+            <span className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 backdrop-blur-md">
+              <Maximize2 className="w-3.5 h-3.5" />
+              Expandir Apresentação
+            </span>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -533,6 +618,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
 
   const { localPlayer, remotePlayers, callStates, friendProfiles } = useGameStore()
   const { mapData, toggleZoneLock } = useMapStore()
+  const watchingLives = useLiveWatchStore((s) => s.watching)
 
   const isChatOpen = useChatStore((state) => state.isChatOpen)
   const activeChannelId = useChatStore((state) => state.activeChannelId)
@@ -673,8 +759,10 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
     (p) => callStates[p.id] === 'reconnecting'
   )
 
-  // Find if there is an active screen share in this zone (local or remote)
-  const remotePresenter = peersInSameZone.find((p) => p.isScreenSharing && peerStreams[p.id])
+  // Find if there is an active screen share in this zone (local or remote).
+  // With more than one live, the mini player is of the one being watched.
+  const remotePresenters = peersInSameZone.filter((p) => p.isScreenSharing && peerStreams[p.id])
+  const remotePresenter = remotePresenters.find((p) => watchingLives[p.id]) || remotePresenters[0]
   const hasActiveScreenShare = isScreenSharing || !!remotePresenter
 
   const activeScreenStream = isScreenSharing
@@ -737,6 +825,8 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
             presenterName={presenterName}
             isLocal={isPresenterLocal}
             suppressAudio={suppressAudio}
+            asksFirst={!isPresenterLocal && !!remotePresenter?.liveOptIn}
+            watching={!isPresenterLocal && !!remotePresenter && !!watchingLives[remotePresenter.id]}
             onExpand={() => setGridCallOpen(true)}
             onClose={() => setIsFloatingPreviewVisible(false)}
           />
@@ -895,6 +985,8 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                   isLocal={false}
                   isScreenSharing={peer.isScreenSharing}
                   isScreenTrack={peer.isScreenSharing}
+                  liveOptIn={peer.liveOptIn}
+                  liveWatching={!!watchingLives[peer.id]}
                   profilePicture={resolvedPic}
                   avatar={resolvedAvatar}
                   suppressAudio={suppressAudio}

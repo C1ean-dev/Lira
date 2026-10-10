@@ -32,6 +32,6 @@ export interface AudioSettings {
   echoCancellation: boolean
   autoGainControl: boolean
   audioProcessorMode: AudioProcessorMode // Default 'rnnoise'
-  screenShareAudioVolume: number // 0 to 100 (percentage, default 100)
+  screenShareAudioVolume: number // 0 to 200 (percentage, default 100)
   duckingEnabled: boolean // Auto-reduce screen audio when speaking
 }

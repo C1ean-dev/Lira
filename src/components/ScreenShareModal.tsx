@@ -9,6 +9,8 @@ import {
   Sliders,
   RefreshCw,
   StopCircle,
+  Sparkles,
+  Zap,
 } from 'lucide-react'
 import { MediaManager, ScreenShareConfig } from '../media/MediaManager'
 import { useMediaStore } from '../store/useMediaStore'
@@ -45,6 +47,8 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const setDuckingEnabled = useMediaStore((s) => s.setDuckingEnabled)
   const isHardwareAccelerationEnabled = useMediaStore((s) => s.isHardwareAccelerationEnabled)
   const toggleHardwareAcceleration = useMediaStore((s) => s.toggleHardwareAcceleration)
+  const optimizationMode = useMediaStore((s) => s.screenShareOptimizationMode)
+  const setScreenShareOptimizationMode = useMediaStore((s) => s.setScreenShareOptimizationMode)
 
   // Source-only audio is mandatory. It is never a user-selectable mode.
   const includeAudio = true
@@ -118,6 +122,7 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
       includeAudio,
       resolution,
       fps,
+      optimizationMode,
     }
     await MediaManager.getInstance().startScreenShare(config)
     onClose()
@@ -130,6 +135,7 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
       includeAudio,
       resolution,
       fps,
+      optimizationMode,
     }
     await MediaManager.getInstance().startScreenShare(config)
     onClose()
@@ -415,7 +421,86 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
               </button>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
+              {/* Prioridade da Transmissão: Qualidade vs Fluidez */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-[11px] font-semibold text-slate-300">Prioridade da Transmissão</label>
+                  <span className="text-[10px] text-slate-400">
+                    {optimizationMode === 'quality'
+                      ? 'Foco em resolução nítida e texto legível'
+                      : 'Foco em taxa de quadros (FPS) estável'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setScreenShareOptimizationMode('quality')}
+                    className={`p-3 rounded-2xl border text-left flex items-start gap-3 transition-all ${
+                      optimizationMode === 'quality'
+                        ? 'border-indigo-500 bg-indigo-500/15 ring-2 ring-indigo-500/30 shadow-lg text-slate-100'
+                        : 'border-[#2a3142] bg-[#1b202c] text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                    }`}
+                  >
+                    <div
+                      className={`p-2 rounded-xl mt-0.5 shrink-0 transition-colors ${
+                        optimizationMode === 'quality'
+                          ? 'bg-indigo-500/25 text-indigo-300'
+                          : 'bg-slate-800 text-slate-500'
+                      }`}
+                    >
+                      <Sparkles className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-100">Priorizar Qualidade</span>
+                        {optimizationMode === 'quality' && (
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-indigo-400 bg-indigo-500/20 px-1.5 py-0.5 rounded-md border border-indigo-500/30">
+                            <Check className="w-3 h-3" /> Ativo
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-1 leading-snug">
+                        Mantém a resolução alta e texto nítido, ideal para leitura, código e trabalho.
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setScreenShareOptimizationMode('smoothness')}
+                    className={`p-3 rounded-2xl border text-left flex items-start gap-3 transition-all ${
+                      optimizationMode === 'smoothness'
+                        ? 'border-indigo-500 bg-indigo-500/15 ring-2 ring-indigo-500/30 shadow-lg text-slate-100'
+                        : 'border-[#2a3142] bg-[#1b202c] text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                    }`}
+                  >
+                    <div
+                      className={`p-2 rounded-xl mt-0.5 shrink-0 transition-colors ${
+                        optimizationMode === 'smoothness'
+                          ? 'bg-indigo-500/25 text-indigo-300'
+                          : 'bg-slate-800 text-slate-500'
+                      }`}
+                    >
+                      <Zap className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-100">Priorizar Fluidez</span>
+                        {optimizationMode === 'smoothness' && (
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-indigo-400 bg-indigo-500/20 px-1.5 py-0.5 rounded-md border border-indigo-500/30">
+                            <Check className="w-3 h-3" /> Ativo
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-1 leading-snug">
+                        Prioriza movimento fluido (60 FPS) estável, ideal para jogos dinâmicos e ação.
+                      </p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
               {/* Resolution Options: Auto, 1080p, 720p, 480p */}
               <div>
                 <div className="mb-1.5">
@@ -529,7 +614,8 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
             Transmissão:{' '}
             <strong className="text-indigo-400">
               {resolution === 'auto' ? 'Resolução Automática' : resolution} @{' '}
-              {fps === 'auto' ? 'FPS Dinâmico' : `${fps} FPS`}
+              {fps === 'auto' ? 'FPS Dinâmico' : `${fps} FPS`} •{' '}
+              {optimizationMode === 'quality' ? 'Foco em Qualidade' : 'Foco em Fluidez'}
             </strong>
           </div>
 

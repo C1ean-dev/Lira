@@ -3,6 +3,7 @@ import { Shield, Users, Minimize2, X } from 'lucide-react'
 import { useMediaStore } from '../store/useMediaStore'
 import { useGameStore } from '../store/useGameStore'
 import { useMapStore } from '../store/useMapStore'
+import { useLiveWatchStore } from '../store/useLiveWatchStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { MediaManager } from '../media/MediaManager'
 import { ScreenShareModal } from './ScreenShareModal'
@@ -37,6 +38,7 @@ const FullScreenGridInner: React.FC = () => {
 
   const { localPlayer, remotePlayers, callStates, friendProfiles } = useGameStore()
   const { mapData } = useMapStore()
+  const watchingLives = useLiveWatchStore((s) => s.watching)
 
   const [isScreenModalOpen, setIsScreenModalOpen] = useState(false)
   const [focusedUserId, setFocusedUserId] = useState<string | null>(null)
@@ -118,6 +120,8 @@ const FullScreenGridInner: React.FC = () => {
           statusEmoji: p.statusEmoji,
           callState: callStates[p.id] || p.callState || 'idle',
           onRetryCall: () => PeerManager.getInstance().retryZoneCall(p.id),
+          liveOptIn: p.liveOptIn,
+          liveWatching: !!watchingLives[p.id],
         }
       }),
     ]
@@ -134,6 +138,7 @@ const FullScreenGridInner: React.FC = () => {
     isCameraOff,
     isLocalSpeaking,
     callStates,
+    watchingLives,
   ])
 
   // If someone is screen sharing and no one is explicitly focused, default focus to the active screen share
@@ -147,6 +152,12 @@ const FullScreenGridInner: React.FC = () => {
   }
 
   const otherParticipants = allInMeeting.filter((u) => u.id !== focusedUser?.id)
+
+  // The full screen was opened with the participant as it was then; whether
+  // its live is being watched is what it is now.
+  const theaterUser = liveTheaterUser
+    ? allInMeeting.find((u) => u.id === liveTheaterUser.id) || liveTheaterUser
+    : null
 
   return (
     <>
@@ -253,9 +264,9 @@ const FullScreenGridInner: React.FC = () => {
       </div>
 
       {/* Pure Fullscreen Live Stream Player */}
-      {liveTheaterUser && (
+      {theaterUser && (
         <FullScreenLiveOverlay
-          user={liveTheaterUser}
+          user={theaterUser}
           onClose={() => setLiveTheaterUser(null)}
         />
       )}

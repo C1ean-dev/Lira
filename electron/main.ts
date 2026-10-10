@@ -396,6 +396,18 @@ function watchWindow(win: BrowserWindow) {
   win.on('closed', () => writeMainDiagnostic('main', 'window-closed', { id }))
   // A second "loaded" for the same window is a reload: the renderer started over.
   win.webContents.on('did-finish-load', () => writeMainDiagnostic('main', 'window-loaded', { id }))
+
+  // The page is never throttled in the background (backgroundThrottling: false),
+  // so it cannot tell on its own that nobody sees it. It is told here, and asks
+  // for a smaller picture of a live it is watching while minimized or in the tray.
+  const tellVisibility = () => {
+    if (win.isDestroyed()) return
+    win.webContents.send('window-visibility', { visible: win.isVisible() && !win.isMinimized() })
+  }
+  win.on('show', tellVisibility)
+  win.on('hide', tellVisibility)
+  win.on('minimize', tellVisibility)
+  win.on('restore', tellVisibility)
 }
 
 // App log: console output of this process and of the renderer goes to

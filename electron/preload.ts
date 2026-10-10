@@ -43,6 +43,8 @@ export interface IElectronAPI {
   stopProcessAudioCapture: () => Promise<boolean>
   onProcessAudioData: (callback: (data: Uint8Array) => void) => () => void
   onProcessAudioStatus: (callback: (event: { status: 'started' | 'stopped' | 'error'; detail?: string }) => void) => () => void
+  /** Whether the window shows anything: false while it is minimized or in the tray. */
+  onWindowVisibility: (callback: (visible: boolean) => void) => () => void
   isElectron: boolean
   checkForUpdates: () => Promise<UpdateInfo>
   downloadUpdate: (downloadUrl: string, targetVersion?: string) => Promise<boolean>
@@ -112,6 +114,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event: unknown, event: { status: 'started' | 'stopped' | 'error'; detail?: string }) => callback(event)
     ipcRenderer.on('process-audio-status', handler)
     return () => ipcRenderer.removeListener('process-audio-status', handler)
+  },
+  onWindowVisibility: (callback: (visible: boolean) => void) => {
+    const handler = (_event: unknown, payload: { visible?: boolean } | undefined) => callback(payload?.visible !== false)
+    ipcRenderer.on('window-visibility', handler)
+    return () => ipcRenderer.removeListener('window-visibility', handler)
   },
   isElectron: true,
   checkForUpdates: () => ipcRenderer.invoke('check-update'),

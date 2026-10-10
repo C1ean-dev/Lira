@@ -25,6 +25,7 @@ export type NetworkMessageType =
   | 'USER_AUDIO_ISOLATION'
   | 'ADMIN_MUTE_PARTICIPANT'
   | 'ADMIN_DEAFEN_PARTICIPANT'
+  | 'LIVE_VIEW'
 
 export interface NetworkMessage {
   type: NetworkMessageType
@@ -69,6 +70,18 @@ export interface AdminMutePayload {
   targetUserName?: string
   mute: boolean
   adminName: string
+}
+
+/**
+ * A viewer to who is live: whether it watches the live, and how tall the
+ * picture is on its screen. It is for one peer (`to`); the room carries it
+ * like any other message, and everybody else ignores it.
+ */
+export interface LiveViewPayload {
+  to: string
+  watch: boolean
+  /** Device pixels; 0 while the window of the viewer shows nothing; null when not known (everything). */
+  h: number | null
 }
 
 export interface AdminDeafenPayload {

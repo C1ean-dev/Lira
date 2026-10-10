@@ -155,6 +155,26 @@ Um `catch` vazio só deve existir onde a falha é esperada e não importa. Onde 
 
 Cada sessão do processo principal começa com duas linhas `[Session]`: versão do app, Electron, sistema, instância, pasta de logs e placas de vídeo com os recursos de GPU que não estão habilitados.
 
+## Uma live nos logs
+
+Os eventos de uma transmissão de tela ficam em `call-debug-<dia>.log`, categoria `screenshare`. Quem transmite envia um fluxo próprio para cada espectador, então os eventos de envio são por espectador (`toPeer`).
+
+| Evento | Quem grava | O que diz |
+| --- | --- | --- |
+| `viewer` | quem transmite | Um espectador pediu para assistir, mudou de tamanho ou parou: `watch`, `h` (altura pedida, em pixels reais; `0` com a janela oculta, `null` sem tamanho), e o que passou a ser enviado a ele (`scale`, `kbps`, `fps`). |
+| `viewer-expired` | quem transmite | O espectador ficou mais de 30 s sem confirmar o tamanho; volta a receber o tamanho cheio. |
+| `ramp` | quem transmite | Como o envio sobe: resolução, fps, bitrate enviado, alvo, estimativa de banda e o que limitou. `phase` diz de onde: `prime` (antes da captura), `live` (início), `join` (chamada que entrou no meio) e `view` (um espectador clicou em Assistir ou aumentou a imagem; amostras por 5 s). |
+| `quality-stats` | quem transmite | A cada 10 s, por espectador: codec e perfil negociados, codificador (`encoder`; `hw` diz se é da placa de vídeo), resolução e fps, bitrate enviado e alvo, **QP médio do intervalo**, tempo de codificação por quadro, quadros-chave, o que limitou, perda e latência. `mode` é `legacy` (versão sem o clique), `off` (não assiste) ou `on`. |
+| `watch` | quem assiste | Clique em Assistir (`on: true`), em Parar de assistir (`why: click`) ou fim da live ou da chamada (`why: ended`). |
+| `watch-first-frame` | quem assiste | Tempo, em ms, do clique até o primeiro quadro na tela. |
+| `view-stats` | quem assiste | A cada 10 s enquanto assiste: o que chega (resolução, fps, bitrate), o decodificador, quadros descartados, congelamentos e o tamanho pedido (`askH`). |
+
+Na categoria `p2p`, `video-codecs` lista uma vez por sessão os codecs e perfis de vídeo que aquele app consegue enviar e receber.
+
+O QP é a medida de quanto o codificador comprime: quanto menor, mais bits por imagem. No H.264 vai de 0 a 51 (VP8: 0 a 127; VP9 e AV1: 0 a 255), por isso leia junto com `codec`. Um QP baixo com o bitrate no teto indica bitrate sobrando; um QP alto indica que o teto já aperta. A primeira amostra de cada conexão não tem os valores de intervalo (`sentKbps`, `qp`, `encodeMs`): não há leitura anterior para comparar.
+
+Um espectador com `mode: off` aparece uma vez em `quality-stats`, com `sentKbps` vazio ou zero, e só volta a aparecer se algo for enviado a ele.
+
 ## Limites
 
 - No app instalado, o nome da função em cada quadro (`fn`) é o do pacote minificado. Arquivo e linha são os do código-fonte.
