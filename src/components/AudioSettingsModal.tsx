@@ -60,10 +60,15 @@ export const AudioSettingsModal: React.FC = () => {
   useEffect(() => {
     if (isSettingsModalOpen) {
       refreshDevices()
+      const handler = () => refreshDevices()
+      window.addEventListener('lira:devices-changed', handler)
       if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
-        navigator.mediaDevices.addEventListener('devicechange', refreshDevices)
-        return () => {
-          navigator.mediaDevices.removeEventListener('devicechange', refreshDevices)
+        navigator.mediaDevices.addEventListener('devicechange', handler)
+      }
+      return () => {
+        window.removeEventListener('lira:devices-changed', handler)
+        if (navigator.mediaDevices && navigator.mediaDevices.removeEventListener) {
+          navigator.mediaDevices.removeEventListener('devicechange', handler)
         }
       }
     } else {

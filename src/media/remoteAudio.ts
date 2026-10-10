@@ -29,9 +29,15 @@ export function applyAudioOutput(el: HTMLMediaElement, out: AudioOutput): void {
     el.muted = out.muted
     el.volume = out.muted ? 0 : Math.max(0, Math.min(1, out.volume || 0))
   } catch {}
-  if (out.sinkId && typeof (el as any).setSinkId === 'function') {
+  if (out.sinkId !== undefined && typeof (el as any).setSinkId === 'function') {
+    const sink = out.sinkId === 'default' ? '' : out.sinkId
     try {
-      Promise.resolve((el as any).setSinkId(out.sinkId === 'default' ? '' : out.sinkId)).catch(() => {})
+      Promise.resolve((el as any).setSinkId(sink)).catch(() => {})
+    } catch {}
+  }
+  if (!out.muted && (out.volume || 0) > 0 && el.paused) {
+    try {
+      el.play().catch(() => {})
     } catch {}
   }
 }

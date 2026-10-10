@@ -58,8 +58,6 @@ export const GridParticipantTile: React.FC<Props> = ({
 
   const participantVolumes = useMediaStore((s) => s.participantVolumes)
   const setParticipantVolume = useMediaStore((s) => s.setParticipantVolume)
-  const liveStreamVolume = useMediaStore((s) => s.liveStreamVolume)
-  const setLiveStreamVolume = useMediaStore((s) => s.setLiveStreamVolume)
   const outputVolume = useMediaStore((s) => s.outputVolume)
   const selectedAudioOutput = useMediaStore((s) => s.selectedAudioOutput)
   const isDeafened = useMediaStore((s) => s.isDeafened)
@@ -71,8 +69,6 @@ export const GridParticipantTile: React.FC<Props> = ({
       ? participantVolumes[user.id]
       : user.gameId && participantVolumes[user.gameId] !== undefined
       ? participantVolumes[user.gameId]
-      : isLive && liveStreamVolume !== undefined
-      ? liveStreamVolume
       : 100
 
   const isEffectivelyMuted = Boolean(user.isLocal || isDeafened || isSilenced || rawVolume === 0)
@@ -371,7 +367,6 @@ export const GridParticipantTile: React.FC<Props> = ({
                   const nextVol = rawVolume === 0 ? 100 : 0
                   setParticipantVolume(user.id, nextVol)
                   if (user.name) setParticipantVolume(user.name, nextVol)
-                  if (isLive) setLiveStreamVolume(nextVol)
                 }}
                 className="p-0.5 rounded text-slate-300 hover:text-white transition-colors"
                 title={rawVolume === 0 ? 'Desmutar este participante' : 'Mutar este participante'}
@@ -395,7 +390,6 @@ export const GridParticipantTile: React.FC<Props> = ({
                     const val = Number(e.target.value)
                     setParticipantVolume(user.id, val)
                     if (user.name) setParticipantVolume(user.name, val)
-                    if (isLive) setLiveStreamVolume(val)
                   }}
                   className="w-16 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400"
                   title={`Volume: ${rawVolume}%`}

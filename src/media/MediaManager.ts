@@ -4,7 +4,7 @@ import { RnnoiseProcessor } from './RnnoiseProcessor'
 import { MicCalibrator, ProcessedSampleInfo } from './MicCalibrator'
 import { CallAudioIsolator } from './CallAudioIsolator'
 import { ProcessAudioCapture } from './ProcessAudioCapture'
-import { diagLog, summarizeStream, summarizeTrack } from '../utils/diagnosticLogger'
+import { diagLog, shortId, summarizeStream, summarizeTrack } from '../utils/diagnosticLogger'
 import { useMediaStore } from '../store/useMediaStore'
 import { useGameStore } from '../store/useGameStore'
 import { PeerManager } from '../p2p/PeerManager'
@@ -57,6 +57,8 @@ export class MediaManager {
   private currentProcessorMode: AudioProcessorMode = 'rnnoise'
 
   private processAudioCapture: ProcessAudioCapture | null = null
+  private isDeviceWatcherInitialized: boolean = false
+  private deviceChangeTimeout: ReturnType<typeof setTimeout> | null = null
 
   private levelForwardLastSent: number = 0
   private levelForwardLastGate: boolean = false
@@ -88,6 +90,7 @@ export class MediaManager {
     this.rnnoiseEngine.setRuntimeFailureHandler((cause) => {
       void this.handleRnnoiseRuntimeFailure(cause)
     })
+    this.initDeviceWatcher()
   }
 
   private rnnoiseRuntimeFailure: string | null = null
@@ -104,6 +107,86 @@ export class MediaManager {
       MediaManager.instance = new MediaManager()
     }
     return MediaManager.instance
+  }
+
+  public initDeviceWatcher() {
+    if (this.isDeviceWatcherInitialized) return
+    if (typeof window === 'undefined' || typeof navigator === 'undefined' || !navigator.mediaDevices) return
+    this.isDeviceWatcherInitialized = true
+    try {
+      navigator.mediaDevices.addEventListener('devicechange', () => {
+        this.handleDeviceChangeDebounced()
+      })
+    } catch {}
+  }
+
+  private handleDeviceChangeDebounced() {
+    if (this.deviceChangeTimeout) {
+      clearTimeout(this.deviceChangeTimeout)
+    }
+    this.deviceChangeTimeout = setTimeout(() => {
+      this.deviceChangeTimeout = null
+      void this.handleDeviceChange()
+    }, 400)
+  }
+
+  public async handleDeviceChange() {
+    try {
+      if (!navigator.mediaDevices?.enumerateDevices) return
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const audioInputs = devices.filter((d) => d.kind === 'audioinput')
+      const audioOutputs = devices.filter((d) => d.kind === 'audiooutput')
+      const videoInputs = devices.filter((d) => d.kind === 'videoinput')
+
+      diagLog('media', 'devicechange-detected', {
+        audioInputs: audioInputs.map((d) => ({ id: shortId(d.deviceId), label: d.label })),
+        audioOutputs: audioOutputs.map((d) => ({ id: shortId(d.deviceId), label: d.label })),
+      })
+
+      const state = useMediaStore.getState()
+
+      let targetOutput = state.selectedAudioOutput || 'default'
+      const outputExists = targetOutput === 'default' || audioOutputs.some((d) => d.deviceId === targetOutput)
+      if (!outputExists) {
+        targetOutput = 'default'
+        state.setSelectedAudioOutput('default')
+      }
+      await this.changeAudioOutput(targetOutput)
+
+      let targetInput = state.selectedAudioInput || 'default'
+      const inputExists = targetInput === 'default' || audioInputs.some((d) => d.deviceId === targetInput)
+      if (!inputExists) {
+        targetInput = 'default'
+        state.setSelectedAudioInput('default')
+      }
+
+      let targetVideo = state.selectedVideoInput || 'default'
+      const videoExists = targetVideo === 'default' || videoInputs.some((d) => d.deviceId === targetVideo)
+      if (!videoExists) {
+        state.setSelectedVideoInput('default')
+      }
+
+      if (this.rawUserStream) {
+        const currentTrack = this.rawUserStream.getAudioTracks()[0]
+        const isEnded = !currentTrack || currentTrack.readyState === 'ended'
+
+        if (targetInput === 'default' || isEnded || !inputExists) {
+          diagLog('media', 'devicechange-reacquiring-input', {
+            targetInput,
+            isEnded,
+            inputExists,
+          })
+          await this.changeAudioInput(targetInput)
+        }
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('lira:devices-changed'))
+      }
+    } catch (err) {
+      console.warn('Error handling device change:', err)
+      diagLog('media', 'devicechange-error', { error: errShort(err) })
+    }
   }
 
   private selectEngine(): AudioEngine {
@@ -434,6 +517,8 @@ export class MediaManager {
       PeerManager.getInstance().recheckZoneCalls()
     } catch (e) {}
 
+    this.initDeviceWatcher()
+
     return processedStream
   }
 
@@ -720,8 +805,10 @@ export class MediaManager {
       if (!newAudioTrack) return false
 
       if (this.rawUserStream) {
-        this.rawUserStream.getAudioTracks().forEach((t) => t.stop())
-        this.rawUserStream.removeTrack(this.rawUserStream.getAudioTracks()[0])
+        this.rawUserStream.getAudioTracks().forEach((t) => {
+          t.stop()
+          this.rawUserStream?.removeTrack(t)
+        })
         this.rawUserStream.addTrack(newAudioTrack)
       } else {
         this.rawUserStream = newAudioStream
@@ -732,11 +819,15 @@ export class MediaManager {
         this.handleEngineLevel
       )
 
-    useMediaStore.getState().setLocalStream(processedStream)
+      useMediaStore.getState().setLocalStream(processedStream)
 
+      const isMuted = useMediaStore.getState().isMuted
       const processedAudioTrack = processedStream.getAudioTracks()[0]
       if (processedAudioTrack) {
-        PeerManager.getInstance().replaceAudioTrack(processedAudioTrack)
+        processedAudioTrack.enabled = !isMuted
+        if (!useMediaStore.getState().isScreenSharing) {
+          PeerManager.getInstance().replaceAudioTrack(processedAudioTrack)
+        }
       }
 
       try {
@@ -753,11 +844,12 @@ export class MediaManager {
   public async changeAudioOutput(deviceId: string): Promise<boolean> {
     try {
       useMediaStore.getState().setSelectedAudioOutput(deviceId)
+      const sink = deviceId === 'default' || !deviceId ? '' : deviceId
       const audioElements = document.querySelectorAll('video, audio')
       audioElements.forEach(async (el: any) => {
         if (typeof el.setSinkId === 'function') {
           try {
-            await el.setSinkId(deviceId === 'default' ? '' : deviceId)
+            await el.setSinkId(sink)
           } catch (e) {
             console.warn('Failed to set sinkId on element:', e)
           }
