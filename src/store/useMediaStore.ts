@@ -261,13 +261,9 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
     set({ selectedAudioInput })
   },
   setSelectedAudioOutput: (selectedAudioOutput) => {
+    if (get().selectedAudioOutput === selectedAudioOutput) return
     saveAudioSettings({ selectedAudioOutput })
     set({ selectedAudioOutput })
-    if (hasMediaHardware()) {
-      try {
-        MediaManager.getInstance().changeAudioOutput(selectedAudioOutput)
-      } catch {}
-    }
   },
   setSelectedVideoInput: (selectedVideoInput) => {
     if (get().selectedVideoInput === selectedVideoInput) return

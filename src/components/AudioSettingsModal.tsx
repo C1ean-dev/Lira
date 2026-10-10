@@ -84,13 +84,19 @@ export const AudioSettingsModal: React.FC = () => {
     if (isTestingMic) {
       MediaManager.getInstance().setTestMic(false)
     }
+    MediaManager.getInstance().stopAudioTestBeep()
+    setIsPlayingTestSound(false)
     setSettingsModalOpen(false)
   }
 
-  const handlePlayTestSound = (deviceId?: string) => {
+  const handlePlayTestSound = async (deviceId?: string) => {
+    if (isPlayingTestSound) return
     setIsPlayingTestSound(true)
-    MediaManager.getInstance().playAudioTestBeep(deviceId)
-    setTimeout(() => setIsPlayingTestSound(false), 800)
+    try {
+      await MediaManager.getInstance().playAudioTestBeep(deviceId)
+    } finally {
+      setIsPlayingTestSound(false)
+    }
   }
 
   return (

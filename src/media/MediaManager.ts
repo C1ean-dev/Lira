@@ -59,6 +59,7 @@ export class MediaManager {
   private processAudioCapture: ProcessAudioCapture | null = null
   private isDeviceWatcherInitialized: boolean = false
   private deviceChangeTimeout: ReturnType<typeof setTimeout> | null = null
+  private currentTestAudio: { ctx?: AudioContext; el?: HTMLAudioElement; timeout?: any } | null = null
 
   private levelForwardLastSent: number = 0
   private levelForwardLastGate: boolean = false
@@ -843,7 +844,11 @@ export class MediaManager {
 
   public async changeAudioOutput(deviceId: string): Promise<boolean> {
     try {
-      useMediaStore.getState().setSelectedAudioOutput(deviceId)
+      this.stopAudioTestBeep()
+      const state = useMediaStore.getState()
+      if (state.selectedAudioOutput !== deviceId) {
+        state.setSelectedAudioOutput(deviceId)
+      }
       const sink = deviceId === 'default' || !deviceId ? '' : deviceId
       const audioElements = document.querySelectorAll('video, audio')
       audioElements.forEach(async (el: any) => {
@@ -1350,102 +1355,135 @@ export class MediaManager {
     this.rnnoiseEngine.setTestLoopback(enabled)
   }
 
+  public stopAudioTestBeep(): void {
+    if (this.currentTestAudio) {
+      if (this.currentTestAudio.timeout) {
+        clearTimeout(this.currentTestAudio.timeout)
+      }
+      if (this.currentTestAudio.el) {
+        try {
+          this.currentTestAudio.el.pause()
+          this.currentTestAudio.el.srcObject = null
+        } catch {}
+      }
+      if (this.currentTestAudio.ctx) {
+        try {
+          this.currentTestAudio.ctx.close().catch(() => {})
+        } catch {}
+      }
+      this.currentTestAudio = null
+    }
+  }
+
   public async playAudioTestBeep(targetDeviceId?: string): Promise<void> {
-    try {
-      const state = useMediaStore.getState()
-      const targetOutput = targetDeviceId ?? state.selectedAudioOutput ?? 'default'
-      const sink = targetOutput === 'default' || !targetOutput ? '' : targetOutput
-      const AudioContextClass =
-        (typeof window !== 'undefined' && ((window as any).AudioContext || (window as any).webkitAudioContext)) ||
-        (typeof globalThis !== 'undefined' && ((globalThis as any).AudioContext || (globalThis as any).webkitAudioContext)) ||
-        null
-      if (!AudioContextClass) return
-
-      let testCtx: AudioContext
-      try {
-        testCtx = new AudioContextClass(sink ? { sinkId: sink } : undefined)
-      } catch {
-        testCtx = new AudioContextClass()
-      }
-
-      if (testCtx.state === 'suspended') {
-        try {
-          await testCtx.resume()
-        } catch {}
-      }
-
-      if (sink && typeof (testCtx as any).setSinkId === 'function') {
-        try {
-          await (testCtx as any).setSinkId(sink)
-        } catch {}
-      }
-
-      const now = testCtx.currentTime
-      const osc1 = testCtx.createOscillator()
-      const osc2 = testCtx.createOscillator()
-      const gain = testCtx.createGain()
-
-      osc1.type = 'sine'
-      osc1.frequency.setValueAtTime(587.33, now)
-      osc1.frequency.setValueAtTime(880, now + 0.12)
-
-      osc2.type = 'sine'
-      osc2.frequency.setValueAtTime(440, now)
-      osc2.frequency.setValueAtTime(659.25, now + 0.12)
-
-      gain.gain.setValueAtTime(0.01, now)
-      gain.gain.exponentialRampToValueAtTime(0.3, now + 0.04)
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45)
-
-      osc1.connect(gain)
-      osc2.connect(gain)
-
-      let testAudioEl: HTMLAudioElement | null = null
-      let routedViaElement = false
-
-      if (typeof (testCtx as any).createMediaStreamDestination === 'function' && typeof Audio !== 'undefined') {
-        try {
-          const dest = (testCtx as any).createMediaStreamDestination()
-          gain.connect(dest)
-          testAudioEl = new Audio()
-          testAudioEl.srcObject = dest.stream
-          if (typeof (testAudioEl as any).setSinkId === 'function') {
-            await (testAudioEl as any).setSinkId(sink)
-          }
-          await testAudioEl.play()
-          routedViaElement = true
-        } catch {
-          routedViaElement = false
-          if (testAudioEl) {
-            try {
-              testAudioEl.srcObject = null
-            } catch {}
-            testAudioEl = null
-          }
+    this.stopAudioTestBeep()
+    return new Promise<void>(async (resolve) => {
+      let resolved = false
+      const finish = () => {
+        if (!resolved) {
+          resolved = true
+          this.stopAudioTestBeep()
+          resolve()
         }
       }
 
-      if (!routedViaElement) {
-        gain.connect(testCtx.destination)
-      }
+      try {
+        const state = useMediaStore.getState()
+        const targetOutput = targetDeviceId ?? state.selectedAudioOutput ?? 'default'
+        const sink = targetOutput === 'default' || !targetOutput ? '' : targetOutput
+        const AudioContextClass =
+          (typeof window !== 'undefined' && ((window as any).AudioContext || (window as any).webkitAudioContext)) ||
+          (typeof globalThis !== 'undefined' && ((globalThis as any).AudioContext || (globalThis as any).webkitAudioContext)) ||
+          null
+        if (!AudioContextClass) {
+          finish()
+          return
+        }
 
-      osc1.start(now)
-      osc2.start(now)
-      osc1.stop(now + 0.5)
-      osc2.stop(now + 0.5)
+        let testCtx: AudioContext
+        try {
+          testCtx = new AudioContextClass(sink ? { sinkId: sink } : undefined)
+        } catch {
+          testCtx = new AudioContextClass()
+        }
 
-      setTimeout(() => {
-        if (testAudioEl) {
+        if (testCtx.state === 'suspended') {
           try {
-            testAudioEl.pause()
-            testAudioEl.srcObject = null
+            await testCtx.resume()
           } catch {}
         }
-        testCtx.close().catch(() => {})
-      }, 700)
-    } catch (e) {
-      console.warn('Could not play test audio chime:', e)
-    }
+
+        if (sink && typeof (testCtx as any).setSinkId === 'function') {
+          try {
+            await (testCtx as any).setSinkId(sink)
+          } catch {}
+        }
+
+        const now = testCtx.currentTime
+        const osc1 = testCtx.createOscillator()
+        const osc2 = testCtx.createOscillator()
+        const gain = testCtx.createGain()
+
+        osc1.type = 'sine'
+        osc1.frequency.setValueAtTime(587.33, now)
+        osc1.frequency.setValueAtTime(880, now + 0.12)
+
+        osc2.type = 'sine'
+        osc2.frequency.setValueAtTime(440, now)
+        osc2.frequency.setValueAtTime(659.25, now + 0.12)
+
+        gain.gain.setValueAtTime(0.01, now)
+        gain.gain.exponentialRampToValueAtTime(0.3, now + 0.04)
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45)
+
+        osc1.connect(gain)
+        osc2.connect(gain)
+
+        let testAudioEl: HTMLAudioElement | null = null
+        let routedViaElement = false
+
+        if (typeof (testCtx as any).createMediaStreamDestination === 'function' && typeof Audio !== 'undefined') {
+          try {
+            const dest = (testCtx as any).createMediaStreamDestination()
+            gain.connect(dest)
+            testAudioEl = new Audio()
+            testAudioEl.srcObject = dest.stream
+            if (typeof (testAudioEl as any).setSinkId === 'function') {
+              await (testAudioEl as any).setSinkId(sink)
+            }
+            await testAudioEl.play()
+            routedViaElement = true
+          } catch {
+            routedViaElement = false
+            if (testAudioEl) {
+              try {
+                testAudioEl.srcObject = null
+              } catch {}
+              testAudioEl = null
+            }
+          }
+        }
+
+        if (!routedViaElement) {
+          gain.connect(testCtx.destination)
+        }
+
+        const currentNow = testCtx.currentTime
+        osc1.start(currentNow)
+        osc2.start(currentNow)
+        osc1.stop(currentNow + 0.5)
+        osc2.stop(currentNow + 0.5)
+
+        const timeoutId = setTimeout(() => {
+          finish()
+        }, 650)
+
+        this.currentTestAudio = { ctx: testCtx, el: testAudioEl ?? undefined, timeout: timeoutId }
+      } catch (e) {
+        console.warn('Could not play test audio chime:', e)
+        finish()
+      }
+    })
   }
 
   public stopAll() {

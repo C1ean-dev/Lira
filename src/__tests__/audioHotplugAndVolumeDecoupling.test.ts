@@ -289,4 +289,18 @@ describe('Audio Hotplug & Volume Decoupling', () => {
 
     expect(lastSinkId).toBe('monitor-speakers-out')
   })
+
+  it('stops audio test beep and cleans up when output device is changed', async () => {
+    const manager = MediaManager.getInstance()
+    const stopSpy = vi.spyOn(manager, 'stopAudioTestBeep')
+    await manager.changeAudioOutput('new-device')
+    expect(stopSpy).toHaveBeenCalled()
+  })
+
+  it('setSelectedAudioOutput does not recursively invoke changeAudioOutput', () => {
+    const manager = MediaManager.getInstance()
+    const changeSpy = vi.spyOn(manager, 'changeAudioOutput')
+    useMediaStore.getState().setSelectedAudioOutput('test-out')
+    expect(changeSpy).not.toHaveBeenCalled()
+  })
 })
