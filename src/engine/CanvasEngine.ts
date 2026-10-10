@@ -318,6 +318,9 @@ export class CanvasEngine {
       }
 
       // Smooth Camera Following synchronized with new position
+      if (this.camera.isManualPan) {
+        this.camera.isManualPan = false
+      }
       this.camera.followPlayer(finalX, finalY, deltaTime)
 
       // Zone Detection

@@ -1,18 +1,6 @@
-import React, { useState, useEffect } from 'react'
-import { TopNavBar } from './components/TopNavBar'
-import { MapViewport } from './components/MapViewport'
-import { AssetPalette } from './editor/AssetPalette'
-import { MiniCallOverlay } from './components/MiniCallOverlay'
-import { FullScreenGrid } from './components/FullScreenGrid'
-import { ChatDrawer } from './components/ChatDrawer'
-import { AvatarCustomizerModal } from './components/AvatarCustomizerModal'
-import { CustomElementModal } from './editor/CustomElementModal'
+import React, { Suspense, lazy, useState, useEffect, useLayoutEffect } from 'react'
 import { LobbyModal } from './components/LobbyModal'
-import { AudioSettingsModal } from './components/AudioSettingsModal'
-import { OnlineUsersMenu } from './components/OnlineUsersMenu'
 import { ConfirmModal } from './components/ConfirmModal'
-import { DoorKnockNotification } from './components/DoorKnockNotification'
-import { DoorKnockPrompt } from './components/DoorKnockPrompt'
 import { useGameStore } from './store/useGameStore'
 import { useMediaStore } from './store/useMediaStore'
 import { useChatStore } from './store/useChatStore'
@@ -25,6 +13,21 @@ import { idleManager } from './services/idleManager'
 import { FriendsPresenceService } from './services/friendsPresenceService'
 import { PeerManager } from './p2p/PeerManager'
 import { MediaManager } from './media/MediaManager'
+import { useMountOnFirstOpen } from './hooks/useMountOnFirstOpen'
+import { markStartup, reportStartupAfterPaint } from './utils/startupTrace'
+import { callNotificationService } from './services/callNotificationService'
+
+// The menu is the first screen. Being inside a space (world, editor, chat, calls) and the heavy
+// modals load on demand, and are fetched in idle time once the menu is up, so entering a space or
+// opening a modal does not wait for them.
+const loadSpaceShell = () => import('./components/SpaceShell').then((m) => ({ default: m.SpaceShell }))
+const loadAvatarCustomizerModal = () =>
+  import('./components/AvatarCustomizerModal').then((m) => ({ default: m.AvatarCustomizerModal }))
+const loadAudioSettingsModal = () =>
+  import('./components/AudioSettingsModal').then((m) => ({ default: m.AudioSettingsModal }))
+const SpaceShell = lazy(loadSpaceShell)
+const AvatarCustomizerModal = lazy(loadAvatarCustomizerModal)
+const AudioSettingsModal = lazy(loadAudioSettingsModal)
 
 export const App: React.FC = () => {
   const [inLobby, setInLobby] = useState(true)
@@ -44,6 +47,35 @@ export const App: React.FC = () => {
   const updateStatus = useUpdateStore((s) => s.status)
   const isUpdateScreenOpen = useUpdateStore((s) => s.isUpdateScreenOpen)
   const startInteractiveUpdate = useUpdateStore((s) => s.startInteractiveUpdate)
+
+  // Start-up measurement: this is the app's first commit, the menu is in the DOM. The report is
+  // logged once it has painted.
+  useLayoutEffect(() => {
+    markStartup('commit')
+    reportStartupAfterPaint()
+  }, [])
+
+  // Both modals open from the menu as well as from inside a space; each one is loaded the first
+  // time it opens and stays mounted after that.
+  const isSettingsModalOpen = useMediaStore((s) => s.isSettingsModalOpen)
+  const mountAudioSettings = useMountOnFirstOpen(isSettingsModalOpen)
+  const mountAvatarModal = useMountOnFirstOpen(isAvatarModalOpen)
+
+  // Once the menu is on screen, fetch the rest in idle time.
+  useEffect(() => {
+    const preload = () => {
+      for (const load of [loadSpaceShell, loadAvatarCustomizerModal, loadAudioSettingsModal]) {
+        load().catch(() => {})
+      }
+    }
+    const win = window as any
+    if (typeof win.requestIdleCallback === 'function') {
+      const id = win.requestIdleCallback(preload, { timeout: 4000 })
+      return () => win.cancelIdleCallback?.(id)
+    }
+    const timer = setTimeout(preload, 1500)
+    return () => clearTimeout(timer)
+  }, [])
 
   // Check for updates on startup and keep checking while the app is open
   // (periodically and when the window gets focus): downloads silently in
@@ -105,7 +137,13 @@ export const App: React.FC = () => {
     FriendsPresenceService.getInstance().connectFriendsNetwork()
   }, [])
 
+  // 6. Background Call Notification for Android
+  useEffect(() => {
+    callNotificationService.init()
+  }, [])
+
   const leaveSpace = () => {
+    callNotificationService.clearNotification()
     PeerManager.getInstance().disconnect()
     MediaManager.getInstance().stopAllMedia()
     useMediaStore.getState().stopAllMedia()
@@ -128,42 +166,32 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen w-screen bg-[#0c0e14] text-slate-100 overflow-hidden font-sans select-none">
-      {/* Top Bar */}
-      <TopNavBar
-        onOpenAvatarModal={() => setIsAvatarModalOpen(true)}
-        onApplyUpdate={startInteractiveUpdate}
-        hasUpdate={!!updateInfo?.hasUpdate}
-        isUpdateReady={updateStatus === 'ready'}
-        isUpdating={updateStatus === 'installing'}
-        onDisconnect={() => setIsDisconnectModalOpen(true)}
-      />
-
-      {/* Main 2D Virtual Space */}
-      <main className="relative flex-1 w-full overflow-hidden flex">
-        <MapViewport />
-        <AssetPalette />
-        <ChatDrawer />
-        <MiniCallOverlay />
-      </main>
-
-      {/* Full-Screen Conference Grid (Lira Grid View) */}
-      <FullScreenGrid />
-
-      {/* Door Knock System */}
-      <DoorKnockNotification />
-      <DoorKnockPrompt />
+      {/* The space (world, editor, chat, calls): only once inside one */}
+      {!inLobby && (
+        <Suspense fallback={null}>
+          <SpaceShell
+            onOpenAvatarModal={() => setIsAvatarModalOpen(true)}
+            onApplyUpdate={startInteractiveUpdate}
+            hasUpdate={!!updateInfo?.hasUpdate}
+            isUpdateReady={updateStatus === 'ready'}
+            isUpdating={updateStatus === 'installing'}
+            onDisconnect={() => setIsDisconnectModalOpen(true)}
+          />
+        </Suspense>
+      )}
 
       {/* Audio & Video Settings Modal */}
-      <AudioSettingsModal />
+      <Suspense fallback={null}>{mountAudioSettings && <AudioSettingsModal />}</Suspense>
 
       {/* Avatar Customizer Modal */}
-      <AvatarCustomizerModal
-        isOpen={isAvatarModalOpen}
-        onClose={() => setIsAvatarModalOpen(false)}
-      />
-
-      {/* Custom Element Studio & Hand-Drawing Modal */}
-      <CustomElementModal />
+      <Suspense fallback={null}>
+        {mountAvatarModal && (
+          <AvatarCustomizerModal
+            isOpen={isAvatarModalOpen}
+            onClose={() => setIsAvatarModalOpen(false)}
+          />
+        )}
+      </Suspense>
 
       {/* Disconnect Confirmation Modal */}
       <ConfirmModal
@@ -177,9 +205,6 @@ export const App: React.FC = () => {
         onConfirm={handleConfirmDisconnect}
         onCancel={() => setIsDisconnectModalOpen(false)}
       />
-
-      {/* Online Users & Permissions Drawer */}
-      <OnlineUsersMenu />
 
       {/* Start Lobby Screen */}
       {inLobby && (

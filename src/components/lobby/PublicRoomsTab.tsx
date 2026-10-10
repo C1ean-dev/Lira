@@ -2,6 +2,7 @@ import React from 'react'
 import { Radio, RefreshCw, Search, X, Globe, Users, Check, Copy, ArrowRight, LogIn } from 'lucide-react'
 import { PublicRoomInfo } from '../../types/game'
 import { useBrokerStatus } from '../../hooks/useBrokerStatus'
+import { isAndroid } from '../../utils/platform'
 
 interface Props {
   publicRooms: PublicRoomInfo[]
@@ -312,7 +313,7 @@ export const PublicRoomsTab: React.FC<Props> = ({
                       className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] text-[10px] font-mono text-slate-300 transition-colors"
                       title="Copiar código da sala"
                     >
-                      <span>{room.code}</span>
+                      <span>{isAndroid() && room.code ? room.code.slice(0, 8) : room.code}</span>
                       {isCopied ? (
                         <Check className="w-3 h-3 text-emerald-400" />
                       ) : (

@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react'
-import { Sparkles, RotateCw } from 'lucide-react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
+import { Sparkles, RotateCw, LocateFixed } from 'lucide-react'
 import { CanvasEngine } from '../engine/CanvasEngine'
 import { getNextAvailableZoneColor, FURNITURE_CATALOG } from '../engine/Constants'
 import { resolveFurnitureDimensions } from '../engine/rendering/furnitureRenderer'
@@ -74,6 +74,28 @@ export const MapViewport: React.FC = () => {
   } | null>(null)
   const [isDraggingFurniture, setIsDraggingFurniture] = useState(false)
   const [hoveredFurnitureId, setHoveredFurnitureId] = useState<string | null>(null)
+
+  // Touch gesture & Mobile controls states
+  const touchPinchDistRef = useRef<number | null>(null)
+  const touchPinchStartZoomRef = useRef<number>(1.6)
+  const touchStartPosRef = useRef<{ x: number; y: number; time: number } | null>(null)
+  const lastTouchPosRef = useRef<{ x: number; y: number } | null>(null)
+  const touchMovedRef = useRef<boolean>(false)
+  const [isCameraPanned, setIsCameraPanned] = useState(false)
+  const [isMobileDevice, setIsMobileDevice] = useState(false)
+
+  useEffect(() => {
+    const checkTouch = () => {
+      const hasTouch =
+        'ontouchstart' in window ||
+        navigator.maxTouchPoints > 0 ||
+        window.innerWidth < 768
+      setIsMobileDevice(hasTouch)
+    }
+    checkTouch()
+    window.addEventListener('resize', checkTouch)
+    return () => window.removeEventListener('resize', checkTouch)
+  }, [])
 
   useEffect(() => {
     if (!isEditorOpen || activeTool !== 'place_furniture') return
@@ -692,6 +714,137 @@ export const MapViewport: React.FC = () => {
     engineRef.current.fitToScreen(0.95)
   }
 
+  const handleRecenterCamera = () => {
+    if (!engineRef.current) return
+    engineRef.current.camera.resetPan()
+    setIsCameraPanned(false)
+  }
+
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (!engineRef.current || !canvasRef.current) return
+
+    if (e.touches.length === 2) {
+      const t1 = e.touches[0]
+      const t2 = e.touches[1]
+      touchPinchDistRef.current = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY)
+      touchPinchStartZoomRef.current = engineRef.current.camera.zoom
+      touchMovedRef.current = true
+      return
+    }
+
+    if (e.touches.length === 1) {
+      const touch = e.touches[0]
+      touchPinchDistRef.current = null
+      touchMovedRef.current = false
+      touchStartPosRef.current = {
+        x: touch.clientX,
+        y: touch.clientY,
+        time: Date.now(),
+      }
+      lastTouchPosRef.current = {
+        x: touch.clientX,
+        y: touch.clientY,
+      }
+
+      if (isEditorOpen) {
+        const mouseEv = {
+          clientX: touch.clientX,
+          clientY: touch.clientY,
+          shiftKey: false,
+        } as React.MouseEvent<HTMLCanvasElement>
+        handleCanvasMouseDown(mouseEv)
+      }
+    }
+  }
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (!engineRef.current || !canvasRef.current) return
+
+    if (e.touches.length === 2 && touchPinchDistRef.current !== null) {
+      e.preventDefault()
+      const t1 = e.touches[0]
+      const t2 = e.touches[1]
+      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY)
+      if (touchPinchDistRef.current > 0) {
+        const scale = dist / touchPinchDistRef.current
+        const newZoom = touchPinchStartZoomRef.current * scale
+        engineRef.current.camera.setZoom(newZoom)
+      }
+      return
+    }
+
+    if (e.touches.length === 1 && lastTouchPosRef.current) {
+      const touch = e.touches[0]
+      const deltaX = touch.clientX - lastTouchPosRef.current.x
+      const deltaY = touch.clientY - lastTouchPosRef.current.y
+      const totalMoved = touchStartPosRef.current
+        ? Math.hypot(touch.clientX - touchStartPosRef.current.x, touch.clientY - touchStartPosRef.current.y)
+        : 0
+
+      if (totalMoved > 8) {
+        touchMovedRef.current = true
+      }
+
+      if (isEditorOpen && draggedFurnitureRef.current) {
+        const mouseEv = {
+          clientX: touch.clientX,
+          clientY: touch.clientY,
+          shiftKey: false,
+        } as React.MouseEvent<HTMLCanvasElement>
+        handleCanvasMouseMove(mouseEv)
+        lastTouchPosRef.current = { x: touch.clientX, y: touch.clientY }
+        return
+      }
+
+      if (touchMovedRef.current) {
+        e.preventDefault()
+        engineRef.current.camera.pan(deltaX, deltaY)
+        setIsCameraPanned(true)
+      }
+
+      lastTouchPosRef.current = { x: touch.clientX, y: touch.clientY }
+    }
+  }
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (!engineRef.current || !canvasRef.current) return
+
+    touchPinchDistRef.current = null
+
+    if (!touchMovedRef.current && touchStartPosRef.current) {
+      const touch = touchStartPosRef.current
+      const rect = canvasRef.current.getBoundingClientRect()
+      const scaleX = canvasRef.current.width / (rect.width || 1)
+      const scaleY = canvasRef.current.height / (rect.height || 1)
+      const mouseX = (touch.x - rect.left) * scaleX
+      const mouseY = (touch.y - rect.top) * scaleY
+
+      let snapStep = 1
+      if (activeTool === 'place_furniture') {
+        snapStep = getPlacementSnapStep(false, selectedFurnitureDefId)
+      }
+      const tile = engineRef.current.screenToTile(mouseX, mouseY, snapStep)
+
+      if (isEditorOpen) {
+        const mouseEv = {
+          clientX: touch.x,
+          clientY: touch.y,
+          shiftKey: false,
+        } as React.MouseEvent<HTMLCanvasElement>
+        handleCanvasMouseDown(mouseEv)
+      } else {
+        engineRef.current.setClickTarget(tile.x, tile.y)
+      }
+    }
+
+    if (isEditorOpen) {
+      handleCanvasMouseUp()
+    }
+
+    touchStartPosRef.current = null
+    lastTouchPosRef.current = null
+  }
+
   return (
     <div
       onWheel={handleWheel}
@@ -706,16 +859,34 @@ export const MapViewport: React.FC = () => {
         onMouseMove={handleCanvasMouseMove}
         onMouseUp={handleCanvasMouseUp}
         onMouseLeave={handleCanvasMouseUp}
-        className={`w-full h-full pixelated ${
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
+        className={`w-full h-full pixelated touch-none select-none ${
           isDraggingFurniture
             ? 'cursor-grabbing'
             : isEditorOpen && (hoveredFurnitureId || (isMovingFurniture && selectedPlacedFurnitureId))
             ? 'cursor-grab'
-            : 'cursor-crosshair'
+            : isEditorOpen
+            ? 'cursor-crosshair'
+            : 'cursor-default'
         } ${
           mapViewMode === 'simplified' ? 'hidden' : 'block'
         }`}
       />
+
+      {/* Recenter Camera Floating Button */}
+      {isCameraPanned && mapViewMode !== 'simplified' && (
+        <button
+          onClick={handleRecenterCamera}
+          className="absolute top-4 left-4 z-40 flex items-center gap-2 px-3 py-2 bg-indigo-600/90 hover:bg-indigo-600 text-white rounded-2xl shadow-xl border border-indigo-400/40 text-xs font-bold transition-all active:scale-95 animate-in fade-in slide-in-from-top-2"
+          title="Recentralizar câmera no seu personagem"
+        >
+          <LocateFixed className="w-4 h-4 text-white" />
+          <span>Centralizar</span>
+        </button>
+      )}
 
       {/* Selected Furniture Drag & Move Floating Banner */}
       {isEditorOpen && selectedPlacedFurnitureId && !isDraggingFurniture && mapViewMode !== 'simplified' && (
@@ -728,7 +899,6 @@ export const MapViewport: React.FC = () => {
           <span className="text-slate-300 font-normal">Deselecionar (<kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 font-mono text-[10px]">Esc</kbd> ou clique nela)</span>
         </div>
       )}
-
 
       {/* Floor paint active banner */}
       {isEditorOpen && activeTool === 'paint_floor' && mapViewMode !== 'simplified' && (
@@ -771,6 +941,9 @@ export const MapViewport: React.FC = () => {
           onZoomIn={() => handleZoom(0.2)}
           onZoomOut={() => handleZoom(-0.2)}
           onFitScreen={handleFitScreen}
+          onRecenter={handleRecenterCamera}
+          isPanned={isCameraPanned}
+          isMobile={isMobileDevice}
         />
       </div>
     </div>

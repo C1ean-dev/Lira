@@ -33,6 +33,19 @@ export class InputHandler {
     this.keysPressed.delete(key)
   }
 
+  /**
+   * Permite que controles virtuais na tela (D-Pad, botões móveis) simulem teclas
+   */
+  public simulateKey = (key: string, pressed: boolean) => {
+    const k = key.toLowerCase()
+    if (pressed) {
+      this.keysPressed.add(k)
+      this.clearPath()
+    } else {
+      this.keysPressed.delete(k)
+    }
+  }
+
   public setPath(path: Point[]) {
     this.path = [...path]
     this.finalDestination = path.length > 0 ? path[path.length - 1] : null

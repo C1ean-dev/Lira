@@ -46,7 +46,7 @@ export const SavedSpacesTab: React.FC<Props> = ({
 }) => {
   const [spaceToDelete, setSpaceToDelete] = useState<{ id: string; name: string } | null>(null)
   return (
-    <div className="p-6 space-y-4 overflow-y-auto flex-1">
+    <div className="p-4 sm:p-6 space-y-3.5 sm:space-y-4 overflow-y-auto flex-1">
       {error && (
         <div className="text-xs text-rose-400 bg-rose-500/10 p-3 rounded-xl border border-rose-500/30 flex items-center justify-between animate-in fade-in duration-150">
           <span>{error}</span>

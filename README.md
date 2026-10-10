@@ -21,6 +21,10 @@ Ambiente virtual para coworking, reuniões e interação em tempo real, integran
   - **DSP Clássico**: Filtro passa-altas (80 Hz contra impactos na mesa), filtro high-shelf (6.500 Hz) e Noise Gate rápido com corte imediato de silêncio e compressor de pico.
   - **DSP Suave**: Expansor dinâmico descendente com transição suave (histerese ampla e release de 250 ms) que atenua o ruído contínuo preservando respirações, sussurros e consoantes finais.
   - **RNNoise Neural**: Redução de ruído por inteligência artificial executada localmente via WebAssembly e AudioWorklet, isolando os harmônicos da voz humana e eliminando ruídos complexos de fundo.
+- **Noise Gate Automático (nos três motores)**:
+  - Aprende o ruído de fundo da sala em tempo real e abre o gate 6 dB acima dele (fecha em 3 dB), então um ventilador ou ar-condicionado ligado no meio da chamada passa a ser filtrado em poucos segundos.
+  - A fala não é confundida com ruído: sons acima do nível de fechamento são ignorados, a menos que durem vários segundos sem nenhuma pausa (aí é a sala, não uma voz), e o aprendizado fica congelado enquanto o detector de voz do RNNoise ouve fala. Numa sala silenciosa o limiar nunca fica abaixo do mínimo de cada motor, para não cortar voz baixa.
+  - O marcador "Corte atual" do medidor acompanha o limiar aprendido (lógica compartilhada em `src/media/autoGate.ts`).
 - **Calibração Automática de Microfone**:
   - Medição acústica do ruído de fundo (*noise floor* em dBFS) a partir de amostras brutas com cálculo pela mediana da metade inferior, evitando distorções causadas por fala ou ruídos esporádicos.
   - Recomendação automática do motor mais adequado e do limiar numérico do Noise Gate.

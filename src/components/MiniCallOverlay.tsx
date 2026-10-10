@@ -29,6 +29,7 @@ import {
   Power,
   AudioLines,
   EyeOff,
+  GripHorizontal,
 } from 'lucide-react'
 
 const NOISE_ENGINES = [
@@ -629,7 +630,90 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
   const [isNoiseMenuOpen, setIsNoiseMenuOpen] = useState(false)
   const [isFloatingPreviewVisible, setIsFloatingPreviewVisible] = useState(true)
   const [isRoomSettingsOpen, setIsRoomSettingsOpen] = useState(false)
+  const [isCardCollapsed, setIsCardCollapsed] = useState(false)
   const [contextMenuState, setContextMenuState] = useState<{ user: ParticipantData; x: number; y: number } | null>(null)
+
+  // Floating draggable position state & ref
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const dragStartRef = useRef<{ startX: number; startY: number; initX: number; initY: number; hasMoved: boolean } | null>(null)
+
+  // Resize listener to keep card within viewport bounds
+  useEffect(() => {
+    const handleResize = () => {
+      setPosition((prev) => {
+        if (!prev || !containerRef.current) return prev
+        const rect = containerRef.current.getBoundingClientRect()
+        const maxX = Math.max(8, window.innerWidth - rect.width - 8)
+        const maxY = Math.max(8, window.innerHeight - rect.height - 8)
+        return {
+          x: Math.min(Math.max(8, prev.x), maxX),
+          y: Math.min(Math.max(8, prev.y), maxY),
+        }
+      })
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  // Dragging event listeners for smooth mouse and touch tracking
+  useEffect(() => {
+    if (!isDragging) return
+
+    const handlePointerMove = (e: PointerEvent) => {
+      if (!dragStartRef.current || !containerRef.current) return
+      const dx = e.clientX - dragStartRef.current.startX
+      const dy = e.clientY - dragStartRef.current.startY
+
+      if (Math.hypot(dx, dy) > 4) {
+        dragStartRef.current.hasMoved = true
+      }
+
+      const rect = containerRef.current.getBoundingClientRect()
+      const maxX = Math.max(8, window.innerWidth - rect.width - 8)
+      const maxY = Math.max(8, window.innerHeight - rect.height - 8)
+
+      const nextX = Math.min(Math.max(8, dragStartRef.current.initX + dx), maxX)
+      const nextY = Math.min(Math.max(8, dragStartRef.current.initY + dy), maxY)
+
+      setPosition({ x: nextX, y: nextY })
+    }
+
+    const handlePointerUp = () => {
+      dragStartRef.current = null
+      setIsDragging(false)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+    }
+  }, [isDragging])
+
+  const handleDragPointerDown = (e: React.PointerEvent) => {
+    const target = e.target as HTMLElement
+    if (target.closest('button, input, a, select, textarea, [data-no-drag="true"]')) {
+      return
+    }
+    const el = containerRef.current
+    if (!el) return
+
+    const rect = el.getBoundingClientRect()
+    dragStartRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      initX: position ? position.x : rect.left,
+      initY: position ? position.y : rect.top,
+      hasMoved: false,
+    }
+    setIsDragging(true)
+  }
 
   const streamMenuRef = useRef<HTMLDivElement>(null)
   const noiseMenuRef = useRef<HTMLDivElement>(null)
@@ -721,7 +805,18 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
 
   return (
     <>
-      <div className="fixed bottom-4 left-4 z-40 flex flex-col items-start select-none">
+      <div
+        ref={containerRef}
+        onPointerDown={handleDragPointerDown}
+        style={
+          position
+            ? { left: `${position.x}px`, top: `${position.y}px`, bottom: 'auto', right: 'auto' }
+            : undefined
+        }
+        className={`fixed z-40 flex flex-col items-start select-none touch-none ${
+          position ? '' : 'bottom-4 left-4'
+        } ${isDragging ? 'cursor-grabbing' : ''}`}
+      >
         {/* 1. Dedicated Floating Screen Share PiP Window (When sharing is active) */}
         {hasActiveScreenShare && activeScreenStream && isFloatingPreviewVisible && (
           <FloatingScreenPreview
@@ -738,36 +833,55 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
         )}
 
         {/* 2. Main Floating Zone Call Card */}
-        <div className="bg-[#1b202c]/95 backdrop-blur-xl border border-[#2a3142] rounded-3xl p-3 shadow-2xl animate-in slide-in-from-bottom-4 duration-200">
+        <div className="bg-[#1b202c]/95 backdrop-blur-xl border border-[#2a3142] rounded-3xl p-2.5 sm:p-3 shadow-2xl animate-in slide-in-from-bottom-4 duration-200 max-w-[calc(100vw-24px)] sm:max-w-md">
           {/* Top Status */}
-          <div className="flex items-center justify-between gap-4 mb-2 px-1">
+          <div className="flex items-center justify-between gap-2 sm:gap-4 px-1">
             <div
-              onClick={handleOpenRoomChat}
-              className="flex items-center gap-2 cursor-pointer group"
-              title={`Ir para o Chat da Sala (${zoneName})`}
+              onClick={() => {
+                if (dragStartRef.current?.hasMoved) return
+                handleOpenRoomChat()
+              }}
+              className="flex items-center gap-1.5 cursor-grab active:cursor-grabbing group min-w-0"
+              title={`Ir para o Chat da Sala (${zoneName}) • Arraste para mover`}
             >
-              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-xs font-bold text-slate-100 group-hover:text-indigo-400 transition-colors">
+              <GripHorizontal className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-300 shrink-0" />
+              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <span className="text-xs font-bold text-slate-100 group-hover:text-indigo-400 transition-colors truncate max-w-[110px] sm:max-w-[180px]">
                 {zoneName}
               </span>
-              <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded-full">
+              <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded-full shrink-0">
                 {peersInSameZone.length + 1} online
               </span>
               {isRoomLocked && (
-                <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1 shrink-0">
                   <Lock className="w-2.5 h-2.5 text-amber-400" />
-                  Trancada
                 </span>
               )}
               {isAnyReconnecting && (
-                <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse">
+                <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse shrink-0">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                  Reconectando
                 </span>
               )}
             </div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 shrink-0">
+              {/* Quick Mic button when card is collapsed */}
+              {isCardCollapsed && (
+                <button
+                  onClick={toggleMute}
+                  className={`p-1.5 rounded-xl text-xs font-medium transition-colors ${
+                    localPlayer.isMutedByAdmin
+                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/50'
+                      : isMuted
+                      ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                      : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                  }`}
+                  title={isMuted ? 'Desmutar Microfone' : 'Mutar Microfone'}
+                >
+                  {isMuted ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+                </button>
+              )}
+
               {/* Toggle Floating Screen Share Preview button if active */}
               {hasActiveScreenShare && !isFloatingPreviewVisible && (
                 <button
@@ -776,7 +890,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                   title="Exibir Tela Flutuante da Apresentação"
                 >
                   <Monitor className="w-3 h-3" />
-                  <span>Ver Tela</span>
+                  <span className="hidden sm:inline">Ver Tela</span>
                 </button>
               )}
 
@@ -787,11 +901,22 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               >
                 <Maximize2 className="w-4 h-4" />
               </button>
+
+              {/* Collapse / Expand Toggle */}
+              <button
+                onClick={() => setIsCardCollapsed((prev) => !prev)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
+                title={isCardCollapsed ? 'Expandir painel de chamada' : 'Recolher painel de chamada'}
+              >
+                {isCardCollapsed ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
             </div>
           </div>
 
-          {/* Video Tiles Carousel (Clicking opens Spotlight Grid) */}
-          <div className="flex gap-2 items-center overflow-x-auto pb-1 max-w-sm sm:max-w-md">
+          {!isCardCollapsed && (
+            <>
+              {/* Video Tiles Carousel (Clicking opens Spotlight Grid) */}
+              <div className="flex gap-2 items-center overflow-x-auto pb-1 max-w-[calc(100vw-40px)] sm:max-w-md mt-2">
             {/* Local User Camera */}
             <VideoTile
               id={localPlayer.id}
@@ -1171,8 +1296,10 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               <Settings className="w-4 h-4" />
             </button>
           </div>
-        </div>
-      </div>
+        </>
+      )}
+    </div>
+  </div>
 
       {/* Screen Share Window Picker Modal */}
       <ScreenShareModal

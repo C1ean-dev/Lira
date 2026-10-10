@@ -31,6 +31,7 @@ import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 import { useGameStore } from '../../store/useGameStore'
 import { DEFAULT_AVATAR } from '../../engine/Constants'
 import { AvatarPixelArtModal } from '../../editor/avatar/AvatarPixelArtModal'
+import { resolveStudioHitbox, type SpriteCollision } from '../../utils/spriteHitbox'
 import { generateSparrowXml, downloadFile, PackedSubTexture } from '../../engine/avatar/avatarAtlasExporter'
 import { cropContentDataUrl } from '../../engine/avatar/avatarBakeService'
 import {
@@ -262,6 +263,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
       pixelHeight?: number
       isObstacle?: boolean
       category?: string
+      spriteCollision?: SpriteCollision | null
     }
   ) => {
     const toArray = (v?: string | string[]): string[] => {
@@ -330,6 +332,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
 
       const thumbnail = await cropContentDataUrl(firstDown || firstUp || firstLeft || firstRight || '')
 
+      const isObstacle = options?.isObstacle !== undefined ? options.isObstacle : editingAsset.isObstacle
       store.updateCustomAsset(editingAsset.id, {
         name: newName || editingAsset.name,
         thumbnail,
@@ -337,7 +340,9 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
         height: options?.height || Math.max(1, Math.ceil(finalH / 32)),
         pixelWidth: finalW,
         pixelHeight: finalH,
-        isObstacle: options?.isObstacle !== undefined ? options.isObstacle : editingAsset.isObstacle,
+        isObstacle,
+        // Furniture: the hitbox follows the drawing, so the transparent parts do not block (spriteHitbox.ts)
+        ...(editingAsset.type === 'furniture' ? resolveStudioHitbox(editingAsset, isObstacle, options?.spriteCollision) : {}),
         category: options?.category || editingAsset.category,
         directionalFrames: newDirectionalFrames,
         frames: [firstDown, firstUp, firstLeft, firstRight],

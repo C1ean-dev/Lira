@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { UpdateInfo, UpdateProgress, UpdateService } from '../services/updateService'
+import { isAndroid } from '../utils/platform'
 
 export type UpdateStatus = 'idle' | 'checking' | 'downloading' | 'ready' | 'installing' | 'error'
 
@@ -114,6 +115,11 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
 
         set({ updateInfo: info })
 
+        if (isAndroid()) {
+          set({ status: 'idle' })
+          return
+        }
+
         // Check if update was already downloaded for this specific version
         const alreadyDownloaded = await UpdateService.isUpdateDownloaded(info.latestVersion)
         if (alreadyDownloaded) {
@@ -226,6 +232,44 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
     const info = get().updateInfo
     const targetVer = info?.latestVersion
 
+    if (isAndroid()) {
+      if (!info?.downloadUrl) {
+        if (info?.releaseUrl && typeof window !== 'undefined') {
+          window.open(info.releaseUrl, '_blank')
+        }
+        return false
+      }
+
+      set({
+        status: 'downloading',
+        isUpdateScreenOpen: true,
+        error: null,
+        progress: { percent: 0, downloaded: 0, total: 0 },
+      })
+
+      if (unsubProgress) unsubProgress()
+      unsubProgress = UpdateService.onProgress((p) => {
+        set({ progress: p })
+        if (p.percent >= 100) {
+          set({ status: 'installing' })
+        }
+      })
+
+      try {
+        const success = await UpdateService.installUpdate(info.downloadUrl, info.releaseUrl, targetVer)
+        if (success) {
+          set({ status: 'ready' })
+          return true
+        } else {
+          set({ status: 'error', error: 'Falha ao iniciar o instalador do APK.' })
+          return false
+        }
+      } catch (err: any) {
+        set({ status: 'error', error: err?.message || 'Erro ao processar atualização no Android.' })
+        return false
+      }
+    }
+
     // If update installer is not yet downloaded locally, download it first
     const isDownloaded = await UpdateService.isUpdateDownloaded(targetVer)
     if (!isDownloaded) {
@@ -268,6 +312,11 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
     const info = get().updateInfo
 
     if (currentStatus === 'installing') {
+      return
+    }
+
+    if (isAndroid()) {
+      await get().applyUpdate()
       return
     }
 

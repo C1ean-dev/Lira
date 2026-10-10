@@ -184,18 +184,23 @@ const ChatDrawerInner: React.FC = () => {
   const [isResizingDrawer, setIsResizingDrawer] = useState(false)
   const [isResizingChannels, setIsResizingChannels] = useState(false)
 
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640)
+  const [mobileTab, setMobileTab] = useState<'chat' | 'channels'>('chat')
+
   const drawerWidthRef = useRef(drawerWidth)
   drawerWidthRef.current = drawerWidth
 
   const channelsWidthRef = useRef(channelsWidth)
   channelsWidthRef.current = channelsWidth
 
-  // Clamp width when window is resized
+  // Clamp width and track mobile state when window is resized
   useEffect(() => {
     const handleResize = () => {
+      setIsMobile(window.innerWidth < 640)
       const maxW = Math.max(MIN_DRAWER_WIDTH, Math.floor(window.innerWidth * 0.92))
       setDrawerWidth((prev) => (prev > maxW ? maxW : prev))
     }
+    handleResize()
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
@@ -443,7 +448,7 @@ const ChatDrawerInner: React.FC = () => {
 
   return (
     <div
-      style={{ width: `${drawerWidth}px` }}
+      style={isMobile ? undefined : { width: `${drawerWidth}px` }}
       onDragOver={(e) => {
         if (isResizingDrawer || isResizingChannels) return
         e.preventDefault()
@@ -461,49 +466,53 @@ const ChatDrawerInner: React.FC = () => {
           handleFileSelect(e.dataTransfer.files[0])
         }
       }}
-      className={`fixed left-0 bottom-0 max-w-[92vw] bg-[#12151d] border-r border-[#2a3142] flex flex-col shadow-2xl animate-in slide-in-from-left duration-200 ${
+      className={`fixed left-0 bottom-0 ${
+        isMobile ? 'w-full max-w-full right-0' : 'max-w-[92vw]'
+      } bg-[#12151d] border-r border-[#2a3142] flex flex-col shadow-2xl animate-in slide-in-from-left duration-200 ${
         isResizingDrawer ? '' : 'transition-[width] duration-150 ease-out'
       } ${
         isGridCallOpen ? 'top-0 z-[60]' : 'top-14 z-50'
       }`}
     >
       {/* Transparent full-screen overlay during drag to capture pointer events smoothly */}
-      {(isResizingDrawer || isResizingChannels) && (
+      {!isMobile && (isResizingDrawer || isResizingChannels) && (
         <div className="fixed inset-0 z-[9999] cursor-col-resize select-none bg-transparent" />
       )}
 
-      {/* Right Edge Resize Handle */}
-      <div
-        onPointerDown={handleDrawerResizeStart}
-        onDoubleClick={() => {
-          setDrawerWidth(DEFAULT_DRAWER_WIDTH)
-          try {
-            localStorage.setItem(DRAWER_STORAGE_KEY, String(DEFAULT_DRAWER_WIDTH))
-          } catch {}
-        }}
-        className={`absolute top-0 -right-2 w-4 h-full cursor-col-resize z-50 select-none group flex items-center justify-center transition-colors ${
-          isResizingDrawer ? 'bg-indigo-500/20' : 'hover:bg-indigo-500/10'
-        }`}
-        title="Arraste para redimensionar o chat (duplo clique para restaurar 440px)"
-      >
+      {/* Right Edge Resize Handle (Desktop only) */}
+      {!isMobile && (
         <div
-          className={`w-1 rounded-full transition-all duration-150 relative flex items-center justify-center ${
-            isResizingDrawer
-              ? 'h-16 bg-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.9)]'
-              : 'h-8 bg-slate-600/40 group-hover:h-12 group-hover:bg-indigo-400 group-hover:shadow-[0_0_8px_rgba(99,102,241,0.6)]'
+          onPointerDown={handleDrawerResizeStart}
+          onDoubleClick={() => {
+            setDrawerWidth(DEFAULT_DRAWER_WIDTH)
+            try {
+              localStorage.setItem(DRAWER_STORAGE_KEY, String(DEFAULT_DRAWER_WIDTH))
+            } catch {}
+          }}
+          className={`absolute top-0 -right-2 w-4 h-full cursor-col-resize z-50 select-none group flex items-center justify-center transition-colors ${
+            isResizingDrawer ? 'bg-indigo-500/20' : 'hover:bg-indigo-500/10'
           }`}
+          title="Arraste para redimensionar o chat (duplo clique para restaurar 440px)"
         >
           <div
-            className={`absolute pointer-events-none transition-opacity duration-150 ${
-              isResizingDrawer ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+            className={`w-1 rounded-full transition-all duration-150 relative flex items-center justify-center ${
+              isResizingDrawer
+                ? 'h-16 bg-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.9)]'
+                : 'h-8 bg-slate-600/40 group-hover:h-12 group-hover:bg-indigo-400 group-hover:shadow-[0_0_8px_rgba(99,102,241,0.6)]'
             }`}
           >
-            <div className="p-0.5 rounded-full bg-indigo-600 text-white shadow-md border border-indigo-400/50">
-              <GripVertical className="w-3 h-3" />
+            <div
+              className={`absolute pointer-events-none transition-opacity duration-150 ${
+                isResizingDrawer ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+              }`}
+            >
+              <div className="p-0.5 rounded-full bg-indigo-600 text-white shadow-md border border-indigo-400/50">
+                <GripVertical className="w-3 h-3" />
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Drag & Drop Visual Overlay */}
       {isDragging && (
@@ -515,36 +524,68 @@ const ChatDrawerInner: React.FC = () => {
       )}
 
       {/* Top Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a3142] bg-[#1a1f2c]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a3142] bg-[#1a1f2c] shrink-0">
         <div className="flex items-center gap-2">
           <MessageSquare className="w-5 h-5 text-indigo-400" />
           <span className="font-bold text-sm text-slate-100">Chat & Canais</span>
         </div>
+
+        {/* Mobile Tab Toggle */}
+        {isMobile && (
+          <div className="flex gap-1 bg-[#12151d] p-0.5 rounded-xl border border-[#2a3142]">
+            <button
+              onClick={() => setMobileTab('channels')}
+              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${
+                mobileTab === 'channels'
+                  ? 'bg-indigo-600 text-white shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              Canais
+            </button>
+            <button
+              onClick={() => setMobileTab('chat')}
+              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors flex items-center gap-1 ${
+                mobileTab === 'chat'
+                  ? 'bg-indigo-600 text-white shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>Chat</span>
+              <span className="text-[10px] text-slate-300 max-w-[65px] truncate font-normal">
+                ({activeChannel.name})
+              </span>
+            </button>
+          </div>
+        )}
+
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => {
-              if (drawerWidth > 580) {
-                setDrawerWidth(DEFAULT_DRAWER_WIDTH)
-                try {
-                  localStorage.setItem(DRAWER_STORAGE_KEY, String(DEFAULT_DRAWER_WIDTH))
-                } catch {}
-              } else {
-                const expanded = Math.min(760, Math.floor(window.innerWidth * 0.85))
-                setDrawerWidth(expanded)
-                try {
-                  localStorage.setItem(DRAWER_STORAGE_KEY, String(expanded))
-                } catch {}
-              }
-            }}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
-            title={drawerWidth > 580 ? 'Restaurar largura padrão (440px)' : 'Expandir largura do chat'}
-          >
-            {drawerWidth > 580 ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-          </button>
+          {!isMobile && (
+            <button
+              type="button"
+              onClick={() => {
+                if (drawerWidth > 580) {
+                  setDrawerWidth(DEFAULT_DRAWER_WIDTH)
+                  try {
+                    localStorage.setItem(DRAWER_STORAGE_KEY, String(DEFAULT_DRAWER_WIDTH))
+                  } catch {}
+                } else {
+                  const expanded = Math.min(760, Math.floor(window.innerWidth * 0.85))
+                  setDrawerWidth(expanded)
+                  try {
+                    localStorage.setItem(DRAWER_STORAGE_KEY, String(expanded))
+                  } catch {}
+                }
+              }}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+              title={drawerWidth > 580 ? 'Restaurar largura padrão (440px)' : 'Expandir largura do chat'}
+            >
+              {drawerWidth > 580 ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </button>
+          )}
           <button
             onClick={() => setChatOpen(false)}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
             title="Fechar chat"
           >
             <X className="w-4 h-4" />
@@ -555,8 +596,14 @@ const ChatDrawerInner: React.FC = () => {
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sub-sidebar: Channels & DMs */}
         <div
-          style={{ width: `${channelsWidth}px` }}
-          className={`bg-[#0d1017] border-r border-[#2a3142] flex flex-col p-2 space-y-4 overflow-y-auto shrink-0 relative ${
+          style={isMobile ? undefined : { width: `${channelsWidth}px` }}
+          className={`${
+            isMobile
+              ? mobileTab === 'channels'
+                ? 'w-full flex-1 flex'
+                : 'hidden'
+              : 'flex shrink-0'
+          } bg-[#0d1017] border-r border-[#2a3142] flex-col p-2 space-y-4 overflow-y-auto relative ${
             isResizingChannels ? '' : 'transition-[width] duration-150 ease-out'
           }`}
         >
@@ -567,7 +614,10 @@ const ChatDrawerInner: React.FC = () => {
             canManage={canManageChannels}
             editing={channelEditing}
             error={channelError}
-            onSelect={setActiveChannel}
+            onSelect={(id) => {
+              setActiveChannel(id)
+              if (isMobile) setMobileTab('chat')
+            }}
             onContextMenu={(e, channel) => {
               e.preventDefault()
               setChannelMenu({ x: e.clientX, y: e.clientY, channel })
@@ -580,7 +630,10 @@ const ChatDrawerInner: React.FC = () => {
           {/* Friends, the other people in this space, other saved conversations */}
           <ChatPeopleList
             people={people}
-            onOpen={(person) => openChatPerson(person, { setActiveChannel, openDirectMessage })}
+            onOpen={(person) => {
+              openChatPerson(person, { setActiveChannel, openDirectMessage })
+              if (isMobile) setMobileTab('chat')
+            }}
             onContextMenu={(e, person) => {
               e.preventDefault()
               setPersonMenu({ x: e.clientX, y: e.clientY, person })
@@ -588,34 +641,53 @@ const ChatDrawerInner: React.FC = () => {
           />
         </div>
 
-        {/* Channels divider resize handle */}
-        <div
-          onPointerDown={handleChannelsResizeStart}
-          onDoubleClick={() => {
-            setChannelsWidth(DEFAULT_CHANNELS_WIDTH)
-            try {
-              localStorage.setItem(CHANNELS_STORAGE_KEY, String(DEFAULT_CHANNELS_WIDTH))
-            } catch {}
-          }}
-          className={`relative -ml-1 -mr-1 w-2 h-full cursor-col-resize z-20 select-none group flex items-center justify-center transition-colors ${
-            isResizingChannels ? 'bg-indigo-500/30' : 'hover:bg-indigo-500/20'
-          }`}
-          title="Arraste para redimensionar canais (duplo clique para restaurar 144px)"
-        >
+        {/* Channels divider resize handle (Desktop only) */}
+        {!isMobile && (
           <div
-            className={`w-0.5 rounded-full transition-all duration-150 ${
-              isResizingChannels
-                ? 'h-10 bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.8)]'
-                : 'h-6 bg-transparent group-hover:bg-indigo-400/80 group-hover:h-8'
+            onPointerDown={handleChannelsResizeStart}
+            onDoubleClick={() => {
+              setChannelsWidth(DEFAULT_CHANNELS_WIDTH)
+              try {
+                localStorage.setItem(CHANNELS_STORAGE_KEY, String(DEFAULT_CHANNELS_WIDTH))
+              } catch {}
+            }}
+            className={`relative -ml-1 -mr-1 w-2 h-full cursor-col-resize z-20 select-none group flex items-center justify-center transition-colors ${
+              isResizingChannels ? 'bg-indigo-500/30' : 'hover:bg-indigo-500/20'
             }`}
-          />
-        </div>
+            title="Arraste para redimensionar canais (duplo clique para restaurar 144px)"
+          >
+            <div
+              className={`w-0.5 rounded-full transition-all duration-150 ${
+                isResizingChannels
+                  ? 'h-10 bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.8)]'
+                  : 'h-6 bg-transparent group-hover:bg-indigo-400/80 group-hover:h-8'
+              }`}
+            />
+          </div>
+        )}
 
         {/* Right: Message Stream & Input */}
-        <div className="flex-1 flex flex-col bg-[#12151d] overflow-hidden">
+        <div
+          className={`${
+            isMobile
+              ? mobileTab === 'chat'
+                ? 'w-full flex-1 flex'
+                : 'hidden'
+              : 'flex-1 flex'
+          } flex-col bg-[#12151d] overflow-hidden`}
+        >
           {/* Channel Info Bar */}
           <div className="px-3 py-2 border-b border-[#2a3142] flex items-center justify-between bg-[#161a24] shrink-0">
             <div className="flex items-center gap-1.5 truncate">
+              {isMobile && (
+                <button
+                  type="button"
+                  onClick={() => setMobileTab('channels')}
+                  className="px-2 py-0.5 rounded-lg bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 text-[10px] font-bold flex items-center gap-1 mr-1 shrink-0"
+                >
+                  ← Canais
+                </button>
+              )}
               {activeChannel.type === 'dm' ? (
                 <div className="w-4 h-4 rounded-full bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-[10px] font-bold text-indigo-300 shrink-0">
                   @

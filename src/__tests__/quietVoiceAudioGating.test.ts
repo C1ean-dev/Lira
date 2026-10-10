@@ -119,11 +119,7 @@ describe('Quiet Voice Gating & Background Processing Regression Tests', () => {
       const processor = new SoftDspProcessor()
       processor.setSensitivity('auto', 20)
 
-      // Clamped to at least 0.0035 RMS even in quiet rooms
       expect(processor.getCurrentThreshold()).toBeLessThanOrEqual(0.0080)
-      ;(processor as any).dynamicNoiseFloor = 0.002
-      ;(processor as any).updateCalculatedThreshold()
-      expect(processor.getCurrentThreshold()).toBeCloseTo(0.0035, 4)
 
       // Simulate a quiet speech signal: RMS = 0.0055
       const mockTrack = { id: 'track-1', kind: 'audio', enabled: true }
@@ -146,9 +142,16 @@ describe('Quiet Voice Gating & Background Processing Regression Tests', () => {
         }
       )
 
-      // Inject RMS = 0.0055 (well above 0.0035 baseline)
       const analyser = (processor as any).analyser as MockAnalyserNode
       expect(analyser).toBeDefined()
+
+      // A very quiet room (RMS 0.0005): what it learns never drags the
+      // threshold under the 0.0035 baseline.
+      analyser.mockValue = 0.0005
+      vi.advanceTimersByTime(3000)
+      expect(processor.getCurrentThreshold()).toBeCloseTo(0.0035, 4)
+
+      // Inject RMS = 0.0055 (well above 0.0035 baseline)
       analyser.mockValue = 0.0055
 
       // Advance timers by 300ms (~10 ticks) to let EMA smoothing reach steady-state
@@ -167,9 +170,6 @@ describe('Quiet Voice Gating & Background Processing Regression Tests', () => {
       suppressor.setSensitivity('auto', 20)
 
       expect(suppressor.getCurrentThreshold()).toBeLessThanOrEqual(0.0090)
-      ;(suppressor as any).dynamicNoiseFloor = 0.002
-      ;(suppressor as any).updateCalculatedThreshold()
-      expect(suppressor.getCurrentThreshold()).toBeCloseTo(0.0045, 4)
 
       const mockTrack = { id: 'track-ns', kind: 'audio', enabled: true }
       const mockStream = {
@@ -193,6 +193,13 @@ describe('Quiet Voice Gating & Background Processing Regression Tests', () => {
 
       const analyser = (suppressor as any).analyser as MockAnalyserNode
       expect(analyser).toBeDefined()
+
+      // A very quiet room (RMS 0.0005): what it learns never drags the
+      // threshold under the 0.0045 baseline.
+      analyser.mockValue = 0.0005
+      vi.advanceTimersByTime(3000)
+      expect(suppressor.getCurrentThreshold()).toBeCloseTo(0.0045, 4)
+
       // RMS 0.0065 is typical headset soft voice
       analyser.mockValue = 0.0065
 

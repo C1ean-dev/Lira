@@ -1,0 +1,86 @@
+name: Android APK Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag to attach the APK to (e.g. v1.1.82). Empty = latest release.'
+        required: false
+        default: ''
+  # Called by release.yml right after the Windows release exists, because a release created
+  # with GITHUB_TOKEN does not trigger other workflows on its own.
+  workflow_call:
+    inputs:
+      tag_name:
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          # The default list includes 'tools', a package the SDK no longer ships, which fails
+          # the step. Install what android/variables.gradle compiles against instead.
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
+      - name: Resolve release tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ inputs.tag_name }}
+        run: |
+          TAG="$INPUT_TAG"
+          if [ -z "$TAG" ]; then
+            TAG=$(gh release view --json tagName -q .tagName)
+          fi
+          echo "tag_name=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web bundle
+        run: npm run build
+
+      - name: Sync Capacitor Android project
+        run: npx cap sync android
+
+      - name: Build APK
+        working-directory: android
+        env:
+          LIRA_VERSION_NAME: ${{ steps.tag.outputs.version }}
+          LIRA_VERSION_CODE: ${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk "../Lira-${{ steps.tag.outputs.tag_name }}.apk"
+
+      - name: Upload APK to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ steps.tag.outputs.tag_name }}" "Lira-${{ steps.tag.outputs.tag_name }}.apk" --clobber

@@ -15,7 +15,15 @@ type ProcessAudioApi = {
 
 const SAMPLE_RATE = 48_000
 const CHANNELS = 2
-const MAX_BUFFERED_SAMPLES = SAMPLE_RATE * CHANNELS * 2
+const msToSamples = (ms: number) => Math.round((SAMPLE_RATE * ms) / 1000) * CHANNELS
+// Latency control for the PCM queue between the native helper and Web Audio.
+// The producer (WASAPI clock) and the consumer (AudioContext clock) run at the
+// same nominal rate, so any backlog created by an IPC/main-thread hiccup never
+// drains by itself — it used to accumulate up to 2 s and leave the live audio
+// seconds behind the video. Whenever the backlog exceeds the high watermark,
+// the oldest audio is dropped so the queue goes back to the target latency.
+const TARGET_BUFFERED_SAMPLES = msToSamples(60)
+const HIGH_WATERMARK_SAMPLES = msToSamples(150)
 
 export class ProcessAudioCapture {
   private audioContext: AudioContext | null = null
@@ -32,6 +40,9 @@ export class ProcessAudioCapture {
   private receivedNonSilentChunks = 0
   private processCallbacks = 0
   private outputNonZeroSamples = 0
+  private latencyResyncs = 0
+  private droppedSamples = 0
+  private underrunCallbacks = 0
 
   static isSupported(): boolean {
     if (typeof window === 'undefined') return false
@@ -87,6 +98,10 @@ export class ProcessAudioCapture {
         bufferedSamples: this.bufferedSamples,
         processCallbacks: this.processCallbacks,
         outputNonZeroSamples: this.outputNonZeroSamples,
+        bufferedMs: Math.round((this.bufferedSamples / CHANNELS / SAMPLE_RATE) * 1000),
+        latencyResyncs: this.latencyResyncs,
+        droppedSamples: this.droppedSamples,
+        underrunCallbacks: this.underrunCallbacks,
         audioContextState: audioContext.state,
       })
     }, 2000)
@@ -161,6 +176,9 @@ export class ProcessAudioCapture {
     this.receivedNonSilentChunks = 0
     this.processCallbacks = 0
     this.outputNonZeroSamples = 0
+    this.latencyResyncs = 0
+    this.droppedSamples = 0
+    this.underrunCallbacks = 0
   }
 
   private enqueue(data: Uint8Array) {
@@ -182,11 +200,30 @@ export class ProcessAudioCapture {
       }
     }
 
-    while (this.bufferedSamples > MAX_BUFFERED_SAMPLES && this.chunks.length > 0) {
-      const first = this.chunks.shift()!
-      const remaining = first.length - this.chunkOffset
-      this.bufferedSamples -= remaining
-      this.chunkOffset = 0
+    if (this.bufferedSamples > HIGH_WATERMARK_SAMPLES) {
+      this.dropOldest(this.bufferedSamples - TARGET_BUFFERED_SAMPLES)
+    }
+  }
+
+  /** Discards `count` samples from the head of the queue (keeps L/R aligned). */
+  private dropOldest(count: number) {
+    let toDrop = count - (count % CHANNELS)
+    if (toDrop <= 0) return
+    this.latencyResyncs++
+    this.droppedSamples += toDrop
+    while (toDrop > 0 && this.chunks.length > 0) {
+      const current = this.chunks[0]
+      const remaining = current.length - this.chunkOffset
+      if (remaining <= toDrop) {
+        this.chunks.shift()
+        this.chunkOffset = 0
+        this.bufferedSamples -= remaining
+        toDrop -= remaining
+      } else {
+        this.chunkOffset += toDrop
+        this.bufferedSamples -= toDrop
+        toDrop = 0
+      }
     }
   }
 
@@ -209,6 +246,7 @@ export class ProcessAudioCapture {
     const output = event.outputBuffer
     const left = output.getChannelData(0)
     const right = output.numberOfChannels > 1 ? output.getChannelData(1) : left
+    if (this.bufferedSamples < output.length * CHANNELS) this.underrunCallbacks++
     for (let frame = 0; frame < output.length; frame++) {
       left[frame] = this.readSample()
       right[frame] = this.readSample()

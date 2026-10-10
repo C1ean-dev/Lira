@@ -1,6 +1,7 @@
 import React from 'react'
-import { User, PlusCircle, LogIn, Globe, Shield, Sparkles, Clipboard } from 'lucide-react'
+import { User, PlusCircle, LogIn, Globe, Lock, Shield, Sparkles, Clipboard } from 'lucide-react'
 import { useMediaStore } from '../../store/useMediaStore'
+import { isAndroid } from '../../utils/platform'
 
 interface Props {
   userName: string
@@ -35,8 +36,10 @@ export const DirectConnectTab: React.FC<Props> = ({
   loading,
   onSubmit,
 }) => {
+  const isAndroidPlatform = isAndroid()
+
   return (
-    <form onSubmit={onSubmit} className="p-6 space-y-4 overflow-y-auto">
+    <form onSubmit={onSubmit} className="p-4 sm:p-6 space-y-3.5 sm:space-y-4 overflow-y-auto">
       {/* User Nickname & Avatar Button */}
       <div>
         <label className="block text-xs font-semibold text-slate-300 mb-1.5">Seu Nickname</label>
@@ -97,46 +100,70 @@ export const DirectConnectTab: React.FC<Props> = ({
             <label className="block text-[11px] font-semibold text-slate-300 mb-1">
               Nome da Sala / Espaço
             </label>
-            <input
-              type="text"
-              value={createRoomName}
-              onChange={(e) => setCreateRoomName(e.target.value)}
-              placeholder="Ex: Devs Hub, Reunião de Equipe..."
-              className="w-full bg-[#12151d] border border-[#2a3142] rounded-xl px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
-              maxLength={35}
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={createRoomName}
+                onChange={(e) => setCreateRoomName(e.target.value)}
+                placeholder="Ex: Devs Hub, Reunião de Equipe..."
+                className="flex-1 bg-[#12151d] border border-[#2a3142] rounded-xl px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                maxLength={35}
+              />
+              {/* On Android: Icon-only toggle button */}
+              {isAndroidPlatform && (
+                <button
+                  type="button"
+                  onClick={() => setCreateIsPublic(!createIsPublic)}
+                  className={`p-2 rounded-xl border transition-all shrink-0 ${
+                    createIsPublic
+                      ? 'bg-blue-500/15 border-blue-500/40 text-blue-400'
+                      : 'bg-[#12151d] border-[#2a3142] text-slate-400'
+                  }`}
+                  title={createIsPublic ? 'Sala Pública' : 'Sala Privada'}
+                >
+                  {createIsPublic ? (
+                    <Globe className="w-4 h-4 text-blue-400" />
+                  ) : (
+                    <Lock className="w-4 h-4 text-slate-400" />
+                  )}
+                </button>
+              )}
+            </div>
           </div>
 
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-300 mb-1">Visibilidade da Sala</label>
-            <button
-              type="button"
-              onClick={() => setCreateIsPublic(!createIsPublic)}
-              className={`w-full py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-between transition-colors ${
-                createIsPublic
-                  ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
-                  : 'bg-[#12151d] border-[#2a3142] text-slate-400'
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                {createIsPublic ? (
-                  <Globe className="w-4 h-4 text-blue-400" />
-                ) : (
-                  <Shield className="w-4 h-4 text-slate-400" />
-                )}
-                <span>{createIsPublic ? 'Pública (visível no Hub)' : 'Privada (somente com código)'}</span>
-              </span>
-              <span
-                className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${
-                  createIsPublic ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-400'
+          {/* Desktop only: full visibility row and description */}
+          {!isAndroidPlatform && (
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-300 mb-1">Visibilidade da Sala</label>
+              <button
+                type="button"
+                onClick={() => setCreateIsPublic(!createIsPublic)}
+                className={`w-full py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-between transition-colors ${
+                  createIsPublic
+                    ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
+                    : 'bg-[#12151d] border-[#2a3142] text-slate-400'
                 }`}
               >
-                {createIsPublic ? '✓' : ''}
-              </span>
-            </button>
-          </div>
+                <span className="flex items-center gap-2">
+                  {createIsPublic ? (
+                    <Globe className="w-4 h-4 text-blue-400" />
+                  ) : (
+                    <Shield className="w-4 h-4 text-slate-400" />
+                  )}
+                  <span>{createIsPublic ? 'Pública (visível no Hub)' : 'Privada (somente com código)'}</span>
+                </span>
+                <span
+                  className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${
+                    createIsPublic ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-400'
+                  }`}
+                >
+                  {createIsPublic ? '✓' : ''}
+                </span>
+              </button>
+            </div>
+          )}
 
-          {createIsPublic && (
+          {!isAndroidPlatform && createIsPublic && (
             <p className="text-[10px] text-indigo-300/80 bg-indigo-500/10 p-2 rounded-xl border border-indigo-500/20">
               🌐 <strong>Sala Pública:</strong> outros usuários do app verão sua sala no Hub de Salas Disponíveis e poderão entrar facilmente!
             </p>

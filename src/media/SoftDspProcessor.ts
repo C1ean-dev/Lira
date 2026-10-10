@@ -1,4 +1,5 @@
 import { SensitivityMode } from '../types/audio'
+import { AutoGate } from './autoGate'
 
 /**
  * SoftDspProcessor — same audio engine family as the original
@@ -9,11 +10,12 @@ import { SensitivityMode } from '../types/audio'
  *    soft downward expander: gain ramps from 1.0 down to a non-zero floor
  *    (0.35). Voice always makes it through; ambient noise still gets
  *    attenuated.
- *  - Hysteresis: open threshold = 1.0× currentThreshold, close threshold =
- *    0.55×. Prevents the gate from fluttering on borderline signals.
+ *  - Hysteresis between an open and a close level. Prevents the gate from
+ *    fluttering on borderline signals.
  *  - Release lengthened from 150ms to 250ms so trailing consonants survive.
- *  - Auto-floor adaptation is much slower upward (0.0005/frame) with a 1.5s
- *    hold requirement so breath sounds can't push the threshold up.
+ *  - In auto mode both levels come from the shared AutoGate: the room's noise
+ *    floor is learned (speech and breath are not taken for noise) and the gate
+ *    opens 6 dB above it, never below RMS 0.0035.
  *  - Compressor softened (ratio 3, knee 18dB, release 0.22s) so the residual
  *    noise doesn't pump.
  *
@@ -41,7 +43,7 @@ export class SoftDspProcessor {
   private sensitivityMode: SensitivityMode = 'auto'
   private manualThresholdPercent = 20
   private currentThreshold = 0.015
-  private dynamicNoiseFloor = 0.005
+  private autoGate = new AutoGate({ minOpenRms: 0.0035, minCloseRms: 0.0035 * 0.55 })
   private isExpanderActive = false
   private isSuppressionActive = true
 
@@ -49,8 +51,6 @@ export class SoftDspProcessor {
   private holdTimeMs = 220
   private lastSpeechTime = 0
 
-  private readonly openRatio = 1.0
-  private readonly closeRatio = 0.55
   private readonly expanderFloor = 0.0
   private readonly expanderRelease = 0.12 // seconds
 
@@ -155,16 +155,14 @@ export class SoftDspProcessor {
       this.currentThreshold =
         minRMS + (this.manualThresholdPercent / 100) * (maxRMS - minRMS)
     } else {
-      // Responsive baseline for soft voices down to 0.0035 RMS (was rigid 0.010 which cut off normal voices)
-      this.currentThreshold = Math.max(0.0035, this.dynamicNoiseFloor * 1.4)
+      // Learned from the room, never under 0.0035 RMS so soft voices still get through
+      this.currentThreshold = this.autoGate.openLevel
     }
   }
 
   private startExpanderProcessing() {
     if (!this.analyser || !this.audioCtx) return
     const buffer = new Float32Array(this.analyser.fftSize)
-    let quietMs = 0
-    const holdMs = 1500
 
     let lastTick = 0
     const tick = () => {
@@ -178,25 +176,10 @@ export class SoftDspProcessor {
       for (let i = 0; i < buffer.length; i++) sum += buffer[i] * buffer[i]
       const rms = Math.sqrt(sum / buffer.length)
 
-      if (this.sensitivityMode === 'auto') {
-        const quietLimit = this.currentThreshold * 0.7
-        if (rms < this.dynamicNoiseFloor || this.dynamicNoiseFloor === 0) {
-          // Track ambient noise downward quickly
-          this.dynamicNoiseFloor = this.dynamicNoiseFloor * 0.95 + rms * 0.05
-          this.updateCalculatedThreshold()
-        } else if (rms < quietLimit) {
-          // In quiet periods, allow gentle upward creep only after sustained silence
-          quietMs += 1000 / 60
-          if (quietMs > holdMs) {
-            this.dynamicNoiseFloor =
-              this.dynamicNoiseFloor * 0.999 + rms * 0.001
-            this.updateCalculatedThreshold()
-          }
-        } else {
-          // Active speech: reset quiet timer and do NOT raise the noise floor
-          quietMs = 0
-        }
-      }
+      // Learns the room in manual mode too, so switching to auto starts from
+      // the room as it is now.
+      this.autoGate.update(rms, nowMs)
+      if (this.sensitivityMode === 'auto') this.updateCalculatedThreshold()
 
       const normalizedLevel = Math.min(1, rms * 6)
 
@@ -222,16 +205,12 @@ export class SoftDspProcessor {
               shouldOpen = this.isExpanderActive
             }
           }
+        } else if (rms > this.autoGate.openLevel) {
+          shouldOpen = true
+        } else if (rms < this.autoGate.closeLevel) {
+          shouldOpen = false
         } else {
-          const openLevel = this.currentThreshold * this.openRatio
-          const closeLevel = this.currentThreshold * this.closeRatio
-          if (rms > openLevel) {
-            shouldOpen = true
-          } else if (rms < closeLevel) {
-            shouldOpen = false
-          } else {
-            shouldOpen = this.isExpanderActive
-          }
+          shouldOpen = this.isExpanderActive
         }
 
         // Hold Time tracking: keep expander open during natural micro-pauses in speech
@@ -339,6 +318,7 @@ export class SoftDspProcessor {
     this.testGainNode = null
     this.audioCtx = null
     this.lastSpeechTime = 0
+    this.autoGate.reset()
   }
 
   public async resumeContext(): Promise<void> {

@@ -19,6 +19,9 @@ import { createErrorReporter } from '../src/utils/errorReporter'
 import { setupSingleInstanceLock } from './singleInstance'
 import { TrayManager, AppSettings } from './trayManager'
 import { createLogWriter, installConsoleCapture, installProcessErrorCapture } from './logWriter'
+import { readNativeDataFile, writeNativeDataFileLatest } from './nativeDataFile'
+import { createStartupTimer } from './startupTimer'
+import { startCpuProfile } from './startupProfile'
 import { sanitizeRecords } from '../src/utils/logFormat'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -432,6 +435,9 @@ guardIpcMain(ipcMain, {
 app.whenReady().then(logSessionStart)
 installConsoleCapture(console as any, appLog, 'main')
 installProcessErrorCapture(process, appLog, 'main')
+// Start-up steps of the main process, in the same log ("[Startup] main: ..."); the renderer adds its own line.
+const startupStep = createStartupTimer({ log: (line) => console.log(line) })
+let startupProfiled = false
 app.on('child-process-gone', (_event, details) => {
   logProcessGone('child', details)
 })
@@ -500,17 +506,11 @@ function createWindow() {
   const xOffset = isMultiInstance && instNum > 1 ? 40 + (instNum - 1) * 70 : undefined
   const yOffset = isMultiInstance && instNum > 1 ? 40 + (instNum - 1) * 60 : undefined
 
-  const isStartHidden =
-    process.argv.includes('--hidden') ||
-    process.argv.includes('--start-hidden') ||
-    (app.getLoginItemSettings?.().wasOpenedAsHidden ?? false)
-
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 900,
     minHeight: 600,
-    show: !isStartHidden,
     ...(xOffset !== undefined ? { x: xOffset } : {}),
     ...(yOffset !== undefined ? { y: yOffset } : {}),
     title: isMultiInstance ? `Lira (Instância ${instanceId})` : 'Lira',
@@ -623,6 +623,14 @@ function createWindow() {
     }
   })
 
+  // The steps between the window and the first paint, to see where the time before the app code goes.
+  mainWindow.webContents.once('did-start-loading', () => startupStep('did-start-loading'))
+  mainWindow.webContents.once('did-start-navigation', () => startupStep('did-start-navigation'))
+  mainWindow.webContents.once('did-navigate', () => startupStep('did-navigate'))
+  mainWindow.once('ready-to-show', () => startupStep('ready-to-show'))
+  mainWindow.webContents.once('dom-ready', () => startupStep('dom-ready'))
+  mainWindow.webContents.once('did-finish-load', () => startupStep('did-finish-load'))
+
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
     console.error(`[Electron] Failed to load ${validatedURL}: ${errorDescription} (${errorCode})`)
   })
@@ -631,11 +639,34 @@ function createWindow() {
     logProcessGone('renderer', details)
   })
 
-  if (process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
+  const loadApp = () => {
+    if (process.env.VITE_DEV_SERVER_URL) {
+      mainWindow?.loadURL(process.env.VITE_DEV_SERVER_URL)
+    } else {
+      mainWindow?.loadFile(path.join(__dirname, '../dist/index.html'))
+    }
   }
+
+  // LIRA_PROFILE_STARTUP=1: sample the renderer's CPU while the app loads and log where the time went
+  // ("[Startup] profile ..." lines), for the first window only. The profiler is started once the page has
+  // committed: before that the renderer is replaced and the debugger target closes ("target closed").
+  if (process.env.LIRA_PROFILE_STARTUP === '1' && !startupProfiled) {
+    startupProfiled = true
+    const contents = mainWindow.webContents
+    contents.once('did-navigate', () => {
+      startCpuProfile(contents.debugger)
+        .then((stop) => {
+          setTimeout(() => {
+            stop()
+              .then((lines) => lines.forEach((line) => console.log(line)))
+              .catch((err) => console.warn('[Startup] profile failed:', err))
+          }, 8000)
+        })
+        .catch((err) => console.warn('[Startup] could not start the profiler:', err))
+    })
+  }
+
+  loadApp()
 }
 
 // Compare semantic versions (v1 > v2 => true)
@@ -1279,7 +1310,9 @@ ipcMain.handle('save-native-assets', async (_event, data: { categories: string[]
   try {
     const dataDir = getDataDirectory()
     const filePath = path.join(dataDir, 'nativeAssets.json')
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8')
+    // In time slices, one write at a time (see nativeDataFile): the main process stays responsive while this
+    // runs at start-up. The installed app does not recode the pictures: nothing reads this file back there.
+    await writeNativeDataFileLatest(filePath, data, { optimize: !app.isPackaged })
     console.log('[NativeAssets] Saved to', filePath)
     return true
   } catch (err) {
@@ -1293,8 +1326,7 @@ ipcMain.handle('load-native-assets', async () => {
     const dataDir = getDataDirectory()
     const filePath = path.join(dataDir, 'nativeAssets.json')
     if (fs.existsSync(filePath)) {
-      const raw = fs.readFileSync(filePath, 'utf-8')
-      return JSON.parse(raw)
+      return readNativeDataFile(filePath)
     }
   } catch (err) {
     console.error('[NativeAssets] Load error:', err)
@@ -1645,7 +1677,6 @@ try {
 ipcMain.handle('get-app-settings', () => {
   return trayManager?.getSettings() || {
     openAtLogin: false,
-    openAsHidden: true,
     closeToTray: true,
     minimizeToTray: false,
   }
@@ -1655,7 +1686,6 @@ ipcMain.handle('set-app-settings', (_event, partial: Partial<AppSettings>) => {
   return (
     trayManager?.updateSettings(partial) || {
       openAtLogin: false,
-      openAsHidden: true,
       closeToTray: true,
       minimizeToTray: false,
     }
@@ -1746,7 +1776,9 @@ app.whenReady().then(() => {
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.lira.app')
   }
+  startupStep('ready')
   createWindow()
+  startupStep('window-created')
   initNetworkTriggerAndLanDiscovery()
 
   app.on('activate', () => {

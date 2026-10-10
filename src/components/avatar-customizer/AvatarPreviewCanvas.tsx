@@ -13,6 +13,9 @@ interface Props {
   localPlayer: Player
   onRandomize: () => void
   showNameTags?: boolean
+  className?: string
+  canvasWidth?: number
+  canvasHeight?: number
 }
 
 export const AvatarPreviewCanvas: React.FC<Props> = ({
@@ -23,6 +26,9 @@ export const AvatarPreviewCanvas: React.FC<Props> = ({
   localPlayer,
   onRandomize,
   showNameTags = true,
+  className,
+  canvasWidth = 280,
+  canvasHeight = 460,
 }) => {
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
@@ -145,16 +151,16 @@ export const AvatarPreviewCanvas: React.FC<Props> = ({
   }
 
   return (
-    <div className="w-80 bg-[#1e1f22] border-l border-[#2b2d31] relative flex items-center justify-center p-4 shrink-0 overflow-hidden">
+    <div className={className || "w-80 bg-[#1e1f22] border-l border-[#2b2d31] relative flex items-center justify-center p-4 shrink-0 overflow-hidden"}>
       {/* Live 2D Canvas Stage */}
       <div className="w-full h-full rounded-2xl overflow-hidden shadow-2xl relative border border-[#2b2d31]">
-        <canvas ref={previewCanvasRef} width={280} height={460} className="w-full h-full pixelated" />
+        <canvas ref={previewCanvasRef} width={canvasWidth} height={canvasHeight} className="w-full h-full pixelated" />
 
         {/* Floating Top-Right Action Buttons */}
-        <div className="absolute top-3 right-3 flex items-center gap-1.5">
+        <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
           <button
             onClick={handleDownloadPNG}
-            className="p-2 rounded-xl bg-[#18191c]/90 hover:bg-[#18191c] text-slate-300 hover:text-white border border-[#2b2d31] backdrop-blur-md shadow-lg transition-all active:scale-95"
+            className="p-1.5 sm:p-2 rounded-xl bg-[#18191c]/90 hover:bg-[#18191c] text-slate-300 hover:text-white border border-[#2b2d31] backdrop-blur-md shadow-lg transition-all active:scale-95"
             title="Baixar Avatar em PNG"
           >
             <Download className="w-4 h-4" />
@@ -164,10 +170,10 @@ export const AvatarPreviewCanvas: React.FC<Props> = ({
         {/* Floating Bottom-Right Randomize (Dice) Button */}
         <button
           onClick={onRandomize}
-          className="absolute bottom-3 right-3 p-3 rounded-2xl bg-[#18191c]/90 hover:bg-[#3b82f6] text-slate-300 hover:text-white border border-[#2b2d31] backdrop-blur-md shadow-xl transition-all hover:rotate-12 active:scale-95"
+          className="absolute bottom-2.5 right-2.5 p-2 sm:p-2.5 rounded-xl bg-[#18191c]/90 hover:bg-[#3b82f6] text-slate-300 hover:text-white border border-[#2b2d31] backdrop-blur-md shadow-xl transition-all hover:rotate-12 active:scale-95"
           title="Gerar Combinação Aleatória (Dados)"
         >
-          <Dices className="w-5 h-5 text-indigo-400 group-hover:text-white" />
+          <Dices className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-400 group-hover:text-white" />
         </button>
       </div>
     </div>

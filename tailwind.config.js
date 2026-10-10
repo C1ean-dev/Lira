@@ -22,6 +22,14 @@ export default {
           muted: '#868e96'
         }
       },
+      // The app's own arrow, link, busy and text cursors (src/styles/cursors.css), so every cursor-default /
+      // cursor-pointer / cursor-wait / cursor-text in the markup gets them.
+      cursor: {
+        default: 'var(--cursor-default)',
+        pointer: 'var(--cursor-pointer)',
+        wait: 'var(--cursor-wait)',
+        text: 'var(--cursor-text)',
+      },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
         pixel: ['"Press Start 2P"', 'monospace', 'sans-serif'],

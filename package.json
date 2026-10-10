@@ -1,6 +1,6 @@
 {
   "name": "lira",
-  "version": "1.1.81",
+  "version": "1.1.93",
   "description": "Lira - Espaço Virtual e Comunicação em Tempo Real",
   "main": "dist-electron/main.js",
   "type": "module",
@@ -22,6 +22,7 @@
     "electron:build": "npm run native:build && tsc && vite build && electron-builder"
   },
   "dependencies": {
+    "@capacitor/core": "^7.6.9",
     "@jitsi/rnnoise-wasm": "^0.2.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.475.0",
@@ -30,6 +31,8 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@capacitor/android": "^7.6.9",
+    "@capacitor/cli": "^7.6.9",
     "@types/node": "^22.13.4",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",

@@ -158,7 +158,7 @@ const OnlineUsersMenuInner: React.FC = () => {
   }
 
   return (
-    <div className="fixed top-16 right-4 w-96 bg-[#161922]/95 backdrop-blur-xl border border-[#2a3142] rounded-3xl shadow-2xl z-50 overflow-hidden flex flex-col max-h-[calc(100vh-80px)] animate-in fade-in slide-in-from-right-4 duration-200 select-none">
+    <div className="fixed top-16 left-3 right-3 sm:left-auto sm:right-4 w-auto sm:w-96 bg-[#161922]/98 backdrop-blur-xl border border-[#2a3142] rounded-3xl shadow-2xl z-50 overflow-hidden flex flex-col max-h-[calc(100vh-76px)] animate-in fade-in slide-in-from-right-4 duration-200 select-none">
       {/* Header */}
       <div className="p-4 border-b border-[#2a3142] bg-[#12151d]/80 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
