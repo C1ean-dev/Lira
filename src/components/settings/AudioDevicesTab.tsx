@@ -25,7 +25,7 @@ interface Props {
   outputDevices: AudioDeviceInfo[]
   videoDevices: AudioDeviceInfo[]
   isPlayingTestSound: boolean
-  onPlayTestSound: () => void
+  onPlayTestSound: (deviceId?: string) => void
 }
 
 export const AudioDevicesTab: React.FC<Props> = ({
@@ -328,7 +328,7 @@ export const AudioDevicesTab: React.FC<Props> = ({
             </label>
             <button
               type="button"
-              onClick={onPlayTestSound}
+              onClick={() => onPlayTestSound(selectedAudioOutput)}
               className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-all flex items-center gap-1 ${
                 isPlayingTestSound
                   ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 animate-pulse'

@@ -1350,10 +1350,35 @@ export class MediaManager {
     this.rnnoiseEngine.setTestLoopback(enabled)
   }
 
-  public playAudioTestBeep() {
+  public async playAudioTestBeep(targetDeviceId?: string): Promise<void> {
     try {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
-      const testCtx = new AudioContextClass()
+      const state = useMediaStore.getState()
+      const targetOutput = targetDeviceId ?? state.selectedAudioOutput ?? 'default'
+      const sink = targetOutput === 'default' || !targetOutput ? '' : targetOutput
+      const AudioContextClass =
+        (typeof window !== 'undefined' && ((window as any).AudioContext || (window as any).webkitAudioContext)) ||
+        (typeof globalThis !== 'undefined' && ((globalThis as any).AudioContext || (globalThis as any).webkitAudioContext)) ||
+        null
+      if (!AudioContextClass) return
+
+      let testCtx: AudioContext
+      try {
+        testCtx = new AudioContextClass(sink ? { sinkId: sink } : undefined)
+      } catch {
+        testCtx = new AudioContextClass()
+      }
+
+      if (testCtx.state === 'suspended') {
+        try {
+          await testCtx.resume()
+        } catch {}
+      }
+
+      if (sink && typeof (testCtx as any).setSinkId === 'function') {
+        try {
+          await (testCtx as any).setSinkId(sink)
+        } catch {}
+      }
 
       const now = testCtx.currentTime
       const osc1 = testCtx.createOscillator()
@@ -1374,7 +1399,35 @@ export class MediaManager {
 
       osc1.connect(gain)
       osc2.connect(gain)
-      gain.connect(testCtx.destination)
+
+      let testAudioEl: HTMLAudioElement | null = null
+      let routedViaElement = false
+
+      if (typeof (testCtx as any).createMediaStreamDestination === 'function' && typeof Audio !== 'undefined') {
+        try {
+          const dest = (testCtx as any).createMediaStreamDestination()
+          gain.connect(dest)
+          testAudioEl = new Audio()
+          testAudioEl.srcObject = dest.stream
+          if (typeof (testAudioEl as any).setSinkId === 'function') {
+            await (testAudioEl as any).setSinkId(sink)
+          }
+          await testAudioEl.play()
+          routedViaElement = true
+        } catch {
+          routedViaElement = false
+          if (testAudioEl) {
+            try {
+              testAudioEl.srcObject = null
+            } catch {}
+            testAudioEl = null
+          }
+        }
+      }
+
+      if (!routedViaElement) {
+        gain.connect(testCtx.destination)
+      }
 
       osc1.start(now)
       osc2.start(now)
@@ -1382,6 +1435,12 @@ export class MediaManager {
       osc2.stop(now + 0.5)
 
       setTimeout(() => {
+        if (testAudioEl) {
+          try {
+            testAudioEl.pause()
+            testAudioEl.srcObject = null
+          } catch {}
+        }
         testCtx.close().catch(() => {})
       }, 700)
     } catch (e) {

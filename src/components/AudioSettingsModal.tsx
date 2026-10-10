@@ -87,9 +87,9 @@ export const AudioSettingsModal: React.FC = () => {
     setSettingsModalOpen(false)
   }
 
-  const handlePlayTestSound = () => {
+  const handlePlayTestSound = (deviceId?: string) => {
     setIsPlayingTestSound(true)
-    MediaManager.getInstance().playAudioTestBeep()
+    MediaManager.getInstance().playAudioTestBeep(deviceId)
     setTimeout(() => setIsPlayingTestSound(false), 800)
   }
 

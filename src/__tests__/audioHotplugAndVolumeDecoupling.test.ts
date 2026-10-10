@@ -34,6 +34,9 @@ describe('Audio Hotplug & Volume Decoupling', () => {
   const origMS = Object.getOwnPropertyDescriptor(globalThis, 'MediaStream')
   const origCE = Object.getOwnPropertyDescriptor(globalThis, 'CustomEvent')
 
+  const origAudioCtx = Object.getOwnPropertyDescriptor(globalThis, 'AudioContext')
+  const origAudio = Object.getOwnPropertyDescriptor(globalThis, 'Audio')
+
   beforeEach(() => {
     class FakeCustomEvent {
       type: string
@@ -62,11 +65,63 @@ describe('Audio Hotplug & Volume Decoupling', () => {
       createElement: vi.fn(),
     }
 
+    class MockAudioParam {
+      value = 0
+      setValueAtTime = vi.fn()
+      exponentialRampToValueAtTime = vi.fn()
+    }
+    class MockOscillator {
+      type = 'sine'
+      frequency = new MockAudioParam()
+      connect = vi.fn()
+      start = vi.fn()
+      stop = vi.fn()
+    }
+    class MockGain {
+      gain = new MockAudioParam()
+      connect = vi.fn()
+    }
+    class MockTestAudioContext {
+      currentTime = 0
+      state = 'running'
+      destination = {}
+      sinkId = ''
+      constructor(public options?: any) {
+        if (options?.sinkId) this.sinkId = options.sinkId
+      }
+      createOscillator() {
+        return new MockOscillator()
+      }
+      createGain() {
+        return new MockGain()
+      }
+      createMediaStreamDestination() {
+        return { stream: new FakeMediaStream() }
+      }
+      setSinkId = vi.fn().mockImplementation(async (id: string) => {
+        this.sinkId = id
+      })
+      resume = vi.fn().mockResolvedValue(undefined)
+      close = vi.fn().mockResolvedValue(undefined)
+    }
+
+    class MockAudioElement {
+      srcObject: any = null
+      sinkId: string = ''
+      setSinkId = vi.fn().mockImplementation(async (id: string) => {
+        this.sinkId = id
+      })
+      play = vi.fn().mockResolvedValue(undefined)
+      pause = vi.fn()
+    }
+
     Object.defineProperty(globalThis, 'window', { value: fakeWindow, configurable: true, writable: true })
     Object.defineProperty(globalThis, 'document', { value: fakeDoc, configurable: true, writable: true })
     Object.defineProperty(globalThis, 'navigator', { value: fakeNavigator, configurable: true, writable: true })
     Object.defineProperty(globalThis, 'MediaStream', { value: FakeMediaStream, configurable: true, writable: true })
     Object.defineProperty(globalThis, 'CustomEvent', { value: FakeCustomEvent, configurable: true, writable: true })
+    Object.defineProperty(globalThis, 'AudioContext', { value: MockTestAudioContext, configurable: true, writable: true })
+    Object.defineProperty(globalThis, 'Audio', { value: MockAudioElement, configurable: true, writable: true })
 
     useMediaStore.setState({
       participantVolumes: {},
@@ -84,6 +139,10 @@ describe('Audio Hotplug & Volume Decoupling', () => {
     if (origNav) Object.defineProperty(globalThis, 'navigator', origNav)
     if (origMS) Object.defineProperty(globalThis, 'MediaStream', origMS)
     if (origCE) Object.defineProperty(globalThis, 'CustomEvent', origCE)
+    if (origAudioCtx) Object.defineProperty(globalThis, 'AudioContext', origAudioCtx)
+    else delete (globalThis as any).AudioContext
+    if (origAudio) Object.defineProperty(globalThis, 'Audio', origAudio)
+    else delete (globalThis as any).Audio
   })
 
   it('keeps participant voice volume decoupled from live stream volume', () => {
@@ -185,5 +244,49 @@ describe('Audio Hotplug & Volume Decoupling', () => {
     expect(el.muted).toBe(false)
     expect(el.volume).toBe(0.8)
     expect(el.play).toHaveBeenCalled()
+  })
+
+  it('routes playAudioTestBeep to selected audio output device', async () => {
+    useMediaStore.setState({
+      selectedAudioOutput: 'monitor-hdmi-out',
+    })
+
+    let lastSinkId = ''
+    class TrackingAudioElement {
+      srcObject: any = null
+      setSinkId = vi.fn().mockImplementation(async (id: string) => {
+        lastSinkId = id
+      })
+      play = vi.fn().mockResolvedValue(undefined)
+      pause = vi.fn()
+    }
+    Object.defineProperty(globalThis, 'Audio', { value: TrackingAudioElement, configurable: true, writable: true })
+
+    const manager = MediaManager.getInstance()
+    await manager.playAudioTestBeep()
+
+    expect(lastSinkId).toBe('monitor-hdmi-out')
+  })
+
+  it('routes playAudioTestBeep to explicitly provided target output device', async () => {
+    useMediaStore.setState({
+      selectedAudioOutput: 'headset-out',
+    })
+
+    let lastSinkId = ''
+    class TrackingAudioElement {
+      srcObject: any = null
+      setSinkId = vi.fn().mockImplementation(async (id: string) => {
+        lastSinkId = id
+      })
+      play = vi.fn().mockResolvedValue(undefined)
+      pause = vi.fn()
+    }
+    Object.defineProperty(globalThis, 'Audio', { value: TrackingAudioElement, configurable: true, writable: true })
+
+    const manager = MediaManager.getInstance()
+    await manager.playAudioTestBeep('monitor-speakers-out')
+
+    expect(lastSinkId).toBe('monitor-speakers-out')
   })
 })
