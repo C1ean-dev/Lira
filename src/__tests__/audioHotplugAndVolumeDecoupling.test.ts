@@ -69,20 +69,46 @@ describe('Audio Hotplug & Volume Decoupling', () => {
       value = 0
       setValueAtTime = vi.fn()
       exponentialRampToValueAtTime = vi.fn()
+      linearRampToValueAtTime = vi.fn()
+      cancelScheduledValues = vi.fn()
+      setTargetAtTime = vi.fn()
     }
-    class MockOscillator {
+    class MockNode {
+      connect = vi.fn()
+      disconnect = vi.fn()
+    }
+    class MockOscillator extends MockNode {
       type = 'sine'
       frequency = new MockAudioParam()
-      connect = vi.fn()
       start = vi.fn()
       stop = vi.fn()
     }
-    class MockGain {
+    class MockGain extends MockNode {
       gain = new MockAudioParam()
-      connect = vi.fn()
+    }
+    class MockAnalyser extends MockNode {
+      fftSize = 2048
+      frequencyBinCount = 1024
+      smoothingTimeConstant = 0.8
+      getFloatTimeDomainData = vi.fn()
+      getByteFrequencyData = vi.fn()
+    }
+    class MockBiquad extends MockNode {
+      type = 'highpass'
+      frequency = new MockAudioParam()
+      gain = new MockAudioParam()
+      Q = new MockAudioParam()
+    }
+    class MockCompressor extends MockNode {
+      threshold = new MockAudioParam()
+      knee = new MockAudioParam()
+      ratio = new MockAudioParam()
+      attack = new MockAudioParam()
+      release = new MockAudioParam()
     }
     class MockTestAudioContext {
       currentTime = 0
+      sampleRate = 48000
       state = 'running'
       destination = {}
       sinkId = ''
@@ -95,6 +121,18 @@ describe('Audio Hotplug & Volume Decoupling', () => {
       createGain() {
         return new MockGain()
       }
+      createAnalyser() {
+        return new MockAnalyser()
+      }
+      createBiquadFilter() {
+        return new MockBiquad()
+      }
+      createDynamicsCompressor() {
+        return new MockCompressor()
+      }
+      createMediaStreamSource() {
+        return new MockNode()
+      }
       createMediaStreamDestination() {
         return { stream: new FakeMediaStream() }
       }
@@ -104,6 +142,11 @@ describe('Audio Hotplug & Volume Decoupling', () => {
       resume = vi.fn().mockResolvedValue(undefined)
       close = vi.fn().mockResolvedValue(undefined)
     }
+
+    fakeWindow.AudioContext = MockTestAudioContext
+    fakeWindow.webkitAudioContext = MockTestAudioContext
+    fakeWindow.requestAnimationFrame = vi.fn().mockReturnValue(1)
+    fakeWindow.cancelAnimationFrame = vi.fn()
 
     class MockAudioElement {
       srcObject: any = null
@@ -122,6 +165,11 @@ describe('Audio Hotplug & Volume Decoupling', () => {
     Object.defineProperty(globalThis, 'CustomEvent', { value: FakeCustomEvent, configurable: true, writable: true })
     Object.defineProperty(globalThis, 'AudioContext', { value: MockTestAudioContext, configurable: true, writable: true })
     Object.defineProperty(globalThis, 'Audio', { value: MockAudioElement, configurable: true, writable: true })
+    Object.defineProperty(globalThis, 'requestAnimationFrame', { value: fakeWindow.requestAnimationFrame, configurable: true, writable: true })
+    Object.defineProperty(globalThis, 'cancelAnimationFrame', { value: fakeWindow.cancelAnimationFrame, configurable: true, writable: true })
+
+    const manager = MediaManager.getInstance()
+    ;(manager as any).rawUserStream = null
 
     useMediaStore.setState({
       participantVolumes: {},
@@ -129,6 +177,7 @@ describe('Audio Hotplug & Volume Decoupling', () => {
       selectedAudioInput: 'default',
       selectedAudioOutput: 'default',
       selectedVideoInput: 'default',
+      isTestingMic: false,
     })
   })
 
@@ -303,4 +352,69 @@ describe('Audio Hotplug & Volume Decoupling', () => {
     useMediaStore.getState().setSelectedAudioOutput('test-out')
     expect(changeSpy).not.toHaveBeenCalled()
   })
+
+  it('acquires audio input and enables loopback when starting mic test without prior stream', async () => {
+    const mockTrack = {
+      kind: 'audio',
+      enabled: true,
+      readyState: 'live',
+      stop: vi.fn(),
+      applyConstraints: vi.fn().mockResolvedValue(undefined),
+    }
+    const mockStream = new FakeMediaStream([mockTrack])
+    ;(navigator.mediaDevices.getUserMedia as any) = vi.fn().mockResolvedValue(mockStream)
+
+    const manager = MediaManager.getInstance()
+    const loopbackSpy = vi.spyOn((manager as any).classicEngine, 'setTestLoopback')
+
+    await manager.setTestMic(true)
+
+    expect(useMediaStore.getState().isTestingMic).toBe(true)
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled()
+    expect(loopbackSpy).toHaveBeenCalledWith(true)
+
+    await manager.setTestMic(false)
+    expect(useMediaStore.getState().isTestingMic).toBe(false)
+    expect(loopbackSpy).toHaveBeenCalledWith(false)
+  })
+
+  it('re-enables test loopback when switching microphone during active mic test', async () => {
+    const mockTrack1 = {
+      kind: 'audio',
+      enabled: true,
+      readyState: 'live',
+      stop: vi.fn(),
+      applyConstraints: vi.fn().mockResolvedValue(undefined),
+    }
+    const mockStream1 = new FakeMediaStream([mockTrack1])
+
+    const mockTrack2 = {
+      kind: 'audio',
+      enabled: true,
+      readyState: 'live',
+      stop: vi.fn(),
+      applyConstraints: vi.fn().mockResolvedValue(undefined),
+    }
+    const mockStream2 = new FakeMediaStream([mockTrack2])
+
+    let callCount = 0
+    ;(navigator.mediaDevices.getUserMedia as any) = vi.fn().mockImplementation(() => {
+      callCount++
+      return Promise.resolve(callCount === 1 ? mockStream1 : mockStream2)
+    })
+
+    const manager = MediaManager.getInstance()
+    await manager.setTestMic(true)
+    expect(useMediaStore.getState().isTestingMic).toBe(true)
+
+    const loopbackSpy = vi.spyOn((manager as any).classicEngine, 'setTestLoopback')
+    await manager.changeAudioInput('usb-mic-device-id')
+
+    expect(mockTrack1.stop).toHaveBeenCalled()
+    expect(useMediaStore.getState().selectedAudioInput).toBe('usb-mic-device-id')
+    expect(loopbackSpy).toHaveBeenCalledWith(true)
+
+    await manager.setTestMic(false)
+  })
 })
+

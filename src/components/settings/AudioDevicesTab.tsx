@@ -205,9 +205,9 @@ export const AudioDevicesTab: React.FC<Props> = ({
     MediaManager.getInstance().updateSensitivity(sensitivityMode, val)
   }
 
-  const handleTestMicToggle = () => {
+  const handleTestMicToggle = async () => {
     const nextTesting = !isTestingMic
-    MediaManager.getInstance().setTestMic(nextTesting)
+    await MediaManager.getInstance().setTestMic(nextTesting)
   }
 
   return (

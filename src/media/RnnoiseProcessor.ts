@@ -172,7 +172,16 @@ export class RnnoiseProcessor {
       store.setRnnoiseStage('start')
 
       const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext
-      this.audioCtx = new AudioContextClass({ sampleRate: 48000 })
+      const outSink = useMediaStore.getState().selectedAudioOutput
+      const targetSink = !outSink || outSink === 'default' ? '' : outSink
+      try {
+        this.audioCtx = new AudioContextClass(targetSink ? ({ sampleRate: 48000, sinkId: targetSink } as any) : { sampleRate: 48000 })
+      } catch {
+        this.audioCtx = new AudioContextClass({ sampleRate: 48000 })
+      }
+      if (targetSink && typeof (this.audioCtx as any).setSinkId === 'function') {
+        ;(this.audioCtx as any).setSinkId(targetSink).catch(() => {})
+      }
       if (this.audioCtx.state === 'suspended') {
         await this.audioCtx.resume().catch(() => {})
         if (cancelled()) return inputStream
@@ -518,6 +527,13 @@ export class RnnoiseProcessor {
         this.gateGainNode.gain.setValueAtTime(1.0, now)
         this.isGateOpen = true
       }
+    }
+  }
+
+  public updateAudioOutput(sinkId: string) {
+    if (this.audioCtx && typeof (this.audioCtx as any).setSinkId === 'function') {
+      const targetSink = !sinkId || sinkId === 'default' ? '' : sinkId
+      ;(this.audioCtx as any).setSinkId(targetSink).catch(() => {})
     }
   }
 

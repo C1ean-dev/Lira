@@ -347,6 +347,12 @@ export class MediaManager {
       )
     }
 
+    if (useMediaStore.getState().isTestingMic) {
+      if (this.activeEngine) {
+        this.activeEngine.setTestLoopback(true)
+      }
+    }
+
     return processed
   }
 
@@ -793,14 +799,41 @@ export class MediaManager {
       useMediaStore.getState().setSelectedAudioInput(deviceId)
       const state = useMediaStore.getState()
 
-      const newAudioStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: deviceId && deviceId !== 'default' ? { exact: deviceId } : undefined,
-          echoCancellation: state.echoCancellation,
-          autoGainControl: state.autoGainControl,
-          noiseSuppression: false,
-        },
-      })
+      let newAudioStream: MediaStream | null = null
+      const targetDevice = deviceId && deviceId !== 'default' ? deviceId : undefined
+      try {
+        newAudioStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: targetDevice ? { exact: targetDevice } : undefined,
+            echoCancellation: state.echoCancellation,
+            autoGainControl: state.autoGainControl,
+            noiseSuppression: false,
+          },
+        })
+      } catch {
+        if (targetDevice) {
+          try {
+            newAudioStream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                deviceId: targetDevice,
+                echoCancellation: state.echoCancellation,
+                autoGainControl: state.autoGainControl,
+                noiseSuppression: false,
+              },
+            })
+          } catch {}
+        }
+      }
+
+      if (!newAudioStream) {
+        newAudioStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: state.echoCancellation,
+            autoGainControl: state.autoGainControl,
+            noiseSuppression: false,
+          },
+        })
+      }
 
       const newAudioTrack = newAudioStream.getAudioTracks()[0]
       if (!newAudioTrack) return false
@@ -822,12 +855,20 @@ export class MediaManager {
 
       useMediaStore.getState().setLocalStream(processedStream)
 
+      if (useMediaStore.getState().isTestingMic) {
+        this.classicEngine.setTestLoopback(true)
+        this.softEngine.setTestLoopback(true)
+        this.rnnoiseEngine.setTestLoopback(true)
+      }
+
       const isMuted = useMediaStore.getState().isMuted
       const processedAudioTrack = processedStream.getAudioTracks()[0]
       if (processedAudioTrack) {
         processedAudioTrack.enabled = !isMuted
         if (!useMediaStore.getState().isScreenSharing) {
-          PeerManager.getInstance().replaceAudioTrack(processedAudioTrack)
+          try {
+            PeerManager.getInstance().replaceAudioTrack(processedAudioTrack)
+          } catch {}
         }
       }
 
@@ -860,6 +901,15 @@ export class MediaManager {
           }
         }
       })
+      if (typeof (this.classicEngine as any).updateAudioOutput === 'function') {
+        ;(this.classicEngine as any).updateAudioOutput(deviceId)
+      }
+      if (typeof (this.softEngine as any).updateAudioOutput === 'function') {
+        ;(this.softEngine as any).updateAudioOutput(deviceId)
+      }
+      if (typeof (this.rnnoiseEngine as any).updateAudioOutput === 'function') {
+        ;(this.rnnoiseEngine as any).updateAudioOutput(deviceId)
+      }
       return true
     } catch (err) {
       console.warn('Error changing audio output:', err)
@@ -1348,11 +1398,27 @@ export class MediaManager {
     }
   }
 
-  public setTestMic(enabled: boolean) {
+  public async setTestMic(enabled: boolean): Promise<void> {
     useMediaStore.getState().setIsTestingMic(enabled)
-    this.classicEngine.setTestLoopback(enabled)
-    this.softEngine.setTestLoopback(enabled)
-    this.rnnoiseEngine.setTestLoopback(enabled)
+    if (enabled) {
+      const hasLiveAudio =
+        this.rawUserStream &&
+        this.rawUserStream.getAudioTracks().length > 0 &&
+        this.rawUserStream.getAudioTracks()[0].readyState === 'live'
+
+      if (!hasLiveAudio) {
+        const state = useMediaStore.getState()
+        await this.changeAudioInput(state.selectedAudioInput || 'default')
+      }
+
+      this.classicEngine.setTestLoopback(true)
+      this.softEngine.setTestLoopback(true)
+      this.rnnoiseEngine.setTestLoopback(true)
+    } else {
+      this.classicEngine.setTestLoopback(false)
+      this.softEngine.setTestLoopback(false)
+      this.rnnoiseEngine.setTestLoopback(false)
+    }
   }
 
   public stopAudioTestBeep(): void {
