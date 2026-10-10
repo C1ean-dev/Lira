@@ -50,9 +50,6 @@ export interface CallNotificationPluginInterface {
 
 export const CallNotification = registerPlugin<CallNotificationPluginInterface>('CallNotificationPlugin')
 
-/**
- * Finds a safe walkable tile outside of any room/private zone.
- */
 export function findOpenSpaceOutsideZones(mapData: any): { x: number; y: number } {
   const zones = mapData.zones || []
   const mapW = mapData.width || 30
@@ -85,27 +82,19 @@ export function findOpenSpaceOutsideZones(mapData: any): { x: number; y: number 
   return { x: 2, y: 2 }
 }
 
-/**
- * Leaves the current room/zone and teleports the player to an open area
- * without zones, disconnecting all active zone audio/video calls.
- */
 export function leaveRoomAndTeleportToOpenSpace() {
   const mapData = useMapStore.getState().mapData
   const localPlayer = useGameStore.getState().localPlayer
 
-  // 1. Find open coordinates outside of any private room
   const freePos = findOpenSpaceOutsideZones(mapData)
 
-  // 2. Stop screen share if active
   if (useMediaStore.getState().isScreenSharing) {
     MediaManager.getInstance().stopScreenShare()
   }
   useMediaStore.getState().setGridCallOpen(false)
 
-  // 3. Immediately end all zone media calls (voice/video mesh)
   PeerManager.getInstance().endAllZoneMediaCalls()
 
-  // 4. Teleport player to open space
   useGameStore.getState().setLocalPlayer({
     x: freePos.x,
     y: freePos.y,
@@ -117,17 +106,14 @@ export function leaveRoomAndTeleportToOpenSpace() {
   useGameStore.getState().setCurrentZoneId(null)
   useChatStore.getState().updateZoneChannel('')
 
-  // 5. Broadcast new position and zone exit to peers
   PeerManager.getInstance().sendPlayerUpdate({
     x: freePos.x,
     y: freePos.y,
     currentZoneId: null,
   })
 
-  // 6. Update collision and zone detector in engine
   checkZonePresence(freePos.x, freePos.y, mapData)
 
-  // 7. Dismiss Android call notification and sync native state
   if (isAndroid()) {
     CallNotification.setCallState({ inRoom: false }).catch(() => {})
     CallNotification.clearCallNotification().catch(() => {})
@@ -144,7 +130,6 @@ class CallNotificationManager {
 
     if (!isAndroid()) return
 
-    // 1. Request notification permission proactively on Android (Android 13+ POST_NOTIFICATIONS)
     try {
       const perm = await CallNotification.checkNotificationPermission()
       console.log('[CallNotification] Initial permission status:', perm)
@@ -156,10 +141,8 @@ class CallNotificationManager {
       console.warn('[CallNotification] Error checking/requesting permission on startup:', err)
     }
 
-    // 2. Check if a pending leave action was triggered while app was in background
     this.checkAndProcessPendingAction()
 
-    // 3. Listen to notification action button clicks (Mute, Deafen, Leave)
     CallNotification.addListener('onNotificationAction', (data) => {
       console.log('[CallNotification] Action received from notification:', data.action)
       if (data.action === 'toggleMute') {
@@ -172,7 +155,6 @@ class CallNotificationManager {
       }
     })
 
-    // 4. Listen to media store changes (mute/deafen) to keep native state and notification updated
     useMediaStore.subscribe((mediaState, prevMediaState) => {
       if (
         mediaState.isMuted !== prevMediaState.isMuted ||
@@ -185,7 +167,6 @@ class CallNotificationManager {
       }
     })
 
-    // 5. Sync room/zone presence changes with native plugin immediately
     useGameStore.subscribe((gameState, prevGameState) => {
       const currentZoneId = gameState.localPlayer.currentZoneId
       const prevZoneId = prevGameState.localPlayer.currentZoneId
@@ -198,7 +179,6 @@ class CallNotificationManager {
           const isMuted = useMediaStore.getState().isMuted
           const isDeafened = useMediaStore.getState().isDeafened
 
-          // Inform native Java code so onPause() can immediately render notification
           CallNotification.setCallState({
             inRoom: true,
             roomName,
@@ -206,7 +186,6 @@ class CallNotificationManager {
             isDeafened,
           }).catch(() => {})
 
-          // If permission wasn't granted yet, request again upon entering a room
           CallNotification.checkNotificationPermission()
             .then((p) => {
               if (!p.granted) {
@@ -215,7 +194,6 @@ class CallNotificationManager {
             })
             .catch(() => {})
         } else {
-          // Exited zone
           this.isShowingNotification = false
           CallNotification.setCallState({
             inRoom: false,
@@ -225,7 +203,6 @@ class CallNotificationManager {
       }
     })
 
-    // 6. Listen to app background / visibility changes
     document.addEventListener('visibilitychange', () => {
       this.handleVisibilityChange(document.hidden)
     })
@@ -239,7 +216,6 @@ class CallNotificationManager {
     const currentZoneId = localPlayer.currentZoneId
 
     if (isHidden) {
-      // App minimized / backgrounded: if inside a room/zone, show notification
       if (currentZoneId) {
         const currentZone = mapData.zones?.find((z: any) => z.id === currentZoneId)
         const roomName = currentZone?.name || 'Mesa Privada'
@@ -259,7 +235,6 @@ class CallNotificationManager {
           })
       }
     } else {
-      // App returned to foreground: process any action taken in background
       this.checkAndProcessPendingAction()
       if (!currentZoneId && this.isShowingNotification) {
         this.isShowingNotification = false

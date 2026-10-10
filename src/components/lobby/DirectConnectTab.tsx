@@ -40,7 +40,6 @@ export const DirectConnectTab: React.FC<Props> = ({
 
   return (
     <form onSubmit={onSubmit} className="p-4 sm:p-6 space-y-3.5 sm:space-y-4 overflow-y-auto">
-      {/* User Nickname & Avatar Button */}
       <div>
         <label className="block text-xs font-semibold text-slate-300 mb-1.5">Seu Nickname</label>
         <div className="flex gap-2">
@@ -65,7 +64,6 @@ export const DirectConnectTab: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Mode Switcher */}
       <div className="grid grid-cols-2 gap-2 p-1 bg-[#12151d] rounded-2xl border border-[#2a3142]">
         <button
           type="button"
@@ -93,7 +91,6 @@ export const DirectConnectTab: React.FC<Props> = ({
         </button>
       </div>
 
-      {/* Create Mode Options */}
       {mode === 'create' && (
         <div className="space-y-3 p-3.5 bg-[#12151d]/60 rounded-2xl border border-[#2a3142]/60 animate-in fade-in duration-150">
           <div>
@@ -109,7 +106,6 @@ export const DirectConnectTab: React.FC<Props> = ({
                 className="flex-1 bg-[#12151d] border border-[#2a3142] rounded-xl px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
                 maxLength={35}
               />
-              {/* On Android: Icon-only toggle button */}
               {isAndroidPlatform && (
                 <button
                   type="button"
@@ -131,7 +127,6 @@ export const DirectConnectTab: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Desktop only: full visibility row and description */}
           {!isAndroidPlatform && (
             <div>
               <label className="block text-[11px] font-semibold text-slate-300 mb-1">Visibilidade da Sala</label>
@@ -171,7 +166,6 @@ export const DirectConnectTab: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Join Code Input */}
       {mode === 'join' && (
         <div className="space-y-1.5 animate-in fade-in duration-150">
           <div className="flex items-center justify-between">
@@ -205,7 +199,6 @@ export const DirectConnectTab: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Features highlight & Audio Quick Config */}
       <div className="bg-[#12151d]/60 rounded-2xl p-3 border border-[#2a3142]/60 space-y-2 text-[11px] text-slate-400">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -222,14 +215,12 @@ export const DirectConnectTab: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Error message */}
       {error && (
         <div className="text-xs text-rose-400 bg-rose-500/10 p-2.5 rounded-xl border border-rose-500/30">
           {error}
         </div>
       )}
 
-      {/* Submit Button */}
       <button
         type="submit"
         disabled={loading}

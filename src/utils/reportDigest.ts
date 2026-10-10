@@ -2,18 +2,8 @@ import type { Breadcrumb } from './breadcrumbs'
 import type { ErrorReport, ReportedError } from './errorReport'
 import type { StackFrame } from './stackFrames'
 
-/**
- * Reads error reports back: one report as text (what failed, where, the state
- * of the app, what happened before), and a digest of many reports grouped by
- * fingerprint. Used by the error screen and by scripts/error-reports.js.
- *
- * Only type imports here, and no syntax Node cannot strip: the script runs this
- * file directly with Node (22.18 or newer), without a build.
- */
-
 export interface ReportGroup {
   fingerprint: string
-  /** Sum of what every report stands for (a report can stand for many repeats). */
   occurrences: number
   reports: number
   first: string
@@ -27,7 +17,6 @@ export interface ReportGroup {
   latest: ErrorReport
 }
 
-/** One report per line (JSONL); lines that are not a report are skipped. */
 export function parseReportLines(text: string): ErrorReport[] {
   const reports: ErrorReport[] = []
   for (const line of text.split(/\r?\n/)) {
@@ -38,7 +27,6 @@ export function parseReportLines(text: string): ErrorReport[] {
         reports.push(value as ErrorReport)
       }
     } catch {
-      // a line cut by a crash or a rotation
     }
   }
   return reports
@@ -92,7 +80,6 @@ function frameText(frame: StackFrame): string {
   return frame.fn || place || '<unknown>'
 }
 
-/** Our own code is marked with ">", so the eye lands on it. */
 function frameLines(frames: StackFrame[] | undefined): string[] {
   return (frames ?? []).map((frame) => `    ${frame.app ? '>' : ' '} ${frameText(frame)}`)
 }
@@ -117,7 +104,6 @@ function headline(report: Pick<ErrorReport, 'severity' | 'scope' | 'message'>): 
   return `${report.severity === 'fatal' ? 'FATAL' : 'ERROR'}  ${report.scope ? `[${report.scope}] ` : ''}${report.message}`
 }
 
-/** One report, as text a person (or an assistant) can read top to bottom. */
 export function formatReport(report: ErrorReport): string {
   const sections: string[][] = [
     [
@@ -160,7 +146,6 @@ function firstAppFrame(report: ErrorReport): StackFrame | undefined {
   return frames.find((frame) => frame.app)
 }
 
-/** Many reports, one block per different error: the place to start when something went wrong. */
 export function formatDigest(groups: ReportGroup[], options: { limit?: number } = {}): string {
   if (groups.length === 0) return 'No error reports.'
   const shown = options.limit !== undefined ? groups.slice(0, options.limit) : groups

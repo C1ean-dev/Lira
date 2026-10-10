@@ -5,7 +5,6 @@ import { ChatMessage } from '../types/chat'
 
 describe('Direct Messages & Friend Chat Selection', () => {
   beforeEach(() => {
-    // Reset game store with local player
     useGameStore.setState({
       localPlayer: {
         id: 'player-alice',
@@ -29,7 +28,6 @@ describe('Direct Messages & Friend Chat Selection', () => {
       },
     })
 
-    // Reset chat store
     useChatStore.setState({
       channels: [
         { id: 'general', name: 'general', type: 'general', unreadCount: 0 },
@@ -92,7 +90,6 @@ describe('Direct Messages & Friend Chat Selection', () => {
     expect(dmChannel?.recipientId).toBe('player-bob')
     expect(dmChannel?.unreadCount).toBe(1)
 
-    // Now Alice opens the direct message
     state.openDirectMessage({ id: 'player-bob', name: 'Bob' })
     const updatedState = useChatStore.getState()
     const activeDm = updatedState.channels.find((c) => c.id === expectedChannelId)
@@ -106,17 +103,14 @@ describe('Direct Messages & Friend Chat Selection', () => {
     openDirectMessage({ id: 'player-bob', name: 'Bob' })
     expect(useChatStore.getState().activeChannelId).toBe('dm-player-alice-player-bob')
 
-    // Switch back to General
     setActiveChannel('general')
     expect(useChatStore.getState().activeChannelId).toBe('general')
 
-    // Switch back to Bob's DM
     openDirectMessage({ id: 'player-bob', name: 'Bob' })
     expect(useChatStore.getState().activeChannelId).toBe('dm-player-alice-player-bob')
   })
 
   it('correctly maps incoming DM when receiver opened channel using target peer id', () => {
-    // Alice's localPlayer has peer ID 'lira-room-peer-alice' and gameId 'profile-alice'
     useGameStore.setState({
       localPlayer: {
         id: 'lira-room-peer-alice',
@@ -129,14 +123,12 @@ describe('Direct Messages & Friend Chat Selection', () => {
       },
     })
 
-    // Alice opens direct message with Bob using Bob's peer ID
     const { openDirectMessage, addMessage } = useChatStore.getState()
     openDirectMessage({ id: 'lira-room-host-bob', name: 'Bob' })
 
     const aliceActiveChannel = useChatStore.getState().activeChannelId
     expect(aliceActiveChannel).toBe('dm-lira-room-host-bob-lira-room-peer-alice')
 
-    // Bob sends a message addressed to Alice's peer ID
     const msgFromBob: ChatMessage = {
       id: 'msg-from-bob-1',
       senderId: 'lira-room-host-bob',
@@ -158,7 +150,6 @@ describe('Direct Messages & Friend Chat Selection', () => {
   it('correctly sets initial status: "sent" for sender and updates to "delivered" then "read"', () => {
     const { addMessage, updateMessageStatus, updateMessagesStatusForPeer } = useChatStore.getState()
 
-    // Alice sends a message to Bob
     const aliceMsg: ChatMessage = {
       id: 'alice-msg-1',
       senderId: 'player-alice',
@@ -172,24 +163,20 @@ describe('Direct Messages & Friend Chat Selection', () => {
 
     addMessage(aliceMsg)
 
-    // Initially defaults to 'sent'
     let state = useChatStore.getState()
     let found = state.messages.find((m) => m.id === 'alice-msg-1')
     expect(found?.status).toBe('sent')
 
-    // Bob receives it -> status updates to 'delivered'
     updateMessageStatus('alice-msg-1', 'delivered')
     state = useChatStore.getState()
     found = state.messages.find((m) => m.id === 'alice-msg-1')
     expect(found?.status).toBe('delivered')
 
-    // Bob reads it -> status updates to 'read'
     updateMessageStatus('alice-msg-1', 'read')
     state = useChatStore.getState()
     found = state.messages.find((m) => m.id === 'alice-msg-1')
     expect(found?.status).toBe('read')
 
-    // CRITICAL: An earlier status ('sent' or 'delivered') must NEVER overwrite 'read'
     updateMessageStatus('alice-msg-1', 'delivered')
     state = useChatStore.getState()
     found = state.messages.find((m) => m.id === 'alice-msg-1')
@@ -199,7 +186,6 @@ describe('Direct Messages & Friend Chat Selection', () => {
   it('batch updates peer messages status up to timestamp', () => {
     const { addMessage, updateMessagesStatusForPeer } = useChatStore.getState()
 
-    // Alice sends 3 messages at different timestamps
     addMessage({
       id: 'msg-batch-1',
       senderId: 'player-alice',
@@ -236,7 +222,6 @@ describe('Direct Messages & Friend Chat Selection', () => {
       status: 'sent',
     })
 
-    // Bob marks as read up to timestamp 2000
     updateMessagesStatusForPeer('player-bob', 'read', 2000)
 
     const state = useChatStore.getState()
@@ -246,7 +231,7 @@ describe('Direct Messages & Friend Chat Selection', () => {
 
     expect(m1?.status).toBe('read')
     expect(m2?.status).toBe('read')
-    expect(m3?.status).toBe('sent') // Newer than 2000, remains sent
+    expect(m3?.status).toBe('sent')
   })
 })
 

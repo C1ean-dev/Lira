@@ -37,7 +37,6 @@ describe('Door Knocking & Room Locking System', () => {
   }
 
   beforeEach(() => {
-    // Reset stores
     useMapStore.setState({
       mapData: JSON.parse(JSON.stringify(testMap)),
     })
@@ -128,7 +127,6 @@ describe('Door Knocking & Room Locking System', () => {
       expect(zone.authorizedPeers?.includes('peer-123')).toBe(true)
       expect(zone.members?.includes('Carlos')).toBe(true)
 
-      // Add duplicate
       authorizePeerInZone('locked-zone-1', 'peer-123', 'Carlos')
       const zoneAfter = useMapStore.getState().mapData.zones[0]
       expect(zoneAfter.authorizedPeers?.filter((p) => p === 'peer-123').length).toBe(1)
@@ -142,20 +140,16 @@ describe('Door Knocking & Room Locking System', () => {
     })
 
     it('checkAndUnlockEmptyZones unlocks room when no occupants are left inside', () => {
-      // Room is locked and player is inside
       useGameStore.setState({
         localPlayer: { ...useGameStore.getState().localPlayer, currentZoneId: 'locked-zone-1' },
       })
       useMapStore.getState().checkAndUnlockEmptyZones()
-      // Room remains locked because localPlayer is inside
       expect(useMapStore.getState().mapData.zones[0].isLocked).toBe(true)
 
-      // Player leaves the room (currentZoneId becomes null)
       useGameStore.setState({
         localPlayer: { ...useGameStore.getState().localPlayer, currentZoneId: null },
       })
       useMapStore.getState().checkAndUnlockEmptyZones()
-      // Room is now empty -> ceases to be private / unlocks!
       expect(useMapStore.getState().mapData.zones[0].isLocked).toBe(false)
     })
 
@@ -176,10 +170,8 @@ describe('Door Knocking & Room Locking System', () => {
         },
       })
       useMapStore.getState().checkAndUnlockEmptyZones()
-      // Room remains locked because remote player is inside
       expect(useMapStore.getState().mapData.zones[0].isLocked).toBe(true)
 
-      // Remote player also exits room
       useGameStore.setState({
         remotePlayers: {
           'peer-remote-1': {
@@ -189,7 +181,6 @@ describe('Door Knocking & Room Locking System', () => {
         },
       })
       useMapStore.getState().checkAndUnlockEmptyZones()
-      // Nobody left -> room unlocks!
       expect(useMapStore.getState().mapData.zones[0].isLocked).toBe(false)
     })
   })
@@ -223,13 +214,8 @@ describe('Door Knocking & Room Locking System', () => {
   })
 
   describe('Collision & Zone Entry with Room Lock', () => {
-    // Doorway is at center bottom:
-    // zone.x = 10, zone.width = 10 -> doorW = 2.0 -> doorStartX = 14.0, doorEndX = 16.0
-    // zone.y = 10, zone.height = 8 -> frontWallH = 1.5 -> frontWallY = 16.5, maxY = 18.0
-    // Doorway center is at x=15.0, y=17.0 (between frontWallY and maxY)
     it('blocks doorway entry when zone is locked and player is unauthorized', () => {
       const map = useMapStore.getState().mapData
-      // Position at doorway opening (x=15.0 - 0.5, y=17.0 - 0.5)
       const isColliding = checkCollision(14.5, 16.5, map)
       expect(isColliding).toBe(true)
     })
@@ -237,7 +223,6 @@ describe('Door Knocking & Room Locking System', () => {
     it('allows doorway entry when zone is unlocked', () => {
       useMapStore.getState().toggleZoneLock('locked-zone-1')
       const map = useMapStore.getState().mapData
-      // In doorway opening when unlocked, collision should not block
       const isColliding = checkCollision(14.5, 16.5, map)
       expect(isColliding).toBe(false)
     })
@@ -251,10 +236,8 @@ describe('Door Knocking & Room Locking System', () => {
 
     it('isPlayerInZone returns false for unauthorized player in locked room', () => {
       const zone = useMapStore.getState().mapData.zones[0]
-      // Inside room at center (x=15 - 0.5, y=14 - 0.5)
       expect(isPlayerInZone(14.5, 13.5, zone)).toBe(false)
 
-      // When authorized, returns true
       useMapStore.getState().authorizePeerInZone('locked-zone-1', 'outsider-peer-1')
       expect(isPlayerInZone(14.5, 13.5, zone)).toBe(true)
     })
@@ -298,14 +281,12 @@ describe('Door Knocking & Room Locking System', () => {
         timestamp: Date.now(),
       }
 
-      // Local player is outside room: knock should NOT be added
       useGameStore.setState({
         localPlayer: { ...useGameStore.getState().localPlayer, currentZoneId: null },
       })
       processNetworkMessage(msg, 'peer-requester', false, () => {}, () => {}, () => {})
       expect(useGameStore.getState().pendingKnocks.length).toBe(0)
 
-      // Local player enters the room: knock SHOULD be added
       useGameStore.setState({
         localPlayer: { ...useGameStore.getState().localPlayer, currentZoneId: 'locked-zone-1' },
       })
@@ -330,11 +311,9 @@ describe('Door Knocking & Room Locking System', () => {
 
       processNetworkMessage(msg, 'occupant-1', false, () => {}, () => {}, () => {})
 
-      // Peer authorized in zone both by ID and name
       expect(useMapStore.getState().isPeerAuthorizedForZone('locked-zone-1', 'outsider-peer-1')).toBe(true)
       expect(useMapStore.getState().isPeerAuthorizedForZone('locked-zone-1', 'diff-id', 'Visitante')).toBe(true)
       expect(useMapStore.getState().mapData.zones[0].members?.includes('Visitante')).toBe(true)
-      // Local knock status updated to approved
       expect(useGameStore.getState().myKnockStatus['locked-zone-1']).toBe('approved')
     })
 
@@ -353,16 +332,13 @@ describe('Door Knocking & Room Locking System', () => {
 
       processNetworkMessage(msg, 'occupant-1', false, () => {}, () => {}, () => {})
 
-      // Peer NOT authorized
       expect(useMapStore.getState().isPeerAuthorizedForZone('locked-zone-1', 'outsider-peer-1')).toBe(false)
-      // Local knock status updated to denied
       expect(useGameStore.getState().myKnockStatus['locked-zone-1']).toBe('denied')
     })
   })
 
   describe('Simplified Map & Teleportation Prevention for Locked Rooms', () => {
     it('knockOnLockedDoor stops teleport, places player at doorway outside room, and triggers knock', () => {
-      // Setup outsider player trying to jump into locked room
       useGameStore.setState({
         localPlayer: {
           ...useGameStore.getState().localPlayer,
@@ -375,22 +351,16 @@ describe('Door Knocking & Room Locking System', () => {
       const zone = useMapStore.getState().mapData.zones[0]
       expect(zone.isLocked).toBe(true)
 
-      // Call knockOnLockedDoor
       knockOnLockedDoor(zone)
 
       const updatedPlayer = useGameStore.getState().localPlayer
 
-      // Position should now be outside the south wall door:
-      // zone.x = 10, zone.width = 10 -> center is 15
-      // zone.y = 10, zone.height = 8 -> maxY = 18 -> doorY = 18.8
       expect(updatedPlayer.x).toBe(15)
       expect(updatedPlayer.y).toBe(18.8)
 
-      // Not inside the room!
       expect(updatedPlayer.currentZoneId).toBe(null)
       expect(isPlayerInZone(updatedPlayer.x, updatedPlayer.y, zone)).toBe(false)
 
-      // Knock status must now be 'knocking'
       expect(useGameStore.getState().myKnockStatus[zone.id]).toBe('knocking')
     })
 
@@ -405,7 +375,6 @@ describe('Door Knocking & Room Locking System', () => {
       const zone = useMapStore.getState().mapData.zones[0]
       knockOnLockedDoor(zone)
 
-      // Player currentZoneId must be reset to null outside the room
       expect(useGameStore.getState().localPlayer.currentZoneId).toBe(null)
     })
   })

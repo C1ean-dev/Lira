@@ -54,7 +54,6 @@ describe('MessageStatusIcon and Delivery/Read Receipts', () => {
   })
 
   it('processes incoming CHAT_MESSAGE_STATUS over P2P network message', () => {
-    // Alice has sent a message
     useChatStore.getState().addMessage({
       id: 'p2p-msg-1',
       senderId: 'player-alice',
@@ -69,7 +68,6 @@ describe('MessageStatusIcon and Delivery/Read Receipts', () => {
 
     expect(useChatStore.getState().messages[0].status).toBe('sent')
 
-    // Bob sends CHAT_MESSAGE_STATUS receipt: 'read'
     const statusMsg: NetworkMessage = {
       type: 'CHAT_MESSAGE_STATUS',
       senderId: 'peer-bob',
@@ -90,7 +88,7 @@ describe('MessageStatusIcon and Delivery/Read Receipts', () => {
     processNetworkMessage(
       statusMsg,
       'peer-bob',
-      false, // isHost
+      false,
       'peer-alice',
       broadcast
     )

@@ -11,7 +11,6 @@ describe('Dynamic Crop and Freeform Snapping Utilities', () => {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // Leave canvas transparent except for a 43x64 box at x=10, y=15
     ctx.fillStyle = 'rgba(255, 0, 0, 1)'
     ctx.fillRect(10, 15, 43, 64)
 
@@ -31,13 +30,11 @@ describe('Dynamic Crop and Freeform Snapping Utilities', () => {
     const canvas = document.createElement('canvas')
     canvas.width = 32
     canvas.height = 32
-    // Empty transparent canvas
     const bounds = getTrimmedBounds(canvas)
     expect(bounds).toBeNull()
   })
 
   it('handles arbitrary sub-tile dimensions cleanly without clamping to 32px multiples', () => {
-    // Simulating freeform dynamic resize:
     const origSelection = { x: 0, y: 608, w: 96, h: 96 }
     const targetCrop = { x: 0, y: 608, w: 43, h: 64 }
 

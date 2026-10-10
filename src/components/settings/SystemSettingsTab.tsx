@@ -25,7 +25,6 @@ export const SystemSettingsTab: React.FC = () => {
 
   return (
     <div className="space-y-6 text-slate-200 select-none pb-4">
-      {/* Non-Electron notice if running purely in browser */}
       {!isElectron && (
         <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs">
           <AlertCircle className="w-5 h-5 shrink-0 text-amber-400" />
@@ -38,7 +37,6 @@ export const SystemSettingsTab: React.FC = () => {
         </div>
       )}
 
-      {/* Card 1: Inicialização com o Windows */}
       <div className="p-5 rounded-2xl bg-[#12151d]/70 border border-[#2a3142] space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -65,7 +63,6 @@ export const SystemSettingsTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Card 2: Bandeja do Sistema (Ícones Ocultos) */}
       <div className="p-5 rounded-2xl bg-[#12151d]/70 border border-[#2a3142] space-y-4">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
@@ -79,7 +76,6 @@ export const SystemSettingsTab: React.FC = () => {
           </div>
         </div>
 
-        {/* Option: Close to Tray */}
         <div className="pt-2 border-t border-[#2a3142]/60 flex items-center justify-between">
           <div className="pr-4">
             <div className="text-xs font-semibold text-slate-200">
@@ -101,7 +97,6 @@ export const SystemSettingsTab: React.FC = () => {
           </label>
         </div>
 
-        {/* Option: Minimize to Tray */}
         <div className="pt-3 border-t border-[#2a3142]/60 flex items-center justify-between">
           <div className="pr-4">
             <div className="text-xs font-semibold text-slate-200">
@@ -123,7 +118,6 @@ export const SystemSettingsTab: React.FC = () => {
           </label>
         </div>
 
-        {/* Quick action: Test hide now */}
         {isElectron && (
           <div className="pt-3 border-t border-[#2a3142]/60 flex items-center justify-between">
             <div className="text-[11px] text-slate-400">
@@ -140,7 +134,6 @@ export const SystemSettingsTab: React.FC = () => {
         )}
       </div>
 
-      {/* Card 3: Aceleração por Hardware GPU */}
       <div className="p-5 rounded-2xl bg-[#12151d]/70 border border-[#2a3142] space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -192,7 +185,6 @@ export const SystemSettingsTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Card 4: Windows Defender Firewall */}
       <div className="p-5 rounded-2xl bg-[#12151d]/70 border border-[#2a3142] space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -275,7 +267,6 @@ export const SystemSettingsTab: React.FC = () => {
         )}
       </div>
 
-      {/* Card 4: Instruções de uso da bandeja e saída completa */}
       <div className="p-4 rounded-2xl bg-indigo-950/20 border border-indigo-500/20 text-xs text-slate-300 space-y-2">
         <div className="flex items-center gap-2 text-indigo-300 font-bold">
           <HelpCircle className="w-4 h-4" />

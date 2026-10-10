@@ -19,16 +19,13 @@ export interface ChatPersonMenuItem {
 }
 
 interface ChatPersonMenuContext {
-  /** The space the local user is in. */
   roomId: string | null
-  /** A friend request to or from this person is waiting for an answer. */
   requestPending: boolean
 }
 
 const sameRoom = (a?: string | null, b?: string | null): boolean =>
   !!a && !!b && a.toUpperCase() === b.toUpperCase()
 
-/** Right-click menu of a person in the chat sidebar. */
 export function getChatPersonMenu(person: ChatPerson, ctx: ChatPersonMenuContext): ChatPersonMenuItem[] {
   const firstName = person.name.trim().split(/\s+/)[0] || person.name
   const items: ChatPersonMenuItem[] = [{ action: 'message', label: 'Enviar mensagem' }]
@@ -38,10 +35,8 @@ export function getChatPersonMenu(person: ChatPerson, ctx: ChatPersonMenuContext
   }
 
   if (person.kind === 'friend') {
-    // Presence can place a friend here before the room list does.
     const alreadyHere = person.inSpace || sameRoom(person.room?.code, ctx.roomId)
     if (ctx.roomId) {
-      // An invite that cannot be sent stays in the menu, saying why.
       items.push(
         alreadyHere
           ? { action: 'invite', label: 'Convidar (já está aqui)', disabled: true }
@@ -58,8 +53,6 @@ export function getChatPersonMenu(person: ChatPerson, ctx: ChatPersonMenuContext
   if (person.kind === 'friend') {
     items.push({ action: 'remove-friend', label: 'Remover dos amigos', tone: 'danger' })
   } else if (person.inSpace || isUserId(person.contactId)) {
-    // A request needs someone to be addressed to: a player in this space, or
-    // a stable user id.
     items.push(
       ctx.requestPending
         ? { action: 'add-friend', label: 'Solicitação pendente', disabled: true }

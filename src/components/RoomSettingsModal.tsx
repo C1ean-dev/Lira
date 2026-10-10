@@ -33,7 +33,6 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
 
   const [activeTab, setActiveTab] = useState<'general' | 'permissions'>(initialTab || 'general')
 
-  // Form State
   const [name, setName] = useState(zone.name || 'Nova Sala')
   const [color, setColor] = useState(zone.color || '#4c6ef5')
   const [welcomeMessage, setWelcomeMessage] = useState(zone.welcomeMessage || '')
@@ -68,13 +67,11 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
     }
   }, [zone, isOpen, initialTab])
 
-  // Input fields for adding users
   const [newAdminInput, setNewAdminInput] = useState('')
   const [newMemberInput, setNewMemberInput] = useState('')
 
   if (!isOpen) return null
 
-  // All online players list for easy quick-add
   const onlinePlayers = [
     localPlayer,
     ...Object.values(remotePlayers),
@@ -85,7 +82,6 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
     if (!trimmed) return
     if (!admins.includes(trimmed)) {
       setAdmins([...admins, trimmed])
-      // Remove from members if already there
       setMembers(members.filter((m) => m !== trimmed))
     }
     setNewAdminInput('')
@@ -97,7 +93,7 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
       adminName === localPlayer.id ||
       (localPlayer.gameId && adminName === localPlayer.gameId)
     ) {
-      return // Não permite remover a si mesmo como admin da sala
+      return
     }
     setAdmins(admins.filter((a) => a !== adminName))
   }
@@ -120,7 +116,6 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
 
     const unique = (values: string[]) => Array.from(new Set(values.filter(Boolean)))
 
-    // Curated admins from modal: must include localPlayer.name and purge any raw peer IDs
     const effectiveAdmins = unique(
       admins.filter((a) => a !== localPlayer.id && a !== localPlayer.gameId)
     )
@@ -128,12 +123,10 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
       effectiveAdmins.unshift(localPlayer.name)
     }
 
-    // Curated members from modal: excludes anyone who is in effectiveAdmins
     const effectiveMembers = unique(members).filter(
       (member) => !effectiveAdmins.includes(member)
     )
 
-    // Synchronize authorizedPeers: ONLY keep identifiers that belong to allowed admins or members
     const allKnownPlayers = [localPlayer, ...Object.values(remotePlayers)]
     const allowedNames = new Set([...effectiveAdmins, ...effectiveMembers])
 
@@ -163,7 +156,6 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
     updateZone(zone.id, updatedZone)
     autoSaveCurrentSpace()
 
-    // Broadcast update to all peers in the space via MAP_SYNC and ROOM_LOCK_TOGGLE
     PeerManager.getInstance().broadcast({
       type: 'MAP_SYNC',
       senderId: localPlayer.id,
@@ -190,7 +182,6 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
       <div className="relative w-full max-w-lg bg-[#0e121a] border border-[#232c3d] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#1c2433] bg-[#121722]/80">
           <div className="flex items-center gap-3">
             <div
@@ -223,7 +214,6 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
           </button>
         </div>
 
-        {/* Tab Navigation */}
         <div className="flex border-b border-[#1c2433] bg-[#10141e] px-6">
           <button
             onClick={() => setActiveTab('general')}
@@ -255,11 +245,9 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
           </button>
         </div>
 
-        {/* Modal Content */}
         <div className="p-6 overflow-y-auto space-y-5 flex-1 custom-scrollbar text-xs">
           {activeTab === 'general' ? (
             <>
-              {/* Room Name */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-200">
                   Nome da Sala Privada
@@ -273,7 +261,6 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
                 />
               </div>
 
-              {/* Room Unique Color (Auto-Assigned) */}
               <div className="flex items-center justify-between p-3 rounded-xl bg-[#161c27] border border-[#263145]">
                 <div className="flex items-center gap-3">
                   <div
@@ -290,7 +277,6 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
                 </span>
               </div>
 
-              {/* Welcome Greeting Message */}
               <div className="space-y-1.5">
                 <label className="flex items-center gap-1.5 text-xs font-bold text-slate-200">
                   <MessageSquare className="w-3.5 h-3.5 text-indigo-400" />
@@ -308,7 +294,6 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
                 </p>
               </div>
 
-              {/* Room Description / Purpose */}
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-200">
                   Finalidade / Descrição
@@ -324,7 +309,6 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
             </>
           ) : (
             <>
-              {/* Access Mode */}
               <div className="p-4 bg-[#141a26] border border-[#242f44] rounded-xl space-y-3">
                 <div className="text-xs font-bold text-slate-200 flex items-center gap-2">
                   <Lock className="w-4 h-4 text-indigo-400" />
@@ -385,7 +369,6 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
                 )}
               </div>
 
-              {/* Room Admins */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
                   <div className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
@@ -395,7 +378,6 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
                   <span className="text-[10px] text-slate-400">Controle total desta sala</span>
                 </div>
 
-                {/* Add Admin Input */}
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -415,7 +397,6 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
                   </button>
                 </div>
 
-                {/* Quick Add from Online Users */}
                 <div className="flex flex-wrap gap-1.5 items-center">
                   <span className="text-[10px] text-slate-500">Atalhos online:</span>
                   {onlinePlayers
@@ -432,7 +413,6 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
                     ))}
                 </div>
 
-                {/* Admins List */}
                 <div className="space-y-1.5 max-h-32 overflow-y-auto">
                   {admins.map((adm) => {
                     const isSelf =
@@ -480,7 +460,6 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
                 </div>
               </div>
 
-              {/* Room Members */}
               <div className="space-y-2.5 pt-2 border-t border-[#1c2433]">
                 <div className="flex items-center justify-between">
                   <div className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
@@ -490,7 +469,6 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
                   <span className="text-[10px] text-slate-400">Acesso garantido mesmo trancada</span>
                 </div>
 
-                {/* Add Member Input */}
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -510,7 +488,6 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
                   </button>
                 </div>
 
-                {/* Quick Add from Online Users */}
                 <div className="flex flex-wrap gap-1.5 items-center">
                   <span className="text-[10px] text-slate-500">Atalhos online:</span>
                   {onlinePlayers
@@ -527,7 +504,6 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
                     ))}
                 </div>
 
-                {/* Members List */}
                 <div className="space-y-1.5 max-h-32 overflow-y-auto">
                   {members.length === 0 ? (
                     <div className="text-[11px] text-slate-500 italic p-2 bg-[#121620]/60 rounded-xl text-center">
@@ -562,7 +538,6 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#1c2433] bg-[#121722]/80">
           <button
             type="button"

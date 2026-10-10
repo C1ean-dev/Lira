@@ -25,18 +25,15 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
   const imgRef = useRef<HTMLImageElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
 
-  // Viewport and Crop Circle Constants
   const VIEWPORT_SIZE = 280
   const CROP_DIAMETER = 220
 
-  // Calculate base scale so image always covers at least the crop diameter
   const baseScale = imageSize
     ? Math.max(CROP_DIAMETER / imageSize.width, CROP_DIAMETER / imageSize.height)
     : 1
 
   const currentScale = baseScale * zoom
 
-  // Clamp pan so image never leaves empty gaps inside the circular crop
   const clampPan = useCallback(
     (x: number, y: number, currentZ: number) => {
       if (!imageSize) return { x: 0, y: 0 }
@@ -55,7 +52,6 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
     [imageSize, baseScale]
   )
 
-  // Reset when image changes or modal opens
   useEffect(() => {
     if (isOpen && imageSrc) {
       setZoom(1)
@@ -74,7 +70,6 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
 
   if (!isOpen || !imageSrc) return null
 
-  // Pointer drag events for smooth panning
   const handlePointerDown = (e: React.PointerEvent) => {
     e.preventDefault()
     setIsDragging(true)
@@ -101,7 +96,6 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
     }
   }
 
-  // Mouse wheel zoom
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault()
     const zoomDelta = e.deltaY < 0 ? 0.1 : -0.1
@@ -121,12 +115,9 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
     setPan({ x: 0, y: 0 })
   }
 
-  // Confirm crop and generate 256x256 result
   const handleConfirm = () => {
     if (!imgRef.current || !imageSize) return
 
-    // In natural image pixels:
-    // Crop circle center is (imageSize.width / 2) - (pan.x / currentScale)
     const centerX = imageSize.width / 2 - pan.x / currentScale
     const centerY = imageSize.height / 2 - pan.y / currentScale
     const cropSourceDim = CROP_DIAMETER / currentScale
@@ -150,7 +141,6 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md select-none animate-in fade-in duration-200">
       <div className="bg-[#1e1f22] border border-[#383a40] rounded-2xl w-full max-w-sm sm:max-w-md p-5 flex flex-col gap-4 shadow-2xl text-white">
-        {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-[#313338]">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center border border-blue-500/30">
@@ -172,7 +162,6 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
           </button>
         </div>
 
-        {/* Interactive Viewport */}
         <div className="flex flex-col items-center justify-center">
           <div
             ref={containerRef}
@@ -183,7 +172,6 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
             style={{ width: VIEWPORT_SIZE, height: VIEWPORT_SIZE }}
             className="relative overflow-hidden rounded-2xl bg-[#111214] border border-[#2b2d31] cursor-grab active:cursor-grabbing touch-none flex items-center justify-center shadow-inner"
           >
-            {/* Source Image */}
             <img
               ref={imgRef}
               src={imageSrc}
@@ -197,19 +185,16 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
               }}
             />
 
-            {/* Circular Crop Mask Overlay with 9999px Box Shadow */}
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <div
                 style={{ width: CROP_DIAMETER, height: CROP_DIAMETER }}
                 className="rounded-full border-2 border-white/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.65)] ring-1 ring-black/40 flex items-center justify-center"
               >
-                {/* Subtle alignment guides */}
                 <div className="w-full h-[1px] bg-white/10" />
                 <div className="h-full w-[1px] bg-white/10 absolute" />
               </div>
             </div>
 
-            {/* Drag helper hint */}
             <div className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1 text-[10px] text-white/60 bg-black/60 px-2 py-0.5 rounded-full backdrop-blur-sm">
               <Move className="w-3 h-3" />
               <span>Arraste para mover</span>
@@ -217,7 +202,6 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
           </div>
         </div>
 
-        {/* Zoom Controls */}
         <div className="flex items-center gap-3 bg-[#2b2d31] p-3 rounded-xl border border-white/5">
           <button
             onClick={() => handleZoomChange(zoom - 0.2)}
@@ -255,7 +239,6 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
           </button>
         </div>
 
-        {/* Footer Actions */}
         <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-[#313338]">
           <button
             onClick={onCancel}

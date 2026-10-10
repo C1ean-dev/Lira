@@ -31,17 +31,14 @@ export const FriendRequestCard: React.FC<Props> = ({
 
   if (!req) return null
 
-  // 1. Is the local player the original sender of this request?
   const isSender = isSameParticipant(localPlayer, req.fromUserId, req.fromUserName)
 
-  // 2. Is the other person already a friend in useGameStore?
   const peerId = isSender ? req.toUserId : req.fromUserId
   const peerName = isSender ? req.toUserName : req.fromUserName
   const isAlreadyFriend = friends.some((key) =>
     isSameParticipant(friendProfiles[key] || { id: key }, peerId, peerName)
   )
 
-  // 3. Effective status: if already in friends list, never show pending buttons!
   const effectiveStatus = isAlreadyFriend ? 'accepted' : req.status
 
   const isPending = effectiveStatus === 'pending'
@@ -60,7 +57,6 @@ export const FriendRequestCard: React.FC<Props> = ({
           : 'bg-gradient-to-b from-slate-900/60 to-[#121620] border-slate-700/50 text-slate-400'
       }`}
     >
-      {/* Top Banner */}
       <div className="flex items-center gap-2.5 mb-2.5">
         <div
           className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
@@ -101,7 +97,6 @@ export const FriendRequestCard: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Body Message */}
       <div className="text-xs text-slate-300 mb-3 bg-[#0d1017]/50 rounded-xl p-2.5 border border-white/5">
         {isPending ? (
           isSender ? (
@@ -136,7 +131,6 @@ export const FriendRequestCard: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Recipient Interactive Action Buttons (Pending only) */}
       {!isSender && isPending && (
         <div className="flex items-center gap-2 pt-0.5">
           <button
@@ -161,7 +155,6 @@ export const FriendRequestCard: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Resolved Status Badges */}
       {isAccepted && (
         <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-400 pt-0.5">
           <CheckCircle2 className="w-3.5 h-3.5" />

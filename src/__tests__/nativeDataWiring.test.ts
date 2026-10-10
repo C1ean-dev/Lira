@@ -2,12 +2,8 @@ import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
 
-// The pieces are tested on their own (imageTable, pngOptimizer, nativeDataFile).
-// What nothing else notices is a writer that goes back to dumping the plain JSON.
-
 const read = (relative: string) => fs.readFileSync(fileURLToPath(new URL(`../../${relative}`, import.meta.url)), 'utf-8')
 
-/** The text between two markers. */
 function between(text: string, from: string, to: string): string {
   const start = text.indexOf(from)
   const end = text.indexOf(to, start + from.length)

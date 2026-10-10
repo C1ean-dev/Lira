@@ -28,7 +28,7 @@ export interface FurnitureDefinition {
   id: string
   name: string
   category: FurnitureCategory
-  width: number // in tiles (1x1, 2x1, 3x2, etc.)
+  width: number
   height: number
   isObstacle: boolean
   spriteKey: string
@@ -38,8 +38,8 @@ export interface FurnitureDefinition {
 export interface PlacedFurniture {
   id: string
   defId: string
-  x: number // tile x
-  y: number // tile y
+  x: number
+  y: number
   rotation?: 0 | 90 | 180 | 270
   direction?: 'down' | 'left' | 'up' | 'right'
   tintColor?: string
@@ -48,34 +48,33 @@ export interface PlacedFurniture {
 export interface PrivateZone {
   id: string
   name: string
-  color: string // hex color or rgba
-  x: number     // tile x start
-  y: number     // tile y start
-  width: number // tile width
-  height: number // tile height
+  color: string
+  x: number
+  y: number
+  width: number
+  height: number
   description?: string
   maxCapacity?: number
-  hasWalls?: boolean // whether this zone has perimeter walls (default true)
-  wallType?: WallType | string // texture/material for the zone walls
+  hasWalls?: boolean
+  wallType?: WallType | string
 
-  // Room Specific Configuration, Roles & Access
-  admins?: string[]        // Names or User IDs of room administrators
-  members?: string[]       // Names or User IDs of authorized room members
-  authorizedPeers?: string[] // Peer IDs dynamically permitted through knocking
-  isLocked?: boolean       // Whether room is locked/restricted to non-members
-  allowKnock?: boolean     // Whether non-members can knock/request entrance
-  welcomeMessage?: string  // Custom greeting displayed upon entering
+  admins?: string[]
+  members?: string[]
+  authorizedPeers?: string[]
+  isLocked?: boolean
+  allowKnock?: boolean
+  welcomeMessage?: string
 }
 
 export interface MapData {
   id: string
   name: string
-  width: number  // tile columns (e.g. 40)
-  height: number // tile rows (e.g. 30)
-  tileSize: number // 32px
+  width: number
+  height: number
+  tileSize: number
   spawnPoint: { x: number; y: number }
-  floors: FloorType[][] // 2D array [y][x]
-  walls: (WallType | null)[][] // 2D array [y][x]
+  floors: FloorType[][]
+  walls: (WallType | null)[][]
   furniture: PlacedFurniture[]
   zones: PrivateZone[]
   defaultFloor?: FloorType

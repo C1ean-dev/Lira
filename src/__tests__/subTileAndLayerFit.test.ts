@@ -69,13 +69,9 @@ describe('subTileAndLayerFit - Layer Auto-Fit & Sub-Tile Placement Math', () => 
         height: 64,
       }
       const fitted = fitLayerToBounds(layer, 16, 16, 'fit')
-      // Scale is min(16/32, 16/64) = 16/64 = 0.25
-      // width = 32 * 0.25 = 8, height = 64 * 0.25 = 16
       expect(fitted.width).toBe(8)
       expect(fitted.height).toBe(16)
-      // Centered horizontally: (16 - 8)/2 = 4
       expect(fitted.x).toBe(4)
-      // Bottom-aligned vertically: 16 - 16 = 0
       expect(fitted.y).toBe(0)
     })
 
@@ -120,26 +116,22 @@ describe('subTileAndLayerFit - Layer Auto-Fit & Sub-Tile Placement Math', () => 
         origHeight: 64,
       }
 
-      // 1. Shrink to 1x1
       const at1x1 = rescaleLayersForNewBoard([initialLayer], 1, 1, 64, 64)
       expect(at1x1[0].width).toBe(1)
       expect(at1x1[0].height).toBe(1)
       expect(at1x1[0].origWidth).toBe(64)
       expect(at1x1[0].origHeight).toBe(64)
 
-      // 2. Expand back to 8x8
       const at8x8 = rescaleLayersForNewBoard(at1x1, 8, 8, 1, 1)
       expect(at8x8[0].width).toBe(8)
       expect(at8x8[0].height).toBe(8)
       expect(at8x8[0].x).toBe(0)
       expect(at8x8[0].y).toBe(0)
 
-      // 3. Expand further to 32x32
       const at32x32 = rescaleLayersForNewBoard(at8x8, 32, 32, 8, 8)
       expect(at32x32[0].width).toBe(32)
       expect(at32x32[0].height).toBe(32)
 
-      // 4. Expand back to 64x64
       const at64x64 = rescaleLayersForNewBoard(at32x32, 64, 64, 32, 32)
       expect(at64x64[0].width).toBe(64)
       expect(at64x64[0].height).toBe(64)
@@ -156,12 +148,10 @@ describe('subTileAndLayerFit - Layer Auto-Fit & Sub-Tile Placement Math', () => 
         origHeight: 64,
       }
 
-      // Shrink to 1x1
       const at1x1 = rescaleLayersForNewBoard([potion32x64], 1, 1, 32, 64)
       expect(at1x1[0].width).toBe(1)
       expect(at1x1[0].height).toBe(1)
 
-      // Expand back to 8x8 -> should be 4x8, centered at x=2, y=0
       const at8x8 = rescaleLayersForNewBoard(at1x1, 8, 8, 1, 1)
       expect(at8x8[0].width).toBe(4)
       expect(at8x8[0].height).toBe(8)
@@ -172,20 +162,15 @@ describe('subTileAndLayerFit - Layer Auto-Fit & Sub-Tile Placement Math', () => 
 
   describe('snapCoordinateToGrid', () => {
     it('snaps to 8px fine grid (0.25 tile)', () => {
-      // 10.1 tiles -> 10.0 (0/4)
       expect(snapCoordinateToGrid(10.1, 0.25)).toBe(10)
-      // 10.15 tiles -> 10.25 (1/4)
       expect(snapCoordinateToGrid(10.15, 0.25)).toBe(10.25)
-      // 10.4 tiles -> 10.5 (2/4)
       expect(snapCoordinateToGrid(10.4, 0.25)).toBe(10.5)
-      // 10.7 tiles -> 10.75 (3/4)
       expect(snapCoordinateToGrid(10.7, 0.25)).toBe(10.75)
     })
 
     it('snaps to 1px fine grid (1/32 tile) when free placement is active', () => {
       const snap1px = 1 / 32
       const snapped = snapCoordinateToGrid(5.035, snap1px)
-      // 5.035 * 32 = 161.12 -> round is 161 -> 161 / 32 = 5.03125
       expect(snapped).toBe(161 / 32)
     })
   })
@@ -198,17 +183,14 @@ describe('subTileAndLayerFit - Layer Auto-Fit & Sub-Tile Placement Math', () => 
       cam.y = 0
       const canvas = { width: 800, height: 600 } as HTMLCanvasElement
 
-      // Center of canvas: screenX = 400, screenY = 300 -> worldX = 0, worldY = 0 -> tile (0, 0)
       const center = cam.screenToTile(canvas, 400, 300, 0.25)
       expect(center.x).toBe(0)
       expect(center.y).toBe(0)
 
-      // Shift screenX by 8 pixels: worldX = 8 -> 8 / 32 = 0.25 tile
       const offset8px = cam.screenToTile(canvas, 408, 300, 0.25)
       expect(offset8px.x).toBe(0.25)
       expect(offset8px.y).toBe(0)
 
-      // Shift screenX by 16 pixels: worldX = 16 -> 16 / 32 = 0.5 tile
       const offset16px = cam.screenToTile(canvas, 416, 300, 0.25)
       expect(offset16px.x).toBe(0.5)
       expect(offset16px.y).toBe(0)
@@ -255,7 +237,6 @@ describe('subTileAndLayerFit - Layer Auto-Fit & Sub-Tile Placement Math', () => 
         customAssets: [customAsset],
       })
 
-      // 1. Dimensions check: tileW is 43/32 = 1.34375, NOT 2.0 (64px)
       const dims = resolveFurnitureDimensions(
         { id: 'placed_1', defId: 'roulette_table_43x64', x: 5, y: 5 },
         customAsset
@@ -284,13 +265,9 @@ describe('subTileAndLayerFit - Layer Auto-Fit & Sub-Tile Placement Math', () => 
         zones: [],
       }
 
-      // 2. Player inside the table bounds (e.g. x = 5.0, y = 5.0 -> feet at 5.5, 5.75) -> MUST collide
       const collidesInside = checkCollision(4.8, 4.6, map)
       expect(collidesInside).toBe(true)
 
-      // 3. Player in the space between 43px and 64px (e.g. x = 5 + (50/32) = 6.5625)
-      // Previously, the old 64x64 collision blocked up to x = 5 + 2.0 = 7.0!
-      // Now, with 43px (1.34375 tiles), player at x = 6.5 should NOT collide!
       const collidesInClearedMargin = checkCollision(6.5, 5.0, map)
       expect(collidesInClearedMargin).toBe(false)
     })
@@ -304,7 +281,7 @@ describe('subTileAndLayerFit - Layer Auto-Fit & Sub-Tile Placement Math', () => 
         width: 1,
         height: 1,
         isObstacle: true,
-        collisionGrid: [[false]], // Unpainted grid must still collide because isObstacle is true
+        collisionGrid: [[false]],
         frames: ['data:mock'],
         frameRateMs: 160,
         createdAt: Date.now(),
@@ -334,9 +311,7 @@ describe('subTileAndLayerFit - Layer Auto-Fit & Sub-Tile Placement Math', () => 
         zones: [],
       }
 
-      // Player trying to step on the obstacle at (7, 7) must collide
       expect(checkCollision(7, 7, map)).toBe(true)
-      // Player away from obstacle at (10, 10) must not collide
       expect(checkCollision(10, 10, map)).toBe(false)
     })
 
@@ -380,7 +355,6 @@ describe('subTileAndLayerFit - Layer Auto-Fit & Sub-Tile Placement Math', () => 
         zones: [],
       }
 
-      // 16x16 px is 0.5 tiles wide/tall at (4, 4)
       expect(checkCollision(4.0, 4.0, map)).toBe(true)
     })
 
@@ -398,7 +372,6 @@ describe('subTileAndLayerFit - Layer Auto-Fit & Sub-Tile Placement Math', () => 
         zones: [],
       }
 
-      // Paint wall at tile (8, 8)
       map.walls[8][8] = 'drywall_white' as any
 
       expect(checkCollision(8, 8, map)).toBe(true)

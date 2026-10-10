@@ -7,24 +7,6 @@ import { SESSION_ID } from './sessionId'
 import { StackFrame, isAppPath, normalizeFramePath, parseStack } from './stackFrames'
 import { describeClickTarget } from './uiBreadcrumbs'
 
-/**
- * Renderer side of the app log.
- *
- * `createLogger('Scope')` is the way to log from new code, and
- * `reportError(error, { scope, message, data })` the way to report a failure
- * that was caught. Existing `console.*` calls are captured too
- * (installRendererLogging), together with uncaught errors and unhandled promise
- * rejections. Records are batched to the Electron main process, which writes
- * lira-<day>.log (everything), lira-errors-<day>.log (errors only) and
- * lira-reports-<day>.jsonl. Errors are shipped almost immediately.
- * In the browser, records stay in a bounded in-memory buffer.
- *
- * Every error gets a structured report (errorReport.ts): the error, where it
- * was logged, the state of the app at that moment (reportContext.ts) and the
- * trail of what happened before it (breadcrumbs.ts: log lines, diagLog events,
- * clicks, the window going to the background, the network dropping).
- */
-
 export const LOG_FLUSH_INTERVAL_MS = 2000
 export const ERROR_FLUSH_DELAY_MS = 50
 export const MAX_BUFFERED_RECORDS = 1000
@@ -68,7 +50,6 @@ let flushTimerUrgent = false
 let drainTimer: ReturnType<typeof setTimeout> | null = null
 let uninstallCurrent: (() => void) | null = null
 let installedWindow: WindowLike | null = null
-/** The console.error of before the capture: prints without logging a second time. */
 let printError: ((...args: unknown[]) => void) | null = null
 let reporter = makeReporter()
 
@@ -79,7 +60,6 @@ export interface Logger {
   error(...args: unknown[]): void
 }
 
-/** A logger whose messages are tagged `[scope]`. */
 export function createLogger(scope: string, con?: ConsoleLike): Logger {
   const tag = `[${scope}]`
   const target = () => con ?? (console as unknown as ConsoleLike)
@@ -91,7 +71,6 @@ export function createLogger(scope: string, con?: ConsoleLike): Logger {
   }
 }
 
-/** Records not delivered to disk yet (all of them in the browser). */
 export function getBufferedLogs(): LogRecord[] {
   return buffer.slice()
 }
@@ -121,10 +100,6 @@ function scheduleFlush(urgent: boolean) {
   )
 }
 
-/**
- * Sends what is buffered to the main process now and resolves when it has been
- * written (or could not be: the records are then kept for the next try). Never rejects.
- */
 export function flushLogs(): Promise<void> {
   const send = currentWindow()?.electronAPI?.logBatch
   if (!send || buffer.length === 0) return Promise.resolve()
@@ -145,7 +120,6 @@ function flush() {
   void flushLogs()
 }
 
-/** Errors that were only counted get one report when their window ends. */
 function scheduleDrain() {
   if (drainTimer) return
   const wait = reporter.nextDrainInMs()
@@ -161,7 +135,6 @@ function scheduleDrain() {
           scheduleFlush(true)
         }
       } catch {
-        // logging must never break the app
       }
       scheduleDrain()
     },
@@ -169,7 +142,6 @@ function scheduleDrain() {
   )
 }
 
-/** The frames of whoever called the function that calls this one. */
 function callSite(): StackFrame[] {
   return parseStack(new Error().stack, 12).slice(2)
 }
@@ -192,7 +164,6 @@ function record(level: LogLevel, args: unknown[], meta?: ErrorMeta): ErrorReport
       scheduleDrain()
     }
   }
-  // After the report: its trail is what led to the error, and later reports see this line.
   appTrail.add(logBreadcrumb(entry))
   buffer.push(entry)
   trim()
@@ -201,25 +172,14 @@ function record(level: LogLevel, args: unknown[], meta?: ErrorMeta): ErrorReport
 }
 
 export interface ReportErrorOptions {
-  /** The part of the app, as in the `[Scope]` tag of a log line. */
   scope?: string
-  /** What was being done: "could not save the spaces". */
   message?: string
-  /** How it was caught; `handled` when not given. */
   kind?: string
   severity?: ReportSeverity
-  /** What the caller knows about the operation (keys, sizes, ids, states). Small and plain. */
   data?: Record<string, unknown>
-  /** React's component stack, from an error boundary. */
   componentStack?: string
 }
 
-/**
- * Logs an error that was caught, with a structured report: use it where a
- * failure is handled (a `catch`) and would otherwise be lost or logged without
- * saying what was being done. Safe before installRendererLogging. Never throws.
- * Returns the report, or null when this occurrence was only counted.
- */
 export function reportError(error: unknown, options: ReportErrorOptions = {}): ErrorReport | null {
   try {
     const loggedAt = callSite()
@@ -228,7 +188,6 @@ export function reportError(error: unknown, options: ReportErrorOptions = {}): E
     try {
       ;(printError ?? console.error)(...args)
     } catch {
-      // no console: the record is still kept
     }
     const { message: _message, ...meta } = options
     return record('error', args, { ...meta, kind: options.kind ?? 'handled', error, loggedAt })
@@ -244,7 +203,6 @@ function uncaughtArgs(event: any): unknown[] {
     : [`[Uncaught] ${event?.message ?? 'Unknown error'}${where}`]
 }
 
-/** Where the browser says an uncaught error happened, when it gave no error object. */
 function uncaughtPlace(event: any): StackFrame[] | undefined {
   if (event?.error || typeof event?.filename !== 'string' || !event.filename) return undefined
   const file = normalizeFramePath(event.filename)
@@ -279,11 +237,6 @@ function windowSnapshot(win: WindowLike) {
   }
 }
 
-/**
- * Start recording console output, uncaught errors and unhandled rejections,
- * and the trail of clicks and window events that error reports carry.
- * Safe to call more than once (later calls do nothing). Returns an uninstall.
- */
 export function installRendererLogging(
   options: { win?: WindowLike; con?: ConsoleLike } = {}
 ): () => void {
@@ -302,7 +255,6 @@ export function installRendererLogging(
       try {
         record(LEVEL_OF[method], args, method === 'error' ? { loggedAt: callSite() } : undefined)
       } catch {
-        // logging must never break the app
       }
     }
   }
@@ -341,7 +293,6 @@ export function installRendererLogging(
   const forgetApp = registerReportContext('app', () => appSnapshot(win))
   const forgetWindow = registerReportContext('window', () => windowSnapshot(win))
 
-  // What was reported before this point (while the modules loaded) can go now.
   if (buffer.length > 0) scheduleFlush(true)
 
   const uninstall = () => {
@@ -363,7 +314,6 @@ export function installRendererLogging(
   return uninstall
 }
 
-/** Test-only reset. */
 export function __resetLoggerForTests(): void {
   uninstallCurrent?.()
   uninstallCurrent = null

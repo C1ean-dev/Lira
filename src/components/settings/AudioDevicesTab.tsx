@@ -10,8 +10,10 @@ import {
   VideoOff,
   Info,
   AlertTriangle,
+  Volume2,
 } from 'lucide-react'
 import { useMediaStore } from '../../store/useMediaStore'
+import { playSoundEffect, SoundEffectType, SOUND_EFFECT_LABELS } from '../../utils/soundEffects'
 import { MediaManager } from '../../media/MediaManager'
 import { attachStreamToVideo } from '../../media/attachVideoElement'
 import { AudioDeviceInfo, SensitivityMode } from '../../types/audio'
@@ -33,8 +35,6 @@ export const AudioDevicesTab: React.FC<Props> = ({
   isPlayingTestSound,
   onPlayTestSound,
 }) => {
-  // Granular selectors — localAudioLevel ticks at ~10Hz; whole-store here
-  // would re-render the entire settings tab on every tick.
   const selectedAudioInput = useMediaStore((s) => s.selectedAudioInput)
   const selectedAudioOutput = useMediaStore((s) => s.selectedAudioOutput)
   const selectedVideoInput = useMediaStore((s) => s.selectedVideoInput)
@@ -50,6 +50,10 @@ export const AudioDevicesTab: React.FC<Props> = ({
   const setOutputVolume = useMediaStore((s) => s.setOutputVolume)
   const setSensitivityMode = useMediaStore((s) => s.setSensitivityMode)
   const setManualSensitivityThreshold = useMediaStore((s) => s.setManualSensitivityThreshold)
+  const soundEffectsEnabled = useMediaStore((s) => s.soundEffectsEnabled)
+  const soundEffectsVolume = useMediaStore((s) => s.soundEffectsVolume)
+  const setSoundEffectsEnabled = useMediaStore((s) => s.setSoundEffectsEnabled)
+  const setSoundEffectsVolume = useMediaStore((s) => s.setSoundEffectsVolume)
   const micCalibrations = useMediaStore((s) => s.micCalibrations)
   const currentCalibration = micCalibrations[selectedAudioInput]
 
@@ -83,8 +87,6 @@ export const AudioDevicesTab: React.FC<Props> = ({
       const localStream = useMediaStore.getState().localStream
       const isCameraOff = useMediaStore.getState().isCameraOff
 
-      // Se a câmera já estiver ligada na chamada, reusamos o track ativo para evitar
-      // conflito de exclusividade do hardware no Windows (DirectShow/MediaFoundation)
       const existingLiveTrack =
         !isCameraOff &&
         localStream?.getVideoTracks().find((t) => !(t as any).__isDummy && t.readyState === 'live')
@@ -118,7 +120,7 @@ export const AudioDevicesTab: React.FC<Props> = ({
           try {
             const fallbackConstraints: MediaStreamConstraints = {
               video: targetId && targetId !== 'default'
-                ? { deviceId: { ideal: targetId }, width: { ideal: 640 }, height: { ideal: 480 } }
+                ? { deviceId: { exact: targetId }, width: { ideal: 640 }, height: { ideal: 480 } }
                 : true,
             }
             stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints)
@@ -140,7 +142,6 @@ export const AudioDevicesTab: React.FC<Props> = ({
     }
   }
 
-  // Acopla o stream de teste ao elemento de vídeo de forma reativa e segura
   useEffect(() => {
     if (isTestingCamera && cameraTestStream && videoPreviewRef.current) {
       const cleanup = attachStreamToVideo(videoPreviewRef.current, cameraTestStream, {
@@ -211,7 +212,6 @@ export const AudioDevicesTab: React.FC<Props> = ({
 
   return (
     <div className="space-y-6">
-      {/* 0. Câmera & Webcam Selector */}
       <div className="bg-[#12151d]/70 rounded-2xl p-4 border border-[#2a3142] space-y-3.5">
         <div className="flex items-center justify-between">
           <label className="flex items-center gap-2 text-xs font-bold text-slate-200">
@@ -260,7 +260,6 @@ export const AudioDevicesTab: React.FC<Props> = ({
           </div>
         )}
 
-        {/* Live Camera Preview Box */}
         {isTestingCamera && (
           <div className="relative w-full aspect-video max-h-56 bg-black rounded-xl overflow-hidden border border-[#2a3142] shadow-inner flex items-center justify-center">
             <video
@@ -288,12 +287,8 @@ export const AudioDevicesTab: React.FC<Props> = ({
         )}
       </div>
 
-      {/* 1. Microfone & Alto-falantes Selectors */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {/* Microfone */}
         <div className="space-y-2">
-          {/* Cabeçalhos de entrada e saída com a mesma altura: o da saída tem o botão "Testar Som",
-              mais alto que o título, e sem isso a coluna da saída ficaria mais baixa. */}
           <div className="flex items-center justify-between h-7">
             <label className="flex items-center gap-2 text-xs font-bold text-slate-200">
               <Mic className="w-4 h-4 text-indigo-400" />
@@ -309,7 +304,6 @@ export const AudioDevicesTab: React.FC<Props> = ({
             buttonClassName="bg-[#12151d] hover:bg-[#181d2a] border-[#2a3142]"
           />
 
-          {/* Volume de Entrada */}
           <div className="pt-2">
             <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1.5">
               <span>Volume de Entrada (Ganho)</span>
@@ -326,7 +320,6 @@ export const AudioDevicesTab: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Saída de Som */}
         <div className="space-y-2">
           <div className="flex items-center justify-between h-7">
             <label className="flex items-center gap-2 text-xs font-bold text-slate-200">
@@ -356,7 +349,6 @@ export const AudioDevicesTab: React.FC<Props> = ({
             buttonClassName="bg-[#12151d] hover:bg-[#181d2a] border-[#2a3142]"
           />
 
-          {/* Volume de Saída */}
           <div className="pt-2">
             <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1.5">
               <span>Volume de Saída dos Participantes</span>
@@ -374,7 +366,6 @@ export const AudioDevicesTab: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* 2. Seção de Teste de Microfone & VU Meter */}
       <div className="bg-[#12151d]/70 rounded-2xl p-4 border border-[#2a3142] space-y-3.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -402,7 +393,6 @@ export const AudioDevicesTab: React.FC<Props> = ({
           </div>
         )}
 
-        {/* Real-time Dynamic VU Meter Bar with Sensitivity Cutoff Marker */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-[10px] text-slate-400">
             <span>Nível de Entrada Sonoro</span>
@@ -412,7 +402,6 @@ export const AudioDevicesTab: React.FC<Props> = ({
           </div>
 
           <div className="relative w-full h-4 bg-slate-950 rounded-full overflow-hidden border border-[#2a3142] p-0.5">
-            {/* Live volume level fill */}
             <div
               className={`h-full rounded-full transition-all duration-75 ${
                 isGateOpen
@@ -422,7 +411,6 @@ export const AudioDevicesTab: React.FC<Props> = ({
               style={{ width: `${Math.min(100, Math.max(0, localAudioLevel * 100))}%` }}
             />
 
-            {/* Manual Sensitivity Marker Overlay (Discord style) */}
             {sensitivityMode === 'manual' && (
               <div
                 className="absolute top-0 bottom-0 w-1 bg-amber-400 z-10 shadow-md pointer-events-none"
@@ -433,7 +421,6 @@ export const AudioDevicesTab: React.FC<Props> = ({
               </div>
             )}
 
-            {/* Dynamic Adaptive Sensitivity Marker Overlay (Auto mode - Discord style) */}
             {sensitivityMode === 'auto' && autoThresholdPercent > 0 && (
               <div
                 className="absolute top-0 bottom-0 w-1 bg-emerald-400/90 z-10 shadow-md transition-all duration-150 pointer-events-none"
@@ -447,7 +434,6 @@ export const AudioDevicesTab: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* 3. Seção de Ajuste de Sensibilidade (Noise Gate) */}
       <div className="bg-[#12151d]/70 rounded-2xl p-4 border border-[#2a3142] space-y-3">
         <div className="flex items-center justify-between">
           <div>
@@ -457,7 +443,6 @@ export const AudioDevicesTab: React.FC<Props> = ({
             </p>
           </div>
 
-          {/* Mode Switcher: Auto vs Manual */}
           <div className="flex bg-[#1b202c] p-1 rounded-xl border border-[#2a3142]">
             <button
               type="button"
@@ -544,6 +529,90 @@ export const AudioDevicesTab: React.FC<Props> = ({
                 </button>
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-[#12151d]/70 rounded-2xl p-4 border border-[#2a3142] space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <Volume2 className="w-4 h-4 text-indigo-400" />
+              <span className="text-xs font-bold text-slate-200">Efeitos Sonoros</span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Sons de notificação ao mutar microfone, ensurdecer, entrar ou sair de chamadas e transmissão
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setSoundEffectsEnabled(!soundEffectsEnabled)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${
+              soundEffectsEnabled ? 'bg-indigo-600' : 'bg-slate-700'
+            }`}
+            title={soundEffectsEnabled ? 'Desativar efeitos sonoros' : 'Ativar efeitos sonoros'}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                soundEffectsEnabled ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+
+        {soundEffectsEnabled && (
+          <div className="space-y-3 pt-1 border-t border-[#1e2330]">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[11px] text-slate-300">
+                <span className="text-slate-400 font-medium">Volume dos Efeitos</span>
+                <span className="font-bold text-indigo-400 font-mono">{soundEffectsVolume}%</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={soundEffectsVolume}
+                onChange={(e) => setSoundEffectsVolume(Number(e.target.value))}
+                className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+              />
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <span className="text-[10.5px] font-semibold text-slate-400 uppercase tracking-wider">
+                Testar Sons de Ação
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {(
+                  [
+                    'mute',
+                    'unmute',
+                    'deafen',
+                    'undeafen',
+                    'user_join',
+                    'user_leave',
+                    'live_start',
+                    'live_stop',
+                  ] as SoundEffectType[]
+                ).map((type) => {
+                  const meta = SOUND_EFFECT_LABELS[type]
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => playSoundEffect(type, true)}
+                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[#1b202c] hover:bg-[#252c3d] border border-[#2a3142] hover:border-indigo-500/50 text-slate-300 hover:text-white transition-all text-left group cursor-pointer"
+                      title={`Ouvir som: ${meta.label}`}
+                    >
+                      <span className="text-sm shrink-0 group-hover:scale-110 transition-transform">
+                        {meta.icon}
+                      </span>
+                      <span className="text-[11px] font-medium truncate">{meta.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
           </div>
         )}
       </div>

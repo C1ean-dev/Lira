@@ -79,7 +79,6 @@ const host = async () => {
   await pending
 }
 
-/** Enter the room as a visitor; returns the connection to the host and this peer's id. */
 const join = async () => {
   const pending = PeerManager.getInstance().joinRoom('code-aaa', me())
   const peer = FakePeer.instances[FakePeer.instances.length - 1]
@@ -305,7 +304,6 @@ describe('the message of a viewer to who is live', () => {
     expect(liveViews(sharer)).toEqual([message])
     expect(liveViews(other)).toEqual([message])
     expect(liveViews(viewer)).toEqual([])
-    // It was for somebody else: the host itself does nothing with it.
     expect(apply).not.toHaveBeenCalled()
   })
 
@@ -337,7 +335,6 @@ describe('the click, from the button to who is live', () => {
 
     useLiveWatchStore.getState().watch(SHARER)
     await vi.advanceTimersByTimeAsync(VIEW_SEND_DELAY_MS)
-    // Nothing on screen to measure in this test: everything is asked for.
     expect(liveViews(hostConn).map((m) => m.payload)[1]).toEqual({ to: SHARER, watch: true, h: null })
 
     useLiveWatchStore.getState().stop(SHARER)
@@ -376,7 +373,6 @@ describe('the click, from the button to who is live', () => {
     await vi.advanceTimersByTimeAsync(VIEW_SEND_DELAY_MS)
     const before = liveViews(hostConn).length
 
-    // The call this peer dialed connected.
     PeerManager.getInstance().checkZoneCallEligibility(sharing(SHARER))
     const onCallConnected = dial.mock.calls[dial.mock.calls.length - 1][4] as (peerId: string) => void
     expect(onCallConnected).toBeTypeOf('function')

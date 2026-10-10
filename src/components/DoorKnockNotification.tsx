@@ -35,7 +35,6 @@ function playKnockSound() {
       ctx.close().catch(() => {})
     }, 300)
   } catch (e) {
-    // Ignore audio context autoplay restrictions
   }
 }
 
@@ -47,7 +46,6 @@ export const DoorKnockNotification: React.FC = () => {
 
   const lastSeenKnockId = useRef<string | null>(null)
 
-  // Filter knocks for the zone the local player is currently in
   const activeKnocks = pendingKnocks.filter(
     (k) => k.zoneId === localPlayer.currentZoneId
   )
@@ -105,7 +103,6 @@ export const DoorKnockNotification: React.FC = () => {
           key={knock.id}
           className="bg-[#12151d]/95 backdrop-blur-xl border border-indigo-500/40 rounded-2xl p-4 shadow-2xl shadow-indigo-950/50 flex flex-col gap-3"
         >
-          {/* Header */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="flex h-2.5 w-2.5 relative">
@@ -125,7 +122,6 @@ export const DoorKnockNotification: React.FC = () => {
             </button>
           </div>
 
-          {/* User Info */}
           <div className="flex items-center gap-3 bg-[#1b202c]/80 p-2.5 rounded-xl border border-[#2a3142]">
             <PlayerAvatar
               name={knock.requesterName}
@@ -143,7 +139,6 @@ export const DoorKnockNotification: React.FC = () => {
             </div>
           </div>
 
-          {/* Actions */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => handleDeny(knock)}

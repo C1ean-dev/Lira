@@ -18,7 +18,6 @@ export const NetworkSignalIcon: React.FC<NetworkSignalIconProps> = ({
   className = '',
   size = 'sm',
 }) => {
-  // Bar count based on rating
   const barsActive = rating === 'excellent' ? 4 : rating === 'good' ? 3 : rating === 'poor' ? 2 : 1
 
   const activeColor =

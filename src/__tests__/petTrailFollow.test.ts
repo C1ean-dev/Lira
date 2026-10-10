@@ -51,7 +51,6 @@ describe('PetManager & Trail-Following Behavior', () => {
 
   beforeEach(() => {
     petManager = PetManager.getInstance()
-    // Reset internal state by passing empty players
     petManager.update(0.016, [])
   })
 
@@ -79,7 +78,6 @@ describe('PetManager & Trail-Following Behavior', () => {
     const initialPet = petManager.getPet('p1')!
     const initialX = initialPet.x
 
-    // Player walks to x = 13
     p.x = 13
     petManager.update(0.1, [p])
 
@@ -92,7 +90,6 @@ describe('PetManager & Trail-Following Behavior', () => {
     const p = createFakePlayer('p1', 10, 10, 'slime')
     petManager.update(0.016, [p])
 
-    // Player teleports to room at 50, 50
     p.x = 50
     p.y = 50
     petManager.update(0.016, [p])
@@ -107,13 +104,11 @@ describe('PetManager & Trail-Following Behavior', () => {
     petManager.update(0.016, [p])
 
     const pet = petManager.getPet('p1')!
-    // Manually place pet close beside player
     pet.x = 9.4
     pet.y = 10
     petManager.update(0.016, [p])
 
     expect(pet.isMoving).toBe(false)
-    // Since pet is at x=9.4 and player is at x=10, pet should face right towards player
     expect(pet.direction).toBe('right')
   })
 
@@ -122,7 +117,6 @@ describe('PetManager & Trail-Following Behavior', () => {
     petManager.update(0.016, [p])
     expect(petManager.getPet('p1')).toBeDefined()
 
-    // Unequip
     p.avatar.pet = { type: 'none' }
     petManager.update(0.016, [p])
     expect(petManager.getPet('p1')).toBeUndefined()

@@ -2,12 +2,6 @@ import { describe, it, expect } from 'vitest'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
 
-// A stylesheet <link> in <head> blocks painting, and it also holds back the
-// module script that comes after it, so the whole app waits for it. The Google
-// Fonts stylesheet lives on the network: a slow DNS lookup or no connection at all
-// would keep the window empty. It is loaded as "print" and switched to "all" when
-// it arrives, which blocks nothing.
-
 const html = fs.readFileSync(fileURLToPath(new URL('../../index.html', import.meta.url)), 'utf-8')
 const outsideNoscript = html.replace(/<noscript>[\s\S]*?<\/noscript>/gi, '')
 const noscriptBlocks = html.match(/<noscript>[\s\S]*?<\/noscript>/gi) ?? []

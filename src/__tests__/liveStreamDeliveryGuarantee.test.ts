@@ -221,7 +221,6 @@ describe('Live Stream Delivery Guarantee (Video & Audio)', () => {
     const rawVideoTrack = new MockTrack('screen-video-track-1', 'video')
     const displayStream = new MockStream([rawVideoTrack])
 
-    // Mock getDisplayMedia returning video stream
     const mockGetDisplayMedia = vi.fn(async () => displayStream)
     const nav = (globalThis as any).navigator || (typeof window !== 'undefined' ? (window as any).navigator : null)
     if (!nav?.mediaDevices) {
@@ -260,7 +259,6 @@ describe('Live Stream Delivery Guarantee (Video & Audio)', () => {
     const resultStream = await mediaManager.startScreenShare(config)
     expect(resultStream).not.toBeNull()
 
-    // 1. Verify Video Track Delivery
     const videoTracks = resultStream!.getVideoTracks()
     expect(videoTracks.length).toBeGreaterThan(0)
     expect(videoTracks[0].kind).toBe('video')
@@ -268,7 +266,6 @@ describe('Live Stream Delivery Guarantee (Video & Audio)', () => {
     expect(['detail', 'motion']).toContain(videoTracks[0].contentHint)
     expect(replaceVideoSpy).toHaveBeenCalledWith(videoTracks[0], true, expect.any(Number), expect.any(Number))
 
-    // 2. Verify Audio Track Delivery
     const audioTracks = resultStream!.getAudioTracks()
     expect(audioTracks.length).toBeGreaterThan(0)
     expect(audioTracks[0].kind).toBe('audio')
@@ -276,7 +273,6 @@ describe('Live Stream Delivery Guarantee (Video & Audio)', () => {
     expect((audioTracks[0] as any).__screenShareLiveAudio).toBe(true)
     expect(replaceAudioSpy).toHaveBeenCalledWith(audioTracks[0])
 
-    // 3. Verify Store Updates
     expect(useMediaStore.getState().isScreenSharing).toBe(true)
     expect(useMediaStore.getState().localScreenStream).toBe(resultStream)
     expect(sendPlayerUpdateSpy).toHaveBeenCalledWith({ isScreenSharing: true })
@@ -299,7 +295,6 @@ describe('Live Stream Delivery Guarantee (Video & Audio)', () => {
       localStream: localStream as unknown as MediaStream,
     })
 
-    // Invoke private buildOutboundStream through reflect/call
     const outbound = (MediaCallHandler as any).buildOutboundStream()
     expect(outbound).not.toBeNull()
 
@@ -338,7 +333,6 @@ describe('Live Stream Delivery Guarantee (Video & Audio)', () => {
       removeEventListener: vi.fn(),
     } as unknown as HTMLVideoElement
 
-    // Attach stream for remote viewer
     const cleanup = attachStreamToVideo(mockVideoElement, remoteStream as unknown as MediaStream, {
       tile: 'grid',
       peer: 'presenter-peer-1',
@@ -351,7 +345,6 @@ describe('Live Stream Delivery Guarantee (Video & Audio)', () => {
     expect(mockVideoElement.muted).toBe(false)
     expect(mockVideoElement.play).toHaveBeenCalled()
 
-    // Test volume calculation for remote viewer
     const outputVol = useMediaStore.getState().outputVolume
     const userVol = useMediaStore.getState().participantVolumes['presenter-peer-1']
     const effectiveVol = Math.max(0, Math.min(1, (outputVol / 100) * (userVol / 100)))
@@ -385,11 +378,9 @@ describe('Live Stream Delivery Guarantee (Video & Audio)', () => {
     expect(useMediaStore.getState().isScreenSharing).toBe(false)
     expect(useMediaStore.getState().localScreenStream).toBeNull()
 
-    // Screen tracks must be stopped
     expect(screenVidTrack.stop).toHaveBeenCalled()
     expect(screenAudTrack.stop).toHaveBeenCalled()
 
-    // Regular cam and mic tracks must be restored
     expect(replaceVideoSpy).toHaveBeenCalledWith(camTrack, false)
     expect(replaceAudioSpy).toHaveBeenCalledWith(micTrack)
     expect(sendPlayerUpdateSpy).toHaveBeenCalledWith({ isScreenSharing: false })
@@ -417,16 +408,13 @@ describe('Live Stream Delivery Guarantee (Video & Audio)', () => {
     expect(track.readyState).toBe('live')
     expect(track.enabled).toBe(true)
 
-    // Generate 10ms of 48kHz stereo PCM (480 frames * 2 channels * 2 bytes = 1920 bytes)
     const pcmData = new Uint8Array(1920)
     const view = new DataView(pcmData.buffer)
     for (let i = 0; i < 960; i++) {
-      // 440Hz sine wave tone
       const sample = Math.round(Math.sin((i / 48000) * 440 * 2 * Math.PI) * 16000)
       view.setInt16(i * 2, sample, true)
     }
 
-    // Deliver PCM chunk via IPC
     expect(pcmListener).not.toBeNull()
     pcmListener!(pcmData)
 
@@ -441,7 +429,6 @@ describe('Live Stream Delivery Guarantee (Video & Audio)', () => {
       },
     })
 
-    // Assert that non-silent audio samples were written to Web Audio output buffers
     const hasAudibleLeft = leftBuffer.some((s) => Math.abs(s) > 0.01)
     const hasAudibleRight = rightBuffer.some((s) => Math.abs(s) > 0.01)
 
@@ -452,18 +439,14 @@ describe('Live Stream Delivery Guarantee (Video & Audio)', () => {
   })
 
   it('guarantees multi-window monitor audio simulation does not stall on silent windows', () => {
-    // Simulates the native mixing algorithm implemented in process-audio-capture:
-    // Session A (active audio player with 480 frames)
-    // Session B (silent editor window with 0 frames)
     const kMixFrames = 480
     const kChannels = 2
 
     const sessionA_buffer: number[] = []
-    const sessionB_buffer: number[] = [] // Silent!
+    const sessionB_buffer: number[] = []
 
-    // Populate Session A with audible stereo PCM
     for (let f = 0; f < kMixFrames; f++) {
-      sessionA_buffer.push(8000, 8000) // Left, Right
+      sessionA_buffer.push(8000, 8000)
     }
 
     const sessions = [
@@ -475,7 +458,6 @@ describe('Live Stream Delivery Guarantee (Video & Audio)', () => {
     const mixBufferRight = new Array(kMixFrames).fill(0)
     const outputPcm = new Int16Array(kMixFrames * kChannels)
 
-    // Run the non-blocking mixing algorithm
     for (const session of sessions) {
       const availableFrames = Math.floor(session.buffer.length / kChannels)
       const framesToTake = Math.min(kMixFrames, availableFrames)
@@ -495,7 +477,6 @@ describe('Live Stream Delivery Guarantee (Video & Audio)', () => {
       outputPcm[f * 2 + 1] = Math.max(-32768, Math.min(32767, mixBufferRight[f]))
     }
 
-    // The mixed block MUST carry Session A's audio despite Session B being completely silent
     const nonSilentCount = outputPcm.filter((sample) => sample !== 0).length
     expect(nonSilentCount).toBe(kMixFrames * kChannels)
     expect(outputPcm[0]).toBe(8000)

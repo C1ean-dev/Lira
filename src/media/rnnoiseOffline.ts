@@ -1,14 +1,7 @@
 import { getRnnoiseGlueSource, getWasmBytes, RNNOISE_GATE } from './RnnoiseProcessor'
 
-/**
- * RNNoise outside the audio thread: denoises a finished recording in one go.
- * Used by the calibration comparison so its "RNNoise" track is produced by
- * the same binary as the live engine, not by an approximation.
- */
-
-const FRAME_SIZE = 480 // 10 ms @ 48 kHz
+const FRAME_SIZE = 480
 const FRAME_BYTES = FRAME_SIZE * 4
-// Same sample scale as the worklet: the network works in 16-bit PCM units.
 const PCM_SCALE = 32768
 const PCM_MIN = -32768
 const PCM_MAX = 32767
@@ -34,17 +27,10 @@ interface GlueOptions {
 }
 
 async function createModule(): Promise<RnnoiseModule> {
-  // The glue is bundled as text (see RnnoiseProcessor) and the binary as
-  // bytes, so nothing is fetched: this works in the file:// build too.
   const factory = new Function(`${getRnnoiseGlueSource()}\nreturn createRNNWasmModuleSync`)() as (
     options: GlueOptions
   ) => RnnoiseModule
 
-  // Left alone, the glue compiles and instantiates synchronously. Chromium
-  // refuses that on the main thread for a binary this size, so do both
-  // asynchronously here and hand the glue a finished instance. The functions
-  // the binary imports only exist once the glue runs, so the instance is
-  // given forwarders that are bound to them at that point.
   const wasmModule = await WebAssembly.compile(getWasmBytes() as BufferSource)
   const glueImports: WasmImports = {}
   const forwarders: WasmImports = {}
@@ -76,11 +62,6 @@ function loadModule(): Promise<RnnoiseModule> {
   return modulePromise
 }
 
-/**
- * Denoise 48 kHz mono samples in [-1, 1]. Returns a new array of the same
- * length; the input is not modified. Every call starts from a fresh network
- * state.
- */
 export async function denoiseSamples(input: Float32Array): Promise<Float32Array> {
   const output = new Float32Array(input.length)
   if (input.length === 0) return output
@@ -93,11 +74,9 @@ export async function denoiseSamples(input: Float32Array): Promise<Float32Array>
     if (!state || !inputPtr || !outputPtr) throw new Error('RNNoise allocation failed')
     for (let offset = 0; offset < input.length; offset += FRAME_SIZE) {
       const count = Math.min(FRAME_SIZE, input.length - offset)
-      // Re-read the heap view on every frame: it is replaced if memory grows.
       let heap = module.HEAPF32
       const inBase = inputPtr / 4
       for (let i = 0; i < FRAME_SIZE; i++) {
-        // The last frame of a recording is padded with silence.
         const sample = i < count ? input[offset + i] * PCM_SCALE : 0
         heap[inBase + i] = Math.max(PCM_MIN, Math.min(PCM_MAX, sample))
       }
@@ -116,12 +95,6 @@ export async function denoiseSamples(input: Float32Array): Promise<Float32Array>
   return output
 }
 
-/**
- * The live engine's manual-sensitivity gate, applied to an already denoised
- * recording: opens above `sensitivityPercent` on the meter scale
- * (level = RMS * 6), closes below a fraction of it, holds through short
- * pauses and moves with the same attack/release.
- */
 export function gateDenoisedSamples(
   samples: Float32Array,
   sampleRate: number,

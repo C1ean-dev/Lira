@@ -70,18 +70,14 @@ describe('Call Controls, Audio Deafen & Moderation Features', () => {
     const store = useMediaStore.getState()
     expect(store.isDeafened).toBe(false)
 
-    // With 100% volume and not deafened, effective volume is 1.0
     useMediaStore.getState().setParticipantVolume('peer-1', 100)
     expect(useMediaStore.getState().getEffectiveParticipantVolume('peer-1')).toBe(1.0)
 
-    // Toggle deafen on
     store.toggleDeafen()
     expect(useMediaStore.getState().isDeafened).toBe(true)
 
-    // When deafened, effective volume must be 0
     expect(useMediaStore.getState().getEffectiveParticipantVolume('peer-1')).toBe(0)
 
-    // Toggle deafen off -> volume restored
     useMediaStore.getState().toggleDeafen()
     expect(useMediaStore.getState().isDeafened).toBe(false)
     expect(useMediaStore.getState().getEffectiveParticipantVolume('peer-1')).toBe(1.0)
@@ -90,20 +86,16 @@ describe('Call Controls, Audio Deafen & Moderation Features', () => {
   it('handles bidirectional silence (silenciar para mim) correctly', () => {
     const store = useMediaStore.getState()
 
-    // Initially not silenced
     expect(store.isUserSilenced('peer-abc', 'Alice')).toBe(false)
     useMediaStore.getState().setParticipantVolume('peer-abc', 80)
     expect(useMediaStore.getState().getEffectiveParticipantVolume('peer-abc')).toBe(0.8)
 
-    // Silence peer-abc
     const isSilenced = store.toggleSilenceUser('peer-abc', 'Alice')
     expect(isSilenced).toBe(true)
     expect(useMediaStore.getState().isUserSilenced('peer-abc', 'Alice')).toBe(true)
 
-    // Effective volume must be 0
     expect(useMediaStore.getState().getEffectiveParticipantVolume('peer-abc')).toBe(0)
 
-    // Unsilence peer-abc
     const isNowSilenced = useMediaStore.getState().toggleSilenceUser('peer-abc', 'Alice')
     expect(isNowSilenced).toBe(false)
     expect(useMediaStore.getState().isUserSilenced('peer-abc', 'Alice')).toBe(false)
@@ -133,7 +125,6 @@ describe('Call Controls, Audio Deafen & Moderation Features', () => {
       () => {}
     )
 
-    // Local client marks remote-sender as mutually silenced
     expect(useMediaStore.getState().mutuallySilencedBy['remote-sender']).toBe(true)
     expect(useMediaStore.getState().isUserSilenced('remote-sender')).toBe(true)
     expect(useMediaStore.getState().getEffectiveParticipantVolume('remote-sender')).toBe(0)
@@ -142,13 +133,11 @@ describe('Call Controls, Audio Deafen & Moderation Features', () => {
   it('handles local mute (mutar para mim) toggling participant volume between 0 and 100', () => {
     expect(useMediaStore.getState().isUserLocallyMuted('peer-xyz')).toBe(false)
 
-    // Mute for me
     const isMuted = useMediaStore.getState().toggleLocalMuteUser('peer-xyz', 'Charlie')
     expect(isMuted).toBe(true)
     expect(useMediaStore.getState().isUserLocallyMuted('peer-xyz')).toBe(true)
     expect(useMediaStore.getState().participantVolumes['peer-xyz']).toBe(0)
 
-    // Unmute for me
     const isNowMuted = useMediaStore.getState().toggleLocalMuteUser('peer-xyz', 'Charlie')
     expect(isNowMuted).toBe(false)
     expect(useMediaStore.getState().isUserLocallyMuted('peer-xyz')).toBe(false)
@@ -211,7 +200,6 @@ describe('Call Controls, Audio Deafen & Moderation Features', () => {
   })
 
   it('updates isMutedByAdmin and isMuted on remote players for room observers upon ADMIN_MUTE_PARTICIPANT', () => {
-    // Add remote player
     useGameStore.getState().setRemotePlayer({
       id: 'target-peer-1',
       name: 'Bob',
@@ -352,24 +340,20 @@ describe('Call Controls, Audio Deafen & Moderation Features', () => {
   })
 
   it('guarantees that voluntary self-mute always sets isMutedByAdmin to false', () => {
-    // Simulate player having been muted by admin in the past
     useMediaStore.setState({ isMuted: true })
     useGameStore.getState().setLocalPlayer({ isMuted: true, isMutedByAdmin: true })
     expect(useGameStore.getState().localPlayer.isMutedByAdmin).toBe(true)
 
-    // Player manually un-mutes
     useMediaStore.getState().toggleMute()
     expect(useGameStore.getState().localPlayer.isMuted).toBe(false)
     expect(useGameStore.getState().localPlayer.isMutedByAdmin).toBe(false)
 
-    // Player manually re-mutes
     useMediaStore.getState().toggleMute()
     expect(useGameStore.getState().localPlayer.isMuted).toBe(true)
     expect(useGameStore.getState().localPlayer.isMutedByAdmin).toBe(false)
   })
 
   it('does not mute the admin when muting another player who has the same name (e.g. Player)', () => {
-    // Both local admin and remote player have the same name 'Player'
     useGameStore.getState().setLocalPlayer({ id: 'admin-id-1', name: 'Player', isMuted: false, isMutedByAdmin: false })
     useGameStore.getState().setRemotePlayer({
       id: 'remote-peer-2',
@@ -399,7 +383,6 @@ describe('Call Controls, Audio Deafen & Moderation Features', () => {
       timestamp: Date.now(),
     }
 
-    // Process on admin client (sender = admin-peer-id, myPeerId = admin-peer-id)
     processNetworkMessage(
       adminMsg,
       'admin-peer-id',
@@ -410,11 +393,9 @@ describe('Call Controls, Audio Deafen & Moderation Features', () => {
       'admin-peer-id'
     )
 
-    // Admin should NOT be muted
     expect(useGameStore.getState().localPlayer.isMutedByAdmin).toBe(false)
     expect(useGameStore.getState().localPlayer.isMuted).toBe(false)
 
-    // Process on remote client (myPeerId = remote-peer-2)
     useGameStore.getState().setLocalPlayer({ id: 'remote-peer-2', gameId: 'remote-game-2', name: 'Player', isMuted: false, isMutedByAdmin: false })
     processNetworkMessage(
       adminMsg,
@@ -426,7 +407,6 @@ describe('Call Controls, Audio Deafen & Moderation Features', () => {
       'remote-peer-2'
     )
 
-    // Remote target IS muted by admin
     expect(useGameStore.getState().localPlayer.isMutedByAdmin).toBe(true)
     expect(useGameStore.getState().localPlayer.isMuted).toBe(true)
   })

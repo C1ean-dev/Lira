@@ -133,59 +133,47 @@ export interface PetConfig {
 }
 
 export interface AvatarConfig {
-  // Companion Pet
   pet?: PetConfig
 
-  // Custom Hand-Drawn Avatar Full Skin or Specific Component Layers
   customSkinUrl?: string
   customAvatarId?: string
   customComponents?: Partial<Record<AvatarComponentSlot, string | Partial<Record<Direction, string | string[]>>>>
 
-  // 1. Skin & Face Details
   skinTone: string
-  skinColor?: string // backward compatibility
+  skinColor?: string
   skinDetail: SkinDetailType
   eyeType?: EyeType
   eyeColor?: string
 
-  // 2. Hair
   hairStyle: HairStyleType
   hairColor: string
 
-  // 3. Facial Hair
   facialHair: FacialHairType
   facialHairColor: string
 
-  // 4. Tops
   topType: TopType
-  shirtType?: string // backward compatibility
+  shirtType?: string
   topColor: string
-  shirtColor?: string // backward compatibility
+  shirtColor?: string
 
-  // 5. Jackets
   jacketType: JacketType
   jacketColor: string
 
-  // 6. Bottoms
   bottomType: BottomType
   bottomColor: string
-  pantsColor?: string // backward compatibility
+  pantsColor?: string
 
-  // 7. Shoes
   shoesType: ShoesType
   shoesColor: string
 
-  // 8. Hats & Head Accessories
   hatType: HatType
   hatColor: string
 
-  // 9. Glasses
   glassesType: GlassesType
   glassesColor: string
-  accessory?: string // backward compatibility
-  accessoryColor?: string // backward compatibility
+  accessory?: string
+  accessoryColor?: string
 
-  // 10. Other / Extras
   otherType: OtherType
   otherColor: string
 }
@@ -201,16 +189,10 @@ export interface PlayerPermissions {
 
 export interface Player {
   id: string
-  /**
-   * Stable game-level identity (the profile id from localStorage), preserved
-   * across reconnects. The entry key `id` is the P2P connection id, which
-   * CHANGES on every reconnect — `gameId` is how we recognize the same human
-   * behind a new connection and drop their stale frozen entry (ghost avatar).
-   */
   gameId?: string
   name: string
   profilePicture?: string
-  x: number // grid or pixel coords
+  x: number
   y: number
   targetX?: number
   targetY?: number
@@ -232,24 +214,7 @@ export interface Player {
   isDeafened?: boolean
   isCameraOff?: boolean
   isScreenSharing?: boolean
-  /**
-   * This player's app asks before watching a live: it is sent no video, and
-   * not the sound of the live, until the player clicks to watch. Said once,
-   * on joining the room. A player that does not say it gets a live as soon as
-   * it starts, and its own live is shown without the click.
-   */
   liveOptIn?: boolean
-  /**
-   * Per-player WebRTC zone-call lifecycle. Separate from `status` (which is
-   * user-presence "available/busy/..."). Tracks whether the audio/video
-   * handshake with this peer has finished negotiating ICE + codecs yet.
-   *
-   * - `idle`     : no zone call active (default, also used when player leaves zone)
-   * - `connecting` : zone call was created, ICE/codecs still negotiating
-   * - `connected` : at least one media track is flowing end-to-end
-   * - `reconnecting` : connection dropped or ICE restarted, attempt in progress
-   * - `failed`   : connection attempt gave up (timeout / ICE failed)
-   */
   callState?: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed'
 }
 

@@ -1,8 +1,3 @@
-/**
- * Hardware Codec Optimization for WebRTC
- * Supports toggling between Hardware Acceleration (H.264 NVENC/AMF/QuickSync)
- * and Software Encoding (VP8 libvpx on CPU).
- */
 
 const STORAGE_HW_KEY = 'lira_hw_acceleration_enabled'
 
@@ -13,7 +8,7 @@ let hwAccelerationActive = (() => {
       if (stored !== null) return stored === 'true'
     }
   } catch {}
-  return true // Default: GPU hardware acceleration enabled
+  return true
 })()
 
 export function isHardwareAccelerationEnabled(): boolean {
@@ -48,13 +43,11 @@ export function prioritizeH264HardwareCodec(pc?: RTCPeerConnection | null, force
     let sortedCodecs: any[]
 
     if (useHw) {
-      // Find H.264 codecs in receiver capabilities
       const h264Codecs = capabilities.codecs.filter(
         (c: any) => c.mimeType && c.mimeType.toLowerCase() === 'video/h264'
       )
       if (h264Codecs.length === 0) return
 
-      // Prioritize packetization-mode=1 (required by Windows MediaFoundation for NVENC/AMF/QuickSync hardware offload)
       const h264Mode1 = h264Codecs.filter(
         (c: any) => c.sdpFmtpLine && c.sdpFmtpLine.includes('packetization-mode=1')
       )
@@ -66,10 +59,8 @@ export function prioritizeH264HardwareCodec(pc?: RTCPeerConnection | null, force
         (c: any) => !c.mimeType || c.mimeType.toLowerCase() !== 'video/h264'
       )
 
-      // Sorted list: H.264 mode 1 first, then other H.264, then VP8/VP9/AV1
       sortedCodecs = [...h264Mode1, ...h264Other, ...otherCodecs]
     } else {
-      // Software mode: prioritize VP8/VP9 on CPU
       const vp8Codecs = capabilities.codecs.filter(
         (c: any) => c.mimeType && c.mimeType.toLowerCase() === 'video/vp8'
       )
@@ -84,7 +75,6 @@ export function prioritizeH264HardwareCodec(pc?: RTCPeerConnection | null, force
     }
 
     pc.getTransceivers().forEach((transceiver) => {
-      // CRITICAL: NEVER apply video codecs to audio transceivers!
       const isVideo =
         transceiver.receiver?.track?.kind === 'video' ||
         transceiver.sender?.track?.kind === 'video' ||
@@ -96,7 +86,6 @@ export function prioritizeH264HardwareCodec(pc?: RTCPeerConnection | null, force
         try {
           transceiver.setCodecPreferences(sortedCodecs)
         } catch {
-          // Safe to ignore if transceiver has already locked negotiation
         }
       }
     })
@@ -105,9 +94,6 @@ export function prioritizeH264HardwareCodec(pc?: RTCPeerConnection | null, force
   }
 }
 
-/**
- * Reorders the video payload types in the SDP m=video line so that H.264 payloads appear first.
- */
 export function prioritizeH264InSdp(sdp: string): string {
   if (!sdp || !sdp.includes('m=video')) return sdp
 
@@ -155,9 +141,6 @@ export function prioritizeH264InSdp(sdp: string): string {
   }
 }
 
-/**
- * Reorders the video payload types in the SDP m=video line so that VP8 payloads appear first (software mode).
- */
 export function prioritizeVP8InSdp(sdp: string): string {
   if (!sdp || !sdp.includes('m=video')) return sdp
 
@@ -193,11 +176,5 @@ export function prioritizeCodecInSdp(sdp: string, forceH264?: boolean): string {
   return useHw ? prioritizeH264InSdp(sdp) : prioritizeVP8InSdp(sdp)
 }
 
-/**
- * RTCPeerConnection codec configuration helper.
- * Per W3C WebRTC 1.0, codec preferences are set directly via transceiver.setCodecPreferences()
- * on peer connections (handled by prioritizeH264HardwareCodec).
- */
 export function installHardwareCodecInterceptor() {
-  // Maintained for backward compatibility. Direct transceiver preferences are used instead of prototype patching.
 }

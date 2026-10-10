@@ -45,14 +45,12 @@ export class PetRenderer {
 
     ctx.save()
 
-    // 1. Draw Sprite-based Pet (Custom Asset / Atlas / Sliced Frames or Meowth)
     if (petConfig.type === 'custom' || petConfig.directionalFrames || petConfig.customAssetId) {
       this.drawCustomPet(ctx, px, py, pet, petConfig, currentTime)
     } else if (petConfig.type === 'meowth') {
       this.drawMeowth(ctx, px, py, pet, currentTime)
     }
 
-    // 2. Floating Name Tag & Heart Badge
     if (showNameTag) {
       this.drawNameTag(ctx, px, py, petConfig, currentTime)
     }
@@ -60,9 +58,6 @@ export class PetRenderer {
     ctx.restore()
   }
 
-  /**
-   * Official Meowth Overworld Sprite
-   */
   private static drawMeowth(
     ctx: CanvasRenderingContext2D,
     px: number,
@@ -87,9 +82,6 @@ export class PetRenderer {
     ctx.drawImage(img, frame.x, frame.y, frame.w, frame.h, drawX, drawY, petSize, petSize)
   }
 
-  /**
-   * Draw Custom Pet created via Pixel Art Studio or Spritesheet Slicer
-   */
   private static drawCustomPet(
     ctx: CanvasRenderingContext2D,
     px: number,
@@ -145,9 +137,6 @@ export class PetRenderer {
     ctx.drawImage(img, drawX, drawY, petSize, petSize)
   }
 
-  /**
-   * Floating Name Tag & Heart Particles
-   */
   private static drawNameTag(
     ctx: CanvasRenderingContext2D,
     px: number,
@@ -167,7 +156,6 @@ export class PetRenderer {
     const tagX = px + 16 - tagW / 2
     const tagY = py + 2
 
-    // Dark sleek backdrop pill
     ctx.fillStyle = 'rgba(15, 23, 42, 0.85)'
     ctx.beginPath()
     ctx.roundRect(tagX, tagY, tagW, tagH, 6)
@@ -176,11 +164,9 @@ export class PetRenderer {
     ctx.lineWidth = 1
     ctx.stroke()
 
-    // Text
     ctx.fillStyle = '#ffffff'
     ctx.fillText(tagText, tagX + 5, tagY + 9.5)
 
-    // Occasional subtle floating heart when happy
     const heartCycle = (currentTime % 4000) / 4000
     if (heartCycle < 0.25) {
       const heartY = tagY - 3 - heartCycle * 14

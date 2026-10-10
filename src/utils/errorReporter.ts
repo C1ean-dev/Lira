@@ -1,17 +1,6 @@
 import type { Breadcrumb } from './breadcrumbs'
 import { ErrorReport, ReportInput, ReportSource, buildErrorReport, makeReportId } from './errorReport'
 
-/**
- * Decides which occurrences of an error become a report. The first one is
- * reported at once, with the context and the trail of that moment. Repeats of
- * the same error (same fingerprint) inside a window are only counted, and the
- * count goes out with the next report of that error, so a failure in a loop
- * gives a handful of reports instead of thousands. A flood of different errors
- * is held back the same way.
- *
- * Used by both processes; never throws.
- */
-
 export const REPEAT_WINDOW_MS = 30000
 export const MAX_REPORTS_PER_MINUTE = 30
 export const MAX_TRACKED_ERRORS = 200
@@ -35,23 +24,19 @@ export type CaptureInput = Pick<
 >
 
 export interface CaptureResult {
-  /** The report to write, or null when this occurrence was only counted. */
   report: ErrorReport | null
   fingerprint: string
 }
 
 export interface ErrorReporter {
   capture(input: CaptureInput): CaptureResult
-  /** Reports for the occurrences that were only counted, once their window has passed. */
   drain(): ErrorReport[]
-  /** In how long drain() may have something; null when nothing is waiting. */
   nextDrainInMs(): number | null
 }
 
 interface Tracked {
   lastReportedAt: number
   folded: number
-  /** The last occurrence that was only counted. */
   pending: ErrorReport | null
 }
 
@@ -72,7 +57,6 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
     let entry = tracked.get(fingerprint)
     if (entry) return entry
     if (tracked.size >= maxTracked) {
-      // Forget the oldest one that is not waiting to be counted (any, when all are).
       let victim: string | undefined
       for (const [key, value] of tracked) {
         if (value.folded === 0) {
@@ -87,7 +71,6 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
     return entry
   }
 
-  /** Adds what only makes sense at the moment of writing. */
   const complete = (report: ErrorReport): ErrorReport => {
     try {
       report.context = options.context?.() ?? {}
@@ -103,7 +86,6 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
       const stats = options.stats?.()
       if (stats && Object.keys(stats).length > 0) report.stats = stats
     } catch {
-      // measurements are optional
     }
     return report
   }
@@ -158,7 +140,6 @@ export function createErrorReporter(options: ErrorReporterOptions): ErrorReporte
         out.push(complete(report))
       }
     } catch {
-      // reporting must never break the app
     }
     return out
   }

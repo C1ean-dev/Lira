@@ -14,26 +14,19 @@ const WIDE = 16 / 9
 
 describe('pictureHeight', () => {
   it('is the height of the picture inside a box that shows all of it', () => {
-    // Mini player: 320x160. A 16:9 picture is limited by the height.
     expect(pictureHeight({ width: 320, height: 160 }, WIDE, 'contain')).toBe(160)
-    // Mini tile: 128x96. Limited by the width.
     expect(pictureHeight({ width: 128, height: 96 }, WIDE, 'contain')).toBeCloseTo(72, 6)
-    // Grid stage in a 1280x800 window.
     expect(pictureHeight({ width: 1068, height: 630 }, WIDE, 'contain')).toBeCloseTo(600.75, 6)
   })
 
   it('is the height the picture needs to fill a box that crops it', () => {
     expect(pictureHeight({ width: 176, height: 99 }, WIDE, 'cover')).toBeCloseTo(99, 6)
-    // A tall box: the picture is as tall as the box, its sides are cropped.
     expect(pictureHeight({ width: 100, height: 200 }, WIDE, 'cover')).toBe(200)
-    // A flat box: the picture is as wide as the box, so taller than it.
     expect(pictureHeight({ width: 320, height: 90 }, WIDE, 'cover')).toBeCloseTo(180, 6)
   })
 
   it('follows the shape of the stream, a window that is not 16:9 included', () => {
-    // A tall window (800x1000) shown in the mini player.
     expect(pictureHeight({ width: 320, height: 160 }, 0.8, 'contain')).toBe(160)
-    // A very wide one (2:1) in the same box.
     expect(pictureHeight({ width: 320, height: 200 }, 2, 'contain')).toBe(160)
   })
 
@@ -86,16 +79,11 @@ describe('layerFor', () => {
   })
 
   it('picks the smallest layer that is still at least 10% above what is shown', () => {
-    // Mini player on a 100% screen: 160 px shown, reported as 180.
-    expect(layerFor(caps, 1080, 180).scale).toBe(4) // 270p
-    // Mini tile alone: 72 px shown, reported as 90.
-    expect(layerFor(caps, 1080, 90).scale).toBe(6) // 180p
-    // Grid in a 1280x800 window: 601 px shown, reported as 630.
-    expect(layerFor(caps, 1080, 630).scale).toBe(1.5) // 720p
-    // Grid in a maximized window on a 1080p monitor.
+    expect(layerFor(caps, 1080, 180).scale).toBe(4)
+    expect(layerFor(caps, 1080, 90).scale).toBe(6)
+    expect(layerFor(caps, 1080, 630).scale).toBe(1.5)
     expect(layerFor(caps, 1080, 870).scale).toBe(1)
     expect(layerFor(caps, 1080, 1080).scale).toBe(1)
-    // Larger than the capture: there is nothing more to send.
     expect(layerFor(caps, 1080, 2160).scale).toBe(1)
   })
 
@@ -110,22 +98,18 @@ describe('layerFor', () => {
   })
 
   it('uses the largest reduction the margin allows', () => {
-    // 1080 / 6 = 180 is exactly 10% above 163.6: 150 fits, 180 does not.
     expect(layerFor(caps, 1080, 150).scale).toBe(6)
     expect(layerFor(caps, 1080, 180).scale).toBe(4)
-    // 1080 / 4 = 270: 240 fits (264), 270 does not (297).
     expect(layerFor(caps, 1080, 240).scale).toBe(4)
     expect(layerFor(caps, 1080, 270).scale).toBe(3)
   })
 
   it('gives each layer the bitrate of the table the app already uses', () => {
-    // 1080p60 5.5 Mbps -> 720p60 3.0 Mbps, as in resolveOptimalScreenQuality.
     expect(layerFor(caps, 1080, 630).maxBitrate).toBe(2_994_000)
-    expect(layerFor(caps, 1080, 420).maxBitrate).toBe(1_945_000) // 540p
-    expect(layerFor(caps, 1080, 300).maxBitrate).toBe(1_058_000) // 360p
-    expect(layerFor(caps, 1080, 180).maxBitrate).toBe(688_000) // 270p
-    expect(layerFor(caps, 1080, 90).maxBitrate).toBe(374_000) // 180p
-    // 1080p30 3.5 Mbps -> 720p30 about 1.9 Mbps (the table says 2.0).
+    expect(layerFor(caps, 1080, 420).maxBitrate).toBe(1_945_000)
+    expect(layerFor(caps, 1080, 300).maxBitrate).toBe(1_058_000)
+    expect(layerFor(caps, 1080, 180).maxBitrate).toBe(688_000)
+    expect(layerFor(caps, 1080, 90).maxBitrate).toBe(374_000)
     expect(layerFor({ maxBitrate: 3_500_000, maxFramerate: 30 }, 1080, 630).maxBitrate).toBe(1_905_000)
   })
 
@@ -144,15 +128,12 @@ describe('layerFor', () => {
   })
 
   it('follows the height of the capture, a window included', () => {
-    // A 1920x1030 window: 1030 / 4 = 257 >= 198, 1030 / 6 = 171 is not.
     expect(layerFor(caps, 1030, 180).scale).toBe(4)
-    // A 720p capture: 720 / 3 = 240 >= 198.
     expect(layerFor({ maxBitrate: 3_000_000, maxFramerate: 60 }, 720, 180)).toEqual({
       scale: 3,
       maxBitrate: 577_000,
       maxFramerate: 60,
     })
-    // A small window that is already below what the viewer shows.
     expect(layerFor(caps, 586, 630).scale).toBe(1)
   })
 
@@ -160,8 +141,8 @@ describe('layerFor', () => {
     it('gets about 180 lines at 15 fps and half the bitrate of that layer', () => {
       expect(HIDDEN_LAYER_FRAMERATE).toBe(15)
       expect(layerFor(caps, 1080, 0)).toEqual({ scale: 6, maxBitrate: 187_000, maxFramerate: 15 })
-      expect(layerFor(caps, 720, 0).scale).toBe(4) // 180p
-      expect(layerFor(caps, 586, 0).scale).toBe(3) // 195p
+      expect(layerFor(caps, 720, 0).scale).toBe(4)
+      expect(layerFor(caps, 586, 0).scale).toBe(3)
     })
 
     it('does not raise the frame rate of a slow live', () => {

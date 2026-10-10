@@ -79,7 +79,6 @@ describe('Ghost avatar regression (frozen self-clone)', () => {
     processNetworkMessage(makeJoinMsg(joinA, 'conn-old'), 'conn-old', false, noopBroadcast, noopRemovePeer, noopEligibility)
     expect(Object.keys(useGameStore.getState().remotePlayers)).toEqual(['conn-old'])
 
-    // Same human, new connection (ICE churn): frozen clone must go away.
     const joinB = makePlayer({ id: 'local-flappy', name: 'Flappy', x: 7, y: 8 })
     processNetworkMessage(makeJoinMsg(joinB, 'conn-new'), 'conn-new', false, noopBroadcast, noopRemovePeer, noopEligibility)
 

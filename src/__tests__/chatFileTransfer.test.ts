@@ -4,7 +4,6 @@ import { ChatMessage, ChatAttachment } from '../types/chat'
 
 describe('Chat File & Attachment Transfer', () => {
   beforeEach(() => {
-    // Reset chat store state
     useChatStore.setState({
       messages: [],
       activeChannelId: 'general',
@@ -16,7 +15,7 @@ describe('Chat File & Attachment Transfer', () => {
     const attachment: ChatAttachment = {
       id: 'att-123',
       name: 'documento_planejamento.pdf',
-      size: 1024 * 1024 * 2.5, // 2.5 MB
+      size: 1024 * 1024 * 2.5,
       type: 'application/pdf',
       dataUrl: 'data:application/pdf;base64,JVBERi0xLjQKJ...',
     }

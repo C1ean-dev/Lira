@@ -2,11 +2,6 @@ import { RefObject, useEffect } from 'react'
 import { liveViewReporter } from '../media/liveView'
 import { PictureFit, pictureHeight, viewHeightStep } from '../p2p/liveLayers'
 
-/**
- * What is asked of who is live for a picture drawn in `box` (in device
- * pixels): the height the picture has there, rounded up to a step. `video`
- * gives the shape of the live once its first frame arrived.
- */
 export function viewHeightFor(
   box: { width: number; height: number },
   video: { videoWidth?: number; videoHeight?: number } | null | undefined,
@@ -19,10 +14,6 @@ export function viewHeightFor(
 
 let boxSeq = 0
 
-/**
- * While `active`, tells who is live how tall its live is drawn in this
- * <video>, so it is not sent larger than that (see liveViewReporter).
- */
 export function useLiveViewBox(
   sharerId: string | undefined,
   videoRef: RefObject<HTMLVideoElement | null>,
@@ -33,7 +24,6 @@ export function useLiveViewBox(
     const video = videoRef.current
     if (!active || !sharerId || !video) return
     const key = `view-${++boxSeq}`
-    // The observer gives the box in device pixels; until it does, CSS pixels times the scale of the screen.
     let exact: { width: number; height: number } | null = null
 
     const report = () => {
@@ -56,7 +46,6 @@ export function useLiveViewBox(
         observer.observe(video)
       }
     }
-    // The shape of the live comes with its first frame, and a shared window can change shape.
     video.addEventListener('resize', report)
     video.addEventListener('loadedmetadata', report)
 

@@ -1,11 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
-/**
- * A store that cannot read its saved data starts with defaults, and one that
- * cannot write stops saving. Either way the user "loses" data: it has to be in
- * the log, with the key, instead of being swallowed.
- */
-
 const installStorage = (storage: { getItem: (key: string) => string | null; setItem: (key: string, value: string) => void }) => {
   const full = { length: 0, key: () => null, removeItem: () => {}, ...storage }
   vi.stubGlobal('localStorage', full)
@@ -17,7 +11,6 @@ const storageRecords = async () => {
   return getBufferedLogs().filter((record) => record.scope === 'Storage')
 }
 
-// Each test loads the stores from scratch, which takes seconds on a busy machine.
 describe('saved data that cannot be read or written', { timeout: 30000 }, () => {
   beforeEach(() => {
     vi.resetModules()

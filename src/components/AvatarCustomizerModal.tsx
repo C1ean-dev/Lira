@@ -54,7 +54,6 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     directionalFrames?: Record<Direction, string | string[]>
   } | null>(null)
 
-  // Sync state when opened
   useEffect(() => {
     if (isOpen) {
       setName(localPlayer.name || 'Player')
@@ -104,7 +103,6 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
       isOpen: true,
       category,
       presetId,
-      // an asset of the user's keeps its name; a built-in preset is saved as a copy of its own
       presetName: presetNameForStudio(label, !!customAsset),
       directionalFrames,
     })
@@ -137,7 +135,6 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     const firstLeft = getFirstFrame(directionalFrames.left)
     const firstRight = getFirstFrame(directionalFrames.right)
 
-    // 1. Create and persist CustomAsset permanently into nativeAssets & mesh
     const customName = name || `Preset ${category}`
     const thumbnail = await cropContentDataUrl(
       firstDown || firstUp || firstLeft || firstRight || ''
@@ -153,7 +150,6 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     let petAtlasInfo: { pngDataUrl: string; xmlContent: string } | null = null
     const cleanBase = customName.toLowerCase().replace(/[^a-z0-9]/g, '_') || `${category}_${Date.now()}`
 
-    // 1. If it's a pet, generate and save the full spritesheet PNG and Sparrow XML to public/assets/pet/
     if (category === 'pet') {
       try {
         petAtlasInfo = await savePetAtlasToDisk(cleanBase, directionalFrames)
@@ -208,7 +204,6 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
       store.addCustomAsset(newAsset)
     }
 
-    // 2. Equip immediately onto player avatar
     let updatedAvatar: AvatarConfig
     if (category === 'pet') {
       updatedAvatar = {
@@ -265,7 +260,6 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     onClose()
   }
 
-  // Randomize Avatar (Dice 🎲 feature)
   const handleRandomize = () => {
     const chars = useCustomAssetsStore
       .getState()
@@ -288,7 +282,6 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-md p-2 sm:p-4 animate-in fade-in duration-200 select-none">
       <div className="bg-[#1e1f22] border border-[#2b2d31] rounded-2xl sm:rounded-3xl w-full max-w-5xl lg:max-w-6xl overflow-hidden shadow-2xl flex flex-col h-[94vh] sm:h-[680px]">
-        {/* Modal Header */}
         <div className="flex flex-wrap items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3 border-b border-[#2b2d31] bg-[#18191c] gap-2">
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <h2 className="text-sm sm:text-base font-extrabold text-slate-100 tracking-tight">Editar Avatar</h2>
@@ -305,7 +298,6 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
               />
             </div>
 
-            {/* Current Status Selector */}
             <CustomDropdown<PresenceStatus>
               value={status}
               options={statusDropdownOptions}
@@ -314,7 +306,6 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
               buttonClassName="bg-[#2b2d31] hover:bg-[#34373d] border-[#383a40] text-xs py-1"
             />
 
-            {/* Show / Hide Names Selector (Character & Pet) */}
             <div className="hidden sm:block">
               <CustomDropdown<'show' | 'hide'>
                 value={showNameTags ? 'show' : 'hide'}
@@ -337,7 +328,6 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
           </button>
         </div>
 
-        {/* Mobile Horizontal Category Tabs Bar */}
         <div className="flex md:hidden overflow-x-auto p-1.5 bg-[#18191c] border-b border-[#2b2d31] gap-1.5 shrink-0">
           {CATEGORIES.map((cat) => {
             const Icon = cat.icon
@@ -359,12 +349,9 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
           })}
         </div>
 
-        {/* Main Body */}
         <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
-          {/* Desktop Left Sidebar: Categories List */}
           <CategoryTabs activeCategory={activeCategory} onSelectCategory={setActiveCategory} className="hidden md:flex w-48 bg-[#18191c] border-r border-[#2b2d31] p-3 flex-col gap-1 overflow-y-auto shrink-0" />
 
-        {/* Mobile Preview Stage (Compact at top of body, only when not on profile tab) */}
         {activeCategory !== 'profile' && (
           <AvatarPreviewCanvas
             isOpen={isOpen}
@@ -380,7 +367,6 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
           />
         )}
 
-        {/* Middle Column: Options Grid */}
         <div className="flex-1 bg-[#2b2d31] flex flex-col justify-between p-2 sm:p-5 overflow-y-auto">
           {activeCategory === 'profile' ? (
             <ProfileSettingsPanel
@@ -410,7 +396,6 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
             )}
           </div>
 
-          {/* Desktop Right Column: 2D Room Live Preview */}
           <AvatarPreviewCanvas
             isOpen={isOpen}
             avatar={avatar}
@@ -423,7 +408,6 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
           />
         </div>
 
-        {/* Modal Footer */}
         <div className="p-3 sm:p-4 border-t border-[#2b2d31] bg-[#18191c] flex items-center justify-end gap-3 shrink-0">
           <button
             onClick={onClose}
@@ -441,7 +425,6 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
         </div>
       </div>
 
-      {/* Pixel Art Drawing & Editing Studio Modal */}
       {editingPreset?.isOpen && (
         <AvatarPixelArtModal
           isOpen={editingPreset.isOpen}

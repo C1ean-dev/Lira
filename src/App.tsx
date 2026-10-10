@@ -17,9 +17,6 @@ import { useMountOnFirstOpen } from './hooks/useMountOnFirstOpen'
 import { markStartup, reportStartupAfterPaint } from './utils/startupTrace'
 import { callNotificationService } from './services/callNotificationService'
 
-// The menu is the first screen. Being inside a space (world, editor, chat, calls) and the heavy
-// modals load on demand, and are fetched in idle time once the menu is up, so entering a space or
-// opening a modal does not wait for them.
 const loadSpaceShell = () => import('./components/SpaceShell').then((m) => ({ default: m.SpaceShell }))
 const loadAvatarCustomizerModal = () =>
   import('./components/AvatarCustomizerModal').then((m) => ({ default: m.AvatarCustomizerModal }))
@@ -34,10 +31,7 @@ export const App: React.FC = () => {
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false)
   const [isDisconnectModalOpen, setIsDisconnectModalOpen] = useState(false)
 
-  // Selectors (not whole-store) so 60Hz position updates don't re-render App.
   const isConnected = useGameStore((s) => s.isConnected)
-  // Stable action refs only — whole-store here would re-render the entire
-  // tree on every VU-meter tick (~10Hz) during calls.
   const toggleMute = useMediaStore((s) => s.toggleMute)
   const toggleCamera = useMediaStore((s) => s.toggleCamera)
   const { toggleChat } = useChatStore()
@@ -48,20 +42,15 @@ export const App: React.FC = () => {
   const isUpdateScreenOpen = useUpdateStore((s) => s.isUpdateScreenOpen)
   const startInteractiveUpdate = useUpdateStore((s) => s.startInteractiveUpdate)
 
-  // Start-up measurement: this is the app's first commit, the menu is in the DOM. The report is
-  // logged once it has painted.
   useLayoutEffect(() => {
     markStartup('commit')
     reportStartupAfterPaint()
   }, [])
 
-  // Both modals open from the menu as well as from inside a space; each one is loaded the first
-  // time it opens and stays mounted after that.
   const isSettingsModalOpen = useMediaStore((s) => s.isSettingsModalOpen)
   const mountAudioSettings = useMountOnFirstOpen(isSettingsModalOpen)
   const mountAvatarModal = useMountOnFirstOpen(isAvatarModalOpen)
 
-  // Once the menu is on screen, fetch the rest in idle time.
   useEffect(() => {
     const preload = () => {
       for (const load of [loadSpaceShell, loadAvatarCustomizerModal, loadAudioSettingsModal]) {
@@ -77,19 +66,13 @@ export const App: React.FC = () => {
     return () => clearTimeout(timer)
   }, [])
 
-  // Check for updates on startup and keep checking while the app is open
-  // (periodically and when the window gets focus): downloads silently in
-  // the background.
   useEffect(() => startAutoUpdateChecks(), [])
 
-  // Coming back to the lobby is a good moment to notice a new version.
   useEffect(() => {
-    // (The very first check belongs to the scheduler above.)
     const updates = useUpdateStore.getState()
     if (inLobby && updates.lastCheckAt !== null) updates.checkIfDue(UPDATE_STALE_AFTER_MS)
   }, [inLobby])
 
-  // 2. Global Keyboard Shortcuts (M for Mic, V for Video, C for Chat)
   useEffect(() => {
     const handleGlobalShortcuts = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
@@ -111,7 +94,6 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleGlobalShortcuts)
   }, [toggleMute, toggleCamera, toggleChat, toggleEditor])
 
-  // 3. Graceful disconnect on window close / page unload
   useEffect(() => {
     const handleUnload = () => {
       PeerManager.getInstance().disconnect()
@@ -126,18 +108,15 @@ export const App: React.FC = () => {
     }
   }, [])
 
-  // 4. Inactivity & AFK detection (5 min idle)
   useEffect(() => {
     idleManager.start()
     return () => idleManager.stop()
   }, [])
 
-  // 5. Friends presence & direct messages outside rooms (home screen, other spaces)
   useEffect(() => {
     FriendsPresenceService.getInstance().connectFriendsNetwork()
   }, [])
 
-  // 6. Background Call Notification for Android
   useEffect(() => {
     callNotificationService.init()
   }, [])
@@ -157,8 +136,6 @@ export const App: React.FC = () => {
     leaveSpace()
   }
 
-  // 6. Entering another space from inside one (an invite, a friend's space):
-  // leave this one; the home screen picks the pending code up and joins.
   const pendingRoomCode = useRoomJoinStore((s) => s.pendingRoomCode)
   useEffect(() => {
     if (pendingRoomCode && !inLobby) leaveSpace()
@@ -166,7 +143,6 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen w-screen bg-[#0c0e14] text-slate-100 overflow-hidden font-sans select-none">
-      {/* The space (world, editor, chat, calls): only once inside one */}
       {!inLobby && (
         <Suspense fallback={null}>
           <SpaceShell
@@ -180,10 +156,8 @@ export const App: React.FC = () => {
         </Suspense>
       )}
 
-      {/* Audio & Video Settings Modal */}
       <Suspense fallback={null}>{mountAudioSettings && <AudioSettingsModal />}</Suspense>
 
-      {/* Avatar Customizer Modal */}
       <Suspense fallback={null}>
         {mountAvatarModal && (
           <AvatarCustomizerModal
@@ -193,7 +167,6 @@ export const App: React.FC = () => {
         )}
       </Suspense>
 
-      {/* Disconnect Confirmation Modal */}
       <ConfirmModal
         isOpen={isDisconnectModalOpen}
         title="Sair do Espaço?"
@@ -206,7 +179,6 @@ export const App: React.FC = () => {
         onCancel={() => setIsDisconnectModalOpen(false)}
       />
 
-      {/* Start Lobby Screen */}
       {inLobby && (
         <LobbyModal
           onJoined={() => setInLobby(false)}
@@ -218,7 +190,6 @@ export const App: React.FC = () => {
         />
       )}
 
-      {/* Fullscreen Dedicated App Update Screen with centered icon and progress bar */}
       {(isUpdateScreenOpen || updateStatus === 'installing') && (
         <AppUpdateScreen />
       )}

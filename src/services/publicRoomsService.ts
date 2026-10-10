@@ -2,8 +2,8 @@ import { PublicRoomInfo } from '../types/game'
 
 const STORAGE_KEY = 'lira_public_hub_cache'
 const BROADCAST_CHANNEL_NAME = 'lira_public_hub_channel'
-const HEARTBEAT_INTERVAL_MS = 4000 // 4s
-const STALE_ROOM_THRESHOLD_MS = 20000 // 20s
+const HEARTBEAT_INTERVAL_MS = 4000
+const STALE_ROOM_THRESHOLD_MS = 20000
 
 type MessageType = 'ANNOUNCE_ROOM' | 'UNREGISTER_ROOM' | 'QUERY_ROOMS' | 'HEARTBEAT'
 
@@ -71,9 +71,6 @@ export class PublicRoomsService {
     return PublicRoomsService.instance
   }
 
-  /**
-   * 1. Initialize Local Storage Cache
-   */
   private initLocalStorageCache() {
     try {
       if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
@@ -89,7 +86,6 @@ export class PublicRoomsService {
         }
       }
     } catch (e) {
-      // Ignore
     }
   }
 
@@ -100,13 +96,9 @@ export class PublicRoomsService {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(activeRooms))
       }
     } catch (e) {
-      // Ignore
     }
   }
 
-  /**
-   * 2. Local Multi-Window / Multi-Tab Synchronization
-   */
   private initBroadcastChannel() {
     try {
       if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
@@ -145,9 +137,6 @@ export class PublicRoomsService {
     }
   }
 
-  /**
-   * 3. Public WebSockets Relay for Internet P2P discovery
-   */
   private initWebSocketRelay(force: boolean = false) {
     if (force && this.ws) {
       try {
@@ -206,12 +195,10 @@ export class PublicRoomsService {
           this.isConnectedToRelay = false
           this.setBrokerStatus('disconnected')
           this.ws = null
-          // Retry connection after delay
           setTimeout(() => connectToRelay((urlIndex + 1) % relayUrls.length), 10000)
         }
       } catch (err) {
         this.setBrokerStatus('disconnected')
-        // Fallback to next relay
         setTimeout(() => connectToRelay(urlIndex + 1), 5000)
       }
     }
@@ -263,9 +250,6 @@ export class PublicRoomsService {
     })
   }
 
-  /**
-   * Minimal MQTT 3.1.1 WebSocket Framing for Zero-Dependency WebSockets PubSub
-   */
   private sendMqttConnectAndSubscribe() {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return
 
@@ -274,7 +258,6 @@ export class PublicRoomsService {
       const connectPacket = this.encodeMqttConnect(clientId)
       this.ws.send(connectPacket)
 
-      // Fallback subscribe and query timers in case broker doesn't emit CONNACK/SUBACK
       setTimeout(() => {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
           const subPacket = this.encodeMqttSubscribe('lira_public_hub/events', 1)
@@ -301,7 +284,7 @@ export class PublicRoomsService {
     const protocolName = 'MQTT'
     const protoLen = protocolName.length
     const clientLen = clientId.length
-    const varHeader = [0, protoLen, ...Array.from(protocolName).map((c) => c.charCodeAt(0)), 4, 2, 0, 60] // clean session, 60s keepalive
+    const varHeader = [0, protoLen, ...Array.from(protocolName).map((c) => c.charCodeAt(0)), 4, 2, 0, 60]
     const payload = [0, clientLen, ...Array.from(clientId).map((c) => c.charCodeAt(0))]
     const remainingLength = varHeader.length + payload.length
     return new Uint8Array([0x10, remainingLength, ...varHeader, ...payload])
@@ -321,7 +304,6 @@ export class PublicRoomsService {
     const msgBytes = Array.from(message).map((c) => c.charCodeAt(0))
     const remainingLength = topicBytes.length + msgBytes.length
 
-    // Handle variable length encoding
     const lengthBytes: number[] = []
     let len = remainingLength
     do {
@@ -349,7 +331,6 @@ export class PublicRoomsService {
       if (bytes && bytes.length > 0) {
         const packetType = bytes[0] & 0xf0
 
-        // CONNACK (0x20): Connect acknowledged! Send SUBSCRIBE immediately
         if (packetType === 0x20) {
           if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             const subPacket = this.encodeMqttSubscribe('lira_public_hub/events', 1)
@@ -358,7 +339,6 @@ export class PublicRoomsService {
           return
         }
 
-        // SUBACK (0x90): Subscribe acknowledged! Query rooms & announce if hosting
         if (packetType === 0x90) {
           this.queryRooms()
           if (this.currentHosting) {
@@ -371,10 +351,9 @@ export class PublicRoomsService {
           return
         }
 
-        // Check if PUBLISH packet (0x30 to 0x3F)
         if (packetType === 0x30) {
           let index = 1
-          while ((bytes[index] & 0x80) !== 0) index++ // skip remaining length
+          while ((bytes[index] & 0x80) !== 0) index++
           index++
           const topicLen = (bytes[index] << 8) | bytes[index + 1]
           index += 2 + topicLen
@@ -387,35 +366,27 @@ export class PublicRoomsService {
         this.handleIncomingMessage(msg)
       }
     } catch (e) {
-      // Ignore binary control packet parsing errors
     }
   }
 
   private broadcastMessage(msg: HubMessage) {
-    // 1. Local BroadcastChannel
     if (this.broadcastChannel) {
       try {
         this.broadcastChannel.postMessage(msg)
       } catch (err) {
-        // Ignore
       }
     }
 
-    // 2. WebSocket MQTT Relay
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       try {
         const str = JSON.stringify(msg)
         const packet = this.encodeMqttPublish('lira_public_hub/events', str)
         this.ws.send(packet)
       } catch (err) {
-        // Ignore
       }
     }
   }
 
-  /**
-   * 4. Handle incoming messages from peers / relay
-   */
   private handleIncomingMessage(msg: HubMessage) {
     if (!msg || !msg.type) return
 
@@ -446,7 +417,6 @@ export class PublicRoomsService {
       }
 
       case 'QUERY_ROOMS': {
-        // If we are currently hosting a room, answer with our announcement
         if (this.currentHosting) {
           this.broadcastMessage({
             type: 'ANNOUNCE_ROOM',
@@ -462,9 +432,6 @@ export class PublicRoomsService {
     }
   }
 
-  /**
-   * 5. Start Hosting a Public Room
-   */
   public startHosting(
     roomInfo: Omit<PublicRoomInfo, 'lastHeartbeat' | 'createdAt'> & { createdAt?: number }
   ) {
@@ -480,14 +447,12 @@ export class PublicRoomsService {
     this.saveToStorage()
     this.notifyListeners()
 
-    // Send immediate announcement
     this.broadcastMessage({
       type: 'ANNOUNCE_ROOM',
       roomInfo: fullRoomInfo,
       timestamp: now,
     })
 
-    // Setup repeating heartbeat
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer)
     this.heartbeatTimer = setInterval(() => {
       if (this.currentHosting) {
@@ -502,9 +467,6 @@ export class PublicRoomsService {
     }, HEARTBEAT_INTERVAL_MS)
   }
 
-  /**
-   * Update Player Count or Room details while hosting
-   */
   public updateHosting(update: Partial<PublicRoomInfo>) {
     if (!this.currentHosting) return
 
@@ -525,9 +487,6 @@ export class PublicRoomsService {
     })
   }
 
-  /**
-   * Stop Hosting / Close Public Room
-   */
   public stopHosting() {
     if (!this.currentHosting) return
 
@@ -550,9 +509,6 @@ export class PublicRoomsService {
     })
   }
 
-  /**
-   * Query all active rooms on the network
-   */
   public queryRooms() {
     this.broadcastMessage({
       type: 'QUERY_ROOMS',
@@ -560,9 +516,6 @@ export class PublicRoomsService {
     })
   }
 
-  /**
-   * Periodic pruning of inactive/offline rooms (>35s without heartbeat)
-   */
   private startPruneInterval() {
     if (this.pruneTimer) clearInterval(this.pruneTimer)
     this.pruneTimer = setInterval(() => {
@@ -570,7 +523,6 @@ export class PublicRoomsService {
       let changed = false
 
       this.rooms.forEach((room, code) => {
-        // Do not prune our own currently hosted room
         if (this.currentHosting && this.currentHosting.code === code) return
 
         if (now - room.lastHeartbeat > STALE_ROOM_THRESHOLD_MS) {
@@ -586,9 +538,6 @@ export class PublicRoomsService {
     }, 5000)
   }
 
-  /**
-   * Get all active public rooms sorted by activity
-   */
   public getRooms(): PublicRoomInfo[] {
     const list = Array.from(this.rooms.values())
     const now = Date.now()
@@ -597,13 +546,10 @@ export class PublicRoomsService {
       .sort((a, b) => b.playerCount - a.playerCount || b.createdAt - a.createdAt)
   }
 
-  /**
-   * Subscribe to real-time room updates
-   */
   public subscribe(listener: (rooms: PublicRoomInfo[]) => void): () => void {
     this.listeners.add(listener)
     listener(this.getRooms())
-    this.queryRooms() // Ask for fresh announcements
+    this.queryRooms()
 
     return () => {
       this.listeners.delete(listener)

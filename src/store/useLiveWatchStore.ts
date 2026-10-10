@@ -3,24 +3,12 @@ import { Player } from '../types/game'
 import { diagLog } from '../utils/diagnosticLogger'
 import { useGameStore } from './useGameStore'
 
-/**
- * The lives this user asked to watch.
- *
- * A live does not play on its own: who is in the call sees that somebody is
- * live and clicks to watch. Until then the app of who is live sends this
- * viewer no video, and not the sound of the live (see videoSendPolicy). The
- * click is for one live: it ends with it, with the call, or with a click to
- * stop, and the next live asks again.
- */
-
 interface LiveWatchState {
-  /** Who is being watched, with the time of the click. */
   watching: Record<string, number>
   watch: (sharerId: string) => void
   stop: (sharerId: string) => void
 }
 
-/** A live that can be watched: it is running, in the call this user is in. */
 export function isWatchable(sharer: Player | undefined, localZoneId: string | null | undefined): boolean {
   return (
     !!sharer &&
@@ -51,13 +39,8 @@ export const useLiveWatchStore = create<LiveWatchState>((set, get) => ({
   },
 }))
 
-// One "first frame" per click, however many places show the live.
 const firstFrames = new Map<string, number>()
 
-/**
- * A place that shows a live being watched got its first frame: records how
- * long that took from the click. It is the wait the click costs.
- */
 export function noteFirstFrame(sharerId: string): void {
   const clickedAt = useLiveWatchStore.getState().watching[sharerId]
   if (!clickedAt || firstFrames.get(sharerId) === clickedAt) return
@@ -65,9 +48,6 @@ export function noteFirstFrame(sharerId: string): void {
   diagLog('screenshare', 'watch-first-frame', { sharer: sharerId, ms: Date.now() - clickedAt })
 }
 
-// A live that ended, or a call this user is no longer in, is no longer
-// watched. The game store changes many times a second (people walking), so
-// with nothing being watched this does nothing at all.
 useGameStore.subscribe((state) => {
   const { watching } = useLiveWatchStore.getState()
   let next: Record<string, number> | null = null

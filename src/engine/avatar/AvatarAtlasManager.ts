@@ -15,25 +15,16 @@ export interface TextureAtlasData {
   subTextures: Map<string, SubTexture>
 }
 
-/**
- * AvatarAtlasManager
- * Manages async loading, parsing and O(1) in-memory lookup for Sparrow/TexturePacker XML atlases
- */
 export class AvatarAtlasManager {
   private static atlases: Map<string, TextureAtlasData> = new Map()
   private static imageCache: Map<string, HTMLImageElement> = new Map()
   private static loadingPromises: Map<string, Promise<boolean>> = new Map()
-  /** Incremented on register/load/clear so renderers can invalidate memoized lookups. */
   private static version: number = 0
 
-  /** Monotonic version of the atlas registry (for render-side memo invalidation). */
   static getVersion(): number {
     return AvatarAtlasManager.version
   }
 
-  /**
-   * Parse Sparrow/TexturePacker XML string into structured TextureAtlasData
-   */
   static parseAtlasXml(xmlString: string): TextureAtlasData {
     const result: TextureAtlasData = {
       imagePath: '',
@@ -49,10 +40,8 @@ export class AvatarAtlasManager {
         const parser = new DOMParser()
         const doc = parser.parseFromString(xmlString, 'application/xml')
 
-        // Check for XML parsing error
         const parserError = doc.querySelector('parsererror')
         if (parserError) {
-          // Fallback to regex parser
           return this.parseAtlasXmlWithRegex(xmlString)
         }
 
@@ -96,28 +85,22 @@ export class AvatarAtlasManager {
         }
       }
     } catch {
-      // Fall through to regex parsing
     }
 
     return this.parseAtlasXmlWithRegex(xmlString)
   }
 
-  /**
-   * Fast, zero-dependency regex fallback for Node or non-browser environments
-   */
   private static parseAtlasXmlWithRegex(xmlString: string): TextureAtlasData {
     const result: TextureAtlasData = {
       imagePath: '',
       subTextures: new Map(),
     }
 
-    // Match imagePath in <TextureAtlas ... imagePath="..." ...>
     const atlasMatch = xmlString.match(/<TextureAtlas[^>]*imagePath=["']([^"']*)["']/i)
     if (atlasMatch) {
       result.imagePath = atlasMatch[1]
     }
 
-    // Match all <SubTexture ... /> elements
     const subTextureRegex = /<SubTexture\s+([^>]+)\/?>/gi
     let match: RegExpExecArray | null
 
@@ -161,9 +144,6 @@ export class AvatarAtlasManager {
     return result
   }
 
-  /**
-   * Register an atlas directly with an XML string and optional image instance
-   */
   static registerAtlasXml(category: string, xmlString: string, imageSrc?: string): TextureAtlasData {
     const atlas = this.parseAtlasXml(xmlString)
     this.atlases.set(category, atlas)
@@ -178,9 +158,6 @@ export class AvatarAtlasManager {
     return atlas
   }
 
-  /**
-   * Asynchronously fetch and load an XML file + image into memory
-   */
   static async loadAtlas(category: string, xmlUrl: string, imageUrl?: string): Promise<boolean> {
     if (this.atlases.has(category)) {
       return true
@@ -230,16 +207,12 @@ export class AvatarAtlasManager {
     return promise
   }
 
-  /**
-   * Find subtexture across categories or in a specific category in O(1)
-   */
   static getSubTexture(category: string, name: string): SubTexture | undefined {
     const atlas = this.atlases.get(category)
     if (atlas) {
       return atlas.subTextures.get(name)
     }
 
-    // Fallback: search all loaded atlases if category not matched
     for (const [, a] of this.atlases) {
       const sub = a.subTextures.get(name)
       if (sub) return sub
@@ -248,30 +221,18 @@ export class AvatarAtlasManager {
     return undefined
   }
 
-  /**
-   * Check if a subtexture is registered
-   */
   static hasSubTexture(category: string, name: string): boolean {
     return this.getSubTexture(category, name) !== undefined
   }
 
-  /**
-   * Get cached HTMLImageElement for category
-   */
   static getImage(category: string): HTMLImageElement | undefined {
     return this.imageCache.get(category)
   }
 
-  /**
-   * Set cached HTMLImageElement for category
-   */
   static setImage(category: string, img: HTMLImageElement): void {
     this.imageCache.set(category, img)
   }
 
-  /**
-   * Clear all loaded atlases and images
-   */
   static clearCache(): void {
     this.atlases.clear()
     this.imageCache.clear()
@@ -279,9 +240,6 @@ export class AvatarAtlasManager {
     AvatarAtlasManager.version++
   }
 
-  /**
-   * Return all currently registered atlases
-   */
   static getAllAtlases(): Map<string, TextureAtlasData> {
     return this.atlases
   }

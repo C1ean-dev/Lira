@@ -153,7 +153,6 @@ describe('Avatar Asset Origin Detection & Editing Routing', () => {
     useCustomAssetsStore.getState().addCustomAsset(initialAsset)
     expect(useCustomAssetsStore.getState().customAssets).toHaveLength(1)
 
-    // Simulate saving edited asset
     useCustomAssetsStore.getState().updateCustomAsset('avatar_other_sliced_target_123', {
       name: 'New Name',
       directionalFrames: {

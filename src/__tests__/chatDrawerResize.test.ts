@@ -41,13 +41,10 @@ describe('ChatDrawer Resize & Persistence Logic', () => {
       return Math.min(maxW, Math.max(minW, clientX))
     }
 
-    // Attempting to drag smaller than MIN_DRAWER_WIDTH
     expect(clampDrawer(200, 1920, DEFAULT_CHANNELS_WIDTH)).toBe(MIN_DRAWER_WIDTH)
 
-    // Attempting to drag larger than max allowed
     expect(clampDrawer(1600, 1920, DEFAULT_CHANNELS_WIDTH)).toBe(1200)
 
-    // Valid intermediate drag
     expect(clampDrawer(650, 1920, DEFAULT_CHANNELS_WIDTH)).toBe(650)
   })
 
@@ -57,13 +54,10 @@ describe('ChatDrawer Resize & Persistence Logic', () => {
       return Math.min(maxW, Math.max(MIN_CHANNELS_WIDTH, clientX))
     }
 
-    // Dragging smaller than MIN_CHANNELS_WIDTH
     expect(clampChannels(50, 440)).toBe(MIN_CHANNELS_WIDTH)
 
-    // Dragging larger than maximum (320px)
     expect(clampChannels(400, 800)).toBe(320)
 
-    // When drawer is narrow (350px), channels cannot exceed drawer - 200 (150px)
     expect(clampChannels(250, 350)).toBe(150)
   })
 

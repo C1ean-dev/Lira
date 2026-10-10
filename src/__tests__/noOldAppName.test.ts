@@ -2,15 +2,11 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 
-// The app used to ship under another name. It is spelled in two halves here so
-// this file passes its own scan.
 const OLD_NAME = ['gat', 'her'].join('')
-// "...ing" / "...ed" are the English verb (WebRTC's ICE vocabulary), not the old name.
 const OLD_NAME_PATTERN = new RegExp(`${OLD_NAME}(?!ing|ed)`, 'i')
 
 const ROOT = process.cwd()
 const SKIPPED_DIRS = new Set(['node_modules', '.git', '.claude', '.mut', 'dist', 'dist-electron', 'release', 'logs', 'bin', 'obj'])
-// Written by the app (images as base64) or by npm: not our text.
 const SKIPPED_PATHS = new Set(['src/data', 'package-lock.json'])
 const SCANNED_EXTENSIONS = new Set([
   '.ts', '.tsx', '.js', '.mjs', '.cjs', '.json', '.css', '.html', '.md',

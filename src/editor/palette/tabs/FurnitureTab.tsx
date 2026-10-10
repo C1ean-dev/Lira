@@ -71,7 +71,6 @@ export const FurnitureTab: React.FC<Props> = ({
 
   return (
     <div className="space-y-3">
-      {/* Creator Suite Actions Bar */}
       <div className="grid grid-cols-4 gap-1 p-1 bg-slate-900/80 border border-slate-800 rounded-xl">
         <button
           type="button"
@@ -110,7 +109,6 @@ export const FurnitureTab: React.FC<Props> = ({
           <span>Exportar</span>
         </button>
       </div>
-      {/* Dynamic Category Pills */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 max-w-full">
         {categories.map((cat) => {
           const isActive = furnitureCategory === cat
@@ -132,7 +130,6 @@ export const FurnitureTab: React.FC<Props> = ({
           )
         })}
 
-        {/* Add Category Button / Input */}
         {isAddingCategory ? (
           <div className="flex items-center gap-1 shrink-0 bg-slate-900 border border-blue-500/60 rounded-lg p-0.5">
             <input
@@ -172,7 +169,6 @@ export const FurnitureTab: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Item Grid - Compact Square Tiles */}
       {filteredFurniture.length > 0 ? (
         <div className="grid grid-cols-3 gap-2 max-h-80 overflow-y-auto p-0.5">
           {filteredFurniture.map((item) => {
@@ -196,7 +192,6 @@ export const FurnitureTab: React.FC<Props> = ({
                 }`}
                 title={`${item.name} (${item.width}×${item.height} tiles • ${item.isObstacle ? 'Obstáculo' : 'Livre'})`}
               >
-                {/* Top Indicators & Actions */}
                 <div className="w-full flex items-center justify-between z-10 pointer-events-none">
                   <span className="text-[9px] font-mono font-bold px-1 py-0.5 rounded bg-black/60 text-slate-300 backdrop-blur-xs leading-none">
                     {item.width}×{item.height}
@@ -256,7 +251,6 @@ export const FurnitureTab: React.FC<Props> = ({
                   </div>
                 </div>
 
-                {/* Center Sprite Thumbnail */}
                 <div className="flex-1 flex items-center justify-center w-full min-h-0 overflow-hidden py-0.5">
                   <PixelArtThumbnail
                     key={`${item.id}_${(item as any).updatedAt || ''}`}
@@ -266,7 +260,6 @@ export const FurnitureTab: React.FC<Props> = ({
                   />
                 </div>
 
-                {/* Bottom Label */}
                 <div className="w-full text-center px-0.5">
                   <div className="text-[11px] font-semibold text-slate-200 truncate leading-tight">
                     {item.name}
@@ -282,7 +275,6 @@ export const FurnitureTab: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Confirm Delete Furniture Modal */}
       <ConfirmModal
         isOpen={!!assetToDelete}
         title="Excluir Mobília"

@@ -1,12 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 
-/**
- * The installed app translates the stack frames of its error reports with the
- * source maps of its own bundles (electron/stackSymbolicator.ts). That only
- * works when the build writes those maps: this file checks the build settings
- * and the place where the main process looks for them.
- */
 const config = fs.readFileSync('vite.config.ts', 'utf8').replace(/\r\n/g, '\n')
 const main = fs.readFileSync('electron/main.ts', 'utf8').replace(/\r\n/g, '\n')
 

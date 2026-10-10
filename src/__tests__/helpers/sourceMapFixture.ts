@@ -1,7 +1,3 @@
-/**
- * Builds source maps for tests: the `mappings` string from a list of segments,
- * the same encoding (base64 VLQ, relative values) a bundler writes.
- */
 
 const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
@@ -17,14 +13,8 @@ export function encodeVlq(value: number): string {
   return out
 }
 
-/**
- * One segment: the column in the generated line (0-based) and, when the code
- * came from a source, the source index, original line and column (0-based) and
- * optionally a name index.
- */
 export type Segment = [generatedColumn: number, source?: number, line?: number, column?: number, name?: number]
 
-/** `lines[i]` are the segments of generated line i, in column order. */
 export function encodeMappings(lines: Segment[][]): string {
   let source = 0
   let line = 0

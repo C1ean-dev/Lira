@@ -7,7 +7,6 @@ import { PeerManager } from '../p2p/PeerManager'
 import { useMediaStore } from '../store/useMediaStore'
 import { useGameStore } from '../store/useGameStore'
 
-// Polyfills for Web Audio & MediaStream in test environment
 class MockAudioParam {
   value = 1
   setValueAtTime = vi.fn((v: number) => { this.value = v })
@@ -121,7 +120,6 @@ describe('Quiet Voice Gating & Background Processing Regression Tests', () => {
 
       expect(processor.getCurrentThreshold()).toBeLessThanOrEqual(0.0080)
 
-      // Simulate a quiet speech signal: RMS = 0.0055
       const mockTrack = { id: 'track-1', kind: 'audio', enabled: true }
       const mockStream = {
         getAudioTracks: () => [mockTrack],
@@ -145,16 +143,12 @@ describe('Quiet Voice Gating & Background Processing Regression Tests', () => {
       const analyser = (processor as any).analyser as MockAnalyserNode
       expect(analyser).toBeDefined()
 
-      // A very quiet room (RMS 0.0005): what it learns never drags the
-      // threshold under the 0.0035 baseline.
       analyser.mockValue = 0.0005
       vi.advanceTimersByTime(3000)
       expect(processor.getCurrentThreshold()).toBeCloseTo(0.0035, 4)
 
-      // Inject RMS = 0.0055 (well above 0.0035 baseline)
       analyser.mockValue = 0.0055
 
-      // Advance timers by 300ms (~10 ticks) to let EMA smoothing reach steady-state
       vi.advanceTimersByTime(300)
 
       expect(lastReportedRms).toBeCloseTo(0.0055, 3)
@@ -194,13 +188,10 @@ describe('Quiet Voice Gating & Background Processing Regression Tests', () => {
       const analyser = (suppressor as any).analyser as MockAnalyserNode
       expect(analyser).toBeDefined()
 
-      // A very quiet room (RMS 0.0005): what it learns never drags the
-      // threshold under the 0.0045 baseline.
       analyser.mockValue = 0.0005
       vi.advanceTimersByTime(3000)
       expect(suppressor.getCurrentThreshold()).toBeCloseTo(0.0045, 4)
 
-      // RMS 0.0065 is typical headset soft voice
       analyser.mockValue = 0.0065
 
       vi.advanceTimersByTime(300)
@@ -236,7 +227,6 @@ describe('Quiet Voice Gating & Background Processing Regression Tests', () => {
       const analyser = (rnn as any).analyser as MockAnalyserNode
       expect(analyser).toBeDefined()
 
-      // Fill with RMS 0.006 (level = rms * 6 = 0.036 > 0.025)
       analyser.mockValue = 0.006
 
       vi.advanceTimersByTime(50)
@@ -263,14 +253,11 @@ describe('Quiet Voice Gating & Background Processing Regression Tests', () => {
         callbackCalls++
       })
 
-      // In a backgrounded tab, requestAnimationFrame is paused or throttled to 1s.
-      // The setInterval(tick, 30) must keep driving audio level ticks!
       const initialCalls = callbackCalls
 
-      vi.advanceTimersByTime(120) // ~4 intervals of 30ms
+      vi.advanceTimersByTime(120)
       expect(callbackCalls).toBeGreaterThan(initialCalls)
 
-      // Disposing cleans up the background interval cleanly
       rnn.dispose()
       const callsAfterDispose = callbackCalls
       vi.advanceTimersByTime(120)
@@ -310,7 +297,6 @@ describe('Quiet Voice Gating & Background Processing Regression Tests', () => {
     it('syncSenderTracksMuteState sets sender.track.enabled accurately across all active peer calls', () => {
       const pm = PeerManager.getInstance()
 
-      // Create mock peer calls with mock RTCRtpSenders
       const mockAudioSender1 = {
         track: { kind: 'audio', enabled: false, id: 'audio-sender-1' },
       }
@@ -339,14 +325,11 @@ describe('Quiet Voice Gating & Background Processing Regression Tests', () => {
         ['peer-bob', mockCall2],
       ])
 
-      // Unmute: senders must be enabled = true
       pm.syncSenderTracksMuteState(true)
       expect(mockAudioSender1.track.enabled).toBe(true)
       expect(mockAudioSender2.track.enabled).toBe(true)
-      // Video sender must not be affected
       expect(mockVideoSender1.track.enabled).toBe(true)
 
-      // Mute: senders must be enabled = false
       pm.syncSenderTracksMuteState(false)
       expect(mockAudioSender1.track.enabled).toBe(false)
       expect(mockAudioSender2.track.enabled).toBe(false)
@@ -358,14 +341,12 @@ describe('Quiet Voice Gating & Background Processing Regression Tests', () => {
 
       const senderSyncSpy = vi.spyOn(pm, 'syncSenderTracksMuteState')
 
-      // Mock active engine with suspended AudioContext
       const mockResume = vi.fn(async () => {})
       ;(mm as any).activeEngine = {
         resumeContext: mockResume,
         dispose: vi.fn(),
       }
 
-      // Mock localStream in mediaStore
       const mockTrack = { kind: 'audio', enabled: false, id: 'local-audio' }
       useMediaStore.setState({
         isMuted: true,
@@ -374,7 +355,6 @@ describe('Quiet Voice Gating & Background Processing Regression Tests', () => {
         } as any,
       })
 
-      // Unmute
       mm.syncMuteState(false)
 
       expect(useMediaStore.getState().isMuted).toBe(false)

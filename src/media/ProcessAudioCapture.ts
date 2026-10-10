@@ -1,8 +1,3 @@
-/**
- * Receives raw PCM from the bundled Windows WASAPI helper and exposes it as a
- * MediaStreamTrack. The helper captures one process tree only; it never reads
- * the Windows system mix, the microphone, or incoming call audio.
- */
 
 import { diagLog } from '../utils/diagnosticLogger'
 
@@ -16,12 +11,6 @@ type ProcessAudioApi = {
 const SAMPLE_RATE = 48_000
 const CHANNELS = 2
 const msToSamples = (ms: number) => Math.round((SAMPLE_RATE * ms) / 1000) * CHANNELS
-// Latency control for the PCM queue between the native helper and Web Audio.
-// The producer (WASAPI clock) and the consumer (AudioContext clock) run at the
-// same nominal rate, so any backlog created by an IPC/main-thread hiccup never
-// drains by itself — it used to accumulate up to 2 s and leave the live audio
-// seconds behind the video. Whenever the backlog exceeds the high watermark,
-// the oldest audio is dropped so the queue goes back to the target latency.
 const TARGET_BUFFERED_SAMPLES = msToSamples(60)
 const HIGH_WATERMARK_SAMPLES = msToSamples(150)
 
@@ -74,9 +63,6 @@ export class ProcessAudioCapture {
     })
 
     processor.onaudioprocess = (event) => this.writeAudio(event)
-    // The processor is deliberately connected only to the MediaStream
-    // destination. This creates an outbound WebRTC track without playing the
-    // captured application sound through the user's speakers a second time.
     processor.connect(destination)
 
     this.audioContext = audioContext
@@ -184,8 +170,6 @@ export class ProcessAudioCapture {
   private enqueue(data: Uint8Array) {
     if (data.byteLength < 2) return
     const alignedLength = data.byteLength - (data.byteLength % 2)
-    // Copy because Electron IPC may reuse the backing Buffer after listeners
-    // return. The capture queue is bounded below.
     const copy = new Uint8Array(alignedLength)
     copy.set(data.subarray(0, alignedLength))
     const pcm = new Int16Array(copy.buffer)
@@ -205,7 +189,6 @@ export class ProcessAudioCapture {
     }
   }
 
-  /** Discards `count` samples from the head of the queue (keeps L/R aligned). */
   private dropOldest(count: number) {
     let toDrop = count - (count % CHANNELS)
     if (toDrop <= 0) return

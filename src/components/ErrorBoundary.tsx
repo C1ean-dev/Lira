@@ -14,13 +14,11 @@ interface State {
   hasError: boolean
   error: Error | null
   errorInfo: ErrorInfo | null
-  /** The structured report of the error, as written to logs/lira-reports-<day>.jsonl. */
   report: ErrorReport | null
   copied: boolean
   isResetConfirmOpen: boolean
 }
 
-/** What "Copiar Erro" puts on the clipboard: the error, and what the app was doing when it happened. */
 export function buildErrorScreenText(input: {
   error: Error | null
   componentStack: string | null | undefined
@@ -66,7 +64,6 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Logged with a structured report: the state of the app and what happened before the error.
     const report = reportError(error, {
       kind: 'react',
       severity: 'fatal',
@@ -118,7 +115,6 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0c0e14] p-6 text-slate-100 font-sans select-none">
           <div className="bg-[#1b202c] border border-rose-500/30 rounded-3xl p-8 max-w-xl w-full shadow-2xl space-y-6 animate-in fade-in duration-300">
-            {/* Header */}
             <div className="flex items-center gap-3 text-rose-400">
               <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-6 h-6" />
@@ -129,7 +125,6 @@ export class ErrorBoundary extends Component<Props, State> {
               </div>
             </div>
 
-            {/* Error Message & Thread Display */}
             {this.state.error && (
               <div className="bg-[#12151d] border border-[#2a3142] rounded-2xl p-4 overflow-auto max-h-52 space-y-2">
                 <p className="text-xs font-mono text-rose-300 font-bold break-words">
@@ -148,7 +143,6 @@ export class ErrorBoundary extends Component<Props, State> {
               </div>
             )}
 
-            {/* Bottom Actions Only */}
             <div className="flex items-center gap-3 pt-2">
               <button
                 type="button"
@@ -193,11 +187,9 @@ export class ErrorBoundary extends Component<Props, State> {
               </button>
             </div>
 
-            {/* The file to send to whoever supports the app */}
             <ExportLogsButton className="w-full py-2.5 px-4 rounded-xl bg-transparent hover:bg-slate-800 text-slate-400 hover:text-slate-200 font-semibold text-xs border border-slate-700/70 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-60" />
           </div>
 
-          {/* Confirm Reset All Cache Modal */}
           <ConfirmModal
             isOpen={this.state.isResetConfirmOpen}
             title="Resetar Configurações e Cache"

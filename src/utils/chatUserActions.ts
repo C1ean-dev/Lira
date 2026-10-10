@@ -4,7 +4,6 @@ import { findFriendKey, getPlayerUserId } from './userId'
 export type ChatUserFriendState = 'self' | 'friend' | 'pending' | 'can-add'
 
 export interface ChatUserTarget {
-  /** Stable user id when the sender is in the room, otherwise the id on the message. */
   id: string
   name: string
   avatar?: AvatarConfig
@@ -17,7 +16,6 @@ interface RoomPlayer {
   avatar?: AvatarConfig
 }
 
-/** Who a chat message's sender is, as the person a friend request is addressed to. */
 export function resolveChatUserTarget(
   remotePlayers: Record<string, RoomPlayer>,
   senderId: string,
@@ -45,10 +43,6 @@ interface FriendStateInput {
   getRequestStatus: (userIdOrName: string) => { status: string } | null
 }
 
-/**
- * What the right-click menu of a chat message may offer for its sender.
- * Friends are matched by id only: a display name is not an identity.
- */
 export function getChatUserFriendState(input: FriendStateInput): {
   state: ChatUserFriendState
   target: ChatUserTarget

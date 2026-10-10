@@ -12,7 +12,6 @@ const renderError = () => {
   return error
 }
 
-/** The boundary as React drives it, without a DOM: setState applied at once. */
 const makeBoundary = () => {
   const boundary = new ErrorBoundary({ children: null })
   boundary.setState = ((update: Record<string, unknown>) => {

@@ -32,7 +32,6 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
   const mapData = useMapStore((s) => s.mapData)
   const currentZone = mapData.zones.find((z) => z.id === localPlayer.currentZoneId)
 
-  // Verify whether the local player is an Admin/Owner/Host
   const isLocalAdmin = Boolean(
     localPlayer.isOwner ||
     localPlayer.role === 'owner' ||
@@ -69,7 +68,6 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
   const isTargetMuted = remotePlayer ? Boolean(remotePlayer.isMuted) : Boolean(user.isMuted)
   const isTargetDeafened = remotePlayer ? Boolean(remotePlayer.isDeafened) : Boolean(user.isDeafened)
 
-  // Close on outside click or escape
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -87,13 +85,11 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
     }
   }, [onClose])
 
-  // Viewport clamping
   const menuWidth = 260
   const menuHeight = isLocalAdmin ? 410 : 300
   const clampedX = Math.min(Math.max(10, x), window.innerWidth - menuWidth - 10)
   const clampedY = Math.min(Math.max(10, y), window.innerHeight - menuHeight - 10)
 
-  // Actions
   const handleToggleSilenceForMe = (e: React.MouseEvent) => {
     e.stopPropagation()
     const nextSilenced = useMediaStore.getState().toggleSilenceUser(user.id, user.name)
@@ -131,7 +127,6 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
-      {/* Header: User identity */}
       <div className="flex items-center gap-2.5 px-2.5 py-2 mb-1.5 border-b border-[#2a3142]/80">
         <div
           className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-sm border border-white/20 shrink-0"
@@ -154,7 +149,6 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
         </div>
       </div>
 
-      {/* 0. Controle de Volume do Usuário (0% a 200%) */}
       {!user.isLocal && (
         <div
           className="px-2.5 py-2 mb-1.5 bg-[#1b202c]/90 rounded-xl border border-[#2a3142]/90 shadow-inner"
@@ -248,10 +242,8 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
         </div>
       )}
 
-      {/* Local Options for remote user */}
       {!user.isLocal && (
         <div className="space-y-1">
-          {/* 1. Silenciar para mim (mútuo: eu não o escuto, ele não me escuta) */}
           <button
             onClick={handleToggleSilenceForMe}
             className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all ${
@@ -272,7 +264,6 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
             </div>
           </button>
 
-          {/* 2. Mutar para mim (muta microfone dele apenas para mim) */}
           <button
             onClick={handleToggleMuteForMe}
             className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all ${
@@ -295,7 +286,6 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
         </div>
       )}
 
-      {/* Admin Section */}
       {!user.isLocal && (
         <>
           <div className="my-1.5 border-t border-[#2a3142]/80" />
@@ -313,7 +303,6 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
           </div>
 
           <div className="space-y-1">
-            {/* 3. Mutar para todos (Apenas ADMs) */}
             <button
               onClick={handleAdminMuteForEveryone}
               disabled={!isLocalAdmin}
@@ -339,7 +328,6 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
               </div>
             </button>
 
-            {/* 4. Silenciar para todos (Apenas ADMs) */}
             <button
               onClick={handleAdminDeafenForEveryone}
               disabled={!isLocalAdmin}
@@ -368,7 +356,6 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
         </>
       )}
 
-      {/* Local player self options */}
       {user.isLocal && (
         <div className="space-y-1">
           <button

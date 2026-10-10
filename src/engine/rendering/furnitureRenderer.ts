@@ -85,11 +85,9 @@ export function resolveFurnitureFrames(
     if (hasValidFrames(dirData)) {
       frameList = toArray(dirData!)
     } else if (dir === 'right' && hasValidFrames(customAsset.directionalFrames.left)) {
-      // Auto-mirror left sprite to create right sprite
       frameList = toArray(customAsset.directionalFrames.left!)
       mirrorH = true
     } else if (dir === 'left' && hasValidFrames(customAsset.directionalFrames.right)) {
-      // Auto-mirror right sprite to create left sprite
       frameList = toArray(customAsset.directionalFrames.right!)
       mirrorH = true
     } else if (hasValidFrames(customAsset.directionalFrames.down)) {
@@ -105,11 +103,7 @@ export function resolveFurnitureFrames(
 }
 
 export class FurnitureRenderer {
-  /**
-   * Draw 2D Furniture & Wall Decors with 4-Direction Support
-   */
   static drawFurniture(ctx: CanvasRenderingContext2D, furn: PlacedFurniture) {
-    // 1. Check custom user element
     const customAsset = useCustomAssetsStore.getState().getAssetById(furn.defId)
     if (customAsset && ((customAsset.frames && customAsset.frames.length > 0) || customAsset.directionalFrames)) {
       const { targetW, targetH } = resolveFurnitureDimensions(furn, customAsset)
@@ -120,7 +114,6 @@ export class FurnitureRenderer {
 
       ctx.save()
 
-      // Horizontal mirroring for auto-mirrored side view
       if (mirrorH) {
         ctx.translate(px + targetW / 2, 0)
         ctx.scale(-1, 1)
@@ -135,7 +128,6 @@ export class FurnitureRenderer {
         const imgW = img.naturalWidth
         const imgH = img.naturalHeight
 
-        // Enable high-quality smoothing if downscaling a high-resolution sprite
         const isDownscaling = imgW > targetW * 1.2 || imgH > targetH * 1.2
         ctx.imageSmoothingEnabled = isDownscaling
         if (isDownscaling) {
@@ -144,7 +136,6 @@ export class FurnitureRenderer {
           ctx.imageSmoothingEnabled = false
         }
 
-        // The same placement the hitbox is worked out from (spritePlacement.ts)
         const { offsetX, offsetY, drawWidth, drawHeight } = resolveSpritePlacement(imgW, imgH, targetW, targetH)
         ctx.drawImage(img, px + offsetX, py + offsetY, drawWidth, drawHeight)
       } else {
@@ -185,27 +176,19 @@ export class FurnitureRenderer {
     }
 
     switch (def.spriteKey) {
-      // ==========================================
-      // 1. WALL ITEMS & WINDOWS (EXACT LIRA STYLE)
-      // ==========================================
       case 'window_grid_large': {
-        // 3-Pane Large Modern Office Window (as in screenshot)
         ctx.fillStyle = '#0f172a'
         ctx.fillRect(px + 2, py + 2, w - 4, h - 4)
 
-        // Glass background gradient
         const colW = (w - 12) / 3
         for (let i = 0; i < 3; i++) {
           const colX = px + 4 + i * (colW + 2)
 
-          // Top pane
           ctx.fillStyle = '#a5f3fc'
           ctx.fillRect(colX, py + 4, colW, 11)
-          // Lower pane
           ctx.fillStyle = '#67e8f9'
           ctx.fillRect(colX, py + 17, colW, 10)
 
-          // Glass diagonal glare reflections
           ctx.fillStyle = 'rgba(255, 255, 255, 0.65)'
           ctx.beginPath()
           ctx.moveTo(colX + 2, py + 4)
@@ -215,14 +198,12 @@ export class FurnitureRenderer {
           ctx.fill()
         }
 
-        // Inner Mullion Bars
         ctx.fillStyle = '#0f172a'
         ctx.fillRect(px + 2, py + 15, w - 4, 2)
         break
       }
 
       case 'window_grid_medium': {
-        // 2-Pane Medium Office Window
         ctx.fillStyle = '#0f172a'
         ctx.fillRect(px + 2, py + 2, w - 4, h - 4)
 
@@ -240,7 +221,6 @@ export class FurnitureRenderer {
       }
 
       case 'wall_cabinets_kitchen': {
-        // Suspended Kitchen/Coffee Cabinets (3x1)
         ctx.fillStyle = '#1e293b'
         ctx.fillRect(px + 2, py + 2, w - 4, h - 6)
 
@@ -253,7 +233,6 @@ export class FurnitureRenderer {
           ctx.lineWidth = 1
           ctx.strokeRect(cabX + 0.5, py + 4.5, cabW - 1, h - 11)
 
-          // Silver handle
           ctx.fillStyle = '#e2e8f0'
           ctx.fillRect(cabX + cabW - 4, py + h - 12, 2, 4)
         }
@@ -261,13 +240,11 @@ export class FurnitureRenderer {
       }
 
       case 'wall_whiteboard': {
-        // Office Whiteboard
         ctx.fillStyle = '#cbd5e1'
         ctx.fillRect(px + 2, py + 2, w - 4, h - 4)
         ctx.fillStyle = '#ffffff'
         ctx.fillRect(px + 4, py + 4, w - 8, h - 9)
 
-        // Pen tray & markers
         ctx.fillStyle = '#94a3b8'
         ctx.fillRect(px + 6, py + h - 5, w - 12, 2)
         ctx.fillStyle = '#3b82f6'
@@ -275,7 +252,6 @@ export class FurnitureRenderer {
         ctx.fillStyle = '#ef4444'
         ctx.fillRect(px + 18, py + h - 7, 6, 2)
 
-        // Diagrams on board
         ctx.fillStyle = '#3b82f6'
         ctx.fillRect(px + 8, py + 8, 12, 6)
         ctx.fillStyle = '#10b981'
@@ -284,13 +260,11 @@ export class FurnitureRenderer {
       }
 
       case 'wall_tv_large': {
-        // Large OLED Wall TV
         ctx.fillStyle = '#0f172a'
         ctx.fillRect(px + 2, py + 2, w - 4, h - 4)
         ctx.fillStyle = '#1e293b'
         ctx.fillRect(px + 4, py + 4, w - 8, h - 8)
 
-        // Slide / Chart on screen
         ctx.fillStyle = '#38bdf8'
         ctx.fillRect(px + 8, py + 8, 20, 10)
         ctx.fillStyle = '#f43f5e'
@@ -299,7 +273,6 @@ export class FurnitureRenderer {
       }
 
       case 'wall_clock_modern': {
-        // Round Wall Clock
         ctx.fillStyle = '#0f172a'
         ctx.beginPath()
         ctx.arc(px + w / 2, py + h / 2, 10, 0, Math.PI * 2)
@@ -308,7 +281,6 @@ export class FurnitureRenderer {
         ctx.beginPath()
         ctx.arc(px + w / 2, py + h / 2, 8, 0, Math.PI * 2)
         ctx.fill()
-        // Clock hands
         ctx.strokeStyle = '#0f172a'
         ctx.lineWidth = 1.5
         ctx.beginPath()
@@ -320,18 +292,12 @@ export class FurnitureRenderer {
         break
       }
 
-
-      // ==========================================
-      // 2. LIRA OFFICE FURNITURE (FROM SCREENSHOT)
-      // ==========================================
       case 'desk_executive_clean': {
-        // Large Clean Grey/White Meeting Table (3x1)
         ctx.fillStyle = '#e2e8f0'
         ctx.fillRect(px + 2, py + 2, w - 4, h - 6)
         ctx.fillStyle = '#f8fafc'
         ctx.fillRect(px + 3, py + 3, w - 6, 4)
 
-        // Table base & drawers
         ctx.fillStyle = '#475569'
         ctx.fillRect(px + 2, py + h - 6, w - 4, 4)
         ctx.fillStyle = '#94a3b8'
@@ -342,7 +308,6 @@ export class FurnitureRenderer {
       }
 
       case 'chair_office_mesh': {
-        // Mesh Office Chair
         ctx.fillStyle = '#334155'
         ctx.beginPath()
         ctx.arc(px + w / 2, py + h / 2, 8, 0, Math.PI * 2)
@@ -355,15 +320,12 @@ export class FurnitureRenderer {
       }
 
       case 'potted_bonsai_tree': {
-        // Corner Potted Tree (as in screenshot)
         ctx.fillStyle = '#334155'
         ctx.beginPath()
         ctx.arc(px + w / 2, py + h - 6, 7, 0, Math.PI * 2)
         ctx.fill()
-        // Trunk
         ctx.fillStyle = '#92400e'
         ctx.fillRect(px + w / 2 - 2, py + 10, 4, 12)
-        // Green foliage
         ctx.fillStyle = '#22c55e'
         ctx.beginPath()
         ctx.arc(px + w / 2, py + 8, 9, 0, Math.PI * 2)
@@ -376,24 +338,20 @@ export class FurnitureRenderer {
       }
 
       case 'coffee_bar_station': {
-        // Coffee Bar Counter with Purple Cups (as in screenshot)
         ctx.fillStyle = '#334155'
         ctx.fillRect(px + 2, py + 4, w - 4, h - 8)
         ctx.fillStyle = '#475569'
         ctx.fillRect(px + 2, py + 4, w - 4, 4)
 
-        // Espresso machine on left
         ctx.fillStyle = '#1e293b'
         ctx.fillRect(px + 6, py - 4, 14, 16)
         ctx.fillStyle = '#7c3aed'
         ctx.fillRect(px + 10, py + 4, 6, 6)
 
-        // Purple coffee cups
         ctx.fillStyle = '#9333ea'
         ctx.fillRect(px + 28, py + 2, 6, 6)
         ctx.fillRect(px + 40, py + 2, 6, 6)
 
-        // Mini fridge on right
         ctx.fillStyle = '#cbd5e1'
         ctx.fillRect(px + w - 22, py - 2, 16, 18)
         ctx.fillStyle = '#38bdf8'
@@ -402,7 +360,6 @@ export class FurnitureRenderer {
       }
 
       case 'bookshelf_arcade': {
-        // Bookshelf + Arcade Machine (as in screenshot)
         ctx.fillStyle = '#334155'
         ctx.fillRect(px + 2, py - 6, 24, h - 2)
         ctx.fillStyle = '#f59e0b'
@@ -410,7 +367,6 @@ export class FurnitureRenderer {
         ctx.fillStyle = '#ef4444'
         ctx.fillRect(px + 6, py + 10, 4, 4)
 
-        // Bookshelf on right
         ctx.fillStyle = '#e2e8f0'
         ctx.fillRect(px + 30, py - 6, w - 32, h - 2)
         const bookColors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6']
@@ -421,7 +377,6 @@ export class FurnitureRenderer {
         }
         break
       }
-
 
       case 'desk_pc_single':
         ctx.fillStyle = '#d0bfff'
@@ -454,9 +409,6 @@ export class FurnitureRenderer {
         ctx.fillRect(px + 6, py + 6, w - 12, h - 12)
         break
 
-      // ==========================================
-      // 4. FORJA ANTIGA / BLACKSMITH WORKSHOP (LPC)
-      // ==========================================
       case 'forge_kiln_tall_chimney': {
         ctx.fillStyle = '#2b2d31'
         ctx.fillRect(px + 4, py + 4, w - 8, h - 8)

@@ -8,22 +8,17 @@ import { writeNativeDataFileLatest } from './electron/nativeDataFile'
 
 const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, './package.json'), 'utf-8'))
 
-// https://vitejs.dev/config/
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version || '1.0.0'),
   },
   plugins: [
     react(),
-    // Under vitest the Electron plugins are skipped: the renderer one swaps Node's
-    // builtins for browser shims, which breaks tests of the main-process code.
     ...(process.env.VITEST ? [] : [electron([
       {
         entry: 'electron/main.ts',
         vite: {
           build: {
-            // The map the main process reads to translate its own stack frames in error
-            // reports (electron/stackSymbolicator.ts). No comment in the bundle points at it.
             sourcemap: 'hidden',
             rollupOptions: { output: { sourcemapExcludeSources: true } },
           },
@@ -38,13 +33,6 @@ export default defineConfig({
           build: {
             lib: {
               entry: 'electron/preload.ts',
-              // The plugin's own default ('es', because package.json is
-              // type: module) is MERGED with this list, so both formats are
-              // built. Each needs its own file: written to the same path, the
-              // two outputs race in watch mode and can leave a preload.js
-              // that is half ESM, half CJS. It then fails to load and the app
-              // runs with no window.electronAPI (no IPC, no logs, no native
-              // capture). Only preload.js (CJS) is loaded by main.ts.
               formats: ['cjs'],
               fileName: (format) => (format === 'es' ? 'preload.mjs' : 'preload.js'),
             },
@@ -94,7 +82,6 @@ export default defineConfig({
               try {
                 const parsed = JSON.parse(body)
                 const targetPath = path.resolve(process.cwd(), 'src/data/nativeAssets.json')
-                // in time slices, so serving the modules is not held up while the pictures are recoded
                 await writeNativeDataFileLatest(targetPath, parsed)
                 console.log('[DiskMiddleware] Saved nativeAssets.json to disk successfully')
                 res.setHeader('Content-Type', 'application/json')
@@ -141,16 +128,11 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    // The RNNoise package is only ever imported as text (?raw, see
-    // src/media/RnnoiseProcessor.ts); there is nothing in it to pre-bundle.
     exclude: ['@jitsi/rnnoise-wasm'],
   },
   assetsInclude: ['**/*.wasm'],
   build: {
     chunkSizeWarningLimit: 6000,
-    // A map next to each bundle, without the sources inside it and without the comment that
-    // would make DevTools load it: the main process reads these maps to translate the stack
-    // frames of the installed app's error reports (electron/stackSymbolicator.ts).
     sourcemap: 'hidden',
     rollupOptions: { output: { sourcemapExcludeSources: true } },
   },
@@ -158,12 +140,6 @@ export default defineConfig({
     port: 5173,
     host: true,
     watch: {
-      // Data files written at runtime by the Electron main process via IPC
-      // (saveNativeAssets/saveNativeSpaces). They are imported as JSON modules,
-      // so any change triggers a FULL page reload — recreating the camera at
-      // the spawn point and teleporting the view to the top of the map on
-      // every editor save. Runtime data also lives in localStorage, so
-      // skipping the watch here has no functional downside in dev.
       ignored: [
         '**/src/data/nativeAssets.json',
         '**/src/data/nativeSpaces.json',

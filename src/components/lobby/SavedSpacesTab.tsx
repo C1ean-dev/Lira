@@ -67,7 +67,6 @@ export const SavedSpacesTab: React.FC<Props> = ({
         </button>
       </div>
 
-      {/* List of Saved Spaces */}
       <div className="space-y-2.5 max-h-[400px] overflow-y-auto pr-1">
         {savedSpaces.length === 0 ? (
           <div className="text-center py-10 text-slate-400 text-xs bg-[#12151d]/70 rounded-2xl border border-[#2a3142] p-6 space-y-3">
@@ -102,13 +101,11 @@ export const SavedSpacesTab: React.FC<Props> = ({
                 className="flex items-center justify-between p-3.5 rounded-2xl border border-[#2a3142] bg-[#12151d] hover:border-indigo-500/60 hover:bg-[#161a24] transition-all group"
               >
                 <div className="flex items-center gap-3 flex-1 min-w-0 pr-2">
-                  {/* Space Color / Icon Indicator */}
                   <div
                     className="w-3.5 h-3.5 rounded-full shrink-0 shadow-sm"
                     style={{ backgroundColor: space.color || '#4c6ef5' }}
                   />
 
-                  {/* Name or Inline Editor */}
                   {isEditing ? (
                     <div className="flex items-center gap-1.5 flex-1" onClick={(e) => e.stopPropagation()}>
                       <input
@@ -156,7 +153,6 @@ export const SavedSpacesTab: React.FC<Props> = ({
                   )}
                 </div>
 
-                {/* Actions */}
                 {!isEditing && (
                   <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                     <button
@@ -201,7 +197,6 @@ export const SavedSpacesTab: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Custom Styled Confirmation Modal for Delete Space */}
       <ConfirmModal
         isOpen={!!spaceToDelete}
         title="Excluir Espaço Salvo"

@@ -26,19 +26,16 @@
   }
 }
 
-/* Ensure game canvas consumes touch gestures directly without browser interfering */
 canvas {
   touch-action: none;
 }
 
-/* Pixel Art Rendering Optimization */
 .pixelated {
   image-rendering: pixelated;
   image-rendering: -moz-crisp-edges;
   image-rendering: crisp-edges;
 }
 
-/* Video Stream Sharpness Optimization */
 video {
   image-rendering: -webkit-optimize-contrast;
   transform: translateZ(0);

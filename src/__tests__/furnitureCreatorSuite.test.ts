@@ -6,7 +6,6 @@ import { CustomAsset } from '../types/customAsset'
 
 describe('furnitureCreatorSuite - Unified Studio & Atlas for Furniture, Floors, Walls', () => {
   beforeEach(() => {
-    // Reset custom assets store
     useCustomAssetsStore.setState({
       customAssets: [],
       customCategories: ['Geral', 'pokemon'],
@@ -45,13 +44,11 @@ describe('furnitureCreatorSuite - Unified Studio & Atlas for Furniture, Floors, 
 
     const allAssets = [mockFurniture, mockFloor]
 
-    // Export furniture
     const furnAtlas = await exportCategoryAtlas('furniture', allAssets)
     expect(furnAtlas.xmlString).toContain('<TextureAtlas imagePath="furniture.png">')
     expect(furnAtlas.xmlString).toContain('sof__moderno_down_0')
     expect(furnAtlas.xmlString).not.toContain('m_rmore_real')
 
-    // Export floors
     const floorAtlas = await exportCategoryAtlas('floor', allAssets)
     expect(floorAtlas.xmlString).toContain('<TextureAtlas imagePath="floor.png">')
     expect(floorAtlas.xmlString).toContain('m_rmore_real')
@@ -77,7 +74,6 @@ describe('furnitureCreatorSuite - Unified Studio & Atlas for Furniture, Floors, 
       },
     ]
 
-    // 1. Import as furniture
     const createdFurn = importPresetsIntoStore('furniture', [presets[0]])
     expect(createdFurn.length).toBe(1)
     expect(createdFurn[0].type).toBe('furniture')
@@ -85,18 +81,15 @@ describe('furnitureCreatorSuite - Unified Studio & Atlas for Furniture, Floors, 
     expect(createdFurn[0].width).toBe(1)
     expect(createdFurn[0].height).toBe(1)
 
-    // Verify it is in useCustomAssetsStore
     const inStoreFurn = useCustomAssetsStore.getState().getAssetById(createdFurn[0].id)
     expect(inStoreFurn).toBeDefined()
     expect(inStoreFurn?.name).toBe('Poltrona Vermelha')
 
-    // 2. Import as floor
     const createdFloor = importPresetsIntoStore('floor', [presets[1]])
     expect(createdFloor.length).toBe(1)
     expect(createdFloor[0].type).toBe('floor')
     expect(createdFloor[0].isObstacle).toBe(false)
 
-    // 3. Import as wall
     const createdWall = importPresetsIntoStore('wall', [presets[0]])
     expect(createdWall.length).toBe(1)
     expect(createdWall[0].type).toBe('wall')

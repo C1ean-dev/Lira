@@ -63,7 +63,6 @@ describe('avatarAtlasImporter', () => {
     expect(presets[0].directionalFrames.left).toBeDefined()
     expect(presets[0].directionalFrames.right).toBeDefined()
 
-    // Test import into store
     const created = importPresetsIntoStore('hair', presets)
     expect(created).toHaveLength(1)
     expect(created[0].avatarSlot).toBe('hair')

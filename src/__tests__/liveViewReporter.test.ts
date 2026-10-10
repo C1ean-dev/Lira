@@ -11,7 +11,6 @@ import { flushDiagLogs, __resetDiagForTests } from '../utils/diagnosticLogger'
 const setup = (stats?: (sharerId: string) => any) => {
   const send = vi.fn()
   const reporter = new LiveViewReporter({ send, stats })
-  /** What was sent since the last look, oldest first. */
   const sent = () => {
     const calls = send.mock.calls.map(([to, watch, h]) => ({ to, watch, h }))
     send.mockClear()
@@ -21,7 +20,6 @@ const setup = (stats?: (sharerId: string) => any) => {
   return { reporter, send, sent, soon }
 }
 
-/** A reporter that is watching one live, shown 180 px tall, with that already sent. */
 const watchingOne = async (stats?: (sharerId: string) => any) => {
   const s = setup(stats)
   s.reporter.setSharers(['ana'])
@@ -67,7 +65,6 @@ describe('what a viewer tells who is live', () => {
       reporter.setWatching(['ana'])
       reporter.setBox('mini', 'ana', 180)
       reporter.callConnected('ana')
-      // Not even a timer: there is nobody to say anything to.
       expect(vi.getTimerCount()).toBe(0)
       await soon()
       await vi.advanceTimersByTimeAsync(VIEW_RENEW_MS * 2)
@@ -180,7 +177,6 @@ describe('what a viewer tells who is live', () => {
       reporter.setBox('grid', 'ana', 1080)
       await soon()
       expect(sent()).toEqual([{ to: 'ana', watch: true, h: 1080 }])
-      // And the smaller size that was waiting is forgotten.
       await vi.advanceTimersByTimeAsync(VIEW_SHRINK_DELAY_MS * 2)
       expect(sent()).toEqual([])
     })
@@ -189,7 +185,6 @@ describe('what a viewer tells who is live', () => {
       const { reporter, sent, soon } = await watchingOne()
       reporter.setBox('mini', 'ana', 0)
       await soon()
-      // The only place lost its size: unknown, so everything, and at once.
       expect(sent()).toEqual([{ to: 'ana', watch: true, h: null }])
 
       reporter.setBox('grid', 'ana', 630)
@@ -209,7 +204,6 @@ describe('what a viewer tells who is live', () => {
       await vi.advanceTimersByTimeAsync(2000)
       reporter.setBox('grid', 'ana', 390)
       await vi.advanceTimersByTimeAsync(500 + VIEW_SEND_DELAY_MS)
-      // 2.5 s after the first shrink: what is asked is the size it has now.
       expect(sent()).toEqual([{ to: 'ana', watch: true, h: 390 }])
     })
 
@@ -223,12 +217,10 @@ describe('what a viewer tells who is live', () => {
 
     it('asks for everything at once when it loses the only place it could measure', async () => {
       const { reporter, sent, soon } = await watchingOne()
-      // A size that cannot be measured is asked as "everything": that is more, so there is no wait.
       reporter.clearBox('mini')
       await soon()
       expect(sent()).toEqual([{ to: 'ana', watch: true, h: null }])
 
-      // And a size again, once there is one, is less: it waits.
       reporter.setBox('mini', 'ana', 180)
       await soon()
       expect(sent()).toEqual([])
@@ -341,7 +333,6 @@ describe('what a viewer tells who is live', () => {
     it('stops when there is no live left', async () => {
       const { reporter, sent, soon } = await watchingOne()
       reporter.setSharers([])
-      // No timer is left running for nobody.
       expect(vi.getTimerCount()).toBe(0)
       await soon()
       await vi.advanceTimersByTimeAsync(VIEW_RENEW_MS * 3)
@@ -427,7 +418,6 @@ describe('what a viewer tells who is live', () => {
       }
     }
 
-    /** 10 s of a 270p live at 600 kbps per reading. */
     const inbound = (n: number) =>
       new Map<string, any>([
         ['codec-1', { id: 'codec-1', type: 'codec', mimeType: 'video/H264', sdpFmtpLine: 'profile-level-id=42e01f' }],
@@ -456,13 +446,11 @@ describe('what a viewer tells who is live', () => {
             powerEfficientDecoder: true,
           },
         ],
-        // This viewer also sends its camera: that is not what arrives.
         ['out-video', { type: 'outbound-rtp', kind: 'video', frameWidth: 640, frameHeight: 360, bytesSent: n * 9 }],
       ])
 
     it('records every 10 s what is received of a live that is being watched', async () => {
       const log = captureDiag()
-      // The call was already running: the counters do not start at zero.
       let reads = 5
       const stats = vi.fn(async () => inbound(reads++))
       await watchingOne(stats)
@@ -489,7 +477,6 @@ describe('what a viewer tells who is live', () => {
         lost: 4,
         pli: 1,
       })
-      // The first one has nothing to compare with.
       expect(samples[0]).toMatchObject({ fromPeer: 'ana', w: 480, h: 270, kbps: null, qp: null, dropped: null })
       expect(stats).toHaveBeenCalledWith('ana')
     })
@@ -542,20 +529,14 @@ describe('how tall the picture of a live is on screen', () => {
   const WIDE = { videoWidth: 1920, videoHeight: 1080 }
 
   it('is the height of the picture inside its box, in device pixels, rounded up to a step', () => {
-    // Mini player, 320x160, at 100%.
     expect(viewHeightFor({ width: 320, height: 160 }, WIDE, 'contain')).toBe(180)
-    // The same box on a 150% screen is 480x240 device pixels.
     expect(viewHeightFor({ width: 480, height: 240 }, WIDE, 'contain')).toBe(240)
-    // Mini tile, 124x92: the picture is 124 wide, so about 70 tall.
     expect(viewHeightFor({ width: 124, height: 92 }, WIDE, 'contain')).toBe(90)
-    // Grid stage in a 1280x800 window.
     expect(viewHeightFor({ width: 1068, height: 630 }, WIDE, 'contain')).toBe(630)
   })
 
   it('is the height the picture needs to cover a box that crops it', () => {
-    // Sidebar thumbnail of the grid: 176x99, covered.
     expect(viewHeightFor({ width: 176, height: 99 }, WIDE, 'cover')).toBe(120)
-    // A square picture covering it is as tall as it is wide.
     expect(viewHeightFor({ width: 176, height: 99 }, { videoWidth: 500, videoHeight: 500 }, 'cover')).toBe(180)
   })
 

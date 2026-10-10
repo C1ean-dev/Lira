@@ -51,10 +51,8 @@ export const CustomElementModal: React.FC = () => {
   } = useCustomAssetsStore()
   const { setSelectedFurnitureDefId, setSelectedFloor, setSelectedWall, setActiveTool } = useMapStore()
 
-  // Studio Mode: 'crop' (Recorte de Sprites) vs 'compose' (Mesa de Montagem)
   const [studioMode, setStudioMode] = useState<'crop' | 'compose'>('crop')
 
-  // Source Image State
   const [sourceImage, setSourceImage] = useState<HTMLImageElement | null>(null)
   const [sourceImageSrc, setSourceImageSrc] = useState<string>('')
   const [zoom, setZoom] = useState<number>(1)
@@ -62,7 +60,6 @@ export const CustomElementModal: React.FC = () => {
   const [gridSnapSize, setGridSnapSize] = useState<number>(32)
   const [isEyedropperActive, setIsEyedropperActive] = useState<boolean>(false)
 
-  // Selection Box
   const [selection, setSelection] = useState<{ x: number; y: number; w: number; h: number }>({
     x: 0,
     y: 0,
@@ -72,16 +69,13 @@ export const CustomElementModal: React.FC = () => {
   const [isDraggingSelection, setIsDraggingSelection] = useState<boolean>(false)
   const [dragSelectionStart, setDragSelectionStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
 
-  // Transparency / Background Removal
   const [enableBgRemoval, setEnableBgRemoval] = useState<boolean>(true)
   const [targetColor, setTargetColor] = useState<RGBColor>(PRESET_BG_COLORS.LPC_DARK)
   const [tolerance, setTolerance] = useState<number>(25)
   const [removeWhiteFringe, setRemoveWhiteFringe] = useState<boolean>(true)
 
-  // Saved Cropped Pieces Library
   const [croppedClips, setCroppedClips] = useState<CroppedClip[]>([])
 
-  // Composition Board & Target Element Size State
   const [tileWidth, setTileWidth] = useState<number>(2)
   const [tileHeight, setTileHeight] = useState<number>(2)
   const [pixelWidth, setPixelWidth] = useState<number>(64)
@@ -99,14 +93,12 @@ export const CustomElementModal: React.FC = () => {
     layerY: 0,
   })
 
-  // Composition Tools
   const [composeTool, setComposeTool] = useState<'move' | 'collision'>('move')
   const [composeZoom, setComposeZoom] = useState<number>(2)
   const [showCollisionOverlay, setShowCollisionOverlay] = useState<boolean>(true)
   const [isPaintingCollision, setIsPaintingCollision] = useState<boolean>(false)
   const [collisionPaintValue, setCollisionPaintValue] = useState<boolean>(true)
 
-  // Collision Grid Matrix - starts empty (all false), user adds if they want
   const [collisionGrid, setCollisionGrid] = useState<boolean[][]>(() => {
     const grid: boolean[][] = []
     for (let r = 0; r < 2; r++) {
@@ -119,7 +111,6 @@ export const CustomElementModal: React.FC = () => {
     return grid
   })
 
-  // Animation Frames State
   const [frames, setFrames] = useState<string[]>([])
   const [frameLayerStates, setFrameLayerStates] = useState<CompositeLayer[][]>([])
   const [selectedFrameIdx, setSelectedFrameIdx] = useState<number | null>(0)
@@ -127,7 +118,6 @@ export const CustomElementModal: React.FC = () => {
   const [isPlayingAnim, setIsPlayingAnim] = useState<boolean>(true)
   const [currentPreviewFrameIdx, setCurrentPreviewFrameIdx] = useState<number>(0)
 
-  // 4-Direction Furniture State
   const [activeDirection, setActiveDirection] = useState<Direction>('down')
   const [directionalFrames, setDirectionalFrames] = useState<Record<Direction, string[]>>({
     down: [],
@@ -157,12 +147,10 @@ export const CustomElementModal: React.FC = () => {
   const handleSelectDirection = (newDir: Direction) => {
     if (newDir === activeDirection) return
 
-    // 1. Save current active direction layers, frames, dimensions, and collision grid
     const currentBoardLayers = JSON.parse(JSON.stringify(compositeLayers))
     let currentFrameList = [...frames]
     const currentFrameLayers = [...frameLayerStates]
 
-    // If currentFrameList is empty but we have board layers, bake a frame synchronously so directionalFrames has sprite data
     if (currentFrameList.length === 0 && currentBoardLayers.length > 0) {
       const syncBaked = bakeLayersToDataUrlSync(
         compositeBoardWidth,
@@ -207,7 +195,6 @@ export const CustomElementModal: React.FC = () => {
     setDirectionalDimensions(updatedDims)
     setDirectionalCollisionGrids(updatedCollisions)
 
-    // 2. Switch to new direction and restore its dimensions and collision grid
     setActiveDirection(newDir)
 
     const targetDim = updatedDims[newDir] || updatedDims.down || {
@@ -224,7 +211,6 @@ export const CustomElementModal: React.FC = () => {
     setCompositeBoardWidth(targetDim.pixelWidth)
     setCompositeBoardHeight(targetDim.pixelHeight)
 
-    // Restore collision grid for new direction, or generate default for its tile dimensions
     if (updatedCollisions[newDir] && updatedCollisions[newDir]!.length === targetDim.tileHeight) {
       setCollisionGrid(updatedCollisions[newDir]!)
     } else {
@@ -325,14 +311,12 @@ export const CustomElementModal: React.FC = () => {
     )
   }
 
-  // Element Properties Form
   const [elementName, setElementName] = useState<string>('Meu Elemento Composto')
   const [elementType, setElementType] = useState<CustomAssetType>('furniture')
   const [category, setCategory] = useState<string>('Geral')
   const [isCreatingNewCategory, setIsCreatingNewCategory] = useState<boolean>(false)
   const [newCategoryName, setNewCategoryName] = useState<string>('')
 
-  // Canvas Refs
   const mainCanvasRef = useRef<HTMLCanvasElement>(null!)
   const composeCanvasRef = useRef<HTMLCanvasElement>(null!)
   const singlePreviewCanvasRef = useRef<HTMLCanvasElement>(null!)
@@ -414,8 +398,6 @@ export const CustomElementModal: React.FC = () => {
     })
   }
 
-
-  // Synchronize collisionGrid matrix when tile dimensions change
   useEffect(() => {
     setCollisionGrid((prev) => {
       const newGrid: boolean[][] = []
@@ -460,7 +442,6 @@ export const CustomElementModal: React.FC = () => {
     }
   }
 
-  // Load asset data when editing an existing asset or opening in crop/compose mode
   useEffect(() => {
     if (!isCustomModalOpen) return
 
@@ -650,7 +631,6 @@ export const CustomElementModal: React.FC = () => {
     }
   }, [isCustomModalOpen, editingAssetId, initialStudioMode, initialCategory])
 
-  // Animation player ticker
   useEffect(() => {
     if (!isPlayingAnim || frames.length <= 1) return
     const interval = setInterval(() => {
@@ -659,7 +639,6 @@ export const CustomElementModal: React.FC = () => {
     return () => clearInterval(interval)
   }, [isPlayingAnim, frames.length, frameRateMs])
 
-  // Draw main source canvas with selection box, handles, and dimensions
   useEffect(() => {
     const canvas = mainCanvasRef.current
     if (!canvas || !sourceImage) return
@@ -697,14 +676,12 @@ export const CustomElementModal: React.FC = () => {
     const sw = Math.round(selection.w * zoom)
     const sh = Math.round(selection.h * zoom)
 
-    // Spotlight effect: dim area outside selection
     ctx.fillStyle = 'rgba(0, 0, 0, 0.42)'
     if (sy > 0) ctx.fillRect(0, 0, canvas.width, sy)
     if (sy + sh < canvas.height) ctx.fillRect(0, sy + sh, canvas.width, canvas.height - (sy + sh))
     if (sx > 0) ctx.fillRect(0, sy, sx, sh)
     if (sx + sw < canvas.width) ctx.fillRect(sx + sw, sy, canvas.width - (sx + sw), sh)
 
-    // Live preview: inside the selection, show transparency filter if enabled
     if (enableBgRemoval) {
       const processed = getProcessedSelectionCanvas()
       if (processed) {
@@ -713,23 +690,19 @@ export const CustomElementModal: React.FC = () => {
       }
     }
 
-    // Inside tint
     ctx.fillStyle = 'rgba(59, 130, 246, 0.12)'
     ctx.fillRect(sx, sy, sw, sh)
 
-    // Selection border
     ctx.strokeStyle = '#3b82f6'
     ctx.lineWidth = 2
     ctx.strokeRect(sx + 0.5, sy + 0.5, Math.max(1, sw - 1), Math.max(1, sh - 1))
 
-    // Inner dashed guide
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)'
     ctx.lineWidth = 1
     ctx.setLineDash([4, 4])
     ctx.strokeRect(sx + 0.5, sy + 0.5, Math.max(1, sw - 1), Math.max(1, sh - 1))
     ctx.setLineDash([])
 
-    // 8 Modern circular handles (nw, n, ne, e, se, s, sw, w)
     const handleRadius = 4.5
     const handlePoints = [
       [sx, sy],
@@ -752,7 +725,6 @@ export const CustomElementModal: React.FC = () => {
       ctx.stroke()
     })
 
-    // Floating dimension badge
     const label = `${selection.w} × ${selection.h} px`
     ctx.font = 'bold 11px monospace'
     const textMetrics = ctx.measureText(label)
@@ -797,7 +769,6 @@ export const CustomElementModal: React.FC = () => {
     return rawCrop
   }
 
-  // Preload layer images cache
   const [cachedLayerImages, setCachedLayerImages] = useState<{ [id: string]: HTMLImageElement }>({})
 
   useEffect(() => {
@@ -823,7 +794,6 @@ export const CustomElementModal: React.FC = () => {
     })
   }, [compositeLayers])
 
-  // Draw Composition Canvas
   useEffect(() => {
     const canvas = composeCanvasRef.current
     if (!canvas) return
@@ -939,7 +909,6 @@ export const CustomElementModal: React.FC = () => {
     pixelHeight,
   ])
 
-  // Update Animation Preview Canvas
   useEffect(() => {
     const animCanvas = animCanvasRef.current
     if (!animCanvas) return
@@ -977,12 +946,9 @@ export const CustomElementModal: React.FC = () => {
     const file = e.target.files?.[0]
     if (!file) return
     processFile(file)
-    // Allow the same file to be re-selected later
     e.target.value = ''
   }
 
-  // Shared file-loading pipeline used by both the <input type="file"> change
-  // handler and native HTML5 drag-and-drop events from the CropStudio.
   const processFile = (file: File) => {
     if (!file.type.startsWith('image/')) {
       console.warn('[CustomElementModal] dropped file is not an image:', file.type)
@@ -1009,7 +975,6 @@ export const CustomElementModal: React.FC = () => {
     reader.readAsDataURL(file)
   }
 
-  // Handle Dynamic Crop Selection (8-direction handles, move, and freeform creation)
   type CropDragMode =
     | 'none'
     | 'create'
@@ -1079,7 +1044,6 @@ export const CustomElementModal: React.FC = () => {
       }
     }
 
-    // Check if inside the existing selection box to drag/move it
     if (mx >= sx && mx <= sx + sw && my >= sy && my <= sy + sh) {
       return { mode: 'move', cursor: 'move' }
     }
@@ -1164,7 +1128,6 @@ export const CustomElementModal: React.FC = () => {
     }
   }
 
-  // Global mouse move & up — tracks resizing, moving and creating smoothly across the whole window
   useEffect(() => {
     if (!isDraggingSelection) return
 
@@ -1178,7 +1141,6 @@ export const CustomElementModal: React.FC = () => {
       const { mode, startClientX, startClientY, startMouseImgX, startMouseImgY, origSelection } =
         cropDragRef.current
 
-      // Invert snap with Alt key
       const baseSnap = snapToGrid ? Math.max(1, gridSnapSize) : 1
       const effectiveSnap = e.altKey ? 1 : baseSnap
 
@@ -1231,7 +1193,6 @@ export const CustomElementModal: React.FC = () => {
         return
       }
 
-      // Handle Resizing (nw, n, ne, e, se, s, sw, w)
       const deltaX = (e.clientX - startClientX) / zoom
       const deltaY = (e.clientY - startClientY) / zoom
 
@@ -1316,7 +1277,6 @@ export const CustomElementModal: React.FC = () => {
     setIsDraggingSelection(false)
   }
 
-  // Auto-Crop / Trim to bounding box of content
   const handleAutoCropToContent = () => {
     if (!sourceImage || selection.w <= 0 || selection.h <= 0) return
     const rawCrop = cropImage(sourceImage, selection.x, selection.y, selection.w, selection.h)
@@ -1334,7 +1294,6 @@ export const CustomElementModal: React.FC = () => {
     }
   }
 
-  // Keyboard navigation for pixel-level nudge adjustments
   useEffect(() => {
     if (studioMode !== 'crop' || !sourceImage || !isCustomModalOpen) return
 
@@ -1382,7 +1341,6 @@ export const CustomElementModal: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [studioMode, sourceImage, isCustomModalOpen])
 
-  // Composition Mouse Handlers
   const handleComposeCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!composeCanvasRef.current) return
     const rect = composeCanvasRef.current.getBoundingClientRect()
@@ -1487,7 +1445,6 @@ export const CustomElementModal: React.FC = () => {
     setIsPaintingCollision(false)
   }
 
-  // Crop & Add Actions
   const handleSaveCurrentCropToLibrary = () => {
     const processed = getProcessedSelectionCanvas()
     if (!processed) return null
@@ -1495,7 +1452,6 @@ export const CustomElementModal: React.FC = () => {
     const targetW = pixelWidth || tileWidth * 32
     const targetH = pixelHeight || tileHeight * 32
 
-    // Retain full crisp crop resolution for lossless scaling at any size
     const dataUrl = processed.toDataURL('image/png')
     const clipId = `clip_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
     const clipName = `Peça ${croppedClips.length + 1} (${processed.width}x${processed.height}px)`
@@ -1681,10 +1637,6 @@ export const CustomElementModal: React.FC = () => {
     }
   }
 
-  // Full studio reset: clears the loaded source image, clips, the composition
-  // board and the baked frames/timeline, returning every tab to blank state.
-  // Previously it only cleared compositeLayers/frames, so an image loaded in
-  // the "Recortar Imagem" tab stayed on screen and nothing seemed to happen.
   const handleClearBoard = () => {
     setSourceImage(null)
     setSourceImageSrc('')
@@ -1721,7 +1673,6 @@ export const CustomElementModal: React.FC = () => {
     setStudioMode('crop')
   }
 
-  // Save the custom asset into the store
   const handleSaveAsset = async () => {
     let finalFrames: string[] = []
     let finalFrameLayers: CompositeLayer[][] = []
@@ -1748,7 +1699,6 @@ export const CustomElementModal: React.FC = () => {
     if (elementType === 'furniture') {
       const directions: Direction[] = ['down', 'left', 'up', 'right']
 
-      // Collect active direction board layers & frames
       const currentActiveBoardLayers = JSON.parse(JSON.stringify(compositeLayers))
       const currentActiveFrameLayers = [...frameLayerStates]
       const currentActiveFrames = [...frames]
@@ -1783,7 +1733,6 @@ export const CustomElementModal: React.FC = () => {
         [activeDirection]: collisionGrid,
       }
 
-      // Process each direction
       for (const d of directions) {
         const layersList = allDirLayers[d] || []
         const dim = allDirDims[d] || {
@@ -1828,7 +1777,6 @@ export const CustomElementModal: React.FC = () => {
         }
       }
 
-      // Default finalFrames should be the front (down) view, or activeDirection, or any available direction
       if (finalDirFrames.down && finalDirFrames.down.length > 0) {
         finalFrames = finalDirFrames.down
         finalFrameLayers = finalDirLayers.down || []
@@ -1845,7 +1793,6 @@ export const CustomElementModal: React.FC = () => {
         }
       }
     } else {
-      // Non-furniture (floor, wall, avatar)
       if (frames.length > 0) {
         finalFrames = [...frames]
         finalFrameLayers = [...frameLayerStates]
@@ -1921,7 +1868,6 @@ export const CustomElementModal: React.FC = () => {
         pixelHeight: basePixelHeight,
         isObstacle: finalIsObstacle,
         collisionGrid: finalCollisionGrid,
-        // The grids saved here were painted by hand: the pixel art studio must not work them out again
         collisionFromSprite: undefined,
         frames: finalFrames,
         frameLayers: finalFrameLayers,
@@ -2026,7 +1972,6 @@ export const CustomElementModal: React.FC = () => {
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-200 select-none">
       <div className="bg-[#1e1f22] border border-[#2b2d31] rounded-3xl w-full max-w-6xl overflow-hidden shadow-2xl flex flex-col h-[90vh] max-h-[850px]">
-        {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-3 border-b border-[#2b2d31] bg-[#18191c]">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-rose-500 flex items-center justify-center text-white font-black text-sm shadow">
@@ -2042,7 +1987,6 @@ export const CustomElementModal: React.FC = () => {
             </div>
           </div>
 
-          {/* Mode Switcher Tabs */}
           <div className="flex bg-[#12151d] p-1 rounded-2xl border border-[#2b2d31]">
             <button
               type="button"
@@ -2079,9 +2023,7 @@ export const CustomElementModal: React.FC = () => {
           </button>
         </div>
 
-        {/* 2-Column Main Workspace */}
         <div className="flex flex-1 overflow-hidden">
-          {/* LEFT COLUMN: Main Active Canvas */}
           <div className="flex-1 p-4 flex flex-col gap-3 overflow-hidden">
             {studioMode === 'crop' ? (
               <CropStudio
@@ -2150,9 +2092,7 @@ export const CustomElementModal: React.FC = () => {
             )}
           </div>
 
-          {/* RIGHT COLUMN: Toolbars, Clips Library, Layers, Properties */}
           <div className="w-96 bg-[#18191c] border-l border-[#2b2d31] p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
-            {/* Asset Properties Form */}
             <AssetPropertiesForm
               elementName={elementName}
               setElementName={setElementName}
@@ -2184,7 +2124,6 @@ export const CustomElementModal: React.FC = () => {
               selection={selection}
             />
 
-            {/* Transparency Controls */}
             <TransparencyControls
               enableBgRemoval={enableBgRemoval}
               setEnableBgRemoval={setEnableBgRemoval}
@@ -2198,14 +2137,12 @@ export const CustomElementModal: React.FC = () => {
               setIsEyedropperActive={setIsEyedropperActive}
             />
 
-            {/* Cropped Clips Gallery */}
             <CroppedClipsList
               croppedClips={croppedClips}
               onAddClipToComposition={handleAddClipToCompositionBoard}
               onDeleteClip={handleDeleteClip}
             />
 
-            {/* Composite Layers Manager (in Compose Mode) */}
             {studioMode === 'compose' && (
               <LayerManager
                 compositeLayers={compositeLayers}
@@ -2220,7 +2157,6 @@ export const CustomElementModal: React.FC = () => {
               />
             )}
 
-            {/* Animation Timeline */}
             <AnimationTimeline
               frames={frames}
               selectedFrameIdx={selectedFrameIdx}
@@ -2236,7 +2172,6 @@ export const CustomElementModal: React.FC = () => {
           </div>
         </div>
 
-        {/* Modal Footer Actions */}
         <div className="p-4 border-t border-[#2b2d31] bg-[#18191c] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button

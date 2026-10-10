@@ -1,11 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 
-/**
- * electron/main.ts cannot run under vitest (it needs Electron), so the pieces
- * it is made of are tested on their own and this file checks that main.ts uses
- * them: a wrong or missing line there means no error reports at all.
- */
 const main = fs.readFileSync('electron/main.ts', 'utf8').replace(/\r\n/g, '\n')
 
 const between = (start: string, end: string) => {
@@ -46,7 +41,6 @@ describe('main process logging wiring', () => {
     const guard = main.indexOf('guardIpcMain(ipcMain,')
     const firstHandler = main.indexOf('ipcMain.handle(')
     expect(guard).toBeGreaterThan(-1)
-    // createWindow() registers handlers too, but it only runs once the app is ready.
     expect(guard).toBeLessThan(main.indexOf('ipcMain.handle(', main.indexOf('\nfunction createWindow()') + 1))
     expect(guard).toBeLessThan(main.indexOf("\nipcMain.handle('get-sources'"))
     expect(firstHandler).toBeGreaterThan(-1)
@@ -73,8 +67,6 @@ describe('main process logging wiring', () => {
   })
 
   it('tells the page when its window stops being shown, and when it is shown again', () => {
-    // The page is never throttled in the background, so it cannot tell on its
-    // own that nobody sees it; a live being watched is asked for smaller meanwhile.
     expect(main).toContain('backgroundThrottling: false')
     const watch = between('function watchWindow(', '\n}\n')
     expect(watch).toContain("win.webContents.send('window-visibility', { visible: win.isVisible() && !win.isMinimized() })")

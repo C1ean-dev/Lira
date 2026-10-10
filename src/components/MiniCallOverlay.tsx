@@ -95,9 +95,7 @@ interface VideoTileProps {
   onClick?: () => void
   onContextMenu?: (e: React.MouseEvent) => void
   suppressAudio?: boolean
-  /** The app of this peer waits for a click before a live is sent to it, and before showing one. */
   liveOptIn?: boolean
-  /** This user clicked to watch the live of this peer. */
   liveWatching?: boolean
 }
 
@@ -124,10 +122,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
   liveWatching = false,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  // A live of somebody else is shown after a click to watch it.
   const liveGate = useLiveGate(id, Boolean(!isLocal && isScreenTrack && liveOptIn), liveWatching)
-  // Granular selectors — whole-store here re-rendered every tile on each
-  // VU-meter tick (~10Hz) and every peer-stream change.
   const outputVolume = useMediaStore((s) => s.outputVolume)
   const selectedAudioOutput = useMediaStore((s) => s.selectedAudioOutput)
   const participantVolumes = useMediaStore((s) => s.participantVolumes)
@@ -154,9 +149,6 @@ export const VideoTile: React.FC<VideoTileProps> = ({
     const video = videoRef.current
     if (!video || !stream) return
 
-    // Picture only. The sound comes from <RemoteAudio> below: a <video> stays
-    // silent until its video track delivers a frame, which a peer with the
-    // camera off may never send.
     video.muted = true
     return attachStreamToVideo(video, stream, {
       tile: 'mini',
@@ -164,10 +156,8 @@ export const VideoTile: React.FC<VideoTileProps> = ({
       isLocal: !!isLocal,
       muted: true,
     })
-    // The <video> is a new element after the click to watch.
   }, [stream, isLocal, liveGate.needsClick])
 
-  // While the grid is open this tile is not on screen: its size does not count.
   useLiveViewBox(id, videoRef, 'contain', liveGate.watching && !suppressAudio)
 
   return (
@@ -185,8 +175,6 @@ export const VideoTile: React.FC<VideoTileProps> = ({
       }`}
       title={isScreenTrack ? 'Transmissão de Tela - Clique para expandir' : 'Clique para expandir em tela cheia'}
     >
-      {/* Video Feed. Left out while a live waits for the click: the element
-          would keep showing the last frame it got before the live. */}
       {!liveGate.needsClick && (
         <video
           ref={videoRef}
@@ -203,8 +191,6 @@ export const VideoTile: React.FC<VideoTileProps> = ({
         />
       )}
 
-      {/* Sound of a remote participant. Silent for the local tile (no echo)
-          and while the grid is open (it plays the same audio). */}
       {!isLocal && stream && (
         <RemoteAudio
           stream={stream}
@@ -216,7 +202,6 @@ export const VideoTile: React.FC<VideoTileProps> = ({
         />
       )}
 
-      {/* Camera Off Avatar Fallback */}
       {!shouldShowVideo && (
         <PlayerAvatar
           name={name}
@@ -227,12 +212,10 @@ export const VideoTile: React.FC<VideoTileProps> = ({
         />
       )}
 
-      {/* A live starts with a click: until then only the microphone arrives */}
       {(liveGate.needsClick || liveGate.connecting) && (
         <LiveWatchPrompt size="tile" name={name} connecting={liveGate.connecting} onWatch={liveGate.watch} />
       )}
 
-      {/* Top Live Badge */}
       {(isScreenSharing || isScreenTrack) && (
         <div className="absolute top-1.5 left-1.5 flex items-center gap-1 px-1.5 py-0.5 bg-rose-600 text-white rounded text-[8px] font-bold shadow animate-pulse">
           <Radio className="w-2.5 h-2.5" />
@@ -240,7 +223,6 @@ export const VideoTile: React.FC<VideoTileProps> = ({
         </div>
       )}
 
-      {/* Call State Badges */}
       {!isLocal && !isScreenTrack && callState === 'reconnecting' && (
         <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1 px-1.5 py-0.5 bg-amber-500/90 text-white rounded text-[8px] font-bold shadow animate-pulse">
           <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
@@ -270,7 +252,6 @@ export const VideoTile: React.FC<VideoTileProps> = ({
         </div>
       )}
 
-      {/* Live viewer volume control (hover, top-right) */}
       {isScreenTrack && !isLocal && !liveGate.needsClick && (
         <div
           className="absolute top-1.5 right-1.5 group/vol flex items-center bg-black/70 hover:bg-black/90 backdrop-blur-md border border-white/15 rounded-lg px-1 py-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
@@ -325,7 +306,6 @@ export const VideoTile: React.FC<VideoTileProps> = ({
         </div>
       )}
 
-      {/* Name Pill Tag */}
       <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between px-2 py-0.5 bg-black/70 backdrop-blur-md rounded-lg text-[10px] text-white">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="truncate font-medium">
@@ -371,18 +351,13 @@ export const VideoTile: React.FC<VideoTileProps> = ({
   )
 }
 
-/**
- * Floating Picture-in-Picture Screen Share Preview Window
- */
 interface FloatingScreenPreviewProps {
   stream: MediaStream
   presenterId?: string
   presenterName: string
   isLocal: boolean
   suppressAudio?: boolean
-  /** The live comes from an app that waits for a click before sending and showing it. */
   asksFirst?: boolean
-  /** This user clicked to watch it. */
   watching?: boolean
   onExpand: () => void
   onClose: () => void
@@ -401,7 +376,6 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const liveGate = useLiveGate(presenterId, Boolean(!isLocal && asksFirst), watching)
-  // Granular selectors — same VU-tick reason as VideoTile above.
   const outputVolume = useMediaStore((s) => s.outputVolume)
   const selectedAudioOutput = useMediaStore((s) => s.selectedAudioOutput)
   const participantVolumes = useMediaStore((s) => s.participantVolumes)
@@ -429,21 +403,15 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
     const video = videoRef.current
     if (!video || !stream) return
 
-    // Imperative muted — same Chromium attribute-vs-property gotcha as
-    // VideoTile; a local screen preview left unmuted echoes mic+system
-    // audio back with DSP latency.
     video.muted = !!isLocal || suppressAudio
-    // Shared attach with play-failure recovery. See attachVideoElement.ts.
     return attachStreamToVideo(video, stream, {
       tile: 'mini-pip',
       peer: presenterName,
       isLocal: !!isLocal,
       muted: !!isLocal || suppressAudio,
     })
-    // The <video> is a new element after the click to watch.
   }, [stream, isLocal, suppressAudio, liveGate.needsClick])
 
-  // While the grid is open this player is not on screen: its size does not count.
   useLiveViewBox(presenterId, videoRef, 'contain', liveGate.watching && !suppressAudio)
 
   useEffect(() => {
@@ -460,7 +428,6 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
 
   return (
     <div className="mb-2 w-72 sm:w-80 bg-[#12151d] rounded-2xl overflow-hidden border-2 border-indigo-500/80 shadow-2xl animate-in slide-in-from-bottom-2 duration-200">
-      {/* Header Bar */}
       <div className="flex items-center justify-between px-3 py-1.5 bg-[#1b202c]/90 border-b border-[#2a3142]">
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
@@ -480,7 +447,6 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
             </button>
           )}
 
-          {/* Volume Control for Viewer */}
           {!isLocal && !liveGate.needsClick && (
             <div className="group/vol relative flex items-center bg-[#12151d] border border-[#2a3142] rounded-lg px-1.5 py-0.5">
               <button
@@ -536,13 +502,11 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
         </div>
       </div>
 
-      {/* Floating Video Stream */}
       <div
         onClick={onExpand}
         className="relative w-full h-40 bg-black flex items-center justify-center cursor-pointer group"
         title="Clique para expandir em tela cheia"
       >
-        {/* A live starts with a click: until then only the microphone arrives */}
         {!liveGate.needsClick && (
           <video
             ref={videoRef}
@@ -565,7 +529,6 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
           />
         )}
 
-        {/* Hover Overlay with Expand Action */}
         {!liveGate.needsClick && !liveGate.connecting && (
           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
             <span className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 backdrop-blur-md">
@@ -579,11 +542,6 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
   )
 }
 
-/**
- * Outer gate: subscribes ONLY to the two booleans that decide visibility, so
- * 60Hz player-position updates don't re-render this overlay while hidden
- * (the common case — walking around outside any zone).
- */
 export const MiniCallOverlay: React.FC = () => {
   const currentZoneId = useGameStore((s) => s.localPlayer.currentZoneId)
   const isGridCallOpen = useMediaStore((s) => s.isGridCallOpen)
@@ -599,8 +557,6 @@ export const MiniCallOverlay: React.FC = () => {
 }
 
 const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressAudio = false }) => {
-  // Granular selectors — the VU level ticks at ~10Hz; subscribe narrowly so
-  // the overlay doesn't re-render on unrelated media slices.
   const localStream = useMediaStore((s) => s.localStream)
   const localScreenStream = useMediaStore((s) => s.localScreenStream)
   const peerStreams = useMediaStore((s) => s.peerStreams)
@@ -634,13 +590,11 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
   const [isCardCollapsed, setIsCardCollapsed] = useState(false)
   const [contextMenuState, setContextMenuState] = useState<{ user: ParticipantData; x: number; y: number } | null>(null)
 
-  // Floating draggable position state & ref
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const dragStartRef = useRef<{ startX: number; startY: number; initX: number; initY: number; hasMoved: boolean } | null>(null)
 
-  // Resize listener to keep card within viewport bounds
   useEffect(() => {
     const handleResize = () => {
       setPosition((prev) => {
@@ -658,7 +612,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  // Dragging event listeners for smooth mouse and touch tracking
   useEffect(() => {
     if (!isDragging) return
 
@@ -719,7 +672,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
   const streamMenuRef = useRef<HTMLDivElement>(null)
   const noiseMenuRef = useRef<HTMLDivElement>(null)
 
-  // Fecha os mini-menus ao clicar fora ou pressionar ESC
   useEffect(() => {
     if (!isActiveStreamMenuOpen && !isNoiseMenuOpen) return
     const handleClickOutside = (e: MouseEvent) => {
@@ -744,14 +696,12 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
     }
   }, [isActiveStreamMenuOpen, isNoiseMenuOpen])
 
-  // Only display if user is in a Private Zone (grid-open gate lives in outer).
   if (!localPlayer.currentZoneId) return null
 
   const currentZone = mapData.zones.find((z) => z.id === localPlayer.currentZoneId)
   const zoneName = currentZone?.name || 'Mesa Privada'
   const isRoomLocked = !!currentZone?.isLocked
 
-  // Filter remote participants who are in the same zone
   const peersInSameZone = Object.values(remotePlayers).filter(
     (p) => p.currentZoneId === localPlayer.currentZoneId
   )
@@ -760,8 +710,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
     (p) => callStates[p.id] === 'reconnecting'
   )
 
-  // Find if there is an active screen share in this zone (local or remote).
-  // With more than one live, the mini player is of the one being watched.
   const remotePresenters = peersInSameZone.filter((p) => p.isScreenSharing && peerStreams[p.id])
   const remotePresenter = remotePresenters.find((p) => watchingLives[p.id]) || remotePresenters[0]
   const hasActiveScreenShare = isScreenSharing || !!remotePresenter
@@ -818,7 +766,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
           position ? '' : 'bottom-4 left-4'
         } ${isDragging ? 'cursor-grabbing' : ''}`}
       >
-        {/* 1. Dedicated Floating Screen Share PiP Window (When sharing is active) */}
         {hasActiveScreenShare && activeScreenStream && isFloatingPreviewVisible && (
           <FloatingScreenPreview
             stream={activeScreenStream}
@@ -833,9 +780,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
           />
         )}
 
-        {/* 2. Main Floating Zone Call Card */}
         <div className="bg-[#1b202c]/95 backdrop-blur-xl border border-[#2a3142] rounded-3xl p-2.5 sm:p-3 shadow-2xl animate-in slide-in-from-bottom-4 duration-200 max-w-[calc(100vw-24px)] sm:max-w-md">
-          {/* Top Status */}
           <div className="flex items-center justify-between gap-2 sm:gap-4 px-1">
             <div
               onClick={() => {
@@ -866,7 +811,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
             </div>
 
             <div className="flex items-center gap-1 shrink-0">
-              {/* Quick Mic button when card is collapsed */}
               {isCardCollapsed && (
                 <button
                   onClick={toggleMute}
@@ -883,7 +827,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                 </button>
               )}
 
-              {/* Toggle Floating Screen Share Preview button if active */}
               {hasActiveScreenShare && !isFloatingPreviewVisible && (
                 <button
                   onClick={() => setIsFloatingPreviewVisible(true)}
@@ -903,7 +846,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                 <Maximize2 className="w-4 h-4" />
               </button>
 
-              {/* Collapse / Expand Toggle */}
               <button
                 onClick={() => setIsCardCollapsed((prev) => !prev)}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
@@ -916,9 +858,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
 
           {!isCardCollapsed && (
             <>
-              {/* Video Tiles Carousel (Clicking opens Spotlight Grid) */}
               <div className="flex gap-2 items-center overflow-x-auto pb-1 max-w-[calc(100vw-40px)] sm:max-w-md mt-2">
-            {/* Local User Camera */}
             <VideoTile
               id={localPlayer.id}
               stream={localStream}
@@ -954,7 +894,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               }}
             />
 
-            {/* Local Screen Share Tile (if sharing) */}
             {isScreenSharing && localScreenStream && (
               <VideoTile
                 stream={localScreenStream}
@@ -967,7 +906,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               />
             )}
 
-            {/* Remote Peers in Zone */}
             {peersInSameZone.map((peer) => {
               const friendProfile = friendProfiles[peer.id] || (peer.gameId ? friendProfiles[peer.gameId] : undefined)
               const resolvedPic = peer.profilePicture || friendProfile?.profilePicture
@@ -1018,9 +956,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
           })}
           </div>
 
-          {/* Quick Controls Bar */}
           <div className="flex items-center justify-center gap-2 mt-2 pt-2 border-t border-[#2a3142]">
-            {/* Mic */}
             <button
               onClick={toggleMute}
               className={`p-2 rounded-xl text-xs font-medium transition-colors ${
@@ -1045,7 +981,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               )}
             </button>
 
-            {/* Mutar som para si (Ensurdecer / Deafen) */}
             <button
               onClick={toggleDeafen}
               className={`p-2 rounded-xl text-xs font-medium transition-colors ${
@@ -1062,7 +997,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               <Headphones className="w-4 h-4" />
             </button>
 
-            {/* Camera */}
             <button
               onClick={toggleCamera}
               className={`p-2 rounded-xl text-xs font-medium transition-colors ${
@@ -1073,7 +1007,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               {isCameraOff ? <VideoOff className="w-4 h-4" /> : <Video className="w-4 h-4" />}
             </button>
 
-            {/* Screen Share (Flashing and glowing when active) with small list menu */}
             <div className="relative">
               <button
                 onClick={handleToggleScreenShare}
@@ -1087,7 +1020,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                 <ScreenShare className="w-4 h-4" />
               </button>
 
-              {/* Menu compacto em lista de opções da transmissão */}
               {isScreenSharing && isActiveStreamMenuOpen && (
                 <div
                   ref={streamMenuRef}
@@ -1124,7 +1056,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               )}
             </div>
 
-            {/* Chat da Sala */}
             <button
               onClick={handleOpenRoomChat}
               className={`p-2 rounded-xl text-xs font-medium transition-all relative ${
@@ -1142,7 +1073,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               )}
             </button>
 
-            {/* Supressor de Ruído (Noise Suppression) com Menu Suspenso */}
             <div className="relative">
               <button
                 onClick={() => setIsNoiseMenuOpen((prev) => !prev)}
@@ -1166,7 +1096,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                 <AudioLines className={`w-4 h-4 ${isNoiseSuppressionEnabled ? 'text-emerald-400' : ''}`} />
               </button>
 
-              {/* Menu compacto para alternar entre os supressores de ruído */}
               {isNoiseMenuOpen && (
                 <div
                   ref={noiseMenuRef}
@@ -1279,7 +1208,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               )}
             </div>
 
-            {/* Room Permissions & Allowed Users (Escudo para gerenciar permissões da sala) */}
             <button
               onClick={() => setIsRoomSettingsOpen(true)}
               className="p-2 rounded-xl text-xs font-medium bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-indigo-300 transition-colors"
@@ -1288,7 +1216,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               <Shield className="w-4 h-4" />
             </button>
 
-            {/* Settings (Configurações de Áudio e Voz) */}
             <button
               onClick={() => useMediaStore.getState().setSettingsModalOpen(true)}
               className="p-2 rounded-xl text-xs font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white transition-colors"
@@ -1302,13 +1229,11 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
     </div>
   </div>
 
-      {/* Screen Share Window Picker Modal */}
       <ScreenShareModal
         isOpen={isScreenModalOpen}
         onClose={() => setIsScreenModalOpen(false)}
       />
 
-      {/* Room Permissions & Settings Modal */}
       {currentZone && isRoomSettingsOpen && (
         <RoomSettingsModal
           zone={currentZone}
@@ -1318,7 +1243,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
         />
       )}
 
-      {/* Participant Right-Click Context Menu */}
       {contextMenuState && (
         <ParticipantContextMenu
           user={contextMenuState.user}

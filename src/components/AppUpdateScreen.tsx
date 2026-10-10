@@ -23,13 +23,10 @@ export const AppUpdateScreen: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-[9999] bg-[#0c0e14] flex flex-col items-center justify-center select-none overflow-hidden text-slate-100 font-sans">
-      {/* Ambient background glow */}
       <div className="absolute w-[600px] h-[600px] bg-indigo-600/15 rounded-full blur-[140px] pointer-events-none -z-10 animate-pulse" />
       <div className="absolute w-[400px] h-[400px] bg-emerald-500/10 rounded-full blur-[100px] pointer-events-none -z-10" />
 
-      {/* Main Center Card */}
       <div className="flex flex-col items-center text-center max-w-md w-full px-6">
-        {/* App Icon Centered with breathing pulse */}
         <div className="relative mb-6">
           <div className="absolute -inset-4 bg-gradient-to-r from-indigo-500/30 to-emerald-400/30 rounded-full blur-xl opacity-75 animate-pulse" />
           <div className="relative w-28 h-28 rounded-3xl bg-[#141824]/90 border border-indigo-500/30 shadow-2xl shadow-indigo-900/50 flex items-center justify-center backdrop-blur-md">
@@ -37,7 +34,6 @@ export const AppUpdateScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* Brand & Update Title */}
         <h1 className="text-2xl font-black tracking-wider text-white flex items-center gap-2">
           <span>LIRA</span>
           {targetVer && (
@@ -47,7 +43,6 @@ export const AppUpdateScreen: React.FC = () => {
           )}
         </h1>
 
-        {/* Dynamic Status Text */}
         <div className="mt-2 min-h-[48px] flex flex-col items-center justify-center">
           {isDownloading && (
             <>
@@ -90,7 +85,6 @@ export const AppUpdateScreen: React.FC = () => {
           )}
         </div>
 
-        {/* Progress Bar Container */}
         {!isError && (
           <div className="w-full mt-6 space-y-2">
             <div className="w-full h-3 bg-[#181d2a] rounded-full p-0.5 border border-[#2a3142] overflow-hidden shadow-inner">
@@ -104,7 +98,6 @@ export const AppUpdateScreen: React.FC = () => {
               />
             </div>
 
-            {/* Progress percentage & file size */}
             <div className="flex items-center justify-between text-xs text-slate-400 px-1 font-mono">
               <span className="font-bold text-slate-300">{percent}%</span>
               <span>
@@ -118,7 +111,6 @@ export const AppUpdateScreen: React.FC = () => {
           </div>
         )}
 
-        {/* Error Actions */}
         {isError && (
           <div className="flex items-center gap-3 mt-6">
             <button
@@ -140,7 +132,6 @@ export const AppUpdateScreen: React.FC = () => {
           </div>
         )}
 
-        {/* Subtle footer tip */}
         {!isError && (
           <p className="text-[11px] text-slate-500 mt-8 tracking-wide">
             Por favor, não feche o aplicativo enquanto a atualização é concluída.

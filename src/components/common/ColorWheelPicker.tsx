@@ -7,7 +7,6 @@ export interface ColorWheelPickerProps {
   className?: string
 }
 
-// Convert Hex to HSL
 export function hexToHsl(hex: string): { h: number; s: number; l: number } {
   let c = hex.replace('#', '')
   if (c.length === 3) {
@@ -50,7 +49,6 @@ export function hexToHsl(hex: string): { h: number; s: number; l: number } {
   }
 }
 
-// Convert HSL to Hex
 export function hslToHex(h: number, s: number, l: number): string {
   s /= 100
   l /= 100
@@ -81,7 +79,6 @@ export const ColorWheelPicker: React.FC<ColorWheelPickerProps> = ({
   const [lightness, setLightness] = useState(initialHsl.l)
   const [hexInput, setHexInput] = useState(color || '#ffffff')
 
-  // Keep internal state in sync with external color changes if color changes from outside
   useEffect(() => {
     const hsl = hexToHsl(color)
     setHue(hsl.h)
@@ -90,7 +87,6 @@ export const ColorWheelPicker: React.FC<ColorWheelPickerProps> = ({
     setHexInput(color)
   }, [color])
 
-  // Draw circular color wheel
   const drawWheel = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -104,7 +100,6 @@ export const ColorWheelPicker: React.FC<ColorWheelPickerProps> = ({
 
     ctx.clearRect(0, 0, size, size)
 
-    // Draw Hue Ring
     for (let angle = 0; angle < 360; angle += 1) {
       const startAngle = ((angle - 1) * Math.PI) / 180
       const endAngle = ((angle + 1) * Math.PI) / 180
@@ -118,7 +113,6 @@ export const ColorWheelPicker: React.FC<ColorWheelPickerProps> = ({
       ctx.fill()
     }
 
-    // Draw Center Circle showing current color
     ctx.beginPath()
     ctx.arc(center, center, innerRadius - 8, 0, Math.PI * 2)
     ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`
@@ -127,7 +121,6 @@ export const ColorWheelPicker: React.FC<ColorWheelPickerProps> = ({
     ctx.lineWidth = 2
     ctx.stroke()
 
-    // Draw Hue Indicator Pointer on ring
     const rad = (hue * Math.PI) / 180
     const ringMidRadius = (outerRadius + innerRadius) / 2
     const indicatorX = center + ringMidRadius * Math.cos(rad)
@@ -146,7 +139,6 @@ export const ColorWheelPicker: React.FC<ColorWheelPickerProps> = ({
     drawWheel()
   }, [drawWheel])
 
-  // Handle wheel mouse interaction
   const handleWheelInteraction = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -230,7 +222,6 @@ export const ColorWheelPicker: React.FC<ColorWheelPickerProps> = ({
         )}
       </div>
 
-      {/* Color Wheel Canvas */}
       <div className="relative cursor-pointer">
         <canvas
           ref={canvasRef}
@@ -243,7 +234,6 @@ export const ColorWheelPicker: React.FC<ColorWheelPickerProps> = ({
         />
       </div>
 
-      {/* Sliders for Saturation and Lightness */}
       <div className="w-full flex flex-col gap-2.5">
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between text-[11px] text-slate-400">
@@ -282,7 +272,6 @@ export const ColorWheelPicker: React.FC<ColorWheelPickerProps> = ({
         </div>
       </div>
 
-      {/* Hex Input and Swatch Preview */}
       <div className="flex items-center gap-2 w-full pt-2 border-t border-[#383a40]/60">
         <div
           className="w-8 h-8 rounded-lg border border-white/20 shadow-inner shrink-0"

@@ -299,7 +299,6 @@ describe('buildChatPeople', () => {
         channels: [older, current],
       })
       expect(people.friends[0]).toMatchObject({ unreadCount: 2, open: { kind: 'channel', channelId: current.id } })
-      // The older history stays reachable on its own row.
       expect(people.conversations.map((p) => p.open)).toEqual([{ kind: 'channel', channelId: older.id }])
     })
   })

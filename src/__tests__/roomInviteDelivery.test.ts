@@ -13,7 +13,6 @@ const CAIO = 'u-cccccccccccccccccccc'
 
 const service = FriendsPresenceService.getInstance()
 
-/** Stands in for the P2P links to friends: who is linked and what was sent to them. */
 function installFakeNetwork() {
   const linked = new Set<string>()
   const sent: Array<{ userId: string; packet: any }> = []
@@ -64,7 +63,6 @@ const inviteFrom = (from: string, senderName: string, roomInvite: unknown, id = 
 
 const chat = () => useChatStore.getState()
 
-// The friends section of the chat sidebar, as the drawer builds it.
 const friendRow = () =>
   buildChatPeople({
     remotePlayers: Object.values(useGameStore.getState().remotePlayers),

@@ -230,16 +230,13 @@ describe('CallAudioIsolator - Live Screen/App Sound Isolation', () => {
       isolateCallAudio: true,
     })
 
-    // Simulate remote peers entering the call
     const peerAudioTrack: any = { id: 'peer-audio-1', kind: 'audio', enabled: true, stop: vi.fn() }
     const peerStream = new MockMediaStream([peerAudioTrack])
 
     useMediaStore.getState().setPeerStream('peer-user-123', peerStream as unknown as MediaStream)
 
-    // Remote peer streams should be safely monitored
     expect(useMediaStore.getState().peerStreams['peer-user-123']).toBe(peerStream)
 
-    // Simulate remote peer leaving
     useMediaStore.getState().removePeerStream('peer-user-123')
     expect(useMediaStore.getState().peerStreams['peer-user-123']).toBeUndefined()
 
@@ -287,7 +284,6 @@ describe('CallAudioIsolator - Live Screen/App Sound Isolation', () => {
     expect(useMediaStore.getState().screenShareAudioMode).toBe('app_only')
     expect(replaceAudioSpy).toHaveBeenCalled()
 
-    // When stopping screen share, title should be reset
     MediaManager.getInstance().stopScreenShare()
     expect(useMediaStore.getState().isScreenSharing).toBe(false)
     expect(useMediaStore.getState().screenShareTargetTitle).toBeNull()

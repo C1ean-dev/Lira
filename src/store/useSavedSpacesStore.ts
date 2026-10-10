@@ -8,14 +8,13 @@ import { hydrateMapData, compressMapDataForStorage } from '../utils/mapSerializa
 
 export interface SavedSpace {
   id: string
-  roomCode: string // Persistent Room UUID code
+  roomCode: string
   name: string
   description?: string
   createdAt: number
   updatedAt: number
   mapData: MapData
   color?: string
-  /** The chat channels of the space; absent while it only has the default ones. */
   channels?: RoomChannel[]
 }
 
@@ -97,7 +96,6 @@ const loadSavedSpaces = (): SavedSpace[] => {
     console.error('Failed to load saved spaces:', e)
   }
 
-  // Merge native and saved spaces (saved takes precedence)
   const map = new Map<string, SavedSpace>()
   nativeSpaces.forEach((s) => map.set(s.id, s))
   savedSpaces.forEach((s) => map.set(s.id, s))

@@ -1,13 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { AutoGate, AUTO_GATE } from '../media/autoGate'
 
-// Same minimums the Soft DSP uses: it never opens below RMS 0.0035.
 const SOFT = { minOpenRms: 0.0035, minCloseRms: 0.0035 * 0.55 }
 
-/**
- * Feeds `levelAt(elapsedMs)` to the tracker every `tickMs` for `durationMs`
- * and returns the clock afterwards, so runs can be chained.
- */
 function feed(
   gate: AutoGate,
   from: number,
@@ -50,8 +45,6 @@ describe('AutoGate - automatic noise-gate threshold', () => {
 
     expect(gate.floor).toBeGreaterThan(0.0065)
     expect(gate.floor).toBeLessThan(0.0085)
-    // The noise itself must sit under the close level, or the gate would hold
-    // whatever state it was in forever (the old behaviour in loud rooms).
     expect(gate.closeLevel).toBeGreaterThan(0.008)
     expect(gate.openLevel).toBeGreaterThan(0.012)
   })
@@ -90,7 +83,6 @@ describe('AutoGate - automatic noise-gate threshold', () => {
 
   it('does not take speech for room noise: voice bursts over a quiet room leave the floor alone', () => {
     const gate = new AutoGate(SOFT)
-    // 1 s of voice, 0.5 s of pause at the room level, over and over.
     feed(gate, 0, 40000, (t) => (t % 1500 < 1000 ? 0.05 : 0.002))
 
     expect(gate.floor).toBeGreaterThan(0.001)
@@ -101,14 +93,12 @@ describe('AutoGate - automatic noise-gate threshold', () => {
 
   it('never lets a monologue push the floor above the quietest moment of that speech', () => {
     const gate = new AutoGate(SOFT)
-    // 15 s of speech with no real pause: 80 ms at 0.05, 20 ms down to 0.01.
     let highestFloor = 0
     for (let t = 0; t < 15000; t += 16) {
       gate.update(t % 100 < 80 ? 0.05 : 0.01, t, false)
       highestFloor = Math.max(highestFloor, gate.floor)
     }
     expect(highestFloor).toBeLessThanOrEqual(0.01 + 1e-9)
-    // And the speech peaks are still far above where the gate opens.
     expect(0.05).toBeGreaterThan(gate.openLevel)
   })
 
@@ -156,7 +146,6 @@ describe('AutoGate - automatic noise-gate threshold', () => {
     const gate = new AutoGate(SOFT)
     gate.update(0.0005, 0)
     gate.update(0.0005, 60_000)
-    // It moved towards the new level, but not all the way as if it had seen a minute of data.
     expect(gate.floor).toBeLessThan(AUTO_GATE.INITIAL_FLOOR_RMS)
     expect(gate.floor).toBeGreaterThan(0.0006)
   })
@@ -188,7 +177,6 @@ describe('AutoGate - automatic noise-gate threshold', () => {
     expect(gate.floor).toBeGreaterThan(0.006)
     gate.reset()
     expect(gate.floor).toBe(AUTO_GATE.INITIAL_FLOOR_RMS)
-    // The clock restarts too: an old timestamp is not a "backwards" jump.
     gate.update(0.0005, 5)
     gate.update(0.0005, 21)
     expect(gate.floor).toBeLessThan(AUTO_GATE.INITIAL_FLOOR_RMS)
@@ -204,7 +192,7 @@ describe('AutoGate - automatic noise-gate threshold', () => {
     let now = 0
     for (let i = 0; i < 20000; i++) {
       now += 5 + random() * 395
-      const level = Math.pow(10, -5 + random() * 5) // 1e-5 .. 1
+      const level = Math.pow(10, -5 + random() * 5)
       gate.update(level, now, random() < 0.1)
 
       expect(Number.isFinite(gate.floor)).toBe(true)

@@ -1,23 +1,10 @@
-/**
- * Reads a V8 stack trace (renderer, main process or a React component stack)
- * into frames that are stable from one machine and one run to the next: paths
- * are relative to the project, without the install folder, the dev server
- * origin or its cache query. Pure functions only.
- */
 
 export interface StackFrame {
-  /** Function or component name. */
   fn?: string
-  /** Path relative to the project: src/p2p/PeerManager.ts, node_modules/peerjs/..., dist/assets/index-x.js */
   file?: string
   line?: number
   col?: number
-  /** Our own code (sources or the app bundle), not a dependency or the runtime. */
   app: boolean
-  /**
-   * Set when the frame was translated with a source map (the installed app):
-   * the position in the bundle it came from. `fn` is then the name the bundle uses.
-   */
   min?: string
 }
 
@@ -51,7 +38,6 @@ export function normalizeFramePath(raw: string): string {
   const bundle = text.lastIndexOf('/dist/')
   if (bundle !== -1) return text.slice(bundle + 1)
 
-  // Not in the project: a dev server path says what it is, a path on disk only says who the user is.
   if (isWeb) return text.replace(/^https?:\/\/[^/]+\/?/i, '')
   return text.slice(text.lastIndexOf('/') + 1)
 }
@@ -62,7 +48,6 @@ function isLocation(text: string): boolean {
 
 function readLocation(location: string): Pick<StackFrame, 'file' | 'line' | 'col'> {
   let text = location
-  // "eval at run (file:10:3), <anonymous>:1:1": the code that ran the eval is the useful place.
   if (text.startsWith('eval at ')) {
     const inner = /\(([^()]+)\)/.exec(text)
     if (inner) text = inner[1]
@@ -77,7 +62,6 @@ function readLocation(location: string): Pick<StackFrame, 'file' | 'line' | 'col
 }
 
 function parseLine(line: string): StackFrame | null {
-  // Frames are indented; a message line that happens to start with "at" is not.
   if (!/^\s+at\s/.test(line)) return null
   const rest = line.trim().slice(3).trim()
   if (!rest) return null
@@ -103,7 +87,6 @@ function parseLine(line: string): StackFrame | null {
     if (place.col !== undefined) frame.col = place.col
     frame.app = isAppPath(frame.file)
   }
-  // Key order is the reading order: who, where.
   return {
     ...(frame.fn ? { fn: frame.fn } : {}),
     ...(frame.file ? { file: frame.file } : {}),

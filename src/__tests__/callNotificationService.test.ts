@@ -66,7 +66,6 @@ describe('callNotificationService - Background Call Management', () => {
     expect(typeof freePos.x).toBe('number')
     expect(typeof freePos.y).toBe('number')
 
-    // Deve estar fora da zona (4..10, 4..10)
     const inZone1 = freePos.x >= 4 && freePos.x < 10 && freePos.y >= 4 && freePos.y < 10
     expect(inZone1).toBe(false)
   })

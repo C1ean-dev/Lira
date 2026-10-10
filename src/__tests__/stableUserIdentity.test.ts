@@ -23,7 +23,6 @@ const localStorageMock = {
 
 const PROFILE_KEY = 'lira_user_profile'
 
-/** Simulates an app launch: every module is evaluated again. */
 async function launchApp() {
   vi.resetModules()
   return await import('../store/useGameStore')
@@ -51,10 +50,8 @@ describe('Stable user id', () => {
   it('maps to a friend peer id that PeerJS accepts and back', () => {
     const userId = generateUserId()
     const peerId = toFriendPeerId(userId)
-    // PeerJS id rule (util.validateId)
     expect(peerId).toMatch(/^[A-Za-z0-9]+(?:[ _-][A-Za-z0-9]+)*$/)
     expect(fromFriendPeerId(peerId)).toBe(userId)
-    // Room peers must never be read as friend peers
     expect(fromFriendPeerId('lira-ROOM-host')).toBeNull()
     expect(fromFriendPeerId('lirafriend-not-a-user-id')).toBeNull()
   })
@@ -94,7 +91,6 @@ describe('Stable user id', () => {
     const { useGameStore, getLocalUserId } = await launchApp()
     const userId = useGameStore.getState().localPlayer.id
 
-    // What PeerManager does when a room is joined
     useGameStore.getState().setLocalPlayer({ id: 'lira-ROOM-peer-x1y2z', gameId: userId })
     expect(getLocalUserId()).toBe(userId)
     expect(getPlayerUserId({ id: 'lira-ROOM-peer-x1y2z', gameId: userId })).toBe(userId)
@@ -119,7 +115,6 @@ describe('Friend identity resolution', () => {
       [ANA]: { id: ANA, name: 'Ana' },
       'friend-bia': { id: 'friend-bia', name: 'Bia', actualUserId: BIA },
     }
-    // In a room the player entry is keyed by a new connection id every time
     expect(findFriendKey(friends, profiles, ['lira-ROOM-peer-new01', ANA])).toBe(ANA)
     expect(findFriendKey(friends, profiles, [BIA])).toBe('friend-bia')
     expect(findFriendKey(friends, profiles, ['lira-ROOM-peer-new02', undefined])).toBeUndefined()
@@ -129,9 +124,7 @@ describe('Friend identity resolution', () => {
   it('matches message participants by id, falling back to the name only without a user id', () => {
     const ana = { id: ANA, name: 'Ana' }
     expect(isSameParticipant(ana, ANA, 'whatever')).toBe(true)
-    // Someone else who merely uses the same display name
     expect(isSameParticipant(ana, BIA, 'Ana')).toBe(false)
-    // History saved before stable ids: only the name is comparable
     expect(isSameParticipant(ana, 'lira-ROOM-peer-old01', 'ana')).toBe(true)
     expect(isSameParticipant(ana, undefined, 'Ana')).toBe(true)
     expect(isSameParticipant(ana, undefined, 'Bia')).toBe(false)

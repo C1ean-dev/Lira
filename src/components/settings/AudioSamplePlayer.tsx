@@ -41,7 +41,6 @@ export const AudioSamplePlayer: React.FC<Props> = ({
 
   const isProcessed = badgeVariant === 'processed'
 
-  // Default to 75 bars. If empty, generate a subtle aesthetic soundwave pattern
   const bars =
     waveform.length > 0
       ? waveform
@@ -122,7 +121,6 @@ export const AudioSamplePlayer: React.FC<Props> = ({
   const progressFraction = duration > 0 ? currentTime / duration : 0
   const progressPercent = progressFraction * 100
 
-  // SVG dimensions for high-resolution waveform rendering
   const viewBoxWidth = 750
   const viewBoxHeight = 64
   const centerY = viewBoxHeight / 2
@@ -139,7 +137,6 @@ export const AudioSamplePlayer: React.FC<Props> = ({
     >
       <audio ref={audioRef} src={audioUrl} preload="metadata" />
 
-      {/* Header Info */}
       <div className="flex items-center justify-between gap-2 mb-2.5">
         <div className="flex items-center gap-1.5 min-w-0">
           {isProcessed ? (
@@ -182,9 +179,7 @@ export const AudioSamplePlayer: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Controls & Waveform Container */}
       <div className="flex items-center gap-3 bg-slate-950/90 rounded-xl p-2.5 border border-slate-800/90 shadow-inner">
-        {/* Play/Pause Button */}
         <button
           type="button"
           onClick={togglePlay}
@@ -202,7 +197,6 @@ export const AudioSamplePlayer: React.FC<Props> = ({
           )}
         </button>
 
-        {/* Replay Button */}
         <button
           type="button"
           onClick={handleRestart}
@@ -212,7 +206,6 @@ export const AudioSamplePlayer: React.FC<Props> = ({
           <RotateCcw className="w-3.5 h-3.5" />
         </button>
 
-        {/* Real Symmetrical Audio Waveform (SVG) */}
         <div className="flex-1 h-16 flex items-center relative select-none">
           <svg
             viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
@@ -223,7 +216,6 @@ export const AudioSamplePlayer: React.FC<Props> = ({
             onMouseLeave={() => setHoverPercent(null)}
           >
             <defs>
-              {/* Active Played Waveform Gradient */}
               {isProcessed ? (
                 <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="0%">
                   <stop offset="0%" stopColor="#10b981" />
@@ -241,7 +233,6 @@ export const AudioSamplePlayer: React.FC<Props> = ({
                 </linearGradient>
               )}
 
-              {/* Unplayed Waveform Gradient (Darker, translucent wave contour) */}
               {isProcessed ? (
                 <linearGradient id={unplayedGradId} x1="0%" y1="0%" x2="100%" y2="0%">
                   <stop offset="0%" stopColor="#064e3b" stopOpacity="0.45" />
@@ -257,11 +248,10 @@ export const AudioSamplePlayer: React.FC<Props> = ({
               )}
             </defs>
 
-            {/* Symmetrical Waveform Vertical Bars (Centered around Y = 32) */}
             {bars.map((normHeight, i) => {
               const barFraction = i / bars.length
               const isPlayed = barFraction <= progressFraction
-              const maxAvailableHeight = viewBoxHeight - 6 // 58px
+              const maxAvailableHeight = viewBoxHeight - 6
               const barHeight = Math.max(3.5, Math.round(normHeight * maxAvailableHeight))
               const y = centerY - barHeight / 2
               const x = i * step + (step - barWidth) / 2
@@ -281,7 +271,6 @@ export const AudioSamplePlayer: React.FC<Props> = ({
               )
             })}
 
-            {/* Hover Indicator Scrubber */}
             {hoverPercent !== null && (
               <line
                 x1={hoverPercent * viewBoxWidth}
@@ -295,7 +284,6 @@ export const AudioSamplePlayer: React.FC<Props> = ({
               />
             )}
 
-            {/* Current Active Playhead Scrubber Line */}
             <g transform={`translate(${progressFraction * viewBoxWidth}, 0)`}>
               <line
                 x1={0}
@@ -317,7 +305,6 @@ export const AudioSamplePlayer: React.FC<Props> = ({
           </svg>
         </div>
 
-        {/* Time Display */}
         <div className="text-[10.5px] font-mono font-medium text-slate-300 shrink-0 w-16 text-right tabular-nums">
           {formatTime(currentTime)} / {formatTime(duration)}
         </div>

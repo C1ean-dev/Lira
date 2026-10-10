@@ -2,11 +2,6 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { CameraManager } from '../engine/camera/CameraManager'
 import { useGameStore } from '../store/useGameStore'
 
-/**
- * Regressão: "câmera volta ao estado inicial toda hora" — o zoom morava só
- * na memória do engine e qualquer fitToScreen (focus/resize/troca de modo)
- * zerava o zoom do usuário. Agora o zoom é persistido e restaurado.
- */
 describe('CameraManager - zoom persistente', () => {
   beforeEach(() => {
     useGameStore.setState({ mapViewMode: 'immersive', isManualSimplified: false })
@@ -34,11 +29,11 @@ describe('CameraManager - zoom persistente', () => {
   it('scroll do usuário persiste o zoom (não se perde no focus/resize)', () => {
     const camera = new CameraManager()
     camera.zoom = 1.6
-    camera.handleWheel(wheelEvent(-100)) // scroll up = zoom in
+    camera.handleWheel(wheelEvent(-100))
     expect(camera.zoom).toBe(1.75)
     expect(useGameStore.getState().cameraZoom).toBe(1.75)
 
-    camera.handleWheel(wheelEvent(100)) // scroll down = zoom out
+    camera.handleWheel(wheelEvent(100))
     expect(camera.zoom).toBe(1.6)
     expect(useGameStore.getState().cameraZoom).toBe(1.6)
   })
@@ -63,7 +58,6 @@ describe('CameraManager - zoom persistente', () => {
   })
 
   it('store rejeita zoom salvo inválido e normaliza set inválido', () => {
-    // Valores fora da faixa são normalizados, nunca quebram a câmera.
     useGameStore.getState().setCameraZoom(10)
     expect(useGameStore.getState().cameraZoom).toBe(4.0)
     useGameStore.getState().setCameraZoom(0)

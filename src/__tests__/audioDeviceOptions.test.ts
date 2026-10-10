@@ -4,8 +4,6 @@ import { AudioDeviceInfo } from '../types/audio'
 
 const noIcon = () => null
 
-// What Chromium lists on Windows: the OS default shows up a second time as a
-// device whose id is literally "default", next to the "communications" one.
 const microphones: AudioDeviceInfo[] = [
   { deviceId: 'default', label: 'Default - Microphone (Fuxi-H3 ) (040b:0897)' },
   { deviceId: 'communications', label: 'Communications - Microphone (Fuxi-H3 ) (040b:0897)' },

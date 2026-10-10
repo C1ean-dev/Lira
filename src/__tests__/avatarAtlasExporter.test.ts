@@ -15,7 +15,6 @@ describe('avatarAtlasExporter - Spritesheet & Sparrow XML Packager', () => {
     expect(xml).toContain('<SubTexture name="hair_messy_down_0" x="0" y="0" width="32" height="32"')
     expect(xml).toContain('</TextureAtlas>')
 
-    // Must be directly parseable by AvatarAtlasManager without errors
     const parsed = AvatarAtlasManager.parseAtlasXml(xml)
     expect(parsed.imagePath).toBe('hair.png')
     expect(parsed.subTextures.size).toBe(3)
@@ -42,10 +41,9 @@ describe('avatarAtlasExporter - Spritesheet & Sparrow XML Packager', () => {
 
     const packed = packSpritesheet(sprites, { columns: 3 })
     expect(packed.subTextures.length).toBe(4)
-    expect(packed.sheetWidth).toBe(96) // 3 cols * 32
-    expect(packed.sheetHeight).toBe(64) // 2 rows * 32
+    expect(packed.sheetWidth).toBe(96)
+    expect(packed.sheetHeight).toBe(64)
 
-    // Check positions
     expect(packed.subTextures[0]).toMatchObject({ name: 'top_kimono_down_0', x: 0, y: 0, width: 32, height: 32 })
     expect(packed.subTextures[1]).toMatchObject({ name: 'top_kimono_up_0', x: 32, y: 0, width: 32, height: 32 })
     expect(packed.subTextures[2]).toMatchObject({ name: 'top_kimono_right_0', x: 64, y: 0, width: 32, height: 32 })

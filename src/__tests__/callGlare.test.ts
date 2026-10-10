@@ -20,11 +20,9 @@ describe('resolveCallGlare', () => {
   })
 
   it('both sides converge on exactly one call', () => {
-    // A=aaa dials B=zzz AND B dials A: each side sees existing=out.
     const aVerdict = resolveCallGlare('aaa', 'zzz', 'out')
     const bVerdict = resolveCallGlare('zzz', 'aaa', 'out')
-    // Exactly one side drops the incoming (= keeps its outgoing).
     expect([aVerdict, bVerdict].filter((v) => v === 'drop-incoming')).toHaveLength(1)
-    expect(aVerdict).toBe('drop-incoming') // smaller id = designated dialer
+    expect(aVerdict).toBe('drop-incoming')
   })
 })

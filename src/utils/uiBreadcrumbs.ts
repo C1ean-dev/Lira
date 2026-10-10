@@ -1,9 +1,3 @@
-/**
- * Says which control a click landed on, for the trail of an error report
- * ("clicked Compartilhar tela" right before the failure). Only controls count
- * (buttons, links, tabs, menu items, fields): a click on the map or on a chat
- * message leaves nothing, and what was typed in a field is never read.
- */
 
 interface ElementLike {
   tagName?: unknown
@@ -67,7 +61,6 @@ export function describeClickTarget(target: unknown): ClickTarget | null {
       node = (node.parentElement as ElementLike | null) ?? null
     }
   } catch {
-    // a detached or foreign node: nothing to say
   }
   return null
 }

@@ -9,9 +9,6 @@ import {
   parseSizeInput,
 } from '../utils/studioResize'
 
-// Dimensões and Tamanho of the pixel art studio take effect while the size is typed. Resizing the canvas
-// keeps the drawing: the frame is redrawn from what is on the canvas plus what a smaller canvas cut off.
-
 describe('parseSizeInput', () => {
   it('reads a size from 1 to 4096', () => {
     expect(parseSizeInput('1')).toBe(1)
@@ -63,7 +60,6 @@ describe('layoutFrameSource', () => {
   })
 
   it('is the size of the canvas when the unclipped image fits in it, so what was drawn after is kept', () => {
-    // canvas 128x64 (after a resize), unclipped 32x32 from before
     const layout = layoutFrameSource({ width: 32, height: 32 }, { width: 128, height: 64 })
     expect(layout.size).toEqual({ width: 128, height: 64 })
     expect(layout.current).toEqual({ x: 0, y: 0 })
@@ -71,7 +67,6 @@ describe('layoutFrameSource', () => {
   })
 
   it('is the size of the unclipped image when the canvas cut it, with the canvas drawing in the middle', () => {
-    // canvas 100x64 over an unclipped 128x64
     const layout = layoutFrameSource({ width: 128, height: 64 }, { width: 100, height: 64 })
     expect(layout.size).toEqual({ width: 128, height: 64 })
     expect(layout.unclipped).toEqual({ x: 0, y: 0 })
@@ -79,14 +74,12 @@ describe('layoutFrameSource', () => {
   })
 
   it('takes the bigger of the two in each direction separately', () => {
-    // wider unclipped, taller canvas
     const layout = layoutFrameSource({ width: 128, height: 32 }, { width: 64, height: 96 })
     expect(layout.size).toEqual({ width: 128, height: 96 })
   })
 })
 
 describe('what a pixel does through the resizes of the studio', () => {
-  // the position of a pixel after each resize, worked out like the studio does it
   const pixelAfterResize = (
     pixel: { x: number; y: number },
     canvasBefore: { width: number; height: number },

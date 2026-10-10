@@ -184,7 +184,6 @@ const readReports = (name = 'lira-reports-2026-10-04.jsonl') =>
     .split('\n')
     .map((line) => JSON.parse(line))
 
-/** A writer set up the way the main process sets its own up. */
 const makeReporting = () => {
   const trail = createBreadcrumbTrail({ now: () => DAY1 })
   const reporter = createErrorReporter({

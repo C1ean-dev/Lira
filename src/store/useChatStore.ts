@@ -26,12 +26,6 @@ export const getDmChannelId = (userId1: string, userId2: string): string => {
   return `dm-${sorted[0]}-${sorted[1]}`
 }
 
-/**
- * Channel id of the local user's conversation with `targetId`. When the other
- * end is a stable user id ours is used too, so the same conversation is found
- * from the home screen and from inside any room (where `localPlayer.id` is a
- * temporary connection id).
- */
 export const getLocalDmChannelId = (targetId: string): string => {
   const local = useGameStore.getState().localPlayer
   const localId = isUserId(targetId) ? getLocalUserId() : local?.id || 'local'
@@ -71,8 +65,6 @@ interface ChatStore {
   respondToFriendRequest: (requestId: string, status: 'accepted' | 'declined') => void
   getFriendRequestStatus: (userIdOrName: string) => FriendRequestData | null
 
-  // Channels of the space. These change local state only: sharing them with
-  // the space and saving them is done by roomChannelsService.
   createRoomChannel: (name: string) => ChannelEditResult
   renameRoomChannel: (channelId: string, name: string) => ChannelEditResult
   deleteRoomChannel: (channelId: string) => boolean
@@ -137,7 +129,6 @@ const loadSavedDmMessages = (): ChatMessage[] => {
       const raw = storage.getItem(SAVED_DMS_STORAGE_KEY)
       if (raw) {
         const parsed: ChatMessage[] = JSON.parse(raw)
-        // Deduplicate friend requests by requestId
         const seenRequestIds = new Set<string>()
         return parsed.map((m) => {
           if (!m.friendRequest) return m
@@ -268,7 +259,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
     })
 
-    // Opening a conversation reads it, same as picking it in the channel list.
     get().markChannelAsRead(get().activeChannelId)
   },
 
@@ -280,15 +270,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         message.senderId === localId ||
         (local.gameId && message.senderId === local.gameId)
 
-      // Normalize channel for DM
       const isDm = message.channelId?.startsWith('dm-') || !!message.recipientId
       let targetChannelId = message.channelId
 
-      // Find if we already have a channel for this DM (by channelId, recipientId, or participant name)
       const otherParticipantId = isFromMe ? message.recipientId : message.senderId
       const otherParticipantName = isFromMe ? message.recipientName : message.senderName
-      // A name only ties a message to a conversation when neither end has a
-      // stable user id; otherwise anyone using a friend's name could post into it.
       const canMatchByName = !isUserId(otherParticipantId)
 
       const channelIndex = state.channels.findIndex(
@@ -307,9 +293,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         targetChannelId = state.channels[channelIndex].id
       }
 
-      // A room message for a channel that is not there (deleted, or not
-      // received yet) has nowhere to go. Only a private message opens a
-      // conversation by arriving.
       if (channelIndex === -1 && !isDm) return state
 
       const isCurrent =
@@ -355,20 +338,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           (local?.gameId && incomingReq.fromUserId === local.gameId)
         const peerId = amISender ? incomingReq.toUserId : incomingReq.fromUserId
         const peerName = amISender ? incomingReq.toUserName : incomingReq.fromUserName
-        // A stable user id identifies the other person exactly; a name is only
-        // a fallback for people known by a connection id or a typed nickname.
         const isAlreadyFriend = gameStore.friends.some((key) =>
           isSameParticipant(gameStore.friendProfiles[key] || { id: key }, peerId, peerName)
         )
 
-        // Only the person a request was sent TO can accept it: one that arrives
-        // already accepted by its own sender is shown as pending instead.
         if (incomingReq.status === 'accepted' && !amISender && !isAlreadyFriend) {
           incomingReq = { ...incomingReq, status: 'pending' }
           normalizedMessage = { ...normalizedMessage, friendRequest: incomingReq }
         }
 
-        // 1. If we already have a message matching this requestId, update its status
         const requestId = incomingReq.requestId
         const existingReqIndex = nextMessages.findIndex(
           (m) => m.friendRequest?.requestId === requestId
@@ -376,7 +354,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         if (existingReqIndex !== -1) {
           const currentStatus = nextMessages[existingReqIndex].friendRequest?.status
           let resolvedStatus = incomingReq.status
-          // CRITICAL: NEVER revert 'accepted' or 'declined' back to 'pending'!
           if (currentStatus === 'accepted' || currentStatus === 'declined') {
             resolvedStatus = currentStatus
           }
@@ -393,7 +370,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           }
         }
 
-        // 2. Mutual friendship trigger on accepted status
         const effectiveStatus = isAlreadyFriend ? 'accepted' : incomingReq.status
         if (effectiveStatus === 'accepted') {
           if (peerId && peerName) {
@@ -406,7 +382,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           }
         }
 
-        // 3. Do not add duplicate friend request card if this requestId already exists
         const alreadyHasMessage = nextMessages.some((m) => m.id === normalizedMessage.id)
         if (existingReqIndex !== -1) {
           if (!alreadyHasMessage && normalizedMessage.content) {
@@ -430,7 +405,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         }
       }
 
-      // Send delivery / read ACK back to sender for direct messages
       if (isDm && !isFromMe && message.senderId) {
         const ackStatus: MessageDeliveryStatus = isCurrent ? 'read' : 'delivered'
         try {
@@ -457,7 +431,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         } catch (e) {}
       }
 
-      // Trigger notification if message is from another user and not currently focused
       if (message.senderId && !isFromMe && message.senderId !== 'system') {
         if (isDm || !isCurrent) {
           sendNotification({
@@ -516,7 +489,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       let changed = false
       const updatedMessages = state.messages.map((m) => {
-        // Only update messages sent by local player
         const isFromMe =
           m.senderId === localId ||
           (localGameId && m.senderId === localGameId)
@@ -593,7 +565,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       })
       saveLastRead(nextLastRead)
 
-      // Also reset unreadCount on any matching channels
       const updatedChannels = state.channels.map((c) => {
         if (c.type !== 'dm') return c
         const cNameLower = (c.name || '').trim().toLowerCase()
@@ -618,7 +589,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
     })
 
-    // Also send read receipt to those peers via presence & P2P
     try {
       peerIdentifiers.forEach((peerId) => {
         if (!peerId) return
@@ -635,14 +605,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const local = useGameStore.getState().localPlayer
     const friendNameLower = friend.name.trim().toLowerCase()
 
-    // 1. Get highest last read timestamp for this friend across any known identifiers
     const lastRead = Math.max(
       state.lastReadByPeer[friend.id.toLowerCase()] || 0,
       friend.actualUserId ? (state.lastReadByPeer[friend.actualUserId.toLowerCase()] || 0) : 0,
       state.lastReadByPeer[friendNameLower] || 0
     )
 
-    // 2. Count messages from this friend newer than lastRead
     let unreadFromMessages = 0
     state.messages.forEach((m) => {
       if (isSameParticipant(local, m.senderId, m.senderName)) return
@@ -652,7 +620,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
     })
 
-    // 3. Also check matching channels unreadCount as a fallback
     let unreadFromChannels = 0
     const targetChannelId = getLocalDmChannelId(friend.id)
     const actualChannelId = friend.actualUserId ? getLocalDmChannelId(friend.actualUserId) : null
@@ -688,7 +655,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       total += state.getUnreadCountForFriend(p)
     })
 
-    // Also include any other unread DM channels not in friends list
     state.channels.forEach((c) => {
       if (c.type === 'dm' && c.unreadCount > 0) {
         const isFriendChannel = friends.some((fid) => {
@@ -744,7 +710,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   sendFriendRequest: (target) => {
     const state = get()
     const local = useGameStore.getState().localPlayer
-    // The stable user id: the friendship must outlive this room connection.
     const localId = getLocalUserId()
     const targetName = target.name.trim()
     const targetId = target.id || `friend-${targetName.toLowerCase().replace(/\s+/g, '-')}`
@@ -775,18 +740,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       status: 'sent',
     }
 
-    // Ensure DM channel exists and is open
     state.openDirectMessage({ id: targetId, name: targetName })
 
-    // Add locally to chat messages
     get().addMessage(newMsg)
 
-    // Broadcast through presence service & P2P
     FriendsPresenceService.getInstance().sendDirectMessage(newMsg)
     try {
       PeerManager.getInstance().sendChatMessage(newMsg)
     } catch (e) {
-      // Ignore if P2P not active
     }
 
     return requestId
@@ -806,7 +767,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const req = originalMsg.friendRequest
     if (!req) return
 
-    // If already resolved to this status, no-op
     if (req.status === status) return
 
     const updatedReq: FriendRequestData = {
@@ -814,7 +774,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       status,
     }
 
-    // 1. If accepted, add requester to friends immediately for the responder
     if (status === 'accepted') {
       const requesterId = req.fromUserId
       const requesterName = req.fromUserName
@@ -826,13 +785,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       })
     }
 
-    // 2. Update the original request card in place
     const updatedOriginalMsg: ChatMessage = {
       ...originalMsg,
       friendRequest: updatedReq,
     }
 
-    // 3. Update all messages in memory that share this requestId
     const updatedMessages = state.messages.map((m) =>
       m.friendRequest?.requestId === requestId
         ? { ...m, friendRequest: updatedReq }
@@ -842,12 +799,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     persistDmsAndChannels(updatedMessages, state.channels)
     set({ messages: updatedMessages })
 
-    // 4. Send the updated message so it overwrites msg_${originalMsg.id}.json on disk!
     FriendsPresenceService.getInstance().sendDirectMessage(updatedOriginalMsg)
     try {
       PeerManager.getInstance().sendChatMessage(updatedOriginalMsg)
     } catch (e) {
-      // Ignore if P2P not active
     }
   },
 
@@ -930,8 +885,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const target = state.channels.find((c) => c.id === channelId)
       if (!target || target.type !== 'dm') return state
       const channels = state.channels.filter((c) => c.id !== channelId)
-      // The messages stay: if this person writes again, the conversation
-      // comes back with its history.
       persistDmsAndChannels(state.messages, channels)
       return {
         channels,
@@ -953,13 +906,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       timestamp: Date.now(),
     })
     get().addMessage(message)
-    // Only over the direct link: whoever is invited is not in this space.
     FriendsPresenceService.getInstance().sendDirectMessage(message)
     return true
   },
 }))
 
-// What an error report says about the chat: where it is, never what was said.
 registerReportContext('chat', () => {
   const state = useChatStore.getState()
   return {

@@ -16,7 +16,6 @@ export class CanvasEngine {
   private isRunning: boolean = false
   private animationFrameId: number | null = null
 
-  // Subsystems
   public camera: CameraManager
   public input: InputHandler
 
@@ -27,7 +26,6 @@ export class CanvasEngine {
   private fps: number = 60
   private stuckCounter: number = 0
 
-  // Editor hover preview & Drag-to-Draw Zone
   public hoverTile: { x: number; y: number } | null = null
   public zoneDragStart: { x: number; y: number } | null = null
   public zoneDragCurrent: { x: number; y: number } | null = null
@@ -57,14 +55,8 @@ export class CanvasEngine {
     this.input.setup()
     window.addEventListener('keydown', this.onKeyDown)
     window.addEventListener('keyup', this.onKeyUp)
-    // NOTE: wheel zoom is handled once by MapViewport's wrapper onWheel
-    // (which also owns the immersive/simplified mode switch). Attaching a
-    // second native wheel listener here used to apply every scroll tick 2-3×.
   }
 
-  /**
-   * Calculates intelligent collision-avoidance path from current player position to target tile
-   */
   public setClickTarget(tileX: number, tileY: number) {
     const local = useGameStore.getState().localPlayer
     const mapStore = useMapStore.getState()
@@ -73,7 +65,6 @@ export class CanvasEngine {
     let targetX = tileX
     let targetY = tileY
 
-    // If destination is inside a locked room and player is not authorized, route to door
     const targetZone = map.zones?.find(
       (z) =>
         tileX >= z.x &&
@@ -105,16 +96,11 @@ export class CanvasEngine {
       this.input.setPath(path)
       this.stuckCounter = 0
     } else {
-      // Do not keep following a previous route when the new destination is
-      // unreachable (for example, a closed room with no valid doorway).
       this.input.clearPath()
       this.stuckCounter = 0
     }
   }
 
-  /**
-   * Auto-fit camera zoom to occupy 95%+ of screen viewport
-   */
   public fitToScreen(percentage: number = 0.95) {
     this.camera.fitToScreen(this.canvas, percentage)
   }
@@ -144,9 +130,6 @@ export class CanvasEngine {
   private loop = (currentTime: number) => {
     if (!this.isRunning) return
 
-    // The immersive canvas is hidden (display:none) in simplified map mode —
-    // skip all update/render work and just keep the clock fresh so there's
-    // no delta-time jump when switching back.
     if (useGameStore.getState().mapViewMode === 'simplified') {
       this.lastTime = currentTime
       this.lastRenderTime = currentTime
@@ -157,7 +140,6 @@ export class CanvasEngine {
     const settings = useSettingsStore.getState()
     const targetFps = settings.targetFps
 
-    // FPS Limiter (if targetFps > 0)
     if (targetFps > 0) {
       const minInterval = 1000 / targetFps
       const elapsed = currentTime - this.lastRenderTime
@@ -171,7 +153,6 @@ export class CanvasEngine {
     this.lastTime = currentTime
     this.lastRenderTime = currentTime
 
-    // Compute live FPS
     this.frameCount++
     if (currentTime - this.lastFpsUpdate >= 500) {
       const liveFps = Math.round((this.frameCount * 1000) / (currentTime - this.lastFpsUpdate))
@@ -189,9 +170,6 @@ export class CanvasEngine {
 
   private lastMovementBroadcast: number = 0
 
-  /**
-   * Physics, Input, Collision, and Zone update
-   */
   private update(deltaTime: number) {
     const gameStore = useGameStore.getState()
     const mapStore = useMapStore.getState()
@@ -201,16 +179,8 @@ export class CanvasEngine {
 
     const { dx, dy, nextDirection } = this.input.computeMovement(local.x, local.y, local.direction)
 
-    // Collision Detection & Step Validation
-    // Sub-stepping (MAX_SUBSTEP = 0.05 < player radius 0.22) keeps every sample
-    // inside any wall band the player could be crossing. If a sub-step would
-    // tunnel through, the midpoint between current and target is also checked
-    // so we never miss a sample inside the wall band.
     if (dx !== 0 || dy !== 0) {
       const requestedStep = moveSpeed * deltaTime
-      // Never step past the active waypoint. This matters when a frame is
-      // delayed: the old movement could overshoot a corner waypoint and then
-      // oscillate forever on the opposite side of it.
       const followingPath = this.input.keysPressed.size === 0 && this.input.path.length > 0
       const waypointDistance = followingPath
         ? this.input.distanceToActiveWaypoint(local.x, local.y)
@@ -227,9 +197,6 @@ export class CanvasEngine {
         const tryX = finalX + dx * subStepDist
         const tryY = finalY + dy * subStepDist
 
-        // Check both the endpoint and the midpoint. The midpoint protects
-        // against crossing a thin wall when a sub-step starts and ends just
-        // outside its collision band.
         const canMoveTogether =
           !checkCollision(tryX, tryY, map) &&
           !checkCollision((finalX + tryX) / 2, (finalY + tryY) / 2, map)
@@ -240,9 +207,6 @@ export class CanvasEngine {
           continue
         }
 
-        // If the diagonal move hits a corner, preserve wall sliding by testing
-        // each axis independently. A candidate also gets a midpoint check so
-        // neither slide can tunnel through a thin wall.
         const canMoveX =
           !checkCollision(tryX, finalY, map) &&
           !checkCollision((finalX + tryX) / 2, finalY, map)
@@ -251,9 +215,6 @@ export class CanvasEngine {
           !checkCollision(finalX, (finalY + tryY) / 2, map)
 
         if (canMoveX && canMoveY) {
-          // Both slides are possible but the combined corner is not. Pick the
-          // axis that advances farther in the requested direction; the next
-          // sub-step can then use the other axis once the corner is cleared.
           const xProgress = dx * (tryX - finalX)
           const yProgress = dy * (tryY - finalY)
           if (xProgress >= yProgress) {
@@ -266,17 +227,12 @@ export class CanvasEngine {
         } else if (canMoveY) {
           finalY = tryY
         } else {
-          // Stop if both axes are blocked — no point continuing to integrate.
           break
         }
       }
 
-      // Check if character got stuck against an obstacle while following a path
       if (this.input.path.length > 0) {
         if (finalX === local.x && finalY === local.y) {
-          // If the active waypoint is an unreachable corner but the following
-          // waypoint is directly reachable, safely skip only that waypoint.
-          // Blindly dropping a waypoint can make the player cut through a wall.
           const nextWaypoint = this.input.path[1]
           if (
             nextWaypoint &&
@@ -288,7 +244,6 @@ export class CanvasEngine {
           } else {
             this.stuckCounter++
             if (this.stuckCounter > 15) {
-              // Re-calculate path around obstacle or abort
               const dest = this.input.finalDestination
               if (dest) {
                 const newPath = findPath(local.x, local.y, dest.x, dest.y, map)
@@ -310,20 +265,17 @@ export class CanvasEngine {
 
       gameStore.setLocalPosition(finalX, finalY, nextDirection, true)
 
-      // Throttled Broadcast Movement (25Hz) to prevent WebRTC DataChannel congestion
       const now = performance.now()
       if (!local.isMoving || now - this.lastMovementBroadcast >= 40) {
         this.lastMovementBroadcast = now
         PeerManager.getInstance().sendMovement(finalX, finalY, nextDirection, true)
       }
 
-      // Smooth Camera Following synchronized with new position
       if (this.camera.isManualPan) {
         this.camera.isManualPan = false
       }
       this.camera.followPlayer(finalX, finalY, deltaTime)
 
-      // Zone Detection
       checkZonePresence(finalX, finalY, map)
     } else {
       if (local.isMoving) {
@@ -342,19 +294,14 @@ export class CanvasEngine {
         this.lastMovementBroadcast = performance.now()
       }
 
-      // Keep camera smoothly aligned even when standing still
       this.camera.followPlayer(local.x, local.y, deltaTime)
       checkZonePresence(local.x, local.y, map)
     }
 
-    // Update companion pets following players
     const allActivePlayers = [local, ...Object.values(gameStore.remotePlayers)]
     PetManager.getInstance().update(deltaTime, allActivePlayers)
   }
 
-  /**
-   * 2D Render Loop
-   */
   private render(currentTime: number) {
     WorldRenderer.render(
       this.ctx,

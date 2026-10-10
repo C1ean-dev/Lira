@@ -32,7 +32,6 @@ describe('logSenderSnapshot', () => {
   it('logs sender-state synchronously and sender-stats after getStats resolves', async () => {
     const calls = new Map<string, any>([{ peerConnection: fakePc() }].map((c) => ['peer-1', c]))
     MediaCallHandler.logSenderSnapshot(calls, 'camera-on')
-    // sender-state is sync; sender-stats needs the getStats microtask.
     expect(diagStats().buffered).toBe(1)
     await tick()
     await tick()
@@ -85,8 +84,6 @@ describe('logSenderSnapshot', () => {
     const state = flat.find((e) => e.event === 'sender-state')
     expect(state).toBeDefined()
     expect(state.data.transport).toMatchObject({ ice: 'connected', conn: 'connected', sig: 'stable' })
-    // A recvonly video transceiver here is exactly the "live senders, zero
-    // bytes" signature — the payload must surface it on every deploy.
     expect(state.data.transport.transceivers).toEqual([
       { kind: 'audio', dir: 'sendrecv', cur: 'sendrecv' },
       { kind: 'video', dir: 'sendrecv', cur: 'recvonly' },
@@ -115,16 +112,15 @@ describe('watchRemoteTracks', () => {
       removeEventListener: vi.fn(),
     }
     trackListener({ track })
-    expect(diagStats().buffered).toBe(1) // remote-track arrival
+    expect(diagStats().buffered).toBe(1)
 
-    // Same track firing 'track' again must not duplicate arrival nor listeners.
     trackListener({ track })
     expect(diagStats().buffered).toBe(1)
-    expect(track.addEventListener).toHaveBeenCalledTimes(3) // mute+unmute+ended once
+    expect(track.addEventListener).toHaveBeenCalledTimes(3)
 
     const unmute = track.addEventListener.mock.calls.find((c) => c[0] === 'unmute')?.[1] as () => void
     unmute()
-    expect(diagStats().buffered).toBe(2) // remote-track-state
+    expect(diagStats().buffered).toBe(2)
   })
 })
 
@@ -164,8 +160,6 @@ describe('audio sender recovery', () => {
     const screen: any = { getAudioTracks: () => [liveTrack] }
     useMediaStore.setState({ localStream: stream, localScreenStream: screen, isScreenSharing: true })
 
-    // The call lifecycle uses the marked stream in this state; exercising the
-    // replacement directly protects the contract used by reconciliation.
     MediaCallHandler.replaceAudioTrack(new Map([['peer-screen', { peerConnection: pc } as any]]), liveTrack, 'connected-reconcile')
     await Promise.resolve()
     expect(replaceTrack).toHaveBeenCalledWith(liveTrack)

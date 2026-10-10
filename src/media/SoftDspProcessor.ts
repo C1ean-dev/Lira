@@ -1,27 +1,6 @@
 import { SensitivityMode } from '../types/audio'
 import { AutoGate } from './autoGate'
 
-/**
- * SoftDspProcessor — same audio engine family as the original
- * NoiseSuppressor, retuned to preserve voice tails and breath.
- *
- * Differences from NoiseSuppressor:
- *  - The hard noise gate (gain -> 0.01 below threshold) is replaced with a
- *    soft downward expander: gain ramps from 1.0 down to a non-zero floor
- *    (0.35). Voice always makes it through; ambient noise still gets
- *    attenuated.
- *  - Hysteresis between an open and a close level. Prevents the gate from
- *    fluttering on borderline signals.
- *  - Release lengthened from 150ms to 250ms so trailing consonants survive.
- *  - In auto mode both levels come from the shared AutoGate: the room's noise
- *    floor is learned (speech and breath are not taken for noise) and the gate
- *    opens 6 dB above it, never below RMS 0.0035.
- *  - Compressor softened (ratio 3, knee 18dB, release 0.22s) so the residual
- *    noise doesn't pump.
- *
- * The public API matches NoiseSuppressor so MediaManager can swap them
- * transparently.
- */
 export class SoftDspProcessor {
   private audioCtx: AudioContext | null = null
   private sourceNode: MediaStreamAudioSourceNode | null = null
@@ -47,12 +26,11 @@ export class SoftDspProcessor {
   private isExpanderActive = false
   private isSuppressionActive = true
 
-  // Hold Time tracking
   private holdTimeMs = 220
   private lastSpeechTime = 0
 
   private readonly expanderFloor = 0.0
-  private readonly expanderRelease = 0.12 // seconds
+  private readonly expanderRelease = 0.12
 
   constructor() {}
 
@@ -127,8 +105,6 @@ export class SoftDspProcessor {
       this.expanderGain.connect(this.compressor)
       this.compressor.connect(this.destination)
 
-      // Tap analyser after EQ (pre-expander) so the meter reflects the
-      // actual voice level, not the post-suppression residual.
       this.highShelfFilter.connect(this.analyser)
 
       this.compressor.connect(this.testGainNode)
@@ -155,7 +131,6 @@ export class SoftDspProcessor {
       this.currentThreshold =
         minRMS + (this.manualThresholdPercent / 100) * (maxRMS - minRMS)
     } else {
-      // Learned from the room, never under 0.0035 RMS so soft voices still get through
       this.currentThreshold = this.autoGate.openLevel
     }
   }
@@ -176,8 +151,6 @@ export class SoftDspProcessor {
       for (let i = 0; i < buffer.length; i++) sum += buffer[i] * buffer[i]
       const rms = Math.sqrt(sum / buffer.length)
 
-      // Learns the room in manual mode too, so switching to auto starts from
-      // the room as it is now.
       this.autoGate.update(rms, nowMs)
       if (this.sensitivityMode === 'auto') this.updateCalculatedThreshold()
 
@@ -189,11 +162,10 @@ export class SoftDspProcessor {
 
         if (this.sensitivityMode === 'manual') {
           if (this.manualThresholdPercent >= 100) {
-            shouldOpen = false // 100% = Maximum gate (completely muted)
+            shouldOpen = false
           } else if (this.manualThresholdPercent <= 0) {
-            shouldOpen = true // 0% = Always open
+            shouldOpen = true
           } else {
-            // Align with VU meter scale (normalizedLevel = rms * 6)
             const targetLevel = this.manualThresholdPercent / 100
             const openLevel = targetLevel / 6
             const closeLevel = openLevel * 0.75
@@ -213,7 +185,6 @@ export class SoftDspProcessor {
           shouldOpen = this.isExpanderActive
         }
 
-        // Hold Time tracking: keep expander open during natural micro-pauses in speech
         if (shouldOpen) {
           this.lastSpeechTime = now
         }
@@ -234,7 +205,6 @@ export class SoftDspProcessor {
         this.isExpanderActive = true
       }
 
-      // Dynamic threshold percent for VU meter alignment (0 - 100%)
       const dynamicThresholdPercent =
         this.sensitivityMode === 'manual'
           ? this.manualThresholdPercent

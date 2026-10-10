@@ -35,11 +35,9 @@ describe('Noise Gate Hold Time (Hangover) & Adaptive Threshold Features', () => 
   it('useMediaStore setLocalAudioLevel ignores negligible level changes when gate and threshold are unchanged', () => {
     useMediaStore.setState({ localAudioLevel: 0.100, isGateOpen: false, autoThresholdPercent: 12 })
     
-    // Changing by less than 0.005 with same gate and threshold should be a no-op to protect 60fps renders
     useMediaStore.getState().setLocalAudioLevel(0.102, false, 12)
     expect(useMediaStore.getState().localAudioLevel).toBe(0.100)
 
-    // Changing gate should trigger update immediately
     useMediaStore.getState().setLocalAudioLevel(0.102, true, 12)
     expect(useMediaStore.getState().isGateOpen).toBe(true)
   })

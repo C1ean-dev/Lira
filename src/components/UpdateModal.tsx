@@ -67,7 +67,6 @@ export const UpdateModal: React.FC<Props> = ({
   return (
     <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 select-none animate-in fade-in duration-200">
       <div className="bg-[#1b202c] border border-indigo-500/40 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-200">
-        {/* Header with gradient badge */}
         <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 p-6 text-center relative overflow-hidden">
           <div className="absolute -top-10 -right-10 w-28 h-28 rounded-full bg-white/10 blur-xl" />
           <div className="relative z-10 flex flex-col items-center">
@@ -83,9 +82,7 @@ export const UpdateModal: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Content Body */}
         <div className="p-6 space-y-4">
-          {/* Release Notes Preview */}
           {updateInfo.releaseNotes && (
             <div className="space-y-1.5">
               <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
@@ -97,7 +94,6 @@ export const UpdateModal: React.FC<Props> = ({
             </div>
           )}
 
-          {/* Download Progress Bar (only if actively downloading when opened) */}
           {isDownloading && (
             <div className="space-y-2 bg-[#12151d] p-4 rounded-2xl border border-indigo-500/30">
               <div className="flex items-center justify-between text-xs font-bold text-slate-200">
@@ -108,7 +104,6 @@ export const UpdateModal: React.FC<Props> = ({
                 <span className="text-emerald-400">{progress.percent}%</span>
               </div>
 
-              {/* Progress track */}
               <div className="w-full h-2.5 bg-[#1b202c] rounded-full overflow-hidden border border-[#2a3142]">
                 <div
                   className="h-full bg-gradient-to-r from-indigo-500 to-emerald-400 transition-all duration-300 rounded-full"
@@ -124,7 +119,6 @@ export const UpdateModal: React.FC<Props> = ({
             </div>
           )}
 
-          {/* Installing status */}
           {isInstalling && (
             <div className="p-4 rounded-2xl bg-[#12151d] border border-indigo-500/40 text-center space-y-2">
               <RefreshCw className="w-6 h-6 animate-spin text-indigo-400 mx-auto" />
@@ -137,7 +131,6 @@ export const UpdateModal: React.FC<Props> = ({
             </div>
           )}
 
-          {/* Error display */}
           {activeError && (
             <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-300">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -145,7 +138,6 @@ export const UpdateModal: React.FC<Props> = ({
             </div>
           )}
 
-          {/* Actions */}
           <div className="space-y-2 pt-1">
             {!isInstalling ? (
               <button

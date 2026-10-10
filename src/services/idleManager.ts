@@ -1,15 +1,9 @@
-/**
- * Idle / AFK Presence Manager
- * Detects OS-level mouse and keyboard inactivity via Electron's powerMonitor.getSystemIdleTime()
- * with browser event fallback. After 5 minutes (300 seconds) of inactivity, automatically switches
- * player status to "Ausente (AFK)" with "💤" emoji. Automatically restores previous status on return.
- */
 
 import { useGameStore } from '../store/useGameStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { PresenceInfo, sanitizePresence } from '../types/game'
 
-export const IDLE_TIMEOUT_SECONDS = 300 // 5 minutes
+export const IDLE_TIMEOUT_SECONDS = 300
 
 class IdleManager {
   private static instance: IdleManager | null = null
@@ -36,8 +30,6 @@ class IdleManager {
     this.storeSubscribed = true
 
     useGameStore.subscribe((state) => {
-      // If the user's status is changed to anything other than the transient auto-away,
-      // cancel any active auto-away flag so explicit manual choices are never overwritten.
       if (
         this.isAutoAway &&
         state.localPlayer.statusText !== 'Ausente (AFK)' &&
@@ -53,7 +45,6 @@ class IdleManager {
 
     this.attachDomActivityListeners()
 
-    // Poll every 3 seconds
     this.timer = setInterval(async () => {
       await this.checkIdleStatus()
     }, 3000)
@@ -77,11 +68,6 @@ class IdleManager {
     this.previousStatus = null
   }
 
-  /**
-   * Identifies whether the current user is in transient auto-away (AFK).
-   * Note: Explicit manual choice of 'away' (with statusText 'Ausente') is deliberately
-   * excluded so that user activity does not overwrite manual status choices.
-   */
   public isAfk(): boolean {
     const { localPlayer } = useGameStore.getState()
     return (
@@ -104,7 +90,6 @@ class IdleManager {
 
     const markActive = () => this.markUserActive()
 
-    // Use capture phase so stopped propagation on inner elements doesn't swallow user activity
     window.addEventListener('mousemove', markActive, { passive: true, capture: true })
     window.addEventListener('keydown', markActive, { passive: true, capture: true })
     window.addEventListener('pointerdown', markActive, { passive: true, capture: true })
@@ -113,9 +98,6 @@ class IdleManager {
     window.addEventListener('touchstart', markActive, { passive: true, capture: true })
   }
 
-  /**
-   * Retrieves the current idle seconds from Electron's powerMonitor or DOM fallback.
-   */
   public async getIdleSeconds(): Promise<number> {
     const electronAPI = (window as any).electronAPI
     if (electronAPI?.getSystemIdleTime) {
@@ -129,7 +111,6 @@ class IdleManager {
       }
     }
 
-    // Fallback: DOM idle seconds
     return Math.floor((Date.now() - this.lastDomActivityTime) / 1000)
   }
 
@@ -139,7 +120,6 @@ class IdleManager {
 
     if (idleSeconds >= IDLE_TIMEOUT_SECONDS) {
       if (!this.isAutoAway && localPlayer.status !== 'away') {
-        // Record previous status before going AFK, ensuring it's not away
         this.previousStatus = sanitizePresence(localPlayer)
         this.isAutoAway = true
         const awayPresence: PresenceInfo = {
@@ -147,14 +127,12 @@ class IdleManager {
           statusText: 'Ausente (AFK)',
           statusEmoji: '💤',
         }
-        // Pass persist = false so auto AFK is never saved permanently into localStorage
         setLocalStatus(awayPresence, false)
         try {
           PeerManager.getInstance().sendPlayerUpdate(awayPresence)
         } catch {}
       }
     } else if (idleSeconds < IDLE_TIMEOUT_SECONDS) {
-      // If idle time is below timeout and user is marked away, restore active state!
       if (this.isAfk()) {
         this.restoreActiveStatus()
       }

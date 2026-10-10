@@ -59,7 +59,6 @@ export const FurnitureContextMenu: React.FC = () => {
     })
   }, [selectedFurn, updateFurniture])
 
-  // Hotkeys: R to rotate, Escape to deselect, Arrows to move placed furniture
   useEffect(() => {
     if (!isEditorOpen || !selectedFurn) return
 
@@ -128,7 +127,6 @@ export const FurnitureContextMenu: React.FC = () => {
 
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-200">
-      {/* Color Palette Popover */}
       {showColorPalette && (
         <div className="bg-[#18191c]/95 backdrop-blur-md p-3 rounded-2xl border border-[#2b2d31] shadow-2xl flex flex-col gap-2 animate-in fade-in zoom-in-95">
           <div className="flex items-center justify-between text-xs font-bold text-slate-300 pb-1 border-b border-[#2b2d31]">
@@ -171,9 +169,7 @@ export const FurnitureContextMenu: React.FC = () => {
         </div>
       )}
 
-      {/* Main Action Bar */}
       <div className="bg-[#18191c]/95 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-indigo-500/40 shadow-2xl flex items-center gap-3">
-        {/* Furniture Name Indicator */}
         <div className="flex items-center gap-2 pr-3 border-r border-[#2b2d31]">
           <div
             className="w-3.5 h-3.5 rounded-md border border-white/20 shadow-inner shrink-0"
@@ -184,7 +180,6 @@ export const FurnitureContextMenu: React.FC = () => {
           <span className="text-xs font-bold text-white max-w-[140px] truncate">{furnName}</span>
         </div>
 
-        {/* Move Action */}
         <button
           type="button"
           onClick={handleStartMove}
@@ -199,7 +194,6 @@ export const FurnitureContextMenu: React.FC = () => {
           <span>{isMovingFurniture ? 'Arraste no mapa' : 'Mover'}</span>
         </button>
 
-        {/* Rotate / Direction Action */}
         <button
           type="button"
           onClick={handleRotate}
@@ -210,7 +204,6 @@ export const FurnitureContextMenu: React.FC = () => {
           <span>Girar <span className="text-amber-300 font-mono text-[11px]">({dirBadge.icon} {dirBadge.label})</span></span>
         </button>
 
-        {/* Color Action */}
         <button
           type="button"
           onClick={() => setShowColorPalette(!showColorPalette)}
@@ -225,7 +218,6 @@ export const FurnitureContextMenu: React.FC = () => {
           <span>Trocar de Cor</span>
         </button>
 
-        {/* Edit in Studio */}
         {customAsset && (
           <button
             type="button"
@@ -240,7 +232,6 @@ export const FurnitureContextMenu: React.FC = () => {
           </button>
         )}
 
-        {/* Delete Action */}
         <button
           type="button"
           onClick={handleDelete}
@@ -251,7 +242,6 @@ export const FurnitureContextMenu: React.FC = () => {
           <span>Apagar</span>
         </button>
 
-        {/* Close / Deselect */}
         <button
           type="button"
           onClick={() => {

@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// The store reads src/data/nativeAssets.json through an import. Two shapes of that
-// file have to work: the one with a table of images (what the app writes now) and
-// the old one with every image written in place.
-
 const SPRITE_ONE = `data:image/png;base64,${'ONE'.repeat(100)}`
 const SPRITE_TWO = `data:image/png;base64,${'TWO'.repeat(100)}`
 

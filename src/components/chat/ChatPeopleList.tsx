@@ -53,10 +53,6 @@ const PersonRow: React.FC<Pick<Props, 'onOpen' | 'onContextMenu'> & { person: Ch
   </button>
 )
 
-/**
- * Direct-message side of the chat sidebar: friends, the other people in this
- * space, and saved conversations with anyone else.
- */
 export const ChatPeopleList: React.FC<Props> = ({ people, onOpen, onContextMenu }) => {
   const { friends, inSpace, conversations } = people
   const hasFriendsHere = friends.some((p) => p.inSpace)

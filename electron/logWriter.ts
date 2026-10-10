@@ -17,27 +17,12 @@ import type { ErrorReport } from '../src/utils/errorReport'
 import type { CaptureInput, ErrorReporter } from '../src/utils/errorReporter'
 import { StackFrame, parseStack } from '../src/utils/stackFrames'
 
-/**
- * Writes log records to disk, in three files per day:
- *   lira-<day>.log            everything (info, warn, error), the timeline
- *   lira-errors-<day>.log     errors only, with stacks
- *   lira-reports-<day>.jsonl  one structured report per error (see errorReport.ts):
- *                             the file to read, or to send, to fix a bug
- * Files rotate at `maxBytes` (keeping `keep` old ones). Logging never throws.
- */
-
-/** What the code that logs an error knows about it, for its report. */
 export type CaptureMeta = Pick<CaptureInput, 'kind' | 'severity' | 'data' | 'loggedAt'>
 
 export interface LogWriter {
   write(record: LogRecord): void
   writeBatch(records: LogRecord[]): void
-  /**
-   * Logs console-style arguments of this process: tags the line with the
-   * session, adds it to the trail and, for an error, writes its report.
-   */
   capture(level: LogLevel, source: LogSource, args: unknown[], meta?: CaptureMeta): void
-  /** Writes the reports of the errors that were only counted. Call it now and then, and before quitting. */
   flushReports(): void
 }
 
@@ -46,18 +31,10 @@ export interface LogWriterOptions {
   now?: () => Date
   maxBytes?: number
   keep?: number
-  /** Called when a write fails; must not log through the captured console. */
   onFailure?: (error: unknown) => void
-  /** Identifies this process run on the lines it writes through capture(). */
   session?: string
-  /** Turns the errors of this process into structured reports. */
   reporter?: ErrorReporter
-  /** Receives what this process logs: the trail its reports carry. */
   trail?: BreadcrumbTrail
-  /**
-   * Applied to every report before it is written, whichever process it came
-   * from: the installed app translates the stack frames here (stackSymbolicator.ts).
-   */
   symbolicate?: (report: ErrorReport) => void
 }
 
@@ -93,7 +70,6 @@ export function createLogWriter(options: LogWriterOptions): LogWriter {
           try {
             options.symbolicate(record.report)
           } catch {
-            // the report is written as it came
           }
         }
       }
@@ -127,11 +103,8 @@ export function createLogWriter(options: LogWriterOptions): LogWriter {
           record.fp = result.fingerprint
           if (result.report) record.report = result.report
         } catch {
-          // no report: the line is still written
         }
       }
-      // After the report: its trail is what led to the error, and later reports see this line.
-      // "[diag:...]" lines mirror an event that entered the trail by itself.
       if (!record.scope?.startsWith('diag:')) options.trail?.add(logBreadcrumb(record))
       writeBatch([record])
     } catch (error) {
@@ -161,21 +134,14 @@ const CONSOLE_LEVELS: Record<ConsoleMethod, LogLevel> = {
 }
 
 type ConsoleLike = Record<ConsoleMethod, (...args: unknown[]) => void>
-/** A writer that may predate capture() (and the fakes of the tests). */
 type CaptureTarget = Pick<LogWriter, 'write'> & Partial<Pick<LogWriter, 'capture'>>
 
-/** The frames of whoever called the function that calls this one. */
 function callSite(): StackFrame[] {
   return parseStack(new Error().stack, 12).slice(2)
 }
 
 let pendingMeta: CaptureMeta | null = null
 
-/**
- * `console.error(...args)`, with what the caller knows about the error (kind,
- * data) for its report: `logErrorWith(console, { kind: 'ipc', data: { channel } },
- * '[IPC] handler failed:', error)`.
- */
 export function logErrorWith(con: Pick<ConsoleLike, 'error'>, meta: CaptureMeta, ...args: unknown[]): void {
   pendingMeta = { loggedAt: callSite(), ...meta }
   try {
@@ -185,11 +151,6 @@ export function logErrorWith(con: Pick<ConsoleLike, 'error'>, meta: CaptureMeta,
   }
 }
 
-/**
- * Also record what goes through `console.*`, so the existing console calls
- * land in the log files with time, level and scope, and every `console.error`
- * gets a report. Output is unchanged. Returns a function that restores the console.
- */
 export function installConsoleCapture(
   con: ConsoleLike,
   writer: CaptureTarget,
@@ -215,7 +176,6 @@ export function installConsoleCapture(
           writer.write(buildRecord(level, source, args, now()))
         }
       } catch {
-        // logging must never break the app
       } finally {
         busy = false
       }
@@ -232,7 +192,6 @@ interface ProcessLike {
   removeListener(event: string, listener: (...args: any[]) => void): unknown
 }
 
-/** Record exceptions and promise rejections nobody handled. */
 export function installProcessErrorCapture(
   proc: ProcessLike,
   writer: CaptureTarget,

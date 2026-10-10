@@ -4,7 +4,6 @@ import { audioBufferToWav, extractWaveformData, processAudioBufferOffline } from
 function createMockAudioBuffer(length: number = 4800, sampleRate: number = 48000): AudioBuffer {
   const channelData = new Float32Array(length)
   for (let i = 0; i < length; i++) {
-    // Generate simple sine wave
     channelData[i] = Math.sin((2 * Math.PI * 440 * i) / sampleRate) * 0.5
   }
 
@@ -25,7 +24,6 @@ describe('audioBufferUtils', () => {
     const blob = audioBufferToWav(buffer)
     expect(blob).toBeDefined()
     expect(blob.type).toBe('audio/wav')
-    // 44 header bytes + 1000 samples * 2 bytes = 2044 bytes
     expect(blob.size).toBe(2044)
   })
 

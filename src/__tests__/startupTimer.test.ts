@@ -15,7 +15,6 @@ function setup(clock: number[], uptimes: number[]) {
 
 describe('createStartupTimer (main process)', () => {
   it('logs each step with the time since the timer started and how long the process has been up', () => {
-    // 1st clock reading: creation; then one per mark
     const { mark, lines } = setup([1000, 1000, 1180, 2650], [1500, 1680, 3150])
     mark('window-created')
     mark('dom-ready')

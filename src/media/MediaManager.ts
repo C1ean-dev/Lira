@@ -14,30 +14,15 @@ export interface ScreenShareConfig {
   captureMethod?: 'auto' | 'wgc' | 'dxgi' | 'bitblt' | 'graphics-hook'
   sourceId?: string
   sourceName?: string
-  /** Required when sharing a monitor: the window whose audio belongs in the live. */
   audioSourceId?: string
-  /** Source-only capture is mandatory; this legacy flag is ignored. */
   includeAudio?: boolean
   resolution?: 'auto' | '480p' | '720p' | '1080p'
   fps?: 'auto' | 30 | 60
-  /** Optimization mode: 'quality' prioritizes sharp resolution, 'smoothness' prioritizes framerate */
   optimizationMode?: 'quality' | 'smoothness'
-  /**
-   * Kept for backwards compatibility. The microphone remains in the call via
-   * its own input; this flag cannot enable system audio or other applications.
-   */
   mixMicrophone?: boolean
-  /**
-   * When true (default), incoming call voices are filtered out of the screen share
-   * audio so remote peers never hear their own voices echoing in the live stream.
-   */
   isolateCallAudio?: boolean
 }
 
-/**
-  * Common interface implemented by every audio cleanup engine so
-  * MediaManager can swap between them without knowing the internals.
-  */
 interface AudioEngine {
   processStream(
     inputStream: MediaStream,
@@ -54,7 +39,6 @@ interface AudioEngine {
   dispose(): void
 }
 
-/** Compact error for logs (name + message, no stack). */
 function errShort(err: unknown): string {
   if (err instanceof Error) return `${err.name}: ${err.message}`.slice(0, 300)
   return String(err).slice(0, 300)
@@ -74,18 +58,10 @@ export class MediaManager {
 
   private processAudioCapture: ProcessAudioCapture | null = null
 
-  // Throttle state for VU-meter forwarding. DSP engines invoke the level
-  // callback every rAF (~60Hz); pushing every sample into zustand re-renders
-  // all media subscribers 60×/s. Forward at ~10Hz, immediately on gate
-  // open/close transitions (speaker aura stays responsive).
   private levelForwardLastSent: number = 0
   private levelForwardLastGate: boolean = false
   private static readonly LEVEL_FORWARD_INTERVAL_MS = 100
 
-  /**
-   * Shared level forwarder for all engines (startMedia / changeAudioInput /
-   * reprocessStream). Throttled — see field comment above.
-   */
   private handleEngineLevel = (
     level: number,
     isGateOpen: boolean,
@@ -114,22 +90,12 @@ export class MediaManager {
     })
   }
 
-  /**
-   * Why RNNoise stopped denoising mid-call, until the next engine start
-   * consumes it: that start uses the Soft DSP instead of RNNoise.
-   */
   private rnnoiseRuntimeFailure: string | null = null
 
-  /**
-   * RNNoise gave up after it had started (its worklet is passing raw audio).
-   * Same remedy as a failed init: put the Soft DSP on the call.
-   */
   private async handleRnnoiseRuntimeFailure(cause: string) {
     if (this.activeEngine !== this.rnnoiseEngine) return
     this.rnnoiseRuntimeFailure = cause
     await this.reprocessStream()
-    // Not consumed when there was no stream to reprocess: do not let it
-    // decide some later, unrelated start.
     this.rnnoiseRuntimeFailure = null
   }
 
@@ -140,16 +106,6 @@ export class MediaManager {
     return MediaManager.instance
   }
 
-  /**
-    * Map the user's processor-mode setting to the concrete engine instance.
-    *
-    * Two overrides are consulted:
-    *   1. If `hasUserChosenProcessorMode` is true, the user's manual choice
-    *      always wins.
-    *   2. Otherwise we look for a stored calibration for the current input
-    *      device and use its recommendedMode.
-    *   3. If neither exists we fall back to 'rnnoise' (the default).
-    */
   private selectEngine(): AudioEngine {
     const state = useMediaStore.getState()
     const manual = state.hasUserChosenProcessorMode
@@ -163,17 +119,6 @@ export class MediaManager {
     return this.classicEngine
   }
 
-  /**
-    * Manually run a 5-second mic calibration against the user's raw input
-    * stream and store the result. The recommendation is **not** applied
-    * automatically — it is surfaced to the UI so the user can accept it
-    * with a single click. The previous behaviour of auto-applying the
-    * mode change made the "Aplicar" button a no-op and confused users
-    * ("nothing changed when I clicked").
-    *
-    * Sensitivity *is* still applied automatically because it is per-device
-    * and never visible to the user otherwise.
-    */
     public async calibrateMicrophone(
       inputStream: MediaStream,
       durationMs: number = 5000,
@@ -233,17 +178,6 @@ export class MediaManager {
       }
     }
 
-  /**
-    * Pipe an input MediaStream through the active engine and return the
-    * processed stream. Handles both sync (classic/soft) and async
-    * (RNNoise) engines, and falls back to the soft DSP if the user
-    * picked RNNoise but the WASM module failed to load.
-    */
-  /**
-   * Serializes engine (re)starts. Without this, two rapid swaps (e.g. double
-   * retry clicks) run concurrently: both dispose/create contexts and the
-   * loser overwrites the winner's status with a stale failure.
-   */
   private runQueue: Promise<void> = Promise.resolve()
 
   private async runEngine(
@@ -274,9 +208,6 @@ export class MediaManager {
       nextEngine = this.softEngine
     }
 
-    // Tear down whatever engine was previously in use. Without this the
-    // RNNoise worklet (or DSP analyser) keeps running in parallel and the
-    // user hears the OLD engine after a mode swap.
     if (this.activeEngine && this.activeEngine !== nextEngine) {
       try {
         this.activeEngine.dispose()
@@ -285,9 +216,7 @@ export class MediaManager {
       }
     }
     this.activeEngine = nextEngine
-    // Force the next level sample through immediately (fresh engine / mic).
     this.levelForwardLastSent = 0
-    // Keep the RNNoise status badge truthful when another engine is active.
     if (nextEngine !== this.rnnoiseEngine) {
       useMediaStore
         .getState()
@@ -306,9 +235,6 @@ export class MediaManager {
 
     const processed = result instanceof Promise ? await result : result
 
-    // RNNoise hands the raw stream back both when it failed and when its
-    // start was cancelled (media stopped mid-init). Only a failure — which it
-    // reports as 'error' — deserves the fallback engine.
     if (
       processed === inputStream &&
       this.currentProcessorMode === 'rnnoise' &&
@@ -317,8 +243,6 @@ export class MediaManager {
       console.warn(
         '[MediaManager] RNNoise failed to initialise, falling back to soft DSP'
       )
-      // Preserve the underlying cause set by the processor (don't clobber
-      // 'error' detail — it's the only pointer to the real failure).
       const st = useMediaStore.getState()
       const cause = st.rnnoiseError
         ? st.rnnoiseError
@@ -342,10 +266,6 @@ export class MediaManager {
     return processed
   }
 
-  /**
-   * Generates a minimal 16x16 black canvas video track when no webcam is available or camera is disabled.
-   * This ensures WebRTC always negotiates a video transceiver so screen sharing can immediately swap tracks.
-   */
   public createDummyVideoTrack(): MediaStreamTrack {
     try {
       if (typeof document === 'undefined') {
@@ -372,10 +292,6 @@ export class MediaManager {
     return null as any
   }
 
-  /**
-   * Start User Webcam & Microphone with selected constraints and device IDs
-   * Always guarantees that localStream has both audio and video tracks (using dummy canvas if no camera)
-   */
   public async startMedia(video: boolean = true, audio: boolean = true): Promise<MediaStream | null> {
     const state = useMediaStore.getState()
 
@@ -387,7 +303,7 @@ export class MediaManager {
               : undefined,
           echoCancellation: state.echoCancellation,
           autoGainControl: state.autoGainControl,
-          noiseSuppression: false, // We use our own dynamic DSP / RNNoise
+          noiseSuppression: false,
         }
       : false
 
@@ -413,7 +329,6 @@ export class MediaManager {
         }
       : false
 
-    // 1. Try with Camera + Mic
     try {
       stream = await safeGetUserMedia({
         video: videoConstraints,
@@ -422,7 +337,6 @@ export class MediaManager {
     } catch (err) {
       console.warn('Could not access camera/mic with selected constraints, trying separated fallbacks:', err)
       diagLog('media', 'startMedia.av-failed', { error: errShort(err) })
-      // 2. Fallback: try mic alone (constraints first, then generic)
       try {
         stream = await safeGetUserMedia({
           video: false,
@@ -442,7 +356,6 @@ export class MediaManager {
         }
       }
 
-      // 3. Fallback: try camera alone if requested so mic constraints don't kill the webcam
       if (!stream) {
         stream = new MediaStream()
       }
@@ -468,8 +381,6 @@ export class MediaManager {
       stream = new MediaStream()
     }
 
-    // 4. Ensure there is ALWAYS a video track in the stream (using canvas dummy if no camera)
-    // This is CRITICAL for WebRTC P2P mesh so the video transceiver is created from the start
     if (stream.getVideoTracks().length === 0) {
       const dummyVideo = this.createDummyVideoTrack()
       if (dummyVideo) {
@@ -491,12 +402,10 @@ export class MediaManager {
       this.handleEngineLevel
     )
 
-    // Ensure video track is preserved in processedStream
     if (processedStream.getVideoTracks().length === 0 && this.rawUserStream.getVideoTracks().length > 0) {
       processedStream.addTrack(this.rawUserStream.getVideoTracks()[0])
     }
 
-    // Apply initial mute and camera off state
     const isMuted = useMediaStore.getState().isMuted
     const isCameraOff = useMediaStore.getState().isCameraOff
     processedStream.getAudioTracks().forEach((track) => {
@@ -514,7 +423,6 @@ export class MediaManager {
       isCameraOff,
     })
 
-    // Ensure active P2P calls replace their audio track with the freshly initialized engine track
     const newAudioTrack = processedStream.getAudioTracks()[0]
     if (newAudioTrack) {
       try {
@@ -522,11 +430,6 @@ export class MediaManager {
       } catch (e) {}
     }
 
-    // The room-join path runs startMedia IN PARALLEL with the P2P handshake
-    // (see LobbyModal) so mic-permission latency (or the 5s RNNoise WASM
-    // init) doesn't block entering the room. PLAYER_JOIN messages that
-    // arrived before this stream existed skipped their zone calls —
-    // re-evaluate now that we can actually dial.
     try {
       PeerManager.getInstance().recheckZoneCalls()
     } catch (e) {}
@@ -534,9 +437,6 @@ export class MediaManager {
     return processedStream
   }
 
-  /**
-   * Acquire a physical camera track with robust fallbacks (selected deviceId -> ideal -> generic).
-   */
   private async acquireCameraTrack(deviceId?: string): Promise<MediaStreamTrack | null> {
     const state = useMediaStore.getState()
     const targetId = deviceId || (state.selectedVideoInput && state.selectedVideoInput !== 'default' ? state.selectedVideoInput : undefined)
@@ -550,7 +450,6 @@ export class MediaManager {
       ])
     }
 
-    // 1. Try target device with exact constraint if specified
     if (targetId) {
       try {
         const stream = await safeGetMedia({
@@ -571,7 +470,6 @@ export class MediaManager {
       }
     }
 
-    // 2. Try target device with ideal constraint or generic resolution
     try {
       const stream = await safeGetMedia({
         video: targetId
@@ -585,7 +483,6 @@ export class MediaManager {
       }
     } catch (err) {
       console.warn('[MediaManager] Failed to acquire camera with ideal constraints:', err)
-      // 3. Fallback: simple video: true
       try {
         const stream = await safeGetMedia({ video: true }, 2500)
         const track = stream?.getVideoTracks?.()?.[0]
@@ -602,10 +499,6 @@ export class MediaManager {
     return null
   }
 
-  /**
-   * Toggle camera on/off. When turning on, dynamically acquires physical webcam via getUserMedia,
-   * creates a new MediaStream to notify React consumers, updates peer senders, and broadcasts presence update.
-   */
   public async toggleCamera(): Promise<boolean> {
     const nextCameraOff = !useMediaStore.getState().isCameraOff
     await this.syncCameraState(nextCameraOff)
@@ -616,7 +509,6 @@ export class MediaManager {
     useMediaStore.setState({ isCameraOff })
 
     if (!isCameraOff) {
-      // Turning camera ON
       let activeCamTrack = this.rawUserStream?.getVideoTracks().find((t) => t.readyState === 'live' && !(t as any).__isDummy) || null
 
       if (!activeCamTrack) {
@@ -624,7 +516,6 @@ export class MediaManager {
       }
 
       if (!activeCamTrack) {
-        // Physical camera failed to start or was denied
         console.warn('[MediaManager] Could not acquire camera, reverting to camera off')
         useMediaStore.setState({ isCameraOff: true })
         try {
@@ -637,7 +528,6 @@ export class MediaManager {
       activeCamTrack.enabled = true
       ;(activeCamTrack as any).__isDummy = false
 
-      // Update rawUserStream
       if (this.rawUserStream) {
         this.rawUserStream.getVideoTracks().forEach((t) => {
           if (t !== activeCamTrack) {
@@ -650,7 +540,6 @@ export class MediaManager {
         }
       }
 
-      // Recreate localStream with the new track to notify React subscribers
       const currentLocal = useMediaStore.getState().localStream
       const audioTracks = currentLocal ? currentLocal.getAudioTracks() : (this.rawUserStream ? this.rawUserStream.getAudioTracks() : [])
       if (currentLocal) {
@@ -679,10 +568,8 @@ export class MediaManager {
         } catch {}
       }
     } else {
-      // Turning camera OFF
       diagLog('media', 'camera.off')
 
-      // Stop physical tracks to turn off hardware camera light
       if (this.rawUserStream) {
         this.rawUserStream.getVideoTracks().forEach((t) => {
           if (!(t as any).__isDummy) {
@@ -700,7 +587,6 @@ export class MediaManager {
         })
       }
 
-      // Add dummy video track to keep WebRTC transceivers active
       let dummyTrack = this.rawUserStream?.getVideoTracks().find((t) => (t as any).__isDummy) || null
       if (!dummyTrack) {
         dummyTrack = this.createDummyVideoTrack()
@@ -734,15 +620,11 @@ export class MediaManager {
     } catch {}
   }
 
-  /**
-   * Switch Video Input Camera on the fly
-   */
   public async changeVideoInput(deviceId: string): Promise<boolean> {
     try {
       useMediaStore.setState({ selectedVideoInput: deviceId })
       const isCameraOff = useMediaStore.getState().isCameraOff
 
-      // If camera is currently active, switch to the new camera immediately
       if (!isCameraOff) {
         const newCamTrack = await this.acquireCameraTrack(deviceId)
         if (!newCamTrack) return false
@@ -750,7 +632,6 @@ export class MediaManager {
         newCamTrack.enabled = true
         ;(newCamTrack as any).__isDummy = false
 
-        // Stop old physical tracks
         if (this.rawUserStream) {
           this.rawUserStream.getVideoTracks().forEach((t) => {
             t.stop()
@@ -783,9 +664,6 @@ export class MediaManager {
     }
   }
 
-  /**
-   * Toggle mute on/off. Updates track enabled state, local player state, and broadcasts to peers.
-   */
   public toggleMute(): boolean {
     const nextMute = !useMediaStore.getState().isMuted
     this.syncMuteState(nextMute)
@@ -795,7 +673,6 @@ export class MediaManager {
   public syncMuteState(isMuted: boolean, isMutedByAdmin?: boolean): void {
     diagLog('media', 'mute', { isMuted, isMutedByAdmin })
     try {
-      // Sender proof for the next diagnostic: is audio RTP actually flowing?
       PeerManager.getInstance().logSenderSnapshot(isMuted ? 'mute-on' : 'mute-off')
     } catch {}
     if (useMediaStore.getState().isMuted !== isMuted) {
@@ -807,12 +684,10 @@ export class MediaManager {
         track.enabled = !isMuted
       })
     }
-    // Synchronize underlying WebRTC sender tracks directly to guarantee peer transmission
     try {
       PeerManager.getInstance().syncSenderTracksMuteState(!isMuted)
     } catch {}
 
-    // Wake suspended AudioContext if unmuting
     if (!isMuted && this.activeEngine) {
       try {
         ;(this.activeEngine as any).resumeContext?.()
@@ -827,9 +702,6 @@ export class MediaManager {
     } catch {}
   }
 
-  /**
-    * Switch Audio Input Microphone on the fly
-    */
   public async changeAudioInput(deviceId: string): Promise<boolean> {
     try {
       useMediaStore.getState().setSelectedAudioInput(deviceId)
@@ -867,9 +739,6 @@ export class MediaManager {
         PeerManager.getInstance().replaceAudioTrack(processedAudioTrack)
       }
 
-      // If the call was started while the microphone was unavailable, the
-      // eligibility guard intentionally skipped it. Re-check now that a real
-      // audio track exists so the first negotiated call includes the mic.
       try {
         PeerManager.getInstance().recheckZoneCalls()
       } catch {}
@@ -881,9 +750,6 @@ export class MediaManager {
     }
   }
 
-  /**
-    * Switch Audio Output Device for all audio elements
-    */
   public async changeAudioOutput(deviceId: string): Promise<boolean> {
     try {
       useMediaStore.getState().setSelectedAudioOutput(deviceId)
@@ -904,9 +770,6 @@ export class MediaManager {
     }
   }
 
-  /**
-   * Determine optimal screen share resolution & FPS based on room occupancy, ping and network quality.
-   */
   public static resolveOptimalScreenQuality(
     requestedRes: 'auto' | '480p' | '720p' | '1080p' = 'auto',
     requestedFps: 'auto' | 30 | 60 = 'auto'
@@ -932,7 +795,6 @@ export class MediaManager {
       if (isConstrained || peersInZone >= 8) {
         chosenRes = '480p'
       } else if (activeScreensInZone >= 2) {
-        // When 3+ people in the room share screens concurrently, 720p keeps all 3 streams fluid and stable
         chosenRes = '720p'
       } else if (peersInZone >= 4 || activeScreensInZone >= 1 || ping > 100) {
         chosenRes = '720p'
@@ -953,7 +815,6 @@ export class MediaManager {
       chosenFps = requestedFps
     }
 
-    // Recommended industry bitrates (H.264 WebRTC):
     let targetBitrate = 3_500_000
     if (chosenRes === '1080p') {
       targetBitrate = chosenFps === 60 ? 5_500_000 : 3_500_000
@@ -963,13 +824,9 @@ export class MediaManager {
       targetBitrate = chosenFps === 60 ? 1_500_000 : 1_000_000
     }
 
-    // Multi-stream & crowded room bandwidth management to prevent packet drop and disconnects
     if (activeScreensInZone >= 2) {
-      // 3 or more concurrent screen shares in the same zone:
-      // Cap at 2.0 Mbps per stream so total combined uplink/downlink remains healthy
       targetBitrate = Math.min(targetBitrate, 2_000_000)
     } else if (activeScreensInZone >= 1) {
-      // 2 concurrent screen shares in the same zone:
       targetBitrate = Math.min(targetBitrate, 3_000_000)
     } else if (peersInZone >= 6) {
       targetBitrate = Math.min(targetBitrate, 2_500_000)
@@ -978,14 +835,6 @@ export class MediaManager {
     return { resolution: chosenRes, fps: chosenFps, targetBitrate }
   }
 
-  /**
-   * Start Screen Sharing with Customizable Source, Audio, Resolution (auto, 480p, 720p, 1080p) and FPS (auto, 30, 60).
-   *
-   * The live stream captures ONLY the selected application/window sound,
-   * while your microphone remains live in the call via its own dedicated
-   * input. The user cannot turn off this isolation or fall back to
-   * system-wide loopback because that mixes unrelated apps into the live.
-   */
   public async startScreenShare(config: ScreenShareConfig = {}): Promise<MediaStream | null> {
     try {
       const {
@@ -996,8 +845,6 @@ export class MediaManager {
         resolution = 'auto',
         fps = 'auto',
       } = config
-      // This policy is intentionally not configurable. The application sound
-      // is source-scoped, while the microphone remains its own call input.
       const includeAudio = true
 
       if (sourceName) {
@@ -1007,9 +854,6 @@ export class MediaManager {
       const { resolution: effectiveResolution, fps: effectiveFps, targetBitrate } =
         MediaManager.resolveOptimalScreenQuality(resolution, fps)
 
-      // Raise the encoder caps of the open calls now, before capturing. The
-      // capture takes a second or more, time the connections use to probe for
-      // bandwidth, so the live does not start at the bitrate of an idle call.
       PeerManager.getInstance().primeScreenShare(targetBitrate, effectiveFps)
 
       let width = 1920
@@ -1039,9 +883,6 @@ export class MediaManager {
         fps,
         captureMethod,
       })
-      // Browsers that support these hints return source/tab audio instead of
-      // the system mix. Electron has no source-scoped audio API for external
-      // windows, so it receives video only (see electron/main.ts).
       const displayAudioConstraint = includeAudio && !isElectronCapture
         ? {
             echoCancellation: false,
@@ -1056,8 +897,6 @@ export class MediaManager {
           frameRate: { ideal: effectiveFps, max: 60 },
         },
         audio: displayAudioConstraint,
-        // Chromium capture hints. They are deliberately omitted from the
-        // Electron path, where its display-media handler owns the source.
         ...(isElectronCapture
           ? {}
           : {
@@ -1092,9 +931,6 @@ export class MediaManager {
         }
       }
 
-      // Electron screen capture intentionally has no audio track: its native
-      // helper produces source-scoped process audio instead of system audio.
-      // In a browser, the display picker may supply a tab/window audio track.
       let applicationAudioTrack = screenStream.getAudioTracks()[0] || null
       const localStream = useMediaStore.getState().localStream
       diagLog('screenshare-audio', 'display-capture-ready', {
@@ -1104,7 +940,6 @@ export class MediaManager {
         microphoneTracks: localStream?.getAudioTracks().length || 0,
       })
 
-      // Tear down any previous isolator before (re)building.
       if (this.callAudioIsolator) {
         this.callAudioIsolator.dispose()
         this.callAudioIsolator = null
@@ -1160,9 +995,6 @@ export class MediaManager {
           diagLog('screenshare', 'audio-track-failed', { error: errShort(audioErr) })
         }
       } else {
-        // Never substitute the source audio with system loopback. The regular
-        // microphone sender remains untouched so the user stays audible in
-        // the call even if the selected app has no audio or capture failed.
         diagLog('screenshare', 'audio-track-unavailable', {
           reason: isElectronCapture ? 'process-audio-unavailable' : 'no-source-audio-track',
           microphonePreserved: true,
@@ -1213,7 +1045,6 @@ export class MediaManager {
           this.stopScreenShare()
         }
       } else {
-        // No screen video to send: the calls keep the camera, with its caps.
         PeerManager.getInstance().cancelScreenSharePrime()
       }
 
@@ -1221,8 +1052,6 @@ export class MediaManager {
     } catch (err) {
       console.warn('Screen share cancelled or failed:', err)
       diagLog('screenshare', 'cancelled-or-failed', { error: errShort(err) })
-      // The caps were raised before capturing. Undo that, unless a live that
-      // was already running is still on the calls.
       if (!useMediaStore.getState().isScreenSharing) {
         try {
           PeerManager.getInstance().cancelScreenSharePrime()
@@ -1232,11 +1061,6 @@ export class MediaManager {
     }
   }
 
-  /**
-   * Combines two already-separated inputs for the single audio sender used by
-   * the current PeerJS call: the isolated application PCM and the user's
-   * microphone. No system output or remote-call stream is ever attached.
-   */
   private async createLiveAudioTrack(sourceTrack: MediaStreamTrack, localStream: MediaStream | null): Promise<MediaStreamTrack> {
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
     if (!AudioContextClass) {
@@ -1261,9 +1085,6 @@ export class MediaManager {
     source.connect(applicationGain)
     applicationGain.connect(destination)
 
-    // The mic is a separate input, not part of the process capture. It stays
-    // subject to the normal mute state and audio processor before it enters
-    // the live sender.
     if (localStream?.getAudioTracks().length) {
       const microphone = audioContext.createMediaStreamSource(localStream)
       microphone.connect(destination)
@@ -1339,9 +1160,6 @@ export class MediaManager {
     PeerManager.getInstance().sendPlayerUpdate({ isScreenSharing: false })
   }
 
-  /**
-   * Switch live screen share optimization mode between Quality and Smoothness in real-time
-   */
   public updateScreenShareOptimizationMode(mode: 'quality' | 'smoothness') {
     const localScreenStream = useMediaStore.getState().localScreenStream
     const track = localScreenStream?.getVideoTracks()[0]
@@ -1405,20 +1223,8 @@ export class MediaManager {
   }
 
   public updateAudioProcessorMode(_mode: AudioProcessorMode) {
-    // The actual swap happens on the next processStream() call, which
-    // selects the engine based on the current store value. Nothing to do
-    // here — kept so callers can force a state flush if they want.
   }
 
-  /**
-   * Re-run the active engine over the cached raw user stream and swap the
-   * processed audio track into every connected peer. Used when the user
-   * changes the processor mode without leaving the call — without this
-   * the new engine only takes effect on the next startMedia() / mic swap.
-   *
-   * No-op if no raw stream is cached (caller must request mic permission
-   * first).
-   */
   public async reprocessStream(): Promise<boolean> {
     if (!this.rawUserStream) return false
     try {
@@ -1426,7 +1232,6 @@ export class MediaManager {
         this.rawUserStream,
         this.handleEngineLevel
       )
-      // Preserve current mute/cameraOff state on the new track.
       const isMuted = useMediaStore.getState().isMuted
       processed.getAudioTracks().forEach((track) => {
         track.enabled = !isMuted
@@ -1453,9 +1258,6 @@ export class MediaManager {
     this.rnnoiseEngine.setTestLoopback(enabled)
   }
 
-  /**
-   * Play a pleasant chime tone to test the selected speakers/headphones
-   */
   public playAudioTestBeep() {
     try {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext

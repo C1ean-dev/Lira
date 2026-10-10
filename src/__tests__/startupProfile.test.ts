@@ -1,14 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { summarizeCpuProfile, startCpuProfile, CpuProfile } from '../../electron/startupProfile'
 
-// A small profile with known numbers. Times are microseconds, as the DevTools protocol gives them;
-// a sample lasts until the next one.
-//
-//   (root)
-//   |- load   src/store/a.ts:10        (self 10 ms)
-//   |   `- parse  (native, no file)    (self 25 ms)
-//   |- (idle)                           (1 ms)
-//   `- render src/components/App.tsx:21 (self 2 ms)
 const profile: CpuProfile = {
   nodes: [
     { id: 1, callFrame: { functionName: '(root)', url: '', lineNumber: -1, columnNumber: -1 }, children: [2, 3, 4] },

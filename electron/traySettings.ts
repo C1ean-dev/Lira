@@ -45,10 +45,6 @@ export interface LoginItemOptions {
   args: string[]
 }
 
-/**
- * What to hand to `app.setLoginItemSettings`. No launch arguments: Windows
- * starts Lira the way a double-click does, with its window.
- */
 export function buildLoginItemOptions(
   settings: AppSettings,
   isPackaged: boolean,
@@ -63,17 +59,9 @@ export function buildLoginItemOptions(
 
 export interface LoginItemReading {
   openAtLogin: boolean
-  /** Windows only: the executable starts at login whatever its arguments. */
   executableWillLaunchAtLogin?: boolean
 }
 
-/**
- * Folds what Windows reports into our setting. `openAtLogin` only matches an
- * entry registered with the arguments it is asked about, and older versions
- * registered theirs with `--hidden`: such an entry reads as "off" although it
- * still starts with Windows. It is reported as "on" and flagged to be written
- * again without the argument.
- */
 export function resolveLoginItemState(reading: LoginItemReading): {
   openAtLogin: boolean
   needsRewrite: boolean

@@ -58,7 +58,6 @@ export function CustomDropdown<T extends string = string>({
 
   const selectedOption = options.find((opt) => opt.value === value)
 
-  // Close on outside click or Escape
   useEffect(() => {
     if (!isOpen) return
 
@@ -90,7 +89,6 @@ export function CustomDropdown<T extends string = string>({
       className={`relative ${fullWidth ? 'w-full block' : 'inline-block'}`}
       title={title}
     >
-      {/* Dropdown Trigger Button */}
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
@@ -120,7 +118,6 @@ export function CustomDropdown<T extends string = string>({
         />
       </button>
 
-      {/* Floating Menu Popover */}
       {isOpen && (
         <div
           className={`absolute left-0 z-[999] mt-1.5 ${

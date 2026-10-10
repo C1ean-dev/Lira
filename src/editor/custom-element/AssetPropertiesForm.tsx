@@ -15,7 +15,6 @@ interface Props {
   newCategoryName: string
   setNewCategoryName: (name: string) => void
   onAddNewCategory: () => void
-  // Target furniture / element dimensions
   tileWidth: number
   tileHeight: number
   onSetBoardSizeInTiles: (w: number, h: number) => void
@@ -57,7 +56,6 @@ export const AssetPropertiesForm: React.FC<Props> = ({
         <span className="text-xs font-bold text-slate-200">Propriedades do Elemento</span>
       </div>
 
-      {/* Name Input */}
       <div className="space-y-1">
         <label className="block text-[11px] font-semibold text-slate-300">Nome do Objeto</label>
         <input
@@ -70,7 +68,6 @@ export const AssetPropertiesForm: React.FC<Props> = ({
         />
       </div>
 
-      {/* Element Type Selector */}
       <div className="space-y-1">
         <label className="block text-[11px] font-semibold text-slate-300">Tipo de Elemento</label>
         <div className="grid grid-cols-4 gap-1.5">
@@ -96,7 +93,6 @@ export const AssetPropertiesForm: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Target Furniture / Element Dimensions */}
       <div className="space-y-2 pt-2 border-t border-[#2b2d31]">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
@@ -110,9 +106,7 @@ export const AssetPropertiesForm: React.FC<Props> = ({
           </span>
         </div>
 
-        {/* Dual Inputs: Tiles and Pixels */}
         <div className="grid grid-cols-2 gap-2 bg-[#12151d] p-2 rounded-xl border border-[#2b2d31]">
-          {/* Tiles */}
           <div>
             <span className="block text-[10px] font-semibold text-slate-400 mb-1">Tiles no Mapa:</span>
             <div className="flex items-center gap-1">
@@ -144,7 +138,6 @@ export const AssetPropertiesForm: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Pixels - Free from 1x1 upwards */}
           <div>
             <span className="block text-[10px] font-semibold text-slate-400 mb-1">Tamanho em Pixels:</span>
             <div className="flex items-center gap-1">
@@ -183,7 +176,6 @@ export const AssetPropertiesForm: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Scaling Mode */}
         <div className="space-y-1">
           <label className="block text-[10px] font-semibold text-slate-400">Ajuste do Recorte para o Tamanho Final:</label>
           <div className="grid grid-cols-2 gap-1.5">
@@ -214,7 +206,6 @@ export const AssetPropertiesForm: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Contrast Badge */}
         {selection && selection.w > 0 && selection.h > 0 && (
           <div className="p-2 rounded-xl bg-slate-800/60 border border-slate-700/60 text-[10px] flex items-center justify-between text-slate-300">
             <span>
@@ -232,7 +223,6 @@ export const AssetPropertiesForm: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Category Dropdown & Creator */}
       <div className="space-y-1 pt-1 border-t border-[#2b2d31]">
         <div className="flex items-center justify-between">
           <label className="block text-[11px] font-semibold text-slate-300">Categoria no Menu</label>

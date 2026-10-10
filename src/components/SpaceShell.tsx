@@ -19,9 +19,6 @@ interface Props {
   onDisconnect: () => void
 }
 
-// Everything that belongs to being inside a space. App loads it (React.lazy) when the user
-// enters one, so the menu does not pay for the world canvas and its render loop, the editor,
-// the chat and the calls.
 export const SpaceShell: React.FC<Props> = ({
   onOpenAvatarModal,
   onApplyUpdate,
@@ -31,7 +28,6 @@ export const SpaceShell: React.FC<Props> = ({
   onDisconnect,
 }) => (
   <>
-    {/* Top Bar */}
     <TopNavBar
       onOpenAvatarModal={onOpenAvatarModal}
       onApplyUpdate={onApplyUpdate}
@@ -41,7 +37,6 @@ export const SpaceShell: React.FC<Props> = ({
       onDisconnect={onDisconnect}
     />
 
-    {/* Main 2D Virtual Space */}
     <main className="relative flex-1 w-full overflow-hidden flex">
       <MapViewport />
       <AssetPalette />
@@ -49,17 +44,13 @@ export const SpaceShell: React.FC<Props> = ({
       <MiniCallOverlay />
     </main>
 
-    {/* Full-Screen Conference Grid (Lira Grid View) */}
     <FullScreenGrid />
 
-    {/* Door Knock System */}
     <DoorKnockNotification />
     <DoorKnockPrompt />
 
-    {/* Custom Element Studio & Hand-Drawing Modal */}
     <CustomElementModal />
 
-    {/* Online Users & Permissions Drawer */}
     <OnlineUsersMenu />
   </>
 )

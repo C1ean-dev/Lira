@@ -83,7 +83,6 @@ export const LobbyModal: React.FC<Props> = ({
   const [chatFriend, setChatFriend] = useState<FriendProfile | null>(null)
   const [onlineFriendsCount, setOnlineFriendsCount] = useState(0)
 
-  // Track online friends count in real time
   useEffect(() => {
     const updateOnlineCount = () => {
       const svc = FriendsPresenceService.getInstance()
@@ -102,7 +101,6 @@ export const LobbyModal: React.FC<Props> = ({
     return () => unsub()
   }, [friends, friendProfiles])
 
-  // Track total unread DMs for notification alert on Amigos tab
   const messages = useChatStore((s) => s.messages)
   const chatChannels = useChatStore((s) => s.channels)
   const lastReadByPeer = useChatStore((s) => s.lastReadByPeer)
@@ -112,7 +110,6 @@ export const LobbyModal: React.FC<Props> = ({
     return getTotalUnreadDMs()
   }, [messages, chatChannels, lastReadByPeer, friends, friendProfiles, getTotalUnreadDMs])
 
-  // Real-time Toast notification for incoming direct messages in the lobby
   const [incomingToast, setIncomingToast] = useState<{
     friend: FriendProfile
     content: string
@@ -154,23 +151,16 @@ export const LobbyModal: React.FC<Props> = ({
     }
   }, [incomingToast])
 
-  // Selected space in saved rooms
   const [selectedSpaceId, setSelectedSpaceId] = useState<string>(activeSpaceId || savedSpaces[0]?.id || '')
 
-  // Inline editing space name
   const [editingSpaceId, setEditingSpaceId] = useState<string | null>(null)
   const [editingSpaceName, setEditingSpaceName] = useState('')
 
-  // Public Rooms (Hub)
   const [publicRooms, setPublicRooms] = useState<PublicRoomInfo[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [copiedRoomCode, setCopiedRoomCode] = useState<string | null>(null)
 
-  // Re-entry guard: the saved-space card fires handleEnterSavedSpace on
-  // double-click while the Entrar button only disables via `loading` state —
-  // two concurrent runs create TWO host peers with the same id and destroy
-  // each other ("entrar não vai"). One entry at a time, always.
   const enterGuardRef = useRef(createEnterGuard())
 
   useEffect(() => {
@@ -258,9 +248,6 @@ export const LobbyModal: React.FC<Props> = ({
         playerPayload.y = spawnY
       }
 
-      // Parallel: mic/camera warm-up must NOT block the P2P handshake.
-      // MediaManager.startMedia re-triggers zone-call eligibility when the
-      // stream lands, so calls missed while the mic was initializing heal.
       await Promise.all([
         MediaManager.getInstance().startMedia(true, true),
         PeerManager.getInstance().joinRoom(room.code, playerPayload),
@@ -324,8 +311,6 @@ export const LobbyModal: React.FC<Props> = ({
     }
   }
 
-  // A space asked for from somewhere that cannot join by itself (an invite,
-  // a friend's space): the app comes back to this screen, which joins.
   const pendingRoomCode = useRoomJoinStore((s) => s.pendingRoomCode)
   useEffect(() => {
     if (!pendingRoomCode) return
@@ -349,16 +334,12 @@ export const LobbyModal: React.FC<Props> = ({
       useMediaStore.getState().setMuted(true)
       useMediaStore.getState().setCameraOff(true)
 
-      // Validate BEFORE touching hardware so a typo'd code doesn't pop a
-      // mic-permission prompt for nothing.
       if (mode === 'join' && !roomInput.trim()) {
         setError('Por favor, insira o código da sala.')
         setLoading(false)
         return
       }
 
-      // Warm up mic/camera in parallel with everything below — the P2P
-      // handshake no longer waits for getUserMedia / RNNoise WASM init.
       const mediaReady = MediaManager.getInstance().startMedia(true, true)
 
       if (mode === 'create') {
@@ -457,8 +438,6 @@ export const LobbyModal: React.FC<Props> = ({
       setActiveTab('connect')
       return
     }
-    // The card double-click bypasses the disabled Entrar button — without
-    // this, two runs race creating the same host peer id.
     if (!enterGuardRef.current.tryEnter()) return
 
     const spaceId = targetSpaceId || selectedSpaceId
@@ -493,8 +472,6 @@ export const LobbyModal: React.FC<Props> = ({
 
       useMediaStore.getState().setMuted(true)
       useMediaStore.getState().setCameraOff(true)
-      // Parallel with room creation (see handleStart) — P2P handshake must
-      // not wait for mic/RNNoise init.
       const mediaReady = MediaManager.getInstance().startMedia(true, true)
 
       let persistentCode = targetSpace.roomCode
@@ -528,7 +505,6 @@ export const LobbyModal: React.FC<Props> = ({
         onJoined()
         diagLog('room', 'enter-ok', { spaceId: targetSpace.id })
       } catch (firstErr: any) {
-        // If roomCode is locked on the P2P server by a lingering/ghost session from a previous process:
         console.warn(`[Lobby] Host ID for code ${persistentCode} is unavailable or timed out. Auto-regenerating fresh roomCode...`, firstErr)
         const freshCode = generateUUID()
         updateSavedSpace(targetSpace.id, { roomCode: freshCode })
@@ -590,7 +566,6 @@ export const LobbyModal: React.FC<Props> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0c0e14]/90 backdrop-blur-xl p-2 sm:p-4 select-none animate-in fade-in duration-300">
       <div className="bg-[#1b202c] border border-[#2a3142] rounded-2xl sm:rounded-3xl w-full max-w-2xl sm:max-w-[740px] overflow-hidden shadow-2xl flex flex-col max-h-[96vh] sm:max-h-[92vh]">
-        {/* Banner Header */}
         <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 p-3.5 sm:p-5 text-center relative overflow-hidden shrink-0">
           <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full bg-white/10 blur-2xl" />
           {hasUpdate && onApplyUpdate ? (
@@ -634,7 +609,6 @@ export const LobbyModal: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Tab Navigation */}
         <div className="flex border-b border-[#2a3142] bg-[#12151d]/80 px-3 sm:px-6 pt-2.5 sm:pt-3 gap-1.5 sm:gap-2.5 shrink-0 overflow-x-auto justify-start sm:justify-center">
           <button
             type="button"
@@ -718,7 +692,6 @@ export const LobbyModal: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* TAB 1: CONECTAR */}
         {activeTab === 'connect' && (
           <DirectConnectTab
             userName={userName}
@@ -745,7 +718,6 @@ export const LobbyModal: React.FC<Props> = ({
           />
         )}
 
-        {/* TAB 2: SALAS DISPONÍVEIS */}
         {activeTab === 'available_rooms' && (
           <PublicRoomsTab
             publicRooms={publicRooms}
@@ -764,7 +736,6 @@ export const LobbyModal: React.FC<Props> = ({
           />
         )}
 
-        {/* TAB 3: AMIGOS */}
         {activeTab === 'friends' && (
           <FriendsTab
             onOpenChat={(friend) => setChatFriend(friend)}
@@ -772,7 +743,6 @@ export const LobbyModal: React.FC<Props> = ({
           />
         )}
 
-        {/* TAB 4: SALAS SALVAS */}
         {activeTab === 'saved_rooms' && (
           <SavedSpacesTab
             savedSpaces={savedSpaces}
@@ -801,7 +771,6 @@ export const LobbyModal: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Lobby Friend Chat Modal */}
       {chatFriend && (
         <LobbyChatModal
           friend={chatFriend}
@@ -810,7 +779,6 @@ export const LobbyModal: React.FC<Props> = ({
         />
       )}
 
-      {/* Real-time Incoming Message Toast */}
       {incomingToast && (
         <div className="fixed top-6 right-6 z-[60] bg-[#1b202c] border-2 border-rose-500 rounded-2xl p-3.5 shadow-2xl shadow-rose-950/80 max-w-sm w-full flex items-start gap-3 animate-in slide-in-from-top-4 fade-in duration-200">
           <div

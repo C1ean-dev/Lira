@@ -20,12 +20,10 @@ class Emitter {
   }
 }
 
-/** Mirrors the PeerJS DataConnection behaviours the network relies on. */
 class FakeConnection extends Emitter implements LinkConnection {
   open = false
   closed = false
   sent: any[] = []
-  /** Raw RTCDataChannel traffic, below PeerJS message reassembly. */
   private rawListeners: Array<() => void> = []
   readonly dataChannel = {
     addEventListener: (type: string, listener: () => void) => {
@@ -47,7 +45,6 @@ class FakeConnection extends Emitter implements LinkConnection {
     this.closed = true
     const wasOpen = this.open
     this.open = false
-    // PeerJS only emits 'close' for a connection that had opened.
     if (wasOpen) this.emit('close')
   }
   simulateOpen() {
@@ -99,7 +96,6 @@ class FakePeer extends Emitter implements LinkPeer {
   }
 }
 
-// Ordered so that ME < BOB < CAROL (the glare rule depends on the order).
 const ME = 'u-mmmmmmmmmmmmmmmmmmmm'
 const AMY = 'u-aaaaaaaaaaaaaaaaaaaa'
 const BOB = 'u-nnnnnnnnnnnnnnnnnnnn'
@@ -120,7 +116,6 @@ describe('FriendsNetwork (direct P2P links between friends)', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-01-01T12:00:00Z'))
-    // No jitter: redial delays are exactly the configured ones.
     vi.spyOn(Math, 'random').mockReturnValue(0.5)
     peers = []
     contacts = [BOB]
@@ -143,7 +138,6 @@ describe('FriendsNetwork (direct P2P links between friends)', () => {
     vi.useRealTimers()
   })
 
-  /** Starts the network with an open link to BOB and returns that connection. */
   const startLinkedToBob = () => {
     network.start(ME, handlers)
     peer().simulateOpen()
@@ -170,7 +164,6 @@ describe('FriendsNetwork (direct P2P links between friends)', () => {
     expect(peer().dials).toHaveLength(0)
 
     peer().simulateOpen()
-    // Never ourselves, never an entry without a stable user id
     expect(peer().dials.map((c) => c.peer).sort()).toEqual([toFriendPeerId(BOB), toFriendPeerId(CAROL)].sort())
   })
 
@@ -249,7 +242,6 @@ describe('FriendsNetwork (direct P2P links between friends)', () => {
     network.start(ME, handlers)
     peer().simulateOpen()
     const offline = () => {
-      // PeerJS reports an unknown peer on the Peer, and the dial never opens.
       peer().emit('error', {
         type: 'peer-unavailable',
         message: `Could not connect to peer ${toFriendPeerId(BOB)}`,
@@ -260,19 +252,16 @@ describe('FriendsNetwork (direct P2P links between friends)', () => {
     expect(peer().dialsTo(BOB)[0].closed).toBe(true)
     expect(handlers.onLinkClose).not.toHaveBeenCalled()
 
-    // 1st retry after 2s
     vi.advanceTimersByTime(2000)
     expect(peer().dialsTo(BOB)).toHaveLength(2)
     offline()
 
-    // 2nd retry only after 5s more
     vi.advanceTimersByTime(4000)
     expect(peer().dialsTo(BOB)).toHaveLength(2)
     vi.advanceTimersByTime(2000)
     expect(peer().dialsTo(BOB)).toHaveLength(3)
     offline()
 
-    // 3rd retry only after 15s more
     vi.advanceTimersByTime(14000)
     expect(peer().dialsTo(BOB)).toHaveLength(3)
     vi.advanceTimersByTime(2000)
@@ -318,7 +307,6 @@ describe('FriendsNetwork (direct P2P links between friends)', () => {
     expect(conn.packets('ping').length).toBeGreaterThan(0)
     expect(network.isLinked(BOB)).toBe(true)
 
-    // Nothing ever comes back: the friend's app was killed or lost its network.
     vi.advanceTimersByTime(14000)
     expect(handlers.onLinkClose).toHaveBeenCalledWith(BOB)
     expect(network.isLinked(BOB)).toBe(false)
@@ -337,8 +325,6 @@ describe('FriendsNetwork (direct P2P links between friends)', () => {
 
   it('keeps the link while a large message is still arriving in chunks', () => {
     const conn = startLinkedToBob()
-    // A file takes a minute to transfer: no complete message (not even a ping,
-    // they are queued behind it) reaches us, only its chunks.
     for (let i = 0; i < 60; i++) {
       vi.advanceTimersByTime(1000)
       conn.simulateRawChunk()
@@ -346,7 +332,6 @@ describe('FriendsNetwork (direct P2P links between friends)', () => {
     expect(network.isLinked(BOB)).toBe(true)
     expect(handlers.onLinkClose).not.toHaveBeenCalled()
 
-    // Chunks stop coming: now it really is dead.
     vi.advanceTimersByTime(20000)
     expect(network.isLinked(BOB)).toBe(false)
   })
@@ -369,7 +354,6 @@ describe('FriendsNetwork (direct P2P links between friends)', () => {
     incoming.simulateOpen()
     expect(handlers.onLinkOpen).toHaveBeenCalledTimes(1)
 
-    // Both are kept alive, so neither side starves the other's connection.
     vi.advanceTimersByTime(6000)
     expect(outgoing.packets('ping').length).toBeGreaterThan(0)
     expect(incoming.packets('ping').length).toBeGreaterThan(0)
@@ -391,17 +375,14 @@ describe('FriendsNetwork (direct P2P links between friends)', () => {
     const dialToAmy = peer().dialsTo(AMY)[0]
     const dialToBob = peer().dialsTo(BOB)[0]
 
-    // AMY < ME: her dial wins, ours is withdrawn.
     const fromAmy = peer().simulateIncoming(AMY)
     expect(dialToAmy.closed).toBe(true)
     fromAmy.simulateOpen()
     expect(network.isLinked(AMY)).toBe(true)
 
-    // ME < BOB: our dial stays (BOB withdraws his on his side).
     peer().simulateIncoming(BOB)
     expect(dialToBob.closed).toBe(false)
 
-    // A withdrawn dial is not treated as "friend offline".
     vi.advanceTimersByTime(2000)
     expect(peer().dialsTo(AMY)).toHaveLength(1)
   })
@@ -413,7 +394,6 @@ describe('FriendsNetwork (direct P2P links between friends)', () => {
     peer().simulateOpen()
     expect(peer().dials).toHaveLength(8)
 
-    // An offline contact frees its slot for the next one in line right away
     peer().emit('error', {
       type: 'peer-unavailable',
       message: `Could not connect to peer ${toFriendPeerId(many[0])}`,
@@ -421,7 +401,6 @@ describe('FriendsNetwork (direct P2P links between friends)', () => {
     expect(peer().dials).toHaveLength(9)
     expect(peer().dials[8].peer).toBe(toFriendPeerId(many[8]))
 
-    // A contact that answers frees its slot on the next pass
     peer().dialsTo(many[1])[0].simulateOpen()
     vi.advanceTimersByTime(2000)
     expect(new Set(peer().dials.map((c) => c.peer)).size).toBe(peer().dials.length)
@@ -442,7 +421,6 @@ describe('FriendsNetwork (direct P2P links between friends)', () => {
   it('reconnects to the signaling server without dropping open links', () => {
     const conn = startLinkedToBob()
     const first = peer()
-    // The link has been up for a while when the signaling socket drops.
     for (let i = 0; i < 12; i++) {
       vi.advanceTimersByTime(5000)
       conn.simulateData({ t: 'ping' })
@@ -458,7 +436,6 @@ describe('FriendsNetwork (direct P2P links between friends)', () => {
     expect(network.isLinked(BOB)).toBe(true)
     expect(handlers.onLinkClose).not.toHaveBeenCalled()
 
-    // A slow reconnect must not be mistaken for a hung first handshake.
     for (let i = 0; i < 2; i++) {
       vi.advanceTimersByTime(5000)
       conn.simulateData({ t: 'ping' })
@@ -470,7 +447,6 @@ describe('FriendsNetwork (direct P2P links between friends)', () => {
   it('re-registers when the id is still held by a previous session', () => {
     network.start(ME, handlers)
     const first = peer()
-    // PeerJS destroys a peer whose very first registration is refused.
     first.destroyed = true
     first.emit('error', { type: 'unavailable-id', message: 'ID is taken' })
     expect(peers).toHaveLength(1)
@@ -514,7 +490,6 @@ describe('FriendsNetwork (direct P2P links between friends)', () => {
     expect(handlers.onLinkClose).toHaveBeenCalledWith(BOB)
     expect(network.isRunning()).toBe(false)
 
-    // Nothing keeps running afterwards
     vi.advanceTimersByTime(60000)
     expect(peers).toHaveLength(1)
   })

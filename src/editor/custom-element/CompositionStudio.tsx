@@ -113,9 +113,7 @@ export const CompositionStudio: React.FC<Props> = ({
 
   return (
     <div className="flex-1 flex flex-col bg-[#12151d] rounded-2xl border border-[#2b2d31] overflow-hidden">
-      {/* Top Toolbar: Tile Dimensions & Interactive Tools */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b2d31] bg-[#18191c]/80 shrink-0 flex-wrap gap-2">
-        {/* Typeable Tile Dimensions and Pixel Indicator */}
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold text-slate-300">Tamanho no Mapa:</span>
           <div className="flex items-center gap-2 bg-[#12151d] px-2.5 py-1 rounded-xl border border-[#2b2d31]">
@@ -167,7 +165,6 @@ export const CompositionStudio: React.FC<Props> = ({
           </span>
         </div>
 
-        {/* Tools: Move Layers vs Paint Collision */}
         <div className="flex items-center gap-1.5">
           <div className="flex bg-[#12151d] p-1 rounded-xl border border-[#2b2d31]">
             <button
@@ -200,7 +197,6 @@ export const CompositionStudio: React.FC<Props> = ({
             </button>
           </div>
 
-          {/* Fit layers to board */}
           {onFitLayersToBoard && (
             <button
               type="button"
@@ -213,7 +209,6 @@ export const CompositionStudio: React.FC<Props> = ({
             </button>
           )}
 
-          {/* Zoom Controls — supports up to 24x for micro-sprites like 8x8 and 16x16 */}
           <div className="flex items-center gap-1 bg-[#12151d] p-1 rounded-xl border border-[#2b2d31]">
             <button
               type="button"
@@ -259,7 +254,6 @@ export const CompositionStudio: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* 4-Direction Toolbar (only for furniture) */}
       {elementType === 'furniture' && (
         <div className="flex items-center justify-between px-4 py-2 bg-[#14161f] border-b border-[#2b2d31] shrink-0 flex-wrap gap-2">
           <div className="flex items-center gap-2">
@@ -344,7 +338,6 @@ export const CompositionStudio: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Composition Canvas Stage */}
       <div ref={stageRef} className="flex-1 overflow-auto p-6 bg-[#0e1015] relative flex">
         <div className="m-auto relative border-2 border-indigo-500/50 rounded-2xl shadow-2xl overflow-hidden bg-[#18191c]/90 shrink-0">
           <canvas
@@ -359,7 +352,6 @@ export const CompositionStudio: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Bottom Collision Tools (when Collision tool is active) */}
       {elementType === 'furniture' && composeTool === 'collision' && (
         <div className="p-3 bg-[#18191c] border-t border-[#2b2d31] flex items-center justify-between shrink-0 animate-in fade-in duration-150">
           <div className="flex items-center gap-2 text-xs text-rose-300">

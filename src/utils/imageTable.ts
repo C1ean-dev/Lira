@@ -1,35 +1,12 @@
-// Table of images for the native data files (src/data/nativeAssets.json).
-//
-// An asset keeps the same picture in several fields (frames, directionalFrames,
-// slicerPresets, the editor's layers, thumbnail...) and each copy used to be a
-// whole base64 data URL: 41% of the file was repeats. On disk every distinct
-// image is now written once, in a top-level "images" table, and the fields that
-// use it hold a reference, "@<id>":
-//
-//   { "categories": [...],
-//     "assets": [{ "frames": ["@k3f9a0b1c2d"] }],
-//     "images": { "k3f9a0b1c2d": "data:image/png;base64,..." } }
-//
-// Reading expands the references back into the data URLs the rest of the app
-// works with, so nothing else has to know about the table.
-//
-// - The id comes from the content of the image, so it does not depend on the
-//   order of the assets and an image that did not change keeps its id.
-// - Text that starts with "@" is written with one more "@", so it can never be
-//   taken for a reference.
-// - A file with no "images" table is the old format and is returned as it is.
 
 const IMAGE_PREFIX = 'data:image/'
 const REF_PREFIX = '@'
 const TABLE_KEY = 'images'
 
-/** Shorter strings gain nothing from a reference. */
 export const MIN_IMAGE_LENGTH = 128
 
 export interface PackOptions {
-  /** Called once for each distinct image; what it returns is what gets stored. */
   transform?: (dataUrl: string) => string
-  /** Names an image from the content that gets stored. Replaceable so tests can force a collision. */
   hash?: (dataUrl: string) => string
 }
 
@@ -37,7 +14,6 @@ type Tree = Record<string, unknown>
 
 const isTree = (value: unknown): value is Tree => typeof value === 'object' && value !== null && !Array.isArray(value)
 
-/** 53-bit hash of the text (cyrb53), in base 36. */
 export function hashDataUrl(dataUrl: string): string {
   let h1 = 0xdeadbeef
   let h2 = 0x41c6ce57
@@ -51,7 +27,6 @@ export function hashDataUrl(dataUrl: string): string {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)
 }
 
-/** Moves every image of `root` into a table and leaves a reference in its place. `root` is not changed. */
 export function packImages(root: Tree, options: PackOptions = {}): Tree {
   if (Object.prototype.hasOwnProperty.call(root, TABLE_KEY)) {
     throw new Error(`packImages: the root already has an "${TABLE_KEY}" key`)
@@ -59,8 +34,8 @@ export function packImages(root: Tree, options: PackOptions = {}): Tree {
   const transform = options.transform ?? ((url: string) => url)
   const hash = options.hash ?? hashDataUrl
 
-  const table = new Map<string, string>() // id -> stored image
-  const idOfInput = new Map<string, string>() // image as found -> id, so a copy is not transformed again
+  const table = new Map<string, string>()
+  const idOfInput = new Map<string, string>()
 
   const refFor = (url: string): string => {
     let id = idOfInput.get(url)
@@ -90,7 +65,6 @@ export function packImages(root: Tree, options: PackOptions = {}): Tree {
   }
 
   const packed = pack(root) as Tree
-  // Sorted, so the table does not move around when the assets are reordered.
   const sorted = [...table.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
   packed[TABLE_KEY] = Object.fromEntries(sorted)
   return packed
@@ -98,7 +72,6 @@ export function packImages(root: Tree, options: PackOptions = {}): Tree {
 
 const isPackableImage = (value: string) => value.length >= MIN_IMAGE_LENGTH && value.startsWith(IMAGE_PREFIX)
 
-/** The distinct images of `root` that packImages puts in the table, in the order they first appear. */
 export function collectImages(root: Tree): string[] {
   const found = new Set<string>()
   const visit = (value: unknown): void => {
@@ -115,17 +88,11 @@ export function collectImages(root: Tree): string[] {
 }
 
 export interface PackAsyncOptions extends PackOptions {
-  /** Called between images when the time slice is used up; lets the event loop run. */
   pause: () => Promise<void>
-  /** How long to work before pausing. Default 8 ms. */
   budgetMs?: number
   now?: () => number
 }
 
-/**
- * packImages for a transform that is slow (re-encoding images): the same result, but the work is done
- * in time slices with a pause between them, so a process that also has other things to do stays responsive.
- */
 export async function packImagesAsync(root: Tree, options: PackAsyncOptions): Promise<Tree> {
   const { pause, budgetMs = 8, now = () => performance.now() } = options
   const transform = options.transform ?? ((url: string) => url)
@@ -143,7 +110,6 @@ export async function packImagesAsync(root: Tree, options: PackAsyncOptions): Pr
   return packImages(root, { hash: options.hash, transform: (url) => stored.get(url) ?? url })
 }
 
-/** Gives every reference its image back and drops the table. A file with no table is returned as it is. */
 export function unpackImages(root: Tree): Tree {
   const table = root[TABLE_KEY]
   if (!isTree(table)) return root

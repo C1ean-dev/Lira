@@ -38,7 +38,6 @@ describe('Active Stream Action Menu & Screen Share State Flow Tests', () => {
   })
 
   it('routes live button clicks to active stream menu when isScreenSharing is true', () => {
-    // Simulate active live
     useMediaStore.setState({ isScreenSharing: true })
 
     let isScreenModalOpen = false
@@ -53,13 +52,11 @@ describe('Active Stream Action Menu & Screen Share State Flow Tests', () => {
       }
     }
 
-    // 1. Click while live is active: must open the options menu, NOT stop immediately
     handleToggleScreenShare()
     expect(isActiveStreamMenuOpen).toBe(true)
     expect(isScreenModalOpen).toBe(false)
     expect(useMediaStore.getState().isScreenSharing).toBe(true)
 
-    // 2. User chooses "Trocar Configurações da Live"
     const onOpenSettings = () => {
       isActiveStreamMenuOpen = false
       isScreenModalOpen = true
@@ -68,7 +65,6 @@ describe('Active Stream Action Menu & Screen Share State Flow Tests', () => {
 
     expect(isActiveStreamMenuOpen).toBe(false)
     expect(isScreenModalOpen).toBe(true)
-    // Stream must still be alive!
     expect(useMediaStore.getState().isScreenSharing).toBe(true)
   })
 

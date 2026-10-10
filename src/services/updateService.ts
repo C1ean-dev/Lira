@@ -9,10 +9,6 @@ export interface UpdateInfo {
   releaseNotes: string
   downloadUrl: string | null
   releaseUrl: string
-  /**
-   * True when GitHub could not be asked (offline, timeout, rate limit). The
-   * other fields then say nothing about whether an update exists.
-   */
   checkFailed?: boolean
 }
 
@@ -76,9 +72,6 @@ export function isNewerVersion(latestTag: string, currentVer: string): boolean {
 }
 
 export class UpdateService {
-  /**
-   * Check for updates on GitHub Releases
-   */
   static async checkForUpdates(): Promise<UpdateInfo> {
     if (
       typeof window !== 'undefined' &&
@@ -88,7 +81,6 @@ export class UpdateService {
       return await window.electronAPI.checkForUpdates()
     }
 
-    // Web & Android Fallback
     try {
       const url = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`
       const res = await fetch(url, {
@@ -117,7 +109,6 @@ export class UpdateService {
       let downloadUrl: string | null = null
       if (Array.isArray(data.assets)) {
         if (isAndroid()) {
-          // No Android, buscar diretamente o arquivo APK da release
           const apkAsset = data.assets.find(
             (a: any) => a.name && a.name.endsWith('.apk')
           )
@@ -125,7 +116,6 @@ export class UpdateService {
             downloadUrl = apkAsset.browser_download_url
           }
         } else {
-          // No Windows / Desktop, buscar o instalador EXE
           const exeAsset = data.assets.find(
             (a: any) => a.name && a.name.endsWith('.exe') && !a.name.includes('blockmap')
           )
@@ -158,9 +148,6 @@ export class UpdateService {
     }
   }
 
-  /**
-   * Download update in background
-   */
   static async downloadUpdate(downloadUrl: string | null, targetVersion?: string): Promise<boolean> {
     if (
       typeof window !== 'undefined' &&
@@ -180,9 +167,6 @@ export class UpdateService {
     return true
   }
 
-  /**
-   * Apply already downloaded update (restarts app) or open browser in web mode
-   */
   static async applyUpdate(targetVersionOrReleaseUrl?: string, fallbackUrlOrVersion?: string): Promise<boolean> {
     const isFirstUrl = targetVersionOrReleaseUrl?.startsWith('http')
     const isSecondUrl = fallbackUrlOrVersion?.startsWith('http')
@@ -205,7 +189,6 @@ export class UpdateService {
       } catch {}
     }
 
-    // Web / browser fallback
     if (releaseUrl) {
       if (
         typeof window !== 'undefined' &&
@@ -220,9 +203,6 @@ export class UpdateService {
     return true
   }
 
-  /**
-   * Check if update installer is already downloaded locally
-   */
   static async isUpdateDownloaded(targetVersion?: string): Promise<boolean> {
     if (
       typeof window !== 'undefined' &&
@@ -234,9 +214,6 @@ export class UpdateService {
     return false
   }
 
-  /**
-   * Listen for update download completion
-   */
   static onUpdateDownloaded(callback: (payload?: { installerPath?: string; version?: string }) => void): () => void {
     if (
       typeof window !== 'undefined' &&
@@ -248,9 +225,6 @@ export class UpdateService {
     return () => {}
   }
 
-  /**
-   * Download and run update installer or open browser
-   */
   static async installUpdate(downloadUrl: string | null, releaseUrl: string, targetVersion?: string): Promise<boolean> {
     if (
       typeof window !== 'undefined' &&
@@ -261,14 +235,12 @@ export class UpdateService {
       return await window.electronAPI.downloadAndInstallUpdate(downloadUrl, targetVersion)
     }
 
-    // Android native updater via AppUpdatePlugin
     if (isAndroid() && downloadUrl) {
       try {
         const res = await AppUpdate.downloadAndInstallApk({ downloadUrl, targetVersion })
         return !!res.success
       } catch (e: any) {
         console.error('[UpdateService] Error executing Android in-app update:', e)
-        // Se falhar o plugin nativo, faz fallback para download direto do APK no navegador
         if (typeof window !== 'undefined') {
           window.open(downloadUrl, '_blank')
         }
@@ -276,7 +248,6 @@ export class UpdateService {
       }
     }
 
-    // Web / external fallback
     if (
       typeof window !== 'undefined' &&
       window.electronAPI &&
@@ -290,9 +261,6 @@ export class UpdateService {
     return true
   }
 
-  /**
-   * Listen to download progress
-   */
   static onProgress(callback: (progress: UpdateProgress) => void): () => void {
     if (
       typeof window !== 'undefined' &&

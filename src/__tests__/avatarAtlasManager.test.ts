@@ -103,7 +103,6 @@ describe('AvatarAtlasManager - Sparrow XML Parsing and Caching', () => {
   })
 
   it('should successfully parse the actual sample hair.xml atlas file from disk', async () => {
-    // Vite raw import loads the file content directly without node fs shim issues
     const { default: xmlContent } = await import('../../public/assets/avatar/hair.xml?raw')
 
     const atlas = AvatarAtlasManager.parseAtlasXml(xmlContent)

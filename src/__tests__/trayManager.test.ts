@@ -128,9 +128,6 @@ describe('resolveLoginItemState (reading the login item back from Windows)', () 
   })
 
   it('still reports "on" for an entry an older version wrote with --hidden, and asks to rewrite it', () => {
-    // Windows only matches openAtLogin when the arguments match; the old
-    // entry carried --hidden, so openAtLogin reads false while the program
-    // would in fact still start with Windows.
     expect(resolveLoginItemState({ openAtLogin: false, executableWillLaunchAtLogin: true })).toEqual({
       openAtLogin: true,
       needsRewrite: true,

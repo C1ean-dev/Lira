@@ -5,16 +5,12 @@ import { Channel } from '../../types/chat'
 export type ChannelEditing = { mode: 'create' } | { mode: 'rename'; channelId: string } | null
 
 interface Props {
-  /** The channels of the space plus the zone channel; no private conversations. */
   channels: Channel[]
   activeChannelId: string
-  /** Only the owner of the space creates, renames and deletes channels. */
   canManage: boolean
   editing: ChannelEditing
-  /** Why the name being edited was refused. */
   error?: string | null
   onSelect: (channelId: string) => void
-  /** `channel` is null for a right-click outside any channel. */
   onContextMenu: (e: React.MouseEvent, channel: Channel | null) => void
   onStartCreate: () => void
   onSubmitName: (name: string) => void
@@ -61,7 +57,6 @@ const ChannelNameEditor: React.FC<{
   )
 }
 
-/** Channel side of the chat sidebar. */
 export const ChatChannelList: React.FC<Props> = ({
   channels,
   activeChannelId,
@@ -78,7 +73,6 @@ export const ChatChannelList: React.FC<Props> = ({
     editing?.mode === 'create' ? (
       <ChannelNameEditor key="new-channel" initialName="" error={error} onSubmit={onSubmitName} onCancel={onCancelEdit} />
     ) : null
-  // A new channel lands above the zone channel, so that is where it is typed.
   const zoneIndex = channels.findIndex((c) => c.type === 'zone')
   const newChannelIndex = zoneIndex === -1 ? channels.length : zoneIndex
 

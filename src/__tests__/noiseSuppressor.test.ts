@@ -15,15 +15,12 @@ describe('NoiseSuppressor - Expected DSP Behaviors', () => {
   it('should calculate manual sensitivity threshold within expected RMS bounds', () => {
     const suppressor = new NoiseSuppressor()
     
-    // Manual mode at 0%
     suppressor.setSensitivity('manual', 0)
     expect(suppressor.getCurrentThreshold()).toBeCloseTo(0.002, 3)
 
-    // Manual mode at 50%
     suppressor.setSensitivity('manual', 50)
     expect(suppressor.getCurrentThreshold()).toBeCloseTo(0.061, 2)
 
-    // Manual mode at 100%
     suppressor.setSensitivity('manual', 100)
     expect(suppressor.getCurrentThreshold()).toBeCloseTo(0.12, 2)
   })

@@ -3,7 +3,6 @@ import { createBreadcrumbTrail, isPeriodicEvent, MAX_CRUMB_DATA_CHARS } from '..
 
 const at = (second: number) => new Date(Date.UTC(2026, 9, 4, 10, 0, second)).toISOString()
 
-/** A trail whose clock moves one second per event. */
 const makeTrail = (options: { max?: number; maxStats?: number } = {}) => {
   let second = 0
   return createBreadcrumbTrail({ ...options, now: () => new Date(Date.UTC(2026, 9, 4, 10, 0, second++)) })
@@ -126,7 +125,6 @@ describe('breadcrumb trail', () => {
 
   it('cuts data that is too large', () => {
     const trail = makeTrail()
-    // Many values that are each within the limits, and too much together.
     const data = Object.fromEntries(Array.from({ length: 16 }, (_v, i) => [`field${i}`, `"quoted" \\ ${'x'.repeat(180)}`]))
     trail.add({ cat: 'p2p', event: 'sender-state', data: { ...data, blob: 'y'.repeat(5000), list: Array.from({ length: 500 }, (_v, i) => `item-${i}`) } })
 

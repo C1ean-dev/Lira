@@ -18,25 +18,14 @@ export function formatPresetLabel(rawName: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-/**
- * Parses subtexture name to determine presetKey and direction.
- * Supported patterns:
- * - <category>_<preset>_<dir>_<frame>  e.g. hair_messy_down_0
- * - <preset>_<dir>_<frame>            e.g. messy_down_0
- * - <preset>_<dir>                    e.g. messy_down
- * - <category>_<preset>               e.g. hair_messy (fallback: 'down')
- * - <preset>                          e.g. messy (fallback: 'down')
- */
 export function parseSubTextureIdentifier(subName: string, category: string): { presetKey: string; direction: Direction } {
   let clean = subName.trim()
 
-  // If prefixed with category name (e.g. "hair_"), strip it for the presetKey
   const catPrefix = `${category.toLowerCase()}_`
   if (clean.toLowerCase().startsWith(catPrefix)) {
     clean = clean.slice(catPrefix.length)
   }
 
-  // Check for direction pattern at the end: _(down|up|left|right)(_\d+)?
   const dirMatch = clean.match(/^(.*?)[_-](down|up|left|right)(?:[_-]\d+)?$/i)
   if (dirMatch) {
     const rawKey = dirMatch[1].trim() || clean
@@ -44,14 +33,10 @@ export function parseSubTextureIdentifier(subName: string, category: string): { 
     return { presetKey: rawKey, direction: dir }
   }
 
-  // Fallback: strip any trailing frame index and assume 'down'
   const fallbackKey = clean.replace(/[_-]\d+$/, '').trim() || clean
   return { presetKey: fallbackKey, direction: 'down' }
 }
 
-/**
- * Parses a Sparrow XML and slices subtextures from an HTMLImageElement or Image Bitmap
- */
 export async function parseSparrowAtlasAndSlice(
   xmlContent: string,
   imageElement: HTMLImageElement | HTMLCanvasElement,
@@ -62,7 +47,6 @@ export async function parseSparrowAtlasAndSlice(
     return []
   }
 
-  // Node.js test environment guard
   if (typeof document === 'undefined') {
     const results: ParsedAtlasPreset[] = []
     const presetGroups = new Map<string, Map<Direction, SubTexture>>()
@@ -92,7 +76,6 @@ export async function parseSparrowAtlasAndSlice(
     return results
   }
 
-  // Offscreen canvas to sample slices
   const sourceCanvas = document.createElement('canvas')
   const srcW = 'naturalWidth' in imageElement ? imageElement.naturalWidth : imageElement.width
   const srcH = 'naturalHeight' in imageElement ? imageElement.naturalHeight : imageElement.height
@@ -102,7 +85,6 @@ export async function parseSparrowAtlasAndSlice(
   if (!sourceCtx) return []
   sourceCtx.drawImage(imageElement, 0, 0)
 
-  // Group subtextures by presetKey
   const presetGroups = new Map<string, Map<Direction, SubTexture>>()
 
   atlasData.subTextures.forEach((sub, name) => {
@@ -111,7 +93,6 @@ export async function parseSparrowAtlasAndSlice(
       presetGroups.set(presetKey, new Map())
     }
     const group = presetGroups.get(presetKey)!
-    // If direction not yet recorded or first frame, save it
     if (!group.has(direction)) {
       group.set(direction, sub)
     }
@@ -119,7 +100,6 @@ export async function parseSparrowAtlasAndSlice(
 
   const results: ParsedAtlasPreset[] = []
 
-  // Slice each preset's directional frames
   for (const [presetKey, dirMap] of presetGroups.entries()) {
     const directionalFrames: Partial<Record<Direction, string>> = {}
 
@@ -146,14 +126,12 @@ export async function parseSparrowAtlasAndSlice(
       directionalFrames[dir] = tileCanvas.toDataURL('image/png')
     }
 
-    // Auto-mirror lateral frames if one side is present but the other isn't
     if (directionalFrames.left && !directionalFrames.right) {
       directionalFrames.right = createMirroredDataUrl(directionalFrames.left)
     } else if (directionalFrames.right && !directionalFrames.left) {
       directionalFrames.left = createMirroredDataUrl(directionalFrames.right)
     }
 
-    // Generate close-up thumbnail
     const thumbSource = directionalFrames.down || Object.values(directionalFrames).find(Boolean) || ''
     const thumbnail = thumbSource ? await cropContentDataUrl(thumbSource) : undefined
 
@@ -185,9 +163,6 @@ function createMirroredDataUrl(dataUrl: string): string {
   return canvas.toDataURL('image/png')
 }
 
-/**
- * Converts parsed presets into CustomAssets and adds them to the store
- */
 export function importPresetsIntoStore(
   category: AvatarComponentSlot | 'furniture' | 'floor' | 'wall',
   presets: ParsedAtlasPreset[]

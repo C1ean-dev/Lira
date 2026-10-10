@@ -3,17 +3,7 @@ import { packImages, packImagesAsync, unpackImages } from '../src/utils/imageTab
 import { createLatestWriter } from './latestWriter'
 import { optimizePngDataUrl } from './pngOptimizer'
 
-// How src/data/nativeAssets.json is written and read. The app hands over the data
-// with every picture written out wherever it is used; on disk each distinct picture
-// is kept once, re-encoded to fewer bytes, in an "images" table (see
-// src/utils/imageTable.ts). Reading gives the full data back, and still understands
-// a file in the old format.
-
 export interface WriteOptions {
-  /**
-   * Re-encode the pictures to fewer bytes (default). Recoding a whole file takes a couple of seconds, so
-   * the installed app turns it off: it never reads this file back.
-   */
   optimize?: boolean
 }
 
@@ -27,7 +17,6 @@ export function writeNativeDataFile(filePath: string, data: Record<string, unkno
 
 const pauseForEventLoop = () => new Promise<void>((resolve) => setImmediate(resolve))
 
-/** serializeNativeData in time slices: the process keeps answering while the pictures are recoded. */
 export async function serializeNativeDataAsync(data: Record<string, unknown>, options: WriteOptions = {}): Promise<string> {
   const packed = await packImagesAsync(data, {
     transform: options.optimize === false ? undefined : optimizePngDataUrl,
@@ -48,10 +37,6 @@ const latest = createLatestWriter<{ data: Record<string, unknown>; options: Writ
   writeNativeDataFileAsync(filePath, job.data, job.options)
 )
 
-/**
- * What the app uses to save: one write at a time, and when saves pile up only the last one is written.
- * Resolves when the file has what was asked for (or something newer).
- */
 export function writeNativeDataFileLatest(
   filePath: string,
   data: Record<string, unknown>,

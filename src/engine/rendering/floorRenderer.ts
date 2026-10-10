@@ -3,9 +3,6 @@ import { TILE_SIZE } from '../Constants'
 import { useCustomAssetsStore, getCustomAssetImage } from '../../store/useCustomAssetsStore'
 
 export class FloorRenderer {
-  /**
-   * Draw 2D Floor Tile
-   */
   static drawFloor(
     ctx: CanvasRenderingContext2D,
     type: FloorType | string,
@@ -18,12 +15,10 @@ export class FloorRenderer {
   ) {
     const px = Math.floor(x)
     const py = Math.floor(y)
-    // 0.75px subpixel bleed overlap completely eliminates tile seams / grid lines when camera zooms out
     const s = size + 0.75
 
     ctx.save()
 
-    // 1. Check custom user floor element
     const customAsset = useCustomAssetsStore.getState().getAssetById(type)
     if (customAsset && customAsset.frames && customAsset.frames.length > 0) {
       const frameIdx = Math.floor((Date.now() / (customAsset.frameRateMs || 160)) % customAsset.frames.length)
@@ -83,35 +78,28 @@ export class FloorRenderer {
 
     switch (type) {
       case 'forge_cobblestone':
-        // Medieval Blacksmith Cobblestone floor
         ctx.fillStyle = '#474a51'
         ctx.fillRect(px, py, s, s)
-        // Individual stones with mortar
         ctx.fillStyle = '#5c6069'
         ctx.fillRect(px + 2, py + 2, size / 2 - 3, size / 2 - 3)
         ctx.fillRect(px + size / 2 + 1, py + 2, size / 2 - 3, size / 2 - 3)
         ctx.fillRect(px + 2, py + size / 2 + 1, size / 2 - 3, size / 2 - 3)
         ctx.fillRect(px + size / 2 + 1, py + size / 2 + 1, size / 2 - 3, size / 2 - 3)
-        // Stone highlights
         ctx.fillStyle = '#787d8a'
         ctx.fillRect(px + 3, py + 3, size / 2 - 6, 2)
         ctx.fillRect(px + size / 2 + 2, py + size / 2 + 2, size / 2 - 6, 2)
-        // Soft Mortar lines
         ctx.fillStyle = 'rgba(47, 49, 54, 0.6)'
         ctx.fillRect(px, py + size / 2, size, 1)
         ctx.fillRect(px + size / 2, py, 1, size)
         break
 
       case 'forge_soot_stone':
-        // Charred stone floor with soot and burning ember flecks
         ctx.fillStyle = '#202225'
         ctx.fillRect(px, py, s, s)
         ctx.fillStyle = '#2f3136'
         ctx.fillRect(px + 3, py + 3, size - 6, size - 6)
-        // Soot stains
         ctx.fillStyle = '#16181b'
         ctx.fillRect(px + 6, py + 8, 12, 10)
-        // Glowing ember flecks
         ctx.fillStyle = '#ff6b35'
         ctx.fillRect(px + 8, py + 12, 2, 2)
         ctx.fillStyle = '#ffa94d'
@@ -119,17 +107,14 @@ export class FloorRenderer {
         break
 
       case 'forge_iron_plates':
-        // Riveted Heavy Iron / Steel floor plating
         ctx.fillStyle = '#343a40'
         ctx.fillRect(px, py, s, s)
         ctx.fillStyle = '#495057'
         ctx.fillRect(px + 2, py + 2, size - 4, size - 4)
-        // Diagonal grip texture
         ctx.fillStyle = '#212529'
         ctx.fillRect(px + 6, py + 6, size - 12, 2)
         ctx.fillRect(px + 6, py + 14, size - 12, 2)
         ctx.fillRect(px + 6, py + 22, size - 12, 2)
-        // Corner steel rivets
         ctx.fillStyle = '#ced4da'
         ctx.fillRect(px + 3, py + 3, 2, 2)
         ctx.fillRect(px + size - 5, py + 3, 2, 2)
@@ -138,12 +123,10 @@ export class FloorRenderer {
         break
 
       case 'wood_parquet':
-      case 'habbo_parquet': // retrocompatibilidade com mapas salvos
+      case 'habbo_parquet':
       case 'wood_light':
-        // Soft, elegant Lira Wood Plank Floor (seamless without harsh grid borders)
         ctx.fillStyle = '#f6e7d2'
         ctx.fillRect(px, py, s, s)
-        // Soft alternating plank highlights (subtle grain, no harsh perimeter borders)
         ctx.fillStyle = 'rgba(235, 204, 168, 0.45)'
         ctx.fillRect(px, py + 8, size, 1)
         ctx.fillRect(px, py + 24, size, 1)
@@ -186,7 +169,6 @@ export class FloorRenderer {
         break
 
       case 'grass':
-        // Soft green corridor surrounding the room
         ctx.fillStyle = '#d3e8d2'
         ctx.fillRect(px, py, s, s)
         ctx.fillStyle = '#c0dbc0'

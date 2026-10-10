@@ -33,7 +33,6 @@ export const MessageStatusIcon: React.FC<MessageStatusIconProps> = ({
     )
   }
 
-  // Default: 'sent' (1 check)
   return (
     <span
       title="Enviado"

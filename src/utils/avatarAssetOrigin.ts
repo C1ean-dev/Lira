@@ -64,16 +64,11 @@ export const KNOWN_ASSET_MAP: Record<string, KnownAssetInfo> = {
   },
 }
 
-/**
- * Detects whether an avatar asset was created through the image slicer,
- * imported from a Sparrow atlas, or drawn in the pixel art studio.
- */
 export function detectAssetCreationSource(asset: CustomAsset): 'slicer' | 'atlas' | 'studio' {
   if (asset.creationSource) {
     return asset.creationSource
   }
 
-  // Check ID patterns
   if (asset.id.includes('_sliced_')) {
     return 'slicer'
   }
@@ -81,7 +76,6 @@ export function detectAssetCreationSource(asset: CustomAsset): 'slicer' | 'atlas
     return 'atlas'
   }
 
-  // Check if it has multi-frame walk animations or matched known spritesheets
   const clean = asset.name.toLowerCase().replace(/[^a-z0-9]/g, '_')
   for (const key of Object.keys(KNOWN_ASSET_MAP)) {
     if (clean.includes(key) || key.includes(clean)) {
@@ -98,14 +92,9 @@ export function detectAssetCreationSource(asset: CustomAsset): 'slicer' | 'atlas
     }
   }
 
-  // Default: custom drawn in Pixel Art Studio
   return 'studio'
 }
 
-/**
- * Resolves the original spritesheet or image for an asset so it can be edited
- * in the image slicer.
- */
 export function resolveAssetSourceImage(asset: CustomAsset): string {
   if (asset.sourceImageSrc) {
     return asset.sourceImageSrc
@@ -122,13 +111,9 @@ export function resolveAssetSourceImage(asset: CustomAsset): string {
     }
   }
 
-  // Fallback: build a stitched spritesheet from the directional frames
   return generateSpritesheetFromAsset(asset)
 }
 
-/**
- * Resolves XML atlas content for an asset, either from stored metadata or from /assets/avatar/*.xml.
- */
 export async function resolveAssetXmlContent(asset: CustomAsset): Promise<string | null> {
   if (asset.sourceXmlContent) {
     return asset.sourceXmlContent
@@ -149,7 +134,6 @@ export async function resolveAssetXmlContent(asset: CustomAsset): Promise<string
 
   if (!xmlUrl) return null
 
-  // In Node / Vitest test environment, load directly from filesystem if available
   if (typeof window === 'undefined') {
     try {
       const fs = await import('fs')
@@ -161,7 +145,6 @@ export async function resolveAssetXmlContent(asset: CustomAsset): Promise<string
     } catch {}
   }
 
-  // In browser/Electron: fetch from static public directory
   try {
     if (typeof fetch !== 'undefined') {
       const resp = await fetch(xmlUrl)
@@ -176,9 +159,6 @@ export async function resolveAssetXmlContent(asset: CustomAsset): Promise<string
   return null
 }
 
-/**
- * Converts a Sparrow XML string and CustomAsset into exact-coordinate SlicedPresets.
- */
 export function convertXmlToSlicedPresets(asset: CustomAsset, xmlContent: string): SlicedPreset[] {
   const atlasData = AvatarAtlasManager.parseAtlasXml(xmlContent)
   if (!atlasData.subTextures || atlasData.subTextures.size === 0) {
@@ -242,10 +222,6 @@ export function convertXmlToSlicedPresets(asset: CustomAsset, xmlContent: string
   ]
 }
 
-/**
- * Converts a CustomAsset into the SlicedPreset structure expected by AvatarSpritesheetSlicerModal.
- * If XML content is available, it uses the exact pixel coordinates from the XML.
- */
 export function convertAssetToSlicedPresets(asset: CustomAsset, xmlContent?: string): SlicedPreset[] {
   if (asset.slicerPresets && asset.slicerPresets.length > 0) {
     return asset.slicerPresets
@@ -303,9 +279,6 @@ export function convertAssetToSlicedPresets(asset: CustomAsset, xmlContent?: str
   ]
 }
 
-/**
- * Creates a canvas dataUrl spritesheet stitching all 4 directions of an asset.
- */
 function generateSpritesheetFromAsset(asset: CustomAsset): string {
   if (typeof document === 'undefined') return ''
   const dirs: Direction[] = ['down', 'up', 'left', 'right']

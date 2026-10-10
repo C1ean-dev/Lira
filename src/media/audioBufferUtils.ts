@@ -1,6 +1,3 @@
-/**
- * Utilities for recording, processing, and encoding AudioBuffers to WAV.
- */
 import { RNNOISE_PRE_EQ } from './RnnoiseProcessor'
 import { denoiseSamples, gateDenoisedSamples } from './rnnoiseOffline'
 
@@ -10,13 +7,10 @@ function writeString(view: DataView, offset: number, str: string) {
   }
 }
 
-/**
- * Converts an AudioBuffer into a 16-bit PCM WAV Blob playable by standard HTML5 audio elements.
- */
 export function audioBufferToWav(buffer: AudioBuffer): Blob {
   const numChannels = buffer.numberOfChannels || 1
   const sampleRate = buffer.sampleRate || 48000
-  const format = 1 // 1 = PCM
+  const format = 1
   const bitDepth = 16
 
   const channelData = buffer.getChannelData(0)
@@ -28,26 +22,22 @@ export function audioBufferToWav(buffer: AudioBuffer): Blob {
   const arrayBuffer = new ArrayBuffer(totalSize)
   const view = new DataView(arrayBuffer)
 
-  // RIFF chunk descriptor
   writeString(view, 0, 'RIFF')
   view.setUint32(4, 36 + dataSize, true)
   writeString(view, 8, 'WAVE')
 
-  // "fmt " sub-chunk
   writeString(view, 12, 'fmt ')
-  view.setUint32(16, 16, true) // subchunk1 size (16 for PCM)
-  view.setUint16(20, format, true) // audio format (1 = PCM)
+  view.setUint32(16, 16, true)
+  view.setUint16(20, format, true)
   view.setUint16(22, numChannels, true)
   view.setUint32(24, sampleRate, true)
-  view.setUint32(28, sampleRate * numChannels * (bitDepth / 8), true) // byte rate
-  view.setUint16(32, numChannels * (bitDepth / 8), true) // block align
-  view.setUint16(34, bitDepth, true) // bits per sample
+  view.setUint32(28, sampleRate * numChannels * (bitDepth / 8), true)
+  view.setUint16(32, numChannels * (bitDepth / 8), true)
+  view.setUint16(34, bitDepth, true)
 
-  // "data" sub-chunk
   writeString(view, 36, 'data')
   view.setUint32(40, dataSize, true)
 
-  // Write PCM samples clamped to 16-bit signed integer [-32768, 32767]
   let offset = 44
   for (let i = 0; i < numSamples; i++) {
     const s = Math.max(-1, Math.min(1, channelData[i]))
@@ -59,10 +49,6 @@ export function audioBufferToWav(buffer: AudioBuffer): Blob {
   return new Blob([view], { type: 'audio/wav' })
 }
 
-/**
- * Extracts peak amplitude points for rendering a high-resolution audio waveform.
- * Returns an array of normalized values between 0.04 and 1.0, oscillating naturally.
- */
 export function extractWaveformData(buffer: AudioBuffer, points: number = 75): number[] {
   const channelData = buffer.getChannelData(0)
   const totalSamples = channelData.length
@@ -84,14 +70,11 @@ export function extractWaveformData(buffer: AudioBuffer, points: number = 75): n
     }
     const count = Math.max(1, end - start)
     const rms = Math.sqrt(sumSquares / count)
-    // Combine peak (transients) and RMS (body)
     const val = peak * 0.65 + rms * 0.35
     if (val > maxPeak) maxPeak = val
     rawValues.push(val)
   }
 
-  // If ambient silence was recorded (maxPeak near zero), generate an organic audio wave ripple
-  // so the player looks like a real live soundwave instead of flat zero dots.
   if (maxPeak < 0.004) {
     return rawValues.map((_, idx) => {
       const ripple =
@@ -102,9 +85,8 @@ export function extractWaveformData(buffer: AudioBuffer, points: number = 75): n
     })
   }
 
-  // Normalize to [0.04, 1.0] with perceptual dynamic curve
   return rawValues.map((val) => {
-    if (val === 0) return 0.04 // Clean noise gate cut
+    if (val === 0) return 0.04
     const norm = val / maxPeak
     const curved = Math.pow(norm, 0.78)
     return Math.max(0.06, Math.min(1.0, curved))
@@ -117,11 +99,6 @@ type OfflineAudioContextClass = new (
   sampleRate: number
 ) => OfflineAudioContext
 
-/**
- * The RNNoise track of the comparison, made the way the live engine makes
- * it: pre-filter, the real network, then the gate. No compressor — the live
- * RNNoise chain has none.
- */
 async function renderRnnoisePreview(
   rawBuffer: AudioBuffer,
   sensitivityPercent: number,
@@ -153,15 +130,6 @@ async function renderRnnoisePreview(
   return rendered
 }
 
-/**
- * Processes a raw audio buffer offline using the DSP / Noise Gate parameters
- * corresponding to the recommended engine and sensitivity threshold.
- *
- * The classic and soft tracks are rendered with the same kind of filters,
- * gate and compressor the live engines use. The RNNoise track goes through
- * the real network; the filter-only approximation below is kept for when
- * that is not possible.
- */
 export async function processAudioBufferOffline(
   rawBuffer: AudioBuffer,
   recommendedMode: 'classic' | 'soft' | 'rnnoise' = 'soft',
@@ -181,7 +149,6 @@ export async function processAudioBufferOffline(
 
   if (recommendedMode === 'rnnoise') {
     try {
-      // The network only works at 48 kHz (the calibration records at it).
       if (sampleRate !== 48000) throw new Error(`recording is at ${sampleRate} Hz`)
       return await renderRnnoisePreview(rawBuffer, sensitivityPercent, OfflineContextClass)
     } catch (err) {
@@ -203,28 +170,23 @@ export async function processAudioBufferOffline(
   const gateGain = offlineCtx.createGain()
   const rawData = rawBuffer.getChannelData(0)
 
-  // Configure frequency filters based on mode:
   if (recommendedMode === 'classic') {
-    // Standard DSP highpass & gentle shelf
     hp.frequency.setValueAtTime(80, 0)
     hp.Q.setValueAtTime(0.7, 0)
     shelf.frequency.setValueAtTime(6500, 0)
     shelf.gain.setValueAtTime(-3, 0)
   } else if (recommendedMode === 'soft') {
-    // Soft DSP: wider bandwidth, subtler shelf
     hp.frequency.setValueAtTime(70, 0)
     hp.Q.setValueAtTime(0.6, 0)
     shelf.frequency.setValueAtTime(7200, 0)
     shelf.gain.setValueAtTime(-1.5, 0)
   } else {
-    // RNNoise Neural: sharper low-cut, vocal presence bandpass simulation
     hp.frequency.setValueAtTime(85, 0)
     hp.Q.setValueAtTime(0.8, 0)
     shelf.frequency.setValueAtTime(7000, 0)
     shelf.gain.setValueAtTime(-4, 0)
   }
 
-  // Calculate gate dynamics per mode:
   const targetLevel = sensitivityPercent / 100
   const openLevel = Math.max(0.002, targetLevel / 6)
 
@@ -234,21 +196,20 @@ export async function processAudioBufferOffline(
 
   if (recommendedMode === 'classic') {
     closeRatio = 0.75
-    floorGain = 0.005 // Hard gate cutoff
+    floorGain = 0.005
     windowDuration = 0.015
   } else if (recommendedMode === 'soft') {
-    closeRatio = 0.55 // Wider hysteresis so it doesn't flap
-    floorGain = 0.04 // Downward expander floor preserves trailing breath
+    closeRatio = 0.55
+    floorGain = 0.04
     windowDuration = 0.025
   } else {
-    // RNNoise: deep neural noise rejection
     closeRatio = 0.7
     floorGain = 0.0005
     windowDuration = 0.02
   }
 
   const closeLevel = openLevel * closeRatio
-  const timeStep = 0.01 // Schedule gain every 10ms
+  const timeStep = 0.01
   const hopSize = Math.floor(sampleRate * timeStep)
   const windowSize = Math.floor(sampleRate * windowDuration)
 
@@ -276,7 +237,6 @@ export async function processAudioBufferOffline(
     gateGain.gain.setValueAtTime(targetGain, time)
   }
 
-  // Voice Compressor tailored to each mode
   const comp = offlineCtx.createDynamicsCompressor()
   if (recommendedMode === 'classic') {
     comp.threshold.setValueAtTime(-22, 0)
@@ -291,7 +251,6 @@ export async function processAudioBufferOffline(
     comp.attack.setValueAtTime(0.01, 0)
     comp.release.setValueAtTime(0.25, 0)
   } else {
-    // RNNoise: tight broadcast compressor
     comp.threshold.setValueAtTime(-20, 0)
     comp.knee.setValueAtTime(10, 0)
     comp.ratio.setValueAtTime(4.0, 0)

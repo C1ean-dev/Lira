@@ -10,43 +10,31 @@ interface RoomPlayer {
   avatar?: AvatarConfig
 }
 
-/** What clicking a row does: reopen a saved conversation, or address a user. */
 export type ChatPersonOpen =
   | { kind: 'channel'; channelId: string }
   | { kind: 'user'; id: string; name: string }
 
 export interface ChatPerson {
   key: string
-  /** Which list the row is in: a friend, someone merely in this space, or a saved conversation. */
   kind: 'friend' | 'space' | 'conversation'
   name: string
-  /** Where the picture comes from: the room player, or the saved friend profile. */
   avatarSource?: { name?: string; profilePicture?: string; avatar?: AvatarConfig }
   inSpace: boolean
   isOnline: boolean
-  /** A presence status, or 'offline'. */
   status: string
   unreadCount: number
   isCurrent: boolean
   open: ChatPersonOpen
-  /** The id messages and requests to this person are addressed to, when there is one. */
   contactId?: string
-  /** Connection id in this space. */
   playerId?: string
-  /** Key in the friends list. */
   friendKey?: string
-  /** The space a friend who is not here is in right now. */
   room?: { code: string; name?: string }
-  /** Saved conversation with this person. */
   channelId?: string
 }
 
 export interface ChatPeople {
-  /** The whole friends list: in this space first, then online elsewhere, then offline. */
   friends: ChatPerson[]
-  /** In this space, but not a friend. */
   inSpace: ChatPerson[]
-  /** Saved conversations with people who are neither. */
   conversations: ChatPerson[]
 }
 
@@ -64,7 +52,6 @@ interface ChatPeopleInput {
   friendProfiles: Record<string, FriendProfile>
   channels: Channel[]
   activeChannelId: string
-  /** Channel id of the local user's conversation with an id. */
   dmChannelIdFor: (targetId: string) => string
   getFriendPresence: (friend: FriendProfile) => FriendPresence
 }
@@ -74,14 +61,9 @@ const sameName = (a: string, b: string): boolean => {
   return !!left && left === b.trim().toLowerCase()
 }
 
-/**
- * The people of the chat sidebar. Being in the same space does not make
- * someone a friend: friends are matched by id only (see findFriendKey).
- */
 export function buildChatPeople(input: ChatPeopleInput): ChatPeople {
   const { remotePlayers, friends, friendProfiles, activeChannelId, dmChannelIdFor } = input
   const dmChannels = input.channels.filter((c) => c.type === 'dm')
-  // Conversations already reachable through a person's row.
   const shown = new Set<string>()
   const friendsInSpace = new Set<string>()
 
@@ -109,7 +91,6 @@ export function buildChatPeople(input: ChatPeopleInput): ChatPeople {
       status: 'available',
       unreadCount: channel?.unreadCount || 0,
       isCurrent: activeChannelId === ownChannelId || (!!channel && activeChannelId === channel.id),
-      // Addressed by user id, so the conversation outlives this room session.
       open: { kind: 'user', id: userId, name: player.name },
       contactId: userId,
       playerId: player.id,
@@ -136,7 +117,6 @@ export function buildChatPeople(input: ChatPeopleInput): ChatPeople {
     const channel =
       free.find((c) => c.id === ownChannelId) ||
       free.find((c) => !!c.recipientId && ids.includes(c.recipientId)) ||
-      // Saved before stable user ids existed: the name is all there is to go by.
       free.find((c) => !isUserId(c.recipientId) && sameName(c.name, profile.name))
     if (channel) shown.add(channel.id)
 

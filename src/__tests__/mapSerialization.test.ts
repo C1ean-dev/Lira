@@ -39,15 +39,12 @@ describe('mapSerialization (Compact Tilemap Storage & Hydration)', () => {
     expect(hydrated.floors.length).toBe(8)
     expect(hydrated.floors[0].length).toBe(10)
 
-    // Default floor check
     expect(hydrated.floors[0][0]).toBe('carpet_blue')
     expect(hydrated.floors[1][1]).toBe('carpet_blue')
 
-    // Overrides check
     expect(hydrated.floors[3][2]).toBe('tile_checker')
     expect(hydrated.floors[6][7]).toBe('grass')
 
-    // Perimeter walls check
     expect(hydrated.walls[0][0]).toBe(DEFAULT_BORDER_WALL)
     expect(hydrated.walls[0][5]).toBe(DEFAULT_BORDER_WALL)
     expect(hydrated.walls[7][0]).toBe(DEFAULT_BORDER_WALL)
@@ -62,7 +59,7 @@ describe('mapSerialization (Compact Tilemap Storage & Hydration)', () => {
       height: 8,
       wallOverrides: {
         '4,4': 'brick_red' as WallType,
-        '0,0': null, // Removed border wall (e.g. entrance opening)
+        '0,0': null,
       },
     }
 
@@ -89,7 +86,6 @@ describe('mapSerialization (Compact Tilemap Storage & Hydration)', () => {
     const workspace = createEmptyWorkspace()
     const compressed = compressMapDataForStorage(workspace)
 
-    // floors and walls 2D arrays should be omitted in storage
     expect((compressed as any).floors).toBeUndefined()
     expect((compressed as any).walls).toBeUndefined()
     expect(compressed.defaultFloor).toBe('wood_parquet')
@@ -118,14 +114,12 @@ describe('mapSerialization (Compact Tilemap Storage & Hydration)', () => {
 
   it('guarantees 100% roundtrip fidelity between compression and hydration', () => {
     const original = createEmptyWorkspace()
-    // Paint scattered floors
     original.floors[2][2] = 'carpet_blue'
     original.floors[15][20] = 'tile_white'
     original.floors[35][60] = 'forge_cobblestone'
 
-    // Paint walls
     original.walls[10][10] = 'brick_red'
-    original.walls[0][34] = null // door opening
+    original.walls[0][34] = null
 
     const compressed = compressMapDataForStorage(original)
     const rehydrated = hydrateMapData(compressed)
@@ -133,7 +127,6 @@ describe('mapSerialization (Compact Tilemap Storage & Hydration)', () => {
     expect(rehydrated.width).toBe(original.width)
     expect(rehydrated.height).toBe(original.height)
 
-    // Compare all 2,720 floor tiles
     for (let y = 0; y < original.height; y++) {
       for (let x = 0; x < original.width; x++) {
         expect(rehydrated.floors[y][x]).toBe(original.floors[y][x])

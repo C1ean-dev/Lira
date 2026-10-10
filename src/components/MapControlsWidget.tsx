@@ -35,7 +35,6 @@ export const MapControlsWidget: React.FC<MapControlsWidgetProps> = ({
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
 
-  // Close menu on click outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -50,7 +49,6 @@ export const MapControlsWidget: React.FC<MapControlsWidgetProps> = ({
 
   return (
     <div ref={menuRef} className="relative select-none pointer-events-auto">
-      {/* Modes Dropdown Popover */}
       {isMenuOpen && (
         <div className="absolute bottom-14 right-0 w-72 bg-[#121622]/95 backdrop-blur-md border border-[#2a354a] rounded-2xl p-3 shadow-2xl space-y-2 z-50 animate-in fade-in zoom-in-95 duration-150">
           <div className="flex items-center justify-between px-1 pb-1.5 border-b border-[#202838]">
@@ -62,7 +60,6 @@ export const MapControlsWidget: React.FC<MapControlsWidgetProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            {/* Option 1: Immersive Pixel Art */}
             <button
               onClick={() => {
                 setMapViewMode('immersive')
@@ -101,7 +98,6 @@ export const MapControlsWidget: React.FC<MapControlsWidgetProps> = ({
               )}
             </button>
 
-            {/* Option 2: Simplified Vector Map */}
             <button
               onClick={() => {
                 setMapViewMode('simplified', true)
@@ -143,9 +139,7 @@ export const MapControlsWidget: React.FC<MapControlsWidgetProps> = ({
         </div>
       )}
 
-      {/* Main Small Floating Dock (Bottom-Right) */}
       <div className="bg-[#1b202c]/90 backdrop-blur-md border border-[#2a3142] rounded-2xl p-1.5 shadow-xl flex items-center gap-1.5 text-xs text-slate-300">
-        {/* Map Mode Selector Toggle Button */}
         <button
           onClick={() => setIsMenuOpen(!isMenuOpen)}
           className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all ${
@@ -170,7 +164,6 @@ export const MapControlsWidget: React.FC<MapControlsWidgetProps> = ({
 
         <div className="h-4 w-px bg-slate-700" />
 
-        {/* Zoom Controls */}
         <div className="flex items-center gap-0.5">
           <button
             onClick={onZoomIn}
@@ -195,7 +188,6 @@ export const MapControlsWidget: React.FC<MapControlsWidgetProps> = ({
           </button>
         </div>
 
-        {/* Mobile Recenter Button (When map camera is panned) */}
         {isPanned && onRecenter && (
           <>
             <div className="h-4 w-px bg-slate-700" />

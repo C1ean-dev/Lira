@@ -12,10 +12,6 @@ import { FullScreenLiveOverlay } from './grid/FullScreenLiveOverlay'
 import { CallControlsBar } from './grid/CallControlsBar'
 import { ParticipantContextMenu } from './grid/ParticipantContextMenu'
 
-/**
- * Outer gate: subscribes ONLY to isGridCallOpen so 60Hz position updates
- * don't re-render the conference grid while it's closed (the common case).
- */
 export const FullScreenGrid: React.FC = () => {
   const isGridCallOpen = useMediaStore((s) => s.isGridCallOpen)
   if (!isGridCallOpen) return null
@@ -23,8 +19,6 @@ export const FullScreenGrid: React.FC = () => {
 }
 
 const FullScreenGridInner: React.FC = () => {
-  // Granular media selectors — the VU level ticks at ~10Hz; only
-  // localAudioLevel-driven props should update on those ticks.
   const setGridCallOpen = useMediaStore((s) => s.setGridCallOpen)
   const localStream = useMediaStore((s) => s.localStream)
   const localScreenStream = useMediaStore((s) => s.localScreenStream)
@@ -53,7 +47,6 @@ const FullScreenGridInner: React.FC = () => {
   const adminNotice = useMediaStore((s) => s.adminNotice)
   const setAdminNotice = useMediaStore((s) => s.setAdminNotice)
 
-  // Auto-dismiss admin notice after 6 seconds
   React.useEffect(() => {
     if (adminNotice) {
       const timer = setTimeout(() => {
@@ -70,8 +63,6 @@ const FullScreenGridInner: React.FC = () => {
   const currentZone = mapData.zones.find((z) => z.id === localPlayer.currentZoneId)
   const zoneTitle = currentZone?.name || 'Revisão & Call de Time'
 
-  // Memoized so a VU-meter tick (10Hz) that doesn't change speaking state
-  // keeps every tile's `user` prop identity stable (no cascade re-render).
   const isLocalSpeaking = localAudioLevel > 0.15 && !isMuted
   const allInMeeting: ParticipantData[] = React.useMemo(() => {
     const peersInSameZone = Object.values(remotePlayers).filter(
@@ -141,7 +132,6 @@ const FullScreenGridInner: React.FC = () => {
     watchingLives,
   ])
 
-  // If someone is screen sharing and no one is explicitly focused, default focus to the active screen share
   const activePresenter = allInMeeting.find((u) => u.screenStream || u.isScreenSharing)
   const focusedUser = focusedUserId
     ? allInMeeting.find((u) => u.id === focusedUserId)
@@ -153,8 +143,6 @@ const FullScreenGridInner: React.FC = () => {
 
   const otherParticipants = allInMeeting.filter((u) => u.id !== focusedUser?.id)
 
-  // The full screen was opened with the participant as it was then; whether
-  // its live is being watched is what it is now.
   const theaterUser = liveTheaterUser
     ? allInMeeting.find((u) => u.id === liveTheaterUser.id) || liveTheaterUser
     : null
@@ -162,7 +150,6 @@ const FullScreenGridInner: React.FC = () => {
   return (
     <>
       <div className="fixed inset-0 z-50 bg-[#0c0e14] flex flex-col justify-between p-3 select-none animate-in fade-in duration-200">
-        {/* Top Bar */}
         <div className="flex items-center justify-between px-4 py-2 bg-[#12151d]/90 backdrop-blur-md rounded-2xl border border-[#2a3142] shrink-0 mb-2">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
@@ -175,7 +162,6 @@ const FullScreenGridInner: React.FC = () => {
             </span>
           </div>
 
-          {/* Admin Moderation Notice Alert */}
           {adminNotice && (
             <div className="flex items-center gap-2 px-3 py-1 bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded-xl text-xs font-semibold animate-in fade-in slide-in-from-top-2 duration-150">
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
@@ -191,7 +177,6 @@ const FullScreenGridInner: React.FC = () => {
           )}
 
           <div className="flex items-center gap-2">
-            {/* Toggle Sidebar button */}
             {otherParticipants.length > 0 && (
               <button
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -217,9 +202,7 @@ const FullScreenGridInner: React.FC = () => {
           </div>
         </div>
 
-        {/* Main Video Presentation Area with Maximize Live Size + Compact Right Sidebar */}
         <div className="flex-1 w-full h-[calc(100vh-140px)] flex gap-3 items-stretch overflow-hidden">
-          {/* 1. Large Main Live / Video Stage (Fills Maximum Width & Height) */}
           <div className="flex-1 h-full min-w-0 bg-[#0c0e14] rounded-3xl overflow-hidden flex items-center justify-center">
             {focusedUser ? (
               <GridParticipantTile
@@ -234,7 +217,6 @@ const FullScreenGridInner: React.FC = () => {
             )}
           </div>
 
-          {/* 2. Compact Right-side Participants Rail */}
           {isSidebarOpen && otherParticipants.length > 0 && (
             <div className="w-44 lg:w-48 h-full bg-[#12151d]/70 backdrop-blur-md rounded-3xl border border-[#2a3142] p-2 flex flex-col gap-2 overflow-y-auto shrink-0 animate-in slide-in-from-right-4 duration-200">
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 py-0.5 flex items-center justify-between">
@@ -256,14 +238,12 @@ const FullScreenGridInner: React.FC = () => {
           )}
         </div>
 
-        {/* Bottom Controls Bar (Lira Dock) */}
         <CallControlsBar
           onToggleScreenShare={handleToggleScreenShare}
           onLeaveCall={() => setGridCallOpen(false)}
         />
       </div>
 
-      {/* Pure Fullscreen Live Stream Player */}
       {theaterUser && (
         <FullScreenLiveOverlay
           user={theaterUser}
@@ -271,13 +251,11 @@ const FullScreenGridInner: React.FC = () => {
         />
       )}
 
-      {/* Screen Share Window Picker Modal */}
       <ScreenShareModal
         isOpen={isScreenModalOpen}
         onClose={() => setIsScreenModalOpen(false)}
       />
 
-      {/* Right-click Context Menu for Participants */}
       {contextMenuState && (
         <ParticipantContextMenu
           user={contextMenuState.user}

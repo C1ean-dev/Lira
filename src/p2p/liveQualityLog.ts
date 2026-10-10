@@ -1,24 +1,12 @@
 import { diagLog } from '../utils/diagnosticLogger'
 
-/**
- * What the encoder of a live is doing, every 10 seconds and for each viewer.
- *
- * The ramp log says how a live starts. This one says how it runs: which codec
- * and encoder were negotiated, what is sent and, above all, the QP, the number
- * that tells whether the bitrate of the live is more than the picture needs
- * (a low QP at the bitrate cap) or already short (a high one).
- */
-
 export const LIVE_QUALITY_INTERVAL_MS = 10_000
 
 export interface LiveQualityWatch {
   pc: RTCPeerConnection
   peerId: string
-  /** False once the live is over or the call is gone: the watch ends and does not come back. */
   isActive: () => boolean
-  /** Runs every interval, before the sample is taken. */
   onTick?: () => void
-  /** What this viewer is getting, to go with the sample. */
   viewer?: () => { mode: string; askH: number | null }
 }
 
@@ -32,7 +20,6 @@ interface Counters {
   pli: number | null
 }
 
-// A connection has one watch: starting another one ends the one before it.
 let watchSeq = 0
 const watchTokens = new WeakMap<object, number>()
 
@@ -51,7 +38,6 @@ function h264Profile(fmtp: string): string | null {
   return `${constrained ? 'Constrained ' : ''}${name} ${(level / 10).toFixed(1)}`
 }
 
-/** A codec as a person reads it: the name, and the profile it was negotiated with. */
 export function describeCodec(
   mimeType: unknown,
   sdpFmtpLine: unknown
@@ -70,11 +56,6 @@ const oneDecimal = (value: number): number => Math.round(value * 10) / 10
 const delta = (now: number | null, before: number | null | undefined): number | null =>
   now === null || before === null || before === undefined ? null : now - before
 
-/**
- * Sample a connection every 10 s while its live runs. The numbers of an
- * interval (bitrate sent, average QP, time to encode a frame) are differences
- * between two readings, so the first sample, 10 s in, does not have them yet.
- */
 export function watchLiveQuality({ pc, peerId, isActive, onTick, viewer }: LiveQualityWatch): void {
   if (!pc) return
   const token = ++watchSeq
@@ -82,7 +63,6 @@ export function watchLiveQuality({ pc, peerId, isActive, onTick, viewer }: LiveQ
   const current = () => watchTokens.get(pc) === token && isActive()
 
   let last: Counters | null = null
-  // A viewer that is not watching is sent nothing: said once, not every 10 s.
   let idleLogged = false
 
   const sample = () => {
@@ -173,14 +153,12 @@ export function watchLiveQuality({ pc, peerId, isActive, onTick, viewer }: LiveQ
       sample()
       arm()
     }, LIVE_QUALITY_INTERVAL_MS)
-    // Never the reason a process stays alive (tests, a window being closed).
     ;(timer as unknown as { unref?: () => void })?.unref?.()
   }
 
   arm()
 }
 
-/** The counters of what a viewer received, kept between two readings. */
 export interface ViewCounters {
   at: number
   bytes: number | null
@@ -195,12 +173,6 @@ export interface ViewCounters {
   pli: number | null
 }
 
-/**
- * What a viewer is receiving of a live, from the stats of its call: the size
- * and frame rate that arrive, the decoder, and, against the reading before,
- * the bitrate, the QP and what was dropped or froze in between. Null when the
- * call receives no video.
- */
 export function readViewStats(
   stats: any,
   before: ViewCounters | null
@@ -275,11 +247,6 @@ function listCodecs(side: any): string[] | null {
   }
 }
 
-/**
- * The video codecs and profiles this build can send and receive, once per
- * session. With the codec of each quality sample, it says whether a better
- * one was available to the two sides and was not used.
- */
 export function logVideoCodecsOnce(): void {
   if (codecsLogged) return
   try {
@@ -292,7 +259,6 @@ export function logVideoCodecsOnce(): void {
   } catch {}
 }
 
-/** Test-only reset. */
 export function __resetLiveQualityLogForTests(): void {
   codecsLogged = false
 }

@@ -12,7 +12,6 @@ function rms(samples: Float32Array): number {
 
 const toDb = (ratio: number) => 20 * Math.log10(ratio)
 
-/** Steady low-frequency rumble (a fan): deterministic low-passed white noise. */
 function fanNoise(samples: number, amplitude: number): Float32Array {
   let state = 1234
   let lowPassed = 0
@@ -29,7 +28,6 @@ function fanNoise(samples: number, amplitude: number): Float32Array {
   return out
 }
 
-/** Flat hiss: deterministic white noise. */
 function hiss(samples: number, amplitude: number): Float32Array {
   let state = 4321
   const out = new Float32Array(samples)
@@ -69,10 +67,6 @@ describe('RNNoise offline (calibration preview)', () => {
     })
 
     it('never compiles or instantiates the binary synchronously (the main thread may not)', async () => {
-      // Chromium refuses synchronous WebAssembly compilation of a binary this
-      // size on the main thread, where the calibration preview runs. Node does
-      // not, so watch the constructors instead. A fresh module copy makes
-      // sure the load itself happens inside this test.
       vi.resetModules()
       const fresh = await import('../media/rnnoiseOffline')
       const RealModule = WebAssembly.Module
@@ -131,9 +125,8 @@ describe('RNNoise offline (calibration preview)', () => {
 
   describe('gateDenoisedSamples', () => {
     it('lets a signal above the chosen sensitivity through and closes on what is below it', () => {
-      // 20% on the meter = RMS 0.033. One second loud, two seconds faint.
-      const loud = tone(SAMPLE_RATE, 0.2) // RMS 0.14
-      const faint = tone(SAMPLE_RATE * 2, 0.01) // RMS 0.007
+      const loud = tone(SAMPLE_RATE, 0.2)
+      const faint = tone(SAMPLE_RATE * 2, 0.01)
       const input = new Float32Array(SAMPLE_RATE * 3)
       input.set(loud, 0)
       input.set(faint, SAMPLE_RATE)
@@ -149,7 +142,6 @@ describe('RNNoise offline (calibration preview)', () => {
     it('stays open through a short pause (hold time)', () => {
       const input = new Float32Array(SAMPLE_RATE)
       input.set(tone(SAMPLE_RATE / 2, 0.2), 0)
-      // 100 ms of near silence, shorter than the 220 ms hold, then speech again.
       input.set(tone(4800, 0.001), SAMPLE_RATE / 2)
       input.set(tone(SAMPLE_RATE / 2 - 4800, 0.2), SAMPLE_RATE / 2 + 4800)
 
@@ -171,9 +163,6 @@ describe('RNNoise offline (calibration preview)', () => {
   })
 
   describe('processAudioBufferOffline', () => {
-    // The offline renderer is not available outside a browser. This stand-in
-    // "renders" the source untouched, which is enough to tell whether the
-    // RNNoise track went through the network or only through filters.
     const param = () => ({ setValueAtTime: vi.fn() })
     const node = (extra: Record<string, unknown> = {}) => ({ connect: vi.fn(), ...extra })
     const fakeBuffer = (data: Float32Array, sampleRate: number) => ({
@@ -226,7 +215,6 @@ describe('RNNoise offline (calibration preview)', () => {
       const recording = fanNoise(SAMPLE_RATE * 3, 0.1)
       const raw = fakeBuffer(recording, SAMPLE_RATE) as unknown as AudioBuffer
 
-      // 0% sensitivity keeps the gate open, so any attenuation is the network's.
       const processed = await processAudioBufferOffline(raw, 'rnnoise', 0)
 
       const out = processed.getChannelData(0)
@@ -235,9 +223,7 @@ describe('RNNoise offline (calibration preview)', () => {
         rms(out.subarray(SAMPLE_RATE * 2)) / rms(recording.subarray(SAMPLE_RATE * 2))
       )
       expect(attenuation).toBeLessThan(-30)
-      // The live RNNoise chain has no compressor; neither does its preview.
       expect(compressorsCreated).toBe(0)
-      // The recording itself is left alone for the other tracks.
       expect(raw.getChannelData(0)).toBe(recording)
       expect(rms(recording.subarray(SAMPLE_RATE * 2))).toBeGreaterThan(0.01)
     })

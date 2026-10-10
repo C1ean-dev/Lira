@@ -75,14 +75,12 @@ export class TrayManager {
     this.instanceTitle = isMultiInstance ? `Lira (Instância ${instanceId})` : 'Lira'
     this.settings = readSettingsFromDisk()
 
-    // Sync with OS registry if on Windows/Mac
     try {
       if (process.platform === 'win32' || process.platform === 'darwin') {
         const loginSettings = app.getLoginItemSettings()
         if (loginSettings) {
           const login = resolveLoginItemState(loginSettings)
           this.settings.openAtLogin = login.openAtLogin
-          // Registered by an older version with --hidden: write it again without.
           if (login.needsRewrite) applyLoginItemSettings(this.settings)
         }
       }
@@ -124,9 +122,6 @@ export class TrayManager {
     }
 
     if (shouldMaximize) {
-      // On Windows DWM, restoring a hidden window that was maximized can cause Chromium's viewport
-      // to remain stuck at default unmaximized dimensions (leaving a large black rectangle on the right).
-      // Re-triggering maximize forces Windows and Chromium to recalculate the client viewport.
       if (!this.mainWindow.isMaximized()) {
         this.mainWindow.maximize()
       } else {
@@ -154,7 +149,6 @@ export class TrayManager {
   }
 
   private resolveIcon(): NativeImage {
-    // 1. Try public/tray-icon.png
     const pathsToTry = [
       path.join(process.cwd(), 'public/tray-icon.png'),
       path.join(__dirname, '../public/tray-icon.png'),
@@ -173,7 +167,6 @@ export class TrayManager {
       }
     }
 
-    // Fallback: 16x16 RGBA data URL
     return nativeImage.createFromDataURL(
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAZklEQVR42mNkYPj/n4GBgYGRgQpAUowQmpGBCWcQG24BqFm4zMFhAFzLwMCwhxQvYDMALkb2EcwM6GBgYNiLTxA6u2EAAwMDvjCgq8FhAJogmB0wcgDqW4gB2A2krh8IeQCRGgAAO4g+a14mU3wAAAAASUVORK5CYII='
     )
@@ -182,7 +175,6 @@ export class TrayManager {
   public init(win: BrowserWindow) {
     this.mainWindow = win
 
-    // Intercept window close to minimize to tray instead of quitting
     win.on('close', (event) => {
       if (!this.isQuitting && this.settings.closeToTray) {
         event.preventDefault()
@@ -192,7 +184,6 @@ export class TrayManager {
       }
     })
 
-    // Intercept minimize if minimizeToTray is enabled
     win.on('minimize', () => {
       if (this.settings.minimizeToTray) {
         this.wasMaximizedBeforeHide = win.isMaximized()
@@ -200,15 +191,11 @@ export class TrayManager {
       }
     })
 
-    // Create Tray icon
     try {
       const icon = this.resolveIcon()
       this.tray = new Tray(icon)
       this.tray.setToolTip(this.instanceTitle)
 
-      // On Windows, clicking or double-clicking the tray icon should ALWAYS restore & focus the app.
-      // Having 'click' toggle visibility causes race conditions when double-clicking (show -> hide -> show),
-      // which freezes the DWM compositor and renderer event loop.
       this.tray.on('click', () => {
         this.showAndFocusWindow()
       })

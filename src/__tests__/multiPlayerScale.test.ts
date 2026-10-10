@@ -58,7 +58,7 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
 
     useGameStore.setState({
       localPlayer: {
-        ...createPlayer(1), // Bob (Client 2)
+        ...createPlayer(1),
         id: LOCAL_CLIENT_PEER_ID,
         gameId: LOCAL_GAME_ID,
       },
@@ -67,10 +67,8 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
   })
 
   it('correctly registers 9 remote players when relayed through Host without overwriting slots or taking host skin', () => {
-    // Client 2 receives joins for all other 9 players (1 Host + 8 other clients)
-    // In star topology, all these arrive through the Host transport connection: peerId = HOST_PEER_ID
     for (let i = 0; i < PLAYERS_DATA.length; i++) {
-      if (i === 1) continue // Skip self (Client 2)
+      if (i === 1) continue
       const p = createPlayer(i)
       const joinMsg: NetworkMessage = {
         type: 'PLAYER_JOIN',
@@ -81,8 +79,8 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
 
       processNetworkMessage(
         joinMsg,
-        HOST_PEER_ID, // Transport socket peerId is the Host!
-        false, // Client 2 is not host
+        HOST_PEER_ID,
+        false,
         noopBroadcast,
         noopRemovePeer,
         noopEligibility,
@@ -93,10 +91,8 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
     const remotes = useGameStore.getState().remotePlayers
     const remoteKeys = Object.keys(remotes)
 
-    // Must have exactly 9 remote players
     expect(remoteKeys).toHaveLength(9)
 
-    // Verify all 9 distinct peer IDs are present as individual keys
     for (let i = 0; i < PLAYERS_DATA.length; i++) {
       if (i === 1) continue
       const expectedId = PLAYERS_DATA[i].peerId
@@ -105,7 +101,6 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
       expect(remotes[expectedId].avatar?.skinTone).toBe(PLAYERS_DATA[i].skinTone)
       expect(remotes[expectedId].id).toBe(expectedId)
 
-      // Only Host must be host; all 8 other clients must NOT be host
       if (expectedId.endsWith('-host')) {
         expect(remotes[expectedId].isHost).toBe(true)
       } else {
@@ -115,7 +110,6 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
   })
 
   it('updates positions of all 10 players independently without moving or colliding with other avatars', () => {
-    // First register the 9 remote players
     for (let i = 0; i < PLAYERS_DATA.length; i++) {
       if (i === 1) continue
       const p = createPlayer(i)
@@ -130,7 +124,6 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
       )
     }
 
-    // Now simulate movement messages from all 9 remote players arriving via Host relay
     for (let i = 0; i < PLAYERS_DATA.length; i++) {
       if (i === 1) continue
       const p = PLAYERS_DATA[i]
@@ -148,7 +141,7 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
 
       processNetworkMessage(
         moveMsg,
-        HOST_PEER_ID, // All arrive via Host transport
+        HOST_PEER_ID,
         false,
         noopBroadcast,
         noopRemovePeer,
@@ -159,7 +152,6 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
 
     const remotes = useGameStore.getState().remotePlayers
 
-    // Verify each player moved to their specific distinct coordinate
     for (let i = 0; i < PLAYERS_DATA.length; i++) {
       if (i === 1) continue
       const p = PLAYERS_DATA[i]
@@ -170,13 +162,11 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
       expect(updated.isMoving).toBe(true)
     }
 
-    // Local player position was never touched
     expect(useGameStore.getState().localPlayer.x).toBe(12)
     expect(useGameStore.getState().localPlayer.y).toBe(10)
   })
 
   it('updates avatar/skin for a specific player without propagating the skin to other players or the Host', () => {
-    // Register players
     for (let i = 0; i < PLAYERS_DATA.length; i++) {
       if (i === 1) continue
       const p = createPlayer(i)
@@ -191,7 +181,6 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
       )
     }
 
-    // Client 5 changes avatar to neon green hair and custom skin
     const client5Id = PLAYERS_DATA[4].peerId
     const updateMsg: NetworkMessage = {
       type: 'PLAYER_UPDATE',
@@ -212,7 +201,7 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
 
     processNetworkMessage(
       updateMsg,
-      HOST_PEER_ID, // Relayed by Host
+      HOST_PEER_ID,
       false,
       noopBroadcast,
       noopRemovePeer,
@@ -222,20 +211,16 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
 
     const remotes = useGameStore.getState().remotePlayers
 
-    // Client 5 has the new avatar
     expect(remotes[client5Id].avatar?.skinTone).toBe('#00ff88')
     expect(remotes[client5Id].avatar?.hairColor).toBe('#ff0055')
 
-    // Host avatar was NOT modified
     expect(remotes[HOST_PEER_ID].avatar?.skinTone).toBe(PLAYERS_DATA[0].skinTone)
 
-    // Other clients were NOT modified
     expect(remotes[PLAYERS_DATA[2].peerId].avatar?.skinTone).toBe(PLAYERS_DATA[2].skinTone)
     expect(remotes[PLAYERS_DATA[7].peerId].avatar?.skinTone).toBe(PLAYERS_DATA[7].skinTone)
   })
 
   it('handles player disconnect without dropping remaining players or failing over host incorrectly', () => {
-    // Register all
     for (let i = 0; i < PLAYERS_DATA.length; i++) {
       if (i === 1) continue
       const p = createPlayer(i)
@@ -252,7 +237,6 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
 
     expect(Object.keys(useGameStore.getState().remotePlayers)).toHaveLength(9)
 
-    // Client 6 leaves
     const client6Id = PLAYERS_DATA[5].peerId
     const leaveMsg: NetworkMessage = {
       type: 'PLAYER_LEAVE',
@@ -280,12 +264,10 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
     const remotes = useGameStore.getState().remotePlayers
     expect(remotes[client6Id]).toBeUndefined()
     expect(Object.keys(remotes)).toHaveLength(8)
-    // Host is still there
     expect(remotes[HOST_PEER_ID]).toBeDefined()
   })
 
   it('delivers live screen share video tracks to all 9 peers in a 10-person zone without black screens', async () => {
-    // Setup 9 peer connections with fake RTCPeerConnection and senders
     const mediaCalls = new Map<string, any>()
     const replacedTracksPerPeer = new Map<string, MediaStreamTrack>()
 
@@ -314,7 +296,6 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
       })
     }
 
-    // Now Player 2 (or presenter) initiates screen share with a live screen video track
     const fakeScreenTrack = {
       kind: 'video',
       id: 'screen-track-live-1080p',
@@ -326,15 +307,13 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
     MediaCallHandler.replaceVideoTrack(
       mediaCalls,
       fakeScreenTrack,
-      true, // isScreenShare
+      true,
       2_500_000,
       30
     )
 
-    // Give microtasks time to execute replaceTrack
     await new Promise((resolve) => setTimeout(resolve, 20))
 
-    // Every single one of the 9 peers must have received the screen track!
     expect(replacedTracksPerPeer.size).toBe(9)
     for (let i = 0; i < PLAYERS_DATA.length; i++) {
       if (i === 1) continue
@@ -345,7 +324,6 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
   })
 
   it('simulates a full 10-player star network: all 10 stores maintain all other 9 players with zero identity collisions', () => {
-    // Create 10 distinct game stores representing 10 independent running clients
     interface SimClient {
       id: string
       name: string
@@ -360,23 +338,16 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
       remotePlayers: {},
     }))
 
-    // Star network message dispatcher:
-    // When client sends message:
-    // If client is not Host, message goes to Host.
-    // Host updates its own remotePlayers, and broadcasts to all other clients.
-    // If client is Host, message broadcasts directly to all clients.
     function broadcastFrom(senderIdx: number, msg: NetworkMessage) {
       const sender = clients[senderIdx]
 
-      // Host receives and processes
       if (senderIdx !== 0) {
         processClientMessage(clients[0], msg, sender.id)
       }
 
-      // Broadcast to other clients
       for (let i = 0; i < clients.length; i++) {
         if (i === senderIdx) continue
-        if (senderIdx !== 0 && i === 0) continue // Already processed on host
+        if (senderIdx !== 0 && i === 0) continue
         processClientMessage(clients[i], msg, clients[0].id)
       }
     }
@@ -386,7 +357,7 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
 
       if (msg.type === 'PLAYER_JOIN') {
         const p = msg.payload.player
-        if (p.id === client.id) return // Don't add self
+        if (p.id === client.id) return
         client.remotePlayers[p.id] = {
           ...p,
           id: senderId,
@@ -405,13 +376,9 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
       }
     }
 
-    // 1. Host is already in room.
-    // 2. Clients 1 to 9 join one by one. When each joins:
-    //    Host syncs existing players to the newcomer, and broadcasts newcomer to existing players.
     for (let i = 1; i < clients.length; i++) {
       const newcomer = clients[i]
 
-      // Newcomer joins: broadcasts join to room
       const joinMsg: NetworkMessage = {
         type: 'PLAYER_JOIN',
         senderId: newcomer.id,
@@ -420,7 +387,6 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
       }
       broadcastFrom(i, joinMsg)
 
-      // Host syncs all its existing players to newcomer
       for (const existingPlayer of Object.values(clients[0].remotePlayers)) {
         if (existingPlayer.id !== newcomer.id) {
           processClientMessage(
@@ -435,7 +401,6 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
           )
         }
       }
-      // And host sends itself to newcomer
       processClientMessage(
         newcomer,
         {
@@ -448,13 +413,11 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
       )
     }
 
-    // Check that ALL 10 clients have EXACTLY the other 9 clients registered!
     for (let i = 0; i < clients.length; i++) {
       const client = clients[i]
       const remotes = Object.keys(client.remotePlayers)
       expect(remotes).toHaveLength(9)
 
-      // Verify that every other client is in client.remotePlayers
       for (let j = 0; j < clients.length; j++) {
         if (i === j) continue
         const other = clients[j]
@@ -464,7 +427,6 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
       }
     }
 
-    // Now all 10 players move to new distinct coordinates
     for (let i = 0; i < clients.length; i++) {
       const moveMsg: NetworkMessage = {
         type: 'PLAYER_MOVE',
@@ -480,7 +442,6 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
       broadcastFrom(i, moveMsg)
     }
 
-    // Verify all 10 clients have matching positions for all other players
     for (let i = 0; i < clients.length; i++) {
       for (let j = 0; j < clients.length; j++) {
         if (i === j) continue
@@ -496,13 +457,11 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
     const ROOM_CODE = 'TESTROOM'
     const hostPeerId = `lira-${ROOM_CODE}-host`
 
-    // Set initial room session as a non-host client
     useGameStore.getState().setRoomSession(ROOM_CODE, false)
     expect(useGameStore.getState().isHost).toBe(false)
 
-    // Register all 9 other peers in Client 2's store (1 Host + 8 other clients)
     for (let i = 0; i < PLAYERS_DATA.length; i++) {
-      if (i === 1) continue // Skip Client 2 (self)
+      if (i === 1) continue
       const p = createPlayer(i)
       processNetworkMessage(
         { type: 'PLAYER_JOIN', senderId: p.id, payload: { player: p }, timestamp: Date.now() },
@@ -517,24 +476,16 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
 
     expect(Object.keys(useGameStore.getState().remotePlayers)).toHaveLength(9)
 
-    // 1. Host disconnects!
-    // The Host leaves the room:
     const remainingPeers = PLAYERS_DATA.slice(2).map((d) => d.peerId)
     const myId = LOCAL_CLIENT_PEER_ID
 
-    // Failover election algorithm (used by PeerManager.handleHostDisconnected):
-    // All remaining live candidates are collected and sorted deterministically
     const candidateList = [myId, ...remainingPeers].filter(Boolean).sort()
 
-    // Deterministic election:
-    // candidateList sorted: 'lira-TESTROOM-peer-02' is the lowest lexicographically
     expect(candidateList[0]).toBe(LOCAL_CLIENT_PEER_ID)
 
-    // Verify Client 2 is the elected candidate:
     const isElected = candidateList[0] === myId
     expect(isElected).toBe(true)
 
-    // 2. Client 2 is promoted to Host:
     useGameStore.getState().setRoomSession(ROOM_CODE, true)
     useGameStore.getState().updatePlayerRole(LOCAL_CLIENT_PEER_ID, 'host', {
       canEditMap: true,
@@ -543,10 +494,8 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
       canKick: true,
     })
 
-    // The old host is removed from remotePlayers
     useGameStore.getState().removeRemotePlayer(hostPeerId)
 
-    // Verify Client 2 is now Host with full elevated permissions
     const local = useGameStore.getState().localPlayer
     expect(useGameStore.getState().isHost).toBe(true)
     expect(local.role).toBe('host')
@@ -554,7 +503,6 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
     expect(local.permissions?.canKick).toBe(true)
     expect(local.permissions?.canMuteOthers).toBe(true)
 
-    // All 8 other clients remain registered and intact
     const remotes = useGameStore.getState().remotePlayers
     expect(Object.keys(remotes)).toHaveLength(8)
     expect(remotes[hostPeerId]).toBeUndefined()
@@ -563,14 +511,12 @@ describe('10-Player Multi-Player Scale & Relay Stability Tests', () => {
       expect(remotes[PLAYERS_DATA[i].peerId].name).toBe(PLAYERS_DATA[i].name)
     }
 
-    // 3. Verify election from perspective of Client 3 (who was NOT elected):
     const candidateListForClient3 = [
       'lira-TESTROOM-peer-03',
       'lira-TESTROOM-peer-02',
       ...PLAYERS_DATA.slice(3).map((d) => d.peerId),
     ].sort()
 
-    // Client 3 sees peer-02 as the elected host:
     expect(candidateListForClient3[0]).toBe('lira-TESTROOM-peer-02')
     const client3IsElected = candidateListForClient3[0] === 'lira-TESTROOM-peer-03'
     expect(client3IsElected).toBe(false)

@@ -6,6 +6,7 @@ import { generateUserId, isUserId, getPlayerUserId, getFriendUserId, findFriendK
 import { registerReportContext } from '../utils/reportContext'
 import { diagLog } from '../utils/diagnosticLogger'
 import { reportStorageFailure } from '../utils/storageReport'
+import { playSoundEffect } from '../utils/soundEffects'
 
 const PROFILE_STORAGE_KEY = 'lira_user_profile'
 const AVAILABLE_ROOMS_KEY = 'lira_available_rooms'
@@ -94,9 +95,6 @@ const syncPublicRoomRegistration = (roomId: string | null, isPublic: boolean, ro
 
 const saved = loadSavedProfile() || {}
 
-// The profile id is the user's stable identity: friendships, direct messages
-// and presence are addressed to it, so it is generated once and persisted.
-// (It used to be regenerated on every launch, orphaning every saved friend.)
 const savedUserId = isUserId(saved.id) ? saved.id : generateUserId()
 if (saved.id !== savedUserId) {
   saveProfile({ id: savedUserId })
@@ -111,7 +109,6 @@ interface RoomSessionOptions {
 }
 
 interface GameStore {
-  // Local Player
   localPlayer: Player
   setLocalPlayer: (player: Partial<Player>) => void
   setLocalPosition: (x: number, y: number, direction: 'up' | 'down' | 'left' | 'right', isMoving: boolean) => void
@@ -121,21 +118,16 @@ interface GameStore {
   }
   setCurrentZoneId: (zoneId: string | null) => void
 
-  // Remote Players
   remotePlayers: Record<string, Player>
   setRemotePlayer: (player: Player) => void
   updateRemotePlayerPosition: (id: string, x: number, y: number, direction: 'up' | 'down' | 'left' | 'right', isMoving: boolean) => void
   removeRemotePlayer: (id: string) => void
   clearRemotePlayers: () => void
 
-  // Zone call connection state (per-peer, surfaced for the 'connecting' indicator).
-  // Stored separately from Player so React subscribers can avoid re-rendering on
-  // every move packet just because callState flipped.
   callStates: Record<string, 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed'>
   setCallState: (peerId: string, state: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed') => void
   clearCallStates: () => void
 
-  // Session / Room State
   roomId: string | null
   isOwner: boolean
   isHost: boolean
@@ -155,12 +147,10 @@ interface GameStore {
   updatePublicRoomDetails: (details: Partial<RoomSessionOptions>) => void
   setConnectionHostId: (id: string | null) => void
 
-  // Floating Reactions
   reactions: ReactionItem[]
   addReaction: (reaction: ReactionItem) => void
   removeReaction: (id: string) => void
 
-  // Online Users & Permissions Drawer
   isOnlineUsersOpen: boolean
   setOnlineUsersOpen: (open: boolean) => void
   toggleOnlineUsers: () => void
@@ -176,18 +166,13 @@ interface GameStore {
   teleportToPlayer: (targetId: string) => void
   kickPlayer: (targetId: string) => void
 
-  // View Mode (Immersive vs Simplified)
   mapViewMode: 'immersive' | 'simplified'
   isManualSimplified: boolean
   setMapViewMode: (mode: 'immersive' | 'simplified', isManual?: boolean) => void
 
-  // Camera zoom persistido: o zoom mora no engine (memória) e era zerado
-  // por todo fitToScreen (focus/resize/troca de modo). Persistido aqui para
-  // restaurar em vez de resetar. null = nunca ajustado → faz fit inicial.
   cameraZoom: number | null
   setCameraZoom: (zoom: number | null) => void
 
-  // Door Knocking System
   pendingKnocks: RoomKnockRequest[]
   addKnockRequest: (request: RoomKnockRequest) => void
   removeKnockRequest: (id: string) => void
@@ -346,9 +331,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
         },
       }
 
-      // A friendship confirmed under a stable user id supersedes older entries
-      // for the same person: ones already resolved to that user, and ones saved
-      // under a temporary connection id (unreachable, matched by name).
       const userId = getFriendUserId(profile)
       if (userId) {
         const nameLower = (profile.name || '').trim().toLowerCase()
@@ -537,9 +519,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setLocalPosition: (x, y, direction, isMoving) =>
     set((state) => {
       const p = state.localPlayer
-      // Guard: CanvasEngine calls this every frame while moving. Skip the
-      // zustand notify (which re-renders every subscribed React component)
-      // when nothing actually changed.
       if (
         p.x === x &&
         p.y === y &&
@@ -619,7 +598,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setCurrentZoneId: (zoneId) =>
     set((state) => {
-      if (state.localPlayer.currentZoneId === zoneId) return state
+      const prevZoneId = state.localPlayer.currentZoneId
+      if (prevZoneId === zoneId) return state
+      if (prevZoneId === null && zoneId !== null) {
+        playSoundEffect('user_join')
+      } else if (prevZoneId !== null && zoneId === null) {
+        playSoundEffect('user_leave')
+      }
       return {
         localPlayer: {
           ...state.localPlayer,
@@ -713,8 +698,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setCallState: (peerId, state) =>
     set((store) => {
       const prev = store.callStates[peerId]
-      // Idle is the default — don't store it, prevents infinite growth for
-      // peers we never called (e.g. everyone outside our zone).
+      if (state === 'connected' && prev !== 'connected') {
+        playSoundEffect('user_join')
+      } else if (
+        prev === 'connected' &&
+        (state === 'idle' || state === 'failed') &&
+        store.localPlayer.currentZoneId !== null
+      ) {
+        playSoundEffect('user_leave')
+      }
       if (state === 'idle') {
         if (prev === undefined) return store
         const next = { ...store.callStates }
@@ -879,10 +871,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     })),
 }))
 
-/** Stable identity of the local user, regardless of the current connection id. */
 export const getLocalUserId = (): string => getPlayerUserId(useGameStore.getState().localPlayer)
 
-// What an error report says about the room (utils/reportContext.ts): counts and states, no names.
 registerReportContext('room', () => {
   const state = useGameStore.getState()
   const calls: Record<string, number> = {}
@@ -904,8 +894,6 @@ registerReportContext('room', () => {
   }
 })
 
-// The transitions of the room, wherever they come from (join, failover, a lost connection),
-// in logs/call-debug-<day>.log and in the trail of error reports.
 useGameStore.subscribe((state, previous) => {
   if (state.roomId !== previous.roomId) {
     if (state.roomId) diagLog('room', 'entered', { roomId: state.roomId, host: state.isHost }, state.roomId)

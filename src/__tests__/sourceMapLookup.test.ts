@@ -4,7 +4,6 @@ import { Segment, encodeMappings, encodeVlq, makeSourceMap } from './helpers/sou
 
 const SOURCES = ['../../src/p2p/PeerManager.ts', '../../node_modules/peerjs/dist/bundler.mjs']
 
-// Generated line 1: three pieces of code. Line 2: nothing. Line 3: one piece with a name, one with no source.
 const MAP = makeSourceMap(
   SOURCES,
   [
@@ -22,7 +21,6 @@ const MAP = makeSourceMap(
   ['unused', 'promoteToHost']
 )
 
-/** Stack positions are 1-based, line and column. */
 const at = (line: number, col: number) => ({ line, col })
 
 describe('lookupPositions', () => {
@@ -125,7 +123,6 @@ describe('lookupPositions', () => {
 
     expect(lookupPositions(damaged, [at(1, 1), at(2, 4)])).toEqual([{ source: 'a.ts', line: 5, col: 3 }, null])
     expect(lookupPositions({ sources: ['a.ts'], mappings: 'g' }, [at(1, 1)])).toEqual([null])
-    // The last value of a segment cut off in the middle: the segment is not to be believed.
     expect(lookupPositions({ sources: ['a.ts'], mappings: 'AAAg' }, [at(1, 1)])).toEqual([null])
   })
 

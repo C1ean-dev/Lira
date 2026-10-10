@@ -30,9 +30,7 @@ export interface ParticipantData {
   statusEmoji?: string
   callState?: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed'
   onRetryCall?: () => void
-  /** The app of this participant waits for a click before a live is sent to it, and before showing one. */
   liveOptIn?: boolean
-  /** This user clicked to watch the live of this participant. */
   liveWatching?: boolean
 }
 
@@ -56,12 +54,8 @@ export const GridParticipantTile: React.FC<Props> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const isLive = Boolean(user.screenStream || user.isScreenSharing)
   const activeStream = user.screenStream || user.stream
-  // A live of somebody else is shown after a click to watch it.
   const liveGate = useLiveGate(user.id, Boolean(!user.isLocal && isLive && user.liveOptIn), !!user.liveWatching)
 
-  // Granular selectors: the media store updates on every VU-meter tick and
-  // every peer-stream change — subscribing whole-store would re-render every
-  // tile on each tick. Select only the volume/output slices this tile needs.
   const participantVolumes = useMediaStore((s) => s.participantVolumes)
   const setParticipantVolume = useMediaStore((s) => s.setParticipantVolume)
   const liveStreamVolume = useMediaStore((s) => s.liveStreamVolume)
@@ -87,9 +81,6 @@ export const GridParticipantTile: React.FC<Props> = ({
     const video = videoRef.current
     if (!video || !activeStream) return
 
-    // Picture only. The sound comes from <RemoteAudio>: a <video> stays silent
-    // until its video track delivers a frame, which a peer with the camera
-    // off may never send.
     video.muted = true
     return attachStreamToVideo(video, activeStream, {
       tile: 'grid',
@@ -98,13 +89,10 @@ export const GridParticipantTile: React.FC<Props> = ({
       muted: true,
       isLive,
     })
-    // The <video> is a new element after the click to watch.
   }, [activeStream, isLive, user.isLocal, liveGate.needsClick])
 
-  // The sidebar thumbnail crops the live to fill its box; the stage shows all of it.
   useLiveViewBox(user.id, videoRef, isSidebar ? 'cover' : 'contain', liveGate.watching)
 
-  // Sound of a remote participant, with the viewer's volume and output device.
   const remoteAudio =
     !user.isLocal && activeStream ? (
       <RemoteAudio
@@ -133,7 +121,6 @@ export const GridParticipantTile: React.FC<Props> = ({
     }
   }
 
-  // Compact Sidebar Thumbnail
   if (isSidebar) {
     return (
       <div
@@ -196,14 +183,12 @@ export const GridParticipantTile: React.FC<Props> = ({
           </>
         )}
 
-        {/* A live starts with a click: until then only the microphone arrives */}
         {(liveGate.needsClick || liveGate.connecting) && (
           <LiveWatchPrompt size="tile" name={user.name} connecting={liveGate.connecting} onWatch={liveGate.watch} />
         )}
 
         {remoteAudio}
 
-        {/* Live Badge if sharing in sidebar */}
         {isLive && (
           <div className="absolute top-1.5 left-1.5 flex items-center gap-1 px-1.5 py-0.5 bg-rose-600 text-white rounded-md text-[8px] font-bold shadow animate-pulse">
             <Radio className="w-2.5 h-2.5" />
@@ -211,7 +196,6 @@ export const GridParticipantTile: React.FC<Props> = ({
           </div>
         )}
 
-        {/* Reconnecting Badge in sidebar */}
         {!user.isLocal && !isLive && user.callState === 'reconnecting' && (
           <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1 px-1.5 py-0.5 bg-amber-500 text-white rounded text-[8px] font-bold shadow animate-pulse">
             <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
@@ -219,7 +203,6 @@ export const GridParticipantTile: React.FC<Props> = ({
           </div>
         )}
 
-        {/* Failed overlay in sidebar */}
         {!user.isLocal && !isLive && user.callState === 'failed' && (
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-20 flex flex-col items-center justify-center p-1 text-center">
             <span className="text-[10px] text-rose-400 font-bold mb-1">Chamada caiu</span>
@@ -235,7 +218,6 @@ export const GridParticipantTile: React.FC<Props> = ({
           </div>
         )}
 
-        {/* Small Bottom Name Tag */}
         <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between px-2 py-0.5 bg-black/70 backdrop-blur-md rounded-lg text-[10px] text-white">
           <span className="truncate font-semibold">
             {isLive ? `Tela (${user.name})` : user.isLocal ? `${user.name} (Você)` : user.name}
@@ -274,7 +256,6 @@ export const GridParticipantTile: React.FC<Props> = ({
     )
   }
 
-  // Large Main / Grid Tile
   return (
     <div
       onClick={onFocus}
@@ -292,7 +273,6 @@ export const GridParticipantTile: React.FC<Props> = ({
           : 'border-[#2a3142] hover:border-slate-500'
       }`}
     >
-      {/* Screen Share or Video Content */}
       {liveGate.needsClick ? null : isLive ? (
         <video
           ref={videoRef}
@@ -307,7 +287,6 @@ export const GridParticipantTile: React.FC<Props> = ({
         />
       ) : (
         <>
-          {/* Main Camera Video */}
           <video
             ref={videoRef}
             autoPlay
@@ -320,7 +299,6 @@ export const GridParticipantTile: React.FC<Props> = ({
             }`}
           />
 
-          {/* Camera Off Avatar Screen */}
           {!shouldShowVideo && (
             <div className="flex flex-col items-center gap-3.5">
               <PlayerAvatar
@@ -339,14 +317,12 @@ export const GridParticipantTile: React.FC<Props> = ({
         </>
       )}
 
-      {/* A live starts with a click: until then only the microphone arrives */}
       {(liveGate.needsClick || liveGate.connecting) && (
         <LiveWatchPrompt size="stage" name={user.name} connecting={liveGate.connecting} onWatch={liveGate.watch} />
       )}
 
       {remoteAudio}
 
-      {/* Top Badges: LIVE indicator + Reconnecting + Action Buttons */}
       <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
         {isLive ? (
           <div className="flex items-center gap-1.5 px-3 py-1 bg-rose-600/95 text-white rounded-xl text-xs font-bold shadow-lg flex-shrink-0 animate-pulse pointer-events-auto">
@@ -367,7 +343,6 @@ export const GridParticipantTile: React.FC<Props> = ({
           <div />
         )}
 
-        {/* Failed state overlay for main tile */}
         {!user.isLocal && !isLive && user.callState === 'failed' && (
           <div className="absolute inset-0 bg-black/85 backdrop-blur-md z-30 flex flex-col items-center justify-center p-4 text-center pointer-events-auto">
             <span className="text-base text-rose-400 font-bold mb-1">Conexão de áudio/vídeo perdida</span>
@@ -384,9 +359,7 @@ export const GridParticipantTile: React.FC<Props> = ({
           </div>
         )}
 
-        {/* Action buttons on hover */}
         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto">
-          {/* Viewer Volume Control for Remote User */}
           {!user.isLocal && (
             <div
               className="relative group/vol flex items-center bg-black/80 hover:bg-black/95 rounded-xl border border-white/15 px-2 py-1.5 backdrop-blur-md shadow-md gap-1.5"
@@ -412,7 +385,6 @@ export const GridParticipantTile: React.FC<Props> = ({
                 )}
               </button>
 
-              {/* Slider expands smoothly on hover */}
               <div className="w-0 group-hover/vol:w-32 transition-all duration-200 overflow-hidden flex items-center gap-1.5">
                 <input
                   type="range"
@@ -475,7 +447,6 @@ export const GridParticipantTile: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Bottom Name Pill */}
       <div className="absolute bottom-3 left-3 pointer-events-none z-10">
         <div className="bg-black/80 backdrop-blur-md px-3.5 py-1.5 rounded-xl flex items-center gap-2 border border-white/10 text-xs font-semibold text-white pointer-events-auto">
           <span>{isLive ? `Tela de ${user.name}` : user.isLocal ? `${user.name} (Você)` : user.name}</span>

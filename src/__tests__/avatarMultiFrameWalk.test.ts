@@ -65,17 +65,15 @@ describe('avatarMultiFrameWalk - Multi-frame Walk Cycle and Background Removal',
       return frames[walkFrame % frames.length]
     }
 
-    // When stopped / idle: must return frame 0
     expect(pickFrame(rightFrames, false, 0)).toBe('frame_0_idle')
     expect(pickFrame(rightFrames, false, 2)).toBe('frame_0_idle')
     expect(pickFrame(rightFrames, false, 3)).toBe('frame_0_idle')
 
-    // When moving: loops through steps
     expect(pickFrame(rightFrames, true, 0)).toBe('frame_0_idle')
     expect(pickFrame(rightFrames, true, 1)).toBe('frame_1_step1')
     expect(pickFrame(rightFrames, true, 2)).toBe('frame_2_step2')
     expect(pickFrame(rightFrames, true, 3)).toBe('frame_3_step3')
-    expect(pickFrame(rightFrames, true, 4)).toBe('frame_0_idle') // wraps around loop
+    expect(pickFrame(rightFrames, true, 4)).toBe('frame_0_idle')
     expect(pickFrame(rightFrames, true, 5)).toBe('frame_1_step1')
   })
 
@@ -96,27 +94,18 @@ describe('avatarMultiFrameWalk - Multi-frame Walk Cycle and Background Removal',
 
     const frames = ['Q1', 'Q2', 'Q3', 'Q4']
 
-    // Test 1: Move Q2 (index 1) to index 3 (end)
     const reordered1 = reorder(frames, 1, 3)
     expect(reordered1).toEqual(['Q1', 'Q3', 'Q4', 'Q2'])
-    // If active was Q2 (index 1), active follows to 3
     expect(calcNextActiveIndex(1, 1, 3)).toBe(3)
-    // If active was Q3 (index 2), it shifts down to 1
     expect(calcNextActiveIndex(2, 1, 3)).toBe(1)
-    // If active was Q1 (index 0), it stays 0
     expect(calcNextActiveIndex(0, 1, 3)).toBe(0)
 
-    // Test 2: Move Q4 (index 3) to index 0 (front)
     const reordered2 = reorder(frames, 3, 0)
     expect(reordered2).toEqual(['Q4', 'Q1', 'Q2', 'Q3'])
-    // If active was Q4 (index 3), active follows to 0
     expect(calcNextActiveIndex(3, 3, 0)).toBe(0)
-    // If active was Q2 (index 1), it shifts up to 2
     expect(calcNextActiveIndex(1, 3, 0)).toBe(2)
-    // If active was Q1 (index 0), it shifts up to 1
     expect(calcNextActiveIndex(0, 3, 0)).toBe(1)
 
-    // Test 3: Move Q1 (index 0) to index 1 (one step right)
     const reordered3 = reorder(frames, 0, 1)
     expect(reordered3).toEqual(['Q2', 'Q1', 'Q3', 'Q4'])
     expect(calcNextActiveIndex(0, 0, 1)).toBe(1)

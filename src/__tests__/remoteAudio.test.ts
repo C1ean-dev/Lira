@@ -37,7 +37,6 @@ const track = (kind: 'audio' | 'video', id: string) => ({
   removeEventListener: vi.fn(),
 })
 
-/** What a peer with the camera off sends: a mic and the placeholder video that never delivers a frame. */
 const peerStream = () => {
   const mic = track('audio', 'remote-mic')
   const placeholder = track('video', 'remote-placeholder-video')
@@ -101,9 +100,6 @@ describe('remote call audio', () => {
 
   describe('attachRemoteAudio', () => {
     it('plays the peer audio without waiting for a video frame', () => {
-      // A <video> fed with the whole stream does not start (no sound either)
-      // until the video track delivers a frame. The playback element must
-      // therefore never receive the video track.
       const { stream, mic } = peerStream()
       const el = fakeElement()
       attachRemoteAudio(el, stream, { tile: 'mini-audio', peer: 'Ana', muted: false })

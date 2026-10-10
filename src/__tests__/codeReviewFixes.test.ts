@@ -51,7 +51,6 @@ describe('Independent Review Fixes & Hardening Tests', () => {
       expect(useCustomAssetsStore.getState().getAllCategories()).toContain('Móveis')
       expect(useCustomAssetsStore.getState().getAssetById('asset-furn-1')?.category).toBe('Móveis')
 
-      // Now delete category 'Móveis'
       useCustomAssetsStore.getState().deleteCategory('Móveis')
 
       const updatedAsset = useCustomAssetsStore.getState().getAssetById('asset-furn-1')
@@ -107,7 +106,6 @@ describe('Independent Review Fixes & Hardening Tests', () => {
       const mapStore = useMapStore.getState()
       const gameStore = useGameStore.getState()
 
-      // Add a test zone
       const zoneId = 'test-zone-99'
       mapStore.addOrUpdateZone({
         id: zoneId,
@@ -122,14 +120,11 @@ describe('Independent Review Fixes & Hardening Tests', () => {
         isLocked: false,
       })
 
-      // Put player in zone
       gameStore.setCurrentZoneId(zoneId)
       expect(useGameStore.getState().localPlayer.currentZoneId).toBe(zoneId)
 
-      // Remove the zone
       useMapStore.getState().removeZone(zoneId)
 
-      // Player must be safely ejected from the deleted zone
       expect(useGameStore.getState().localPlayer.currentZoneId).toBeNull()
     })
   })
@@ -138,7 +133,6 @@ describe('Independent Review Fixes & Hardening Tests', () => {
     it('applies padding parameter when cropping content bounding box', () => {
       let drawnArgs: any = null
 
-      // Mock document and canvas for the unit test
       const mockCropCtx = {
         imageSmoothingEnabled: false,
         drawImage: (...args: any[]) => {
@@ -161,7 +155,6 @@ describe('Independent Review Fixes & Hardening Tests', () => {
         const w = 30
         const h = 30
         const data = new Uint8ClampedArray(w * h * 4)
-        // Fill square at (10, 10) to (19, 19) with alpha 255
         for (let y = 10; y <= 19; y++) {
           for (let x = 10; x <= 19; x++) {
             data[(y * w + x) * 4 + 3] = 255
@@ -177,21 +170,19 @@ describe('Independent Review Fixes & Hardening Tests', () => {
           toDataURL: () => 'data:image/png;source',
         } as any
 
-        // Crop with 0 padding
         const res0 = cropContentBoundingBox(mockSourceCanvas, 0)
         expect(res0).toBe('data:image/png;cropped')
-        expect(drawnArgs[1]).toBe(10) // minX
-        expect(drawnArgs[2]).toBe(10) // minY
-        expect(drawnArgs[3]).toBe(10) // cropW (19 - 10 + 1)
-        expect(drawnArgs[4]).toBe(10) // cropH (19 - 10 + 1)
+        expect(drawnArgs[1]).toBe(10)
+        expect(drawnArgs[2]).toBe(10)
+        expect(drawnArgs[3]).toBe(10)
+        expect(drawnArgs[4]).toBe(10)
 
-        // Crop with 2 padding
         const res2 = cropContentBoundingBox(mockSourceCanvas, 2)
         expect(res2).toBe('data:image/png;cropped')
-        expect(drawnArgs[1]).toBe(8) // minX - 2
-        expect(drawnArgs[2]).toBe(8) // minY - 2
-        expect(drawnArgs[3]).toBe(14) // cropW (10 + 4)
-        expect(drawnArgs[4]).toBe(14) // cropH (10 + 4)
+        expect(drawnArgs[1]).toBe(8)
+        expect(drawnArgs[2]).toBe(8)
+        expect(drawnArgs[3]).toBe(14)
+        expect(drawnArgs[4]).toBe(14)
       } finally {
         ;(globalThis as any).document = originalDoc
       }

@@ -3,12 +3,6 @@ import { Download } from 'lucide-react'
 import { exportDiagLogs } from '../utils/diagnosticLogger'
 import type { LogExport } from '../utils/diagnosticLogger'
 
-/**
- * Makes the one file a person sends when something went wrong: a zip with the
- * error reports and the logs of the last days, written to the Downloads folder
- * and shown there (electron/logBundle.ts). The styling comes from where it is used.
- */
-
 export type ExportLogsStatus = 'idle' | 'working' | LogExport['kind']
 
 const LABELS: Record<ExportLogsStatus, string> = {
@@ -23,7 +17,6 @@ const LABELS: Record<ExportLogsStatus, string> = {
 const TITLE =
   'Junta os relatórios de erro e os logs dos últimos dias num arquivo .zip na pasta Downloads, para enviar ao suporte. Não inclui o texto das mensagens do chat.'
 
-/** How long the outcome stays on the button before it offers the export again. */
 const OUTCOME_MS = 4000
 
 export function exportLogsLabel(status: ExportLogsStatus): string {
@@ -44,7 +37,6 @@ export function ExportLogsButton({ className }: { className?: string }) {
     try {
       outcome = exportLogsStatus(await exportDiagLogs())
     } catch {
-      // the button says it failed
     }
     setStatus(outcome)
     setTimeout(() => setStatus('idle'), OUTCOME_MS)

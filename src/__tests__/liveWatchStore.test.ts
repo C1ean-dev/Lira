@@ -86,7 +86,6 @@ describe('the lives this user is watching', () => {
       useLiveWatchStore.getState().watch('ana')
       expect(useLiveWatchStore.getState().watching.ana).toBe(1_700_000_000_000)
 
-      // A second click does not start the count again.
       vi.setSystemTime(1_700_000_005_000)
       useLiveWatchStore.getState().watch('ana')
       expect(useLiveWatchStore.getState().watching.ana).toBe(1_700_000_000_000)
@@ -192,7 +191,6 @@ describe('the lives this user is watching', () => {
       noteFirstFrame('ana')
       expect(await log()).toEqual([{ sharer: 'ana', ms: 1840 }])
 
-      // A new click is a new wait.
       useLiveWatchStore.getState().stop('ana')
       vi.setSystemTime(1_700_000_010_000)
       useLiveWatchStore.getState().watch('ana')

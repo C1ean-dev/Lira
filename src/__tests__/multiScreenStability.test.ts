@@ -49,7 +49,6 @@ describe('Multi-Screen Sharing & Connection Stability Tests', () => {
   })
 
   it('adapts to 720p @ 60fps (3.0 Mbps) when a second screen is shared in the zone', () => {
-    // Player 2 starts screen sharing
     useGameStore.getState().setRemotePlayer({
       ...useGameStore.getState().remotePlayers['player-2'],
       isScreenSharing: true,
@@ -62,7 +61,6 @@ describe('Multi-Screen Sharing & Connection Stability Tests', () => {
   })
 
   it('adapts to 720p @ 30fps (2.0 Mbps) when 3 or more screens are shared simultaneously in the zone', () => {
-    // Both Player 2 and Player 3 are already screen sharing
     useGameStore.getState().setRemotePlayer({
       ...useGameStore.getState().remotePlayers['player-2'],
       isScreenSharing: true,

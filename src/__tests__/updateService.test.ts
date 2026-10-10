@@ -88,15 +88,12 @@ describe('Update Service & Version Checker', () => {
     expect(res).toBe(true)
     expect(applyMock).toHaveBeenCalledWith(undefined)
 
-    // Test passing releaseUrl first, then version
     await UpdateService.applyUpdate('https://github.com/release', 'v1.0.79')
     expect(applyMock).toHaveBeenCalledWith('v1.0.79')
 
-    // Test passing version first, then releaseUrl
     await UpdateService.applyUpdate('v1.0.79', 'https://github.com/release')
     expect(applyMock).toHaveBeenCalledWith('v1.0.79')
 
-    // Test passing only version
     await UpdateService.applyUpdate('v1.0.79')
     expect(applyMock).toHaveBeenCalledWith('v1.0.79')
 
