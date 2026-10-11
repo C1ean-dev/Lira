@@ -1,5 +1,17 @@
 apply plugin: 'com.android.application'
 
+def getComputedVersionCode(String verName) {
+    try {
+        def parts = verName.replaceAll(/[^0-9.]/, '').split('\\.')
+        int major = parts.length > 0 ? parts[0].toInteger() : 1
+        int minor = parts.length > 1 ? parts[1].toInteger() : 0
+        int patch = parts.length > 2 ? parts[2].toInteger() : 0
+        return major * 100000 + minor * 1000 + patch
+    } catch (Exception e) {
+        return 101198
+    }
+}
+
 android {
     namespace "com.lira.app"
     compileSdk rootProject.ext.compileSdkVersion
@@ -7,11 +19,11 @@ android {
         applicationId "com.lira.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // Set by the CI workflow from the release tag; local builds keep the defaults.
-        // Assignments, not the `versionCode x` call form: without "=" Groovy reads
-        // `versionCode (x).toInteger()` as `versionCode(x).toInteger()` and the build fails.
-        versionCode = (System.getenv("LIRA_VERSION_CODE") ?: "1193").toInteger()
-        versionName = System.getenv("LIRA_VERSION_NAME") ?: "1.1.93"
+        // Automatically computed monotonic versionCode based on version name (e.g. 1.1.98 -> 101098).
+        // Can be overridden via LIRA_VERSION_CODE env var.
+        def vName = System.getenv("LIRA_VERSION_NAME") ?: "1.1.98"
+        versionName = vName
+        versionCode = (System.getenv("LIRA_VERSION_CODE") ?: "${getComputedVersionCode(vName)}").toInteger()
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -19,10 +31,30 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            def keystorePath = System.getenv("LIRA_KEYSTORE_PATH") ?: "lira-release.jks"
+            def keystoreFile = file(keystorePath)
+            if (keystoreFile.exists()) {
+                storeFile keystoreFile
+                storePassword System.getenv("LIRA_STORE_PASSWORD") ?: "lirapassword"
+                keyAlias System.getenv("LIRA_KEY_ALIAS") ?: "lira"
+                keyPassword System.getenv("LIRA_KEY_PASSWORD") ?: "lirapassword"
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+        }
+        debug {
+            def keystorePath = System.getenv("LIRA_KEYSTORE_PATH") ?: "lira-release.jks"
+            def keystoreFile = file(keystorePath)
+            if (keystoreFile.exists()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
