@@ -62,6 +62,7 @@ export const GridParticipantTile: React.FC<Props> = ({
   const selectedAudioOutput = useMediaStore((s) => s.selectedAudioOutput)
   const isDeafened = useMediaStore((s) => s.isDeafened)
   const isSilenced = useMediaStore((s) => s.isUserSilenced(user.id, user.name))
+  const removeCaptureBorder = useMediaStore((s) => s.removeCaptureBorder)
   const networkQuality = useUserNetworkQuality(user.id, user.isLocal)
 
   const rawVolume =
@@ -152,7 +153,7 @@ export const GridParticipantTile: React.FC<Props> = ({
             onCanPlay={() => videoRef.current?.play().catch(() => {})}
             onLoadedData={liveGate.onFrame}
             onPlaying={liveGate.onFrame}
-            className="w-full h-full object-cover bg-black"
+            className={`w-full h-full object-cover bg-black ${removeCaptureBorder ? 'scale-[1.01]' : ''}`}
           />
         ) : (
           <>
@@ -279,7 +280,7 @@ export const GridParticipantTile: React.FC<Props> = ({
           onCanPlay={() => videoRef.current?.play().catch(() => {})}
           onLoadedData={liveGate.onFrame}
           onPlaying={liveGate.onFrame}
-          className="w-full h-full object-contain bg-black"
+          className={`w-full h-full object-contain bg-black ${removeCaptureBorder ? 'scale-[1.01]' : ''}`}
         />
       ) : (
         <>

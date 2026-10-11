@@ -73,6 +73,7 @@ interface MediaStore {
   screenShareTargetTitle: string | null
   screenShareAudioMode: 'app_only' | 'app_and_mic'
   screenShareOptimizationMode: 'quality' | 'smoothness'
+  removeCaptureBorder: boolean
   soundEffectsEnabled: boolean
   soundEffectsVolume: number
 
@@ -92,6 +93,8 @@ interface MediaStore {
   setScreenShareTargetTitle: (title: string | null) => void
   setScreenShareAudioMode: (mode: 'app_only' | 'app_and_mic') => void
   setScreenShareOptimizationMode: (mode: 'quality' | 'smoothness') => void
+  setRemoveCaptureBorder: (enabled: boolean) => void
+  toggleRemoveCaptureBorder: () => void
   setSoundEffectsEnabled: (enabled: boolean) => void
   setSoundEffectsVolume: (volume: number) => void
 
@@ -233,6 +236,7 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   screenShareAudioMode: saved.screenShareAudioMode === 'app_and_mic' ? 'app_and_mic' : 'app_only',
   screenShareOptimizationMode:
     saved.screenShareOptimizationMode === 'smoothness' ? 'smoothness' : 'quality',
+  removeCaptureBorder: saved.removeCaptureBorder !== undefined ? Boolean(saved.removeCaptureBorder) : true,
   soundEffectsEnabled: saved.soundEffectsEnabled !== undefined ? Boolean(saved.soundEffectsEnabled) : true,
   soundEffectsVolume: typeof saved.soundEffectsVolume === 'number' ? saved.soundEffectsVolume : 80,
   isHardwareAccelerationEnabled:
@@ -328,6 +332,15 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
     saveAudioSettings({ screenShareOptimizationMode: mode })
     set({ screenShareOptimizationMode: mode })
     MediaManager.getInstance().updateScreenShareOptimizationMode(mode)
+  },
+  setRemoveCaptureBorder: (enabled: boolean) => {
+    saveAudioSettings({ removeCaptureBorder: enabled })
+    set({ removeCaptureBorder: enabled })
+  },
+  toggleRemoveCaptureBorder: () => {
+    const next = !get().removeCaptureBorder
+    saveAudioSettings({ removeCaptureBorder: next })
+    set({ removeCaptureBorder: next })
   },
   setSoundEffectsEnabled: (soundEffectsEnabled: boolean) => {
     saveAudioSettings({ soundEffectsEnabled })

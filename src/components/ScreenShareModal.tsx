@@ -231,6 +231,20 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
               )}
             </div>
 
+            {activeTab === 'window' && (
+              <div className="mb-4 p-3.5 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl flex items-start gap-3 text-xs text-indigo-300 animate-in fade-in duration-150">
+                <span className="text-base shrink-0">💡</span>
+                <div className="space-y-0.5">
+                  <p className="font-bold text-indigo-200">
+                    Transmissão de Jogos sem a borda amarela do Windows:
+                  </p>
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    O Windows 10/11 desenha uma borda amarela de privacidade em janelas capturadas. Para transmitir jogos como League of Legends sem nenhuma borda e com taxa máxima de quadros, recomendamos selecionar a aba <strong className="text-white font-semibold">Telas Inteiras</strong> (captura direta DXGI).
+                  </p>
+                </div>
+              </div>
+            )}
+
             {loading ? (
               <div className="text-center py-10 text-sm text-slate-400">Detectando telas disponíveis...</div>
             ) : !isElectron ? (
