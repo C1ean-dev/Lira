@@ -678,7 +678,20 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
       localStream.getTracks().forEach((track) => track.stop())
     }
     if (localScreenStream) {
-      localScreenStream.getTracks().forEach((track) => track.stop())
+      localScreenStream.getTracks().forEach((track) => {
+        try {
+          track.enabled = false
+          track.onended = null
+          track.stop()
+        } catch {}
+        try {
+          localScreenStream.removeTrack(track)
+        } catch {}
+      })
+    }
+    const electronAPI = typeof window !== 'undefined' ? (window as any).electronAPI : null
+    if (electronAPI?.stopScreenCapture) {
+      electronAPI.stopScreenCapture().catch(() => {})
     }
     set({
       localStream: null,

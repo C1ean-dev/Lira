@@ -99,6 +99,14 @@ export function attachStreamToVideo(
 
   return () => {
     try {
+      if (video.srcObject === stream) {
+        video.srcObject = null
+      }
+    } catch {}
+    try {
+      video.pause()
+    } catch {}
+    try {
       stream.removeEventListener('addtrack', onTrackEvent)
     } catch {}
     try {

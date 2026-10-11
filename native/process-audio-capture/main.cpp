@@ -588,6 +588,19 @@ int RunScreenCapture(int left, int top, int width, int height) {
 }  // namespace
 
 int wmain(int argc, wchar_t* argv[]) {
+  // Fast path: Redraw window frame after capture stops to ensure DWM drops the yellow border.
+  if (argc >= 3 && wcscmp(argv[1], L"--refresh-window") == 0) {
+    HWND targetWindow = nullptr;
+    if (ParseWindowHandle(argv[2], &targetWindow) && IsWindow(targetWindow)) {
+      SetWindowPos(targetWindow, nullptr, 0, 0, 0, 0,
+                   SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+      RedrawWindow(targetWindow, nullptr, nullptr,
+                   RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW);
+      return 0;
+    }
+    return 1;
+  }
+
   // Supported invocations:
   // 1. Window capture: process-audio-capture --source-id window:<HWND>:<index>
   // 2. Screen capture: process-audio-capture --source-id screen:<id> --screen-bounds <left> <top> <width> <height>

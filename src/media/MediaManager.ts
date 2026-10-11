@@ -50,6 +50,7 @@ export class MediaManager {
   private rnnoiseEngine: RnnoiseProcessor
   private activeEngine: AudioEngine | null = null
   private rawUserStream: MediaStream | null = null
+  private rawScreenStream: MediaStream | null = null
   private screenAudioContext: AudioContext | null = null
   private screenGainNode: GainNode | null = null
   private screenDuckInterval: number | null = null
@@ -1088,6 +1089,7 @@ export class MediaManager {
         }
       }
 
+      this.rawScreenStream = screenStream
       let applicationAudioTrack = screenStream.getAudioTracks()[0] || null
       const localStream = useMediaStore.getState().localStream
       diagLog('screenshare-audio', 'display-capture-ready', {
@@ -1290,13 +1292,37 @@ export class MediaManager {
     this.processAudioCapture = null
     useMediaStore.getState().setScreenShareTargetTitle(null)
 
-    const currentScreen = useMediaStore.getState().localScreenStream
-    if (currentScreen) {
-      currentScreen.getTracks().forEach((t) => t.stop())
+    const streamsToClean: MediaStream[] = []
+    const storeScreen = useMediaStore.getState().localScreenStream
+    if (storeScreen) streamsToClean.push(storeScreen)
+    if (this.rawScreenStream && this.rawScreenStream !== storeScreen) streamsToClean.push(this.rawScreenStream)
+    this.rawScreenStream = null
+
+    for (const stream of streamsToClean) {
+      try {
+        stream.getTracks().forEach((track) => {
+          try {
+            track.enabled = false
+            track.onended = null
+            track.stop()
+          } catch {}
+          try {
+            stream.removeTrack(track)
+          } catch {}
+        })
+      } catch {}
     }
+
     useMediaStore.getState().setLocalScreenStream(null)
     useMediaStore.getState().setScreenSharing(false)
     useGameStore.getState().setLocalPlayer({ isScreenSharing: false })
+
+    const electronAPI = typeof window !== 'undefined' ? (window as any).electronAPI : null
+    if (electronAPI?.stopScreenCapture) {
+      electronAPI.stopScreenCapture().catch(() => {})
+    } else if (electronAPI?.setScreenSource) {
+      electronAPI.setScreenSource(null, false, 'auto', null).catch(() => {})
+    }
 
     const localStream = useMediaStore.getState().localStream
     let camTrack = localStream?.getVideoTracks()[0] || null
@@ -1333,7 +1359,7 @@ export class MediaManager {
       config: this.activeScreenConfig,
     })
 
-    const electronAPI = (window as any).electronAPI
+    const electronAPI = typeof window !== 'undefined' ? (window as any).electronAPI : null
     const isElectron = Boolean(electronAPI?.setScreenSource)
 
     if (!isElectron) {
@@ -1428,6 +1454,7 @@ export class MediaManager {
           } else {
             useMediaStore.getState().setLocalScreenStream(newStream)
           }
+          this.rawScreenStream = newStream
 
           const optimizationMode =
             config.optimizationMode ?? useMediaStore.getState().screenShareOptimizationMode ?? 'quality'

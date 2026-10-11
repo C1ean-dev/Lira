@@ -164,7 +164,7 @@ async function resolveScreenBounds(sourceId: string): Promise<{ x: number; y: nu
     const byId = displays.find((d) => String(d.id) === candidateId)
     if (byId) return byId.bounds
 
-    const sources = await desktopCapturer.getSources({ types: ['screen'], fetchWindowIcons: false })
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 }, fetchWindowIcons: false })
     const found = sources.find((s) => s.id === sourceId)
     const displayId = found && (found as any).display_id
     if (displayId !== undefined && displayId !== null && String(displayId).length > 0) {
@@ -495,7 +495,7 @@ function createWindow() {
     pendingScreenCapture = null
 
     desktopCapturer
-      .getSources({ types: ['screen', 'window'], fetchWindowIcons: false })
+      .getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 }, fetchWindowIcons: false })
       .then((sources) => {
         if (!sources || sources.length === 0) {
           callback({})
@@ -541,6 +541,21 @@ function createWindow() {
       })
   })
 
+  function refreshWindowDwmBorder(sourceId: string) {
+    try {
+      const helperPath = getProcessAudioHelperPath()
+      if (fs.existsSync(helperPath)) {
+        const child = spawn(helperPath, ['--refresh-window', sourceId], {
+          windowsHide: true,
+          stdio: 'ignore',
+        })
+        child.unref()
+      }
+    } catch (err) {
+      console.warn('[Electron] Could not refresh window frame for', sourceId, err)
+    }
+  }
+
   ipcMain.handle('set-screen-source', (_event, payload: { sourceId?: string | null; sourceName?: string | null; withAudio?: boolean; captureMethod?: string }) => {
     lastSelectedSourceId = payload?.sourceId ?? null
     lastSelectedSourceName = payload?.sourceName ?? null
@@ -552,6 +567,19 @@ function createWindow() {
       captureMethod: payload?.captureMethod || 'auto',
     }
     writeMainAudioDiagnostic('capture-method-selected', { sourceId: lastSelectedSourceId, sourceName: lastSelectedSourceName, captureMethod: payload?.captureMethod || 'auto' })
+    return true
+  })
+
+  ipcMain.handle('stop-screen-capture', () => {
+    const prevSourceId = lastSelectedSourceId
+    lastSelectedSourceId = null
+    lastSelectedSourceName = null
+    lastSelectedSourceTime = 0
+    pendingScreenCapture = null
+    writeMainAudioDiagnostic('screen-capture-stopped', { previousSourceId: prevSourceId })
+    if (process.platform === 'win32' && prevSourceId && prevSourceId.startsWith('window:')) {
+      refreshWindowDwmBorder(prevSourceId)
+    }
     return true
   })
 
