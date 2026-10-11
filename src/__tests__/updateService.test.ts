@@ -134,4 +134,20 @@ describe('Update Service & Version Checker', () => {
 
     isAndroidSpy.mockRestore()
   })
+
+  it('retrieves native version from AppUpdatePlugin on Android when available', async () => {
+    const isAndroidSpy = vi.spyOn(platform, 'isAndroid').mockReturnValue(true)
+    const mockPlugin: any = {
+      getAppVersion: vi.fn().mockResolvedValue({
+        versionName: '1.1.99',
+        versionCode: 101099,
+      }),
+    }
+
+    const version = await UpdateService.getCurrentVersion(mockPlugin)
+    expect(version).toBe('1.1.99')
+    expect(mockPlugin.getAppVersion).toHaveBeenCalled()
+
+    isAndroidSpy.mockRestore()
+  })
 })

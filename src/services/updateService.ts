@@ -19,6 +19,7 @@ export interface UpdateProgress {
 }
 
 export interface AppUpdatePluginInterface {
+  getAppVersion(): Promise<{ versionName?: string; versionCode?: number }>
   canRequestPackageInstalls(): Promise<{ canInstall: boolean }>
   openInstallPermissionSettings(): Promise<{ success: boolean }>
   downloadAndInstallApk(options: { downloadUrl: string; targetVersion?: string }): Promise<{ success: boolean; path?: string }>
@@ -72,6 +73,19 @@ export function isNewerVersion(latestTag: string, currentVer: string): boolean {
 }
 
 export class UpdateService {
+  static async getCurrentVersion(pluginOverride?: AppUpdatePluginInterface): Promise<string> {
+    if (isAndroid()) {
+      try {
+        const plugin = pluginOverride || AppUpdate
+        const res = await plugin.getAppVersion()
+        if (res && res.versionName && res.versionName.trim()) {
+          return res.versionName.trim()
+        }
+      } catch {}
+    }
+    return CURRENT_APP_VERSION
+  }
+
   static async checkForUpdates(): Promise<UpdateInfo> {
     if (
       typeof window !== 'undefined' &&
@@ -80,6 +94,8 @@ export class UpdateService {
     ) {
       return await window.electronAPI.checkForUpdates()
     }
+
+    const currentVersion = await UpdateService.getCurrentVersion()
 
     try {
       const url = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`
@@ -92,8 +108,8 @@ export class UpdateService {
       if (!res.ok) {
         return {
           hasUpdate: false,
-          currentVersion: CURRENT_APP_VERSION,
-          latestVersion: CURRENT_APP_VERSION,
+          currentVersion,
+          latestVersion: currentVersion,
           releaseName: '',
           releaseNotes: '',
           downloadUrl: null,
@@ -104,7 +120,7 @@ export class UpdateService {
 
       const data = await res.json()
       const latestTag = data.tag_name || ''
-      const hasUpdate = isNewerVersion(latestTag, CURRENT_APP_VERSION)
+      const hasUpdate = isNewerVersion(latestTag, currentVersion)
 
       let downloadUrl: string | null = null
       if (Array.isArray(data.assets)) {
@@ -127,7 +143,7 @@ export class UpdateService {
 
       return {
         hasUpdate,
-        currentVersion: CURRENT_APP_VERSION,
+        currentVersion,
         latestVersion: latestTag,
         releaseName: data.name || latestTag,
         releaseNotes: data.body || '',
@@ -137,8 +153,8 @@ export class UpdateService {
     } catch (e) {
       return {
         hasUpdate: false,
-        currentVersion: CURRENT_APP_VERSION,
-        latestVersion: CURRENT_APP_VERSION,
+        currentVersion,
+        latestVersion: currentVersion,
         releaseName: '',
         releaseNotes: '',
         downloadUrl: null,
