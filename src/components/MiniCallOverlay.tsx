@@ -127,10 +127,13 @@ export const VideoTile: React.FC<VideoTileProps> = ({
   const selectedAudioOutput = useMediaStore((s) => s.selectedAudioOutput)
   const participantVolumes = useMediaStore((s) => s.participantVolumes)
   const setParticipantVolume = useMediaStore((s) => s.setParticipantVolume)
+  const liveStreamVolume = useMediaStore((s) => s.liveStreamVolume)
   const setLiveStreamVolume = useMediaStore((s) => s.setLiveStreamVolume)
   const isGlobalDeafened = useMediaStore((s) => s.isDeafened)
   const isSilenced = useMediaStore((s) => (id ? s.isUserSilenced(id, name) : false))
-  const rawVolume = (id && participantVolumes[id] !== undefined) ? participantVolumes[id] : 100
+  const rawVolume = isScreenTrack
+    ? (liveStreamVolume !== undefined ? liveStreamVolume : 100)
+    : (id && participantVolumes[id] !== undefined ? participantVolumes[id] : 100)
   const networkQuality = useUserNetworkQuality(id, isLocal)
 
   const isEffectivelyMuted = Boolean(isLocal || suppressAudio || isGlobalDeafened || isSilenced || rawVolume === 0)
@@ -273,11 +276,23 @@ export const VideoTile: React.FC<VideoTileProps> = ({
             onClick={(e) => {
               e.stopPropagation()
               const nextVol = rawVolume === 0 ? 100 : 0
-              setParticipantVolume(name, nextVol)
-              if (isScreenTrack) setLiveStreamVolume(nextVol)
+              if (isScreenTrack) {
+                setLiveStreamVolume(nextVol)
+              } else {
+                if (id) setParticipantVolume(id, nextVol)
+                if (name) setParticipantVolume(name, nextVol)
+              }
             }}
             className="text-slate-200 hover:text-white transition-colors p-0.5"
-            title={rawVolume === 0 ? 'Desmutar transmissão' : 'Mutar transmissão'}
+            title={
+              rawVolume === 0
+                ? isScreenTrack
+                  ? 'Desmutar transmissão'
+                  : 'Desmutar participante'
+                : isScreenTrack
+                ? 'Mutar transmissão'
+                : 'Mutar participante'
+            }
           >
             {rawVolume === 0 ? (
               <VolumeX className="w-3 h-3 text-rose-400" />
@@ -296,11 +311,15 @@ export const VideoTile: React.FC<VideoTileProps> = ({
               onClick={(e) => e.stopPropagation()}
               onChange={(e) => {
                 const val = Number(e.target.value)
-                setParticipantVolume(name, val)
-                if (isScreenTrack) setLiveStreamVolume(val)
+                if (isScreenTrack) {
+                  setLiveStreamVolume(val)
+                } else {
+                  if (id) setParticipantVolume(id, val)
+                  if (name) setParticipantVolume(name, val)
+                }
               }}
               className="w-12 h-1 bg-slate-600 rounded appearance-none cursor-pointer accent-indigo-500"
-              title={`Volume da live: ${rawVolume}%`}
+              title={isScreenTrack ? `Volume da live: ${rawVolume}%` : `Volume: ${rawVolume}%`}
             />
           </div>
         </div>
@@ -378,25 +397,14 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
   const liveGate = useLiveGate(presenterId, Boolean(!isLocal && asksFirst), watching)
   const outputVolume = useMediaStore((s) => s.outputVolume)
   const selectedAudioOutput = useMediaStore((s) => s.selectedAudioOutput)
-  const participantVolumes = useMediaStore((s) => s.participantVolumes)
-  const setParticipantVolume = useMediaStore((s) => s.setParticipantVolume)
   const liveStreamVolume = useMediaStore((s) => s.liveStreamVolume)
   const setLiveStreamVolume = useMediaStore((s) => s.setLiveStreamVolume)
 
-  const rawVolume =
-    presenterId && participantVolumes[presenterId] !== undefined
-      ? participantVolumes[presenterId]
-      : participantVolumes[presenterName] !== undefined
-      ? participantVolumes[presenterName]
-      : liveStreamVolume !== undefined
-      ? liveStreamVolume
-      : 100
+  const rawVolume = liveStreamVolume !== undefined ? liveStreamVolume : 100
 
   const handleVolumeChange = (val: number) => {
     const clamped = Math.max(0, Math.min(200, Math.round(val)))
     setLiveStreamVolume(clamped)
-    if (presenterId) setParticipantVolume(presenterId, clamped)
-    if (presenterName) setParticipantVolume(presenterName, clamped)
   }
 
   useEffect(() => {

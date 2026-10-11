@@ -39,23 +39,27 @@ function getAudioContext(): AudioContext | null {
       null
     if (!AudioContextClass) return null
 
+    const selectedSink = optionsProvider?.()?.selectedAudioOutput
+    const targetSink = !selectedSink || selectedSink === 'default' ? '' : selectedSink
+
     if (!audioCtx || audioCtx.state === 'closed') {
-      audioCtx = new AudioContextClass()
+      try {
+        audioCtx = new AudioContextClass(targetSink ? { sinkId: targetSink } : undefined)
+      } catch {
+        audioCtx = new AudioContextClass()
+      }
     }
     if (!audioCtx) return null
     if (audioCtx.state === 'suspended') {
       audioCtx.resume().catch(() => {})
     }
 
-    const selectedSink = optionsProvider?.()?.selectedAudioOutput
-    if (
-      selectedSink &&
-      typeof (audioCtx as any).setSinkId === 'function' &&
-      (audioCtx as any).sinkId !== selectedSink
-    ) {
-      ;(audioCtx as any)
-        .setSinkId(selectedSink === 'default' ? '' : selectedSink)
-        .catch(() => {})
+    const currentSink =
+      typeof (audioCtx as any).sinkId === 'string'
+        ? (audioCtx as any).sinkId
+        : ((audioCtx as any).sinkId?.deviceId ?? '')
+    if (typeof (audioCtx as any).setSinkId === 'function' && currentSink !== targetSink) {
+      ;(audioCtx as any).setSinkId(targetSink).catch(() => {})
     }
 
     return audioCtx

@@ -25,7 +25,7 @@ interface Props {
   outputDevices: AudioDeviceInfo[]
   videoDevices: AudioDeviceInfo[]
   isPlayingTestSound: boolean
-  onPlayTestSound: () => void
+  onPlayTestSound: (deviceId?: string) => void
 }
 
 export const AudioDevicesTab: React.FC<Props> = ({
@@ -205,9 +205,9 @@ export const AudioDevicesTab: React.FC<Props> = ({
     MediaManager.getInstance().updateSensitivity(sensitivityMode, val)
   }
 
-  const handleTestMicToggle = () => {
+  const handleTestMicToggle = async () => {
     const nextTesting = !isTestingMic
-    MediaManager.getInstance().setTestMic(nextTesting)
+    await MediaManager.getInstance().setTestMic(nextTesting)
   }
 
   return (
@@ -328,10 +328,11 @@ export const AudioDevicesTab: React.FC<Props> = ({
             </label>
             <button
               type="button"
-              onClick={onPlayTestSound}
+              disabled={isPlayingTestSound}
+              onClick={() => onPlayTestSound(selectedAudioOutput)}
               className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-all flex items-center gap-1 ${
                 isPlayingTestSound
-                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 animate-pulse'
+                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 animate-pulse cursor-not-allowed opacity-80'
                   : 'bg-[#12151d] border-[#2a3142] text-slate-300 hover:text-white hover:bg-slate-800'
               }`}
               title="Testar saída de áudio"

@@ -677,4 +677,54 @@ describe('Video Delivery & Screen Share Guarantee Tests', () => {
       replaceSpy.mockRestore()
     }
   })
+
+  it('automatically recovers and replaces screen video track when track ends unexpectedly', async () => {
+    const prevWindow = (globalThis as any).window
+    const setScreenSource = vi.fn(async () => true)
+    const getSources = vi.fn(async () => [
+      { id: 'window:4242:0', name: 'Google Chrome - Serie Ep 1' },
+      { id: 'window:8888:0', name: 'Google Chrome - Serie Ep 2' },
+    ])
+    ;(globalThis as any).window = { electronAPI: { setScreenSource, getSources } }
+
+    const track1: any = { id: 'screen-ep1', kind: 'video', readyState: 'live', enabled: true, stop: vi.fn(), onended: null }
+    const stream1 = new MockMediaStream([track1])
+    const track2: any = { id: 'screen-ep2', kind: 'video', readyState: 'live', enabled: true, stop: vi.fn(), onended: null }
+    const stream2 = new MockMediaStream([track2])
+
+    let callCount = 0
+    const gdmSpy = vi.spyOn(navigator.mediaDevices, 'getDisplayMedia').mockImplementation(async () => {
+      callCount++
+      return (callCount === 1 ? stream1 : stream2) as unknown as MediaStream
+    })
+    const replaceSpy = vi.spyOn(PeerManager.getInstance(), 'replaceVideoTrack')
+
+    try {
+      await MediaManager.getInstance().startScreenShare({
+        sourceId: 'window:4242:0',
+        sourceName: 'Google Chrome - Serie Ep 1',
+      })
+
+      expect(useMediaStore.getState().isScreenSharing).toBe(true)
+      expect(replaceSpy).toHaveBeenCalledWith(track1, true, expect.any(Number), expect.any(Number))
+
+      if (track1.onended) {
+        track1.onended()
+      }
+
+      await new Promise((r) => setTimeout(r, 800))
+
+      expect(useMediaStore.getState().isScreenSharing).toBe(true)
+      expect(replaceSpy).toHaveBeenCalledWith(track2, true, expect.any(Number), expect.any(Number))
+
+      MediaManager.getInstance().stopScreenShare()
+      expect(useMediaStore.getState().isScreenSharing).toBe(false)
+    } finally {
+      gdmSpy.mockRestore()
+      replaceSpy.mockRestore()
+      if (prevWindow === undefined) delete (globalThis as any).window
+      else (globalThis as any).window = prevWindow
+    }
+  })
 })
+

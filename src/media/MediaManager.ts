@@ -4,7 +4,7 @@ import { RnnoiseProcessor } from './RnnoiseProcessor'
 import { MicCalibrator, ProcessedSampleInfo } from './MicCalibrator'
 import { CallAudioIsolator } from './CallAudioIsolator'
 import { ProcessAudioCapture } from './ProcessAudioCapture'
-import { diagLog, summarizeStream, summarizeTrack } from '../utils/diagnosticLogger'
+import { diagLog, shortId, summarizeStream, summarizeTrack } from '../utils/diagnosticLogger'
 import { useMediaStore } from '../store/useMediaStore'
 import { useGameStore } from '../store/useGameStore'
 import { PeerManager } from '../p2p/PeerManager'
@@ -56,7 +56,13 @@ export class MediaManager {
   private callAudioIsolator: CallAudioIsolator | null = null
   private currentProcessorMode: AudioProcessorMode = 'rnnoise'
 
+  private isRecoveringScreenShare: boolean = false
+  private isStoppingScreenShare: boolean = false
+  private activeScreenConfig: ScreenShareConfig | null = null
   private processAudioCapture: ProcessAudioCapture | null = null
+  private isDeviceWatcherInitialized: boolean = false
+  private deviceChangeTimeout: ReturnType<typeof setTimeout> | null = null
+  private currentTestAudio: { ctx?: AudioContext; el?: HTMLAudioElement; timeout?: any } | null = null
 
   private levelForwardLastSent: number = 0
   private levelForwardLastGate: boolean = false
@@ -88,6 +94,7 @@ export class MediaManager {
     this.rnnoiseEngine.setRuntimeFailureHandler((cause) => {
       void this.handleRnnoiseRuntimeFailure(cause)
     })
+    this.initDeviceWatcher()
   }
 
   private rnnoiseRuntimeFailure: string | null = null
@@ -104,6 +111,86 @@ export class MediaManager {
       MediaManager.instance = new MediaManager()
     }
     return MediaManager.instance
+  }
+
+  public initDeviceWatcher() {
+    if (this.isDeviceWatcherInitialized) return
+    if (typeof window === 'undefined' || typeof navigator === 'undefined' || !navigator.mediaDevices) return
+    this.isDeviceWatcherInitialized = true
+    try {
+      navigator.mediaDevices.addEventListener('devicechange', () => {
+        this.handleDeviceChangeDebounced()
+      })
+    } catch {}
+  }
+
+  private handleDeviceChangeDebounced() {
+    if (this.deviceChangeTimeout) {
+      clearTimeout(this.deviceChangeTimeout)
+    }
+    this.deviceChangeTimeout = setTimeout(() => {
+      this.deviceChangeTimeout = null
+      void this.handleDeviceChange()
+    }, 400)
+  }
+
+  public async handleDeviceChange() {
+    try {
+      if (!navigator.mediaDevices?.enumerateDevices) return
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const audioInputs = devices.filter((d) => d.kind === 'audioinput')
+      const audioOutputs = devices.filter((d) => d.kind === 'audiooutput')
+      const videoInputs = devices.filter((d) => d.kind === 'videoinput')
+
+      diagLog('media', 'devicechange-detected', {
+        audioInputs: audioInputs.map((d) => ({ id: shortId(d.deviceId), label: d.label })),
+        audioOutputs: audioOutputs.map((d) => ({ id: shortId(d.deviceId), label: d.label })),
+      })
+
+      const state = useMediaStore.getState()
+
+      let targetOutput = state.selectedAudioOutput || 'default'
+      const outputExists = targetOutput === 'default' || audioOutputs.some((d) => d.deviceId === targetOutput)
+      if (!outputExists) {
+        targetOutput = 'default'
+        state.setSelectedAudioOutput('default')
+      }
+      await this.changeAudioOutput(targetOutput)
+
+      let targetInput = state.selectedAudioInput || 'default'
+      const inputExists = targetInput === 'default' || audioInputs.some((d) => d.deviceId === targetInput)
+      if (!inputExists) {
+        targetInput = 'default'
+        state.setSelectedAudioInput('default')
+      }
+
+      let targetVideo = state.selectedVideoInput || 'default'
+      const videoExists = targetVideo === 'default' || videoInputs.some((d) => d.deviceId === targetVideo)
+      if (!videoExists) {
+        state.setSelectedVideoInput('default')
+      }
+
+      if (this.rawUserStream) {
+        const currentTrack = this.rawUserStream.getAudioTracks()[0]
+        const isEnded = !currentTrack || currentTrack.readyState === 'ended'
+
+        if (targetInput === 'default' || isEnded || !inputExists) {
+          diagLog('media', 'devicechange-reacquiring-input', {
+            targetInput,
+            isEnded,
+            inputExists,
+          })
+          await this.changeAudioInput(targetInput)
+        }
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('lira:devices-changed'))
+      }
+    } catch (err) {
+      console.warn('Error handling device change:', err)
+      diagLog('media', 'devicechange-error', { error: errShort(err) })
+    }
   }
 
   private selectEngine(): AudioEngine {
@@ -261,6 +348,12 @@ export class MediaManager {
         (level, gateOpen, rawRms, dynamicThresholdPercent) =>
           levelCallback(level, gateOpen, rawRms, dynamicThresholdPercent)
       )
+    }
+
+    if (useMediaStore.getState().isTestingMic) {
+      if (this.activeEngine) {
+        this.activeEngine.setTestLoopback(true)
+      }
     }
 
     return processed
@@ -433,6 +526,8 @@ export class MediaManager {
     try {
       PeerManager.getInstance().recheckZoneCalls()
     } catch (e) {}
+
+    this.initDeviceWatcher()
 
     return processedStream
   }
@@ -707,21 +802,50 @@ export class MediaManager {
       useMediaStore.getState().setSelectedAudioInput(deviceId)
       const state = useMediaStore.getState()
 
-      const newAudioStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: deviceId && deviceId !== 'default' ? { exact: deviceId } : undefined,
-          echoCancellation: state.echoCancellation,
-          autoGainControl: state.autoGainControl,
-          noiseSuppression: false,
-        },
-      })
+      let newAudioStream: MediaStream | null = null
+      const targetDevice = deviceId && deviceId !== 'default' ? deviceId : undefined
+      try {
+        newAudioStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: targetDevice ? { exact: targetDevice } : undefined,
+            echoCancellation: state.echoCancellation,
+            autoGainControl: state.autoGainControl,
+            noiseSuppression: false,
+          },
+        })
+      } catch {
+        if (targetDevice) {
+          try {
+            newAudioStream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                deviceId: targetDevice,
+                echoCancellation: state.echoCancellation,
+                autoGainControl: state.autoGainControl,
+                noiseSuppression: false,
+              },
+            })
+          } catch {}
+        }
+      }
+
+      if (!newAudioStream) {
+        newAudioStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: state.echoCancellation,
+            autoGainControl: state.autoGainControl,
+            noiseSuppression: false,
+          },
+        })
+      }
 
       const newAudioTrack = newAudioStream.getAudioTracks()[0]
       if (!newAudioTrack) return false
 
       if (this.rawUserStream) {
-        this.rawUserStream.getAudioTracks().forEach((t) => t.stop())
-        this.rawUserStream.removeTrack(this.rawUserStream.getAudioTracks()[0])
+        this.rawUserStream.getAudioTracks().forEach((t) => {
+          t.stop()
+          this.rawUserStream?.removeTrack(t)
+        })
         this.rawUserStream.addTrack(newAudioTrack)
       } else {
         this.rawUserStream = newAudioStream
@@ -732,11 +856,23 @@ export class MediaManager {
         this.handleEngineLevel
       )
 
-    useMediaStore.getState().setLocalStream(processedStream)
+      useMediaStore.getState().setLocalStream(processedStream)
 
+      if (useMediaStore.getState().isTestingMic) {
+        this.classicEngine.setTestLoopback(true)
+        this.softEngine.setTestLoopback(true)
+        this.rnnoiseEngine.setTestLoopback(true)
+      }
+
+      const isMuted = useMediaStore.getState().isMuted
       const processedAudioTrack = processedStream.getAudioTracks()[0]
       if (processedAudioTrack) {
-        PeerManager.getInstance().replaceAudioTrack(processedAudioTrack)
+        processedAudioTrack.enabled = !isMuted
+        if (!useMediaStore.getState().isScreenSharing) {
+          try {
+            PeerManager.getInstance().replaceAudioTrack(processedAudioTrack)
+          } catch {}
+        }
       }
 
       try {
@@ -752,17 +888,31 @@ export class MediaManager {
 
   public async changeAudioOutput(deviceId: string): Promise<boolean> {
     try {
-      useMediaStore.getState().setSelectedAudioOutput(deviceId)
+      this.stopAudioTestBeep()
+      const state = useMediaStore.getState()
+      if (state.selectedAudioOutput !== deviceId) {
+        state.setSelectedAudioOutput(deviceId)
+      }
+      const sink = deviceId === 'default' || !deviceId ? '' : deviceId
       const audioElements = document.querySelectorAll('video, audio')
       audioElements.forEach(async (el: any) => {
         if (typeof el.setSinkId === 'function') {
           try {
-            await el.setSinkId(deviceId === 'default' ? '' : deviceId)
+            await el.setSinkId(sink)
           } catch (e) {
             console.warn('Failed to set sinkId on element:', e)
           }
         }
       })
+      if (typeof (this.classicEngine as any).updateAudioOutput === 'function') {
+        ;(this.classicEngine as any).updateAudioOutput(deviceId)
+      }
+      if (typeof (this.softEngine as any).updateAudioOutput === 'function') {
+        ;(this.softEngine as any).updateAudioOutput(deviceId)
+      }
+      if (typeof (this.rnnoiseEngine as any).updateAudioOutput === 'function') {
+        ;(this.rnnoiseEngine as any).updateAudioOutput(deviceId)
+      }
       return true
     } catch (err) {
       console.warn('Error changing audio output:', err)
@@ -837,6 +987,9 @@ export class MediaManager {
 
   public async startScreenShare(config: ScreenShareConfig = {}): Promise<MediaStream | null> {
     try {
+      this.isStoppingScreenShare = false
+      this.isRecoveringScreenShare = false
+      this.activeScreenConfig = { ...config }
       const {
         sourceId,
         sourceName,
@@ -908,7 +1061,11 @@ export class MediaManager {
 
       if (sourceId && electronAPI?.setScreenSource) {
         try {
-          await electronAPI.setScreenSource(sourceId, includeAudio, captureMethod)
+          if (sourceName) {
+            await electronAPI.setScreenSource(sourceId, includeAudio, captureMethod, sourceName)
+          } else {
+            await electronAPI.setScreenSource(sourceId, includeAudio, captureMethod)
+          }
         } catch (ipcErr) {
           console.warn('[MediaManager] set-screen-source IPC failed, capturing primary screen:', ipcErr)
         }
@@ -1042,7 +1199,11 @@ export class MediaManager {
         PeerManager.getInstance().sendPlayerUpdate({ isScreenSharing: true })
 
         screenVideoTrack.onended = () => {
-          this.stopScreenShare()
+          if (this.isStoppingScreenShare) {
+            this.stopScreenShare()
+            return
+          }
+          void this.handleUnexpectedScreenTrackEnded()
         }
       } else {
         PeerManager.getInstance().cancelScreenSharePrime()
@@ -1117,6 +1278,9 @@ export class MediaManager {
   }
 
   public stopScreenShare() {
+    this.isStoppingScreenShare = true
+    this.activeScreenConfig = null
+    this.isRecoveringScreenShare = false
     if (this.callAudioIsolator) {
       this.callAudioIsolator.dispose()
       this.callAudioIsolator = null
@@ -1159,6 +1323,148 @@ export class MediaManager {
     })
     PeerManager.getInstance().sendPlayerUpdate({ isScreenSharing: false })
   }
+
+  private async handleUnexpectedScreenTrackEnded(): Promise<void> {
+    if (this.isStoppingScreenShare || this.isRecoveringScreenShare) return
+    if (!useMediaStore.getState().isScreenSharing) return
+
+    this.isRecoveringScreenShare = true
+    diagLog('screenshare', 'track-ended-unexpected', {
+      config: this.activeScreenConfig,
+    })
+
+    const electronAPI = (window as any).electronAPI
+    const isElectron = Boolean(electronAPI?.setScreenSource)
+
+    if (!isElectron) {
+      this.isRecoveringScreenShare = false
+      this.stopScreenShare()
+      return
+    }
+
+    let recovered = false
+    const config = this.activeScreenConfig ? { ...this.activeScreenConfig } : {}
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await new Promise((r) => setTimeout(r, attempt === 1 ? 600 : 1000))
+      if (this.isStoppingScreenShare || !useMediaStore.getState().isScreenSharing) {
+        this.isRecoveringScreenShare = false
+        return
+      }
+
+      try {
+        let targetSourceId = config.sourceId
+
+        if (electronAPI.getSources) {
+          try {
+            const sources = (await electronAPI.getSources()) as Array<{ id: string; name: string }>
+            if (sources && sources.length > 0) {
+              const exact = targetSourceId ? sources.find((s) => s.id === targetSourceId) : null
+              if (exact) {
+                targetSourceId = exact.id
+              } else if (config.sourceName) {
+                const cleanWanted = config.sourceName.toLowerCase().trim()
+                const byName = sources.find((s) => {
+                  if (!s.id.startsWith('window:')) return false
+                  const sName = s.name.toLowerCase().trim()
+                  return sName.includes(cleanWanted) || cleanWanted.includes(sName)
+                })
+                if (byName) {
+                  targetSourceId = byName.id
+                } else {
+                  const browserKeywords = ['chrome', 'firefox', 'edge', 'brave', 'opera', 'vivaldi']
+                  const matched = browserKeywords.find((k) => cleanWanted.includes(k))
+                  if (matched) {
+                    const byApp = sources.find((s) => s.id.startsWith('window:') && s.name.toLowerCase().includes(matched))
+                    if (byApp) targetSourceId = byApp.id
+                  }
+                }
+              }
+            }
+          } catch {}
+        }
+
+        if (targetSourceId) {
+          if (config.sourceName) {
+            await electronAPI.setScreenSource(targetSourceId, true, config.captureMethod || 'auto', config.sourceName)
+          } else {
+            await electronAPI.setScreenSource(targetSourceId, true, config.captureMethod || 'auto')
+          }
+        }
+
+        const { resolution: effectiveResolution, fps: effectiveFps, targetBitrate } =
+          MediaManager.resolveOptimalScreenQuality(config.resolution, config.fps)
+
+        let width = 1920
+        let height = 1080
+        if (effectiveResolution === '480p') {
+          width = 854
+          height = 480
+        } else if (effectiveResolution === '720p') {
+          width = 1280
+          height = 720
+        }
+
+        const newStream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            width: { ideal: width },
+            height: { ideal: height },
+            frameRate: { ideal: effectiveFps, max: 60 },
+          },
+          audio: false,
+        })
+
+        const newVideoTrack = newStream.getVideoTracks()[0]
+        if (newVideoTrack && newVideoTrack.readyState === 'live') {
+          const currentScreenStream = useMediaStore.getState().localScreenStream
+          if (currentScreenStream) {
+            currentScreenStream.getVideoTracks().forEach((t) => {
+              try {
+                t.stop()
+              } catch {}
+              currentScreenStream.removeTrack(t)
+            })
+            currentScreenStream.addTrack(newVideoTrack)
+          } else {
+            useMediaStore.getState().setLocalScreenStream(newStream)
+          }
+
+          const optimizationMode =
+            config.optimizationMode ?? useMediaStore.getState().screenShareOptimizationMode ?? 'quality'
+          if ('contentHint' in newVideoTrack) {
+            newVideoTrack.contentHint = optimizationMode === 'quality' ? 'detail' : 'motion'
+          }
+
+          PeerManager.getInstance().replaceVideoTrack(newVideoTrack, true, targetBitrate, effectiveFps)
+
+          newVideoTrack.onended = () => {
+            if (this.isStoppingScreenShare) {
+              this.stopScreenShare()
+              return
+            }
+            void this.handleUnexpectedScreenTrackEnded()
+          }
+
+          diagLog('screenshare', 'recovered-successfully', {
+            attempt,
+            newTrack: summarizeStream(newStream),
+          })
+          recovered = true
+          break
+        }
+      } catch (err) {
+        diagLog('screenshare', 'recovery-attempt-failed', { attempt, error: errShort(err) })
+      }
+    }
+
+    this.isRecoveringScreenShare = false
+    if (!recovered && !this.isStoppingScreenShare) {
+      diagLog('screenshare', 'recovery-exhausted-stopping')
+      this.stopScreenShare()
+    }
+  }
+
+
 
   public updateScreenShareOptimizationMode(mode: 'quality' | 'smoothness') {
     const localScreenStream = useMediaStore.getState().localScreenStream
@@ -1251,50 +1557,158 @@ export class MediaManager {
     }
   }
 
-  public setTestMic(enabled: boolean) {
+  public async setTestMic(enabled: boolean): Promise<void> {
     useMediaStore.getState().setIsTestingMic(enabled)
-    this.classicEngine.setTestLoopback(enabled)
-    this.softEngine.setTestLoopback(enabled)
-    this.rnnoiseEngine.setTestLoopback(enabled)
+    if (enabled) {
+      const hasLiveAudio =
+        this.rawUserStream &&
+        this.rawUserStream.getAudioTracks().length > 0 &&
+        this.rawUserStream.getAudioTracks()[0].readyState === 'live'
+
+      if (!hasLiveAudio) {
+        const state = useMediaStore.getState()
+        await this.changeAudioInput(state.selectedAudioInput || 'default')
+      }
+
+      this.classicEngine.setTestLoopback(true)
+      this.softEngine.setTestLoopback(true)
+      this.rnnoiseEngine.setTestLoopback(true)
+    } else {
+      this.classicEngine.setTestLoopback(false)
+      this.softEngine.setTestLoopback(false)
+      this.rnnoiseEngine.setTestLoopback(false)
+    }
   }
 
-  public playAudioTestBeep() {
-    try {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
-      const testCtx = new AudioContextClass()
-
-      const now = testCtx.currentTime
-      const osc1 = testCtx.createOscillator()
-      const osc2 = testCtx.createOscillator()
-      const gain = testCtx.createGain()
-
-      osc1.type = 'sine'
-      osc1.frequency.setValueAtTime(587.33, now)
-      osc1.frequency.setValueAtTime(880, now + 0.12)
-
-      osc2.type = 'sine'
-      osc2.frequency.setValueAtTime(440, now)
-      osc2.frequency.setValueAtTime(659.25, now + 0.12)
-
-      gain.gain.setValueAtTime(0.01, now)
-      gain.gain.exponentialRampToValueAtTime(0.3, now + 0.04)
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45)
-
-      osc1.connect(gain)
-      osc2.connect(gain)
-      gain.connect(testCtx.destination)
-
-      osc1.start(now)
-      osc2.start(now)
-      osc1.stop(now + 0.5)
-      osc2.stop(now + 0.5)
-
-      setTimeout(() => {
-        testCtx.close().catch(() => {})
-      }, 700)
-    } catch (e) {
-      console.warn('Could not play test audio chime:', e)
+  public stopAudioTestBeep(): void {
+    if (this.currentTestAudio) {
+      if (this.currentTestAudio.timeout) {
+        clearTimeout(this.currentTestAudio.timeout)
+      }
+      if (this.currentTestAudio.el) {
+        try {
+          this.currentTestAudio.el.pause()
+          this.currentTestAudio.el.srcObject = null
+        } catch {}
+      }
+      if (this.currentTestAudio.ctx) {
+        try {
+          this.currentTestAudio.ctx.close().catch(() => {})
+        } catch {}
+      }
+      this.currentTestAudio = null
     }
+  }
+
+  public async playAudioTestBeep(targetDeviceId?: string): Promise<void> {
+    this.stopAudioTestBeep()
+    return new Promise<void>(async (resolve) => {
+      let resolved = false
+      const finish = () => {
+        if (!resolved) {
+          resolved = true
+          this.stopAudioTestBeep()
+          resolve()
+        }
+      }
+
+      try {
+        const state = useMediaStore.getState()
+        const targetOutput = targetDeviceId ?? state.selectedAudioOutput ?? 'default'
+        const sink = targetOutput === 'default' || !targetOutput ? '' : targetOutput
+        const AudioContextClass =
+          (typeof window !== 'undefined' && ((window as any).AudioContext || (window as any).webkitAudioContext)) ||
+          (typeof globalThis !== 'undefined' && ((globalThis as any).AudioContext || (globalThis as any).webkitAudioContext)) ||
+          null
+        if (!AudioContextClass) {
+          finish()
+          return
+        }
+
+        let testCtx: AudioContext
+        try {
+          testCtx = new AudioContextClass(sink ? { sinkId: sink } : undefined)
+        } catch {
+          testCtx = new AudioContextClass()
+        }
+
+        if (testCtx.state === 'suspended') {
+          try {
+            await testCtx.resume()
+          } catch {}
+        }
+
+        if (sink && typeof (testCtx as any).setSinkId === 'function') {
+          try {
+            await (testCtx as any).setSinkId(sink)
+          } catch {}
+        }
+
+        const now = testCtx.currentTime
+        const osc1 = testCtx.createOscillator()
+        const osc2 = testCtx.createOscillator()
+        const gain = testCtx.createGain()
+
+        osc1.type = 'sine'
+        osc1.frequency.setValueAtTime(587.33, now)
+        osc1.frequency.setValueAtTime(880, now + 0.12)
+
+        osc2.type = 'sine'
+        osc2.frequency.setValueAtTime(440, now)
+        osc2.frequency.setValueAtTime(659.25, now + 0.12)
+
+        gain.gain.setValueAtTime(0.01, now)
+        gain.gain.exponentialRampToValueAtTime(0.3, now + 0.04)
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45)
+
+        osc1.connect(gain)
+        osc2.connect(gain)
+
+        let testAudioEl: HTMLAudioElement | null = null
+        let routedViaElement = false
+
+        if (typeof (testCtx as any).createMediaStreamDestination === 'function' && typeof Audio !== 'undefined') {
+          try {
+            const dest = (testCtx as any).createMediaStreamDestination()
+            gain.connect(dest)
+            testAudioEl = new Audio()
+            testAudioEl.srcObject = dest.stream
+            if (typeof (testAudioEl as any).setSinkId === 'function') {
+              await (testAudioEl as any).setSinkId(sink)
+            }
+            await testAudioEl.play()
+            routedViaElement = true
+          } catch {
+            routedViaElement = false
+            if (testAudioEl) {
+              try {
+                testAudioEl.srcObject = null
+              } catch {}
+              testAudioEl = null
+            }
+          }
+        }
+
+        if (!routedViaElement) {
+          gain.connect(testCtx.destination)
+        }
+
+        const currentNow = testCtx.currentTime
+        osc1.start(currentNow)
+        osc2.start(currentNow)
+        osc1.stop(currentNow + 0.5)
+        osc2.stop(currentNow + 0.5)
+
+        const timeoutId = setTimeout(() => {
+          finish()
+        }, 650)
+
+        this.currentTestAudio = { ctx: testCtx, el: testAudioEl ?? undefined, timeout: timeoutId }
+      } catch (e) {
+        console.warn('Could not play test audio chime:', e)
+        finish()
+      }
+    })
   }
 
   public stopAll() {

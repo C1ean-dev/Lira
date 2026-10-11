@@ -1,5 +1,6 @@
 import { SensitivityMode } from '../types/audio'
 import { AutoGate } from './autoGate'
+import { useMediaStore } from '../store/useMediaStore'
 
 export class NoiseSuppressor {
   private audioCtx: AudioContext | null = null
@@ -49,7 +50,16 @@ export class NoiseSuppressor {
       this.isSuppressionActive = enableSuppression
 
       const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext
-      this.audioCtx = new AudioContextClass({ sampleRate: 48000 })
+      const outSink = useMediaStore.getState().selectedAudioOutput
+      const targetSink = !outSink || outSink === 'default' ? '' : outSink
+      try {
+        this.audioCtx = new AudioContextClass(targetSink ? ({ sampleRate: 48000, sinkId: targetSink } as any) : { sampleRate: 48000 })
+      } catch {
+        this.audioCtx = new AudioContextClass({ sampleRate: 48000 })
+      }
+      if (targetSink && typeof (this.audioCtx as any).setSinkId === 'function') {
+        ;(this.audioCtx as any).setSinkId(targetSink).catch(() => {})
+      }
 
       if (this.audioCtx.state === 'suspended') {
         this.audioCtx.resume().catch(() => {})
@@ -252,6 +262,13 @@ export class NoiseSuppressor {
       this.gateGain.gain.cancelScheduledValues(now)
       this.gateGain.gain.setValueAtTime(1.0, now)
       this.isGateOpen = true
+    }
+  }
+
+  public updateAudioOutput(sinkId: string) {
+    if (this.audioCtx && typeof (this.audioCtx as any).setSinkId === 'function') {
+      const targetSink = !sinkId || sinkId === 'default' ? '' : sinkId
+      ;(this.audioCtx as any).setSinkId(targetSink).catch(() => {})
     }
   }
 
