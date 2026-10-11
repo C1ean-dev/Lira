@@ -147,4 +147,7 @@ export default defineConfig({
       ],
     },
   },
+  test: {
+    exclude: ['**/node_modules/**', '**/.claude/**', '**/dist/**'],
+  },
 })

@@ -64,5 +64,6 @@ jobs:
     uses: ./.github/workflows/android.yml
     with:
       tag_name: ${{ needs.build-and-release.outputs.tag_name }}
+    secrets: inherit
     permissions:
       contents: write
