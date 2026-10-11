@@ -35,8 +35,9 @@ let processAudioCaptureBytes = 0
 let processAudioCaptureChunks = 0
 let processAudioCaptureStatsTimer: ReturnType<typeof setInterval> | null = null
 
-let pendingScreenCapture: { sourceId: string | null; withAudio: boolean; captureMethod: string } | null = null
+let pendingScreenCapture: { sourceId: string | null; sourceName?: string | null; withAudio: boolean; captureMethod: string } | null = null
 let lastSelectedSourceId: string | null = null
+let lastSelectedSourceName: string | null = null
 let lastSelectedSourceTime = 0
 
 const GITHUB_REPO = 'C1ean-dev/Lira'
@@ -480,7 +481,8 @@ function createWindow() {
     const requestedAudio = pendingScreenCapture?.withAudio ?? !!(request as any)?.audio
     const captureMethod = pendingScreenCapture?.captureMethod || 'auto'
     console.info(`[Electron] display capture method=${captureMethod}`)
-    const wantedId = pendingScreenCapture?.sourceId || (now - lastSelectedSourceTime < 15000 ? lastSelectedSourceId : null)
+    const wantedId = pendingScreenCapture?.sourceId || (now - lastSelectedSourceTime < 30000 ? lastSelectedSourceId : null)
+    const wantedName = pendingScreenCapture?.sourceName || (now - lastSelectedSourceTime < 30000 ? lastSelectedSourceName : null)
     pendingScreenCapture = null
 
     desktopCapturer
@@ -490,7 +492,25 @@ function createWindow() {
           callback({})
           return
         }
-        const picked = (wantedId && sources.find((s) => s.id === wantedId)) || sources[0]
+        let picked = (wantedId && sources.find((s) => s.id === wantedId)) || null
+        if (!picked && wantedId && wantedId.startsWith('window:') && wantedName) {
+          const cleanWanted = wantedName.toLowerCase().trim()
+          picked = sources.find((s) => {
+            if (!s.id.startsWith('window:')) return false
+            const sName = s.name.toLowerCase().trim()
+            return sName.includes(cleanWanted) || cleanWanted.includes(sName)
+          }) || null
+          if (!picked) {
+            const browserMatches = ['google chrome', 'chrome', 'brave', 'firefox', 'edge', 'opera', 'vivaldi']
+            const matchedBrowser = browserMatches.find((b) => cleanWanted.includes(b))
+            if (matchedBrowser) {
+              picked = sources.find((s) => s.id.startsWith('window:') && s.name.toLowerCase().includes(matchedBrowser)) || null
+            }
+          }
+        }
+        if (!picked) {
+          picked = (wantedId && sources.find((s) => s.id === wantedId)) || sources[0]
+        }
 
         if (requestedAudio) {
           console.info(
@@ -512,15 +532,17 @@ function createWindow() {
       })
   })
 
-  ipcMain.handle('set-screen-source', (_event, payload: { sourceId?: string | null; withAudio?: boolean; captureMethod?: string }) => {
+  ipcMain.handle('set-screen-source', (_event, payload: { sourceId?: string | null; sourceName?: string | null; withAudio?: boolean; captureMethod?: string }) => {
     lastSelectedSourceId = payload?.sourceId ?? null
+    lastSelectedSourceName = payload?.sourceName ?? null
     lastSelectedSourceTime = Date.now()
     pendingScreenCapture = {
       sourceId: lastSelectedSourceId,
+      sourceName: lastSelectedSourceName,
       withAudio: payload?.withAudio ?? true,
       captureMethod: payload?.captureMethod || 'auto',
     }
-    writeMainAudioDiagnostic('capture-method-selected', { sourceId: lastSelectedSourceId, captureMethod: payload?.captureMethod || 'auto' })
+    writeMainAudioDiagnostic('capture-method-selected', { sourceId: lastSelectedSourceId, sourceName: lastSelectedSourceName, captureMethod: payload?.captureMethod || 'auto' })
     return true
   })
 

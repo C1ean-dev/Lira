@@ -56,6 +56,9 @@ export class MediaManager {
   private callAudioIsolator: CallAudioIsolator | null = null
   private currentProcessorMode: AudioProcessorMode = 'rnnoise'
 
+  private isRecoveringScreenShare: boolean = false
+  private isStoppingScreenShare: boolean = false
+  private activeScreenConfig: ScreenShareConfig | null = null
   private processAudioCapture: ProcessAudioCapture | null = null
   private isDeviceWatcherInitialized: boolean = false
   private deviceChangeTimeout: ReturnType<typeof setTimeout> | null = null
@@ -984,6 +987,9 @@ export class MediaManager {
 
   public async startScreenShare(config: ScreenShareConfig = {}): Promise<MediaStream | null> {
     try {
+      this.isStoppingScreenShare = false
+      this.isRecoveringScreenShare = false
+      this.activeScreenConfig = { ...config }
       const {
         sourceId,
         sourceName,
@@ -1055,7 +1061,11 @@ export class MediaManager {
 
       if (sourceId && electronAPI?.setScreenSource) {
         try {
-          await electronAPI.setScreenSource(sourceId, includeAudio, captureMethod)
+          if (sourceName) {
+            await electronAPI.setScreenSource(sourceId, includeAudio, captureMethod, sourceName)
+          } else {
+            await electronAPI.setScreenSource(sourceId, includeAudio, captureMethod)
+          }
         } catch (ipcErr) {
           console.warn('[MediaManager] set-screen-source IPC failed, capturing primary screen:', ipcErr)
         }
@@ -1189,7 +1199,11 @@ export class MediaManager {
         PeerManager.getInstance().sendPlayerUpdate({ isScreenSharing: true })
 
         screenVideoTrack.onended = () => {
-          this.stopScreenShare()
+          if (this.isStoppingScreenShare) {
+            this.stopScreenShare()
+            return
+          }
+          void this.handleUnexpectedScreenTrackEnded()
         }
       } else {
         PeerManager.getInstance().cancelScreenSharePrime()
@@ -1264,6 +1278,9 @@ export class MediaManager {
   }
 
   public stopScreenShare() {
+    this.isStoppingScreenShare = true
+    this.activeScreenConfig = null
+    this.isRecoveringScreenShare = false
     if (this.callAudioIsolator) {
       this.callAudioIsolator.dispose()
       this.callAudioIsolator = null
@@ -1306,6 +1323,148 @@ export class MediaManager {
     })
     PeerManager.getInstance().sendPlayerUpdate({ isScreenSharing: false })
   }
+
+  private async handleUnexpectedScreenTrackEnded(): Promise<void> {
+    if (this.isStoppingScreenShare || this.isRecoveringScreenShare) return
+    if (!useMediaStore.getState().isScreenSharing) return
+
+    this.isRecoveringScreenShare = true
+    diagLog('screenshare', 'track-ended-unexpected', {
+      config: this.activeScreenConfig,
+    })
+
+    const electronAPI = (window as any).electronAPI
+    const isElectron = Boolean(electronAPI?.setScreenSource)
+
+    if (!isElectron) {
+      this.isRecoveringScreenShare = false
+      this.stopScreenShare()
+      return
+    }
+
+    let recovered = false
+    const config = this.activeScreenConfig ? { ...this.activeScreenConfig } : {}
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await new Promise((r) => setTimeout(r, attempt === 1 ? 600 : 1000))
+      if (this.isStoppingScreenShare || !useMediaStore.getState().isScreenSharing) {
+        this.isRecoveringScreenShare = false
+        return
+      }
+
+      try {
+        let targetSourceId = config.sourceId
+
+        if (electronAPI.getSources) {
+          try {
+            const sources = (await electronAPI.getSources()) as Array<{ id: string; name: string }>
+            if (sources && sources.length > 0) {
+              const exact = targetSourceId ? sources.find((s) => s.id === targetSourceId) : null
+              if (exact) {
+                targetSourceId = exact.id
+              } else if (config.sourceName) {
+                const cleanWanted = config.sourceName.toLowerCase().trim()
+                const byName = sources.find((s) => {
+                  if (!s.id.startsWith('window:')) return false
+                  const sName = s.name.toLowerCase().trim()
+                  return sName.includes(cleanWanted) || cleanWanted.includes(sName)
+                })
+                if (byName) {
+                  targetSourceId = byName.id
+                } else {
+                  const browserKeywords = ['chrome', 'firefox', 'edge', 'brave', 'opera', 'vivaldi']
+                  const matched = browserKeywords.find((k) => cleanWanted.includes(k))
+                  if (matched) {
+                    const byApp = sources.find((s) => s.id.startsWith('window:') && s.name.toLowerCase().includes(matched))
+                    if (byApp) targetSourceId = byApp.id
+                  }
+                }
+              }
+            }
+          } catch {}
+        }
+
+        if (targetSourceId) {
+          if (config.sourceName) {
+            await electronAPI.setScreenSource(targetSourceId, true, config.captureMethod || 'auto', config.sourceName)
+          } else {
+            await electronAPI.setScreenSource(targetSourceId, true, config.captureMethod || 'auto')
+          }
+        }
+
+        const { resolution: effectiveResolution, fps: effectiveFps, targetBitrate } =
+          MediaManager.resolveOptimalScreenQuality(config.resolution, config.fps)
+
+        let width = 1920
+        let height = 1080
+        if (effectiveResolution === '480p') {
+          width = 854
+          height = 480
+        } else if (effectiveResolution === '720p') {
+          width = 1280
+          height = 720
+        }
+
+        const newStream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            width: { ideal: width },
+            height: { ideal: height },
+            frameRate: { ideal: effectiveFps, max: 60 },
+          },
+          audio: false,
+        })
+
+        const newVideoTrack = newStream.getVideoTracks()[0]
+        if (newVideoTrack && newVideoTrack.readyState === 'live') {
+          const currentScreenStream = useMediaStore.getState().localScreenStream
+          if (currentScreenStream) {
+            currentScreenStream.getVideoTracks().forEach((t) => {
+              try {
+                t.stop()
+              } catch {}
+              currentScreenStream.removeTrack(t)
+            })
+            currentScreenStream.addTrack(newVideoTrack)
+          } else {
+            useMediaStore.getState().setLocalScreenStream(newStream)
+          }
+
+          const optimizationMode =
+            config.optimizationMode ?? useMediaStore.getState().screenShareOptimizationMode ?? 'quality'
+          if ('contentHint' in newVideoTrack) {
+            newVideoTrack.contentHint = optimizationMode === 'quality' ? 'detail' : 'motion'
+          }
+
+          PeerManager.getInstance().replaceVideoTrack(newVideoTrack, true, targetBitrate, effectiveFps)
+
+          newVideoTrack.onended = () => {
+            if (this.isStoppingScreenShare) {
+              this.stopScreenShare()
+              return
+            }
+            void this.handleUnexpectedScreenTrackEnded()
+          }
+
+          diagLog('screenshare', 'recovered-successfully', {
+            attempt,
+            newTrack: summarizeStream(newStream),
+          })
+          recovered = true
+          break
+        }
+      } catch (err) {
+        diagLog('screenshare', 'recovery-attempt-failed', { attempt, error: errShort(err) })
+      }
+    }
+
+    this.isRecoveringScreenShare = false
+    if (!recovered && !this.isStoppingScreenShare) {
+      diagLog('screenshare', 'recovery-exhausted-stopping')
+      this.stopScreenShare()
+    }
+  }
+
+
 
   public updateScreenShareOptimizationMode(mode: 'quality' | 'smoothness') {
     const localScreenStream = useMediaStore.getState().localScreenStream
