@@ -7,10 +7,11 @@ import fs from 'fs'
 import { writeNativeDataFileLatest } from './electron/nativeDataFile'
 
 const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, './package.json'), 'utf-8'))
+const appVersion = process.env.VITE_APP_VERSION || process.env.LIRA_VERSION_NAME || pkg.version || '1.0.0'
 
 export default defineConfig({
   define: {
-    __APP_VERSION__: JSON.stringify(pkg.version || '1.0.0'),
+    __APP_VERSION__: JSON.stringify(appVersion),
   },
   plugins: [
     react(),

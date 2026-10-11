@@ -24,6 +24,30 @@ public class AppUpdatePlugin extends Plugin {
     private static final String APK_FILE_NAME = "Lira-update.apk";
 
     @PluginMethod
+    public void getAppVersion(PluginCall call) {
+        Context context = getContext();
+        JSObject ret = new JSObject();
+        if (context != null) {
+            try {
+                android.content.pm.PackageInfo pInfo = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+                ret.put("versionName", pInfo.versionName != null ? pInfo.versionName : "");
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    ret.put("versionCode", pInfo.getLongVersionCode());
+                } else {
+                    ret.put("versionCode", pInfo.versionCode);
+                }
+            } catch (Exception e) {
+                ret.put("versionName", "");
+                ret.put("versionCode", 0);
+            }
+        } else {
+            ret.put("versionName", "");
+            ret.put("versionCode", 0);
+        }
+        call.resolve(ret);
+    }
+
+    @PluginMethod
     public void canRequestPackageInstalls(PluginCall call) {
         Context context = getContext();
         JSObject ret = new JSObject();
