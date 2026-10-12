@@ -608,14 +608,14 @@ export const AudioDevicesTab: React.FC<Props> = ({
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    Alterne entre temas sazonais (Halloween, Natal, etc.) ou selecione detecção automática por data
+                    Alterne entre temas sazonais (Halloween de terror, Natal com sinos) ou selecione detecção automática por data
                   </p>
                 </div>
               </div>
 
               {/* Switch de seleção de sons / temas */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1 bg-[#151922] rounded-xl border border-[#2a3142]">
-                {(['auto', 'default', 'halloween', 'christmas', 'new_year'] as SoundTheme[]).map((themeKey) => {
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-[#151922] rounded-xl border border-[#2a3142]">
+                {(['auto', 'default', 'halloween', 'christmas'] as SoundTheme[]).map((themeKey) => {
                   const info = SOUND_THEMES[themeKey]
                   const isSelected = soundTheme === themeKey
                   return (

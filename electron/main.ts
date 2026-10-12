@@ -5,7 +5,7 @@ import fs from 'fs'
 import https from 'https'
 import http from 'http'
 import dgram from 'dgram'
-import { spawn, exec } from 'child_process'
+import { spawn, exec, execSync } from 'child_process'
 import { release as getOsRelease } from 'os'
 import { guardIpcMain } from './ipcGuard'
 import { createLogBundle } from './logBundle'
@@ -1089,6 +1089,37 @@ async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
     let launched = false
 
     if (isWindows) {
+      // 1. Descomprime o executável do instalador no NTFS caso a partição esteja compactada.
+      // Em discos SSD onde o usuário ativou "Compactar este disco para economizar espaço",
+      // os arquivos em %TEMP% recebem o atributo FILE_ATTRIBUTE_COMPRESSED.
+      // Isso causa falhas de integridade (CRC) no NSIS e erros de mapeamento de memória/descompactação,
+      // fazendo o instalador fechar sem concluir. O compact.exe /U remove a compressão nativamente.
+      try {
+        console.log('[Updater] Ensuring installer binary is uncompressed on NTFS:', installerPath)
+        execSync(`compact.exe /U /F "${installerPath}"`, { windowsHide: true, stdio: 'ignore' })
+        execSync(`compact.exe /U /EXE "${installerPath}"`, { windowsHide: true, stdio: 'ignore' })
+      } catch (compactErr) {
+        console.warn('[Updater] compact.exe uncompress warning (non-fatal):', compactErr)
+      }
+
+      // 2. Verifica espaço livre em disco no diretório temporário para alertar se estiver crítico
+      try {
+        const tempStats = fs.statfsSync(path.dirname(installerPath))
+        const freeBytes = tempStats.bavail * tempStats.bsize
+        console.log('[Updater] Available disk space in temp directory:', Math.round(freeBytes / 1024 / 1024), 'MB')
+        if (freeBytes < 350 * 1024 * 1024) {
+          console.warn('[Updater] Disk space is critically low (< 350MB). NSIS extraction may fail.')
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-error', {
+              message: 'Espaço em disco insuficiente no disco C: para instalar a atualização. Libere pelo menos 500 MB e tente novamente.',
+            })
+          }
+          return false
+        }
+      } catch (statfsErr) {
+        console.warn('[Updater] statfs check warning:', statfsErr)
+      }
+
       // Método 1 (Principal): shell.openPath usa a API nativa ShellExecuteEx do Windows Shell.
       // É o equivalente exato ao duplo-clique no instalador pelo Explorer.
       // Suporta diálogo de elevação UAC, validação do SmartScreen e permissões de administrador.

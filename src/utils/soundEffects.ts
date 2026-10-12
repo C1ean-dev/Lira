@@ -8,8 +8,8 @@ export type SoundEffectType =
   | 'live_start'
   | 'live_stop'
 
-export type SoundTheme = 'auto' | 'default' | 'halloween' | 'christmas' | 'new_year'
-export type ResolvedSoundTheme = 'default' | 'halloween' | 'christmas' | 'new_year'
+export type SoundTheme = 'auto' | 'default' | 'halloween' | 'christmas'
+export type ResolvedSoundTheme = 'default' | 'halloween' | 'christmas'
 
 export interface SoundThemeInfo {
   id: SoundTheme
@@ -26,7 +26,7 @@ export const SOUND_THEMES: Record<SoundTheme, SoundThemeInfo> = {
     name: 'Automático',
     label: 'Automático (Data)',
     icon: '📅',
-    description: 'Alterna sons conforme a data atual (Halloween em Outubro, Natal em Dezembro, etc.)',
+    description: 'Alterna sons conforme a data atual (Halloween em Outubro, Natal em Dezembro)',
   },
   default: {
     id: 'default',
@@ -40,7 +40,7 @@ export const SOUND_THEMES: Record<SoundTheme, SoundThemeInfo> = {
     name: 'Halloween',
     label: 'Halloween',
     icon: '🎃',
-    description: 'Timbres misteriosos, órgão gótico e acordes fantasmagóricos',
+    description: 'Timbres de terror, gemidos fantasmagóricos, órgão gótico e suspense',
     seasonLabel: 'Outubro (Dia das Bruxas)',
   },
   christmas: {
@@ -48,16 +48,8 @@ export const SOUND_THEMES: Record<SoundTheme, SoundThemeInfo> = {
     name: 'Natal',
     label: 'Natal',
     icon: '🎄',
-    description: 'Sinos natalinos, celesta cristalina e acordes festivos de inverno',
+    description: 'Sinos natalinos prateados, celesta e trenó com Jingle Bells',
     seasonLabel: 'Dezembro (Boas Festas)',
-  },
-  new_year: {
-    id: 'new_year',
-    name: 'Ano Novo',
-    label: 'Ano Novo',
-    icon: '🎆',
-    description: 'Fanfarra brilhante, sintetizadores de celebração e festividades',
-    seasonLabel: 'Virada de Ano',
   },
 }
 
@@ -70,14 +62,9 @@ export function getSeasonalThemeForDate(date: Date = new Date()): ResolvedSoundT
     return 'halloween'
   }
 
-  // Natal: 1º a 26 de dezembro (mês 11)
-  if (month === 11 && day <= 26) {
+  // Natal: todo mês de dezembro (mês 11) até 6 de janeiro
+  if (month === 11 || (month === 0 && day <= 6)) {
     return 'christmas'
-  }
-
-  // Ano Novo: 27 de dezembro a 6 de janeiro
-  if ((month === 11 && day >= 27) || (month === 0 && day <= 6)) {
-    return 'new_year'
   }
 
   return 'default'
@@ -176,7 +163,7 @@ const THROTTLE_MS: Record<SoundEffectType, number> = {
   live_stop: 350,
 }
 
-/* Helper to play a synthesized tone with gain envelope */
+/* Helper para sintetizar tom com envelope e pitch glide */
 function playTone(
   ctx: AudioContext,
   masterGain: GainNode,
@@ -209,8 +196,49 @@ function playTone(
   osc.stop(opts.time + opts.dur + 0.01)
 }
 
-/* Helper for holiday bell tones: fundamental + crystalline metallic overtone */
-function playBellNote(
+/* Helper para timbres de terror fantasmagórico: batimento de fase detuned e ressonância espectral */
+function playGhostVoice(
+  ctx: AudioContext,
+  masterGain: GainNode,
+  opts: {
+    freq: number
+    endFreq?: number
+    time: number
+    dur: number
+    vol: number
+    detuneHz?: number
+    wave?: OscillatorType
+  }
+) {
+  const wave = opts.wave || 'triangle'
+  const detune = opts.detuneHz ?? 3.5
+
+  // Oscilador primário com corpo espectral
+  playTone(ctx, masterGain, {
+    type: wave,
+    freq: opts.freq,
+    endFreq: opts.endFreq,
+    time: opts.time,
+    dur: opts.dur,
+    vol: opts.vol * 0.75,
+    attack: 0.02,
+  })
+
+  // Oscilador secundário com leve detune para criar batimento de fase fantasmagórico (tremor de fantasma)
+  const secondaryEnd = opts.endFreq !== undefined ? opts.endFreq + detune : undefined
+  playTone(ctx, masterGain, {
+    type: 'sine',
+    freq: opts.freq + detune,
+    endFreq: secondaryEnd,
+    time: opts.time,
+    dur: opts.dur,
+    vol: opts.vol * 0.45,
+    attack: 0.025,
+  })
+}
+
+/* Helper para sinos natalinos reais: física acústica de sino com parciais metálicos */
+function playChristmasBell(
   ctx: AudioContext,
   masterGain: GainNode,
   freq: number,
@@ -218,23 +246,44 @@ function playBellNote(
   dur: number,
   vol: number
 ) {
-  // Fundamental bell tone
+  // Tom fundamental puro
   playTone(ctx, masterGain, {
     type: 'sine',
     freq,
     time,
     dur,
-    vol: vol * 0.85,
-    attack: 0.006,
+    vol: vol * 0.7,
+    attack: 0.005,
   })
-  // Sparkling metallic harmonic (2.76x frequency creates authentic bell timbre)
+
+  // Terça menor parcial do sino (1.2x - dulçor característico de sino de bronze/prata)
+  playTone(ctx, masterGain, {
+    type: 'sine',
+    freq: freq * 1.2,
+    time,
+    dur: dur * 0.8,
+    vol: vol * 0.25,
+    attack: 0.004,
+  })
+
+  // Sobreagudo metálico de ataque (2.76x - ressonância de sino de trenó/igreja)
   playTone(ctx, masterGain, {
     type: 'sine',
     freq: freq * 2.76,
     time,
-    dur: dur * 0.7,
-    vol: vol * 0.22,
-    attack: 0.004,
+    dur: dur * 0.6,
+    vol: vol * 0.3,
+    attack: 0.003,
+  })
+
+  // Brilho cristalino de neve (5.4x)
+  playTone(ctx, masterGain, {
+    type: 'sine',
+    freq: freq * 5.4,
+    time,
+    dur: dur * 0.35,
+    vol: vol * 0.15,
+    attack: 0.002,
   })
 }
 
@@ -422,275 +471,227 @@ function playDefaultSound(ctx: AudioContext, masterGain: GainNode, type: SoundEf
   }
 }
 
+/* Síntese autêntica de Terror e Fantasma para o Halloween, mantendo a função sonora dos originais */
 function playHalloweenSound(ctx: AudioContext, masterGain: GainNode, type: SoundEffectType, now: number): void {
   switch (type) {
     case 'mute': {
-      // Descida fantasmagórica em trítono misterioso (A4 -> Eb4) com batimento espectral
-      playTone(ctx, masterGain, {
-        type: 'triangle',
-        freq: 440.0,
-        endFreq: 311.13,
+      // Baseado na descida original: sussurro fantasmagórico descendo na escuridão com tremor de medo
+      playGhostVoice(ctx, masterGain, {
+        freq: 392.0, // G4
+        endFreq: 196.0, // G3 (descida de oitava)
         time: now,
-        dur: 0.14,
-        vol: 0.65,
+        dur: 0.18,
+        vol: 0.85,
+        detuneHz: 4.5,
       })
+      // Sub-grave cavernoso que se dissipa no silêncio
       playTone(ctx, masterGain, {
         type: 'sine',
-        freq: 444.0,
-        endFreq: 315.0,
+        freq: 110.0,
+        endFreq: 55.0,
         time: now,
-        dur: 0.14,
-        vol: 0.35,
+        dur: 0.2,
+        vol: 0.6,
       })
       break
     }
 
     case 'unmute': {
-      // Feitiço / Shimmer místico ascendente (D4 -> F4 -> A4)
-      playTone(ctx, masterGain, {
-        type: 'triangle',
-        freq: 293.66,
-        endFreq: 440.0,
+      // Baseado na subida original: uivo espectral de fantasma despertando do túmulo
+      playGhostVoice(ctx, masterGain, {
+        freq: 196.0, // G3
+        endFreq: 440.0, // A4
         time: now,
-        dur: 0.13,
-        vol: 0.65,
+        dur: 0.16,
+        vol: 0.85,
+        detuneHz: 4.0,
       })
+      // Shimmer espectral sobreagudo de aparição
       playTone(ctx, masterGain, {
         type: 'sine',
         freq: 587.33,
-        endFreq: 698.46,
+        endFreq: 783.99,
         time: now + 0.04,
-        dur: 0.14,
+        dur: 0.16,
         vol: 0.45,
+        attack: 0.02,
       })
       break
     }
 
     case 'deafen': {
-      // Sino de cripta gótica / portão de catacumba
+      // Baseado nos 2 tons descendentes originais: portão de cripta batendo e silêncio mortal
+      // 1º tom: sino fúnebre em trítono amaldiçoado (220 Hz + 311 Hz)
       playTone(ctx, masterGain, {
         type: 'triangle',
-        freq: 164.81,
+        freq: 220.0,
         time: now,
-        dur: 0.12,
-        vol: 0.6,
+        dur: 0.14,
+        vol: 0.65,
       })
       playTone(ctx, masterGain, {
+        type: 'sine',
+        freq: 311.13, // Trítono / diabolus in musica
+        time: now,
+        dur: 0.12,
+        vol: 0.5,
+      })
+      // 2º tom (0.08s depois): baque profundo de caixão / lápide selada
+      playTone(ctx, masterGain, {
         type: 'triangle',
-        freq: 110.0,
-        endFreq: 82.0,
-        time: now + 0.06,
-        dur: 0.25,
-        vol: 0.75,
+        freq: 123.47,
+        endFreq: 55.0,
+        time: now + 0.08,
+        dur: 0.28,
+        vol: 0.9,
       })
       break
     }
 
     case 'undeafen': {
-      // Caixa de música de mansão mal-assombrada despertando
-      playTone(ctx, masterGain, { type: 'sine', freq: 587.33, time: now, dur: 0.09, vol: 0.55 })
-      playTone(ctx, masterGain, { type: 'sine', freq: 698.46, time: now + 0.05, dur: 0.11, vol: 0.6 })
-      playTone(ctx, masterGain, { type: 'triangle', freq: 880.0, time: now + 0.11, dur: 0.2, vol: 0.7 })
+      // Baseado nos 2 tons ascendentes originais: maldição quebrada / ressurreição auditiva
+      // 1º tom: sino sobrenatural grave
+      playGhostVoice(ctx, masterGain, {
+        freq: 246.94,
+        time: now,
+        dur: 0.12,
+        vol: 0.65,
+      })
+      // 2º tom (0.08s depois): caixinha de música espectral ressoando alto
+      playGhostVoice(ctx, masterGain, {
+        freq: 587.33,
+        endFreq: 880.0,
+        time: now + 0.08,
+        dur: 0.22,
+        vol: 0.75,
+      })
       break
     }
 
     case 'user_join': {
-      // Arpejo gótico de mansão assombrada (D menor: D4 -> F4 -> A4 -> D5)
+      // Baseado no arpejo ascendente original de 3 notas: relógio assombrado e fantasma entrando na sala!
+      // Acorde menor de mansão assombrada (D menor com trítono de puro terror):
       const notes = [
-        { freq: 293.66, time: now, dur: 0.14, vol: 0.55, type: 'triangle' as OscillatorType },
-        { freq: 349.23, time: now + 0.07, dur: 0.16, vol: 0.6, type: 'triangle' as OscillatorType },
-        { freq: 440.0, time: now + 0.14, dur: 0.18, vol: 0.65, type: 'sine' as OscillatorType },
-        { freq: 587.33, time: now + 0.22, dur: 0.3, vol: 0.75, type: 'sine' as OscillatorType },
+        { freq: 293.66, time: now, dur: 0.14, vol: 0.65, type: 'triangle' as OscillatorType }, // D4
+        { freq: 349.23, time: now + 0.07, dur: 0.16, vol: 0.7, type: 'triangle' as OscillatorType }, // F4 (terça menor)
+        { freq: 415.3, time: now + 0.15, dur: 0.2, vol: 0.75, type: 'triangle' as OscillatorType }, // Ab4 (trítono assustador)
+        { freq: 587.33, time: now + 0.22, dur: 0.32, vol: 0.85, type: 'sine' as OscillatorType }, // D5 (eco fantasma)
       ]
       notes.forEach((n) => playTone(ctx, masterGain, n))
+      // Eco sub-grave de aparição
+      playTone(ctx, masterGain, {
+        type: 'sine',
+        freq: 73.42,
+        time: now,
+        dur: 0.35,
+        vol: 0.5,
+      })
       break
     }
 
     case 'user_leave': {
-      // Fantasma desvanecendo suavemente na névoa
+      // Baseado nos 2 tons descendentes originais: suspiro de fantasma se esvaindo na névoa
       playTone(ctx, masterGain, {
         type: 'sine',
-        freq: 698.46,
-        endFreq: 293.66,
+        freq: 880.0,
+        endFreq: 349.23,
         time: now,
-        dur: 0.25,
-        vol: 0.65,
+        dur: 0.3,
+        vol: 0.7,
       })
-      playTone(ctx, masterGain, {
-        type: 'triangle',
-        freq: 349.23,
-        endFreq: 146.83,
-        time: now + 0.02,
-        dur: 0.26,
-        vol: 0.45,
+      playGhostVoice(ctx, masterGain, {
+        freq: 587.33,
+        endFreq: 220.0,
+        time: now + 0.05,
+        dur: 0.28,
+        vol: 0.6,
       })
       break
     }
 
     case 'live_start': {
-      // Órgão gótico dramático de Drácula (Acorde D Menor com harmônicos ricos)
-      playTone(ctx, masterGain, { type: 'triangle', freq: 146.83, time: now, dur: 0.35, vol: 0.45 })
-      playTone(ctx, masterGain, { type: 'triangle', freq: 220.0, time: now, dur: 0.35, vol: 0.5 })
-      playTone(ctx, masterGain, { type: 'sine', freq: 349.23, time: now, dur: 0.35, vol: 0.55 })
-      playTone(ctx, masterGain, { type: 'sine', freq: 440.0, time: now, dur: 0.35, vol: 0.65 })
+      // Baseado na fanfarra ascendente original: órgão gótico monumental de Drácula!
+      // Acorde grandioso de órgão com graves, terças menores e brilho majestoso
+      playTone(ctx, masterGain, { type: 'triangle', freq: 73.42, time: now, dur: 0.38, vol: 0.6 }) // Pedal D2
+      playTone(ctx, masterGain, { type: 'triangle', freq: 146.83, time: now, dur: 0.38, vol: 0.65 }) // D3
+      playTone(ctx, masterGain, { type: 'triangle', freq: 220.0, time: now + 0.04, dur: 0.35, vol: 0.65 }) // A3
+      playTone(ctx, masterGain, { type: 'sine', freq: 349.23, time: now + 0.08, dur: 0.35, vol: 0.7 }) // F4
+      playTone(ctx, masterGain, { type: 'sine', freq: 587.33, time: now + 0.14, dur: 0.4, vol: 0.8 }) // D5
       break
     }
 
     case 'live_stop': {
-      // Cadência final de órgão gótico
-      playTone(ctx, masterGain, { type: 'sine', freq: 349.23, time: now, dur: 0.12, vol: 0.55 })
-      playTone(ctx, masterGain, { type: 'triangle', freq: 293.66, time: now + 0.07, dur: 0.15, vol: 0.5 })
-      playTone(ctx, masterGain, { type: 'triangle', freq: 146.83, time: now + 0.13, dur: 0.28, vol: 0.6 })
+      // Baseado nos 2 tons descendentes originais: encerramento sombrio de órgão gótico
+      playTone(ctx, masterGain, { type: 'sine', freq: 349.23, time: now, dur: 0.14, vol: 0.65 })
+      playTone(ctx, masterGain, { type: 'triangle', freq: 220.0, time: now + 0.08, dur: 0.18, vol: 0.6 })
+      playTone(ctx, masterGain, { type: 'triangle', freq: 146.83, time: now + 0.14, dur: 0.32, vol: 0.75 })
       break
     }
   }
 }
 
+/* Síntese autêntica natalina: sinos de prata, celesta festiva e o motivo inconfundível de Jingle Bells */
 function playChristmasSound(ctx: AudioContext, masterGain: GainNode, type: SoundEffectType, now: number): void {
   switch (type) {
     case 'mute': {
-      // Toque suave de sino de prata (E6)
-      playBellNote(ctx, masterGain, 1318.51, now, 0.15, 0.7)
+      // Toque suave descendente de sino de prata na neve
+      playChristmasBell(ctx, masterGain, 1318.51, now, 0.16, 0.75) // E6
+      playChristmasBell(ctx, masterGain, 987.77, now + 0.05, 0.18, 0.65) // B5
       break
     }
 
     case 'unmute': {
-      // Sino natalino ascendente alegre (C6 -> G6)
-      playBellNote(ctx, masterGain, 1046.5, now, 0.12, 0.65)
-      playBellNote(ctx, masterGain, 1567.98, now + 0.06, 0.18, 0.75)
+      // Brilho cristalino ascendente de sino natalino
+      playChristmasBell(ctx, masterGain, 1046.5, now, 0.14, 0.7) // C6
+      playChristmasBell(ctx, masterGain, 1567.98, now + 0.06, 0.22, 0.85) // G6
       break
     }
 
     case 'deafen': {
-      // Sino suave de neve de inverno (G5 -> E5)
-      playBellNote(ctx, masterGain, 783.99, now, 0.13, 0.65)
-      playBellNote(ctx, masterGain, 659.25, now + 0.07, 0.18, 0.7)
+      // 2 sinos suaves e acolhedores de inverno (G5 -> E5)
+      playChristmasBell(ctx, masterGain, 783.99, now, 0.14, 0.7)
+      playChristmasBell(ctx, masterGain, 659.25, now + 0.08, 0.22, 0.75)
       break
     }
 
     case 'undeafen': {
-      // Celesta natalina de despertar (C5 -> G5 -> C6)
-      playBellNote(ctx, masterGain, 523.25, now, 0.12, 0.6)
-      playBellNote(ctx, masterGain, 783.99, now + 0.06, 0.14, 0.65)
-      playBellNote(ctx, masterGain, 1046.5, now + 0.12, 0.24, 0.75)
+      // 2 sinos alegres de despertar de Natal (E5 -> C6)
+      playChristmasBell(ctx, masterGain, 659.25, now, 0.14, 0.7)
+      playChristmasBell(ctx, masterGain, 1046.5, now + 0.08, 0.26, 0.8)
       break
     }
 
     case 'user_join': {
-      // Motivo clássico de Jingle Bells! (E5 - E5 - E5 com timbre autêntico de trenó)
-      playBellNote(ctx, masterGain, 659.25, now, 0.11, 0.65)
-      playBellNote(ctx, masterGain, 659.25, now + 0.12, 0.11, 0.65)
-      playBellNote(ctx, masterGain, 659.25, now + 0.24, 0.32, 0.8)
+      // O clássico e inconfundível motivo de Jingle Bells! (E5 - E5 - E5 com sinos de trenó autênticos)
+      playChristmasBell(ctx, masterGain, 659.25, now, 0.12, 0.75)
+      playChristmasBell(ctx, masterGain, 659.25, now + 0.12, 0.12, 0.75)
+      playChristmasBell(ctx, masterGain, 659.25, now + 0.24, 0.35, 0.9)
       break
     }
 
     case 'user_leave': {
-      // Sinos de inverno suaves em cadência descendente (G5 -> E5 -> C5)
-      playBellNote(ctx, masterGain, 783.99, now, 0.12, 0.65)
-      playBellNote(ctx, masterGain, 659.25, now + 0.08, 0.14, 0.6)
-      playBellNote(ctx, masterGain, 523.25, now + 0.16, 0.26, 0.7)
+      // Cadência descendente de canção natalina (G5 -> E5 -> C5)
+      playChristmasBell(ctx, masterGain, 783.99, now, 0.14, 0.7)
+      playChristmasBell(ctx, masterGain, 659.25, now + 0.08, 0.16, 0.65)
+      playChristmasBell(ctx, masterGain, 523.25, now + 0.16, 0.28, 0.75)
       break
     }
 
     case 'live_start': {
-      // Fanfarra de carrilhão de Natal festivo (G4 -> C5 -> E5 -> G5 -> C6)
-      playBellNote(ctx, masterGain, 392.0, now, 0.12, 0.5)
-      playBellNote(ctx, masterGain, 523.25, now + 0.06, 0.14, 0.55)
-      playBellNote(ctx, masterGain, 659.25, now + 0.12, 0.16, 0.6)
-      playBellNote(ctx, masterGain, 783.99, now + 0.18, 0.18, 0.65)
-      playBellNote(ctx, masterGain, 1046.5, now + 0.24, 0.32, 0.75)
+      // Grandiosa cascata de carrilhão de catedral de Natal (G4 -> C5 -> E5 -> G5 -> C6)
+      playChristmasBell(ctx, masterGain, 392.0, now, 0.14, 0.55)
+      playChristmasBell(ctx, masterGain, 523.25, now + 0.06, 0.16, 0.6)
+      playChristmasBell(ctx, masterGain, 659.25, now + 0.12, 0.18, 0.65)
+      playChristmasBell(ctx, masterGain, 783.99, now + 0.18, 0.22, 0.75)
+      playChristmasBell(ctx, masterGain, 1046.5, now + 0.25, 0.35, 0.85)
       break
     }
 
     case 'live_stop': {
-      // Resolução de caixinha de música de Natal
-      playBellNote(ctx, masterGain, 783.99, now, 0.12, 0.6)
-      playBellNote(ctx, masterGain, 659.25, now + 0.08, 0.14, 0.55)
-      playBellNote(ctx, masterGain, 523.25, now + 0.15, 0.28, 0.65)
-      break
-    }
-  }
-}
-
-function playNewYearSound(ctx: AudioContext, masterGain: GainNode, type: SoundEffectType, now: number): void {
-  switch (type) {
-    case 'mute': {
-      playTone(ctx, masterGain, {
-        type: 'triangle',
-        freq: 523.25,
-        endFreq: 329.63,
-        time: now,
-        dur: 0.12,
-        vol: 0.65,
-      })
-      break
-    }
-
-    case 'unmute': {
-      playTone(ctx, masterGain, {
-        type: 'sine',
-        freq: 329.63,
-        endFreq: 659.25,
-        time: now,
-        dur: 0.14,
-        vol: 0.75,
-      })
-      break
-    }
-
-    case 'deafen': {
-      playTone(ctx, masterGain, {
-        type: 'triangle',
-        freq: 587.33,
-        endFreq: 293.66,
-        time: now,
-        dur: 0.15,
-        vol: 0.7,
-      })
-      break
-    }
-
-    case 'undeafen': {
-      playTone(ctx, masterGain, { type: 'sine', freq: 293.66, time: now, dur: 0.08, vol: 0.6 })
-      playTone(ctx, masterGain, { type: 'sine', freq: 587.33, time: now + 0.06, dur: 0.1, vol: 0.65 })
-      playTone(ctx, masterGain, { type: 'triangle', freq: 880.0, time: now + 0.12, dur: 0.2, vol: 0.75 })
-      break
-    }
-
-    case 'user_join': {
-      // Fanfarra brilhante de celebração (F4 -> A4 -> C5 -> F5)
-      playTone(ctx, masterGain, { type: 'triangle', freq: 349.23, time: now, dur: 0.12, vol: 0.55 })
-      playTone(ctx, masterGain, { type: 'triangle', freq: 440.0, time: now + 0.07, dur: 0.14, vol: 0.6 })
-      playTone(ctx, masterGain, { type: 'sine', freq: 523.25, time: now + 0.14, dur: 0.16, vol: 0.65 })
-      playTone(ctx, masterGain, { type: 'sine', freq: 698.46, time: now + 0.21, dur: 0.3, vol: 0.75 })
-      break
-    }
-
-    case 'user_leave': {
-      // Corneta de festa em descida comemorativa
-      playTone(ctx, masterGain, {
-        type: 'sine',
-        freq: 698.46,
-        endFreq: 440.0,
-        time: now,
-        dur: 0.22,
-        vol: 0.65,
-      })
-      break
-    }
-
-    case 'live_start': {
-      // Fanfarra de contagem da virada
-      playTone(ctx, masterGain, { type: 'triangle', freq: 523.25, time: now, dur: 0.12, vol: 0.5 })
-      playTone(ctx, masterGain, { type: 'triangle', freq: 783.99, time: now + 0.07, dur: 0.14, vol: 0.6 })
-      playTone(ctx, masterGain, { type: 'sine', freq: 1046.5, time: now + 0.14, dur: 0.3, vol: 0.75 })
-      break
-    }
-
-    case 'live_stop': {
-      playTone(ctx, masterGain, { type: 'sine', freq: 1046.5, time: now, dur: 0.12, vol: 0.6 })
-      playTone(ctx, masterGain, { type: 'triangle', freq: 783.99, time: now + 0.07, dur: 0.14, vol: 0.55 })
-      playTone(ctx, masterGain, { type: 'triangle', freq: 523.25, time: now + 0.14, dur: 0.25, vol: 0.65 })
+      // Resolução delicada de caixinha de música de Natal
+      playChristmasBell(ctx, masterGain, 783.99, now, 0.14, 0.65)
+      playChristmasBell(ctx, masterGain, 659.25, now + 0.08, 0.16, 0.6)
+      playChristmasBell(ctx, masterGain, 523.25, now + 0.16, 0.3, 0.7)
       break
     }
   }
@@ -736,9 +737,6 @@ export function playSoundEffect(type: SoundEffectType, force: boolean = false): 
         break
       case 'christmas':
         playChristmasSound(ctx, masterGain, type, now)
-        break
-      case 'new_year':
-        playNewYearSound(ctx, masterGain, type, now)
         break
       case 'default':
       default:
