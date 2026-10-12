@@ -13,12 +13,14 @@
 
 !macro KillAppProcesses
   !insertmacro LogToInstallFile "[KillAppProcesses] Encerrando Lira.exe..."
-  nsExec::Exec `"$SYSDIR\taskkill.exe" /F /IM "Lira.exe" /T`
+  # ATENÇÃO: NÃO usar a flag /T (tree-kill) aqui! Quando a atualização é disparada pelo Lira,
+  # o instalador é filho na árvore de processos do Lira. Se usarmos /T, o taskkill mataria o próprio instalador!
+  nsExec::Exec `"$SYSDIR\taskkill.exe" /F /IM "Lira.exe"`
   Pop $0
   !insertmacro LogToInstallFile `[KillAppProcesses] taskkill Lira.exe retorno: $0`
 
   !insertmacro LogToInstallFile "[KillAppProcesses] Encerrando process-audio-capture.exe..."
-  nsExec::Exec `"$SYSDIR\taskkill.exe" /F /IM "process-audio-capture.exe" /T`
+  nsExec::Exec `"$SYSDIR\taskkill.exe" /F /IM "process-audio-capture.exe"`
   Pop $0
   !insertmacro LogToInstallFile `[KillAppProcesses] taskkill process-audio-capture.exe retorno: $0`
   Sleep 1000
