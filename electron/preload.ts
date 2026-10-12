@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { SpotifyPlaybackCommand, SpotifyPlaybackResult } from '../src/types/spotifyPlayback'
 
 export interface UpdateInfo {
   hasUpdate: boolean
@@ -73,6 +74,10 @@ export interface IElectronAPI {
   onUpdateProgress: (callback: (progress: UpdateProgress) => void) => () => void
   openExternal: (url: string) => Promise<void>
   openSpotifyPlayer: (url?: string) => Promise<{ ok: boolean; error?: string }>
+  getSpotifyPlaybackFrame: () => Promise<SpotifyPlaybackResult>
+  startSpotifyTabAudioCapture: () => Promise<{ ok: boolean; error?: string }>
+  stopSpotifyTabAudioCapture: () => Promise<boolean>
+  spotifyPlaybackCommand: (command: SpotifyPlaybackCommand) => Promise<SpotifyPlaybackResult>
   getSpotifyCurrentTrack: () => Promise<SpotifyTrackInfo>
   findSpotifySource: () => Promise<SpotifySourceResult | null>
   onSpotifyTrackChanged: (callback: (info: SpotifyTrackInfo) => void) => () => void
@@ -165,6 +170,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   openSpotifyPlayer: (url?: string) => ipcRenderer.invoke('open-spotify-player', url),
+  getSpotifyPlaybackFrame: () => ipcRenderer.invoke('get-spotify-playback-frame'),
+    startSpotifyTabAudioCapture: () => ipcRenderer.invoke('start-spotify-tab-audio'),
+    stopSpotifyTabAudioCapture: () => ipcRenderer.invoke('stop-spotify-tab-audio'),
+  spotifyPlaybackCommand: (command: SpotifyPlaybackCommand) => ipcRenderer.invoke('spotify-playback-command', command),
   getSpotifyCurrentTrack: () => ipcRenderer.invoke('get-spotify-current-track'),
   findSpotifySource: () => ipcRenderer.invoke('find-spotify-source'),
   onSpotifyPlayerClosed: (callback: () => void) => {

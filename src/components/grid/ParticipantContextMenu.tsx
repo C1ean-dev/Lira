@@ -17,6 +17,9 @@ import { useMediaStore } from '../../store/useMediaStore'
 import { useGameStore } from '../../store/useGameStore'
 import { useMapStore } from '../../store/useMapStore'
 import { PeerManager } from '../../p2p/PeerManager'
+import { useSpotifyJamStore } from '../../store/useSpotifyJamStore'
+import { MediaManager } from '../../media/MediaManager'
+import { participantVolumeControl } from '../../media/participantVolumeControl'
 
 interface Props {
   user: ParticipantData
@@ -48,12 +51,10 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
   const setParticipantVolume = useMediaStore((s) => s.setParticipantVolume)
   const isLive = Boolean(user.screenStream || user.isScreenSharing)
 
-  const currentVol =
-    participantVolumes[user.id] !== undefined
-      ? participantVolumes[user.id]
-      : user.gameId && participantVolumes[user.gameId] !== undefined
-      ? participantVolumes[user.gameId]
-      : 100
+  const djVolume = useSpotifyJamStore((s) => s.volume)
+  const djMuted = useSpotifyJamStore((s) => s.isMuted)
+  const isDjModeActive = useSpotifyJamStore((s) => s.isDjModeActive)
+  const setDjVolume = useSpotifyJamStore((s) => s.setVolume)
 
   const remotePlayer = useGameStore((s) =>
     s.remotePlayers[user.id] ||
@@ -63,6 +64,11 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
   )
   const isTargetMuted = remotePlayer ? Boolean(remotePlayer.isMuted) : Boolean(user.isMuted)
   const isTargetDeafened = remotePlayer ? Boolean(remotePlayer.isDeafened) : Boolean(user.isDeafened)
+  const volumeControl = participantVolumeControl(user, remotePlayer, localPlayer.id,
+    { volume: djVolume, isMuted: djMuted, isDjModeActive, setVolume: setDjVolume },
+    { participantVolumes, setParticipantVolume },
+    (value) => MediaManager.getInstance().setDjVolume(value))
+  const currentVol = volumeControl.volume
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -183,8 +189,7 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
               value={currentVol}
               onChange={(e) => {
                 const val = Number(e.target.value)
-                setParticipantVolume(user.id, val)
-                if (user.name) setParticipantVolume(user.name, val)
+                volumeControl.setVolume(val)
               }}
               className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400"
             />
@@ -195,8 +200,7 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
               type="button"
               onClick={(e) => {
                 e.stopPropagation()
-                setParticipantVolume(user.id, 0)
-                if (user.name) setParticipantVolume(user.name, 0)
+                volumeControl.setVolume(0)
               }}
               className={`px-1.5 py-0.5 rounded transition-colors ${
                 currentVol === 0 ? 'text-rose-400 font-bold bg-rose-500/10' : 'hover:text-white hover:bg-slate-800'
@@ -208,8 +212,7 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
               type="button"
               onClick={(e) => {
                 e.stopPropagation()
-                setParticipantVolume(user.id, 100)
-                if (user.name) setParticipantVolume(user.name, 100)
+                volumeControl.setVolume(100)
               }}
               className={`px-1.5 py-0.5 rounded transition-colors ${
                 currentVol === 100 ? 'text-indigo-400 font-bold bg-indigo-500/10' : 'hover:text-white hover:bg-slate-800'
@@ -221,8 +224,7 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
               type="button"
               onClick={(e) => {
                 e.stopPropagation()
-                setParticipantVolume(user.id, 200)
-                if (user.name) setParticipantVolume(user.name, 200)
+                volumeControl.setVolume(200)
               }}
               className={`px-1.5 py-0.5 rounded transition-colors ${
                 currentVol === 200 ? 'text-amber-400 font-bold bg-amber-500/10' : 'hover:text-amber-300 hover:bg-slate-800'

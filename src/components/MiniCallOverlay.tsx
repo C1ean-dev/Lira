@@ -336,7 +336,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
             {isScreenTrack ? `Tela (${name})` : isLocal ? `${name} (Você)` : name}
           </span>
           {(Boolean(id?.startsWith('dj-')) || name.includes('DJ')) && (
-            <span className="inline-flex items-center gap-0.5 px-1 py-0.2 bg-[#1db954] text-black text-[8px] font-extrabold rounded shrink-0 shadow-sm" title="Spotify DJ Bot">
+            <span className="inline-flex items-center gap-0.5 px-1 py-0.2 bg-[#1db954] text-black text-[8px] font-extrabold rounded shrink-0 shadow-sm" title="DJ">
               <SpotifyIcon size={9} className="text-black" />
               <span>DJ</span>
             </span>
@@ -1253,21 +1253,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               title="Gerenciar Usuários com Permissão de Entrada"
             >
               <Shield className="w-4 h-4" />
-            </button>
-
-            <button
-              onClick={() => setSpotifyJamModalOpen(true, localPlayer.currentZoneId)}
-              className={`p-2 rounded-xl text-xs font-medium transition-all relative ${
-                isJamActive
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30 shadow-md shadow-emerald-500/20 ring-1 ring-emerald-500/40'
-                  : 'bg-slate-800 text-slate-400 hover:text-emerald-400 hover:bg-slate-700'
-              }`}
-              title={isJamActive ? `Spotify Jam ativo nesta sala (${activeZoneJam?.zoneName || zoneName})` : 'Spotify Jam nesta sala'}
-            >
-              <SpotifyIcon size={16} className={`w-4 h-4 ${isJamActive ? 'text-emerald-400 animate-pulse' : ''}`} />
-              {isJamActive && (
-                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              )}
             </button>
 
             <button

@@ -21,7 +21,8 @@ export default defineConfig({
         vite: {
           build: {
             sourcemap: 'hidden',
-            rollupOptions: { output: { sourcemapExcludeSources: true } },
+            // Keep ws optional native dependencies inside Node's runtime try/catch.
+            rollupOptions: { external: ['ws'], output: { sourcemapExcludeSources: true } },
           },
         },
       },

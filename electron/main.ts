@@ -24,6 +24,10 @@ import { createStartupTimer } from './startupTimer'
 import { startCpuProfile } from './startupProfile'
 import { sanitizeRecords } from '../src/utils/logFormat'
 import { SpotifyBrowserController, findSpotifyBrowser, querySpotifyBrowserWindow } from './spotifyBrowser'
+import { SpotifyPlaybackController } from './spotifyPlayback'
+import { SpotifyTabAudioController } from './spotifyTabAudio'
+import { connectPlayback, playbackJson } from './spotifyPlaybackTransport'
+import type { SpotifyPlaybackCommand } from '../src/types/spotifyPlayback'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -77,6 +81,7 @@ Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; pu
 [LiraSpotifyBrowserFocus]::SetForegroundWindow([IntPtr]::new([long]${handle})) | Out-Null`)
   },
   onClosed: () => {
+    void spotifyTabAudio.stop()
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('spotify:player-closed')
   },
 })
@@ -1306,6 +1311,21 @@ ipcMain.handle('open-external', async (event, url: string) => {
   }
 })
 
+const spotifyPlayback = new SpotifyPlaybackController({
+  active: () => spotifyPlayer.isOpen,
+  readPortFile: () => fs.promises.readFile(path.join(app.getPath('userData'), 'spotify-browser', 'DevToolsActivePort'), 'utf8'),
+  json: playbackJson,
+  connect: connectPlayback,
+})
+ipcMain.handle('get-spotify-playback-frame', () => spotifyPlayback.frame())
+const spotifyTabAudio = new SpotifyTabAudioController({
+  connect: () => spotifyPlayback.connectTab(),
+  data: chunk => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('process-audio-data', chunk) },
+  ended: error => emitProcessAudioStatus('error', error),
+})
+ipcMain.handle('start-spotify-tab-audio', () => spotifyTabAudio.start())
+ipcMain.handle('stop-spotify-tab-audio', async () => { await spotifyTabAudio.stop(); return true })
+ipcMain.handle('spotify-playback-command', (_event, command: SpotifyPlaybackCommand) => spotifyPlayback.command(command))
 ipcMain.handle('open-spotify-player', (_event, url?: string) => spotifyPlayer.open(url))
 
 export interface SpotifyCurrentTrack {
@@ -2011,6 +2031,7 @@ ipcMain.handle('get-system-idle-time', () => {
 })
 
 app.on('before-quit', () => {
+  void spotifyTabAudio.stop()
   spotifyPlayer.close()
   if (trayManager) {
     trayManager.setQuitting(true)

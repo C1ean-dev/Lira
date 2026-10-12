@@ -9,6 +9,7 @@ export function SpotifyPlayerFeedback({ opening, error }: { opening: boolean; er
     <div role="status" aria-live="polite" className="text-xs text-emerald-200 bg-emerald-500/10 p-3 rounded-xl border border-emerald-500/20">
       <p>Abrindo o player… A primeira abertura pode levar alguns instantes.</p>
       <p className="mt-1 text-slate-300">Você entrará diretamente com sua conta Spotify.</p>
+      <p className="mt-1 text-slate-300">No navegador, selecione a aba do Spotify e marque Compartilhar áudio da aba. O som será ouvido pelo DJ na sala.</p>
     </div>
   )
 }

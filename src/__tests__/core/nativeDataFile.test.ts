@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
@@ -147,6 +147,7 @@ describe('writeNativeDataFileAsync and writeNativeDataFileLatest', () => {
     return path.join(dir, 'nativeAssets.json')
   }
   afterEach(() => {
+    vi.restoreAllMocks()
     while (dirs.length) fs.rmSync(dirs.pop()!, { recursive: true, force: true })
   })
 
@@ -182,6 +183,76 @@ describe('writeNativeDataFileAsync and writeNativeDataFileLatest', () => {
       [A, B, C].sort()
     )
   })
+
+  it('keeps the previous JSON readable while the new file is being written', async () => {
+    const file = tmp()
+    const previous = JSON.stringify({ categories: ['Anterior'], assets: [] })
+    fs.writeFileSync(file, previous)
+    const write = fs.promises.writeFile.bind(fs.promises)
+    let seenDuringWrite = ''
+    vi.spyOn(fs.promises, 'writeFile').mockImplementationOnce(async (target, data, options) => {
+      fs.writeFileSync(target as string, '{"categories":')
+      seenDuringWrite = fs.readFileSync(file, 'utf-8')
+      await write(target, data, 'utf-8')
+    })
+    await writeNativeDataFileAsync(file, payload())
+    expect(seenDuringWrite).toBe(previous)
+    expect(JSON.parse(fs.readFileSync(file, 'utf-8')).categories).toEqual(['Geral', 'Pokémon'])
+  })
+
+  it('preserves the previous JSON and cleans up a partial save when writing fails', async () => {
+    const file = tmp()
+    const previous = JSON.stringify({ categories: ['Anterior'], assets: [] })
+    fs.writeFileSync(file, previous)
+    vi.spyOn(fs.promises, 'writeFile').mockImplementationOnce(async target => {
+      fs.writeFileSync(target as string, '{"categories":')
+      throw Object.assign(new Error('disk full'), { code: 'ENOSPC' })
+    })
+    await expect(writeNativeDataFileAsync(file, payload())).rejects.toThrow('disk full')
+    expect(fs.readFileSync(file, 'utf-8')).toBe(previous)
+    expect(fs.readdirSync(path.dirname(file))).toEqual(['nativeAssets.json'])
+  })
+
+  it('keeps the old file when Windows refuses to replace it, without deleting it first', async () => {
+    const file = tmp()
+    const previous = JSON.stringify({ categories: ['Anterior'], assets: [] })
+    fs.writeFileSync(file, previous)
+    vi.spyOn(fs.promises, 'rename').mockRejectedValue(Object.assign(new Error('file busy'), { code: 'EBUSY' }))
+    await expect(writeNativeDataFileAsync(file, payload())).rejects.toThrow('file busy')
+    expect(fs.readFileSync(file, 'utf-8')).toBe(previous)
+    expect(fs.readdirSync(path.dirname(file))).toEqual(['nativeAssets.json'])
+  })
+
+  it('keeps JSON valid during independent concurrent saves', async () => {
+    const file = tmp()
+    fs.writeFileSync(file, JSON.stringify({ categories: ['Anterior'], assets: [] }))
+    const rename = fs.promises.rename.bind(fs.promises)
+    const observed: string[] = []
+    const publish = vi.spyOn(fs.promises, 'rename').mockImplementation(async (from, to) => {
+      observed.push(fs.readFileSync(file, 'utf-8'))
+      await rename(from, to)
+      observed.push(fs.readFileSync(file, 'utf-8'))
+    })
+    const results = await Promise.allSettled(Array.from({ length: 6 }, (_, i) => writeNativeDataFileAsync(file, { categories: [`Save ${i}`], assets: [] })))
+    expect(results.every(result => result.status === 'fulfilled')).toBe(true)
+    expect(publish.mock.calls.length).toBeGreaterThanOrEqual(6)
+    expect(observed.every(text => Array.isArray(JSON.parse(text).categories))).toBe(true)
+    expect(fs.readdirSync(path.dirname(file))).toEqual(['nativeAssets.json'])
+  })
+
+  it('retries a temporary Windows lock while leaving the previous JSON readable', async () => {
+    const file = tmp()
+    const previous = JSON.stringify({ categories: ['Anterior'], assets: [] })
+    fs.writeFileSync(file, previous)
+    const rename = fs.promises.rename.bind(fs.promises)
+    const publish = vi.spyOn(fs.promises, 'rename').mockImplementationOnce(async () => {
+      expect(fs.readFileSync(file, 'utf-8')).toBe(previous)
+      throw Object.assign(new Error('temporarily locked'), { code: 'EPERM' })
+    }).mockImplementation(rename)
+    await writeNativeDataFileAsync(file, payload())
+    expect(publish).toHaveBeenCalledTimes(2)
+    expect(JSON.parse(fs.readFileSync(file, 'utf-8')).categories).toEqual(['Geral', 'Pokémon'])
+  })
 })
 
 function readBack(parsed: Tree): Tree {
@@ -204,6 +275,7 @@ describe('writeNativeDataFile and readNativeDataFile', () => {
   }
 
   afterEach(() => {
+    vi.restoreAllMocks()
     while (dirs.length) fs.rmSync(dirs.pop()!, { recursive: true, force: true })
   })
 
@@ -251,5 +323,19 @@ describe('writeNativeDataFile and readNativeDataFile', () => {
     const file = tmp()
     fs.writeFileSync(file, '{ not json', 'utf-8')
     expect(() => readNativeDataFile(file)).toThrow()
+  })
+
+  it('preserves the previous JSON if a synchronous save fails after writing partial content', () => {
+    const file = tmp()
+    const previous = JSON.stringify({ categories: ['Anterior'], assets: [] })
+    fs.writeFileSync(file, previous)
+    const write = fs.writeFileSync.bind(fs)
+    vi.spyOn(fs, 'writeFileSync').mockImplementationOnce((target) => {
+      write(target, '{"categories":')
+      throw new Error('disk full')
+    })
+    expect(() => writeNativeDataFile(file, payload())).toThrow('disk full')
+    expect(fs.readFileSync(file, 'utf-8')).toBe(previous)
+    expect(fs.readdirSync(path.dirname(file))).toEqual(['nativeAssets.json'])
   })
 })

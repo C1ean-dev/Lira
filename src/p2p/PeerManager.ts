@@ -15,6 +15,7 @@ import { VideoDegradation } from './videoSendPolicy'
 import { prioritizeH264HardwareCodec } from '../media/hardwareCodec'
 import { MediaManager } from '../media/MediaManager'
 import { waitForDjPeerReady } from './djPeerReady'
+import { djMusicSdp } from './djMusicSdp'
 import { connectLiveView, liveViewReporter } from '../media/liveView'
 import { DynamicBufferManager } from '../services/DynamicBufferManager'
 import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
@@ -1221,7 +1222,7 @@ export class PeerManager {
       const djPlayer: Player = {
         id: djBotId,
         gameId: djBotId,
-        name: 'Spotify DJ',
+        name: 'DJ',
         isDjBot: true,
         djOwnerId: this.peer?.id || localPlayer.id,
         x: localPlayer.x,
@@ -1264,7 +1265,7 @@ export class PeerManager {
       useGameStore.getState().setRemotePlayer(djPlayer)
       useMediaStore.getState().setPeerStream(djBotId, audioStream)
       useGameStore.getState().setCallState(djBotId, 'connected')
-      useMediaStore.getState().setParticipantVolume(djBotId, 0)
+      useMediaStore.getState().setParticipantVolume(djBotId, 100)
 
       this.broadcast({
         type: 'PLAYER_JOIN',
@@ -1275,7 +1276,7 @@ export class PeerManager {
 
       newDjPeer.on('call', (call) => {
         console.log('[PeerManager DJ] Answering call from peer:', call.peer)
-        call.answer(this.djAudioStream || new MediaStream())
+        call.answer(this.djAudioStream || new MediaStream(), { sdpTransform: djMusicSdp })
         this.djMediaCalls.set(call.peer, call)
         call.on('close', () => this.djMediaCalls.delete(call.peer))
         call.on('error', () => this.djMediaCalls.delete(call.peer))
@@ -1309,7 +1310,7 @@ export class PeerManager {
 
     try {
       console.log('[PeerManager DJ] Calling peer:', remotePeerId)
-      const call = this.djPeer.call(remotePeerId, this.djAudioStream)
+      const call = this.djPeer.call(remotePeerId, this.djAudioStream, { sdpTransform: djMusicSdp })
       if (call) {
         this.djMediaCalls.set(remotePeerId, call)
         call.on('close', () => {

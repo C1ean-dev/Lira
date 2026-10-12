@@ -18,6 +18,7 @@ describe('Spotify DJ audio startup', () => {
     api = {
       openSpotifyPlayer: vi.fn(async () => ({ ok: true })),
       findSpotifySource: vi.fn(async () => ({ sourceId: 'window:42:0', isBrowserPlayer: true })),
+      startSpotifyTabAudioCapture: vi.fn(),
     }
     vi.stubGlobal('window', { electronAPI: api })
     vi.stubGlobal('MediaStream', class { constructor(public tracks: any[]) {} getAudioTracks() { return this.tracks } })
@@ -30,7 +31,7 @@ describe('Spotify DJ audio startup', () => {
     expect(await manager.startDjAudio()).toEqual({ ok: true })
     expect(api.openSpotifyPlayer).toHaveBeenCalledOnce()
     expect(api.openSpotifyPlayer.mock.invocationCallOrder[0]).toBeLessThan(api.findSpotifySource.mock.invocationCallOrder[0])
-    expect(mocks.start).toHaveBeenCalledWith('window:42:0')
+    expect(mocks.start).toHaveBeenCalledWith('spotify-tab')
     expect(mocks.startBot).toHaveBeenCalledOnce()
   })
 

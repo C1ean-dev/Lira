@@ -5,6 +5,9 @@ import { useGameStore } from '../../store/useGameStore'
 import { useMediaStore } from '../../store/useMediaStore'
 import { Player } from '../../types/game'
 
+// The editor can save native assets while these call-only tests run.
+vi.mock('../../data/nativeAssets.json', () => ({ default: { categories: [], assets: [] } }))
+
 class MockMediaStream {
   private tracks: any[] = []
   id = 'mock-stream-' + Math.random()

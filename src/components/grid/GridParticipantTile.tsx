@@ -221,7 +221,7 @@ export const GridParticipantTile: React.FC<Props> = ({
           <span className="truncate font-semibold flex items-center gap-1.5 min-w-0">
             <span className="truncate">{isLive ? `Tela (${user.name})` : user.isLocal ? `${user.name} (Você)` : user.name}</span>
             {(user.isDjBot || user.id.startsWith('dj-') || user.name.includes('DJ')) && (
-              <span className="inline-flex items-center gap-0.5 px-1 py-0.2 bg-[#1db954] text-black text-[8px] font-extrabold rounded shrink-0 shadow-sm" title="Spotify DJ Bot">
+              <span className="inline-flex items-center gap-0.5 px-1 py-0.2 bg-[#1db954] text-black text-[8px] font-extrabold rounded shrink-0 shadow-sm" title="DJ">
                 <SpotifyIcon size={9} className="text-black" />
                 <span>DJ</span>
               </span>
@@ -316,7 +316,7 @@ export const GridParticipantTile: React.FC<Props> = ({
               <div className="text-sm sm:text-base font-bold text-slate-200 flex items-center gap-2 drop-shadow-md">
                 <span>{user.name}</span>
                 {(user.isDjBot || user.id.startsWith('dj-') || user.name.includes('DJ')) && (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-[#1db954] text-black text-[10px] font-extrabold rounded-md shadow" title="Spotify DJ Bot">
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-[#1db954] text-black text-[10px] font-extrabold rounded-md shadow" title="DJ">
                     <SpotifyIcon size={11} className="text-black" />
                     <span>DJ</span>
                   </span>

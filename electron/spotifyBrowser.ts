@@ -10,7 +10,7 @@ export function spotifyPlayerUrl(input?: string): string {
 }
 
 export function spotifyBrowserArgs(url: string, profile: string): string[] {
-  return [`--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', `--app=${spotifyPlayerUrl(url)}`]
+  return [`--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0', `--app=${spotifyPlayerUrl(url)}`]
 }
 
 type Browser = { path: string; name: string }
@@ -76,6 +76,8 @@ export class SpotifyBrowserController {
   private generation = 0
 
   constructor(private deps: BrowserDeps) {}
+
+  get isOpen(): boolean { return this.window !== null }
 
   open(input?: string): Promise<Result> {
     if (this.opening) return this.opening

@@ -69,7 +69,7 @@ export const useSpotifyJamStore = create<SpotifyJamStore>((set, get) => ({
   },
 
   setVolume: (volume: number) => {
-    set({ volume: Math.max(0, Math.min(100, volume)), isMuted: false })
+    set({ volume: Math.max(0, Math.min(200, volume)), isMuted: false })
   },
 
   toggleMute: () => {

@@ -34,7 +34,9 @@ describe('Spotify DJ modal', () => {
 
   it('shows only DJ controls even when an old Jam and recommendations exist', () => {
     const html = renderToStaticMarkup(<SpotifyJamModal />)
-    expect(html).toContain('Spotify DJ')
+    expect(html).toMatch(/<h2[^>]*>DJ<\/h2>/)
+    expect(html).not.toContain('Spotify DJ')
+    expect(html).toContain('min="0" max="200"')
     expect(html).toContain('Transmitir DJ')
     expect(html).toContain('type="range"')
     expect(html).not.toMatch(/Spotify Jam|Link do Spotify Jam|Iniciar Jam|Jam ativo|Recomendar Faixa|Faixa recomendada|Fila Compartilhada|Fila da Sala|Abrir Spotify/)
