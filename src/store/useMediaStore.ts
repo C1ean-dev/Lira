@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { SensitivityMode, AudioProcessorMode } from '../types/audio'
+import { SensitivityMode, AudioProcessorMode, SoundTheme } from '../types/audio'
 import { useGameStore } from './useGameStore'
 import { diagLog, shortId, summarizeStream } from '../utils/diagnosticLogger'
 import { registerReportContext } from '../utils/reportContext'
@@ -76,6 +76,7 @@ interface MediaStore {
   removeCaptureBorder: boolean
   soundEffectsEnabled: boolean
   soundEffectsVolume: number
+  soundTheme: SoundTheme
 
   setSelectedAudioInput: (deviceId: string) => void
   setSelectedAudioOutput: (deviceId: string) => void
@@ -97,6 +98,7 @@ interface MediaStore {
   toggleRemoveCaptureBorder: () => void
   setSoundEffectsEnabled: (enabled: boolean) => void
   setSoundEffectsVolume: (volume: number) => void
+  setSoundTheme: (theme: SoundTheme) => void
 
   isHardwareAccelerationEnabled: boolean
   setHardwareAccelerationEnabled: (enabled: boolean) => void
@@ -239,6 +241,7 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   removeCaptureBorder: saved.removeCaptureBorder !== undefined ? Boolean(saved.removeCaptureBorder) : true,
   soundEffectsEnabled: saved.soundEffectsEnabled !== undefined ? Boolean(saved.soundEffectsEnabled) : true,
   soundEffectsVolume: typeof saved.soundEffectsVolume === 'number' ? saved.soundEffectsVolume : 80,
+  soundTheme: (saved.soundTheme as SoundTheme) || 'auto',
   isHardwareAccelerationEnabled:
     saved.isHardwareAccelerationEnabled !== undefined
       ? Boolean(saved.isHardwareAccelerationEnabled)
@@ -350,6 +353,10 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
     const clamped = Math.max(0, Math.min(100, Math.round(soundEffectsVolume)))
     saveAudioSettingsDebounced({ soundEffectsVolume: clamped })
     set({ soundEffectsVolume: clamped })
+  },
+  setSoundTheme: (soundTheme: SoundTheme) => {
+    saveAudioSettings({ soundTheme })
+    set({ soundTheme })
   },
   setHardwareAccelerationEnabled: (enabled: boolean) => {
     saveAudioSettings({ isHardwareAccelerationEnabled: enabled })
@@ -773,6 +780,7 @@ const TRACKED_MEDIA_SETTINGS = [
   'selectedVideoInput',
   'isHardwareAccelerationEnabled',
   'screenShareAudioMode',
+  'soundTheme',
 ] as const
 
 useMediaStore.subscribe((state, previous) => {
@@ -796,5 +804,6 @@ setSoundEffectsOptionsProvider(() => {
     volume: s.soundEffectsVolume,
     isDeafened: s.isDeafened,
     selectedAudioOutput: s.selectedAudioOutput,
+    soundTheme: s.soundTheme,
   }
 })

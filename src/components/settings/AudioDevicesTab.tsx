@@ -11,9 +11,18 @@ import {
   Info,
   AlertTriangle,
   Volume2,
+  Sparkles,
+  Calendar,
 } from 'lucide-react'
 import { useMediaStore } from '../../store/useMediaStore'
-import { playSoundEffect, SoundEffectType, SOUND_EFFECT_LABELS } from '../../utils/soundEffects'
+import {
+  playSoundEffect,
+  SoundEffectType,
+  SOUND_EFFECT_LABELS,
+  SOUND_THEMES,
+  SoundTheme,
+  resolveEffectiveSoundTheme,
+} from '../../utils/soundEffects'
 import { MediaManager } from '../../media/MediaManager'
 import { attachStreamToVideo } from '../../media/attachVideoElement'
 import { AudioDeviceInfo, SensitivityMode } from '../../types/audio'
@@ -52,10 +61,14 @@ export const AudioDevicesTab: React.FC<Props> = ({
   const setManualSensitivityThreshold = useMediaStore((s) => s.setManualSensitivityThreshold)
   const soundEffectsEnabled = useMediaStore((s) => s.soundEffectsEnabled)
   const soundEffectsVolume = useMediaStore((s) => s.soundEffectsVolume)
+  const soundTheme = useMediaStore((s) => s.soundTheme)
   const setSoundEffectsEnabled = useMediaStore((s) => s.setSoundEffectsEnabled)
   const setSoundEffectsVolume = useMediaStore((s) => s.setSoundEffectsVolume)
+  const setSoundTheme = useMediaStore((s) => s.setSoundTheme)
   const micCalibrations = useMediaStore((s) => s.micCalibrations)
   const currentCalibration = micCalibrations[selectedAudioInput]
+
+  const activeSeasonalTheme = resolveEffectiveSoundTheme('auto')
 
   const [isTestingCamera, setIsTestingCamera] = useState(false)
   const [cameraTestStream, setCameraTestStream] = useState<MediaStream | null>(null)
@@ -577,6 +590,75 @@ export const AudioDevicesTab: React.FC<Props> = ({
                 onChange={(e) => setSoundEffectsVolume(Number(e.target.value))}
                 className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
               />
+            </div>
+
+            <div className="space-y-2 pt-1 border-t border-[#1e2330]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-bold text-slate-200">Tema dos Efeitos (Sons por Data)</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-semibold flex items-center gap-1">
+                      <span>{SOUND_THEMES[soundTheme === 'auto' ? activeSeasonalTheme : soundTheme].icon}</span>
+                      <span>
+                        {soundTheme === 'auto'
+                          ? `${SOUND_THEMES[activeSeasonalTheme].name} (Automático)`
+                          : SOUND_THEMES[soundTheme].name}
+                      </span>
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Alterne entre temas sazonais (Halloween, Natal, etc.) ou selecione detecção automática por data
+                  </p>
+                </div>
+              </div>
+
+              {/* Switch de seleção de sons / temas */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-1 bg-[#151922] rounded-xl border border-[#2a3142]">
+                {(['auto', 'default', 'halloween', 'christmas', 'new_year'] as SoundTheme[]).map((themeKey) => {
+                  const info = SOUND_THEMES[themeKey]
+                  const isSelected = soundTheme === themeKey
+                  return (
+                    <button
+                      key={themeKey}
+                      type="button"
+                      onClick={() => {
+                        setSoundTheme(themeKey)
+                        playSoundEffect('unmute', true)
+                      }}
+                      className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-indigo-600 text-white shadow'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-[#1f2637]'
+                      }`}
+                      title={info.description}
+                    >
+                      <span className="text-sm shrink-0">{info.icon}</span>
+                      <span className="truncate">{info.name}</span>
+                    </button>
+                  )
+                })}
+              </div>
+
+              <div className="text-[10.5px] text-slate-400 bg-[#161a24] p-2 rounded-xl border border-[#232938] flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                  <span>
+                    {soundTheme === 'auto'
+                      ? `Calendário detectado: Sons de ${SOUND_THEMES[activeSeasonalTheme].name} (${SOUND_THEMES[activeSeasonalTheme].icon}) ativos automaticamente.`
+                      : `Tema manual ativo: ${SOUND_THEMES[soundTheme].name} (${SOUND_THEMES[soundTheme].icon}) · ${SOUND_THEMES[soundTheme].description}`}
+                  </span>
+                </span>
+                {soundTheme !== 'auto' && (
+                  <button
+                    type="button"
+                    onClick={() => setSoundTheme('auto')}
+                    className="text-[10px] text-indigo-400 hover:text-indigo-300 underline font-medium cursor-pointer shrink-0 ml-2"
+                  >
+                    Usar data automática
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="space-y-2 pt-1">

@@ -8,6 +8,8 @@ export type SensitivityMode = 'auto' | 'manual'
 
 export type AudioProcessorMode = 'classic' | 'soft' | 'rnnoise'
 
+export type SoundTheme = 'auto' | 'default' | 'halloween' | 'christmas' | 'new_year'
+
 export interface AudioSettings {
   selectedAudioInput: string
   selectedAudioOutput: string
@@ -23,4 +25,5 @@ export interface AudioSettings {
   duckingEnabled: boolean
   soundEffectsEnabled?: boolean
   soundEffectsVolume?: number
+  soundTheme?: SoundTheme
 }
