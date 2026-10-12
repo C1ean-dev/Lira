@@ -1120,23 +1120,38 @@ async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
         console.warn('[Updater] statfs check warning:', statfsErr)
       }
 
-      // Método 1 (Principal): shell.openPath usa a API nativa ShellExecuteEx do Windows Shell.
-      // É o equivalente exato ao duplo-clique no instalador pelo Explorer.
-      // Suporta diálogo de elevação UAC, validação do SmartScreen e permissões de administrador.
+      // Método 1 (Principal): explorer.exe executa o instalador pelo Shell do Windows (Explorer),
+      // exatamente equivalente a o usuário dar duplo clique no arquivo, desacoplado de qualquer árvore ou Job Object do Lira.
       try {
-        console.log('[Updater] Launching installer via shell.openPath:', installerPath)
-        const openErr = await shell.openPath(installerPath)
-        if (!openErr) {
-          launched = true
-          console.log('[Updater] Successfully launched installer via shell.openPath')
-        } else {
-          console.warn('[Updater] shell.openPath returned an error:', openErr)
-        }
+        console.log('[Updater] Launching installer via explorer.exe:', installerPath)
+        const explorerProc = spawn('explorer.exe', [installerPath], {
+          detached: true,
+          stdio: 'ignore',
+        })
+        explorerProc.unref()
+        launched = true
+        console.log('[Updater] Successfully dispatched installer via explorer.exe')
       } catch (err) {
-        console.warn('[Updater] shell.openPath exception:', err)
+        console.warn('[Updater] explorer.exe spawn exception:', err)
       }
 
-      // Método 2 (Fallback): PowerShell Start-Process (também invoca ShellExecuteEx com suporte completo a UAC)
+      // Método 2 (Fallback): shell.openPath usa a API nativa ShellExecuteEx do Windows Shell.
+      if (!launched) {
+        try {
+          console.log('[Updater] Fallback: Launching installer via shell.openPath:', installerPath)
+          const openErr = await shell.openPath(installerPath)
+          if (!openErr) {
+            launched = true
+            console.log('[Updater] Successfully launched installer via shell.openPath')
+          } else {
+            console.warn('[Updater] shell.openPath returned an error:', openErr)
+          }
+        } catch (err) {
+          console.warn('[Updater] shell.openPath exception:', err)
+        }
+      }
+
+      // Método 3 (Fallback): PowerShell Start-Process (também invoca ShellExecuteEx com suporte completo a UAC)
       if (!launched) {
         try {
           console.log('[Updater] Fallback: Launching installer via PowerShell Start-Process...')
@@ -1166,7 +1181,7 @@ async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
         }
       }
 
-      // Método 3 (Fallback): cmd.exe start
+      // Método 4 (Fallback): cmd.exe start
       if (!launched) {
         try {
           console.log('[Updater] Fallback: Launching installer via cmd start...')
@@ -1184,7 +1199,7 @@ async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
         }
       }
 
-      // Método 4 (Último recurso): spawn direto
+      // Método 5 (Último recurso): spawn direto
       if (!launched) {
         try {
           console.log('[Updater] Fallback: Direct spawn...')
