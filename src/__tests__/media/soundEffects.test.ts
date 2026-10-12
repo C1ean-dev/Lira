@@ -4,7 +4,11 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import {
   playSoundEffect,
   SoundEffectType,
+  SoundTheme,
   SOUND_EFFECT_LABELS,
+  SOUND_THEMES,
+  getSeasonalThemeForDate,
+  resolveEffectiveSoundTheme,
   _resetSoundEffectsForTesting,
 } from '../../utils/soundEffects'
 import { useMediaStore } from '../../store/useMediaStore'
@@ -68,6 +72,7 @@ describe('Sound Effects System', () => {
     useMediaStore.setState({
       soundEffectsEnabled: true,
       soundEffectsVolume: 80,
+      soundTheme: 'auto',
       isMuted: true,
       isDeafened: false,
       isScreenSharing: false,
@@ -233,5 +238,89 @@ describe('Sound Effects System', () => {
     Object.values(SOUND_EFFECT_LABELS).forEach(({ label }) => {
       expect(html).toContain(label)
     })
+  })
+
+  it('detects seasonal themes according to date correctly', () => {
+    // October (Halloween)
+    expect(getSeasonalThemeForDate(new Date(2026, 9, 11))).toBe('halloween')
+    expect(getSeasonalThemeForDate(new Date(2026, 9, 31))).toBe('halloween')
+    expect(getSeasonalThemeForDate(new Date(2026, 10, 2))).toBe('halloween')
+
+    // December (Christmas)
+    expect(getSeasonalThemeForDate(new Date(2026, 11, 15))).toBe('christmas')
+    expect(getSeasonalThemeForDate(new Date(2026, 11, 25))).toBe('christmas')
+
+    // New Year
+    expect(getSeasonalThemeForDate(new Date(2026, 11, 31))).toBe('new_year')
+    expect(getSeasonalThemeForDate(new Date(2027, 0, 1))).toBe('new_year')
+
+    // Standard / Default period
+    expect(getSeasonalThemeForDate(new Date(2026, 4, 15))).toBe('default')
+  })
+
+  it('resolves effective sound theme with auto and explicit overrides', () => {
+    const octDate = new Date(2026, 9, 15)
+    expect(resolveEffectiveSoundTheme('auto', octDate)).toBe('halloween')
+    expect(resolveEffectiveSoundTheme(undefined, octDate)).toBe('halloween')
+
+    // User can manually switch to Christmas even during Halloween!
+    expect(resolveEffectiveSoundTheme('christmas', octDate)).toBe('christmas')
+    expect(resolveEffectiveSoundTheme('default', octDate)).toBe('default')
+    expect(resolveEffectiveSoundTheme('halloween', octDate)).toBe('halloween')
+    expect(resolveEffectiveSoundTheme('new_year', octDate)).toBe('new_year')
+  })
+
+  it('synthesizes all 8 sound effect types in all seasonal themes without throwing', () => {
+    const types: SoundEffectType[] = [
+      'mute',
+      'unmute',
+      'deafen',
+      'undeafen',
+      'user_join',
+      'user_leave',
+      'live_start',
+      'live_stop',
+    ]
+
+    const themes: SoundTheme[] = ['default', 'halloween', 'christmas', 'new_year']
+
+    themes.forEach((theme) => {
+      useMediaStore.setState({ soundTheme: theme })
+      types.forEach((type) => {
+        expect(() => playSoundEffect(type, true)).not.toThrow()
+      })
+    })
+  })
+
+  it('allows switching sound themes in useMediaStore', () => {
+    const { setSoundTheme } = useMediaStore.getState()
+
+    setSoundTheme('halloween')
+    expect(useMediaStore.getState().soundTheme).toBe('halloween')
+
+    setSoundTheme('christmas')
+    expect(useMediaStore.getState().soundTheme).toBe('christmas')
+
+    setSoundTheme('auto')
+    expect(useMediaStore.getState().soundTheme).toBe('auto')
+  })
+
+  it('renders sound theme switch buttons in AudioDevicesTab', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(AudioDevicesTab, {
+        inputDevices: [],
+        outputDevices: [],
+        videoDevices: [],
+        isPlayingTestSound: false,
+        onPlayTestSound: () => {},
+      })
+    )
+
+    expect(html).toContain('Tema dos Efeitos (Sons por Data)')
+    expect(html).toContain('Automático')
+    expect(html).toContain('Halloween')
+    expect(html).toContain('Natal')
+    expect(html).toContain('Ano Novo')
+    expect(html).toContain('Padrão')
   })
 })
