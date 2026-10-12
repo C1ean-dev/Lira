@@ -43,6 +43,10 @@ import { MessageStatusIcon } from './chat/MessageStatusIcon'
 import { ChatUserContextMenu } from './chat/ChatUserContextMenu'
 import { ChatPeopleList } from './chat/ChatPeopleList'
 import { ChatChannelList, ChannelEditing } from './chat/ChatChannelList'
+import { SpotifyIcon } from './common/SpotifyIcon'
+import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
+import { toSpotifyDeepLink } from '../types/spotifyJam'
+import { MediaManager } from '../media/MediaManager'
 import { ChatContextMenu } from './chat/ChatContextMenu'
 import { RoomInviteCard } from './chat/RoomInviteCard'
 import { ConfirmModal } from './ConfirmModal'
@@ -99,6 +103,69 @@ function downloadAttachment(att: ChatAttachment) {
   } catch (err) {
     console.error('Falha ao baixar anexo:', err)
   }
+}
+
+function extractSpotifyLink(text: string): string | null {
+  const match = text.match(/(https?:\/\/(open\.)?spotify\.(com|link)\/[^\s]+|spotify:[a-zA-Z0-9:]+)/i)
+  return match ? match[0] : null
+}
+
+const SpotifyChatCard: React.FC<{ url: string }> = ({ url }) => {
+  const [copied, setCopied] = useState(false)
+  const isJam = url.includes('/jam') || url.includes('spotify.link')
+
+  const handleOpen = () => {
+    const electronAPI = typeof window !== 'undefined' ? (window as any).electronAPI : null
+    const deep = toSpotifyDeepLink(url)
+    if (electronAPI?.openExternal) {
+      electronAPI.openExternal(deep)
+    } else {
+      window.open(url.startsWith('spotify:') ? `https://open.spotify.com/search/${encodeURIComponent(url.replace('spotify:search:', ''))}` : url, '_blank')
+    }
+  }
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="mt-2 p-2 bg-[#12151d] rounded-xl border border-emerald-500/30 flex items-center justify-between gap-2 shadow-inner">
+      <div className="flex items-center gap-2 min-w-0">
+        <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+          <SpotifyIcon size={14} className="w-3.5 h-3.5" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-[11px] font-bold text-slate-100 truncate">
+            {isJam ? 'Spotify Jam' : 'Spotify Music Link'}
+          </div>
+          <div className="text-[9px] text-emerald-400 font-mono truncate max-w-[200px]">
+            {url}
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        <button
+          type="button"
+          onClick={handleOpen}
+          className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors"
+          title="Abrir no Spotify App ou Navegador"
+        >
+          <SpotifyIcon size={10} className="w-2.5 h-2.5" />
+          <span>Ouvir</span>
+        </button>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="p-1 text-slate-400 hover:text-white bg-slate-800 rounded-lg text-[10px] transition-colors"
+          title="Copiar Link"
+        >
+          {copied ? <CheckCheck className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+        </button>
+      </div>
+    </div>
+  )
 }
 
 export const ChatDrawer: React.FC = () => {
@@ -406,13 +473,169 @@ const ChatDrawerInner: React.FC = () => {
     e.preventDefault()
     if (!inputMessage.trim() && !pendingAttachment) return
 
+    const trimmedInput = inputMessage.trim()
+    const lowerInput = trimmedInput.toLowerCase()
     const isDm = activeChannel?.type === 'dm'
+
+    const sendChatMessageWithContent = (text: string) => {
+      const newMsg: ChatMessage = {
+        id: 'msg-' + Math.random().toString(36).substring(2, 9),
+        senderId: isDm ? getPlayerUserId(localPlayer) : localPlayer.id,
+        senderName: localPlayer.name,
+        channelId: activeChannelId,
+        content: text,
+        timestamp: Date.now(),
+        avatarConfig: localPlayer.avatar,
+        recipientId: isDm ? activeChannel.recipientId : undefined,
+        status: 'sent',
+      }
+      addMessage(newMsg)
+      PeerManager.getInstance().sendChatMessage(newMsg)
+      if (isDm) {
+        FriendsPresenceService.getInstance().sendDirectMessage(newMsg)
+      }
+    }
+
+    if (lowerInput.startsWith('/spotify') || lowerInput.startsWith('/musica')) {
+      const parts = trimmedInput.split(' ')
+      const subCommand = parts[1]?.toLowerCase()
+      const fullArg = parts.slice(1).join(' ').trim()
+
+      if (!subCommand || subCommand === 'ajuda' || subCommand === 'help') {
+        const helpMsg: ChatMessage = {
+          id: 'msg-' + Math.random().toString(36).substring(2, 9),
+          senderId: 'system',
+          senderName: 'Spotify',
+          channelId: activeChannelId,
+          content: '🎵 Comandos do Spotify no Lira:\n• /spotify <música ou termo> - Busca e compartilha a faixa\n• /spotify status - Compartilha o que você está ouvindo no Spotify\n• /spotify jam - Compartilha o link Jam desta sala\n• /spotify web - Abre o player Web persistente integrado\n• /spotify dj - Alterna a transmissão de áudio do Spotify na sala',
+          timestamp: Date.now(),
+          status: 'delivered',
+        }
+        addMessage(helpMsg)
+        setInputMessage('')
+        return
+      }
+
+      if (subCommand === 'status' || subCommand === 'tocando' || subCommand === 'ouvindo') {
+        const activity = localPlayer.spotifyActivity
+        if (activity && activity.isPlaying && activity.track) {
+          const trackLabel = `${activity.track}${activity.artist ? ` - ${activity.artist}` : ''}`
+          const searchWeb = `https://open.spotify.com/search/${encodeURIComponent(trackLabel)}`
+          sendChatMessageWithContent(`🎵 Estou ouvindo no Spotify: ${trackLabel}\n${searchWeb}`)
+        } else {
+          const infoMsg: ChatMessage = {
+            id: 'msg-' + Math.random().toString(36).substring(2, 9),
+            senderId: 'system',
+            senderName: 'Spotify',
+            channelId: activeChannelId,
+            content: 'Nenhuma música em execução detectada no Spotify Desktop. Inicie uma música no seu Spotify!',
+            timestamp: Date.now(),
+            status: 'delivered',
+          }
+          addMessage(infoMsg)
+        }
+        setInputMessage('')
+        return
+      }
+
+      if (subCommand === 'jam') {
+        const localZoneId = localPlayer.currentZoneId
+        const activeJam = localZoneId ? useSpotifyJamStore.getState().jamsByZone[localZoneId] : null
+        if (activeJam?.jamUrl) {
+          sendChatMessageWithContent(`🎵 Spotify Jam da sala (${activeJam.zoneName || 'Sala'}):\n${activeJam.jamUrl}`)
+        } else {
+          const infoMsg: ChatMessage = {
+            id: 'msg-' + Math.random().toString(36).substring(2, 9),
+            senderId: 'system',
+            senderName: 'Spotify',
+            channelId: activeChannelId,
+            content: 'Nenhuma sessão Jam ativa nesta sala no momento.',
+            timestamp: Date.now(),
+            status: 'delivered',
+          }
+          addMessage(infoMsg)
+        }
+        setInputMessage('')
+        return
+      }
+
+      if (subCommand === 'web' || subCommand === 'player') {
+        const electronAPI = typeof window !== 'undefined' ? (window as any).electronAPI : null
+        if (electronAPI?.openSpotifyPlayer) {
+          electronAPI.openSpotifyPlayer()
+        } else {
+          window.open('https://open.spotify.com', '_blank')
+        }
+        setInputMessage('')
+        return
+      }
+
+      if (subCommand === 'dj') {
+        const isDj = MediaManager.getInstance().isDjAudioActive()
+        if (isDj) {
+          MediaManager.getInstance().stopDjAudio().then(() => {
+            const localZoneId = localPlayer.currentZoneId
+            if (localZoneId) {
+              useSpotifyJamStore.getState().setDjStateInZone(localZoneId, null, true)
+            }
+          })
+          sendChatMessageWithContent('🛑 Encerrei a transmissão de áudio do Spotify (Modo DJ).')
+        } else {
+          MediaManager.getInstance().startDjAudio().then((res) => {
+            if (res.ok) {
+              const localZoneId = localPlayer.currentZoneId
+              if (localZoneId) {
+                useSpotifyJamStore.getState().setDjStateInZone(
+                  localZoneId,
+                  {
+                    zoneId: localZoneId,
+                    isDjActive: true,
+                    djPeerId: localPlayer.id,
+                    djName: localPlayer.name,
+                    startedAt: Date.now(),
+                  },
+                  true
+                )
+              }
+              sendChatMessageWithContent('🎧 Ativei o Modo DJ! Transmitindo áudio do Spotify para a sala.')
+            } else {
+              const infoMsg: ChatMessage = {
+                id: 'msg-' + Math.random().toString(36).substring(2, 9),
+                senderId: 'system',
+                senderName: 'Spotify DJ',
+                channelId: activeChannelId,
+                content: res.error || 'Não foi possível iniciar o Modo DJ.',
+                timestamp: Date.now(),
+                status: 'delivered',
+              }
+              addMessage(infoMsg)
+            }
+          })
+        }
+        setInputMessage('')
+        return
+      }
+
+      // Default: Share track query
+      const query = fullArg
+      const searchWeb = `https://open.spotify.com/search/${encodeURIComponent(query)}`
+      sendChatMessageWithContent(`🎵 Recomendei no Spotify: "${query}"\n${searchWeb}`)
+
+      const localZoneId = localPlayer.currentZoneId
+      if (localZoneId) {
+        useSpotifyJamStore.getState().shareTrackInZone(localZoneId, query)
+      }
+
+      setInputMessage('')
+      return
+    }
+
     const newMsg: ChatMessage = {
       id: 'msg-' + Math.random().toString(36).substring(2, 9),
       senderId: isDm ? getPlayerUserId(localPlayer) : localPlayer.id,
       senderName: localPlayer.name,
       channelId: activeChannelId,
-      content: inputMessage.trim(),
+      content: trimmedInput,
       timestamp: Date.now(),
       avatarConfig: localPlayer.avatar,
       attachment: pendingAttachment || undefined,
@@ -816,7 +1039,14 @@ const ChatDrawerInner: React.FC = () => {
                     </div>
 
                     <div className="text-xs text-slate-200 bg-[#1b202c] p-2.5 rounded-xl border border-[#2a3142]/60 break-words space-y-2">
-                      {msg.content && <div>{msg.content}</div>}
+                      {msg.content && (
+                        <div>
+                          <div className="whitespace-pre-wrap">{msg.content}</div>
+                          {extractSpotifyLink(msg.content) && (
+                            <SpotifyChatCard url={extractSpotifyLink(msg.content)!} />
+                          )}
+                        </div>
+                      )}
 
                       {hasAttachment && msg.attachment && (
                         <div>

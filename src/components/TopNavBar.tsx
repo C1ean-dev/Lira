@@ -60,6 +60,7 @@ export const TopNavBar: React.FC<Props> = ({
   const isOwner = useGameStore((s) => s.isOwner)
   const isRoomPublic = useGameStore((s) => s.isRoomPublic)
   const toggleRoomPrivacy = useGameStore((s) => s.toggleRoomPrivacy)
+  const signalingTier = useGameStore((s) => s.signalingTier)
   const isOnlineUsersOpen = useGameStore((s) => s.isOnlineUsersOpen)
   const toggleOnlineUsers = useGameStore((s) => s.toggleOnlineUsers)
   const remotePlayerCount = useGameStore((s) => Object.keys(s.remotePlayers).length)
@@ -169,11 +170,18 @@ export const TopNavBar: React.FC<Props> = ({
             {!isAndroidPlatform && (
               <>
                 <span>{isRoomPublic ? 'Pública' : 'Privada'}</span>
-                {isOwner && (
-                  <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1 py-0.2 rounded font-bold ml-0.5">
-                    Dono
-                  </span>
-                )}
+                <span
+                  className={`text-[9px] border px-1.5 py-0.5 rounded font-mono font-bold ml-0.5 lowercase ${
+                    signalingTier === 'render'
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                      : signalingTier === 'public'
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                      : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                  }`}
+                  title={`Servidor de sinalização P2P ativo: ${signalingTier || 'render'}`}
+                >
+                  {signalingTier || 'render'}
+                </span>
               </>
             )}
           </button>

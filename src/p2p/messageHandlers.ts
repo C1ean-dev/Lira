@@ -9,6 +9,7 @@ import { PublicRoomsService } from '../services/publicRoomsService'
 import { MediaManager } from '../media/MediaManager'
 import { resolveUniquePlayerName } from '../utils/playerName'
 import { sanitizeRoomChannels } from '../utils/roomChannels'
+import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
 
 export function processNetworkMessage(
   msg: NetworkMessage,
@@ -17,7 +18,8 @@ export function processNetworkMessage(
   broadcast: (msg: NetworkMessage, excludePeerId?: string) => void,
   removePeer: (peerId: string) => void,
   checkZoneCallEligibility: (remotePlayer: Player) => void,
-  myPeerId?: string | null
+  myPeerId?: string | null,
+  onDjCallRequest?: (listenerId: string) => void
 ) {
   switch (msg.type) {
     case 'HEARTBEAT': {
@@ -566,6 +568,40 @@ export function processNetworkMessage(
             isDeafened: deafen,
           })
         }
+      }
+      break
+    }
+
+    case 'SPOTIFY_JAM_SYNC': {
+      const { zoneId, session } = msg.payload || {}
+      if (zoneId) {
+        useSpotifyJamStore.getState().syncZoneJamFromPeer(zoneId, session)
+      } else if (session?.zoneId) {
+        useSpotifyJamStore.getState().syncZoneJamFromPeer(session.zoneId, session)
+      }
+      break
+    }
+
+    case 'SPOTIFY_TRACK_SHARE': {
+      const { zoneId, track } = msg.payload || {}
+      if (zoneId && track) {
+        useSpotifyJamStore.getState().syncTrackShareFromPeer(zoneId, track)
+      }
+      break
+    }
+
+    case 'SPOTIFY_DJ_STATUS': {
+      const { zoneId, djState } = msg.payload || {}
+      if (zoneId) {
+        useSpotifyJamStore.getState().syncDjStateFromPeer(zoneId, djState)
+      }
+      break
+    }
+
+    case 'DJ_CALL_REQUEST': {
+      const listenerId = msg.payload?.listenerId || msg.senderId || peerId
+      if (listenerId && onDjCallRequest) {
+        onDjCallRequest(listenerId)
       }
       break
     }

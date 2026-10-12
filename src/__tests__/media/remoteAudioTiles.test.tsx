@@ -107,5 +107,15 @@ describe('who plays the sound of a call tile', () => {
     it('has nothing to play before the call delivers a stream', () => {
       expect(audioTags(tile({ stream: null }))).toHaveLength(0)
     })
+
+    it('keeps remote audio mounted and active inside a hidden (collapsed) container', () => {
+      const html = renderToStaticMarkup(
+        <div className="hidden">
+          <VideoTile id="peer-1" stream={peerStream()} name="Ana" isLocal={false} isCameraOff={true} />
+        </div>
+      )
+      expect(audioTags(html)).toHaveLength(1)
+      expect(audioTags(html)[0]).not.toContain('muted')
+    })
   })
 })

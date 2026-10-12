@@ -5,7 +5,7 @@ import fs from 'fs'
 import https from 'https'
 import http from 'http'
 import dgram from 'dgram'
-import { spawn, exec, execSync } from 'child_process'
+import { spawn, exec, execSync, execFile } from 'child_process'
 import { release as getOsRelease } from 'os'
 import { guardIpcMain } from './ipcGuard'
 import { createLogBundle } from './logBundle'
@@ -23,6 +23,7 @@ import { readNativeDataFile, writeNativeDataFileLatest } from './nativeDataFile'
 import { createStartupTimer } from './startupTimer'
 import { startCpuProfile } from './startupProfile'
 import { sanitizeRecords } from '../src/utils/logFormat'
+import { SpotifyBrowserController, findSpotifyBrowser, querySpotifyBrowserWindow } from './spotifyBrowser'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -53,6 +54,32 @@ app.commandLine.appendSwitch(
 )
 
 let mainWindow: BrowserWindow | null = null
+function queryBrowserWindows(script: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
+      { windowsHide: true, timeout: 5000 }, (error, stdout) => error ? reject(error) : resolve(stdout))
+  })
+}
+const spotifyPlayer = new SpotifyBrowserController({
+  get profile() { return path.join(app.getPath('userData'), 'spotify-browser') },
+  findBrowser: () => findSpotifyBrowser(process.env, fs.existsSync),
+  launch: (exe, args) => {
+    if (process.platform !== 'win32') throw new Error('A captura do Spotify no navegador está disponível no Windows.')
+    fs.mkdirSync(path.join(app.getPath('userData'), 'spotify-browser'), { recursive: true })
+    return spawn(exe, args, { stdio: 'ignore', windowsHide: false })
+  },
+  getWindow: profile => querySpotifyBrowserWindow(profile, queryBrowserWindows),
+  focus: async handle => {
+    if (!/^[1-9][0-9]*$/.test(handle)) throw new Error('Janela do Spotify inválida.')
+    await queryBrowserWindows(`
+Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class LiraSpotifyBrowserFocus { [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hwnd, int command); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd); }'
+[LiraSpotifyBrowserFocus]::ShowWindow([IntPtr]::new([long]${handle}), 9) | Out-Null
+[LiraSpotifyBrowserFocus]::SetForegroundWindow([IntPtr]::new([long]${handle})) | Out-Null`)
+  },
+  onClosed: () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('spotify:player-closed')
+  },
+})
 let trayManager: TrayManager | null = null
 let processAudioCapture: ReturnType<typeof spawn> | null = null
 let processAudioCaptureSourceId: string | null = null
@@ -248,18 +275,26 @@ async function startProcessAudioCapture(sourceId: string): Promise<ProcessAudioC
         })
       }, 2000)
 
+      let stderrBuffer = ''
       child.stdout?.on('data', (data: Buffer) => {
         processAudioCaptureBytes += data.byteLength
         processAudioCaptureChunks++
+        if (!settled) {
+          writeMainAudioDiagnostic('helper-ready-by-data', { sourceId, bytes: data.byteLength })
+          emitProcessAudioStatus('started')
+          finish({ ok: true })
+        }
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('process-audio-data', data)
         }
       })
       child.stderr?.on('data', (data: Buffer) => {
-        const detail = data.toString('utf8').trim()
+        const text = data.toString('utf8')
+        stderrBuffer += text
+        const detail = text.trim()
         if (!detail) return
         writeMainAudioDiagnostic('helper-stderr', { sourceId, detail: detail.slice(0, 2000) })
-        if (detail.includes('READY')) {
+        if (stderrBuffer.includes('READY')) {
           emitProcessAudioStatus('started')
           finish({ ok: true })
           return
@@ -1271,6 +1306,105 @@ ipcMain.handle('open-external', async (event, url: string) => {
   }
 })
 
+ipcMain.handle('open-spotify-player', (_event, url?: string) => spotifyPlayer.open(url))
+
+export interface SpotifyCurrentTrack {
+  isRunning: boolean
+  isPlaying: boolean
+  track?: string
+  artist?: string
+  rawTitle?: string
+}
+
+let lastSpotifyTrack: SpotifyCurrentTrack = { isRunning: false, isPlaying: false }
+let spotifyPollTimer: NodeJS.Timeout | null = null
+
+function querySpotifyCurrentTrack(): Promise<SpotifyCurrentTrack> {
+  return new Promise((resolve) => {
+    // 2. Windows native check using tasklist to inspect Spotify desktop window title
+    if (process.platform === 'win32') {
+      execFile(
+        'tasklist',
+        ['/v', '/fo', 'csv', '/fi', 'imagename eq spotify.exe'],
+        { timeout: 2500 },
+        (err, stdout) => {
+          if (err || !stdout) {
+            return resolve({ isRunning: false, isPlaying: false })
+          }
+          const lines = stdout.trim().split(/\r?\n/)
+          let isRunning = false
+          for (const line of lines) {
+            if (!line.toLowerCase().includes('spotify.exe')) continue
+            isRunning = true
+            const matches = [...line.matchAll(/"([^"]*)"/g)].map((m) => m[1])
+            if (matches.length >= 9) {
+              const windowTitle = matches[matches.length - 1].trim()
+              if (!windowTitle || windowTitle === 'N/A' || windowTitle === 'OleMainThreadWndName') {
+                continue
+              }
+              const lower = windowTitle.toLowerCase()
+              if (['spotify', 'spotify free', 'spotify premium'].includes(lower)) {
+                continue
+              }
+              const dashIdx = windowTitle.indexOf(' - ')
+              if (dashIdx !== -1) {
+                const artist = windowTitle.slice(0, dashIdx).trim()
+                const track = windowTitle.slice(dashIdx + 3).trim()
+                return resolve({ isRunning: true, isPlaying: true, artist, track, rawTitle: windowTitle })
+              }
+              return resolve({ isRunning: true, isPlaying: true, artist: '', track: windowTitle, rawTitle: windowTitle })
+            }
+          }
+          resolve({ isRunning, isPlaying: false })
+        }
+      )
+      return
+    }
+
+    // 3. macOS native check using osascript
+    if (process.platform === 'darwin') {
+      exec(
+        `osascript -e 'tell application "Spotify" to if player state is playing then return (name of current track & " - " & artist of current track) else return "PAUSED"' 2>/dev/null`,
+        { timeout: 2000 },
+        (err, stdout) => {
+          if (err || !stdout) return resolve({ isRunning: false, isPlaying: false })
+          const out = stdout.trim()
+          if (!out || out === 'PAUSED') return resolve({ isRunning: true, isPlaying: false })
+          const parts = out.split(' - ')
+          resolve({ isRunning: true, isPlaying: true, track: parts[0] || out, artist: parts[1] || '' })
+        }
+      )
+      return
+    }
+
+    resolve({ isRunning: false, isPlaying: false })
+  })
+}
+
+function startSpotifyPoll() {
+  if (spotifyPollTimer) return
+  spotifyPollTimer = setInterval(async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    try {
+      const current = await querySpotifyCurrentTrack()
+      const changed =
+        current.isPlaying !== lastSpotifyTrack.isPlaying ||
+        current.track !== lastSpotifyTrack.track ||
+        current.artist !== lastSpotifyTrack.artist
+      if (changed) {
+        lastSpotifyTrack = current
+        mainWindow.webContents.send('spotify:track-changed', current)
+      }
+    } catch {}
+  }, 3000)
+}
+
+ipcMain.handle('get-spotify-current-track', async () => {
+  return querySpotifyCurrentTrack()
+})
+
+ipcMain.handle('find-spotify-source', () => spotifyPlayer.source().catch(() => null))
+
 function getDataDirectory(): string {
   const projectSrcData = path.join(process.cwd(), 'src', 'data')
   if (fs.existsSync(path.join(process.cwd(), 'src'))) {
@@ -1622,6 +1756,61 @@ function initNetworkTriggerAndLanDiscovery() {
   }
 }
 
+let localPeerServer: any = null
+let localPeerPort = 9000
+
+async function initLocalPeerServer() {
+  try {
+    const peerPkg = await import('peer')
+    const PeerServer = (peerPkg as any).PeerServer || (peerPkg as any).default?.PeerServer
+    if (typeof PeerServer !== 'function') {
+      console.warn('[P2P Server] PeerServer export not found in peer package')
+      return
+    }
+
+    const tryPort = (port: number) => {
+      try {
+        const srv = PeerServer({
+          port,
+          path: '/',
+          allow_discovery: true,
+        })
+        srv.on('error', (err: any) => {
+          if (err?.code === 'EADDRINUSE') {
+            console.log(`[P2P Server] Port ${port} in use, trying ${port + 1}...`)
+            tryPort(port + 1)
+          } else {
+            console.warn('[P2P Server] Error:', err)
+          }
+        })
+        localPeerServer = srv
+        localPeerPort = port
+        console.log(`[P2P Server] Embedded signaling server active on port ${port}`)
+      } catch (err: any) {
+        if (err?.code === 'EADDRINUSE') {
+          tryPort(port + 1)
+        } else {
+          console.warn('[P2P Server] Failed to bind port:', err)
+        }
+      }
+    }
+
+    tryPort(9000)
+  } catch (err) {
+    console.warn('[P2P Server] Failed to initialize embedded peer server:', err)
+  }
+}
+
+ipcMain.on('get-signaling-port-sync', (event) => {
+  event.returnValue = localPeerPort
+})
+
+ipcMain.handle('get-signaling-config', () => {
+  return {
+    port: localPeerPort,
+  }
+})
+
 async function isFirewallRuleAllowed(): Promise<boolean> {
   if (process.platform !== 'win32') return true
   return new Promise((resolve) => {
@@ -1822,12 +2011,13 @@ ipcMain.handle('get-system-idle-time', () => {
 })
 
 app.on('before-quit', () => {
+  spotifyPlayer.close()
   if (trayManager) {
     trayManager.setQuitting(true)
   }
 })
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.lira.app')
   }
@@ -1835,6 +2025,8 @@ app.whenReady().then(() => {
   createWindow()
   startupStep('window-created')
   initNetworkTriggerAndLanDiscovery()
+  initLocalPeerServer()
+  startSpotifyPoll()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -1847,10 +2039,20 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   stopProcessAudioCapture()
+  if (spotifyPollTimer) {
+    clearInterval(spotifyPollTimer)
+    spotifyPollTimer = null
+  }
   if (lanSocket) {
     try {
       lanSocket.close()
     } catch (e) {}
+  }
+  if (localPeerServer) {
+    try {
+      localPeerServer.close()
+    } catch (e) {}
+    localPeerServer = null
   }
   if (trayManager) {
     trayManager.destroy()

@@ -2,6 +2,8 @@ import { Player } from './game'
 import { MapData, PlacedFurniture, PrivateZone } from './map'
 import { ChatMessage } from './chat'
 
+export type SignalingTier = 'render' | 'public' | 'local'
+
 export type NetworkMessageType =
   | 'PLAYER_JOIN'
   | 'PLAYER_LEAVE'
@@ -26,6 +28,10 @@ export type NetworkMessageType =
   | 'ADMIN_MUTE_PARTICIPANT'
   | 'ADMIN_DEAFEN_PARTICIPANT'
   | 'LIVE_VIEW'
+  | 'SPOTIFY_JAM_SYNC'
+  | 'SPOTIFY_TRACK_SHARE'
+  | 'SPOTIFY_DJ_STATUS'
+  | 'DJ_CALL_REQUEST'
 
 export interface NetworkMessage {
   type: NetworkMessageType

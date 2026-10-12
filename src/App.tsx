@@ -7,6 +7,7 @@ import { useChatStore } from './store/useChatStore'
 import { useMapStore } from './store/useMapStore'
 import { useUpdateStore, UPDATE_STALE_AFTER_MS } from './store/useUpdateStore'
 import { useRoomJoinStore } from './store/useRoomJoinStore'
+import { useSpotifyJamStore } from './store/useSpotifyJamStore'
 import { startAutoUpdateChecks } from './services/updateScheduler'
 import { AppUpdateScreen } from './components/AppUpdateScreen'
 import { idleManager } from './services/idleManager'
@@ -128,6 +129,7 @@ export const App: React.FC = () => {
     useMediaStore.getState().stopAllMedia()
     useGameStore.getState().setOnlineUsersOpen(false)
     useMapStore.getState().setEditorOpen(false)
+    useSpotifyJamStore.getState().clearAllJams()
     setInLobby(true)
   }
 

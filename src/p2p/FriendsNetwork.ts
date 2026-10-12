@@ -1,5 +1,12 @@
 import Peer from 'peerjs'
 import { SHARED_RTC_CONFIG } from './mediaCalls'
+import {
+  createPeerInstance,
+  getPreferredSignalingTier,
+  getActiveSignalingTier,
+  markSignalingTierFailed,
+  shouldPreferLocalSignaling,
+} from './PeerManager'
 import { isUserId } from '../utils/userId'
 import { diagLog } from '../utils/diagnosticLogger'
 import { registerReportContext } from '../utils/reportContext'
@@ -60,8 +67,8 @@ const REFRESH_MIN_INTERVAL_MS = 20000
 const FATAL_PEER_ERRORS = new Set(['browser-incompatible', 'invalid-id', 'invalid-key', 'ssl-unavailable'])
 
 const createCloudPeer = (peerId: string): LinkPeer =>
-  new Peer(peerId, {
-    config: { ...SHARED_RTC_CONFIG, iceCandidatePoolSize: 0 },
+  createPeerInstance(peerId, {
+    tier: getPreferredSignalingTier(),
   }) as unknown as LinkPeer
 
 export class FriendsNetwork {
@@ -294,6 +301,9 @@ export class FriendsNetwork {
 
     if (type === 'unavailable-id') {
       console.warn('[Friends] This profile is already online in another Lira session. Retrying...')
+    }
+    if (type === 'network' || type === 'socket-error' || type === 'server-error' || type === 'socket-closed') {
+      markSignalingTierFailed(getActiveSignalingTier(), 2 * 60 * 1000)
     }
     diagLog('friends', 'signaling-error', { type })
     this.scheduleSignalingRecovery()

@@ -35,6 +35,24 @@ export interface AppSettings {
   minimizeToTray: boolean
 }
 
+export interface SpotifyTrackInfo {
+  isRunning: boolean
+  isPlaying: boolean
+  track?: string
+  artist?: string
+  rawTitle?: string
+}
+
+export interface SpotifySourceResult {
+  sourceId: string
+  name: string
+  isPlaying?: boolean
+  track?: string
+  artist?: string
+  isScreenFallback?: boolean
+  isBrowserPlayer?: boolean
+}
+
 export interface IElectronAPI {
   getSources: () => Promise<Array<{ id: string; name: string; thumbnail: string; appIcon: string | null }>>
   setScreenSource: (sourceId: string | null, withAudio?: boolean, captureMethod?: string, sourceName?: string | null) => Promise<boolean>
@@ -54,6 +72,11 @@ export interface IElectronAPI {
   downloadAndInstallUpdate: (downloadUrl: string, targetVersion?: string) => Promise<boolean>
   onUpdateProgress: (callback: (progress: UpdateProgress) => void) => () => void
   openExternal: (url: string) => Promise<void>
+  openSpotifyPlayer: (url?: string) => Promise<{ ok: boolean; error?: string }>
+  getSpotifyCurrentTrack: () => Promise<SpotifyTrackInfo>
+  findSpotifySource: () => Promise<SpotifySourceResult | null>
+  onSpotifyTrackChanged: (callback: (info: SpotifyTrackInfo) => void) => () => void
+  onSpotifyPlayerClosed: (callback: () => void) => () => void
   saveNativeAssets: (data: { categories: string[]; assets: any[] }) => Promise<boolean>
   loadNativeAssets: () => Promise<{ categories: string[]; assets: any[] } | null>
   saveNativeSpaces: (spaces: any[]) => Promise<boolean>
@@ -85,6 +108,8 @@ export interface IElectronAPI {
     callback: (event: { tag?: string; action: 'click' | 'button'; buttonIndex?: number }) => void
   ) => () => void
   getSystemIdleTime: () => Promise<number>
+  getSignalingConfig?: () => Promise<{ port: number }>
+  localSignalingPort?: number
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -139,6 +164,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
+  openSpotifyPlayer: (url?: string) => ipcRenderer.invoke('open-spotify-player', url),
+  getSpotifyCurrentTrack: () => ipcRenderer.invoke('get-spotify-current-track'),
+  findSpotifySource: () => ipcRenderer.invoke('find-spotify-source'),
+  onSpotifyPlayerClosed: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('spotify:player-closed', handler)
+    return () => ipcRenderer.removeListener('spotify:player-closed', handler)
+  },
+  onSpotifyTrackChanged: (callback: (info: SpotifyTrackInfo) => void) => {
+    const handler = (_event: any, data: SpotifyTrackInfo) => callback(data)
+    ipcRenderer.on('spotify:track-changed', handler)
+    return () => {
+      ipcRenderer.removeListener('spotify:track-changed', handler)
+    }
+  },
   saveNativeAssets: (data: { categories: string[]; assets: any[] }) => ipcRenderer.invoke('save-native-assets', data),
   loadNativeAssets: () => ipcRenderer.invoke('load-native-assets'),
   saveNativeSpaces: (spaces: any[]) => ipcRenderer.invoke('save-native-spaces', spaces),
@@ -178,4 +218,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('notification-action', handler)
   },
   getSystemIdleTime: () => ipcRenderer.invoke('get-system-idle-time'),
+  getSignalingConfig: () => ipcRenderer.invoke('get-signaling-config'),
+  localSignalingPort: (() => {
+    try {
+      return ipcRenderer.sendSync('get-signaling-port-sync') || 9000
+    } catch {
+      return 9000
+    }
+  })(),
 })
+
+try {
+  const p = ipcRenderer.sendSync('get-signaling-port-sync')
+  if (typeof window !== 'undefined' && p) {
+    ;(window as any).__LIRA_LOCAL_SIGNALING_PORT__ = p
+  }
+} catch {}
