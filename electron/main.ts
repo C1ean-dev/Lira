@@ -5,7 +5,7 @@ import fs from 'fs'
 import https from 'https'
 import http from 'http'
 import dgram from 'dgram'
-import { spawn, exec, execSync } from 'child_process'
+import { spawn, exec, execSync, execFile } from 'child_process'
 import { release as getOsRelease } from 'os'
 import { guardIpcMain } from './ipcGuard'
 import { createLogBundle } from './logBundle'
@@ -53,6 +53,7 @@ app.commandLine.appendSwitch(
 )
 
 let mainWindow: BrowserWindow | null = null
+let spotifyPlayerWindow: BrowserWindow | null = null
 let trayManager: TrayManager | null = null
 let processAudioCapture: ReturnType<typeof spawn> | null = null
 let processAudioCaptureSourceId: string | null = null
@@ -248,18 +249,26 @@ async function startProcessAudioCapture(sourceId: string): Promise<ProcessAudioC
         })
       }, 2000)
 
+      let stderrBuffer = ''
       child.stdout?.on('data', (data: Buffer) => {
         processAudioCaptureBytes += data.byteLength
         processAudioCaptureChunks++
+        if (!settled) {
+          writeMainAudioDiagnostic('helper-ready-by-data', { sourceId, bytes: data.byteLength })
+          emitProcessAudioStatus('started')
+          finish({ ok: true })
+        }
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('process-audio-data', data)
         }
       })
       child.stderr?.on('data', (data: Buffer) => {
-        const detail = data.toString('utf8').trim()
+        const text = data.toString('utf8')
+        stderrBuffer += text
+        const detail = text.trim()
         if (!detail) return
         writeMainAudioDiagnostic('helper-stderr', { sourceId, detail: detail.slice(0, 2000) })
-        if (detail.includes('READY')) {
+        if (stderrBuffer.includes('READY')) {
           emitProcessAudioStatus('started')
           finish({ ok: true })
           return
@@ -1271,6 +1280,238 @@ ipcMain.handle('open-external', async (event, url: string) => {
   }
 })
 
+ipcMain.handle('open-spotify-player', async (_event, url?: string) => {
+  const targetUrl = url || 'https://open.spotify.com'
+  if (spotifyPlayerWindow && !spotifyPlayerWindow.isDestroyed()) {
+    spotifyPlayerWindow.show()
+    spotifyPlayerWindow.focus()
+    if (url) {
+      spotifyPlayerWindow.loadURL(targetUrl)
+    }
+    return { ok: true }
+  }
+
+  spotifyPlayerWindow = new BrowserWindow({
+    width: 960,
+    height: 640,
+    minWidth: 500,
+    minHeight: 400,
+    title: 'Spotify Player - Jam',
+    backgroundColor: '#121212',
+    icon: path.join(__dirname, '../public/icon.png'),
+    webPreferences: {
+      partition: 'persist:spotify',
+      nodeIntegration: false,
+      contextIsolation: true,
+      webSecurity: true,
+    },
+    autoHideMenuBar: true,
+  })
+
+  spotifyPlayerWindow.loadURL(targetUrl)
+
+  spotifyPlayerWindow.on('closed', () => {
+    spotifyPlayerWindow = null
+  })
+
+  return { ok: true }
+})
+
+export interface SpotifyCurrentTrack {
+  isRunning: boolean
+  isPlaying: boolean
+  track?: string
+  artist?: string
+  rawTitle?: string
+}
+
+let lastSpotifyTrack: SpotifyCurrentTrack = { isRunning: false, isPlaying: false }
+let spotifyPollTimer: NodeJS.Timeout | null = null
+
+function querySpotifyCurrentTrack(): Promise<SpotifyCurrentTrack> {
+  return new Promise((resolve) => {
+    // 1. Check if dedicated internal Spotify Web Player window is open and playing
+    if (spotifyPlayerWindow && !spotifyPlayerWindow.isDestroyed()) {
+      const winTitle = spotifyPlayerWindow.getTitle()
+      if (
+        winTitle &&
+        winTitle !== 'Spotify Player - Jam' &&
+        winTitle !== 'Spotify' &&
+        !winTitle.startsWith('Spotify – Web Player')
+      ) {
+        const cleanTitle = winTitle.replace(/\s*-\s*Spotify$/i, '').trim()
+        const separators = [' • ', ' · ', ' - ']
+        for (const sep of separators) {
+          if (cleanTitle.includes(sep)) {
+            const [track, artist] = cleanTitle.split(sep).map((s) => s.trim())
+            if (track) {
+              return resolve({ isRunning: true, isPlaying: true, track, artist: artist || '', rawTitle: winTitle })
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Windows native check using tasklist to inspect Spotify desktop window title
+    if (process.platform === 'win32') {
+      execFile(
+        'tasklist',
+        ['/v', '/fo', 'csv', '/fi', 'imagename eq spotify.exe'],
+        { timeout: 2500 },
+        (err, stdout) => {
+          if (err || !stdout) {
+            return resolve({ isRunning: false, isPlaying: false })
+          }
+          const lines = stdout.trim().split(/\r?\n/)
+          let isRunning = false
+          for (const line of lines) {
+            if (!line.toLowerCase().includes('spotify.exe')) continue
+            isRunning = true
+            const matches = [...line.matchAll(/"([^"]*)"/g)].map((m) => m[1])
+            if (matches.length >= 9) {
+              const windowTitle = matches[matches.length - 1].trim()
+              if (!windowTitle || windowTitle === 'N/A' || windowTitle === 'OleMainThreadWndName') {
+                continue
+              }
+              const lower = windowTitle.toLowerCase()
+              if (['spotify', 'spotify free', 'spotify premium'].includes(lower)) {
+                continue
+              }
+              const dashIdx = windowTitle.indexOf(' - ')
+              if (dashIdx !== -1) {
+                const artist = windowTitle.slice(0, dashIdx).trim()
+                const track = windowTitle.slice(dashIdx + 3).trim()
+                return resolve({ isRunning: true, isPlaying: true, artist, track, rawTitle: windowTitle })
+              }
+              return resolve({ isRunning: true, isPlaying: true, artist: '', track: windowTitle, rawTitle: windowTitle })
+            }
+          }
+          resolve({ isRunning, isPlaying: false })
+        }
+      )
+      return
+    }
+
+    // 3. macOS native check using osascript
+    if (process.platform === 'darwin') {
+      exec(
+        `osascript -e 'tell application "Spotify" to if player state is playing then return (name of current track & " - " & artist of current track) else return "PAUSED"' 2>/dev/null`,
+        { timeout: 2000 },
+        (err, stdout) => {
+          if (err || !stdout) return resolve({ isRunning: false, isPlaying: false })
+          const out = stdout.trim()
+          if (!out || out === 'PAUSED') return resolve({ isRunning: true, isPlaying: false })
+          const parts = out.split(' - ')
+          resolve({ isRunning: true, isPlaying: true, track: parts[0] || out, artist: parts[1] || '' })
+        }
+      )
+      return
+    }
+
+    resolve({ isRunning: false, isPlaying: false })
+  })
+}
+
+function startSpotifyPoll() {
+  if (spotifyPollTimer) return
+  spotifyPollTimer = setInterval(async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    try {
+      const current = await querySpotifyCurrentTrack()
+      const changed =
+        current.isPlaying !== lastSpotifyTrack.isPlaying ||
+        current.track !== lastSpotifyTrack.track ||
+        current.artist !== lastSpotifyTrack.artist
+      if (changed) {
+        lastSpotifyTrack = current
+        mainWindow.webContents.send('spotify:track-changed', current)
+      }
+    } catch {}
+  }, 3000)
+}
+
+ipcMain.handle('get-spotify-current-track', async () => {
+  return querySpotifyCurrentTrack()
+})
+
+ipcMain.handle('find-spotify-source', async () => {
+  // 1. If internal Spotify Web Player window is open and valid
+  if (spotifyPlayerWindow && !spotifyPlayerWindow.isDestroyed()) {
+    try {
+      const handle = spotifyPlayerWindow.getNativeWindowHandle()
+      const hwnd = process.platform === 'win32' ? (handle.readInt32LE ? handle.readInt32LE(0) : 0) : 0
+      if (hwnd) {
+        return {
+          sourceId: `window:${hwnd}:0`,
+          name: spotifyPlayerWindow.getTitle() || 'Spotify Web Player',
+          isPlaying: true,
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Query Spotify track info from OS
+  const trackInfo = await querySpotifyCurrentTrack()
+
+  // 3. Look through desktopCapturer sources
+  try {
+    const sources = await desktopCapturer.getSources({
+      types: ['window', 'screen'],
+      thumbnailSize: { width: 0, height: 0 },
+      fetchWindowIcons: false,
+    })
+
+    // Strict search for window specifically containing "spotify"
+    let spotifyWin = sources.find((s) => {
+      if (!s.id.startsWith('window:')) return false
+      const lower = s.name.toLowerCase()
+      return lower.includes('spotify')
+    })
+
+    // If not found by name, check if window title matches the currently playing track/artist
+    if (!spotifyWin && trackInfo.isPlaying) {
+      spotifyWin = sources.find((s) => {
+        if (!s.id.startsWith('window:')) return false
+        const lower = s.name.toLowerCase()
+        if (trackInfo.rawTitle && s.name.trim() === trackInfo.rawTitle.trim()) return true
+        if (trackInfo.track && trackInfo.track.length > 2 && lower.includes(trackInfo.track.toLowerCase())) return true
+        return false
+      })
+    }
+
+    if (spotifyWin) {
+      return {
+        sourceId: spotifyWin.id,
+        name: spotifyWin.name,
+        isPlaying: trackInfo.isPlaying,
+        track: trackInfo.track,
+        artist: trackInfo.artist,
+      }
+    }
+
+    // 4. If Spotify process is running / playing in background (e.g. minimized to system tray),
+    // fall back to primary screen loopback so the music is captured and broadcast!
+    if (trackInfo.isRunning) {
+      const screenSource = sources.find((s) => s.id.startsWith('screen:'))
+      if (screenSource) {
+        return {
+          sourceId: screenSource.id,
+          name: 'Áudio do Sistema (Spotify em segundo plano)',
+          isPlaying: trackInfo.isPlaying,
+          track: trackInfo.track,
+          artist: trackInfo.artist,
+          isScreenFallback: true,
+        }
+      }
+    }
+
+    return null
+  } catch (err) {
+    console.warn('[Electron] find-spotify-source error:', err)
+    return null
+  }
+})
+
 function getDataDirectory(): string {
   const projectSrcData = path.join(process.cwd(), 'src', 'data')
   if (fs.existsSync(path.join(process.cwd(), 'src'))) {
@@ -1622,6 +1863,61 @@ function initNetworkTriggerAndLanDiscovery() {
   }
 }
 
+let localPeerServer: any = null
+let localPeerPort = 9000
+
+async function initLocalPeerServer() {
+  try {
+    const peerPkg = await import('peer')
+    const PeerServer = (peerPkg as any).PeerServer || (peerPkg as any).default?.PeerServer
+    if (typeof PeerServer !== 'function') {
+      console.warn('[P2P Server] PeerServer export not found in peer package')
+      return
+    }
+
+    const tryPort = (port: number) => {
+      try {
+        const srv = PeerServer({
+          port,
+          path: '/',
+          allow_discovery: true,
+        })
+        srv.on('error', (err: any) => {
+          if (err?.code === 'EADDRINUSE') {
+            console.log(`[P2P Server] Port ${port} in use, trying ${port + 1}...`)
+            tryPort(port + 1)
+          } else {
+            console.warn('[P2P Server] Error:', err)
+          }
+        })
+        localPeerServer = srv
+        localPeerPort = port
+        console.log(`[P2P Server] Embedded signaling server active on port ${port}`)
+      } catch (err: any) {
+        if (err?.code === 'EADDRINUSE') {
+          tryPort(port + 1)
+        } else {
+          console.warn('[P2P Server] Failed to bind port:', err)
+        }
+      }
+    }
+
+    tryPort(9000)
+  } catch (err) {
+    console.warn('[P2P Server] Failed to initialize embedded peer server:', err)
+  }
+}
+
+ipcMain.on('get-signaling-port-sync', (event) => {
+  event.returnValue = localPeerPort
+})
+
+ipcMain.handle('get-signaling-config', () => {
+  return {
+    port: localPeerPort,
+  }
+})
+
 async function isFirewallRuleAllowed(): Promise<boolean> {
   if (process.platform !== 'win32') return true
   return new Promise((resolve) => {
@@ -1835,6 +2131,8 @@ app.whenReady().then(() => {
   createWindow()
   startupStep('window-created')
   initNetworkTriggerAndLanDiscovery()
+  initLocalPeerServer()
+  startSpotifyPoll()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -1847,10 +2145,20 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   stopProcessAudioCapture()
+  if (spotifyPollTimer) {
+    clearInterval(spotifyPollTimer)
+    spotifyPollTimer = null
+  }
   if (lanSocket) {
     try {
       lanSocket.close()
     } catch (e) {}
+  }
+  if (localPeerServer) {
+    try {
+      localPeerServer.close()
+    } catch (e) {}
+    localPeerServer = null
   }
   if (trayManager) {
     trayManager.destroy()

@@ -9,6 +9,9 @@ import { CustomElementModal } from '../editor/CustomElementModal'
 import { OnlineUsersMenu } from './OnlineUsersMenu'
 import { DoorKnockNotification } from './DoorKnockNotification'
 import { DoorKnockPrompt } from './DoorKnockPrompt'
+import { SpotifyJamSideDisplay } from './spotify/SpotifyJamSideDisplay'
+import { SpotifyJamModal } from './spotify/SpotifyJamModal'
+import { useSpotifyPresence } from '../hooks/useSpotifyPresence'
 
 interface Props {
   onOpenAvatarModal: () => void
@@ -26,7 +29,10 @@ export const SpaceShell: React.FC<Props> = ({
   isUpdateReady,
   isUpdating,
   onDisconnect,
-}) => (
+}) => {
+  useSpotifyPresence()
+
+  return (
   <>
     <TopNavBar
       onOpenAvatarModal={onOpenAvatarModal}
@@ -52,5 +58,9 @@ export const SpaceShell: React.FC<Props> = ({
     <CustomElementModal />
 
     <OnlineUsersMenu />
+
+    <SpotifyJamSideDisplay />
+    <SpotifyJamModal />
   </>
-)
+  )
+}

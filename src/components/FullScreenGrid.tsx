@@ -1,8 +1,10 @@
 import React, { useState } from 'react'
-import { Shield, Users, Minimize2, X } from 'lucide-react'
+import { Shield, Users, Minimize2, X, Radio } from 'lucide-react'
 import { useMediaStore } from '../store/useMediaStore'
 import { useGameStore } from '../store/useGameStore'
 import { useMapStore } from '../store/useMapStore'
+import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
+import { SpotifyIcon } from './common/SpotifyIcon'
 import { useLiveWatchStore } from '../store/useLiveWatchStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { MediaManager } from '../media/MediaManager'
@@ -33,6 +35,10 @@ const FullScreenGridInner: React.FC = () => {
   const { localPlayer, remotePlayers, callStates, friendProfiles } = useGameStore()
   const { mapData } = useMapStore()
   const watchingLives = useLiveWatchStore((s) => s.watching)
+  const jamsByZone = useSpotifyJamStore((s) => s.jamsByZone)
+  const setSpotifyJamModalOpen = useSpotifyJamStore((s) => s.setModalOpen)
+  const activeZoneJam = localPlayer.currentZoneId ? jamsByZone[localPlayer.currentZoneId] : null
+  const isJamActive = !!activeZoneJam?.isActive
 
   const [isScreenModalOpen, setIsScreenModalOpen] = useState(false)
   const [focusedUserId, setFocusedUserId] = useState<string | null>(null)
@@ -107,6 +113,7 @@ const FullScreenGridInner: React.FC = () => {
           isLocal: false,
           isScreenSharing: p.isScreenSharing,
           isSpeaking: false,
+          isDjBot: Boolean(p.isDjBot || p.id.startsWith('dj-') || p.name.includes('DJ')),
           shirtColor: resolvedAvatar?.shirtColor || '#3b82f6',
           statusEmoji: p.statusEmoji,
           callState: callStates[p.id] || p.callState || 'idle',
@@ -189,6 +196,28 @@ const FullScreenGridInner: React.FC = () => {
               >
                 <Users className="w-3.5 h-3.5" />
                 <span>Membros ({allInMeeting.length})</span>
+              </button>
+            )}
+
+            {localPlayer.currentZoneId && (
+              <button
+                onClick={() => setSpotifyJamModalOpen(true, localPlayer.currentZoneId)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                  isJamActive
+                    ? 'bg-emerald-600/25 text-emerald-300 border-emerald-500/50 hover:bg-emerald-600/35 shadow-sm shadow-emerald-500/20'
+                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-emerald-400'
+                }`}
+                title={
+                  isJamActive
+                    ? `Spotify Jam ativo: ${activeZoneJam?.zoneName || zoneTitle}`
+                    : 'Spotify Jam nesta sala'
+                }
+              >
+                <SpotifyIcon size={14} className={`w-3.5 h-3.5 ${isJamActive ? 'text-emerald-400 animate-pulse' : 'text-slate-400'}`} />
+                <span>Jam</span>
+                {isJamActive && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                )}
               </button>
             )}
 

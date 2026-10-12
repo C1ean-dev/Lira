@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react'
 import { AvatarConfig, PresenceStatus, STATUS_META } from '../../types/game'
 import { getPlayerAvatarSrc } from '../../utils/avatarUtils'
 import { MoonPhaseIcon } from './MoonPhaseIcon'
+import { SpotifyIcon } from './SpotifyIcon'
 
 export interface PlayerAvatarProps {
   player?: {
@@ -9,6 +10,12 @@ export interface PlayerAvatarProps {
     profilePicture?: string
     avatar?: AvatarConfig
     status?: PresenceStatus | 'offline' | string
+    spotifyActivity?: {
+      track: string
+      artist: string
+      isPlaying: boolean
+      startedAt?: number
+    }
   } | null
   name?: string
   profilePicture?: string
@@ -52,8 +59,9 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
   const effectiveCustomPic = profilePicture !== undefined ? profilePicture : player?.profilePicture
   const effectiveAvatar = avatar || player?.avatar
   const effectiveStatus = status || player?.status || 'available'
+  const isDjBot = Boolean((player as any)?.isDjBot || effectiveName === 'Spotify DJ' || effectiveName === 'DJ Spotify')
 
-  const hasCustomPic = !!(effectiveCustomPic && effectiveCustomPic.trim() !== '')
+  const hasCustomPic = !isDjBot && !!(effectiveCustomPic && effectiveCustomPic.trim() !== '')
 
   const avatarSrc = useMemo(() => {
     const targetSize =
@@ -82,6 +90,32 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
 
   const characterPadding =
     size === '4xl' || size === '3xl' ? 'p-1.5' : size === '2xl' || size === 'xl' ? 'p-1' : 'p-0.5'
+
+  if (isDjBot) {
+    const iconSize =
+      size === '4xl' ? 56 : size === '3xl' ? 44 : size === '2xl' ? 36 : size === 'xl' ? 28 : size === 'lg' ? 22 : 16
+    return (
+      <div
+        onClick={onClick}
+        className={`relative shrink-0 flex items-center justify-center overflow-hidden border border-[#1db954]/50 bg-[#0e1117] shadow-md select-none ${
+          customSizeClass || sizeClasses.container
+        } ${className}`}
+        title="Spotify DJ"
+      >
+        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#1db954]/25 via-[#12151d] to-[#1db954]/10">
+          <SpotifyIcon size={iconSize} className="text-[#1db954]" />
+        </div>
+        {showStatus && (
+          <div
+            className={`absolute -bottom-0.5 -right-0.5 rounded-full ring-2 ring-[#12151d] overflow-hidden flex items-center justify-center bg-[#1db954] ${sizeClasses.dot}`}
+            title="DJ Ativo"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div
@@ -118,6 +152,26 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
           title={`Status: ${statusMeta.label}${(statusMeta as any).moonPhase ? ` (${(statusMeta as any).moonPhase})` : ''}`}
         >
           <MoonPhaseIcon status={effectiveStatus} className="w-full h-full" withBackground={true} />
+        </div>
+      )}
+
+      {player?.spotifyActivity?.isPlaying && (
+        <div
+          onClick={(e) => {
+            e.stopPropagation()
+            const electronAPI = typeof window !== 'undefined' ? (window as any).electronAPI : null
+            const query = `${player.spotifyActivity!.artist} ${player.spotifyActivity!.track}`.trim()
+            const deepLink = `spotify:search:${encodeURIComponent(query)}`
+            if (electronAPI?.openExternal) {
+              electronAPI.openExternal(deepLink)
+            } else {
+              window.open(`https://open.spotify.com/search/${encodeURIComponent(query)}`, '_blank')
+            }
+          }}
+          className={`absolute -top-0.5 -right-0.5 rounded-full ring-2 ring-[#12151d] overflow-hidden flex items-center justify-center bg-[#1db954] text-black shadow-md cursor-pointer hover:scale-125 transition-transform ${sizeClasses.dot}`}
+          title={`Ouvindo no Spotify: ${player.spotifyActivity.track}${player.spotifyActivity.artist ? ` - ${player.spotifyActivity.artist}` : ''} (Clique para abrir)`}
+        >
+          <SpotifyIcon size={10} className="w-full h-full text-black p-0.5" />
         </div>
       )}
     </div>

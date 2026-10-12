@@ -7,6 +7,7 @@ import { attachStreamToVideo } from '../../media/attachVideoElement'
 import { AvatarConfig } from '../../types/game'
 import { PlayerAvatar } from '../common/PlayerAvatar'
 import { RemoteAudio } from '../common/RemoteAudio'
+import { SpotifyIcon } from '../common/SpotifyIcon'
 import { LiveWatchPrompt } from '../LiveWatchPrompt'
 import { useLiveGate } from '../../hooks/useLiveGate'
 import { useLiveViewBox } from '../../hooks/useLiveViewBox'
@@ -24,6 +25,7 @@ export interface ParticipantData {
   isLocal?: boolean
   isScreenSharing?: boolean
   isSpeaking?: boolean
+  isDjBot?: boolean
   profilePicture?: string
   avatar?: AvatarConfig
   shirtColor?: string
@@ -216,8 +218,14 @@ export const GridParticipantTile: React.FC<Props> = ({
         )}
 
         <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between px-2 py-0.5 bg-black/70 backdrop-blur-md rounded-lg text-[10px] text-white">
-          <span className="truncate font-semibold">
-            {isLive ? `Tela (${user.name})` : user.isLocal ? `${user.name} (Você)` : user.name}
+          <span className="truncate font-semibold flex items-center gap-1.5 min-w-0">
+            <span className="truncate">{isLive ? `Tela (${user.name})` : user.isLocal ? `${user.name} (Você)` : user.name}</span>
+            {(user.isDjBot || user.id.startsWith('dj-') || user.name.includes('DJ')) && (
+              <span className="inline-flex items-center gap-0.5 px-1 py-0.2 bg-[#1db954] text-black text-[8px] font-extrabold rounded shrink-0 shadow-sm" title="Spotify DJ Bot">
+                <SpotifyIcon size={9} className="text-black" />
+                <span>DJ</span>
+              </span>
+            )}
           </span>
           <div className="flex items-center gap-1 shrink-0">
             {user.isDeafened && (
@@ -307,6 +315,12 @@ export const GridParticipantTile: React.FC<Props> = ({
               />
               <div className="text-sm sm:text-base font-bold text-slate-200 flex items-center gap-2 drop-shadow-md">
                 <span>{user.name}</span>
+                {(user.isDjBot || user.id.startsWith('dj-') || user.name.includes('DJ')) && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-[#1db954] text-black text-[10px] font-extrabold rounded-md shadow" title="Spotify DJ Bot">
+                    <SpotifyIcon size={11} className="text-black" />
+                    <span>DJ</span>
+                  </span>
+                )}
                 {user.isMuted && <MicOff className="w-3.5 h-3.5 text-rose-400" />}
               </div>
             </div>

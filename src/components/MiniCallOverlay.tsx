@@ -59,6 +59,7 @@ import { useMediaStore } from '../store/useMediaStore'
 import { useGameStore } from '../store/useGameStore'
 import { useMapStore } from '../store/useMapStore'
 import { useChatStore } from '../store/useChatStore'
+import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
 import { MediaManager } from '../media/MediaManager'
 import { PeerManager } from '../p2p/PeerManager'
 import { ScreenShareModal } from './ScreenShareModal'
@@ -71,6 +72,7 @@ import { useUserNetworkQuality } from '../store/useNetworkQualityStore'
 import { AvatarConfig } from '../types/game'
 import { PlayerAvatar } from './common/PlayerAvatar'
 import { RemoteAudio } from './common/RemoteAudio'
+import { SpotifyIcon } from './common/SpotifyIcon'
 import { LiveWatchPrompt } from './LiveWatchPrompt'
 import { useLiveGate } from '../hooks/useLiveGate'
 import { useLiveViewBox } from '../hooks/useLiveViewBox'
@@ -258,7 +260,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
         </div>
       )}
 
-      {isScreenTrack && !isLocal && !liveGate.needsClick && (
+      {!isLocal && !liveGate.needsClick && (
         <div
           className="absolute top-1.5 right-1.5 group/vol flex items-center bg-black/70 hover:bg-black/90 backdrop-blur-md border border-white/15 rounded-lg px-1 py-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
           onClick={(e) => e.stopPropagation()}
@@ -333,6 +335,12 @@ export const VideoTile: React.FC<VideoTileProps> = ({
           <span className="truncate font-medium">
             {isScreenTrack ? `Tela (${name})` : isLocal ? `${name} (Você)` : name}
           </span>
+          {(Boolean(id?.startsWith('dj-')) || name.includes('DJ')) && (
+            <span className="inline-flex items-center gap-0.5 px-1 py-0.2 bg-[#1db954] text-black text-[8px] font-extrabold rounded shrink-0 shadow-sm" title="Spotify DJ Bot">
+              <SpotifyIcon size={9} className="text-black" />
+              <span>DJ</span>
+            </span>
+          )}
           {!isScreenTrack && (
             <NetworkSignalIcon
               rating={networkQuality.rating}
@@ -593,6 +601,11 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
   const zoneChannel = useChatStore((state) => state.channels.find((c) => c.id === 'current-zone'))
   const unreadZoneCount = zoneChannel?.unreadCount || 0
 
+  const jamsByZone = useSpotifyJamStore((s) => s.jamsByZone)
+  const setSpotifyJamModalOpen = useSpotifyJamStore((s) => s.setModalOpen)
+  const activeZoneJam = localPlayer.currentZoneId ? jamsByZone[localPlayer.currentZoneId] : null
+  const isJamActive = !!activeZoneJam?.isActive
+
   const [isScreenModalOpen, setIsScreenModalOpen] = useState(false)
   const [isActiveStreamMenuOpen, setIsActiveStreamMenuOpen] = useState(false)
   const [isNoiseMenuOpen, setIsNoiseMenuOpen] = useState(false)
@@ -850,6 +863,22 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               )}
 
               <button
+                onClick={() => setSpotifyJamModalOpen(true, localPlayer.currentZoneId)}
+                className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold flex items-center gap-1 transition-all ${
+                  isJamActive
+                    ? 'bg-emerald-600/25 text-emerald-300 border-emerald-500/50 hover:bg-emerald-600 hover:text-white shadow-sm shadow-emerald-500/20'
+                    : 'bg-slate-800 text-slate-400 hover:text-emerald-400 hover:bg-slate-700 border-transparent'
+                }`}
+                title={isJamActive ? `Spotify Jam ativo: ${activeZoneJam?.zoneName || zoneName}` : 'Iniciar Spotify Jam nesta sala'}
+              >
+                <SpotifyIcon size={12} className={`w-3 h-3 ${isJamActive ? 'text-emerald-400 animate-pulse' : ''}`} />
+                <span>Jam</span>
+                {isJamActive && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                )}
+              </button>
+
+              <button
                 onClick={() => setGridCallOpen(true)}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
                 title="Expandir Chamada (Modo Grade)"
@@ -867,8 +896,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
             </div>
           </div>
 
-          {!isCardCollapsed && (
-            <>
+          <div className={isCardCollapsed ? 'hidden' : 'block'}>
               <div className="flex gap-2 items-center overflow-x-auto pb-1 max-w-[calc(100vw-40px)] sm:max-w-md mt-2">
             <VideoTile
               id={localPlayer.id}
@@ -1228,6 +1256,21 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
             </button>
 
             <button
+              onClick={() => setSpotifyJamModalOpen(true, localPlayer.currentZoneId)}
+              className={`p-2 rounded-xl text-xs font-medium transition-all relative ${
+                isJamActive
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30 shadow-md shadow-emerald-500/20 ring-1 ring-emerald-500/40'
+                  : 'bg-slate-800 text-slate-400 hover:text-emerald-400 hover:bg-slate-700'
+              }`}
+              title={isJamActive ? `Spotify Jam ativo nesta sala (${activeZoneJam?.zoneName || zoneName})` : 'Spotify Jam nesta sala'}
+            >
+              <SpotifyIcon size={16} className={`w-4 h-4 ${isJamActive ? 'text-emerald-400 animate-pulse' : ''}`} />
+              {isJamActive && (
+                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              )}
+            </button>
+
+            <button
               onClick={() => useMediaStore.getState().setSettingsModalOpen(true)}
               className="p-2 rounded-xl text-xs font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white transition-colors"
               title="Configurações de Áudio e Voz"
@@ -1235,8 +1278,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               <Settings className="w-4 h-4" />
             </button>
           </div>
-        </>
-      )}
+        </div>
     </div>
   </div>
 

@@ -505,23 +505,32 @@ export const LobbyModal: React.FC<Props> = ({
         onJoined()
         diagLog('room', 'enter-ok', { spaceId: targetSpace.id })
       } catch (firstErr: any) {
-        console.warn(`[Lobby] Host ID for code ${persistentCode} is unavailable or timed out. Auto-regenerating fresh roomCode...`, firstErr)
-        const freshCode = generateUUID()
-        updateSavedSpace(targetSpace.id, { roomCode: freshCode })
+        const isIdCollision =
+          firstErr?.message?.includes('is taken') ||
+          firstErr?.message?.includes('unavailable-id') ||
+          firstErr?.type === 'unavailable-id'
 
-        await Promise.all([
-          mediaReady,
-          PeerManager.getInstance().createRoom(
-            freshCode,
-            playerPayload,
-            {
-              roomName: targetSpace.name,
-              isPublic: true,
-            }
-          ),
-        ])
-        onJoined()
-        diagLog('room', 'enter-ok-retry', { spaceId: targetSpace.id, freshCode })
+        if (isIdCollision) {
+          console.warn(`[Lobby] Host ID for code ${persistentCode} is unavailable or taken. Auto-regenerating fresh roomCode...`, firstErr)
+          const freshCode = generateUUID()
+          updateSavedSpace(targetSpace.id, { roomCode: freshCode })
+
+          await Promise.all([
+            mediaReady,
+            PeerManager.getInstance().createRoom(
+              freshCode,
+              playerPayload,
+              {
+                roomName: targetSpace.name,
+                isPublic: true,
+              }
+            ),
+          ])
+          onJoined()
+          diagLog('room', 'enter-ok-retry', { spaceId: targetSpace.id, freshCode })
+        } else {
+          throw firstErr
+        }
       }
     } catch (err: any) {
       console.error(err)

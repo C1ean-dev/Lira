@@ -1,5 +1,5 @@
 import Peer, { DataConnection, MediaConnection } from 'peerjs'
-import { NetworkMessage } from '../types/p2p'
+import { NetworkMessage, SignalingTier } from '../types/p2p'
 import { MessageDeliveryStatus, RoomChannel } from '../types/chat'
 import { Player, RoomKnockRequest } from '../types/game'
 import { useGameStore } from '../store/useGameStore'
@@ -23,6 +23,90 @@ import { sanitizeRoomCode } from '../utils/roomCode'
 import { getPlayerUserId } from '../utils/userId'
 import { getRoomChannels } from '../utils/roomChannels'
 import { restoreRoomChannels } from '../services/roomChannelsService'
+import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
+
+export type { SignalingTier }
+export const SIGNALING_TIERS: SignalingTier[] = ['render', 'public', 'local']
+export const RENDER_SIGNALING_HOST = 'lira-signaling.onrender.com'
+
+let activeSignalingTier: SignalingTier = 'render'
+const tierFailedUntil: Record<SignalingTier, number> = {
+  render: 0,
+  public: 0,
+  local: 0,
+}
+
+export function getActiveSignalingTier(): SignalingTier {
+  return activeSignalingTier
+}
+
+export function setActiveSignalingTier(tier: SignalingTier) {
+  activeSignalingTier = tier
+}
+
+export function markSignalingTierFailed(tier: SignalingTier, durationMs: number = 2 * 60 * 1000) {
+  tierFailedUntil[tier] = Date.now() + durationMs
+}
+
+export function getPreferredSignalingTier(): SignalingTier {
+  const now = Date.now()
+  for (const tier of SIGNALING_TIERS) {
+    if (now >= tierFailedUntil[tier]) {
+      return tier
+    }
+  }
+  return 'render'
+}
+
+export function shouldPreferLocalSignaling(): boolean {
+  if (
+    typeof window !== 'undefined' &&
+    ((window as any).__LIRA_LOCAL_SIGNALING_PORT__ || (window as any).electronAPI?.localSignalingPort)
+  ) {
+    if (Date.now() < tierFailedUntil.render && Date.now() < tierFailedUntil.public) return true
+  }
+  return false
+}
+
+export function createPeerInstance(
+  id: string,
+  options?: { tier?: SignalingTier; useLocalFallback?: boolean }
+): Peer {
+  const localPort =
+    (typeof window !== 'undefined' &&
+      ((window as any).__LIRA_LOCAL_SIGNALING_PORT__ ||
+        (window as any).electronAPI?.localSignalingPort)) ||
+    9000
+
+  const tier: SignalingTier = options?.tier || (options?.useLocalFallback ? 'local' : activeSignalingTier)
+
+  if (tier === 'render') {
+    console.log(`[P2P] Connecting via Primary Render signaling server (${RENDER_SIGNALING_HOST}:443)...`)
+    return new Peer(id, {
+      host: RENDER_SIGNALING_HOST,
+      port: 443,
+      path: '/',
+      secure: true,
+      config: SHARED_RTC_CONFIG,
+    })
+  }
+
+  if (tier === 'public') {
+    console.log('[P2P] Connecting via Fallback public signaling server (0.peerjs.com)...')
+    return new Peer(id, {
+      config: SHARED_RTC_CONFIG,
+    })
+  }
+
+  console.log(`[P2P] Connecting via Embedded local signaling server (127.0.0.1:${localPort})...`)
+  return new Peer(id, {
+    host: '127.0.0.1',
+    port: localPort,
+    path: '/',
+    secure: false,
+    config: SHARED_RTC_CONFIG,
+  })
+}
 
 export class PeerManager {
   private static instance: PeerManager
@@ -34,9 +118,16 @@ export class PeerManager {
   private staleCheckInterval: any = null
   private roomCode: string | null = null
   private isHost: boolean = false
+  private currentSignalingTier: SignalingTier = 'render'
+  private isUsingLocalSignaling = false
   private isIntentionalDisconnect = false
   private signalingReconnectTimer: any = null
   private signalingReconnectAttempts = 0
+  private djPeer: Peer | null = null
+  private djMediaCalls: Map<string, MediaConnection> = new Map()
+  private djAudioStream: MediaStream | null = null
+  private djBotId: string | null = null
+  private djHealthCheckTimer: any = null
 
   private constructor() {
     registerReportContext('p2p', () => this.describeForReport())
@@ -71,6 +162,10 @@ export class PeerManager {
     return this.peer ? this.peer.id : null
   }
 
+  public getSignalingTier(): SignalingTier {
+    return this.currentSignalingTier
+  }
+
   private describeForReport() {
     const peer = this.peer
     let open = 0
@@ -80,6 +175,7 @@ export class PeerManager {
     for (const seen of this.peerLastSeen.values()) quietestPeerMs = Math.max(quietestPeerMs, now - seen)
     return {
       peerId: peer ? peer.id : null,
+      tier: this.currentSignalingTier,
       signaling: !peer ? 'none' : peer.destroyed ? 'destroyed' : peer.disconnected ? 'disconnected' : peer.open ? 'open' : 'connecting',
       roomCode: this.roomCode,
       host: this.isHost,
@@ -102,56 +198,79 @@ export class PeerManager {
       maxPlayers?: number
       color?: string
     },
+    tierIndex: number = 0,
     retryCount: number = 0
   ): Promise<string> {
     this.roomCode = sanitizeRoomCode(roomCode)
     this.isHost = true
     this.isIntentionalDisconnect = false
+    if (this.signalingReconnectTimer) {
+      clearTimeout(this.signalingReconnectTimer)
+      this.signalingReconnectTimer = null
+    }
+    this.signalingReconnectAttempts = 0
     const hostPeerId = `lira-${this.roomCode}-host`
 
     if (this.peer) {
       try {
+        this.peer.removeAllListeners?.()
         this.peer.destroy()
-      } catch (e) {}
+      } catch (e) { }
       this.peer = null
     }
+
+    const currentTier: SignalingTier = SIGNALING_TIERS[tierIndex] || 'render'
+    this.currentSignalingTier = currentTier
+    this.isUsingLocalSignaling = (currentTier === 'local')
 
     return new Promise((resolve, reject) => {
       let resolved = false
       let hostTimeout: any = null
 
-      diagLog('room', 'create-begin', { roomCode: this.roomCode, hostPeerId })
+      diagLog('room', 'create-begin', { roomCode: this.roomCode, hostPeerId, tier: currentTier })
 
+      const tryNextTier = (reason: string) => {
+        if (resolved) return
+        if (this.peer !== myPeer) return
+        resolved = true
+        if (hostTimeout) clearTimeout(hostTimeout)
+        try {
+          myPeer.removeAllListeners?.()
+          myPeer.destroy()
+        } catch (e) { }
+        if (this.peer === myPeer) {
+          this.peer = null
+        }
+        markSignalingTierFailed(currentTier, 2 * 60 * 1000)
+
+        if (tierIndex < SIGNALING_TIERS.length - 1) {
+          const nextTier = SIGNALING_TIERS[tierIndex + 1]
+          console.warn(`[P2P Host] Signaling tier '${currentTier}' failed (${reason}). Falling back to '${nextTier}'...`)
+          this.createRoom(this.roomCode!, localPlayer, options, tierIndex + 1, 0)
+            .then(resolve)
+            .catch(reject)
+        } else {
+          useGameStore.getState().setConnected(false)
+          useGameStore.getState().setConnectionStatus('disconnected')
+          reject(new Error('Tempo limite de conexão excedido ao registrar o espaço no servidor P2P (todos os servidores falharam).'))
+        }
+      }
+
+      // [Tentativa 1: Primário] Render (timeout 4s)
+      // [Tentativa 2: Fallback] Público 0.peerjs.com (timeout 5s)
+      // [Tentativa 3: Local] 127.0.0.1 (timeout 4s)
+      const timeoutMs = currentTier === 'render' ? 4000 : currentTier === 'public' ? 5000 : 4000
       hostTimeout = setTimeout(() => {
         if (!resolved) {
-          resolved = true
-          console.warn(`[P2P Host] Host registration timeout (${hostPeerId})`)
-          diagLog('room', 'create-timeout', { roomCode: this.roomCode, hostPeerId })
           if (this.peer !== myPeer) return
-          try {
-            if (this.peer) {
-              this.peer.destroy()
-              this.peer = null
-            }
-          } catch (e) {}
-          if (retryCount === 0) {
-            console.log('[P2P Host] Host registration timed out, attempting to join as client...')
-            this.joinRoom(this.roomCode!, localPlayer, retryCount + 1)
-              .then(() => resolve(this.roomCode!))
-              .catch((err) => reject(err))
-          } else {
-            useGameStore.getState().setConnected(false)
-            useGameStore.getState().setConnectionStatus('disconnected')
-            reject(new Error('Tempo limite de conexão excedido ao registrar o espaço no servidor P2P.'))
-          }
+          console.warn(`[P2P Host] Host registration timeout (${hostPeerId}) on tier '${currentTier}'`)
+          diagLog('room', 'create-timeout', { roomCode: this.roomCode, hostPeerId, tier: currentTier })
+          tryNextTier('timeout')
         }
-      }, 7000)
+      }, timeoutMs)
 
-      const myPeer = new Peer(hostPeerId, {
-        config: SHARED_RTC_CONFIG,
-      })
+      const myPeer = createPeerInstance(hostPeerId, { tier: currentTier })
       this.peer = myPeer
-      this.setupSignalingListeners(myPeer)
 
       this.peer.on('open', (id) => {
         if (resolved) {
@@ -170,18 +289,22 @@ export class PeerManager {
         if (this.peer !== myPeer) {
           try {
             myPeer.destroy()
-          } catch {}
+          } catch { }
           return
         }
         resolved = true
+        this.currentSignalingTier = currentTier
+        setActiveSignalingTier(currentTier)
+        this.isUsingLocalSignaling = (currentTier === 'local')
+        useGameStore.getState().setSignalingTier(currentTier)
         this.signalingReconnectAttempts = 0
         if (this.signalingReconnectTimer) {
           clearTimeout(this.signalingReconnectTimer)
           this.signalingReconnectTimer = null
         }
         if (hostTimeout) clearTimeout(hostTimeout)
-        console.log('[P2P] Room created with Host ID:', id)
-        diagLog('room', 'create-open', { roomCode: this.roomCode, hostPeerId: id })
+        console.log(`[P2P] Room created with Host ID: ${id} on tier: ${currentTier}`)
+        diagLog('room', 'create-open', { roomCode: this.roomCode, hostPeerId: id, tier: currentTier })
         const currentLocal = useGameStore.getState().localPlayer
         useGameStore.getState().setLocalPlayer({
           id,
@@ -195,6 +318,7 @@ export class PeerManager {
         useGameStore.getState().setConnected(true)
         useGameStore.getState().setConnectionStatus('connected')
         this.setupPeerListeners()
+        this.setupSignalingListeners(myPeer)
         this.startHeartbeat()
         resolve(this.roomCode!)
       })
@@ -212,59 +336,50 @@ export class PeerManager {
         }
         if (this.peer !== myPeer) return
         if (hostTimeout) clearTimeout(hostTimeout)
-        console.warn('[P2P] Error hosting room, checking fallback:', err)
+        console.warn(`[P2P] Error hosting room on tier '${currentTier}':`, err)
         diagLog('room', 'create-error', {
           roomCode: this.roomCode,
+          tier: currentTier,
           type: err?.type || null,
           message: String(err?.message || err || '').slice(0, 160),
         })
 
         if (
-          (err?.type === 'unavailable-id' || err?.message?.includes('is taken') || err?.type === 'server-error') &&
+          (err?.type === 'unavailable-id' || err?.message?.includes('is taken')) &&
           retryCount === 0
         ) {
           resolved = true
-          console.log('[P2P] Host ID already registered. Joining as client to active room...')
+          console.log(`[P2P] Host ID already registered. Joining as client to active room on tier '${currentTier}'...`)
           try {
             if (this.peer) {
               try {
                 this.peer.destroy()
-              } catch (e) {}
+              } catch (e) { }
               this.peer = null
             }
-            await this.joinRoom(this.roomCode!, localPlayer, retryCount + 1)
+            await this.joinRoom(this.roomCode!, localPlayer, tierIndex, retryCount + 1)
             resolve(this.roomCode!)
           } catch (joinErr) {
             reject(joinErr)
           }
         } else if (
-          (err?.type === 'network' || err?.type === 'socket-error' || err?.type === 'socket-closed') &&
-          retryCount < 2
+          err?.type === 'network' ||
+          err?.type === 'server-error' ||
+          err?.type === 'socket-error' ||
+          err?.type === 'socket-closed'
         ) {
-          resolved = true
-          console.warn(`[P2P Host] Transient network error (${err?.type}) while creating room. Retrying attempt ${retryCount + 1}...`)
-          try {
-            if (this.peer) {
-              try {
-                this.peer.destroy()
-              } catch (e) {}
-              this.peer = null
-            }
-          } catch (e) {}
-          const backoff = 600 * (retryCount + 1)
-          setTimeout(() => {
-            this.createRoom(this.roomCode!, localPlayer, options, retryCount + 1)
-              .then(resolve)
-              .catch(reject)
-          }, backoff)
+          tryNextTier(err?.type || 'network-error')
+        } else if (tierIndex < SIGNALING_TIERS.length - 1) {
+          tryNextTier(err?.message || 'error')
         } else {
           resolved = true
           try {
             if (this.peer) {
+              this.peer.removeAllListeners?.()
               this.peer.destroy()
               this.peer = null
             }
-          } catch (e) {}
+          } catch (e) { }
           useGameStore.getState().setConnected(false)
           useGameStore.getState().setConnectionStatus('disconnected')
           useGameStore.getState().setRoomSession('', false)
@@ -279,26 +394,68 @@ export class PeerManager {
     })
   }
 
-  public async joinRoom(roomCode: string, localPlayer: Player, retryCount: number = 0): Promise<void> {
+  public async joinRoom(
+    roomCode: string,
+    localPlayer: Player,
+    tierIndex: number = 0,
+    retryCount: number = 0
+  ): Promise<void> {
     this.roomCode = sanitizeRoomCode(roomCode)
     this.isHost = false
     this.isIntentionalDisconnect = false
+    if (this.signalingReconnectTimer) {
+      clearTimeout(this.signalingReconnectTimer)
+      this.signalingReconnectTimer = null
+    }
+    this.signalingReconnectAttempts = 0
     const clientPeerId = `lira-${this.roomCode}-peer-${Math.random().toString(36).substring(2, 7)}`
     const hostPeerId = `lira-${this.roomCode}-host`
 
     if (this.peer) {
       try {
+        this.peer.removeAllListeners?.()
         this.peer.destroy()
-      } catch (e) {}
+      } catch (e) { }
       this.peer = null
     }
+
+    const currentTier: SignalingTier = SIGNALING_TIERS[tierIndex] || 'render'
+    this.currentSignalingTier = currentTier
+    this.isUsingLocalSignaling = (currentTier === 'local')
 
     return new Promise((resolve, reject) => {
       let isResolved = false
       let fallbackTimer: any = null
       let joinTimeout: any = null
 
-      diagLog('room', 'join-begin', { roomCode: this.roomCode, clientPeerId })
+      diagLog('room', 'join-begin', { roomCode: this.roomCode, clientPeerId, tier: currentTier })
+
+      const tryNextTier = () => {
+        if (isResolved) return
+        if (this.peer !== myPeer) return
+        isResolved = true
+        if (fallbackTimer) clearTimeout(fallbackTimer)
+        if (joinTimeout) clearTimeout(joinTimeout)
+
+        try {
+          myPeer.removeAllListeners?.()
+          myPeer.destroy()
+        } catch (e) { }
+        if (this.peer === myPeer) {
+          this.peer = null
+        }
+        markSignalingTierFailed(currentTier, 2 * 60 * 1000)
+
+        if (tierIndex < SIGNALING_TIERS.length - 1) {
+          const nextTier = SIGNALING_TIERS[tierIndex + 1]
+          console.log(`[P2P Join] Signaling tier '${currentTier}' unreachable. Trying fallback tier '${nextTier}'...`)
+          this.joinRoom(this.roomCode!, localPlayer, tierIndex + 1, 0)
+            .then(resolve)
+            .catch(reject)
+        } else {
+          triggerAutoHost()
+        }
+      }
 
       const triggerAutoHost = async () => {
         if (isResolved) return
@@ -313,7 +470,7 @@ export class PeerManager {
           if (this.peer) {
             try {
               this.peer.destroy()
-            } catch (e) {}
+            } catch (e) { }
             this.peer = null
           }
           if (retryCount === 0) {
@@ -324,6 +481,7 @@ export class PeerManager {
                 roomName: `Espaço ${this.roomCode}`,
                 isPublic: false,
               },
+              0,
               retryCount + 1
             )
             resolve()
@@ -336,7 +494,7 @@ export class PeerManager {
           if (err?.type === 'unavailable-id' || err?.message?.includes('Host ID already registered') || err?.message?.includes('is taken')) {
             try {
               console.log('[P2P AutoHost] Host ainda está ativo na rede. Tentando reconectar como cliente...')
-              await this.joinRoom(this.roomCode!, localPlayer, retryCount + 1)
+              await this.joinRoom(this.roomCode!, localPlayer, 0, retryCount + 1)
               resolve()
               return
             } catch (rejoinErr: any) {
@@ -359,20 +517,18 @@ export class PeerManager {
 
       joinTimeout = setTimeout(() => {
         if (!isResolved) {
-          console.warn(`[P2P Join] Overall connection timeout for room ${this.roomCode}`)
-          diagLog('room', 'join-timeout-autohost', { roomCode: this.roomCode })
-          triggerAutoHost()
+          if (this.peer !== myPeer) return
+          console.warn(`[P2P Join] Connection timeout on tier '${currentTier}' for room ${this.roomCode}`)
+          diagLog('room', 'join-tier-timeout', { roomCode: this.roomCode, tier: currentTier })
+          tryNextTier()
         }
       }, 10000)
 
-      const myPeer = new Peer(clientPeerId, {
-        config: SHARED_RTC_CONFIG,
-      })
+      const myPeer = createPeerInstance(clientPeerId, { tier: currentTier })
       this.peer = myPeer
-      this.setupSignalingListeners(myPeer)
 
       this.peer.on('open', (id) => {
-        console.log('[P2P] Joined peer network with ID:', id)
+        console.log(`[P2P] Joined peer network with ID: ${id} on tier: ${currentTier}`)
         if (isResolved) {
           if (this.peer === myPeer) {
             this.signalingReconnectAttempts = 0
@@ -387,7 +543,7 @@ export class PeerManager {
           return
         }
         if (this.peer !== myPeer) return
-        diagLog('room', 'join-open', { roomCode: this.roomCode, clientPeerId: id })
+        diagLog('room', 'join-open', { roomCode: this.roomCode, clientPeerId: id, tier: currentTier })
         const currentLocal = useGameStore.getState().localPlayer
         useGameStore.getState().setLocalPlayer({
           id,
@@ -400,6 +556,7 @@ export class PeerManager {
         useGameStore.getState().setConnected(true)
         useGameStore.getState().setConnectionStatus('connecting')
         this.setupPeerListeners()
+        this.setupSignalingListeners(myPeer)
         this.startHeartbeat()
 
         const minimalMetadata = {
@@ -423,19 +580,23 @@ export class PeerManager {
             if (fallbackTimer) clearTimeout(fallbackTimer)
             if (joinTimeout) clearTimeout(joinTimeout)
             isResolved = true
+            this.currentSignalingTier = currentTier
+            setActiveSignalingTier(currentTier)
+            this.isUsingLocalSignaling = (currentTier === 'local')
+            useGameStore.getState().setSignalingTier(currentTier)
             this.signalingReconnectAttempts = 0
             if (this.signalingReconnectTimer) {
               clearTimeout(this.signalingReconnectTimer)
               this.signalingReconnectTimer = null
             }
-            diagLog('room', 'join-host-open', { roomCode: this.roomCode })
+            diagLog('room', 'join-host-open', { roomCode: this.roomCode, tier: currentTier })
             useGameStore.getState().setConnectionStatus('connected')
             resolve()
           }
         })
 
         conn.on('error', (connErr) => {
-          console.warn('[P2P Data] Failed to connect to host:', connErr)
+          console.warn(`[P2P Data] Failed to connect to host:`, connErr)
           if (!isResolved) {
             triggerAutoHost()
           }
@@ -443,7 +604,7 @@ export class PeerManager {
 
         conn.on('close', () => {
           if (!isResolved) {
-            console.warn('[P2P Data] Host connection closed before open')
+            console.warn(`[P2P Data] Host connection closed before open`)
             triggerAutoHost()
           }
         })
@@ -452,7 +613,7 @@ export class PeerManager {
       })
 
       this.peer.on('error', (err: any) => {
-        console.warn('[P2P] Peer network warning/error:', err)
+        console.warn(`[P2P] Peer network warning/error on tier '${currentTier}':`, err)
         if (isResolved) {
           if (this.peer !== myPeer) return
           const errType = err?.type || ''
@@ -466,56 +627,26 @@ export class PeerManager {
         if (this.peer !== myPeer) return
         diagLog('room', 'join-error', {
           roomCode: this.roomCode,
+          tier: currentTier,
           type: err?.type || null,
           message: String(err?.message || err || '').slice(0, 160),
         })
+
         if (
           err?.type === 'peer-unavailable' ||
           err?.message?.includes('Could not connect to peer') ||
-          err?.type === 'unavailable-id' ||
-          err?.type === 'server-error'
+          err?.type === 'unavailable-id'
         ) {
           triggerAutoHost()
         } else if (
-          (err?.type === 'network' || err?.type === 'socket-error' || err?.type === 'socket-closed') &&
-          retryCount < 2
+          err?.type === 'network' ||
+          err?.type === 'server-error' ||
+          err?.type === 'socket-error' ||
+          err?.type === 'socket-closed'
         ) {
-          isResolved = true
-          if (fallbackTimer) clearTimeout(fallbackTimer)
-          if (joinTimeout) clearTimeout(joinTimeout)
-          console.warn(`[P2P Join] Transient network error (${err?.type}). Retrying join attempt ${retryCount + 1}...`)
-          try {
-            if (this.peer) {
-              this.peer.destroy()
-              this.peer = null
-            }
-          } catch (e) {}
-
-          const backoff = 700 * (retryCount + 1)
-          setTimeout(() => {
-            this.joinRoom(this.roomCode!, localPlayer, retryCount + 1)
-              .then(resolve)
-              .catch(reject)
-          }, backoff)
+          tryNextTier()
         } else {
-          isResolved = true
-          if (fallbackTimer) clearTimeout(fallbackTimer)
-          if (joinTimeout) clearTimeout(joinTimeout)
-          try {
-            if (this.peer) {
-              this.peer.destroy()
-              this.peer = null
-            }
-          } catch (e) {}
-          useGameStore.getState().setConnected(false)
-          useGameStore.getState().setConnectionStatus('disconnected')
-          useGameStore.getState().setRoomSession('', false)
-
-          let friendlyMsg = `Falha de conexão P2P: ${err?.type || err?.message || 'erro de rede'}`
-          if (err?.type === 'network' || err?.type === 'socket-error' || err?.type === 'socket-closed') {
-            friendlyMsg = 'Não foi possível conectar ao servidor de sinalização P2P. Verifique sua conexão com a internet ou tente novamente em instantes.'
-          }
-          reject(new Error(friendlyMsg))
+          tryNextTier()
         }
       })
     })
@@ -526,7 +657,7 @@ export class PeerManager {
       console.warn(`[P2P Signaling] Disconnected from server (Peer ID: ${myPeer.id})`)
       diagLog('room', 'peer-disconnected', { roomCode: this.roomCode, peerId: myPeer.id })
 
-      if (this.isIntentionalDisconnect || !this.roomCode || this.peer !== myPeer) return
+      if (this.isIntentionalDisconnect || !this.roomCode || this.peer !== myPeer || !myPeer.id) return
 
       useGameStore.getState().setConnectionStatus('reconnecting')
       this.scheduleSignalingReconnect()
@@ -545,6 +676,12 @@ export class PeerManager {
     if (this.signalingReconnectTimer || this.isIntentionalDisconnect || !this.roomCode) return
 
     this.signalingReconnectAttempts++
+    if (this.signalingReconnectAttempts > 6) {
+      console.warn('[P2P Signaling] Maximum reconnect attempts reached (6).')
+      useGameStore.getState().setConnectionStatus('disconnected')
+      return
+    }
+
     const delay = Math.min(8000, 1000 * Math.pow(1.5, Math.min(5, this.signalingReconnectAttempts - 1)))
     console.log(`[P2P Signaling] Scheduling reconnect attempt #${this.signalingReconnectAttempts} in ${delay}ms...`)
 
@@ -552,7 +689,7 @@ export class PeerManager {
       this.signalingReconnectTimer = null
       if (!this.peer || this.isIntentionalDisconnect || !this.roomCode) return
 
-      if (!this.peer.destroyed) {
+      if (!this.peer.destroyed && this.peer.id) {
         console.log('[P2P Signaling] Calling this.peer.reconnect()...')
         try {
           this.peer.reconnect()
@@ -561,12 +698,14 @@ export class PeerManager {
           this.scheduleSignalingReconnect()
         }
       } else {
-        console.log('[P2P Signaling] Peer destroyed, attempting full re-join...')
+        console.log('[P2P Signaling] Peer destroyed or missing ID, attempting full re-join...')
         const localPlayer = useGameStore.getState().localPlayer
+        const tierIdx = SIGNALING_TIERS.indexOf(this.currentSignalingTier)
+        const safeTier = tierIdx >= 0 ? tierIdx : 0
         if (this.isHost) {
-          this.createRoom(this.roomCode!, localPlayer).catch(() => {})
+          this.createRoom(this.roomCode!, localPlayer, undefined, safeTier).catch(() => { })
         } else {
-          this.joinRoom(this.roomCode!, localPlayer).catch(() => {})
+          this.joinRoom(this.roomCode!, localPlayer, safeTier).catch(() => { })
         }
       }
     }, delay)
@@ -589,7 +728,11 @@ export class PeerManager {
         attemptRedialIfEligible: () => {
           const remotePlayer = useGameStore.getState().remotePlayers[call.peer]
           if (remotePlayer) {
-            this.checkZoneCallEligibility(remotePlayer)
+            if (remotePlayer.isDjBot || call.peer.startsWith('dj-')) {
+              this.retryZoneCall(call.peer)
+            } else {
+              this.checkZoneCallEligibility(remotePlayer)
+            }
           }
         },
       })
@@ -675,6 +818,18 @@ export class PeerManager {
             timestamp: Date.now(),
           })
         })
+
+        const jamsByZone = useSpotifyJamStore.getState().jamsByZone
+        Object.entries(jamsByZone).forEach(([zoneId, session]) => {
+          if (session && session.isActive) {
+            this.sendToPeer(conn, {
+              type: 'SPOTIFY_JAM_SYNC',
+              senderId: this.peer!.id,
+              payload: { zoneId, session },
+              timestamp: Date.now(),
+            })
+          }
+        })
       }
     })
 
@@ -755,7 +910,7 @@ export class PeerManager {
     if (conn) {
       try {
         conn.close()
-      } catch (e) {}
+      } catch (e) { }
       this.connections.delete(peerId)
     }
 
@@ -825,18 +980,17 @@ export class PeerManager {
     if (this.peer) {
       try {
         this.peer.destroy()
-      } catch (e) {}
+      } catch (e) { }
       this.peer = null
     }
     this.connections.clear()
 
     const hostPeerId = `lira-${this.roomCode}-host`
-    this.peer = new Peer(hostPeerId, {
-      config: SHARED_RTC_CONFIG,
-    })
+    this.peer = createPeerInstance(hostPeerId, { tier: this.currentSignalingTier })
 
     this.peer.on('open', (id) => {
       console.log('[P2P Failover] Successfully claimed Host ID:', id)
+      useGameStore.getState().setSignalingTier(this.currentSignalingTier)
       const currentLocal = useGameStore.getState().localPlayer
       useGameStore.getState().setLocalPlayer({
         id,
@@ -898,17 +1052,24 @@ export class PeerManager {
         (m, exclude) => this.broadcast(m, exclude),
         (pid) => this.removePeer(pid),
         (remotePlayer) => this.checkZoneCallEligibility(remotePlayer),
-        this.peer ? this.peer.id : null
+        this.peer ? this.peer.id : null,
+        (listenerId) => this.redialDjToPeer(listenerId)
       )
 
       if (msg.type === 'LIVE_VIEW') this.handleLiveView(msg)
+      if (msg.type === 'DJ_CALL_REQUEST') {
+        const listenerId = msg.payload?.listenerId || msg.senderId
+        if (listenerId && this.isDjBotRunning()) {
+          this.redialDjToPeer(listenerId)
+        }
+      }
 
       if (msg.type === 'PLAYER_UPDATE' && msg.payload?.player?.isScreenSharing !== undefined) {
         if (useMediaStore.getState().isScreenSharing) {
           try {
             const { targetBitrate } = MediaManager.resolveOptimalScreenQuality()
             this.updateScreenShareBitrate(targetBitrate)
-          } catch {}
+          } catch { }
         }
       }
     } catch (error) {
@@ -1010,6 +1171,9 @@ export class PeerManager {
       (pid) => this.endMediaCallWithPeer(pid),
       (pid) => this.onMediaCallConnected(pid)
     )
+    if (this.isDjBotRunning()) {
+      this.recheckDjCalls()
+    }
   }
 
   public recheckZoneCalls() {
@@ -1017,6 +1181,265 @@ export class PeerManager {
     Object.values(remotePlayers).forEach((p) => {
       this.checkZoneCallEligibility(p)
     })
+    if (this.isDjBotRunning()) {
+      this.recheckDjCalls()
+    }
+  }
+
+  public getDjBotId(): string | null {
+    return this.djBotId
+  }
+
+  public isDjBotRunning(): boolean {
+    return Boolean(this.djPeer && this.djBotId)
+  }
+
+  public async startDjBot(audioStream: MediaStream): Promise<{ ok: boolean; error?: string }> {
+    try {
+      if (this.djPeer && this.djBotId) {
+        return { ok: true }
+      }
+
+      const localPlayer = useGameStore.getState().localPlayer
+      const safeRoomCode = (this.roomCode || 'room').replace(/[^a-zA-Z0-9_-]/g, '')
+      const safeLocalId = localPlayer.id.replace(/[^a-zA-Z0-9_-]/g, '').slice(-8)
+      const djBotId = `dj-${safeRoomCode}-${safeLocalId}`
+
+      this.djAudioStream = audioStream
+      this.djBotId = djBotId
+
+      const newDjPeer = createPeerInstance(djBotId, { tier: this.currentSignalingTier })
+      this.djPeer = newDjPeer
+
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+          resolve()
+        }, 5000)
+
+        newDjPeer.on('open', () => {
+          clearTimeout(timeout)
+          resolve()
+        })
+        newDjPeer.on('error', (err) => {
+          console.warn('[PeerManager DJ Bot Peer Error]:', err)
+          clearTimeout(timeout)
+          resolve()
+        })
+      })
+
+      const djPlayer: Player = {
+        id: djBotId,
+        gameId: djBotId,
+        name: 'Spotify DJ',
+        isDjBot: true,
+        djOwnerId: this.peer?.id || localPlayer.id,
+        x: localPlayer.x,
+        y: localPlayer.y,
+        direction: 'down',
+        isMoving: false,
+        avatar: {
+          skinTone: '#1db954',
+          skinDetail: 'smooth',
+          hairStyle: 'none',
+          hairColor: '#1db954',
+          facialHair: 'none',
+          facialHairColor: '#1db954',
+          topType: 'tshirt',
+          topColor: '#1db954',
+          jacketType: 'none',
+          jacketColor: '#1db954',
+          bottomType: 'jeans',
+          bottomColor: '#191414',
+          shoesType: 'sneakers',
+          shoesColor: '#1db954',
+          hatType: 'none',
+          hatColor: '#1db954',
+          glassesType: 'sunglasses',
+          glassesColor: '#191414',
+          otherType: 'headphones',
+          otherColor: '#1db954',
+        },
+        status: 'available',
+        statusText: 'Tocando para a sala',
+        statusEmoji: '🎧',
+        currentZoneId: localPlayer.currentZoneId,
+        lastUpdated: Date.now(),
+        role: 'member',
+        isCameraOff: true,
+        isMuted: false,
+        isDeafened: false,
+      }
+
+      useGameStore.getState().setRemotePlayer(djPlayer)
+      useMediaStore.getState().setPeerStream(djBotId, audioStream)
+      useGameStore.getState().setCallState(djBotId, 'connected')
+      useMediaStore.getState().setParticipantVolume(djBotId, 0)
+
+      this.broadcast({
+        type: 'PLAYER_JOIN',
+        senderId: djBotId,
+        payload: { player: djPlayer },
+        timestamp: Date.now(),
+      })
+
+      newDjPeer.on('call', (call) => {
+        console.log('[PeerManager DJ] Answering call from peer:', call.peer)
+        call.answer(this.djAudioStream || new MediaStream())
+        this.djMediaCalls.set(call.peer, call)
+        call.on('close', () => this.djMediaCalls.delete(call.peer))
+        call.on('error', () => this.djMediaCalls.delete(call.peer))
+      })
+
+      this.recheckDjCalls()
+
+      if (this.djHealthCheckTimer) clearInterval(this.djHealthCheckTimer)
+      this.djHealthCheckTimer = setInterval(() => {
+        if (this.isDjBotRunning()) {
+          this.recheckDjCalls()
+        } else {
+          if (this.djHealthCheckTimer) {
+            clearInterval(this.djHealthCheckTimer)
+            this.djHealthCheckTimer = null
+          }
+        }
+      }, 3000)
+
+      return { ok: true }
+    } catch (err) {
+      console.error('[PeerManager] Failed to start DJ bot:', err)
+      this.stopDjBot()
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  public callPeerFromDj(remotePeerId: string) {
+    if (!this.djPeer || !this.djAudioStream || !this.djBotId) return
+    if (this.djMediaCalls.has(remotePeerId)) return
+
+    try {
+      console.log('[PeerManager DJ] Calling peer:', remotePeerId)
+      const call = this.djPeer.call(remotePeerId, this.djAudioStream)
+      if (call) {
+        this.djMediaCalls.set(remotePeerId, call)
+        call.on('close', () => {
+          this.djMediaCalls.delete(remotePeerId)
+        })
+        call.on('error', (err) => {
+          console.warn('[PeerManager DJ] Call error with:', remotePeerId, err)
+          this.djMediaCalls.delete(remotePeerId)
+        })
+
+        const pc = (call as any).peerConnection as RTCPeerConnection | undefined
+        if (pc && pc.addEventListener) {
+          pc.addEventListener('connectionstatechange', () => {
+            if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+              this.djMediaCalls.delete(remotePeerId)
+            }
+          })
+          pc.addEventListener('iceconnectionstatechange', () => {
+            if (pc.iceConnectionState === 'failed') {
+              this.djMediaCalls.delete(remotePeerId)
+            }
+          })
+        }
+      }
+    } catch (e) {
+      console.warn('[PeerManager DJ] Failed to call peer:', remotePeerId, e)
+    }
+  }
+
+  public redialDjToPeer(listenerId: string) {
+    if (!this.djPeer || !this.djAudioStream || !this.djBotId) return
+    const existingCall = this.djMediaCalls.get(listenerId)
+    if (existingCall) {
+      try {
+        existingCall.close()
+      } catch { }
+      this.djMediaCalls.delete(listenerId)
+    }
+    this.callPeerFromDj(listenerId)
+  }
+
+  public recheckDjCalls() {
+    if (!this.djPeer || !this.djAudioStream || !this.djBotId) return
+
+    const localPlayer = useGameStore.getState().localPlayer
+    const remotePlayers = useGameStore.getState().remotePlayers
+
+    const currentDj = remotePlayers[this.djBotId]
+    if (currentDj && currentDj.currentZoneId !== localPlayer.currentZoneId) {
+      const updatedDj: Player = { ...currentDj, currentZoneId: localPlayer.currentZoneId }
+      useGameStore.getState().setRemotePlayer(updatedDj)
+      this.broadcast({
+        type: 'PLAYER_UPDATE',
+        senderId: this.djBotId,
+        payload: { player: updatedDj },
+        timestamp: Date.now(),
+      })
+    }
+
+    Object.values(remotePlayers).forEach((p) => {
+      if (p.id === this.djBotId || p.isDjBot || p.id.startsWith('dj-')) return
+      const inSameZone =
+        localPlayer.currentZoneId !== null &&
+        localPlayer.currentZoneId !== undefined &&
+        p.currentZoneId === localPlayer.currentZoneId
+
+      if (inSameZone) {
+        const existingCall = this.djMediaCalls.get(p.id)
+        const existingPc = existingCall ? ((existingCall as any).peerConnection as RTCPeerConnection | undefined) : null
+        if (existingCall && existingPc && (existingPc.iceConnectionState === 'failed' || existingPc.connectionState === 'failed')) {
+          try { existingCall.close() } catch { }
+          this.djMediaCalls.delete(p.id)
+        }
+
+        if (!this.djMediaCalls.has(p.id)) {
+          this.callPeerFromDj(p.id)
+        }
+      } else {
+        if (this.djMediaCalls.has(p.id)) {
+          try {
+            this.djMediaCalls.get(p.id)?.close()
+          } catch { }
+          this.djMediaCalls.delete(p.id)
+        }
+      }
+    })
+  }
+
+  public stopDjBot() {
+    if (this.djHealthCheckTimer) {
+      clearInterval(this.djHealthCheckTimer)
+      this.djHealthCheckTimer = null
+    }
+
+    if (this.djBotId) {
+      this.broadcast({
+        type: 'PLAYER_LEAVE',
+        senderId: this.djBotId,
+        payload: { peerId: this.djBotId },
+        timestamp: Date.now(),
+      })
+      useGameStore.getState().removeRemotePlayer(this.djBotId)
+      useMediaStore.getState().removePeerStream(this.djBotId)
+    }
+
+    this.djMediaCalls.forEach((call) => {
+      try {
+        call.close()
+      } catch { }
+    })
+    this.djMediaCalls.clear()
+
+    if (this.djPeer) {
+      try {
+        this.djPeer.destroy()
+      } catch { }
+      this.djPeer = null
+    }
+
+    this.djAudioStream = null
+    this.djBotId = null
   }
 
   public endMediaCallWithPeer(peerId: string) {
@@ -1026,6 +1449,21 @@ export class PeerManager {
   public retryZoneCall(peerId: string) {
     const remotePlayer = useGameStore.getState().remotePlayers[peerId]
     if (remotePlayer) {
+      if (remotePlayer.isDjBot || peerId.startsWith('dj-')) {
+        useGameStore.getState().setCallState(peerId, 'connecting')
+        if (this.isDjBotRunning()) {
+          this.recheckDjCalls()
+        } else {
+          this.broadcast({
+            type: 'DJ_CALL_REQUEST',
+            senderId: this.peer?.id || useGameStore.getState().localPlayer.id,
+            payload: { listenerId: this.peer?.id || useGameStore.getState().localPlayer.id },
+            timestamp: Date.now(),
+          })
+        }
+        return
+      }
+
       MediaCallHandler.retryCall(
         remotePlayer,
         this.peer,
@@ -1086,7 +1524,7 @@ export class PeerManager {
             }
           })
         }
-      } catch {}
+      } catch { }
     })
   }
 
@@ -1355,6 +1793,9 @@ export class PeerManager {
 
   public disconnect() {
     this.isIntentionalDisconnect = true
+    if (this.isDjBotRunning()) {
+      this.stopDjBot()
+    }
     if (this.signalingReconnectTimer) {
       clearTimeout(this.signalingReconnectTimer)
       this.signalingReconnectTimer = null
@@ -1378,21 +1819,21 @@ export class PeerManager {
     this.mediaCalls.forEach((call) => {
       try {
         call.close()
-      } catch (e) {}
+      } catch (e) { }
     })
     this.mediaCalls.clear()
 
     this.connections.forEach((conn) => {
       try {
         conn.close()
-      } catch (e) {}
+      } catch (e) { }
     })
     this.connections.clear()
 
     if (this.peer) {
       try {
         this.peer.destroy()
-      } catch (e) {}
+      } catch (e) { }
       this.peer = null
     }
 
@@ -1409,6 +1850,7 @@ export class PeerManager {
     useGameStore.getState().setConnected(false)
     useGameStore.getState().setConnectionStatus('disconnected')
     useGameStore.getState().setRoomSession('', false)
+    useGameStore.getState().setSignalingTier('render')
     useGameStore.getState().clearRemotePlayers()
     useMediaStore.getState().clearAllPeerStreams()
     useChatStore.getState().resetRoomChannels()

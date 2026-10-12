@@ -7,6 +7,7 @@ import { ProcessAudioCapture } from './ProcessAudioCapture'
 import { diagLog, shortId, summarizeStream, summarizeTrack } from '../utils/diagnosticLogger'
 import { useMediaStore } from '../store/useMediaStore'
 import { useGameStore } from '../store/useGameStore'
+import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { SensitivityMode, AudioProcessorMode } from '../types/audio'
 
@@ -64,6 +65,10 @@ export class MediaManager {
   private isDeviceWatcherInitialized: boolean = false
   private deviceChangeTimeout: ReturnType<typeof setTimeout> | null = null
   private currentTestAudio: { ctx?: AudioContext; el?: HTMLAudioElement; timeout?: any } | null = null
+  private djProcessAudioCapture: ProcessAudioCapture | null = null
+  private djAudioContext: AudioContext | null = null
+  private djGainNode: GainNode | null = null
+  private isDjStreaming: boolean = false
 
   private levelForwardLastSent: number = 0
   private levelForwardLastGate: boolean = false
@@ -1277,6 +1282,174 @@ export class MediaManager {
     if (audioContext && audioContext.state !== 'closed') {
       audioContext.close().catch(() => {})
     }
+  }
+
+  public async startDjAudio(customSourceId?: string): Promise<{ ok: boolean; error?: string }> {
+    try {
+      if (this.isDjStreaming) {
+        return { ok: true }
+      }
+
+      let targetSourceId = customSourceId
+      const electronAPI = typeof window !== 'undefined' ? (window as any).electronAPI : null
+
+      // If no source ID provided, auto-discover Spotify window
+      if (!targetSourceId) {
+        if (electronAPI?.findSpotifySource) {
+          try {
+            const found = await electronAPI.findSpotifySource()
+            if (found?.sourceId) {
+              targetSourceId = found.sourceId
+              console.log('[MediaManager] Found Spotify source:', found)
+            }
+          } catch (e) {
+            console.warn('[MediaManager] Failed to find Spotify source via findSpotifySource:', e)
+          }
+        }
+
+        // Fallback: search getSources directly
+        if (!targetSourceId && electronAPI?.getSources) {
+          try {
+            const sources = await electronAPI.getSources()
+            const spotifySource = sources.find(
+              (s: any) =>
+                s.id &&
+                s.id.startsWith('window:') &&
+                s.name.toLowerCase().includes('spotify')
+            )
+            if (spotifySource) {
+              targetSourceId = spotifySource.id
+            } else {
+              let trackInfo: any = null
+              if (electronAPI.getSpotifyCurrentTrack) {
+                try {
+                  trackInfo = await electronAPI.getSpotifyCurrentTrack()
+                } catch {}
+              }
+              if (trackInfo?.track) {
+                const trackWin = sources.find(
+                  (s: any) =>
+                    s.id &&
+                    s.id.startsWith('window:') &&
+                    s.name.toLowerCase().includes(trackInfo.track.toLowerCase())
+                )
+                if (trackWin) {
+                  targetSourceId = trackWin.id
+                }
+              }
+
+              // Fallback to screen capture if Spotify is running in background or minimized
+              if (!targetSourceId && trackInfo?.isRunning) {
+                const screenSource = sources.find((s: any) => s.id && s.id.startsWith('screen:'))
+                if (screenSource) {
+                  targetSourceId = screenSource.id
+                }
+              }
+            }
+          } catch (e) {
+            console.warn('[MediaManager] Failed to find Spotify window automatically:', e)
+          }
+        }
+      }
+
+      if (!targetSourceId) {
+        return {
+          ok: false,
+          error: 'Nenhuma janela do Spotify encontrada. Abra o Spotify Desktop ou inicie o Player Integrado.',
+        }
+      }
+
+      if (!ProcessAudioCapture.isSupported()) {
+        return {
+          ok: false,
+          error: 'Transmissão direta de áudio nativa indisponível neste ambiente.',
+        }
+      }
+
+      this.djProcessAudioCapture = new ProcessAudioCapture()
+      const capturedTrack = await this.djProcessAudioCapture.start(targetSourceId)
+      capturedTrack.enabled = true
+
+      const liveAudioTrack = await this.createDjLiveAudioTrack(capturedTrack)
+      liveAudioTrack.enabled = true
+      const djStream = new MediaStream([liveAudioTrack])
+
+      const djRes = await PeerManager.getInstance().startDjBot(djStream)
+      if (!djRes.ok) {
+        throw new Error(djRes.error || 'Falha ao iniciar bot DJ na sala.')
+      }
+
+      this.isDjStreaming = true
+      useSpotifyJamStore.getState().setIsDjModeActive(true)
+
+      return { ok: true }
+    } catch (err) {
+      console.error('[MediaManager] Failed to start DJ audio:', err)
+      await this.stopDjAudio()
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  }
+
+  public async stopDjAudio(): Promise<void> {
+    try {
+      this.isDjStreaming = false
+      useSpotifyJamStore.getState().setIsDjModeActive(false)
+      PeerManager.getInstance().stopDjBot()
+
+      if (this.djProcessAudioCapture) {
+        this.djProcessAudioCapture.stop()
+        this.djProcessAudioCapture = null
+      }
+
+      if (this.djAudioContext && this.djAudioContext.state !== 'closed') {
+        this.djAudioContext.close().catch(() => {})
+        this.djAudioContext = null
+      }
+      this.djGainNode = null
+    } catch (e) {
+      console.warn('[MediaManager] Error stopping DJ audio:', e)
+    }
+  }
+
+  public isDjAudioActive(): boolean {
+    return this.isDjStreaming
+  }
+
+  public setDjVolume(percentage: number): void {
+    if (this.djGainNode && this.djAudioContext) {
+      const vol = Math.max(0, Math.min(100, percentage)) / 100
+      this.djGainNode.gain.setValueAtTime(vol, this.djAudioContext.currentTime)
+    }
+  }
+
+  private async createDjLiveAudioTrack(
+    sourceTrack: MediaStreamTrack
+  ): Promise<MediaStreamTrack> {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
+    if (!AudioContextClass) return sourceTrack
+
+    const audioContext = new AudioContextClass({ sampleRate: 48000 })
+    if (audioContext.state === 'suspended') {
+      try {
+        await audioContext.resume()
+      } catch {}
+    }
+
+    const musicSource = audioContext.createMediaStreamSource(new MediaStream([sourceTrack]))
+    const musicGain = audioContext.createGain()
+    const destination = audioContext.createMediaStreamDestination()
+
+    const rawVol = useSpotifyJamStore.getState().volume
+    musicGain.gain.setValueAtTime(rawVol / 100, audioContext.currentTime)
+    musicSource.connect(musicGain)
+    musicGain.connect(destination)
+
+    this.djAudioContext = audioContext
+    this.djGainNode = musicGain
+
+    const track = destination.stream.getAudioTracks()[0] || sourceTrack
+    track.enabled = true
+    return track
   }
 
   public stopScreenShare() {

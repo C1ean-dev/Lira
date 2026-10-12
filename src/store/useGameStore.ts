@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { Player, PresenceStatus, PresenceInfo, sanitizePresence, STATUS_META, ReactionItem, AvatarConfig, UserRole, PlayerPermissions, ConnectionStatus, RoomKnockRequest, KnockStatus, FriendProfile } from '../types/game'
+import { SignalingTier } from '../types/p2p'
 import { DEFAULT_AVATAR } from '../engine/Constants'
 import { PublicRoomsService } from '../services/publicRoomsService'
 import { generateUserId, isUserId, getPlayerUserId, getFriendUserId, findFriendKey } from '../utils/userId'
@@ -135,6 +136,8 @@ interface GameStore {
   isConnected: boolean
   connectionStatus: ConnectionStatus
   setConnectionStatus: (status: ConnectionStatus) => void
+  signalingTier: SignalingTier
+  setSignalingTier: (tier: SignalingTier) => void
   isRoomPublic: boolean
   roomName: string
   roomDescription: string
@@ -725,6 +728,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   isConnected: false,
   connectionStatus: 'disconnected',
   setConnectionStatus: (status) => set({ connectionStatus: status }),
+  signalingTier: 'render',
+  setSignalingTier: (signalingTier) => set({ signalingTier }),
   isRoomPublic: false,
   roomName: 'Espaço Principal',
   roomDescription: 'Sala aberta e compartilhada',

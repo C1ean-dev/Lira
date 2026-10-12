@@ -216,6 +216,14 @@ export interface Player {
   isScreenSharing?: boolean
   liveOptIn?: boolean
   callState?: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed'
+  spotifyActivity?: {
+    track: string
+    artist: string
+    isPlaying: boolean
+    startedAt?: number
+  }
+  isDjBot?: boolean
+  djOwnerId?: string
 }
 
 export type ConnectionStatus = 'connected' | 'connecting' | 'reconnecting' | 'disconnected'

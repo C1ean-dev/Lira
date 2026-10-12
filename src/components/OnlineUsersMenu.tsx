@@ -36,6 +36,7 @@ import { ConfirmModal } from './ConfirmModal'
 import { Player, UserRole } from '../types/game'
 import { goToPlayer } from '../utils/goToPlayer'
 import { PlayerAvatar } from './common/PlayerAvatar'
+import { SpotifyIcon } from './common/SpotifyIcon'
 import { getPlayerUserId, findFriendKey } from '../utils/userId'
 
 export const OnlineUsersMenu: React.FC = () => {
@@ -282,6 +283,12 @@ const OnlineUsersMenuInner: React.FC = () => {
                             Você
                           </span>
                         )}
+                        {(player.isDjBot || player.id.startsWith('dj-')) && (
+                          <span className="text-[9px] bg-[#1db954] text-black px-1.5 py-0.2 rounded font-extrabold flex items-center gap-1 shadow-sm">
+                            <SpotifyIcon size={10} className="text-black" />
+                            <span>DJ</span>
+                          </span>
+                        )}
                         <span
                           className={`text-[9px] px-1.5 py-0.2 rounded-md font-bold border flex items-center gap-1 ${roleBadge.bg}`}
                         >
@@ -320,6 +327,28 @@ const OnlineUsersMenuInner: React.FC = () => {
                               {player.statusText}
                             </span>
                           </>
+                        )}
+                        {player.spotifyActivity?.isPlaying && (
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              const electronAPI = typeof window !== 'undefined' ? (window as any).electronAPI : null
+                              const query = `${player.spotifyActivity!.artist} ${player.spotifyActivity!.track}`.trim()
+                              const deepLink = `spotify:search:${encodeURIComponent(query)}`
+                              if (electronAPI?.openExternal) {
+                                electronAPI.openExternal(deepLink)
+                              } else {
+                                window.open(`https://open.spotify.com/search/${encodeURIComponent(query)}`, '_blank')
+                              }
+                            }}
+                            className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 font-medium cursor-pointer truncate max-w-[130px] transition-colors bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20"
+                            title={`Ouvindo no Spotify: ${player.spotifyActivity.track}${player.spotifyActivity.artist ? ` - ${player.spotifyActivity.artist}` : ''} (Clique para ouvir)`}
+                          >
+                            <SpotifyIcon size={10} className="w-2.5 h-2.5 shrink-0 text-emerald-400" />
+                            <span className="truncate">
+                              {player.spotifyActivity.track}
+                            </span>
+                          </div>
                         )}
                       </div>
                     </div>

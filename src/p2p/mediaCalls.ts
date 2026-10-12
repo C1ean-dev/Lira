@@ -310,7 +310,8 @@ export class MediaCallHandler {
 
   static evaluateCallReadiness(
     pc: RTCPeerConnection | null | undefined,
-    remoteStream: MediaStream | null | undefined
+    remoteStream: MediaStream | null | undefined,
+    isDjBot: boolean = false
   ) {
     const senders = (() => {
       try {
@@ -376,13 +377,17 @@ export class MediaCallHandler {
     const signalingState = (pc as any)?.signalingState
     const transportReady = iceState === 'connected' || iceState === 'completed' || connectionState === 'connected'
     const signalingReady = signalingState === undefined || signalingState === null || signalingState === 'stable'
-    const sendAudioReady = !!audioSender
+    const sendAudioReady = isDjBot || !!audioSender
     const sendVideoReady = !!videoSender
     const receiveAudioReady = remoteAudio && (!audioReceiver || receiverIsAllowed(audioReceiver))
     const receiveVideoReady = remoteVideo && (!videoReceiver || receiverIsAllowed(videoReceiver))
 
+    const ok = isDjBot
+      ? (transportReady && signalingReady && (receiveAudioReady || remoteAudio || !!audioReceiver))
+      : (transportReady && signalingReady && sendAudioReady && receiveAudioReady)
+
     return {
-      ok: transportReady && signalingReady && sendAudioReady && receiveAudioReady,
+      ok,
       transportReady,
       signalingReady,
       sendAudioReady,
@@ -395,7 +400,7 @@ export class MediaCallHandler {
     }
   }
 
-  static async evaluateAudioRtpReadiness(pc: RTCPeerConnection | null | undefined) {
+  static async evaluateAudioRtpReadiness(pc: RTCPeerConnection | null | undefined, isDjBot: boolean = false) {
     if (!pc || typeof pc.getStats !== 'function') {
       return { available: false, ready: true, outboundAudio: false, inboundAudio: false }
     }
@@ -412,7 +417,7 @@ export class MediaCallHandler {
       })
       return {
         available: true,
-        ready: outboundAudio && inboundAudio,
+        ready: isDjBot ? true : (outboundAudio && inboundAudio),
         outboundAudio,
         inboundAudio,
       }
@@ -533,6 +538,8 @@ export class MediaCallHandler {
       }
     }
 
+    const isDjBot = peerId.startsWith('dj-') || !!useGameStore.getState().remotePlayers[peerId]?.isDjBot
+
     const markConnected = (reason: string) => {
       clearLocalTimers()
       MediaCallHandler.clearIceDisconnectTimer(peerId)
@@ -557,11 +564,18 @@ export class MediaCallHandler {
         const mediaState = useMediaStore.getState()
         const screenAudioTrack = MediaCallHandler.liveAudioTrack()
         const localAudioTrack = screenAudioTrack || mediaState.localStream?.getAudioTracks?.()[0] || null
-        if (localAudioTrack) {
+        if (localAudioTrack && !isDjBot) {
           MediaCallHandler.replaceAudioTrack(mediaCalls, localAudioTrack, 'connected-reconcile')
         }
         applyBuffer()
-        if (remoteStream) useMediaStore.getState().setPeerStream(peerId, remoteStream)
+        if (remoteStream) {
+          useMediaStore.getState().setPeerStream(peerId, remoteStream)
+        } else if (isDjBot) {
+          const rxTrack = pc?.getReceivers().find((r) => r.track && r.track.kind === 'audio')?.track
+          if (rxTrack) {
+            useMediaStore.getState().setPeerStream(peerId, new MediaStream([rxTrack]))
+          }
+        }
         useGameStore.getState().setCallState(peerId, 'connected')
         onCallConnected?.(peerId)
       }
@@ -569,7 +583,7 @@ export class MediaCallHandler {
 
     tryFinalizeReadiness = (reason: string) => {
       if (isConnected) return
-      const readiness = MediaCallHandler.evaluateCallReadiness(pc, remoteStream)
+      const readiness = MediaCallHandler.evaluateCallReadiness(pc, remoteStream, isDjBot)
       const signature = JSON.stringify(readiness)
       if (signature !== lastReadinessSignature) {
         lastReadinessSignature = signature
@@ -588,7 +602,7 @@ export class MediaCallHandler {
       }
 
       readinessStatsInFlight = true
-      void MediaCallHandler.evaluateAudioRtpReadiness(pc).then((stats) => {
+      void MediaCallHandler.evaluateAudioRtpReadiness(pc, isDjBot).then((stats) => {
         readinessStatsInFlight = false
         if (isConnected || mediaCalls.get(peerId) !== call) return
         if (!stats.ready) {
@@ -662,7 +676,12 @@ export class MediaCallHandler {
       pc.addEventListener('iceconnectionstatechange', () => {
         const s = pc.iceConnectionState
         if (s === 'connected' || s === 'completed') {
-          tryFinalizeReadiness('ice=' + s)
+          if (isDjBot && remoteStream?.getAudioTracks?.().some((t) => t.readyState !== 'ended')) {
+            useMediaStore.getState().setPeerStream(peerId, remoteStream)
+            markConnected('ice-dj-stream-ready')
+          } else {
+            tryFinalizeReadiness('ice=' + s)
+          }
         } else if (s === 'disconnected') {
           if (isConnected) {
             useGameStore.getState().setCallState(peerId, 'reconnecting')
@@ -683,7 +702,12 @@ export class MediaCallHandler {
       pc.addEventListener('connectionstatechange', () => {
         const s = pc.connectionState
         if (s === 'connected') {
-          tryFinalizeReadiness('pc=connected')
+          if (isDjBot && remoteStream?.getAudioTracks?.().some((t) => t.readyState !== 'ended')) {
+            useMediaStore.getState().setPeerStream(peerId, remoteStream)
+            markConnected('pc-dj-stream-ready')
+          } else {
+            tryFinalizeReadiness('pc=connected')
+          }
         } else if (s === 'failed' || s === 'closed') {
           handleCallFailure('pc=' + s)
         }
@@ -713,6 +737,11 @@ export class MediaCallHandler {
         tracks: summarizeStream(incomingStream),
       })
       MediaCallHandler.logReceiverSnapshot(call, peerId, 'remote-stream')
+      if (isDjBot && incomingStream?.getAudioTracks?.().some((t) => t.readyState !== 'ended')) {
+        useMediaStore.getState().setPeerStream(peerId, incomingStream)
+        markConnected('dj-stream-ready')
+        return
+      }
       tryFinalizeReadiness('remote-stream')
     })
 
@@ -740,7 +769,17 @@ export class MediaCallHandler {
     })
 
     readinessTimeout = setTimeout(() => {
-      if (!isConnected) handleCallFailure('media-readiness-timeout')
+      if (!isConnected) {
+        if (isDjBot) {
+          const pcIce = pc?.iceConnectionState
+          const pcState = pc?.connectionState
+          if (pcIce === 'connected' || pcIce === 'completed' || pcState === 'connected') {
+            markConnected('dj-timeout-grace-connected')
+            return
+          }
+        }
+        handleCallFailure('media-readiness-timeout')
+      }
     }, 12000)
     readinessPollTimer = setInterval(() => {
       tryFinalizeReadiness('readiness-poll')
@@ -794,8 +833,9 @@ export class MediaCallHandler {
       ? screenStream?.getAudioTracks?.().find((track) => (track as any).__screenShareLiveAudio === true && hasUsableAudio(track))
       : undefined
     const localAudioReady = !!localStream?.getAudioTracks?.().some((track) => hasUsableAudio(track)) || !!liveScreenAudio
+    const isDjBot = call.peer.startsWith('dj-') || !!useGameStore.getState().remotePlayers[call.peer]?.isDjBot
 
-    if (!localAudioReady) {
+    if (!localAudioReady && !isDjBot) {
       useGameStore.getState().setCallState(call.peer, 'reconnecting')
       diagLog('p2p', 'call.answer-skipped-no-audio', {
         fromPeer: call.peer,
@@ -820,7 +860,10 @@ export class MediaCallHandler {
 
     let streamToAnswer: MediaStream
 
-    if (isSharing && screenStream && screenStream.getVideoTracks()[0]) {
+    if (isDjBot) {
+      const silent = silentAudioTrack()
+      streamToAnswer = silent ? new MediaStream([silent]) : new MediaStream()
+    } else if (isSharing && screenStream && screenStream.getVideoTracks()[0]) {
       const combined = new MediaStream()
       const liveAudioTrack = screenStream.getAudioTracks().find(
         (track) => (track as any).__screenShareLiveAudio === true
@@ -875,6 +918,10 @@ export class MediaCallHandler {
     endMediaCallWithPeer: (peerId: string) => void,
     onCallConnected?: (peerId: string) => void
   ) {
+    if (remotePlayer.isDjBot || remotePlayer.id.startsWith('dj-')) {
+      return
+    }
+
     const localPlayer = useGameStore.getState().localPlayer
     const localStream = useMediaStore.getState().localStream
 
