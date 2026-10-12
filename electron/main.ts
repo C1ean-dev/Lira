@@ -775,14 +775,19 @@ ipcMain.handle('check-update', async () => {
     const hasUpdate = isNewerVersion(latestTag, currentVersion)
 
     let downloadUrl: string | null = null
+    let assetSize = 0
     if (Array.isArray(data.assets)) {
       const exeAsset = data.assets.find(
         (a: any) => a.name && a.name.endsWith('.exe') && !a.name.includes('blockmap')
       )
       if (exeAsset && exeAsset.browser_download_url) {
         downloadUrl = exeAsset.browser_download_url
+        if (typeof exeAsset.size === 'number' && exeAsset.size > 0) {
+          assetSize = exeAsset.size
+        }
       }
     }
+    latestAssetExpectedSize = assetSize
 
     return {
       hasUpdate,
@@ -824,7 +829,7 @@ function downloadFileWithRedirects(
       }
 
       const client = currentUrl.startsWith('https') ? https : http
-      client
+      const req = client
         .get(
           currentUrl,
           {
@@ -865,28 +870,41 @@ function downloadFileWithRedirects(
 
             response.on('error', (err) => {
               fileStream.destroy()
-              fs.unlink(destPath, () => {})
+              try { fs.unlinkSync(destPath) } catch {}
               reject(err)
             })
 
             fileStream.on('finish', () => {
-              fileStream.close(() => resolve())
+              fileStream.close((err) => {
+                if (err) return reject(err)
+                if (total > 0 && downloaded < total) {
+                  try { fs.unlinkSync(destPath) } catch {}
+                  return reject(new Error(`Download incompleto: recebidos ${downloaded} de ${total} bytes`))
+                }
+                resolve()
+              })
             })
 
             fileStream.on('error', (err) => {
-              fs.unlink(destPath, () => reject(err))
+              try { fs.unlinkSync(destPath) } catch {}
+              reject(err)
             })
           }
         )
         .on('error', (err) => {
           reject(err)
         })
+
+      req.setTimeout(60000, () => {
+        req.destroy(new Error('Tempo limite de download esgotado (timeout 60s)'))
+      })
     }
 
     makeRequest(fileUrl)
   })
 }
 
+let latestAssetExpectedSize = 0
 let downloadedInstallerPath: string | null = null
 let downloadedInstallerVersion: string | null = null
 let isDownloadingUpdate = false
@@ -896,6 +914,19 @@ function getInstallerPath(version?: string): string {
   const tempDir = app.getPath('temp')
   const cleanVer = (version || 'latest').replace(/^v/i, '').replace(/[^a-zA-Z0-9._-]/g, '')
   return path.join(tempDir, `Lira-Update-Setup-${cleanVer}.exe`)
+}
+
+function isInstallerFileValid(filePath: string): boolean {
+  if (!filePath || !fs.existsSync(filePath)) return false
+  try {
+    const stats = fs.statSync(filePath)
+    if (latestAssetExpectedSize > 0) {
+      return stats.size === latestAssetExpectedSize
+    }
+    return stats.size > 10 * 1024 * 1024
+  } catch {
+    return false
+  }
 }
 
 function findExistingInstaller(version?: string): string | null {
@@ -916,13 +947,8 @@ function findExistingInstaller(version?: string): string | null {
   candidates.push(getInstallerPath(version))
 
   for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      try {
-        const stats = fs.statSync(candidate)
-        if (stats.size > 10 * 1024 * 1024) {
-          return candidate
-        }
-      } catch {}
+    if (isInstallerFileValid(candidate)) {
+      return candidate
     }
   }
 
@@ -932,8 +958,7 @@ function findExistingInstaller(version?: string): string | null {
       if (file.startsWith('Lira') && file.endsWith('.exe')) {
         if (!cleanVer || file.includes(cleanVer)) {
           const full = path.join(tempDir, file)
-          const stats = fs.statSync(full)
-          if (stats.size > 10 * 1024 * 1024) {
+          if (isInstallerFileValid(full)) {
             return full
           }
         }
@@ -966,18 +991,10 @@ function cleanupOldInstallers(currentInstallerPath?: string): void {
 
 function checkIsUpdateDownloaded(targetVersion?: string): boolean {
   const installerPath = findExistingInstaller(targetVersion) || (targetVersion ? getInstallerPath(targetVersion) : downloadedInstallerPath)
-  if (!installerPath || !fs.existsSync(installerPath)) return false
-  try {
-    const stats = fs.statSync(installerPath)
-    const valid = stats.size > 10 * 1024 * 1024
-    if (valid) {
-      downloadedInstallerPath = installerPath
-      downloadedInstallerVersion = targetVersion || null
-    }
-    return valid
-  } catch {
-    return false
-  }
+  if (!installerPath || !isInstallerFileValid(installerPath)) return false
+  downloadedInstallerPath = installerPath
+  downloadedInstallerVersion = targetVersion || null
+  return true
 }
 
 async function performDownloadUpdate(downloadUrl: string, targetVersion?: string): Promise<boolean> {
@@ -1054,46 +1071,127 @@ async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
       return false
     }
 
+    try {
+      const stats = fs.statSync(installerPath)
+      if (stats.size < 5 * 1024 * 1024) {
+        console.warn('[Updater] Installer file is incomplete or too small:', stats.size)
+        return false
+      }
+    } catch (e) {
+      console.warn('[Updater] Could not verify installer stats:', e)
+      return false
+    }
+
     const appExePath = process.execPath
     const isWindows = process.platform === 'win32'
     console.log('[Updater] Applying update. Installer:', installerPath, 'Current App:', appExePath)
 
+    let launched = false
+
     if (isWindows) {
-      let launched = false
+      // Método 1 (Principal): shell.openPath usa a API nativa ShellExecuteEx do Windows Shell.
+      // É o equivalente exato ao duplo-clique no instalador pelo Explorer.
+      // Suporta diálogo de elevação UAC, validação do SmartScreen e permissões de administrador.
       try {
-        const child = spawn(installerPath, [], {
-          detached: true,
-          stdio: 'ignore',
-        })
-        child.unref()
-        launched = true
-        console.log('[Updater] Spawned installer process detached:', installerPath)
+        console.log('[Updater] Launching installer via shell.openPath:', installerPath)
+        const openErr = await shell.openPath(installerPath)
+        if (!openErr) {
+          launched = true
+          console.log('[Updater] Successfully launched installer via shell.openPath')
+        } else {
+          console.warn('[Updater] shell.openPath returned an error:', openErr)
+        }
       } catch (err) {
-        console.warn('[Updater] spawn failed, falling back to shell.openPath:', err)
+        console.warn('[Updater] shell.openPath exception:', err)
+      }
+
+      // Método 2 (Fallback): PowerShell Start-Process (também invoca ShellExecuteEx com suporte completo a UAC)
+      if (!launched) {
         try {
-          const openErr = await shell.openPath(installerPath)
-          if (!openErr) {
-            launched = true
-          } else {
-            console.warn('[Updater] shell.openPath reported error:', openErr)
-          }
-        } catch (e) {
-          console.error('[Updater] shell.openPath threw:', e)
+          console.log('[Updater] Fallback: Launching installer via PowerShell Start-Process...')
+          const psCommand = `Start-Process -FilePath "${installerPath.replace(/"/g, '`"')}"`
+          await new Promise<void>((resolve, reject) => {
+            const ps = spawn('powershell.exe', [
+              '-NoProfile',
+              '-NonInteractive',
+              '-WindowStyle', 'Hidden',
+              '-Command',
+              psCommand,
+            ], {
+              detached: true,
+              stdio: 'ignore',
+              windowsHide: true,
+            })
+            ps.on('error', reject)
+            ps.on('close', (code) => {
+              if (code === 0) resolve()
+              else reject(new Error(`PowerShell Start-Process exited with code ${code}`))
+            })
+          })
+          launched = true
+          console.log('[Updater] Successfully launched installer via PowerShell Start-Process')
+        } catch (err) {
+          console.warn('[Updater] PowerShell fallback failed:', err)
+        }
+      }
+
+      // Método 3 (Fallback): cmd.exe start
+      if (!launched) {
+        try {
+          console.log('[Updater] Fallback: Launching installer via cmd start...')
+          const cmd = spawn('cmd.exe', ['/c', 'start', '""', installerPath], {
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: true,
+          })
+          cmd.on('error', (err) => console.warn('[Updater] cmd start spawn error:', err))
+          cmd.unref()
+          launched = true
+          console.log('[Updater] Dispatched installer via cmd start')
+        } catch (err) {
+          console.warn('[Updater] cmd fallback failed:', err)
+        }
+      }
+
+      // Método 4 (Último recurso): spawn direto
+      if (!launched) {
+        try {
+          console.log('[Updater] Fallback: Direct spawn...')
+          const child = spawn(installerPath, [], {
+            detached: true,
+            stdio: 'ignore',
+          })
+          child.on('error', (err) => console.warn('[Updater] Direct spawn error:', err))
+          child.unref()
+          launched = true
+          console.log('[Updater] Spawned installer process detached:', installerPath)
+        } catch (err) {
+          console.error('[Updater] Direct spawn failed:', err)
         }
       }
 
       if (!launched) {
-        console.error('[Updater] Não foi possível iniciar o executável do instalador:', installerPath)
+        console.error('[Updater] All methods failed to launch installer executable:', installerPath)
         return false
       }
     } else {
-      shell.openPath(installerPath)
+      const openErr = await shell.openPath(installerPath)
+      if (openErr) {
+        console.error('[Updater] Failed to open installer on non-windows:', openErr)
+        return false
+      }
+      launched = true
     }
 
-    setTimeout(() => {
-      app.exit(0)
-    }, 500)
-
+    // O aplicativo NÃO deve fechar a si mesmo aqui!
+    // O instalador NSIS (build/installer.nsh) possui customInit com:
+    //   nsExec::Exec `"$SYSDIR\taskkill.exe" /F /IM "Lira.exe" /T`
+    //   nsExec::Exec `"$SYSDIR\taskkill.exe" /F /IM "process-audio-capture.exe" /T`
+    // O instalador assume o controle e encerra o Lira no momento exato em que inicializa.
+    // Manter o Lira aberto garante que se o usuário estiver aguardando o prompt do UAC,
+    // ou se o instalador levar alguns segundos para carregar, o app não desapareça,
+    // e caso o lançamento falhe, a interface continue acessível com opção de tentar novamente.
+    console.log('[Updater] Installer launched. Waiting for installer to take control and close the app.')
     return true
   } catch (err) {
     console.error('[Updater] Failed to apply update:', err)
