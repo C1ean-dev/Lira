@@ -23,6 +23,7 @@ import { readNativeDataFile, writeNativeDataFileLatest } from './nativeDataFile'
 import { createStartupTimer } from './startupTimer'
 import { startCpuProfile } from './startupProfile'
 import { sanitizeRecords } from '../src/utils/logFormat'
+import { SpotifyBrowserController, findSpotifyBrowser, querySpotifyBrowserWindow } from './spotifyBrowser'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -53,7 +54,32 @@ app.commandLine.appendSwitch(
 )
 
 let mainWindow: BrowserWindow | null = null
-let spotifyPlayerWindow: BrowserWindow | null = null
+function queryBrowserWindows(script: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
+      { windowsHide: true, timeout: 5000 }, (error, stdout) => error ? reject(error) : resolve(stdout))
+  })
+}
+const spotifyPlayer = new SpotifyBrowserController({
+  get profile() { return path.join(app.getPath('userData'), 'spotify-browser') },
+  findBrowser: () => findSpotifyBrowser(process.env, fs.existsSync),
+  launch: (exe, args) => {
+    if (process.platform !== 'win32') throw new Error('A captura do Spotify no navegador está disponível no Windows.')
+    fs.mkdirSync(path.join(app.getPath('userData'), 'spotify-browser'), { recursive: true })
+    return spawn(exe, args, { stdio: 'ignore', windowsHide: false })
+  },
+  getWindow: profile => querySpotifyBrowserWindow(profile, queryBrowserWindows),
+  focus: async handle => {
+    if (!/^[1-9][0-9]*$/.test(handle)) throw new Error('Janela do Spotify inválida.')
+    await queryBrowserWindows(`
+Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class LiraSpotifyBrowserFocus { [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hwnd, int command); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd); }'
+[LiraSpotifyBrowserFocus]::ShowWindow([IntPtr]::new([long]${handle}), 9) | Out-Null
+[LiraSpotifyBrowserFocus]::SetForegroundWindow([IntPtr]::new([long]${handle})) | Out-Null`)
+  },
+  onClosed: () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('spotify:player-closed')
+  },
+})
 let trayManager: TrayManager | null = null
 let processAudioCapture: ReturnType<typeof spawn> | null = null
 let processAudioCaptureSourceId: string | null = null
@@ -1280,42 +1306,7 @@ ipcMain.handle('open-external', async (event, url: string) => {
   }
 })
 
-ipcMain.handle('open-spotify-player', async (_event, url?: string) => {
-  const targetUrl = url || 'https://open.spotify.com'
-  if (spotifyPlayerWindow && !spotifyPlayerWindow.isDestroyed()) {
-    spotifyPlayerWindow.show()
-    spotifyPlayerWindow.focus()
-    if (url) {
-      spotifyPlayerWindow.loadURL(targetUrl)
-    }
-    return { ok: true }
-  }
-
-  spotifyPlayerWindow = new BrowserWindow({
-    width: 960,
-    height: 640,
-    minWidth: 500,
-    minHeight: 400,
-    title: 'Spotify Player - Jam',
-    backgroundColor: '#121212',
-    icon: path.join(__dirname, '../public/icon.png'),
-    webPreferences: {
-      partition: 'persist:spotify',
-      nodeIntegration: false,
-      contextIsolation: true,
-      webSecurity: true,
-    },
-    autoHideMenuBar: true,
-  })
-
-  spotifyPlayerWindow.loadURL(targetUrl)
-
-  spotifyPlayerWindow.on('closed', () => {
-    spotifyPlayerWindow = null
-  })
-
-  return { ok: true }
-})
+ipcMain.handle('open-spotify-player', (_event, url?: string) => spotifyPlayer.open(url))
 
 export interface SpotifyCurrentTrack {
   isRunning: boolean
@@ -1330,28 +1321,6 @@ let spotifyPollTimer: NodeJS.Timeout | null = null
 
 function querySpotifyCurrentTrack(): Promise<SpotifyCurrentTrack> {
   return new Promise((resolve) => {
-    // 1. Check if dedicated internal Spotify Web Player window is open and playing
-    if (spotifyPlayerWindow && !spotifyPlayerWindow.isDestroyed()) {
-      const winTitle = spotifyPlayerWindow.getTitle()
-      if (
-        winTitle &&
-        winTitle !== 'Spotify Player - Jam' &&
-        winTitle !== 'Spotify' &&
-        !winTitle.startsWith('Spotify – Web Player')
-      ) {
-        const cleanTitle = winTitle.replace(/\s*-\s*Spotify$/i, '').trim()
-        const separators = [' • ', ' · ', ' - ']
-        for (const sep of separators) {
-          if (cleanTitle.includes(sep)) {
-            const [track, artist] = cleanTitle.split(sep).map((s) => s.trim())
-            if (track) {
-              return resolve({ isRunning: true, isPlaying: true, track, artist: artist || '', rawTitle: winTitle })
-            }
-          }
-        }
-      }
-    }
-
     // 2. Windows native check using tasklist to inspect Spotify desktop window title
     if (process.platform === 'win32') {
       execFile(
@@ -1434,83 +1403,7 @@ ipcMain.handle('get-spotify-current-track', async () => {
   return querySpotifyCurrentTrack()
 })
 
-ipcMain.handle('find-spotify-source', async () => {
-  // 1. If internal Spotify Web Player window is open and valid
-  if (spotifyPlayerWindow && !spotifyPlayerWindow.isDestroyed()) {
-    try {
-      const handle = spotifyPlayerWindow.getNativeWindowHandle()
-      const hwnd = process.platform === 'win32' ? (handle.readInt32LE ? handle.readInt32LE(0) : 0) : 0
-      if (hwnd) {
-        return {
-          sourceId: `window:${hwnd}:0`,
-          name: spotifyPlayerWindow.getTitle() || 'Spotify Web Player',
-          isPlaying: true,
-        }
-      }
-    } catch {}
-  }
-
-  // 2. Query Spotify track info from OS
-  const trackInfo = await querySpotifyCurrentTrack()
-
-  // 3. Look through desktopCapturer sources
-  try {
-    const sources = await desktopCapturer.getSources({
-      types: ['window', 'screen'],
-      thumbnailSize: { width: 0, height: 0 },
-      fetchWindowIcons: false,
-    })
-
-    // Strict search for window specifically containing "spotify"
-    let spotifyWin = sources.find((s) => {
-      if (!s.id.startsWith('window:')) return false
-      const lower = s.name.toLowerCase()
-      return lower.includes('spotify')
-    })
-
-    // If not found by name, check if window title matches the currently playing track/artist
-    if (!spotifyWin && trackInfo.isPlaying) {
-      spotifyWin = sources.find((s) => {
-        if (!s.id.startsWith('window:')) return false
-        const lower = s.name.toLowerCase()
-        if (trackInfo.rawTitle && s.name.trim() === trackInfo.rawTitle.trim()) return true
-        if (trackInfo.track && trackInfo.track.length > 2 && lower.includes(trackInfo.track.toLowerCase())) return true
-        return false
-      })
-    }
-
-    if (spotifyWin) {
-      return {
-        sourceId: spotifyWin.id,
-        name: spotifyWin.name,
-        isPlaying: trackInfo.isPlaying,
-        track: trackInfo.track,
-        artist: trackInfo.artist,
-      }
-    }
-
-    // 4. If Spotify process is running / playing in background (e.g. minimized to system tray),
-    // fall back to primary screen loopback so the music is captured and broadcast!
-    if (trackInfo.isRunning) {
-      const screenSource = sources.find((s) => s.id.startsWith('screen:'))
-      if (screenSource) {
-        return {
-          sourceId: screenSource.id,
-          name: 'Áudio do Sistema (Spotify em segundo plano)',
-          isPlaying: trackInfo.isPlaying,
-          track: trackInfo.track,
-          artist: trackInfo.artist,
-          isScreenFallback: true,
-        }
-      }
-    }
-
-    return null
-  } catch (err) {
-    console.warn('[Electron] find-spotify-source error:', err)
-    return null
-  }
-})
+ipcMain.handle('find-spotify-source', () => spotifyPlayer.source().catch(() => null))
 
 function getDataDirectory(): string {
   const projectSrcData = path.join(process.cwd(), 'src', 'data')
@@ -2118,12 +2011,13 @@ ipcMain.handle('get-system-idle-time', () => {
 })
 
 app.on('before-quit', () => {
+  spotifyPlayer.close()
   if (trayManager) {
     trayManager.setQuitting(true)
   }
 })
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.lira.app')
   }

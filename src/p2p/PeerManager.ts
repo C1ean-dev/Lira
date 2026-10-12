@@ -14,6 +14,7 @@ import { MediaCallHandler, ICE_CONNECT_TIMEOUT_MS, SHARED_RTC_CONFIG, resolveCal
 import { VideoDegradation } from './videoSendPolicy'
 import { prioritizeH264HardwareCodec } from '../media/hardwareCodec'
 import { MediaManager } from '../media/MediaManager'
+import { waitForDjPeerReady } from './djPeerReady'
 import { connectLiveView, liveViewReporter } from '../media/liveView'
 import { DynamicBufferManager } from '../services/DynamicBufferManager'
 import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
@@ -1211,21 +1212,11 @@ export class PeerManager {
       const newDjPeer = createPeerInstance(djBotId, { tier: this.currentSignalingTier })
       this.djPeer = newDjPeer
 
-      await new Promise<void>((resolve) => {
-        const timeout = setTimeout(() => {
-          resolve()
-        }, 5000)
-
-        newDjPeer.on('open', () => {
-          clearTimeout(timeout)
-          resolve()
-        })
-        newDjPeer.on('error', (err) => {
-          console.warn('[PeerManager DJ Bot Peer Error]:', err)
-          clearTimeout(timeout)
-          resolve()
-        })
-      })
+      await waitForDjPeerReady(newDjPeer)
+      if (this.djPeer !== newDjPeer || newDjPeer.destroyed) {
+        throw new Error('Inicialização do DJ cancelada.')
+      }
+      newDjPeer.on('error', (err) => console.warn('[PeerManager DJ Bot Peer Error]:', err))
 
       const djPlayer: Player = {
         id: djBotId,

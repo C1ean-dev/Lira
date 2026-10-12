@@ -69,6 +69,9 @@ export class MediaManager {
   private djAudioContext: AudioContext | null = null
   private djGainNode: GainNode | null = null
   private isDjStreaming: boolean = false
+  private isDjStarting: boolean = false
+  private djStartGeneration: number = 0
+  private djPlayerClosedUnsubscribe: (() => void) | null = null
 
   private levelForwardLastSent: number = 0
   private levelForwardLastGate: boolean = false
@@ -992,6 +995,10 @@ export class MediaManager {
   }
 
   public async startScreenShare(config: ScreenShareConfig = {}): Promise<MediaStream | null> {
+    if (this.isDjStreaming || this.isDjStarting) {
+      console.warn('[MediaManager] Pare o DJ antes de compartilhar áudio da tela.')
+      return null
+    }
     try {
       this.isStoppingScreenShare = false
       this.isRecoveringScreenShare = false
@@ -1285,6 +1292,13 @@ export class MediaManager {
   }
 
   public async startDjAudio(customSourceId?: string): Promise<{ ok: boolean; error?: string }> {
+    if (this.isDjStreaming) return { ok: true }
+    if (this.isDjStarting) return { ok: false, error: 'O DJ já está sendo preparado.' }
+    this.isDjStarting = true
+    const generation = this.djStartGeneration = (this.djStartGeneration || 0) + 1
+    const checkCancelled = () => {
+      if (generation !== this.djStartGeneration) throw new Error('Inicialização do DJ cancelada.')
+    }
     try {
       if (this.isDjStreaming) {
         return { ok: true }
@@ -1293,72 +1307,26 @@ export class MediaManager {
       let targetSourceId = customSourceId
       const electronAPI = typeof window !== 'undefined' ? (window as any).electronAPI : null
 
-      // If no source ID provided, auto-discover Spotify window
-      if (!targetSourceId) {
-        if (electronAPI?.findSpotifySource) {
-          try {
-            const found = await electronAPI.findSpotifySource()
-            if (found?.sourceId) {
-              targetSourceId = found.sourceId
-              console.log('[MediaManager] Found Spotify source:', found)
-            }
-          } catch (e) {
-            console.warn('[MediaManager] Failed to find Spotify source via findSpotifySource:', e)
-          }
-        }
-
-        // Fallback: search getSources directly
-        if (!targetSourceId && electronAPI?.getSources) {
-          try {
-            const sources = await electronAPI.getSources()
-            const spotifySource = sources.find(
-              (s: any) =>
-                s.id &&
-                s.id.startsWith('window:') &&
-                s.name.toLowerCase().includes('spotify')
-            )
-            if (spotifySource) {
-              targetSourceId = spotifySource.id
-            } else {
-              let trackInfo: any = null
-              if (electronAPI.getSpotifyCurrentTrack) {
-                try {
-                  trackInfo = await electronAPI.getSpotifyCurrentTrack()
-                } catch {}
-              }
-              if (trackInfo?.track) {
-                const trackWin = sources.find(
-                  (s: any) =>
-                    s.id &&
-                    s.id.startsWith('window:') &&
-                    s.name.toLowerCase().includes(trackInfo.track.toLowerCase())
-                )
-                if (trackWin) {
-                  targetSourceId = trackWin.id
-                }
-              }
-
-              // Fallback to screen capture if Spotify is running in background or minimized
-              if (!targetSourceId && trackInfo?.isRunning) {
-                const screenSource = sources.find((s: any) => s.id && s.id.startsWith('screen:'))
-                if (screenSource) {
-                  targetSourceId = screenSource.id
-                }
-              }
-            }
-          } catch (e) {
-            console.warn('[MediaManager] Failed to find Spotify window automatically:', e)
-          }
-        }
+      if (this.processAudioCapture) {
+        return { ok: false, error: 'Pare o compartilhamento de áudio da tela antes de iniciar o DJ.' }
       }
-
       if (!targetSourceId) {
-        return {
-          ok: false,
-          error: 'Nenhuma janela do Spotify encontrada. Abra o Spotify Desktop ou inicie o Player Integrado.',
+        if (!electronAPI?.openSpotifyPlayer || !electronAPI?.findSpotifySource) {
+          return { ok: false, error: 'A captura do Spotify no navegador requer o aplicativo Lira para Windows.' }
         }
+        const opened = await electronAPI.openSpotifyPlayer()
+        checkCancelled()
+        if (!opened?.ok) return { ok: false, error: opened?.error || 'Não foi possível abrir o Spotify no navegador.' }
+        const source = await electronAPI.findSpotifySource()
+        checkCancelled()
+        if (!source?.isBrowserPlayer) {
+          return { ok: false, error: 'A janela dedicada do Spotify no navegador não está disponível para captura.' }
+        }
+        targetSourceId = source.sourceId
       }
-
+      if (!targetSourceId || !/^window:[1-9][0-9]*:\d+$/.test(targetSourceId)) {
+        return { ok: false, error: 'O DJ deve capturar apenas a janela do player, sem áudio da tela ou da chamada.' }
+      }
       if (!ProcessAudioCapture.isSupported()) {
         return {
           ok: false,
@@ -1367,14 +1335,20 @@ export class MediaManager {
       }
 
       this.djProcessAudioCapture = new ProcessAudioCapture()
+      this.djPlayerClosedUnsubscribe = electronAPI?.onSpotifyPlayerClosed?.(() => {
+        this.stopDjAudio().catch(() => {})
+      }) || null
       const capturedTrack = await this.djProcessAudioCapture.start(targetSourceId)
+      checkCancelled()
       capturedTrack.enabled = true
 
       const liveAudioTrack = await this.createDjLiveAudioTrack(capturedTrack)
+      checkCancelled()
       liveAudioTrack.enabled = true
       const djStream = new MediaStream([liveAudioTrack])
 
       const djRes = await PeerManager.getInstance().startDjBot(djStream)
+      checkCancelled()
       if (!djRes.ok) {
         throw new Error(djRes.error || 'Falha ao iniciar bot DJ na sala.')
       }
@@ -1387,13 +1361,23 @@ export class MediaManager {
       console.error('[MediaManager] Failed to start DJ audio:', err)
       await this.stopDjAudio()
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    } finally {
+      this.isDjStarting = false
     }
   }
 
   public async stopDjAudio(): Promise<void> {
+    this.djStartGeneration = (this.djStartGeneration || 0) + 1
     try {
+      this.djPlayerClosedUnsubscribe?.()
+      this.djPlayerClosedUnsubscribe = null
       this.isDjStreaming = false
       useSpotifyJamStore.getState().setIsDjModeActive(false)
+      const ownerId = useGameStore.getState().localPlayer.id
+      const jams = useSpotifyJamStore.getState()
+      for (const [zoneId, dj] of Object.entries(jams.djStateByZone)) {
+        if (dj?.djPeerId === ownerId) jams.setDjStateInZone(zoneId, null, true)
+      }
       PeerManager.getInstance().stopDjBot()
 
       if (this.djProcessAudioCapture) {

@@ -50,6 +50,7 @@ export interface SpotifySourceResult {
   track?: string
   artist?: string
   isScreenFallback?: boolean
+  isBrowserPlayer?: boolean
 }
 
 export interface IElectronAPI {
@@ -71,10 +72,11 @@ export interface IElectronAPI {
   downloadAndInstallUpdate: (downloadUrl: string, targetVersion?: string) => Promise<boolean>
   onUpdateProgress: (callback: (progress: UpdateProgress) => void) => () => void
   openExternal: (url: string) => Promise<void>
-  openSpotifyPlayer: (url?: string) => Promise<{ ok: boolean }>
+  openSpotifyPlayer: (url?: string) => Promise<{ ok: boolean; error?: string }>
   getSpotifyCurrentTrack: () => Promise<SpotifyTrackInfo>
   findSpotifySource: () => Promise<SpotifySourceResult | null>
   onSpotifyTrackChanged: (callback: (info: SpotifyTrackInfo) => void) => () => void
+  onSpotifyPlayerClosed: (callback: () => void) => () => void
   saveNativeAssets: (data: { categories: string[]; assets: any[] }) => Promise<boolean>
   loadNativeAssets: () => Promise<{ categories: string[]; assets: any[] } | null>
   saveNativeSpaces: (spaces: any[]) => Promise<boolean>
@@ -165,6 +167,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openSpotifyPlayer: (url?: string) => ipcRenderer.invoke('open-spotify-player', url),
   getSpotifyCurrentTrack: () => ipcRenderer.invoke('get-spotify-current-track'),
   findSpotifySource: () => ipcRenderer.invoke('find-spotify-source'),
+  onSpotifyPlayerClosed: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('spotify:player-closed', handler)
+    return () => ipcRenderer.removeListener('spotify:player-closed', handler)
+  },
   onSpotifyTrackChanged: (callback: (info: SpotifyTrackInfo) => void) => {
     const handler = (_event: any, data: SpotifyTrackInfo) => callback(data)
     ipcRenderer.on('spotify:track-changed', handler)
