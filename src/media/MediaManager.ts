@@ -1334,11 +1334,12 @@ export class MediaManager {
         }
       }
 
-      this.djProcessAudioCapture = new ProcessAudioCapture()
+      if (!customSourceId && !electronAPI?.startSpotifyTabAudioCapture) return { ok: false, error: 'Reabra o Lira para ativar a captura silenciosa do Spotify.' }
+      this.djProcessAudioCapture = new ProcessAudioCapture(() => { void this.stopDjAudio() })
       this.djPlayerClosedUnsubscribe = electronAPI?.onSpotifyPlayerClosed?.(() => {
         this.stopDjAudio().catch(() => {})
       }) || null
-      const capturedTrack = await this.djProcessAudioCapture.start(targetSourceId)
+      const capturedTrack = await this.djProcessAudioCapture.start(customSourceId ? targetSourceId : 'spotify-tab')
       checkCancelled()
       capturedTrack.enabled = true
 
@@ -1401,7 +1402,7 @@ export class MediaManager {
 
   public setDjVolume(percentage: number): void {
     if (this.djGainNode && this.djAudioContext) {
-      const vol = Math.max(0, Math.min(100, percentage)) / 100
+      const vol = Math.max(0, Math.min(200, percentage)) / 100
       this.djGainNode.gain.setValueAtTime(vol, this.djAudioContext.currentTime)
     }
   }
@@ -1409,6 +1410,7 @@ export class MediaManager {
   private async createDjLiveAudioTrack(
     sourceTrack: MediaStreamTrack
   ): Promise<MediaStreamTrack> {
+    sourceTrack.contentHint = 'music'
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
     if (!AudioContextClass) return sourceTrack
 
@@ -1422,6 +1424,14 @@ export class MediaManager {
     const musicSource = audioContext.createMediaStreamSource(new MediaStream([sourceTrack]))
     const musicGain = audioContext.createGain()
     const destination = audioContext.createMediaStreamDestination()
+    destination.channelCount = 2
+    destination.channelCountMode = 'explicit'
+    musicSource.channelCount = 2
+    musicSource.channelCountMode = 'explicit'
+    musicSource.channelInterpretation = 'discrete'
+    musicGain.channelCount = 2
+    musicGain.channelCountMode = 'explicit'
+    musicGain.channelInterpretation = 'discrete'
 
     const rawVol = useSpotifyJamStore.getState().volume
     musicGain.gain.setValueAtTime(rawVol / 100, audioContext.currentTime)
@@ -1432,6 +1442,7 @@ export class MediaManager {
     this.djGainNode = musicGain
 
     const track = destination.stream.getAudioTracks()[0] || sourceTrack
+    track.contentHint = 'music'
     track.enabled = true
     return track
   }

@@ -100,7 +100,7 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
         className={`relative shrink-0 flex items-center justify-center overflow-hidden border border-[#1db954]/50 bg-[#0e1117] shadow-md select-none ${
           customSizeClass || sizeClasses.container
         } ${className}`}
-        title="Spotify DJ"
+        title="DJ"
       >
         <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#1db954]/25 via-[#12151d] to-[#1db954]/10">
           <SpotifyIcon size={iconSize} className="text-[#1db954]" />

@@ -15,6 +15,9 @@ import { useGameStore } from '../../store/useGameStore'
 import { useMediaStore } from '../../store/useMediaStore'
 import { flushDiagLogs, __resetDiagForTests } from '../../utils/diagnosticLogger'
 
+// Call policy tests do not need the assets being saved by a running editor.
+vi.mock('../../data/nativeAssets.json', () => ({ default: { categories: [], assets: [] } }))
+
 class MockMediaStream {
   private tracks: any[]
   constructor(tracks: any[] = []) {

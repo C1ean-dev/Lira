@@ -83,7 +83,7 @@ export const syncToNativeFile = async (
       }
     }
 
-    if (typeof fetch !== 'undefined') {
+    if (!saved && typeof fetch !== 'undefined') {
       try {
         const res = await fetch('/api/save-native-assets', {
           method: 'POST',

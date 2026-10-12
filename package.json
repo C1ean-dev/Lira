@@ -29,6 +29,7 @@
     "peer": "^1.0.2",
     "peerjs": "^1.5.4",
     "tailwind-merge": "^3.0.1",
+    "ws": "^8.22.0",
     "zustand": "^5.0.3"
   },
   "devDependencies": {

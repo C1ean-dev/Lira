@@ -1,9 +1,12 @@
 
 import { diagLog } from '../utils/diagnosticLogger'
+import spotifyPcmWorkletSrc from './spotifyPcmWorkletSrc.js?raw'
 
 type ProcessAudioApi = {
   startProcessAudioCapture: (sourceId: string) => Promise<{ ok: boolean; error?: string }>
   stopProcessAudioCapture: () => Promise<boolean>
+  startSpotifyTabAudioCapture?: () => Promise<{ ok: boolean; error?: string }>
+  stopSpotifyTabAudioCapture?: () => Promise<boolean>
   onProcessAudioData: (callback: (data: Uint8Array) => void) => () => void
   onProcessAudioStatus: (callback: (event: { status: 'started' | 'stopped' | 'error'; detail?: string }) => void) => () => void
 }
@@ -15,8 +18,11 @@ const TARGET_BUFFERED_SAMPLES = msToSamples(60)
 const HIGH_WATERMARK_SAMPLES = msToSamples(150)
 
 export class ProcessAudioCapture {
+  constructor(private onError?: () => void) {}
+  private isSpotifyTab = false
   private audioContext: AudioContext | null = null
   private processor: ScriptProcessorNode | null = null
+  private djProcessor: AudioWorkletNode | null = null
   private destination: MediaStreamAudioDestinationNode | null = null
   private unsubscribeData: (() => void) | null = null
   private unsubscribeStatus: (() => void) | null = null
@@ -46,33 +52,43 @@ export class ProcessAudioCapture {
     }
 
     this.stop(false)
+    this.isSpotifyTab = sourceId === 'spotify-tab'
+    if (this.isSpotifyTab && !api.startSpotifyTabAudioCapture) throw new Error('Captura silenciosa do Spotify indisponível. Reabra o Lira.')
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
     if (!AudioContextClass) {
       throw new Error('Web Audio não está disponível neste cliente.')
     }
 
     const audioContext = new AudioContextClass({ sampleRate: SAMPLE_RATE }) as AudioContext
-    const processor = audioContext.createScriptProcessor(2048, 0, CHANNELS)
     const destination = audioContext.createMediaStreamDestination()
+    this.audioContext = audioContext
+    this.destination = destination
+    if (this.isSpotifyTab) {
+      destination.channelCount = CHANNELS
+      destination.channelCountMode = 'explicit'
+      try { await this.createDjProcessor(audioContext, destination) }
+      catch (error) { if (this.audioContext === audioContext) this.stop(false); throw error }
+    } else {
+      const processor = audioContext.createScriptProcessor(2048, 0, CHANNELS)
+      processor.onaudioprocess = (event) => this.writeAudio(event)
+      processor.connect(destination)
+      this.processor = processor
+    }
 
     diagLog('screenshare-audio', 'web-audio-created', {
       requestedSampleRate: SAMPLE_RATE,
       actualSampleRate: audioContext.sampleRate,
       state: audioContext.state,
       channels: CHANNELS,
+      engine: this.isSpotifyTab ? 'audio-worklet' : 'script-processor',
     })
 
-    processor.onaudioprocess = (event) => this.writeAudio(event)
-    processor.connect(destination)
-
-    this.audioContext = audioContext
-    this.processor = processor
-    this.destination = destination
     this.unsubscribeData = api.onProcessAudioData((data) => this.enqueue(data))
     this.unsubscribeStatus = api.onProcessAudioStatus((event) => {
       diagLog('screenshare-audio', `native-status-${event.status}`, event.detail ? { detail: event.detail } : undefined)
       if (event.status === 'error') {
         console.warn('[ProcessAudioCapture]', event.detail || 'Captura nativa interrompida.')
+        this.onError?.()
       }
     })
 
@@ -93,7 +109,8 @@ export class ProcessAudioCapture {
     }, 2000)
 
     diagLog('screenshare-audio', 'native-start-request', { sourceId })
-    const result = await api.startProcessAudioCapture(sourceId)
+    const result = this.isSpotifyTab ? await api.startSpotifyTabAudioCapture!() : await api.startProcessAudioCapture(sourceId)
+    if (this.audioContext !== audioContext) throw new Error('Inicialização da captura cancelada.')
     if (!result.ok) {
       diagLog('screenshare-audio', 'native-start-failed', { sourceId, error: result.error || 'unknown' })
       this.stop(false)
@@ -105,6 +122,7 @@ export class ProcessAudioCapture {
     if (audioContext.state === 'suspended') {
       await audioContext.resume().catch(() => {})
     }
+    if (this.audioContext !== audioContext) throw new Error('Inicialização da captura cancelada.')
 
     const track = destination.stream.getAudioTracks()[0]
     if (!track) {
@@ -112,6 +130,7 @@ export class ProcessAudioCapture {
       throw new Error('O cliente não criou a faixa de áudio da aplicação.')
     }
     track.enabled = true
+    if (this.isSpotifyTab) track.contentHint = 'music'
     diagLog('screenshare-audio', 'audio-track-ready', {
       sourceId,
       track: {
@@ -124,6 +143,33 @@ export class ProcessAudioCapture {
     return track
   }
 
+  private async createDjProcessor(audioContext: AudioContext, destination: MediaStreamAudioDestinationNode) {
+    const url = URL.createObjectURL(new Blob([spotifyPcmWorkletSrc], { type: 'application/javascript' }))
+    try { await audioContext.audioWorklet.addModule(url) }
+    finally { URL.revokeObjectURL(url) }
+    if (this.audioContext !== audioContext) throw new Error('Inicialização da captura cancelada.')
+    const processor = new AudioWorkletNode(audioContext, 'spotify-pcm-player', {
+      numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [CHANNELS],
+      channelCount: CHANNELS, channelCountMode: 'explicit', channelInterpretation: 'discrete',
+    })
+    this.djProcessor = processor
+    processor.port.onmessage = ({ data }) => {
+      if (this.audioContext !== audioContext || data?.type !== 'stats') return
+      this.bufferedSamples = data.bufferedSamples
+      this.processCallbacks = data.processCallbacks
+      this.outputNonZeroSamples = data.outputNonZeroSamples
+      this.underrunCallbacks = data.underrunCallbacks
+      this.latencyResyncs = data.latencyResyncs
+      this.droppedSamples = data.droppedSamples
+    }
+    processor.onprocessorerror = () => {
+      if (this.audioContext !== audioContext) return
+      diagLog('screenshare-audio', 'dj-audio-worklet-error')
+      this.onError?.()
+    }
+    processor.connect(destination)
+  }
+
   stop(notifyMain: boolean = true) {
     diagLog('screenshare-audio', 'pipeline-stop', {
       notifyMain,
@@ -134,8 +180,9 @@ export class ProcessAudioCapture {
       outputNonZeroSamples: this.outputNonZeroSamples,
     })
     const api = (window as any).electronAPI as Partial<ProcessAudioApi> | undefined
-    if (notifyMain && api?.stopProcessAudioCapture) {
-      api.stopProcessAudioCapture().catch(() => {})
+    if (notifyMain) {
+      if (this.isSpotifyTab) api?.stopSpotifyTabAudioCapture?.().catch(() => {})
+      else api?.stopProcessAudioCapture?.().catch(() => {})
     }
     this.unsubscribeData?.()
     this.unsubscribeStatus?.()
@@ -147,6 +194,14 @@ export class ProcessAudioCapture {
     }
     this.processor?.disconnect()
     this.processor = null
+    if (this.djProcessor) {
+      this.djProcessor.port.postMessage({ type: 'stop' })
+      this.djProcessor.port.onmessage = null
+      this.djProcessor.port.close()
+      this.djProcessor.onprocessorerror = null
+      this.djProcessor.disconnect()
+      this.djProcessor = null
+    }
     this.destination?.stream.getTracks().forEach((track) => track.stop())
     this.destination = null
     const audioContext = this.audioContext
@@ -168,13 +223,12 @@ export class ProcessAudioCapture {
   }
 
   private enqueue(data: Uint8Array) {
+    if (!this.audioContext) return
     if (data.byteLength < 2) return
-    const alignedLength = data.byteLength - (data.byteLength % 2)
+    const alignedLength = data.byteLength - (data.byteLength % (this.isSpotifyTab ? CHANNELS * 2 : 2))
     const copy = new Uint8Array(alignedLength)
     copy.set(data.subarray(0, alignedLength))
     const pcm = new Int16Array(copy.buffer)
-    this.chunks.push(pcm)
-    this.bufferedSamples += pcm.length
     this.receivedBytes += alignedLength
     this.receivedChunks++
     for (let i = 0; i < pcm.length; i += 8) {
@@ -184,6 +238,12 @@ export class ProcessAudioCapture {
       }
     }
 
+    if (this.djProcessor) {
+      this.djProcessor.port.postMessage({ type: 'pcm', samples: pcm }, [pcm.buffer])
+      return
+    }
+    this.chunks.push(pcm)
+    this.bufferedSamples += pcm.length
     if (this.bufferedSamples > HIGH_WATERMARK_SAMPLES) {
       this.dropOldest(this.bufferedSamples - TARGET_BUFFERED_SAMPLES)
     }

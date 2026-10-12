@@ -50,9 +50,7 @@ import { useGameStore } from '../../store/useGameStore'
 import { useMapStore } from '../../store/useMapStore'
 import { MediaManager } from '../../media/MediaManager'
 import { useChatStore } from '../../store/useChatStore'
-import { useSpotifyJamStore } from '../../store/useSpotifyJamStore'
 import { RoomSettingsModal } from '../RoomSettingsModal'
-import { SpotifyIcon } from '../common/SpotifyIcon'
 
 interface Props {
   onToggleScreenShare: () => void
@@ -95,11 +93,6 @@ export const CallControlsBar: React.FC<Props> = ({
   const localPlayer = useGameStore((s) => s.localPlayer)
   const zones = useMapStore((s) => s.mapData.zones)
   const currentZone = zones?.find((z) => z.id === localPlayer.currentZoneId)
-
-  const jamsByZone = useSpotifyJamStore((s) => s.jamsByZone)
-  const setSpotifyJamModalOpen = useSpotifyJamStore((s) => s.setModalOpen)
-  const activeZoneJam = localPlayer.currentZoneId ? jamsByZone[localPlayer.currentZoneId] : null
-  const isJamActive = !!activeZoneJam?.isActive
 
   const [isRoomSettingsOpen, setIsRoomSettingsOpen] = React.useState(false)
   const [isActiveStreamMenuOpen, setIsActiveStreamMenuOpen] = React.useState(false)
@@ -150,27 +143,6 @@ export const CallControlsBar: React.FC<Props> = ({
               title="Gerenciar Usuários com Permissão de Entrada"
             >
               <Shield className="w-4 h-4" />
-            </button>
-          )}
-
-          {localPlayer.currentZoneId && (
-            <button
-              onClick={() => setSpotifyJamModalOpen(true, localPlayer.currentZoneId)}
-              className={`p-2 rounded-xl border text-xs font-medium transition-all relative ${
-                isJamActive
-                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30 shadow-md shadow-emerald-500/20 ring-1 ring-emerald-500/40'
-                  : 'bg-slate-800/60 border border-slate-700 text-slate-400 hover:text-emerald-400 hover:bg-slate-800'
-              }`}
-              title={
-                isJamActive
-                  ? `Spotify Jam ativo nesta sala (${activeZoneJam?.zoneName || currentZone?.name})`
-                  : 'Spotify Jam nesta sala'
-              }
-            >
-              <SpotifyIcon size={16} className={`w-4 h-4 ${isJamActive ? 'text-emerald-400 animate-pulse' : ''}`} />
-              {isJamActive && (
-                <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              )}
             </button>
           )}
         </div>

@@ -8,6 +8,7 @@ describe('integrated Spotify player feedback', () => {
     const html = renderToStaticMarkup(<SpotifyPlayerFeedback opening error={null} />)
     expect(html).toContain('role="status"')
     expect(html).toContain('Abrindo o player')
+    expect(html).toContain('Compartilhar áudio da aba')
     expect(html).toContain('sua conta Spotify')
   })
   it('shows a startup error with an accessible alert', () => {

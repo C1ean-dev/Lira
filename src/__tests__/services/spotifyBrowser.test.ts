@@ -22,7 +22,8 @@ function setup(overrides: any = {}) {
 describe('Spotify in a real browser', () => {
   it('uses the official page in a separate persistent browser profile', () => {
     expect(spotifyBrowserArgs('https://open.spotify.com', 'C:\\Lira Profile')).toEqual([
-      '--user-data-dir=C:\\Lira Profile', '--no-first-run', '--no-default-browser-check', '--app=https://open.spotify.com',
+      '--user-data-dir=C:\\Lira Profile', '--no-first-run', '--no-default-browser-check',
+      '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0', '--app=https://open.spotify.com',
     ])
     expect(spotifyPlayerUrl('spotify:playlist:abc')).toBe('https://open.spotify.com/playlist/abc')
     expect(() => spotifyPlayerUrl('https://open.spotify.com.evil.test')).toThrow()

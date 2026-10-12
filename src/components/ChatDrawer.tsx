@@ -602,7 +602,7 @@ const ChatDrawerInner: React.FC = () => {
               const infoMsg: ChatMessage = {
                 id: 'msg-' + Math.random().toString(36).substring(2, 9),
                 senderId: 'system',
-                senderName: 'Spotify DJ',
+                senderName: 'DJ',
                 channelId: activeChannelId,
                 content: res.error || 'Não foi possível iniciar o Modo DJ.',
                 timestamp: Date.now(),

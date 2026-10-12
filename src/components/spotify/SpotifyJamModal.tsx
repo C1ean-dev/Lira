@@ -74,7 +74,7 @@ export const SpotifyJamModal: React.FC = () => {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 id="spotify-dj-title" className="text-base font-bold text-slate-100">Spotify DJ</h2>
+                <h2 id="spotify-dj-title" className="text-base font-bold text-slate-100">DJ</h2>
                 {currentZone && (
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold uppercase tracking-wider">
                     {currentZone.name}
@@ -86,7 +86,7 @@ export const SpotifyJamModal: React.FC = () => {
           </div>
           <button
             type="button"
-            aria-label="Fechar Spotify DJ"
+            aria-label="Fechar DJ"
             onClick={() => setModalOpen(false)}
             className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
           >
@@ -146,7 +146,7 @@ export const SpotifyJamModal: React.FC = () => {
                   type="range"
                   aria-label="Volume do DJ"
                   min="0"
-                  max="100"
+                  max="200"
                   value={isMuted ? 0 : volume}
                   onChange={(e) => {
                     const v = Number(e.target.value)
