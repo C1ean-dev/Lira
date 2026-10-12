@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Radio, Minimize2, Volume2, Volume1, VolumeX, EyeOff } from 'lucide-react'
+import { Radio, Minimize2, Volume2, Volume1, VolumeX, EyeOff, Crop } from 'lucide-react'
 import { ParticipantData } from './GridParticipantTile'
 import { useMediaStore } from '../../store/useMediaStore'
 import { attachStreamToVideo } from '../../media/attachVideoElement'
@@ -27,6 +27,9 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
   const rawVolume = liveStreamVolume !== undefined ? liveStreamVolume : 100
 
   const [prevVolume, setPrevVolume] = useState<number>(rawVolume > 0 ? rawVolume : 100)
+  const removeCaptureBorder = useMediaStore((s) => s.removeCaptureBorder)
+  const toggleRemoveCaptureBorder = useMediaStore((s) => s.toggleRemoveCaptureBorder)
+  const [aspectRatio, setAspectRatio] = useState<number | null>(null)
 
   const activeStream = user.screenStream || user.stream
   const isLive = Boolean(user.screenStream || user.isScreenSharing)
@@ -153,18 +156,35 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
       className="fixed inset-0 z-[100] bg-black flex items-center justify-center overflow-hidden select-none cursor-default"
     >
       {!liveGate.needsClick && (
-        <video
-          ref={theaterVideoRef}
-          autoPlay
-          playsInline
-          muted={user.isLocal}
-          onLoadedMetadata={() => theaterVideoRef.current?.play().catch(() => {})}
-          onCanPlay={() => theaterVideoRef.current?.play().catch(() => {})}
-          onLoadedData={liveGate.onFrame}
-          onPlaying={liveGate.onFrame}
-          className="w-full h-full object-contain bg-black"
-          onDoubleClick={handleDoubleClickVideo}
-        />
+        <div
+          className="relative max-w-full max-h-full overflow-hidden flex items-center justify-center"
+          style={aspectRatio ? { aspectRatio: `${aspectRatio}` } : { width: '100%', height: '100%' }}
+        >
+          <video
+            ref={theaterVideoRef}
+            autoPlay
+            playsInline
+            muted={user.isLocal}
+            onLoadedMetadata={() => {
+              theaterVideoRef.current?.play().catch(() => {})
+              if (theaterVideoRef.current?.videoWidth && theaterVideoRef.current?.videoHeight) {
+                setAspectRatio(theaterVideoRef.current.videoWidth / theaterVideoRef.current.videoHeight)
+              }
+            }}
+            onCanPlay={() => {
+              theaterVideoRef.current?.play().catch(() => {})
+              if (theaterVideoRef.current?.videoWidth && theaterVideoRef.current?.videoHeight) {
+                setAspectRatio(theaterVideoRef.current.videoWidth / theaterVideoRef.current.videoHeight)
+              }
+            }}
+            onLoadedData={liveGate.onFrame}
+            onPlaying={liveGate.onFrame}
+            className={`w-full h-full object-cover bg-black transition-transform duration-200 ${
+              removeCaptureBorder ? 'scale-[1.01]' : 'scale-100'
+            }`}
+            onDoubleClick={handleDoubleClickVideo}
+          />
+        </div>
       )}
       {(liveGate.needsClick || liveGate.connecting) && (
         <LiveWatchPrompt size="stage" name={user.name} connecting={liveGate.connecting} onWatch={liveGate.watch} />
@@ -243,6 +263,23 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
               </span>
             </div>
           )}
+
+          <button
+            onClick={toggleRemoveCaptureBorder}
+            className={`flex items-center gap-2 px-3.5 py-2.5 rounded-2xl border backdrop-blur-xl shadow-2xl font-bold text-xs transition-all hover:scale-105 ${
+              removeCaptureBorder
+                ? 'bg-indigo-600/80 text-white border-indigo-400/40 hover:bg-indigo-600'
+                : 'bg-black/80 text-slate-400 border-white/15 hover:text-white'
+            }`}
+            title={
+              removeCaptureBorder
+                ? 'Borda amarela do Windows: Oculta (Clique para exibir)'
+                : 'Borda amarela do Windows: Visível (Clique para remover)'
+            }
+          >
+            <Crop className="w-4 h-4" />
+            <span>{removeCaptureBorder ? 'Borda Oculta' : 'Borda Visível'}</span>
+          </button>
 
           <button
             onClick={onClose}

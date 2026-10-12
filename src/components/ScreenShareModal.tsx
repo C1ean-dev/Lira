@@ -231,6 +231,14 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
               )}
             </div>
 
+            {activeTab === 'window' && (
+              <div className="mb-4 px-3.5 py-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-xs text-indigo-300 animate-in fade-in duration-150">
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  Para remover a borda o aplicativo precisa estar em tela cheia - ou utilize compartilhar a tela inteira
+                </p>
+              </div>
+            )}
+
             {loading ? (
               <div className="text-center py-10 text-sm text-slate-400">Detectando telas disponíveis...</div>
             ) : !isElectron ? (

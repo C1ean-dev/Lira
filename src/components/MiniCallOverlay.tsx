@@ -131,6 +131,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
   const setLiveStreamVolume = useMediaStore((s) => s.setLiveStreamVolume)
   const isGlobalDeafened = useMediaStore((s) => s.isDeafened)
   const isSilenced = useMediaStore((s) => (id ? s.isUserSilenced(id, name) : false))
+  const removeCaptureBorder = useMediaStore((s) => s.removeCaptureBorder)
   const rawVolume = isScreenTrack
     ? (liveStreamVolume !== undefined ? liveStreamVolume : 100)
     : (id && participantVolumes[id] !== undefined ? participantVolumes[id] : 100)
@@ -189,6 +190,8 @@ export const VideoTile: React.FC<VideoTileProps> = ({
           onLoadedData={liveGate.onFrame}
           onPlaying={liveGate.onFrame}
           className={`w-full h-full ${isScreenTrack ? 'object-contain bg-black' : 'object-cover'} ${
+            isScreenTrack && removeCaptureBorder ? 'scale-[1.02]' : ''
+          } ${
             shouldShowVideo ? 'block' : 'hidden'
           } ${isLocal && !isScreenSharing && !isScreenTrack ? '-scale-x-100' : ''}`}
         />

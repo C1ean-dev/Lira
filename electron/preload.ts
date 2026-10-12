@@ -38,6 +38,7 @@ export interface AppSettings {
 export interface IElectronAPI {
   getSources: () => Promise<Array<{ id: string; name: string; thumbnail: string; appIcon: string | null }>>
   setScreenSource: (sourceId: string | null, withAudio?: boolean, captureMethod?: string, sourceName?: string | null) => Promise<boolean>
+  stopScreenCapture: () => Promise<boolean>
   startProcessAudioCapture: (sourceId: string) => Promise<ProcessAudioCaptureResult>
   getProcessAudioCaptureInfo: () => Promise<ProcessAudioCaptureInfo>
   stopProcessAudioCapture: () => Promise<boolean>
@@ -90,6 +91,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSources: () => ipcRenderer.invoke('get-sources'),
   setScreenSource: (sourceId: string | null, withAudio: boolean = true, captureMethod = 'auto', sourceName?: string | null) =>
     ipcRenderer.invoke('set-screen-source', { sourceId, withAudio, captureMethod, sourceName }),
+  stopScreenCapture: () => ipcRenderer.invoke('stop-screen-capture'),
   startProcessAudioCapture: (sourceId: string) => ipcRenderer.invoke('start-process-audio-capture', sourceId),
   getProcessAudioCaptureInfo: () => ipcRenderer.invoke('get-process-audio-capture-info'),
   stopProcessAudioCapture: () => ipcRenderer.invoke('stop-process-audio-capture'),
