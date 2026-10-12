@@ -8,7 +8,7 @@ export type SensitivityMode = 'auto' | 'manual'
 
 export type AudioProcessorMode = 'classic' | 'soft' | 'rnnoise'
 
-export type SoundTheme = 'auto' | 'default' | 'halloween' | 'christmas' | 'new_year'
+export type SoundTheme = 'auto' | 'default' | 'halloween' | 'christmas'
 
 export interface AudioSettings {
   selectedAudioInput: string

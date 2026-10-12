@@ -246,13 +246,11 @@ describe('Sound Effects System', () => {
     expect(getSeasonalThemeForDate(new Date(2026, 9, 31))).toBe('halloween')
     expect(getSeasonalThemeForDate(new Date(2026, 10, 2))).toBe('halloween')
 
-    // December (Christmas)
+    // December / Early January (Christmas holiday season)
     expect(getSeasonalThemeForDate(new Date(2026, 11, 15))).toBe('christmas')
     expect(getSeasonalThemeForDate(new Date(2026, 11, 25))).toBe('christmas')
-
-    // New Year
-    expect(getSeasonalThemeForDate(new Date(2026, 11, 31))).toBe('new_year')
-    expect(getSeasonalThemeForDate(new Date(2027, 0, 1))).toBe('new_year')
+    expect(getSeasonalThemeForDate(new Date(2026, 11, 31))).toBe('christmas')
+    expect(getSeasonalThemeForDate(new Date(2027, 0, 3))).toBe('christmas')
 
     // Standard / Default period
     expect(getSeasonalThemeForDate(new Date(2026, 4, 15))).toBe('default')
@@ -267,7 +265,6 @@ describe('Sound Effects System', () => {
     expect(resolveEffectiveSoundTheme('christmas', octDate)).toBe('christmas')
     expect(resolveEffectiveSoundTheme('default', octDate)).toBe('default')
     expect(resolveEffectiveSoundTheme('halloween', octDate)).toBe('halloween')
-    expect(resolveEffectiveSoundTheme('new_year', octDate)).toBe('new_year')
   })
 
   it('synthesizes all 8 sound effect types in all seasonal themes without throwing', () => {
@@ -282,7 +279,7 @@ describe('Sound Effects System', () => {
       'live_stop',
     ]
 
-    const themes: SoundTheme[] = ['default', 'halloween', 'christmas', 'new_year']
+    const themes: SoundTheme[] = ['default', 'halloween', 'christmas']
 
     themes.forEach((theme) => {
       useMediaStore.setState({ soundTheme: theme })
@@ -320,7 +317,7 @@ describe('Sound Effects System', () => {
     expect(html).toContain('Automático')
     expect(html).toContain('Halloween')
     expect(html).toContain('Natal')
-    expect(html).toContain('Ano Novo')
     expect(html).toContain('Padrão')
+    expect(html).not.toContain('Ano Novo')
   })
 })
