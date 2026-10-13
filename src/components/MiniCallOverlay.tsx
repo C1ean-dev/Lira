@@ -72,6 +72,7 @@ import { useUserNetworkQuality } from '../store/useNetworkQualityStore'
 import { AvatarConfig } from '../types/game'
 import { PlayerAvatar } from './common/PlayerAvatar'
 import { RemoteAudio } from './common/RemoteAudio'
+import { CallPanelBody } from './common/CallPanelBody'
 import { SpotifyIcon } from './common/SpotifyIcon'
 import { LiveWatchPrompt } from './LiveWatchPrompt'
 import { useLiveGate } from '../hooks/useLiveGate'
@@ -887,7 +888,11 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               </button>
 
               <button
-                onClick={() => setIsCardCollapsed((prev) => !prev)}
+                key="collapse-call-panel"
+                onClick={() => {
+                  void MediaManager.getInstance().resumeMicrophone()
+                  setIsCardCollapsed((prev) => !prev)
+                }}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
                 title={isCardCollapsed ? 'Expandir painel de chamada' : 'Recolher painel de chamada'}
               >
@@ -896,7 +901,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
             </div>
           </div>
 
-          <div className={isCardCollapsed ? 'hidden' : 'block'}>
+          <CallPanelBody collapsed={isCardCollapsed}>
               <div className="flex gap-2 items-center overflow-x-auto pb-1 max-w-[calc(100vw-40px)] sm:max-w-md mt-2">
             <VideoTile
               id={localPlayer.id}
@@ -1263,7 +1268,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               <Settings className="w-4 h-4" />
             </button>
           </div>
-        </div>
+        </CallPanelBody>
     </div>
   </div>
 

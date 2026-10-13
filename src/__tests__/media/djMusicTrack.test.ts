@@ -1,20 +1,44 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MediaManager } from '../../media/MediaManager'
 import { useSpotifyJamStore } from '../../store/useSpotifyJamStore'
+import { useMediaStore } from '../../store/useMediaStore'
+import { useGameStore } from '../../store/useGameStore'
 vi.mock('../../p2p/PeerManager', () => ({ PeerManager: {} }))
 
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   useSpotifyJamStore.setState({ volume: 80, isMuted: false })
 })
 describe('DJ music stream', () => {
+  it('mutes only local listening and restores the saved volume without touching another room or voice', () => {
+    const local = useGameStore.getState().localPlayer
+    useGameStore.setState({ remotePlayers: {
+      dj: { id: 'dj', isDjBot: true, currentZoneId: local.currentZoneId } as any,
+      other: { id: 'other', isDjBot: true, currentZoneId: 'another-zone' } as any,
+      voice: { id: 'voice', currentZoneId: local.currentZoneId } as any,
+    } })
+    const volume = vi.spyOn(useMediaStore.getState(), 'setParticipantVolume')
+    useSpotifyJamStore.getState().setVolume(1)
+    expect(volume).toHaveBeenLastCalledWith('dj', 1)
+    useSpotifyJamStore.getState().toggleMute()
+    expect(volume).toHaveBeenLastCalledWith('dj', 0)
+    useSpotifyJamStore.getState().toggleMute()
+    expect(volume).toHaveBeenLastCalledWith('dj', 1)
+    expect(volume.mock.calls.every(([id]) => id === 'dj')).toBe(true)
+  })
   it.each([[0, 0], [100, 1], [150, 1.5], [200, 2], [250, 2], [-10, 0]])(
-    'applies %s percent to the transmitted player audio as gain %s', (percent, expected) => {
+    'applies %s percent only to local DJ listening volume %s', (percent, expected) => {
       const manager = Object.create(MediaManager.prototype) as any
       manager.djGainNode = { gain: { setValueAtTime: vi.fn() } }
       manager.djAudioContext = { currentTime: 10 }
+      const local = useGameStore.getState().localPlayer
+      useGameStore.setState({ remotePlayers: { 'dj-test': { id: 'dj-test', isDjBot: true, currentZoneId: local.currentZoneId } as any } })
+      const setVolume = vi.spyOn(useMediaStore.getState(), 'setParticipantVolume')
       manager.setDjVolume(percent)
-      expect(manager.djGainNode.gain.setValueAtTime).toHaveBeenCalledWith(expected, 10)
+      expect(setVolume).toHaveBeenCalledWith('dj-test', expected * 100)
+      expect(manager.djGainNode.gain.setValueAtTime).not.toHaveBeenCalled()
+      setVolume.mockRestore()
     })
 
   it.each([[150, 150], [200, 200], [250, 200], [-10, 0]])(
@@ -43,6 +67,6 @@ describe('DJ music stream', () => {
     expect(destination.channelCountMode).toBe('explicit')
     expect(source.connect).toHaveBeenCalledWith(gain)
     expect(gain.connect).toHaveBeenCalledWith(destination)
-    expect(gain.gain.setValueAtTime).toHaveBeenCalledWith(2, 0)
+    expect(gain.gain.setValueAtTime).toHaveBeenCalledWith(1, 0)
   })
 })

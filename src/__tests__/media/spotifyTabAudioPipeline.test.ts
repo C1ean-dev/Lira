@@ -8,6 +8,7 @@ async function pipeline(moduleReady: () => Promise<void> = async () => {}) {
   const track = { enabled: false, contentHint: '', stop: vi.fn() }
   const destination = { channelCount: 1, channelCountMode: 'max', stream: { getTracks: () => [track], getAudioTracks: () => [track] } }
   let receive!: (data: Uint8Array) => void
+  let receiveScreen!: (data: Uint8Array) => void
   let worklet: any
   let Processor: any
   let processorPort: any
@@ -42,13 +43,14 @@ async function pipeline(moduleReady: () => Promise<void> = async () => {}) {
   const api = {
     startProcessAudioCapture: vi.fn(async () => ({ ok: true })), stopProcessAudioCapture: vi.fn(async () => true),
     startSpotifyTabAudioCapture: vi.fn(async () => ({ ok: true })), stopSpotifyTabAudioCapture: vi.fn(async () => true),
-    onProcessAudioData: vi.fn((callback: typeof receive) => { receive = callback; return vi.fn() }), onProcessAudioStatus: vi.fn(() => vi.fn()),
+    onProcessAudioData: vi.fn((callback: typeof receive) => { receiveScreen = callback; return vi.fn() }), onProcessAudioStatus: vi.fn(() => vi.fn()),
+    onSpotifyTabAudioData: vi.fn((callback: typeof receive) => { receive = callback; return vi.fn() }), onSpotifyTabAudioStatus: vi.fn(() => vi.fn()),
   }
   vi.stubGlobal('window', { electronAPI: api, AudioContext: class { constructor() { return context } } })
   const capture = new ProcessAudioCapture()
   return {
     capture, api, context, destination, track, revoke,
-    send(pcm: Int16Array) { receive(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength)) },
+    send(pcm: Int16Array, screen = false) { (screen ? receiveScreen : receive)(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength)) },
     render(frames = 128) {
       const output = [new Float32Array(frames), new Float32Array(frames)]
       if (worklet) worklet.processor.process([], [output])
@@ -66,6 +68,25 @@ function music(offset: number, frames = 2048) {
 }
 
 describe('Spotify tab audio pipeline', () => {
+  it('does not mix screen samples or errors into the DJ while both captures are active', async () => {
+    const p = await pipeline()
+    await p.capture.start('spotify-tab')
+    const screenFailed = vi.fn()
+    const screen = new ProcessAudioCapture(screenFailed)
+    await screen.start('window:42:0')
+    p.worklet.port.postMessage.mockClear()
+    p.send(music(0), true)
+    expect(p.worklet.port.postMessage).not.toHaveBeenCalled()
+    p.send(music(0))
+    expect(p.worklet.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'pcm' }), expect.any(Array))
+    const nativeStatus = p.api.onProcessAudioStatus.mock.calls[0][0] as any
+    nativeStatus({ status: 'error', detail: 'screen capture failed' })
+    expect(screenFailed).toHaveBeenCalledOnce()
+    expect(p.api.stopSpotifyTabAudioCapture).not.toHaveBeenCalled()
+    screen.stop()
+    expect(p.api.stopSpotifyTabAudioCapture).not.toHaveBeenCalled()
+    p.capture.stop()
+  })
   it('uses tab capture IPC and releases it without starting or stopping the native screen capture', async () => {
     const p = await pipeline()
     expect(await p.capture.start('spotify-tab')).toBe(p.track)
@@ -74,6 +95,9 @@ describe('Spotify tab audio pipeline', () => {
     expect(p.destination.channelCountMode).toBe('explicit')
     expect(p.api.startSpotifyTabAudioCapture).toHaveBeenCalledOnce()
     expect(p.api.startProcessAudioCapture).not.toHaveBeenCalled()
+    expect(p.api.onProcessAudioData).not.toHaveBeenCalled()
+    expect(p.api.onProcessAudioStatus).not.toHaveBeenCalled()
+    expect(p.api.onSpotifyTabAudioData).toHaveBeenCalledOnce()
     p.capture.stop()
     expect(p.api.stopSpotifyTabAudioCapture).toHaveBeenCalledOnce()
     expect(p.api.stopProcessAudioCapture).not.toHaveBeenCalled()
@@ -187,7 +211,7 @@ describe('Spotify tab audio pipeline', () => {
   it('leaves native screen audio on its existing low latency path', async () => {
     const p = await pipeline()
     await p.capture.start('window:42:0')
-    p.send(music(0))
+    p.send(music(0), true)
     expect(p.render()[0][0]).toBe(1000 / 32768)
     expect(p.context.createScriptProcessor).toHaveBeenCalledOnce()
     expect(p.context.audioWorklet.addModule).not.toHaveBeenCalled()

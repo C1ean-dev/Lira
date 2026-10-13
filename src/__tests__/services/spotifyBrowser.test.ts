@@ -20,6 +20,13 @@ function setup(overrides: any = {}) {
 }
 
 describe('Spotify in a real browser', () => {
+  it('attaches the external browser to its tray host before focusing it', async () => {
+    const attach = vi.fn(async () => {})
+    const { player, deps } = setup({ attach })
+    expect(await player.open()).toEqual({ ok: true })
+    expect(attach).toHaveBeenCalledWith({ processId: 70, handle: '42', title: 'Spotify' })
+    expect(attach.mock.invocationCallOrder[0]).toBeLessThan(deps.focus.mock.invocationCallOrder[0])
+  })
   it('uses the official page in a separate persistent browser profile', () => {
     expect(spotifyBrowserArgs('https://open.spotify.com', 'C:\\Lira Profile')).toEqual([
       '--user-data-dir=C:\\Lira Profile', '--no-first-run', '--no-default-browser-check',

@@ -37,7 +37,7 @@ async function replaceFile(temporary: string, filePath: string): Promise<void> {
     try { await fs.promises.rename(temporary, filePath); return }
     catch (error) {
       const code = (error as NodeJS.ErrnoException).code
-      if (attempt >= 4 || !['EBUSY', 'EPERM', 'EACCES'].includes(code || '')) throw error
+      if (attempt >= 10 || !['EBUSY', 'EPERM', 'EACCES'].includes(code || '')) throw error
       await new Promise(resolve => setTimeout(resolve, 25 * (attempt + 1)))
     }
   }

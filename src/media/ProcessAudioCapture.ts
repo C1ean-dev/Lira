@@ -7,6 +7,8 @@ type ProcessAudioApi = {
   stopProcessAudioCapture: () => Promise<boolean>
   startSpotifyTabAudioCapture?: () => Promise<{ ok: boolean; error?: string }>
   stopSpotifyTabAudioCapture?: () => Promise<boolean>
+  onSpotifyTabAudioData?: ProcessAudioApi['onProcessAudioData']
+  onSpotifyTabAudioStatus?: ProcessAudioApi['onProcessAudioStatus']
   onProcessAudioData: (callback: (data: Uint8Array) => void) => () => void
   onProcessAudioStatus: (callback: (event: { status: 'started' | 'stopped' | 'error'; detail?: string }) => void) => () => void
 }
@@ -53,7 +55,7 @@ export class ProcessAudioCapture {
 
     this.stop(false)
     this.isSpotifyTab = sourceId === 'spotify-tab'
-    if (this.isSpotifyTab && !api.startSpotifyTabAudioCapture) throw new Error('Captura silenciosa do Spotify indisponível. Reabra o Lira.')
+    if (this.isSpotifyTab && (!api.startSpotifyTabAudioCapture || !api.onSpotifyTabAudioData || !api.onSpotifyTabAudioStatus)) throw new Error('Captura silenciosa do Spotify indisponível. Reabra o Lira.')
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
     if (!AudioContextClass) {
       throw new Error('Web Audio não está disponível neste cliente.')
@@ -83,8 +85,8 @@ export class ProcessAudioCapture {
       engine: this.isSpotifyTab ? 'audio-worklet' : 'script-processor',
     })
 
-    this.unsubscribeData = api.onProcessAudioData((data) => this.enqueue(data))
-    this.unsubscribeStatus = api.onProcessAudioStatus((event) => {
+    this.unsubscribeData = (this.isSpotifyTab ? api.onSpotifyTabAudioData! : api.onProcessAudioData)((data) => this.enqueue(data))
+    this.unsubscribeStatus = (this.isSpotifyTab ? api.onSpotifyTabAudioStatus! : api.onProcessAudioStatus)((event) => {
       diagLog('screenshare-audio', `native-status-${event.status}`, event.detail ? { detail: event.detail } : undefined)
       if (event.status === 'error') {
         console.warn('[ProcessAudioCapture]', event.detail || 'Captura nativa interrompida.')

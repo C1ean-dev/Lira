@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, session, shell, screen, Notification, powerMonitor } from 'electron'
+import { app, BrowserWindow, ipcMain, desktopCapturer, session, shell, screen, Notification, powerMonitor, Tray, Menu, nativeImage } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
@@ -28,6 +28,9 @@ import { SpotifyPlaybackController } from './spotifyPlayback'
 import { SpotifyTabAudioController } from './spotifyTabAudio'
 import { connectPlayback, playbackJson } from './spotifyPlaybackTransport'
 import type { SpotifyPlaybackCommand } from '../src/types/spotifyPlayback'
+import { SpotifyWindowHost } from './spotifyWindowHost'
+import { SpotifyNativeWindowBridge } from './spotifyNativeWindow'
+import { singleFlightDownload } from './updateDownload'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -64,6 +67,28 @@ function queryBrowserWindows(script: string): Promise<string> {
       { windowsHide: true, timeout: 5000 }, (error, stdout) => error ? reject(error) : resolve(stdout))
   })
 }
+const spotifyWindowHost = new SpotifyWindowHost({
+  createWindow: () => {
+    const window = new BrowserWindow({ width: 1000, height: 800, minWidth: 600, minHeight: 450,
+      title: 'Spotify — Lira DJ', show: false, backgroundColor: "#121212",
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } })
+    window.setMenu(null)
+    return window
+  },
+  createTray: restore => {
+    const iconPaths = [path.join(app.getAppPath(), 'public', 'tray-icon.png'), path.join(process.resourcesPath, 'tray-icon.png'), path.join(process.resourcesPath, 'public', 'tray-icon.png'), path.join(__dirname, '../public/tray-icon.png')]
+    const iconPath = iconPaths.find(candidate => fs.existsSync(candidate))
+    if (!iconPath) throw new Error('Ícone da bandeja do Spotify não encontrado.')
+    const tray = new Tray(nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 }))
+    tray.setToolTip('Spotify — Lira DJ')
+    tray.setContextMenu(Menu.buildFromTemplate([{ label: 'Abrir Spotify', click: restore }]))
+    tray.on('click', restore)
+    tray.on('double-click', restore)
+    return tray
+  },
+  bridge: new SpotifyNativeWindowBridge(queryBrowserWindows, process.pid),
+  reportError: error => console.error('[Spotify window]', error),
+})
 const spotifyPlayer = new SpotifyBrowserController({
   get profile() { return path.join(app.getPath('userData'), 'spotify-browser') },
   findBrowser: () => findSpotifyBrowser(process.env, fs.existsSync),
@@ -72,8 +97,10 @@ const spotifyPlayer = new SpotifyBrowserController({
     fs.mkdirSync(path.join(app.getPath('userData'), 'spotify-browser'), { recursive: true })
     return spawn(exe, args, { stdio: 'ignore', windowsHide: false })
   },
-  getWindow: profile => querySpotifyBrowserWindow(profile, queryBrowserWindows),
+  getWindow: profile => querySpotifyBrowserWindow(profile, queryBrowserWindows, spotifyWindowHost.browser),
+  attach: browser => spotifyWindowHost.attach(browser),
   focus: async handle => {
+    if (spotifyWindowHost.show()) return
     if (!/^[1-9][0-9]*$/.test(handle)) throw new Error('Janela do Spotify inválida.')
     await queryBrowserWindows(`
 Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class LiraSpotifyBrowserFocus { [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hwnd, int command); [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hwnd); }'
@@ -81,6 +108,7 @@ Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; pu
 [LiraSpotifyBrowserFocus]::SetForegroundWindow([IntPtr]::new([long]${handle})) | Out-Null`)
   },
   onClosed: () => {
+    void spotifyWindowHost.dispose().catch(error => console.error('[Spotify window]', error))
     void spotifyTabAudio.stop()
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('spotify:player-closed')
   },
@@ -947,8 +975,6 @@ function downloadFileWithRedirects(
 let latestAssetExpectedSize = 0
 let downloadedInstallerPath: string | null = null
 let downloadedInstallerVersion: string | null = null
-let isDownloadingUpdate = false
-let updateDownloadPromise: Promise<boolean> | null = null
 
 function getInstallerPath(version?: string): string {
   const tempDir = app.getPath('temp')
@@ -1037,7 +1063,7 @@ function checkIsUpdateDownloaded(targetVersion?: string): boolean {
   return true
 }
 
-async function performDownloadUpdate(downloadUrl: string, targetVersion?: string): Promise<boolean> {
+const performDownloadUpdate = singleFlightDownload(async (downloadUrl: string, targetVersion?: string): Promise<boolean> => {
   if (!downloadUrl) {
     throw new Error('No download URL provided')
   }
@@ -1059,12 +1085,6 @@ async function performDownloadUpdate(downloadUrl: string, targetVersion?: string
     return true
   }
 
-  if (isDownloadingUpdate && updateDownloadPromise) {
-    return await updateDownloadPromise
-  }
-
-  isDownloadingUpdate = true
-  updateDownloadPromise = (async () => {
     try {
       if (fs.existsSync(tempInstallerPath)) {
         try { fs.unlinkSync(tempInstallerPath) } catch {}
@@ -1094,14 +1114,8 @@ async function performDownloadUpdate(downloadUrl: string, targetVersion?: string
         if (fs.existsSync(tempInstallerPath)) fs.unlinkSync(tempInstallerPath)
       } catch {}
       return false
-    } finally {
-      isDownloadingUpdate = false
-      updateDownloadPromise = null
     }
-  })()
-
-  return await updateDownloadPromise
-}
+})
 
 async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
   try {
@@ -1320,8 +1334,8 @@ const spotifyPlayback = new SpotifyPlaybackController({
 ipcMain.handle('get-spotify-playback-frame', () => spotifyPlayback.frame())
 const spotifyTabAudio = new SpotifyTabAudioController({
   connect: () => spotifyPlayback.connectTab(),
-  data: chunk => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('process-audio-data', chunk) },
-  ended: error => emitProcessAudioStatus('error', error),
+  data: chunk => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('spotify-tab-audio-data', chunk) },
+  ended: error => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('spotify-tab-audio-status', { status: 'error', detail: error }) },
 })
 ipcMain.handle('start-spotify-tab-audio', () => spotifyTabAudio.start())
 ipcMain.handle('stop-spotify-tab-audio', async () => { await spotifyTabAudio.stop(); return true })
@@ -2030,7 +2044,23 @@ ipcMain.handle('get-system-idle-time', () => {
   }
 })
 
-app.on('before-quit', () => {
+let spotifyQuitCleanup: Promise<void> | null = null
+let spotifyQuitReady = false
+app.on('before-quit', event => {
+  if (!spotifyQuitReady && spotifyWindowHost.browser) {
+    event.preventDefault()
+    if (!spotifyQuitCleanup) {
+      spotifyQuitCleanup = spotifyWindowHost.dispose().then(() => {
+        spotifyQuitReady = true
+        app.quit()
+      }).catch(error => {
+        spotifyQuitCleanup = null
+        trayManager?.setQuitting(false)
+        spotifyWindowHost.show()
+        console.error('[Spotify window] Não foi possível liberar o navegador ao sair.', error)
+      })
+    }
+  }
   void spotifyTabAudio.stop()
   spotifyPlayer.close()
   if (trayManager) {

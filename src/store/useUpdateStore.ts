@@ -119,16 +119,11 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
         if (unsubProgress) unsubProgress()
         unsubProgress = UpdateService.onProgress((p) => {
           set({ progress: p })
-          if (p.percent >= 100) {
-            set({ status: 'ready' })
-            if (get().isUpdateScreenOpen && get().status !== 'installing') {
-              get().applyUpdate()
-            }
-          }
         })
 
         if (unsubDownloaded) unsubDownloaded()
         unsubDownloaded = UpdateService.onUpdateDownloaded(() => {
+          if (get().status === 'installing') return
           set({
             status: 'ready',
             progress: { percent: 100, downloaded: 1, total: 1 },
@@ -140,6 +135,7 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
 
         const success = await UpdateService.downloadUpdate(info.downloadUrl, info.latestVersion)
         if (success) {
+          if (get().status === 'installing') return
           set({
             status: 'ready',
             progress: { percent: 100, downloaded: 1, total: 1 },
