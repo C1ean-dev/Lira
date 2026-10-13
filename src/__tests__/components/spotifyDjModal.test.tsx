@@ -38,6 +38,7 @@ describe('Spotify DJ modal', () => {
     expect(html).not.toContain('Spotify DJ')
     expect(html).toContain('min="0" max="200"')
     expect(html).toContain('Transmitir DJ')
+    expect(html).toContain('Entrar pelo navegador')
     expect(html).toContain('type="range"')
     expect(html).not.toMatch(/Spotify Jam|Link do Spotify Jam|Iniciar Jam|Jam ativo|Recomendar Faixa|Faixa recomendada|Fila Compartilhada|Fila da Sala|Abrir Spotify/)
     expect(html).not.toContain('<form')
@@ -58,6 +59,7 @@ describe('Spotify DJ modal', () => {
     const html = renderToStaticMarkup(<SpotifyJamModal />)
     expect(html).toContain('Parar DJ')
     expect(html).not.toContain('Transmitir DJ')
+    expect(html).not.toContain('Entrar pelo navegador')
   })
 
   it('requires a room and uses DJ wording in the corridor', () => {

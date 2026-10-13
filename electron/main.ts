@@ -21,7 +21,9 @@ import { readNativeDataFile, writeNativeDataFileLatest } from './nativeDataFile'
 import { createStartupTimer } from './startupTimer'
 import { startCpuProfile } from './startupProfile'
 import { sanitizeRecords } from '../src/utils/logFormat'
-import { SpotifyBrowserController, findSpotifyBrowser, querySpotifyBrowserWindow } from './spotifyBrowser'
+import { SpotifyBrowserController, closeSpotifyPlayerBrowser, findSpotifyBrowser, querySpotifyBrowserWindow, querySpotifyBrowserProcess } from './spotifyBrowser'
+import { SpotifyLoginController, closeSpotifyDebugBrowser } from './spotifyLogin'
+import { prepareSpotifyBrowser } from './spotifyBrowserReady'
 import { SpotifyPlaybackController } from './spotifyPlayback'
 import { SpotifyTabAudioController } from './spotifyTabAudio'
 import { connectPlayback, playbackJson } from './spotifyPlaybackTransport'
@@ -74,29 +76,52 @@ const spotifyWindowHost = new SpotifyWindowHost({
     window.setMenu(null)
     return window
   },
-  createTray: restore => {
+  createTray: (restore, close) => {
     const iconPaths = [path.join(app.getAppPath(), 'public', 'tray-icon.png'), path.join(process.resourcesPath, 'tray-icon.png'), path.join(process.resourcesPath, 'public', 'tray-icon.png'), path.join(__dirname, '../public/tray-icon.png')]
     const iconPath = iconPaths.find(candidate => fs.existsSync(candidate))
     if (!iconPath) throw new Error('Ícone da bandeja do Spotify não encontrado.')
     const tray = new Tray(nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 }))
     tray.setToolTip('Spotify — Lira DJ')
-    tray.setContextMenu(Menu.buildFromTemplate([{ label: 'Abrir Spotify', click: restore }]))
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: 'Abrir Spotify', click: restore },
+      { type: 'separator' },
+      { label: 'Fechar Spotify', click: close },
+    ]))
     tray.on('click', restore)
     tray.on('double-click', restore)
     return tray
   },
+  closeBrowser: browser => closeSpotifyPlayerBrowser(browser, {
+    getProcess: () => querySpotifyBrowserProcess(path.join(app.getPath('userData'), 'spotify-browser')),
+    closeBrowser: closeSpotifyControlledBrowser,
+    stopCapture: () => spotifyTabAudio.stop(),
+    stopMonitoring: () => spotifyPlayer.close(),
+    notifyClosed: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('spotify:player-closed') },
+  }),
   bridge: new SpotifyNativeWindowBridge(queryBrowserWindows, process.pid),
   reportError: error => console.error('[Spotify window]', error),
 })
+function closeSpotifyControlledBrowser() {
+  return closeSpotifyDebugBrowser({
+    readPortFile: () => fs.promises.readFile(path.join(app.getPath('userData'), 'spotify-browser', 'DevToolsActivePort'), 'utf8'),
+    json: playbackJson, connect: connectPlayback,
+  })
+}
+function launchSpotifyBrowser(exe: string, args: string[]) {
+  if (process.platform !== 'win32') throw new Error('O Spotify no navegador está disponível no Windows.')
+  fs.mkdirSync(path.join(app.getPath('userData'), 'spotify-browser'), { recursive: true })
+  return spawn(exe, args, { stdio: 'ignore', windowsHide: false })
+}
 const spotifyPlayer = new SpotifyBrowserController({
   get profile() { return path.join(app.getPath('userData'), 'spotify-browser') },
   findBrowser: () => findSpotifyBrowser(process.env, fs.existsSync),
-  launch: (exe, args) => {
-    if (process.platform !== 'win32') throw new Error('A captura do Spotify no navegador está disponível no Windows.')
-    fs.mkdirSync(path.join(app.getPath('userData'), 'spotify-browser'), { recursive: true })
-    return spawn(exe, args, { stdio: 'ignore', windowsHide: false })
-  },
-  getWindow: profile => querySpotifyBrowserWindow(profile, queryBrowserWindows, spotifyWindowHost.browser),
+  launch: launchSpotifyBrowser,
+  getWindow: profile => querySpotifyBrowserWindow(profile, undefined, spotifyWindowHost.browser),
+  prepare: url => prepareSpotifyBrowser(url, {
+    readPortFile: () => fs.promises.readFile(path.join(app.getPath('userData'), 'spotify-browser', 'DevToolsActivePort'), 'utf8'),
+    json: playbackJson,
+    connect: connectPlayback,
+  }),
   attach: browser => spotifyWindowHost.attach(browser),
   focus: async handle => {
     if (spotifyWindowHost.show()) return
@@ -1234,22 +1259,54 @@ ipcMain.handle('open-external', async (event, url: string) => {
   }
 })
 
-const spotifyPlayback = new SpotifyPlaybackController({
-  active: () => spotifyPlayer.isOpen,
+const spotifyPlayback: SpotifyPlaybackController = new SpotifyPlaybackController({
+  active: () => spotifyPlayer.isOpen && !spotifyLogin.isAuthenticating && !spotifyWindowHost.isClosing,
   readPortFile: () => fs.promises.readFile(path.join(app.getPath('userData'), 'spotify-browser', 'DevToolsActivePort'), 'utf8'),
   json: playbackJson,
   connect: connectPlayback,
 })
 ipcMain.handle('get-spotify-playback-frame', () => spotifyPlayback.frame())
-const spotifyTabAudio = new SpotifyTabAudioController({
+const spotifyTabAudio: SpotifyTabAudioController = new SpotifyTabAudioController({
   connect: () => spotifyPlayback.connectTab(),
   data: chunk => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('spotify-tab-audio-data', chunk) },
   ended: error => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('spotify-tab-audio-status', { status: 'error', detail: error }) },
 })
-ipcMain.handle('start-spotify-tab-audio', () => spotifyTabAudio.start())
+const spotifyLoginMarker = () => path.join(app.getPath('userData'), 'spotify-browser', 'login-confirmed')
+const spotifyLoginPendingMarker = () => path.join(app.getPath('userData'), 'spotify-browser', 'login-pending')
+const spotifyLogin: SpotifyLoginController = new SpotifyLoginController({
+  get profile() { return path.join(app.getPath('userData'), 'spotify-browser') },
+  findBrowser: () => findSpotifyBrowser(process.env, fs.existsSync),
+  launch: launchSpotifyBrowser,
+  getProcess: () => querySpotifyBrowserProcess(path.join(app.getPath('userData'), 'spotify-browser')),
+  confirmed: () => fs.existsSync(spotifyLoginMarker()),
+  pending: () => fs.existsSync(spotifyLoginPendingMarker()),
+  confirm: value => {
+    fs.mkdirSync(path.join(app.getPath('userData'), 'spotify-browser'), { recursive: true })
+    const keep = value ? spotifyLoginMarker() : spotifyLoginPendingMarker()
+    const remove = value ? spotifyLoginPendingMarker() : spotifyLoginMarker()
+    fs.writeFileSync(keep, '1', 'utf8')
+    if (fs.existsSync(remove)) fs.unlinkSync(remove)
+  },
+  canLogin: () => !spotifyTabAudio.isActive,
+  releasePlayer: async () => {
+    spotifyPlayer.close()
+    await spotifyTabAudio.stop()
+    await spotifyWindowHost.dispose()
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('spotify:player-closed')
+  },
+  closeDebugBrowser: closeSpotifyControlledBrowser,
+  openPlayer: url => spotifyPlayer.open(url),
+})
+const spotifyClosingResult = () => ({ ok: false, error: 'Aguarde o Spotify fechar para abrir novamente.' })
+ipcMain.handle('open-spotify-login', () => spotifyWindowHost.isClosing ? spotifyClosingResult() : spotifyLogin.open())
+ipcMain.handle('complete-spotify-login', () => spotifyWindowHost.isClosing ? spotifyClosingResult() : spotifyLogin.complete())
+ipcMain.handle('get-spotify-login-state', () => spotifyLogin.state())
+ipcMain.handle('start-spotify-tab-audio', () => spotifyWindowHost.isClosing ? spotifyClosingResult() : spotifyLogin.isAuthenticating
+  ? { ok: false, error: 'Conclua o login no Spotify antes de transmitir como DJ.' }
+  : spotifyTabAudio.start())
 ipcMain.handle('stop-spotify-tab-audio', async () => { await spotifyTabAudio.stop(); return true })
 ipcMain.handle('spotify-playback-command', (_event, command: SpotifyPlaybackCommand) => spotifyPlayback.command(command))
-ipcMain.handle('open-spotify-player', (_event, url?: string) => spotifyPlayer.open(url))
+ipcMain.handle('open-spotify-player', (_event, url?: string) => spotifyWindowHost.isClosing ? spotifyClosingResult() : spotifyLogin.openPlayer(url))
 
 export interface SpotifyCurrentTrack {
   isRunning: boolean
@@ -1956,6 +2013,7 @@ ipcMain.handle('get-system-idle-time', () => {
 let spotifyQuitCleanup: Promise<void> | null = null
 let spotifyQuitReady = false
 app.on('before-quit', event => {
+  spotifyLogin.cancel()
   if (!spotifyQuitReady && spotifyWindowHost.browser) {
     event.preventDefault()
     if (!spotifyQuitCleanup) {

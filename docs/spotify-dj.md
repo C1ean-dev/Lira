@@ -4,17 +4,29 @@ O Lira abre o site oficial do Spotify em uma janela dedicada do Google Chrome. S
 
 ## Fluxo para o usuário
 
-1. Entre em uma sala privada e clique em Transmitir DJ no painel Spotify DJ do Lira. Esse botão abre a janela dedicada do Spotify e solicita o compartilhamento da aba no navegador.
-2. Faça login diretamente no Spotify com a própria conta.
-3. No seletor do navegador, selecione a própria aba do Spotify e marque Compartilhar áudio da aba. Escolha suas músicas ou playlists e dê play na página oficial. Enquanto o DJ estiver ativo, o navegador suprime a reprodução local; o som é ouvido pelo participante DJ da chamada, inclusive por quem iniciou a transmissão.
+1. Entre em uma sala privada e clique em Entrar pelo navegador no painel DJ. O Chrome/Edge abre uma janela normal, com barra de endereço, usando o perfil dedicado do Spotify. Durante esse login, o navegador não tem depuração remota ativada nem é encaixado no Lira. Você pode usar Continuar com Google na página oficial.
+2. Depois de entrar, feche essa janela do navegador e clique em Concluir login no Lira. O player integrado reabre usando o mesmo perfil e a sessão salva pelo navegador. O Lira aguarda o processo de login encerrar antes de ativar os controles; não copia cookies nem lê o formulário de autenticação.
+3. Escolha suas músicas, dê play e clique em Transmitir DJ. No seletor do navegador, selecione a própria aba do Spotify e marque Compartilhar áudio da aba. Enquanto o DJ estiver ativo, o navegador suprime a reprodução local; o som é ouvido pelo participante DJ da chamada, inclusive por quem iniciou a transmissão.
 4. Use o volume do painel para ajustar a transmissão e Parar DJ para encerrá-la.
-5. O X da janela dedicada esconde o Spotify na bandeja do sistema e mantém a reprodução e o DJ ativos. Clique no ícone “Spotify — Lira DJ” ou em “Abrir Spotify” no seu menu para reabrir. Parar o DJ mantém o Spotify aberto. Ao sair do Lira, a janela é devolvida ao navegador.
+5. Minimizar a janela dedicada esconde o Spotify na bandeja do sistema e mantém a reprodução e o DJ ativos. Clique no ícone “Spotify — Lira DJ” ou em “Abrir Spotify” no seu menu para reabrir. Use o X da janela ou “Fechar Spotify” nesse menu para parar o DJ, encerrar a reprodução e remover a janela e seu ícone. Essa ação fecha somente o navegador dedicado do player e mantém o login salvo. Parar o DJ mantém o Spotify aberto. Ao sair do Lira, a janela é devolvida ao navegador.
 
 O login fica salvo no perfil local dedicado do navegador. O Lira não implementa autenticação própria do Spotify, não recebe a senha do usuário e não exige outra conta.
+
+Entrar pelo navegador encerra somente o navegador dedicado que estava sob controle do Lira antes de abrir a janela normal. Um login já aberto em janela normal é preservado. É necessário parar o DJ antes de refazer o login. Na primeira abertura após essa atualização, Transmitir DJ e os atalhos do player também abrem o navegador normal e orientam concluir o login antes de transmitir. Uma música ou playlist selecionada é preservada até a conclusão. Os arquivos locais login-pending e login-confirmed registram apenas essa etapa, sem credenciais. O passo Concluir login permanece disponível ao reabrir o painel ou reiniciar o aplicativo.
+
+Essa separação segue a [política de navegadores seguros do Google](https://developers.google.com/identity/protocols/oauth2/policies#use-secure-browsers). A política proíbe direcionar autenticação para um navegador incorporado sob controle do aplicativo. A implementação anterior ativava depuração remota e encaixava a janela antes do login, condições incompatíveis com esse fluxo. O motivo exato de uma recusa individual do Google só pode ser confirmado com o login manual do usuário.
+
+Antes de encaixar a janela do navegador, o Lira confirma que a página do Spotify tem conteúdo. Uma página inicial vazia recebe uma tentativa de recarregar o endereço solicitado. Se o carregamento continuar falhando, a abertura informa o erro e não inicia a captura DJ. Páginas de autenticação do Google e do Spotify não são encaixadas; a abertura orienta usar Entrar pelo navegador e não consulta o conteúdo do formulário.
 
 ## Identificação e isolamento do áudio
 
 A janela abre com um diretório de perfil próprio por instância do Lira. A identificação procura o processo Chrome/Edge que usa exatamente esse perfil, incluindo caminhos com espaços e aspas. O título da janela e o nome da música não são usados para escolher a fonte.
+
+O encaixe e o redimensionamento consultam a área útil da janela diretamente no Windows, usando o contexto de escala da janela do Lira. Isso evita que o PowerShell, que inicia sem reconhecimento de DPI, aplique a escala do Windows novamente e deixe a página maior que a área visível. Mudanças de tamanho e deslocamentos entre monitores atualizam o encaixe. Enquanto uma atualização está em andamento, pedidos de redimensionamento são agrupados e o tamanho final é aplicado sem acumular operações antigas.
+
+“Fechar Spotify” verifica que o processo corresponde ao player dedicado, libera a captura, informa ao Lira que o DJ terminou e solicita o encerramento pelo endereço local validado desse navegador. A janela e o ícone são removidos após o encerramento. Uma janela normal de login é preservada e uma falha mantém a bandeja disponível para tentar novamente.
+
+A consulta ao Windows tem limite de 15 segundos, para incluir a inicialização do PowerShell e a busca dos processos. Uma consulta interrompida por tempo limite recebe uma segunda tentativa; outros erros são informados sem expor o comando interno. O log registra o código, a interrupção, o sinal e até 1.000 caracteres do erro retornado pelo processo.
 
 A captura do Spotify usa `getDisplayMedia` com `suppressLocalAudioPlayback: true`, sem instalar drivers, extensões ou dispositivos virtuais. O seletor do navegador exige a escolha do usuário. Um Capture Handle temporário confirma que a fonte é a própria aba dedicada; outras abas, telas, fontes sem áudio e captura sem supressão local são recusadas. O áudio PCM estéreo em 48 kHz segue para a trilha do DJ. O compartilhamento de tela mantém seu capturador nativo.
 
@@ -49,6 +61,8 @@ O volume de 0% a 200% e o mudo no Lira ajustam apenas a escuta local do particip
 ## Validação
 
 Os testes usam lançadores, processos, seletor de captura e Web Audio simulados. Cobrem a supressão exigida, a identificação da aba, conversão PCM, encerramento e reprodução do DJ para o anfitrião. O teste da identificação no Windows substitui funções de sistema por dados de teste, sem consultar navegadores reais. Os testes não comprovam reprodução real do Spotify ou qualidade do áudio na chamada. A captura silenciosa ainda requer validação manual autorizada. Testes manuais pelo agente e abertura do app/navegador dependem de consulta prévia ao usuário.
+
+O teste de redimensionamento usa janelas nativas temporárias ocultas, sem abrir o Lira ou um navegador. Reproduz a diferença de contexto DPI do PowerShell e confere o tamanho físico após o encaixe e após reduzir a janela. Os testes da bandeja cobrem encerramento, liberação da captura, preservação de outro processo ou da janela de login, falha com possibilidade de repetir e cancelamento de consultas/aberturas pendentes.
 
 Referências da captura: [supressão local no Chrome](https://developer.chrome.com/blog/screen-sharing-improvements-in-chrome-109) e [identificação da aba com Capture Handle](https://developer.chrome.com/docs/web-platform/capture-handle).
 

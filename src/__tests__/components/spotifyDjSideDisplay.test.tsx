@@ -59,6 +59,7 @@ describe('Spotify DJ side display', () => {
     state.spotify.isDjModeActive = false
     const html = renderToStaticMarkup(<SpotifyJamSideDisplay />)
     expect(html).toContain('Transmitir DJ')
+    expect(html).toContain('Entrar pelo navegador')
     expect(html).not.toContain('Parar DJ')
     expect(html).not.toContain('aria-label="Reprodução do Spotify"')
   })
