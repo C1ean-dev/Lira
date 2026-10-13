@@ -12,6 +12,8 @@ O Lira abre o site oficial do Spotify em uma janela dedicada do Google Chrome. S
 
 O login fica salvo no perfil local dedicado do navegador. O Lira não implementa autenticação própria do Spotify, não recebe a senha do usuário e não exige outra conta.
 
+Antes de encaixar a janela do navegador, o Lira confirma que a página do Spotify ou o formulário de login tem conteúdo. Uma página inicial vazia recebe uma tentativa de recarregar o endereço solicitado. Se o carregamento continuar falhando, a abertura informa o erro e não inicia a captura DJ. Formulários de login já carregados são preservados.
+
 ## Identificação e isolamento do áudio
 
 A janela abre com um diretório de perfil próprio por instância do Lira. A identificação procura o processo Chrome/Edge que usa exatamente esse perfil, incluindo caminhos com espaços e aspas. O título da janela e o nome da música não são usados para escolher a fonte.

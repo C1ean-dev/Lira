@@ -73,6 +73,7 @@ type BrowserDeps = {
   getWindow: (profile: string) => Promise<BrowserWindow | null>
   focus: (handle: string) => Promise<void>
   attach?: (window: BrowserWindow) => Promise<void>
+  prepare?: (url: string) => Promise<void>
   delay?: (ms: number) => Promise<void>
   watch?: (callback: () => Promise<void>) => () => void
   onClosed?: () => void
@@ -107,6 +108,8 @@ export class SpotifyBrowserController {
       if (this.window && !input) {
         const existing = await this.deps.getWindow(this.deps.profile)
         if (existing) {
+          await this.deps.prepare?.(url)
+          if (generation !== this.generation) throw new Error('Abertura do Spotify cancelada.')
           this.window = existing
           await this.deps.focus(existing.handle)
           return { ok: true }
@@ -122,8 +125,10 @@ export class SpotifyBrowserController {
         const found = await this.deps.getWindow(this.deps.profile)
         if (generation !== this.generation) throw new Error('Abertura do Spotify cancelada.')
         if (found) {
-          this.window = found
+          await this.deps.prepare?.(url)
+          if (generation !== this.generation) throw new Error('Abertura do Spotify cancelada.')
           await this.deps.attach?.(found)
+          this.window = found
           await this.deps.focus(found.handle)
           this.startWatching()
           return { ok: true }
