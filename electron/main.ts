@@ -2,8 +2,6 @@ import { app, BrowserWindow, ipcMain, desktopCapturer, session, shell, screen, N
 import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
-import https from 'https'
-import http from 'http'
 import dgram from 'dgram'
 import { spawn, exec, execSync, execFile } from 'child_process'
 import { release as getOsRelease } from 'os'
@@ -33,6 +31,7 @@ import type { SpotifyPlaybackCommand } from '../src/types/spotifyPlayback'
 import { SpotifyWindowHost } from './spotifyWindowHost'
 import { SpotifyNativeWindowBridge } from './spotifyNativeWindow'
 import { singleFlightDownload } from './updateDownload'
+import { downloadUpdateFile, updateDownloadErrorMessage } from './updateFileDownload'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -907,96 +906,6 @@ ipcMain.handle('check-update', async () => {
   }
 })
 
-function downloadFileWithRedirects(
-  fileUrl: string,
-  destPath: string,
-  onProgress: (percent: number, downloaded: number, total: number) => void
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let redirectCount = 0
-    const maxRedirects = 10
-
-    const makeRequest = (currentUrl: string) => {
-      if (redirectCount++ > maxRedirects) {
-        return reject(new Error('Too many redirects while downloading update'))
-      }
-
-      const client = currentUrl.startsWith('https') ? https : http
-      const req = client
-        .get(
-          currentUrl,
-          {
-            headers: {
-              'User-Agent': 'lira-updater',
-              Accept: 'application/octet-stream',
-            },
-          },
-          (response) => {
-            if (
-              response.statusCode &&
-              response.statusCode >= 300 &&
-              response.statusCode < 400 &&
-              response.headers.location
-            ) {
-              response.resume()
-              const nextUrl = new URL(response.headers.location, currentUrl).toString()
-              return makeRequest(nextUrl)
-            }
-
-            if (response.statusCode !== 200) {
-              response.resume()
-              return reject(new Error(`Failed to download file, status code: ${response.statusCode}`))
-            }
-
-            const total = parseInt(response.headers['content-length'] || '0', 10)
-            let downloaded = 0
-
-            const fileStream = fs.createWriteStream(destPath)
-
-            response.on('data', (chunk: Buffer) => {
-              downloaded += chunk.length
-              const percent = total > 0 ? Math.floor((downloaded / total) * 100) : 0
-              onProgress(percent, downloaded, total)
-            })
-
-            response.pipe(fileStream)
-
-            response.on('error', (err) => {
-              fileStream.destroy()
-              try { fs.unlinkSync(destPath) } catch {}
-              reject(err)
-            })
-
-            fileStream.on('finish', () => {
-              fileStream.close((err) => {
-                if (err) return reject(err)
-                if (total > 0 && downloaded < total) {
-                  try { fs.unlinkSync(destPath) } catch {}
-                  return reject(new Error(`Download incompleto: recebidos ${downloaded} de ${total} bytes`))
-                }
-                resolve()
-              })
-            })
-
-            fileStream.on('error', (err) => {
-              try { fs.unlinkSync(destPath) } catch {}
-              reject(err)
-            })
-          }
-        )
-        .on('error', (err) => {
-          reject(err)
-        })
-
-      req.setTimeout(60000, () => {
-        req.destroy(new Error('Tempo limite de download esgotado (timeout 60s)'))
-      })
-    }
-
-    makeRequest(fileUrl)
-  })
-}
-
 let latestAssetExpectedSize = 0
 let downloadedInstallerPath: string | null = null
 let downloadedInstallerVersion: string | null = null
@@ -1115,11 +1024,11 @@ const performDownloadUpdate = singleFlightDownload(async (downloadUrl: string, t
         try { fs.unlinkSync(tempInstallerPath) } catch {}
       }
 
-      await downloadFileWithRedirects(downloadUrl, tempInstallerPath, (percent, downloaded, total) => {
+      await downloadUpdateFile(downloadUrl, tempInstallerPath, (percent, downloaded, total) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('update-download-progress', { percent, downloaded, total })
         }
-      })
+      }, { expectedSize: latestAssetExpectedSize })
 
       if (fs.existsSync(installerPath)) {
         try { fs.unlinkSync(installerPath) } catch {}
@@ -1138,7 +1047,7 @@ const performDownloadUpdate = singleFlightDownload(async (downloadUrl: string, t
       try {
         if (fs.existsSync(tempInstallerPath)) fs.unlinkSync(tempInstallerPath)
       } catch {}
-      return false
+      throw new Error(updateDownloadErrorMessage(err))
     }
 })
 
