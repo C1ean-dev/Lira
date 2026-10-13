@@ -25,6 +25,21 @@ describe('dedicated Spotify native window bridge', () => {
     await expect(bridge.mount({ processId: 70, handle: '42;exit', title: '' }, '99', [900, 700])).rejects.toThrow()
     expect(query).not.toHaveBeenCalled()
   })
+  it('rejects an invalid focus target before executing native commands', async () => {
+    const query = vi.fn(async () => '')
+    const bridge = new SpotifyNativeWindowBridge(query, 123)
+    await expect(bridge.focus({ processId: 70, handle: '42', title: '' }, '99;exit')).rejects.toThrow()
+    expect(query).not.toHaveBeenCalled()
+  })
+  it.skipIf(process.platform !== 'win32')('ignores a stale browser focus request without stealing foreground focus', async () => {
+    const bridge = new SpotifyNativeWindowBridge(async script => execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script + `
+Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class FocusCheck { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow(); }'
+$before = [FocusCheck]::GetForegroundWindow()
+[LiraSpotifyHost]::Focus([IntPtr]::new(1), 2147483647, [IntPtr]::new(1), 2147483647)
+if ([FocusCheck]::GetForegroundWindow() -ne $before) { throw 'Foreground focus changed' }
+`], { windowsHide: true, encoding: 'utf8', stdio: 'pipe' }), process.pid)
+    await expect(bridge.focus({ processId: 2147483647, handle: '1', title: '' }, '1')).resolves.toBeUndefined()
+  }, 15000)
   it('checks ownership, preserves the original frame and releases the browser on detach', async () => {
     const query = vi.fn(async () => '')
     const bridge = new SpotifyNativeWindowBridge(query, 123)

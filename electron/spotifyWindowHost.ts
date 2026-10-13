@@ -19,6 +19,7 @@ type Deps = {
     mount(browser: SpotifyNativeWindow, parent: string, size: [number, number]): Promise<void>
     resize(browser: SpotifyNativeWindow, size: [number, number]): Promise<void>
     detach(browser: SpotifyNativeWindow): Promise<void>
+    focus(browser: SpotifyNativeWindow, parent: string): Promise<void>
   }
   reportError(error: unknown): void
 }
@@ -35,6 +36,18 @@ export class SpotifyWindowHost {
 
   constructor(private deps: Deps) {}
 
+  private focusBrowser() {
+    const window = this.window
+    const browser = this.browser
+    if (!window || !browser) return
+    this.work = this.work.then(async () => {
+      if (this.disposing || this.window !== window || window.isDestroyed()) return
+      const handle = window.getNativeWindowHandle()
+      const parent = (handle.length === 8 ? handle.readBigUInt64LE() : BigInt(handle.readUInt32LE())).toString()
+      await this.deps.bridge.focus(browser, parent)
+    }).catch(error => this.deps.reportError(error))
+  }
+
   private size(window: HostWindow): [number, number] {
     const [width, height] = window.getContentSize()
     return [Math.max(1, width), Math.max(1, height)]
@@ -45,6 +58,7 @@ export class SpotifyWindowHost {
     if (this.window.isMinimized()) this.window.restore()
     this.window.show()
     this.window.focus()
+    this.focusBrowser()
     return true
   }
 
@@ -63,6 +77,7 @@ export class SpotifyWindowHost {
       this.mounting = this.deps.bridge.mount(browser, parent, this.size(window))
       await this.mounting
       if (this.disposing || this.window !== window) throw new Error('Abertura do Spotify cancelada.')
+      window.on('focus', () => { this.focusBrowser() })
       window.on('close', (event: { preventDefault(): void }) => {
         if (this.disposing) return
         event.preventDefault()

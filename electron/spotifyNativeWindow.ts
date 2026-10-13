@@ -19,6 +19,18 @@ public static class LiraSpotifyHost {
  [DllImport("user32.dll")] static extern bool MoveWindow(IntPtr h,int x,int y,int w,int z,bool repaint);
  [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h,IntPtr after,int x,int y,int w,int z,uint flags);
  [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h,int command);
+ [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+ [DllImport("user32.dll")] static extern IntPtr GetParent(IntPtr h);
+ [DllImport("user32.dll")] static extern bool IsChild(IntPtr p,IntPtr h);
+ [DllImport("user32.dll", SetLastError=true)] static extern IntPtr SetFocus(IntPtr h);
+ [DllImport("user32.dll", SetLastError=true)] static extern bool AttachThreadInput(uint a,uint b,bool attach);
+ [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+ [StructLayout(LayoutKind.Sequential)] struct GuiInfo {
+  public uint Size, Flags;
+  public IntPtr Active, Focus, Capture, MenuOwner, MoveSize, Caret;
+  public Rect CaretRect;
+ }
+ [DllImport("user32.dll")] static extern bool GetGUIThreadInfo(uint thread,ref GuiInfo info);
  [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr h);
  [StructLayout(LayoutKind.Sequential)] struct Rect { public int Left, Top, Right, Bottom; }
  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h,out Rect r);
@@ -50,6 +62,20 @@ public static class LiraSpotifyHost {
   catch { Style(h,original); RemoveProp(h,Key); throw; }
  }
  public static void Resize(IntPtr h,uint pid,int w,int z) { if(Owned(h,pid)) Layout(h,w,z); }
+ public static void Focus(IntPtr h,uint pid,IntPtr p,uint host) {
+  // Do not steal focus from another app or an OAuth/passkey popup.
+  if(!Owned(h,pid)||!Owned(p,host)||GetParent(h)!=p||GetForegroundWindow()!=p) return;
+  uint owner;
+  uint browserThread=GetWindowThreadProcessId(h,out owner);
+  GuiInfo info=new GuiInfo(); info.Size=(uint)Marshal.SizeOf(typeof(GuiInfo));
+  // Preserve the focused input or Chromium render widget when it already owns focus.
+  if(GetGUIThreadInfo(browserThread,ref info) && (info.Focus==h || IsChild(h,info.Focus))) return;
+  uint current=GetCurrentThreadId();
+  bool attached=current!=browserThread;
+  if(attached && !AttachThreadInput(current,browserThread,true)) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+  try { SetLastError(0); SetFocus(h); int error=Marshal.GetLastWin32Error(); if(error!=0) throw new System.ComponentModel.Win32Exception(error); }
+  finally { if(attached) AttachThreadInput(current,browserThread,false); }
+ }
  public static void Release(IntPtr h,uint pid) {
   if(!Owned(h,pid)) return;
   IntPtr original=GetProp(h,Key);
@@ -81,4 +107,7 @@ export class SpotifyNativeWindowBridge {
     await this.run(browser, `Resize(BROWSER, ${numeric(size[0])}, ${numeric(size[1])})`)
   }
   async detach(browser: SpotifyNativeWindow) { await this.run(browser, 'Release(BROWSER)') }
+  async focus(browser: SpotifyNativeWindow, parent: string) {
+    await this.run(browser, `Focus(BROWSER, [IntPtr]::new([long]${numeric(parent)}), [uint32]${numeric(this.hostProcess)})`)
+  }
 }
