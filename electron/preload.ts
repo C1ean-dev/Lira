@@ -74,6 +74,9 @@ export interface IElectronAPI {
   onUpdateProgress: (callback: (progress: UpdateProgress) => void) => () => void
   openExternal: (url: string) => Promise<void>
   openSpotifyPlayer: (url?: string) => Promise<{ ok: boolean; error?: string }>
+  openSpotifyLogin: () => Promise<{ ok: boolean; error?: string }>
+  completeSpotifyLogin: () => Promise<{ ok: boolean; error?: string }>
+  getSpotifyLoginState: () => Promise<{ pending: boolean }>
   getSpotifyPlaybackFrame: () => Promise<SpotifyPlaybackResult>
   startSpotifyTabAudioCapture: () => Promise<{ ok: boolean; error?: string }>
   stopSpotifyTabAudioCapture: () => Promise<boolean>
@@ -172,6 +175,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   openSpotifyPlayer: (url?: string) => ipcRenderer.invoke('open-spotify-player', url),
+  openSpotifyLogin: () => ipcRenderer.invoke('open-spotify-login'),
+  completeSpotifyLogin: () => ipcRenderer.invoke('complete-spotify-login'),
+  getSpotifyLoginState: () => ipcRenderer.invoke('get-spotify-login-state'),
   getSpotifyPlaybackFrame: () => ipcRenderer.invoke('get-spotify-playback-frame'),
     startSpotifyTabAudioCapture: () => ipcRenderer.invoke('start-spotify-tab-audio'),
     stopSpotifyTabAudioCapture: () => ipcRenderer.invoke('stop-spotify-tab-audio'),

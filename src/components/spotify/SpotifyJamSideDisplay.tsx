@@ -7,6 +7,7 @@ import { SpotifyIcon } from '../common/SpotifyIcon'
 import { MediaManager } from '../../media/MediaManager'
 import { SpotifyPlayerFeedback } from './SpotifyPlayerFeedback'
 import { SpotifyPlaybackCrop } from './SpotifyPlaybackCrop'
+import { SpotifyLoginControls } from './SpotifyLoginControls'
 
 export const SpotifyJamSideDisplay: React.FC = () => {
   const localPlayer = useGameStore((s) => s.localPlayer)
@@ -156,6 +157,7 @@ export const SpotifyJamSideDisplay: React.FC = () => {
       </div>
 
       <div className="p-3 bg-[#0a0c12]/70 space-y-3 overflow-y-auto">
+        {!isDjModeActive && <SpotifyLoginControls disabled={djLoading} />}
         {isDjModeActive && <SpotifyPlaybackCrop />}
         <SpotifyPlayerFeedback opening={djLoading} error={djError} />
         <button

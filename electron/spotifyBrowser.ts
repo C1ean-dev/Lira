@@ -1,4 +1,18 @@
 import path from 'node:path'
+import { execFile } from 'node:child_process'
+
+export function runSpotifyBrowserQuery(script: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    // Starting PowerShell and querying WMI can exceed five seconds during browser startup.
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
+      { windowsHide: true, timeout: 15_000 }, (error, stdout, stderr) => {
+        if (error) {
+          console.warn('[Spotify browser query]', { code: error.code, killed: error.killed, signal: error.signal, stderr: stderr.trim().slice(0, 1000) })
+          reject(error)
+        } else resolve(stdout)
+      })
+  })
+}
 
 export function spotifyPlayerUrl(input?: string): string {
   const raw = input?.replace(/^spotify:(track|album|playlist|artist|episode):([A-Za-z0-9]+)$/, 'https://open.spotify.com/$1/$2') || 'https://open.spotify.com'
@@ -9,8 +23,10 @@ export function spotifyPlayerUrl(input?: string): string {
   return raw
 }
 
-export function spotifyBrowserArgs(url: string, profile: string): string[] {
-  return [`--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check', '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0', `--app=${spotifyPlayerUrl(url)}`]
+export function spotifyBrowserArgs(url: string, profile: string, mode: 'player' | 'login' = 'player'): string[] {
+  const common = [`--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check']
+  if (mode === 'login') return [...common, '--disable-background-mode', '--new-window', spotifyPlayerUrl(url)]
+  return [...common, '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0', `--app=${spotifyPlayerUrl(url)}`]
 }
 
 type Browser = { path: string; name: string }
@@ -26,17 +42,15 @@ export function findSpotifyBrowser(env: Record<string, string | undefined>, exis
 }
 
 type BrowserWindow = { processId: number; handle: string; title: string }
-export async function querySpotifyBrowserWindow(profile: string, query: (script: string) => Promise<string>, cached?: BrowserWindow | null): Promise<BrowserWindow | null> {
-  // Encoded data stays out of PowerShell syntax, including paths containing quotes.
+export type SpotifyBrowserProcess = { processId: number; remoteDebugging: boolean }
+function profileLookup(profile: string, body: string, setup = ''): string {
   const encodedProfile = Buffer.from(profile, 'utf8').toString('base64')
-  const script = `
+  return `
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+$ErrorActionPreference = 'Stop'
 $profilePath = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedProfile}'))
-${cached && /^[1-9][0-9]*$/.test(cached.handle) && Number.isSafeInteger(cached.processId) && cached.processId > 0 ? `
-Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class LiraSpotifyWindowCheck { [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p); }'
-$cachedHandle = [IntPtr]::new([long]${cached.handle})
-` : '$cachedHandle = [IntPtr]::Zero'}
-$browserProcesses = Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe' OR Name = 'msedge.exe'"
+${setup}
+$browserProcesses = Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe' OR Name = 'msedge.exe'" -Property ProcessId,CommandLine
 foreach ($browserProcess in $browserProcesses) {
   $line = [string]$browserProcess.CommandLine
   if ($line -match '--type=') { continue }
@@ -44,6 +58,67 @@ foreach ($browserProcess in $browserProcesses) {
   if (!$match.Success) { continue }
   $actualProfile = @($match.Groups[1].Value, $match.Groups[2].Value, $match.Groups[3].Value) | Where-Object { $_ }
   if ([string]$actualProfile -ne $profilePath) { continue }
+  ${body}
+}`
+}
+
+async function lookup(query: (script: string) => Promise<string>, script: string): Promise<string> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try { return await query(script) }
+    catch (error) {
+      const failure = error as { code?: string | number; killed?: boolean; signal?: string } | null
+      const interrupted = failure?.code === 'ETIMEDOUT' || (failure?.killed === true && failure?.signal === 'SIGTERM')
+      if (interrupted && attempt === 0) continue
+      throw Object.assign(new Error('O Windows não conseguiu localizar a janela do Spotify. Tente abrir o Spotify novamente. Se o erro continuar, reinicie o Lira.'), { cause: error })
+    }
+  }
+  return ''
+}
+
+export async function querySpotifyBrowserProcess(profile: string, query: (script: string) => Promise<string> = runSpotifyBrowserQuery): Promise<SpotifyBrowserProcess | null> {
+  const stdout = await lookup(query, profileLookup(profile, `
+  @{ processId = [int]$browserProcess.ProcessId; remoteDebugging = [bool]($line -match '(?:^|\\s)--remote-debugging-(?:port|pipe)(?:=|\\s|$)') } | ConvertTo-Json -Compress
+  break`))
+  if (!stdout.trim()) return null
+  const result = JSON.parse(stdout.trim())
+  return result && Number.isSafeInteger(result.processId) && result.processId > 0 && typeof result.remoteDebugging === 'boolean' ? result : null
+}
+
+export async function closeSpotifyPlayerBrowser(browser: { processId: number }, deps: {
+  getProcess(): Promise<SpotifyBrowserProcess | null>
+  closeBrowser(): Promise<void>
+  stopCapture(): Promise<void>
+  stopMonitoring(): void
+  notifyClosed(): void
+  delay?: (ms: number) => Promise<void>
+  attempts?: number
+}): Promise<void> {
+  const failure = () => new Error('Não foi possível fechar o Spotify. Tente Fechar Spotify novamente na bandeja.')
+  const dedicated = await deps.getProcess()
+  if (dedicated && (dedicated.processId !== browser.processId || !dedicated.remoteDebugging)) throw failure()
+  // Cancel pending openings/lookups before closing; they must not revive the player.
+  deps.stopMonitoring()
+  await deps.stopCapture()
+  deps.notifyClosed()
+  if (!dedicated) return
+  await deps.closeBrowser()
+  const deadline = Date.now() + 15_000
+  for (let attempt = 0; attempt < (deps.attempts ?? 20) && Date.now() < deadline; attempt++) {
+    const remaining = await deps.getProcess()
+    if (!remaining) return
+    if (remaining.processId !== browser.processId || !remaining.remoteDebugging) throw failure()
+    await (deps.delay || (ms => new Promise(resolve => setTimeout(resolve, ms))))(250)
+  }
+  throw failure()
+}
+
+export async function querySpotifyBrowserWindow(profile: string, query: (script: string) => Promise<string> = runSpotifyBrowserQuery, cached?: BrowserWindow | null): Promise<BrowserWindow | null> {
+  // Encoded data stays out of PowerShell syntax, including paths containing quotes.
+  const setup = cached && /^[1-9][0-9]*$/.test(cached.handle) && Number.isSafeInteger(cached.processId) && cached.processId > 0 ? `
+Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class LiraSpotifyWindowCheck { [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p); }'
+$cachedHandle = [IntPtr]::new([long]${cached.handle})
+` : '$cachedHandle = [IntPtr]::Zero'
+  const script = profileLookup(profile, `
   $nativeProcess = Get-Process -Id $browserProcess.ProcessId -ErrorAction SilentlyContinue
   if ($cachedHandle -ne [IntPtr]::Zero -and $nativeProcess -and $nativeProcess.Id -eq ${cached?.processId && Number.isSafeInteger(cached.processId) ? cached.processId : 0}) {
     [uint32]$ownerId = 0
@@ -56,8 +131,8 @@ foreach ($browserProcess in $browserProcesses) {
     @{ processId = [int]$nativeProcess.Id; handle = $nativeProcess.MainWindowHandle.ToInt64().ToString(); title = [string]$nativeProcess.MainWindowTitle } | ConvertTo-Json -Compress
     break
   }
-}`
-  const stdout = await query(script)
+`, setup)
+  const stdout = await lookup(query, script)
   if (!stdout.trim()) return null
   const result = JSON.parse(stdout.trim())
   if (!result || !Number.isSafeInteger(result.processId) || result.processId <= 0 || typeof result.handle !== 'string' || !/^[1-9][0-9]*$/.test(result.handle)) return null
@@ -107,11 +182,13 @@ export class SpotifyBrowserController {
       if (!browser) return { ok: false, error: 'Instale o Google Chrome ou o Microsoft Edge para abrir o Spotify.' }
       if (this.window && !input) {
         const existing = await this.deps.getWindow(this.deps.profile)
+        if (generation !== this.generation) throw new Error('Abertura do Spotify cancelada.')
         if (existing) {
           await this.deps.prepare?.(url)
           if (generation !== this.generation) throw new Error('Abertura do Spotify cancelada.')
           this.window = existing
           await this.deps.focus(existing.handle)
+          if (generation !== this.generation) throw new Error('Abertura do Spotify cancelada.')
           return { ok: true }
         }
       }
@@ -128,8 +205,10 @@ export class SpotifyBrowserController {
           await this.deps.prepare?.(url)
           if (generation !== this.generation) throw new Error('Abertura do Spotify cancelada.')
           await this.deps.attach?.(found)
+          if (generation !== this.generation) throw new Error('Abertura do Spotify cancelada.')
           this.window = found
           await this.deps.focus(found.handle)
+          if (generation !== this.generation) throw new Error('Abertura do Spotify cancelada.')
           this.startWatching()
           return { ok: true }
         }
@@ -159,7 +238,9 @@ export class SpotifyBrowserController {
 
   async source() {
     if (!this.window || !this.browser) return null
+    const generation = this.generation
     const found = await this.deps.getWindow(this.deps.profile)
+    if (generation !== this.generation) return null
     if (!found) {
       this.window = null
       this.unsubscribe?.()

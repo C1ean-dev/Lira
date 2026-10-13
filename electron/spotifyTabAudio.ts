@@ -102,6 +102,8 @@ export class SpotifyTabAudioController {
 
   constructor(private deps: Deps) {}
 
+  get isActive(): boolean { return this.connection !== undefined }
+
   async start(): Promise<{ ok: boolean; error?: string }> {
     await this.stop()
     const generation = ++this.generation

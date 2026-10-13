@@ -6,6 +6,7 @@ import { useMapStore } from '../../store/useMapStore'
 import { SpotifyIcon } from '../common/SpotifyIcon'
 import { MediaManager } from '../../media/MediaManager'
 import { SpotifyPlayerFeedback } from './SpotifyPlayerFeedback'
+import { SpotifyLoginControls } from './SpotifyLoginControls'
 
 export const SpotifyJamModal: React.FC = () => {
   const isModalOpen = useSpotifyJamStore((s) => s.isModalOpen)
@@ -116,6 +117,7 @@ export const SpotifyJamModal: React.FC = () => {
             </div>
           ) : (
             <>
+              {!isDjModeActive && <SpotifyLoginControls disabled={djLoading} />}
               <SpotifyPlayerFeedback opening={djLoading} error={djError} />
               <button
                 type="button"
