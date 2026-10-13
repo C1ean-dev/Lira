@@ -29,13 +29,28 @@ describe('Spotify browser initial navigation', () => {
     expect(s.connection.close).toHaveBeenCalledOnce()
   })
 
-  it('does not navigate a loaded player or an existing login form', async () => {
-    for (const origin of ['https://open.spotify.com', 'https://accounts.spotify.com', 'https://accounts.google.com']) {
-      const s = setup([{ ...loaded, origin }])
-      await prepareSpotifyBrowser('https://open.spotify.com', s.deps)
-      expect(s.request.mock.calls.map(call => call[0])).toEqual(['Runtime.evaluate'])
-      expect(s.connection.close).toHaveBeenCalledOnce()
-    }
+  it('does not navigate a loaded player', async () => {
+    const s = setup()
+    await prepareSpotifyBrowser('https://open.spotify.com', s.deps)
+    expect(s.request.mock.calls.map(call => call[0])).toEqual(['Runtime.evaluate'])
+    expect(s.connection.close).toHaveBeenCalledOnce()
+  })
+
+  it.each(['https://accounts.google.com', 'https://accounts.spotify.com'])('keeps an authentication page outside the host without connecting to it: %s', async origin => {
+    const s = setup()
+    s.deps.json.mockImplementation(async url => url.endsWith('/version')
+      ? { webSocketDebuggerUrl: 'ws://127.0.0.1:12345/devtools/browser/browser-id' }
+      : [{ type: 'page', url: origin, webSocketDebuggerUrl: 'ws://127.0.0.1:12345/devtools/page/page-id' }])
+    await expect(prepareSpotifyBrowser('https://open.spotify.com', s.deps)).rejects.toThrow('Entrar pelo navegador')
+    expect(s.deps.connect).not.toHaveBeenCalled()
+    expect(s.request).not.toHaveBeenCalled()
+  })
+
+  it('does not accept an authentication redirect after connecting to the Spotify page', async () => {
+    const s = setup([{ ...loaded, origin: 'https://accounts.google.com' }])
+    await expect(prepareSpotifyBrowser('https://open.spotify.com', s.deps)).rejects.toThrow('Entrar pelo navegador')
+    expect(s.connection.close).toHaveBeenCalledOnce()
+    expect(s.request.mock.calls.map(call => call[0])).not.toContain('Page.navigate')
   })
 
   it('waits for a navigation already in progress without restarting it', async () => {

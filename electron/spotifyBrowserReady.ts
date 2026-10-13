@@ -10,15 +10,16 @@ type Deps = {
 }
 
 // A Chrome window can exist before its first navigation has committed.
-// Keep it outside the native host until there is a real page to render.
+// Keep it outside the native host until there is a real player page to render.
 export async function prepareSpotifyBrowser(input: string, deps: Deps): Promise<void> {
   const url = spotifyPlayerUrl(input)
   const delay = deps.delay || (ms => new Promise(resolve => setTimeout(resolve, ms)))
-  const origins = ['https://open.spotify.com', 'https://accounts.spotify.com', 'https://accounts.google.com']
+  const loginOrigins = ['https://accounts.spotify.com', 'https://accounts.google.com']
   const deadline = Date.now() + 12000
   let connection: PlaybackConnection | undefined
   let retriedNavigation = false
   let emptyDocuments = 0
+  let loginRequired = false
   try {
     for (let attempt = 0; attempt < (deps.attempts ?? 40) && Date.now() < deadline; attempt++) {
       try {
@@ -34,19 +35,24 @@ export async function prepareSpotifyBrowser(input: string, deps: Deps): Promise<
           const version = await deps.json(`http://127.0.0.1:${port}/json/version`)
           localWs(version.webSocketDebuggerUrl, browserPath)
           const tabs = await deps.json(`http://127.0.0.1:${port}/json/list`)
+          loginRequired = Array.isArray(tabs) && tabs.some(tab => {
+            try { return tab.type === 'page' && loginOrigins.includes(new URL(tab.url).origin) } catch { return false }
+          })
+          if (loginRequired) break
           const page = Array.isArray(tabs) && tabs.find(tab => {
-            try { return tab.type === 'page' && origins.includes(new URL(tab.url).origin) } catch { return false }
+            try { return tab.type === 'page' && new URL(tab.url).origin === 'https://open.spotify.com' } catch { return false }
           })
           if (page) connection = await deps.connect(localWs(page.webSocketDebuggerUrl))
         }
         if (connection) {
           const reply = await connection.request('Runtime.evaluate', {
-            expression: '({ origin: location.origin, state: document.readyState, children: document.body?.childElementCount ?? 0 })',
+            expression: 'location.origin === "https://open.spotify.com" || location.origin === "null" ? ({ origin: location.origin, state: document.readyState, children: document.body?.childElementCount ?? 0 }) : ({ origin: location.origin })',
             returnByValue: true,
           }, 1500)
           const document = reply?.result?.value
-          if (document && origins.includes(document.origin) && document.children > 0) return
-          // Recover only an empty initial document, never a populated login page.
+          if (document && loginOrigins.includes(document.origin)) { loginRequired = true; break }
+          if (document?.origin === 'https://open.spotify.com' && document.children > 0) return
+          // Recover only an empty initial document; authentication is handled externally.
           if (document?.origin === 'null' && document.state === 'complete' && document.children === 0) {
             emptyDocuments++
             if (emptyDocuments >= 3 && !retriedNavigation) {
@@ -61,6 +67,7 @@ export async function prepareSpotifyBrowser(input: string, deps: Deps): Promise<
       }
       if (attempt + 1 < (deps.attempts ?? 40) && Date.now() < deadline) await delay(200)
     }
+    if (loginRequired) throw new Error('Faça login pelo botão Entrar pelo navegador e depois clique em Concluir login no Lira.')
     throw new Error('A página do Spotify não carregou. Verifique sua conexão e tente abrir o Spotify novamente.')
   } finally {
     connection?.close()
