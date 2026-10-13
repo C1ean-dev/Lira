@@ -3,6 +3,14 @@ import { useUpdateStore } from '../../store/useUpdateStore'
 import { UpdateService } from '../../services/updateService'
 
 describe('useUpdateStore - Silent Background Download & Direct Button Update Flow', () => {
+  it('shows the download reason when an interactive retry fails instead of leaving an unhandled rejection', async () => {
+    useUpdateStore.setState({ updateInfo: { hasUpdate: true, currentVersion: '1.0', latestVersion: '1.1', releaseName: '', releaseNotes: '', downloadUrl: 'https://example.com/setup.exe', releaseUrl: '' } })
+    vi.spyOn(UpdateService, 'isUpdateDownloaded').mockResolvedValue(false)
+    vi.spyOn(UpdateService, 'downloadUpdate').mockRejectedValue(new Error('Sem espaço para salvar a atualização.'))
+    expect(await useUpdateStore.getState().applyUpdate()).toBe(false)
+    expect(useUpdateStore.getState().status).toBe('error')
+    expect(useUpdateStore.getState().error).toBe('Sem espaço para salvar a atualização.')
+  })
   it('does not install on 100% byte progress before the installer has finished saving', async () => {
     let progress!: (value: { percent: number; downloaded: number; total: number }) => void
     let finish!: (value: boolean) => void
@@ -142,4 +150,23 @@ describe('useUpdateStore - Silent Background Download & Direct Button Update Flo
     expect(applySpy).toHaveBeenCalledWith('https://github.com/example/release', '1.0.5')
     expect(useUpdateStore.getState().status).toBe('installing')
   })
+
+  it('delegates openManualDownload to UpdateService with store updateInfo', async () => {
+    const mockUpdateInfo = {
+      hasUpdate: true,
+      currentVersion: '1.0.0',
+      latestVersion: '1.1.109',
+      releaseName: 'Release v1.1.109',
+      releaseNotes: '',
+      downloadUrl: 'https://github.com/C1ean-dev/Lira/releases/download/v1.1.109/Lira.Setup.1.1.109.exe',
+      releaseUrl: 'https://github.com/C1ean-dev/Lira/releases/tag/v1.1.109',
+    }
+    useUpdateStore.setState({ updateInfo: mockUpdateInfo })
+
+    const openSpy = vi.spyOn(UpdateService, 'openManualDownload').mockResolvedValue(undefined)
+    await useUpdateStore.getState().openManualDownload()
+
+    expect(openSpy).toHaveBeenCalledWith(mockUpdateInfo)
+  })
 })
+

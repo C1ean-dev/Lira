@@ -3,6 +3,13 @@ import { isNewerVersion, UpdateService, CURRENT_APP_VERSION } from '../../servic
 import * as platform from '../../utils/platform'
 
 describe('Update Service & Version Checker', () => {
+  it('preserves the download reason without showing Electron transport details', async () => {
+    const previous = (globalThis as any).window
+    ;(globalThis as any).window = { electronAPI: { downloadUpdate: vi.fn().mockRejectedValue(new Error("Error invoking remote method 'download-update': Error: Sem espaço no disco para salvar a atualização.")) } }
+    try {
+      await expect(UpdateService.downloadUpdate('https://example.com/setup.exe')).rejects.toThrow(/^Sem espaço no disco para salvar a atualização\.$/)
+    } finally { (globalThis as any).window = previous }
+  })
   it('should accurately compare semver versions', () => {
     expect(isNewerVersion('v1.0.1', '1.0.0')).toBe(true)
     expect(isNewerVersion('v1.1.0', '1.0.9')).toBe(true)
@@ -150,4 +157,72 @@ describe('Update Service & Version Checker', () => {
 
     isAndroidSpy.mockRestore()
   })
+
+  it('resolves direct manual download url from updateInfo or version tag', () => {
+    // 1. When downloadUrl is explicitly present
+    const withDirectUrl = {
+      hasUpdate: true,
+      currentVersion: '1.0.0',
+      latestVersion: '1.1.109',
+      releaseName: 'v1.1.109',
+      releaseNotes: '',
+      downloadUrl: 'https://github.com/C1ean-dev/Lira/releases/download/v1.1.109/Lira.Setup.1.1.109.exe',
+      releaseUrl: 'https://github.com/C1ean-dev/Lira/releases/tag/v1.1.109',
+    }
+    expect(UpdateService.getManualDownloadUrl(withDirectUrl)).toBe(
+      'https://github.com/C1ean-dev/Lira/releases/download/v1.1.109/Lira.Setup.1.1.109.exe'
+    )
+
+    // 2. When downloadUrl is missing, construct direct download exe URL from latestVersion
+    const withoutDirectUrl = {
+      hasUpdate: true,
+      currentVersion: '1.0.0',
+      latestVersion: 'v1.1.109',
+      releaseName: 'v1.1.109',
+      releaseNotes: '',
+      downloadUrl: null,
+      releaseUrl: 'https://github.com/C1ean-dev/Lira/releases/tag/v1.1.109',
+    }
+    expect(UpdateService.getManualDownloadUrl(withoutDirectUrl)).toBe(
+      'https://github.com/C1ean-dev/Lira/releases/download/v1.1.109/Lira.Setup.1.1.109.exe'
+    )
+
+    // 3. Fallback when updateInfo is null
+    expect(UpdateService.getManualDownloadUrl(null)).toBe(
+      'https://github.com/C1ean-dev/Lira/releases/latest'
+    )
+  })
+
+  it('opens manual download url via electronAPI.openExternal or window.open', async () => {
+    const openExternalMock = vi.fn().mockResolvedValue(undefined)
+    ;(globalThis as any).window = {
+      electronAPI: {
+        openExternal: openExternalMock,
+      },
+    }
+
+    await UpdateService.openManualDownload({
+      hasUpdate: true,
+      currentVersion: '1.0.0',
+      latestVersion: '1.1.109',
+      releaseName: '',
+      releaseNotes: '',
+      downloadUrl: 'https://github.com/C1ean-dev/Lira/releases/download/v1.1.109/Lira.Setup.1.1.109.exe',
+      releaseUrl: '',
+    })
+
+    expect(openExternalMock).toHaveBeenCalledWith(
+      'https://github.com/C1ean-dev/Lira/releases/download/v1.1.109/Lira.Setup.1.1.109.exe'
+    )
+
+    // Fallback to window.open when electronAPI is not present
+    const openSpy = vi.fn()
+    ;(globalThis as any).window = { open: openSpy }
+
+    await UpdateService.openManualDownload(null)
+    expect(openSpy).toHaveBeenCalledWith('https://github.com/C1ean-dev/Lira/releases/latest', '_blank')
+
+    delete (globalThis as any).window
+  })
 })
+
