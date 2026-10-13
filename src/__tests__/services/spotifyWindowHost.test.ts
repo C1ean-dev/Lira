@@ -9,13 +9,38 @@ function setup() {
     isMinimized: () => false, restore: vi.fn(), show: vi.fn(), hide: vi.fn(), focus: vi.fn(), destroy: vi.fn(),
   })
   const tray = Object.assign(new EventEmitter(), { destroy: vi.fn() })
-  const bridge = { mount: vi.fn(async () => {}), resize: vi.fn(async () => {}), detach: vi.fn(async () => {}) }
+  const bridge = { mount: vi.fn(async () => {}), resize: vi.fn(async () => {}), detach: vi.fn(async () => {}), focus: vi.fn(async () => {}) }
   let restore!: () => void
   const deps = { createWindow: vi.fn(() => window), createTray: vi.fn((open: () => void) => { restore = open; return tray }), bridge, reportError: vi.fn() }
   return { host: new SpotifyWindowHost(deps), window, tray, bridge, deps, restore: () => restore() }
 }
 
 describe('Spotify browser close to tray', () => {
+  it('returns keyboard focus to the browser on opening, activation and tray restore', async () => {
+    const s = setup()
+    const browser = { processId: 70, handle: '42', title: 'Spotify' }
+    await s.host.attach(browser)
+    await vi.waitFor(() => expect(s.bridge.focus).toHaveBeenCalledWith(browser, '99'))
+    s.bridge.focus.mockClear()
+    s.window.emit('focus')
+    await vi.waitFor(() => expect(s.bridge.focus).toHaveBeenCalledOnce())
+    s.bridge.focus.mockClear()
+    s.restore()
+    await vi.waitFor(() => expect(s.bridge.focus).toHaveBeenCalledOnce())
+  })
+
+  it('ignores queued focus requests after closing and reports native focus failures', async () => {
+    const s = setup()
+    await s.host.attach({ processId: 70, handle: '42', title: 'Spotify' })
+    await vi.waitFor(() => expect(s.bridge.focus).toHaveBeenCalledOnce())
+    s.bridge.focus.mockRejectedValueOnce(new Error('focus failed'))
+    s.window.emit('focus')
+    await vi.waitFor(() => expect(s.deps.reportError).toHaveBeenCalledWith(expect.objectContaining({ message: 'focus failed' })))
+    s.bridge.focus.mockClear()
+    s.window.emit('focus')
+    await s.host.dispose()
+    expect(s.bridge.focus).not.toHaveBeenCalled()
+  })
   it('preserves the host and recovery icon if releasing the native child fails', async () => {
     const s = setup()
     await s.host.attach({ processId: 70, handle: '42', title: 'Spotify' })
