@@ -1,16 +1,38 @@
 import React from 'react'
 import { LiraLogo } from './LiraLogo'
 import { useUpdateStore } from '../store/useUpdateStore'
-import { AlertCircle, RotateCcw, X } from 'lucide-react'
+import { AlertCircle, Download, ExternalLink, RotateCcw, X } from 'lucide-react'
 
-export const AppUpdateScreen: React.FC = () => {
-  const updateInfo = useUpdateStore((s) => s.updateInfo)
-  const status = useUpdateStore((s) => s.status)
-  const progress = useUpdateStore((s) => s.progress)
-  const error = useUpdateStore((s) => s.error)
+import { UpdateInfo, UpdateProgress } from '../services/updateService'
+import { UpdateStatus } from '../store/useUpdateStore'
+
+export interface AppUpdateScreenProps {
+  updateInfo?: UpdateInfo | null
+  status?: UpdateStatus
+  progress?: UpdateProgress
+  error?: string | null
+  onManualDownload?: () => void
+  onRetry?: () => void
+  onClose?: () => void
+}
+
+export const AppUpdateScreen: React.FC<AppUpdateScreenProps> = (props) => {
+  const storeUpdateInfo = useUpdateStore((s) => s.updateInfo)
+  const storeStatus = useUpdateStore((s) => s.status)
+  const storeProgress = useUpdateStore((s) => s.progress)
+  const storeError = useUpdateStore((s) => s.error)
   const setIsUpdateScreenOpen = useUpdateStore((s) => s.setIsUpdateScreenOpen)
   const checkForUpdatesAndDownload = useUpdateStore((s) => s.checkForUpdatesAndDownload)
-  const applyUpdate = useUpdateStore((s) => s.applyUpdate)
+  const openManualDownload = useUpdateStore((s) => s.openManualDownload)
+
+  const updateInfo = props.updateInfo !== undefined ? props.updateInfo : storeUpdateInfo
+  const status = props.status !== undefined ? props.status : storeStatus
+  const progress = props.progress !== undefined ? props.progress : storeProgress
+  const error = props.error !== undefined ? props.error : storeError
+
+  const handleManualDownload = props.onManualDownload || openManualDownload
+  const handleRetry = props.onRetry || checkForUpdatesAndDownload
+  const handleClose = props.onClose || (() => setIsUpdateScreenOpen(false))
 
   const isInstalling = status === 'installing'
   const isDownloading = status === 'downloading'
@@ -112,23 +134,39 @@ export const AppUpdateScreen: React.FC = () => {
         )}
 
         {isError && (
-          <div className="flex items-center gap-3 mt-6">
+          <div className="flex flex-col items-center gap-3 mt-6 w-full max-w-xs animate-in fade-in duration-200">
             <button
+              type="button"
               onClick={() => {
-                checkForUpdatesAndDownload()
+                handleManualDownload()
               }}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg transition-all"
+              className="w-full px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/40 transition-all cursor-pointer"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Tentar Novamente</span>
+              <Download className="w-4 h-4 shrink-0" />
+              <span>Baixar pelo Navegador</span>
+              <ExternalLink className="w-3.5 h-3.5 shrink-0 opacity-80" />
             </button>
-            <button
-              onClick={() => setIsUpdateScreenOpen(false)}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center gap-1.5 transition-all"
-            >
-              <X className="w-3.5 h-3.5" />
-              <span>Fechar</span>
-            </button>
+
+            <div className="flex items-center gap-2 w-full">
+              <button
+                type="button"
+                onClick={() => {
+                  handleRetry()
+                }}
+                className="flex-1 px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md transition-all cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                <span>Tentar Novamente</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleClose()}
+                className="flex-1 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5 shrink-0" />
+                <span>Fechar</span>
+              </button>
+            </div>
           </div>
         )}
 

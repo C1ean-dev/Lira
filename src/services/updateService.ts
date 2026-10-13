@@ -171,9 +171,14 @@ export class UpdateService {
       downloadUrl &&
       typeof window.electronAPI.downloadUpdate === 'function'
     ) {
-      return targetVersion !== undefined
-        ? await window.electronAPI.downloadUpdate(downloadUrl, targetVersion)
-        : await window.electronAPI.downloadUpdate(downloadUrl)
+      try {
+        return targetVersion !== undefined
+          ? await window.electronAPI.downloadUpdate(downloadUrl, targetVersion)
+          : await window.electronAPI.downloadUpdate(downloadUrl)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Falha ao baixar a atualização.'
+        throw new Error(message.replace(/^Error invoking remote method 'download-update':\s*(?:Error:\s*)?/, ''))
+      }
     }
 
     if (isAndroid() && downloadUrl) {
@@ -275,6 +280,38 @@ export class UpdateService {
       window.open(targetUrl, '_blank')
     }
     return true
+  }
+
+  static async openExternalUrl(url: string): Promise<void> {
+    if (
+      typeof window !== 'undefined' &&
+      window.electronAPI &&
+      typeof window.electronAPI.openExternal === 'function'
+    ) {
+      await window.electronAPI.openExternal(url)
+    } else if (typeof window !== 'undefined') {
+      window.open(url, '_blank')
+    }
+  }
+
+  static getManualDownloadUrl(updateInfo?: UpdateInfo | null): string {
+    if (updateInfo?.downloadUrl) {
+      return updateInfo.downloadUrl
+    }
+    if (updateInfo?.latestVersion) {
+      const cleanVer = updateInfo.latestVersion.replace(/^v/i, '').trim()
+      const tag = `v${cleanVer}`
+      if (isAndroid()) {
+        return `https://github.com/${GITHUB_REPO}/releases/download/${tag}/Lira-v${cleanVer}.apk`
+      }
+      return `https://github.com/${GITHUB_REPO}/releases/download/${tag}/Lira.Setup.${cleanVer}.exe`
+    }
+    return updateInfo?.releaseUrl || `https://github.com/${GITHUB_REPO}/releases/latest`
+  }
+
+  static async openManualDownload(updateInfo?: UpdateInfo | null): Promise<void> {
+    const url = this.getManualDownloadUrl(updateInfo)
+    await this.openExternalUrl(url)
   }
 
   static onProgress(callback: (progress: UpdateProgress) => void): () => void {

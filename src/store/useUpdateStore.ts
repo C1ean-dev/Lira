@@ -40,6 +40,7 @@ export interface UpdateStore {
   checkNow: () => Promise<void>
   applyUpdate: () => Promise<boolean>
   startInteractiveUpdate: () => Promise<void>
+  openManualDownload: () => Promise<void>
 }
 
 let unsubProgress: (() => void) | null = null
@@ -243,17 +244,19 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
       }
     }
 
-    const isDownloaded = await UpdateService.isUpdateDownloaded(targetVer)
-    if (!isDownloaded) {
-      set({ status: 'downloading', isUpdateScreenOpen: true, error: null })
-      const downloaded = await UpdateService.downloadUpdate(info?.downloadUrl || null, targetVer)
-      if (!downloaded) {
-        set({
-          status: 'error',
-          error: 'Falha ao baixar o instalador da atualização.',
-        })
-        return false
+    try {
+      const isDownloaded = await UpdateService.isUpdateDownloaded(targetVer)
+      if (!isDownloaded) {
+        set({ status: 'downloading', isUpdateScreenOpen: true, error: null })
+        const downloaded = await UpdateService.downloadUpdate(info?.downloadUrl || null, targetVer)
+        if (!downloaded) {
+          set({ status: 'error', error: 'Falha ao baixar o instalador da atualização.' })
+          return false
+        }
       }
+    } catch (err: any) {
+      set({ status: 'error', error: err?.message || 'Falha ao baixar o instalador da atualização.' })
+      return false
     }
 
     set({ status: 'installing', isUpdateScreenOpen: true, error: null })
@@ -302,5 +305,9 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
     } else {
       await get().checkForUpdatesAndDownload()
     }
+  },
+
+  openManualDownload: async () => {
+    await UpdateService.openManualDownload(get().updateInfo)
   },
 }))

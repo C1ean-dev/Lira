@@ -132,9 +132,20 @@ export const UpdateModal: React.FC<Props> = ({
           )}
 
           {activeError && (
-            <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-300">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{activeError}</span>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-300">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{activeError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => UpdateService.openManualDownload(updateInfo)}
+                className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                <span>Baixar pelo Navegador</span>
+                <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+              </button>
             </div>
           )}
 
