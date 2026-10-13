@@ -26,12 +26,16 @@ export function findSpotifyBrowser(env: Record<string, string | undefined>, exis
 }
 
 type BrowserWindow = { processId: number; handle: string; title: string }
-export async function querySpotifyBrowserWindow(profile: string, query: (script: string) => Promise<string>): Promise<BrowserWindow | null> {
+export async function querySpotifyBrowserWindow(profile: string, query: (script: string) => Promise<string>, cached?: BrowserWindow | null): Promise<BrowserWindow | null> {
   // Encoded data stays out of PowerShell syntax, including paths containing quotes.
   const encodedProfile = Buffer.from(profile, 'utf8').toString('base64')
   const script = `
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $profilePath = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedProfile}'))
+${cached && /^[1-9][0-9]*$/.test(cached.handle) && Number.isSafeInteger(cached.processId) && cached.processId > 0 ? `
+Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class LiraSpotifyWindowCheck { [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h); [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p); }'
+$cachedHandle = [IntPtr]::new([long]${cached.handle})
+` : '$cachedHandle = [IntPtr]::Zero'}
 $browserProcesses = Get-CimInstance Win32_Process -Filter "Name = 'chrome.exe' OR Name = 'msedge.exe'"
 foreach ($browserProcess in $browserProcesses) {
   $line = [string]$browserProcess.CommandLine
@@ -41,6 +45,13 @@ foreach ($browserProcess in $browserProcesses) {
   $actualProfile = @($match.Groups[1].Value, $match.Groups[2].Value, $match.Groups[3].Value) | Where-Object { $_ }
   if ([string]$actualProfile -ne $profilePath) { continue }
   $nativeProcess = Get-Process -Id $browserProcess.ProcessId -ErrorAction SilentlyContinue
+  if ($cachedHandle -ne [IntPtr]::Zero -and $nativeProcess -and $nativeProcess.Id -eq ${cached?.processId && Number.isSafeInteger(cached.processId) ? cached.processId : 0}) {
+    [uint32]$ownerId = 0
+    if ([LiraSpotifyWindowCheck]::IsWindow($cachedHandle) -and [LiraSpotifyWindowCheck]::GetWindowThreadProcessId($cachedHandle, [ref]$ownerId) -ne 0 -and $ownerId -eq $nativeProcess.Id) {
+      @{ processId = [int]$nativeProcess.Id; handle = $cachedHandle.ToInt64().ToString(); title = 'Spotify' } | ConvertTo-Json -Compress
+      break
+    }
+  }
   if ($nativeProcess -and $nativeProcess.MainWindowHandle -ne 0) {
     @{ processId = [int]$nativeProcess.Id; handle = $nativeProcess.MainWindowHandle.ToInt64().ToString(); title = [string]$nativeProcess.MainWindowTitle } | ConvertTo-Json -Compress
     break
@@ -61,6 +72,7 @@ type BrowserDeps = {
   launch: (exe: string, args: string[]) => BrowserChild
   getWindow: (profile: string) => Promise<BrowserWindow | null>
   focus: (handle: string) => Promise<void>
+  attach?: (window: BrowserWindow) => Promise<void>
   delay?: (ms: number) => Promise<void>
   watch?: (callback: () => Promise<void>) => () => void
   onClosed?: () => void
@@ -111,6 +123,7 @@ export class SpotifyBrowserController {
         if (generation !== this.generation) throw new Error('Abertura do Spotify cancelada.')
         if (found) {
           this.window = found
+          await this.deps.attach?.(found)
           await this.deps.focus(found.handle)
           this.startWatching()
           return { ok: true }

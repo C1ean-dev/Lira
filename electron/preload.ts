@@ -77,6 +77,8 @@ export interface IElectronAPI {
   getSpotifyPlaybackFrame: () => Promise<SpotifyPlaybackResult>
   startSpotifyTabAudioCapture: () => Promise<{ ok: boolean; error?: string }>
   stopSpotifyTabAudioCapture: () => Promise<boolean>
+  onSpotifyTabAudioData: (callback: (data: Uint8Array) => void) => () => void
+  onSpotifyTabAudioStatus: (callback: (event: { status: 'started' | 'stopped' | 'error'; detail?: string }) => void) => () => void
   spotifyPlaybackCommand: (command: SpotifyPlaybackCommand) => Promise<SpotifyPlaybackResult>
   getSpotifyCurrentTrack: () => Promise<SpotifyTrackInfo>
   findSpotifySource: () => Promise<SpotifySourceResult | null>
@@ -173,6 +175,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getSpotifyPlaybackFrame: () => ipcRenderer.invoke('get-spotify-playback-frame'),
     startSpotifyTabAudioCapture: () => ipcRenderer.invoke('start-spotify-tab-audio'),
     stopSpotifyTabAudioCapture: () => ipcRenderer.invoke('stop-spotify-tab-audio'),
+    onSpotifyTabAudioData: (callback: (data: Uint8Array) => void) => {
+      const handler = (_event: unknown, data: Uint8Array) => callback(new Uint8Array(data))
+      ipcRenderer.on('spotify-tab-audio-data', handler)
+      return () => ipcRenderer.removeListener('spotify-tab-audio-data', handler)
+    },
+    onSpotifyTabAudioStatus: (callback: (event: { status: 'started' | 'stopped' | 'error'; detail?: string }) => void) => {
+      const handler = (_event: unknown, event: { status: 'started' | 'stopped' | 'error'; detail?: string }) => callback(event)
+      ipcRenderer.on('spotify-tab-audio-status', handler)
+      return () => ipcRenderer.removeListener('spotify-tab-audio-status', handler)
+    },
   spotifyPlaybackCommand: (command: SpotifyPlaybackCommand) => ipcRenderer.invoke('spotify-playback-command', command),
   getSpotifyCurrentTrack: () => ipcRenderer.invoke('get-spotify-current-track'),
   findSpotifySource: () => ipcRenderer.invoke('find-spotify-source'),

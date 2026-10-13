@@ -3,6 +3,27 @@ import { useUpdateStore } from '../../store/useUpdateStore'
 import { UpdateService } from '../../services/updateService'
 
 describe('useUpdateStore - Silent Background Download & Direct Button Update Flow', () => {
+  it('does not install on 100% byte progress before the installer has finished saving', async () => {
+    let progress!: (value: { percent: number; downloaded: number; total: number }) => void
+    let finish!: (value: boolean) => void
+    vi.spyOn(UpdateService, 'checkForUpdates').mockResolvedValue({ hasUpdate: true, currentVersion: '1.0.0', latestVersion: '1.0.5', releaseName: '', releaseNotes: '', downloadUrl: 'https://example.com/setup.exe', releaseUrl: 'https://example.com/release' })
+    vi.spyOn(UpdateService, 'isUpdateDownloaded').mockResolvedValue(false)
+    vi.spyOn(UpdateService, 'onProgress').mockImplementation(callback => { progress = callback; return () => {} })
+    vi.spyOn(UpdateService, 'onUpdateDownloaded').mockReturnValue(() => {})
+    vi.spyOn(UpdateService, 'downloadUpdate').mockImplementation(() => new Promise(resolve => { finish = resolve }))
+    const apply = vi.spyOn(UpdateService, 'applyUpdate').mockResolvedValue(true)
+    useUpdateStore.setState({ isUpdateScreenOpen: true })
+    const pending = useUpdateStore.getState().checkForUpdatesAndDownload()
+    await vi.waitFor(() => expect(progress).toBeTypeOf('function'))
+    progress({ percent: 100, downloaded: 100, total: 100 })
+    const statusAtEndOfBytes = useUpdateStore.getState().status
+    const installationsAtEndOfBytes = apply.mock.calls.length
+    useUpdateStore.setState({ isUpdateScreenOpen: false })
+    finish(true)
+    await pending
+    expect(statusAtEndOfBytes).toBe('downloading')
+    expect(installationsAtEndOfBytes).toBe(0)
+  })
   beforeEach(() => {
     useUpdateStore.setState({
       updateInfo: null,

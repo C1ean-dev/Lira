@@ -3,6 +3,7 @@ import { useMediaStore } from '../../store/useMediaStore'
 import { useGameStore } from '../../store/useGameStore'
 import { PeerManager } from '../../p2p/PeerManager'
 import { MediaCallHandler } from '../../p2p/mediaCalls'
+import { useSpotifyJamStore } from '../../store/useSpotifyJamStore'
 
 vi.mock('peerjs', () => ({ default: class { on = vi.fn(); destroyed = false } }))
 vi.mock('../../p2p/messageHandlers', () => ({ processNetworkMessage: vi.fn() }))
@@ -29,7 +30,7 @@ describe('DJ host audio', () => {
     expect(await manager.startDjBot(stream)).toEqual({ ok: true })
     expect(useGameStore.getState().setRemotePlayer).toHaveBeenCalledWith(expect.objectContaining({ name: 'DJ', isDjBot: true }))
     expect(setStream).toHaveBeenCalledWith(manager.djBotId, stream)
-    expect(volume).toHaveBeenCalledWith(manager.djBotId, 100)
+    expect(volume).toHaveBeenCalledWith(manager.djBotId, useSpotifyJamStore.getState().volume)
     const receive = manager.djPeer.on.mock.calls.find(([event]: [string]) => event === 'call')[1]
     const incoming = { answer: vi.fn(), peer: 'listener', on: vi.fn() }
     receive(incoming)

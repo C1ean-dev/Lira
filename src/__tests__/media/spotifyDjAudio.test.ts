@@ -49,9 +49,14 @@ describe('Spotify DJ audio startup', () => {
   })
 
   it('keeps screen sharing capture intact instead of replacing its native helper', async () => {
-    ;(manager as any).processAudioCapture = {}
-    expect((await manager.startDjAudio()).ok).toBe(false)
-    expect(mocks.start).not.toHaveBeenCalled()
+    ;(manager as any).processAudioCapture = { stop: vi.fn() }
+    const screenCapture = (manager as any).processAudioCapture
+    expect((await manager.startDjAudio()).ok).toBe(true)
+    expect(mocks.start).toHaveBeenCalledWith('spotify-tab')
+    expect((manager as any).processAudioCapture).toBe(screenCapture)
+    await manager.stopDjAudio()
+    expect(screenCapture.stop).not.toHaveBeenCalled()
+    expect((manager as any).processAudioCapture).toBe(screenCapture)
   })
 
   it('releases capture when the bot cannot connect', async () => {
@@ -79,13 +84,6 @@ describe('Spotify DJ audio startup', () => {
     ready({ ok: true })
     expect((await pending).ok).toBe(false)
     expect(mocks.start).not.toHaveBeenCalled()
-  })
-
-  it('does not replace the DJ capture when screen sharing starts', async () => {
-    ;(manager as any).isDjStreaming = true
-    expect(await manager.startScreenShare()).toBeNull()
-    expect(mocks.stop).not.toHaveBeenCalled()
-    expect(manager.isDjAudioActive()).toBe(true)
   })
 
   it('stops the DJ and unsubscribes when its player closes', async () => {

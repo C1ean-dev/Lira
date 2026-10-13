@@ -1265,7 +1265,8 @@ export class PeerManager {
       useGameStore.getState().setRemotePlayer(djPlayer)
       useMediaStore.getState().setPeerStream(djBotId, audioStream)
       useGameStore.getState().setCallState(djBotId, 'connected')
-      useMediaStore.getState().setParticipantVolume(djBotId, 100)
+      const listening = useSpotifyJamStore.getState()
+      useMediaStore.getState().setParticipantVolume(djBotId, listening.isMuted ? 0 : listening.volume)
 
       this.broadcast({
         type: 'PLAYER_JOIN',

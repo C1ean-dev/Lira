@@ -9,6 +9,7 @@ import {
 } from '../types/spotifyJam'
 import { useGameStore } from './useGameStore'
 import { PeerManager } from '../p2p/PeerManager'
+import { setDjListeningVolume } from '../media/djListeningVolume'
 
 interface SpotifyJamStore {
   jamsByZone: Record<string, ZoneJamSession>
@@ -70,10 +71,12 @@ export const useSpotifyJamStore = create<SpotifyJamStore>((set, get) => ({
 
   setVolume: (volume: number) => {
     set({ volume: Math.max(0, Math.min(200, volume)), isMuted: false })
+    setDjListeningVolume(get().volume)
   },
 
   toggleMute: () => {
     set((state) => ({ isMuted: !state.isMuted }))
+    setDjListeningVolume(get().isMuted ? 0 : get().volume)
   },
 
   startJamInZone: (zoneId, zoneName, rawUrl) => {

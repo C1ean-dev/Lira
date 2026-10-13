@@ -8,6 +8,7 @@ import { diagLog, shortId, summarizeStream, summarizeTrack } from '../utils/diag
 import { useMediaStore } from '../store/useMediaStore'
 import { useGameStore } from '../store/useGameStore'
 import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
+import { setDjListeningVolume } from './djListeningVolume'
 import { PeerManager } from '../p2p/PeerManager'
 import { SensitivityMode, AudioProcessorMode } from '../types/audio'
 
@@ -37,6 +38,7 @@ interface AudioEngine {
   setSensitivity(mode: SensitivityMode, manualThresholdPercent: number): void
   setSuppressionEnabled(enabled: boolean): void
   setTestLoopback(enabled: boolean): void
+  resumeContext(): Promise<void>
   dispose(): void
 }
 
@@ -774,6 +776,12 @@ export class MediaManager {
     return nextMute
   }
 
+  public async resumeMicrophone(): Promise<void> {
+    if (useMediaStore.getState().isMuted || useGameStore.getState().localPlayer.isMutedByAdmin) return
+    try { await this.activeEngine?.resumeContext() }
+    catch (error) { diagLog('media', 'microphone-resume-failed', { error: errShort(error) }) }
+  }
+
   public syncMuteState(isMuted: boolean, isMutedByAdmin?: boolean): void {
     diagLog('media', 'mute', { isMuted, isMutedByAdmin })
     try {
@@ -995,10 +1003,6 @@ export class MediaManager {
   }
 
   public async startScreenShare(config: ScreenShareConfig = {}): Promise<MediaStream | null> {
-    if (this.isDjStreaming || this.isDjStarting) {
-      console.warn('[MediaManager] Pare o DJ antes de compartilhar áudio da tela.')
-      return null
-    }
     try {
       this.isStoppingScreenShare = false
       this.isRecoveringScreenShare = false
@@ -1307,7 +1311,7 @@ export class MediaManager {
       let targetSourceId = customSourceId
       const electronAPI = typeof window !== 'undefined' ? (window as any).electronAPI : null
 
-      if (this.processAudioCapture) {
+      if (this.processAudioCapture && customSourceId) {
         return { ok: false, error: 'Pare o compartilhamento de áudio da tela antes de iniciar o DJ.' }
       }
       if (!targetSourceId) {
@@ -1401,10 +1405,7 @@ export class MediaManager {
   }
 
   public setDjVolume(percentage: number): void {
-    if (this.djGainNode && this.djAudioContext) {
-      const vol = Math.max(0, Math.min(200, percentage)) / 100
-      this.djGainNode.gain.setValueAtTime(vol, this.djAudioContext.currentTime)
-    }
+    setDjListeningVolume(percentage)
   }
 
   private async createDjLiveAudioTrack(
@@ -1433,8 +1434,7 @@ export class MediaManager {
     musicGain.channelCountMode = 'explicit'
     musicGain.channelInterpretation = 'discrete'
 
-    const rawVol = useSpotifyJamStore.getState().volume
-    musicGain.gain.setValueAtTime(rawVol / 100, audioContext.currentTime)
+    musicGain.gain.setValueAtTime(1, audioContext.currentTime)
     musicSource.connect(musicGain)
     musicGain.connect(destination)
 

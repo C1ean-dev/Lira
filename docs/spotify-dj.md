@@ -8,7 +8,7 @@ O Lira abre o site oficial do Spotify em uma janela dedicada do Google Chrome. S
 2. Faça login diretamente no Spotify com a própria conta.
 3. No seletor do navegador, selecione a própria aba do Spotify e marque Compartilhar áudio da aba. Escolha suas músicas ou playlists e dê play na página oficial. Enquanto o DJ estiver ativo, o navegador suprime a reprodução local; o som é ouvido pelo participante DJ da chamada, inclusive por quem iniciou a transmissão.
 4. Use o volume do painel para ajustar a transmissão e Parar DJ para encerrá-la.
-5. Fechar a janela dedicada também encerra o DJ. Parar o DJ mantém o Spotify aberto.
+5. O X da janela dedicada esconde o Spotify na bandeja do sistema e mantém a reprodução e o DJ ativos. Clique no ícone “Spotify — Lira DJ” ou em “Abrir Spotify” no seu menu para reabrir. Parar o DJ mantém o Spotify aberto. Ao sair do Lira, a janela é devolvida ao navegador.
 
 O login fica salvo no perfil local dedicado do navegador. O Lira não implementa autenticação própria do Spotify, não recebe a senha do usuário e não exige outra conta.
 
@@ -42,7 +42,9 @@ O navegador abre com comunicação local de depuração em uma porta aleatória,
 
 É necessário fechar uma janela dedicada aberta antes da inclusão da comunicação local e abri-la novamente pelo Lira para habilitar os controles. Durante login, antes de selecionar uma música ou quando a página alterar sua estrutura, o painel informa que os controles estão indisponíveis; a captura de áudio continua independente. O estado é atualizado periodicamente enquanto o painel estiver aberto e o Lira estiver visível. Falhas temporárias preservam o último estado válido e os controles ausentes ficam desabilitados, mantendo o painel estável.
 
-A captura requer Chrome ou Edge com suporte a supressão de áudio local e Capture Handle, instalados em uma localização padrão. O fluxo continua exclusivo em relação ao compartilhamento de tela com áudio. O Lira não instala navegadores.
+A captura requer Chrome ou Edge com suporte a supressão de áudio local e Capture Handle, instalados em uma localização padrão. O DJ do Spotify pode funcionar junto com o compartilhamento de tela e seu áudio: cada captura usa canais de dados, erros e encerramento separados. Parar uma captura mantém a outra ativa. O Lira não instala navegadores.
+
+O volume de 0% a 200% e o mudo no Lira ajustam apenas a escuta local do participante DJ, inclusive para quem iniciou a transmissão. A trilha enviada à sala usa ganho de 100% e cada ouvinte controla seu próprio volume. O volume na página do Spotify continua fazendo parte da fonte capturada.
 
 ## Validação
 

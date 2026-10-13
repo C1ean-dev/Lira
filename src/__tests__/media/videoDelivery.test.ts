@@ -432,6 +432,10 @@ describe('Video Delivery & Screen Share Guarantee Tests', () => {
     const prevWindow = (globalThis as any).window
     ;(globalThis as any).window = {}
     try {
+      const manager = MediaManager.getInstance() as any
+      manager.isDjStreaming = true
+      const djCapture = { stop: vi.fn() }
+      manager.djProcessAudioCapture = djCapture
       const screenAudioTrack: any = { id: 'screen-audio-1', kind: 'audio', enabled: false, stop: vi.fn() }
       const screenVideoTrack: any = { id: 'screen-video-1', kind: 'video', enabled: false, stop: vi.fn(), onended: null }
       const fakeScreenStream = new MockMediaStream()
@@ -455,6 +459,8 @@ describe('Video Delivery & Screen Share Guarantee Tests', () => {
       })
 
       expect(stream).toBe(fakeScreenStream as unknown as MediaStream)
+      expect(manager.djProcessAudioCapture).toBe(djCapture)
+      expect(djCapture.stop).not.toHaveBeenCalled()
       expect(replaceSpy).toHaveBeenCalledWith(screenAudioTrack)
       expect(screenAudioTrack.enabled).toBe(true)
       expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalledWith(
@@ -466,6 +472,10 @@ describe('Video Delivery & Screen Share Guarantee Tests', () => {
       expect(useMediaStore.getState().isScreenSharing).toBe(true)
 
       MediaManager.getInstance().stopScreenShare()
+      expect(manager.isDjStreaming).toBe(true)
+      expect(djCapture.stop).not.toHaveBeenCalled()
+      manager.isDjStreaming = false
+      manager.djProcessAudioCapture = null
       expect(replaceSpy).toHaveBeenLastCalledWith(micTrack)
       expect(useMediaStore.getState().isScreenSharing).toBe(false)
     } finally {

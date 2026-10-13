@@ -616,7 +616,7 @@ export class RnnoiseProcessor {
   }
 
   public async resumeContext(): Promise<void> {
-    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+    if (this.audioCtx && (this.audioCtx.state === 'suspended' || String(this.audioCtx.state) === 'interrupted')) {
       try {
         await this.audioCtx.resume()
       } catch {}
