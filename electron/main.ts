@@ -24,6 +24,7 @@ import { createStartupTimer } from './startupTimer'
 import { startCpuProfile } from './startupProfile'
 import { sanitizeRecords } from '../src/utils/logFormat'
 import { SpotifyBrowserController, findSpotifyBrowser, querySpotifyBrowserWindow } from './spotifyBrowser'
+import { prepareSpotifyBrowser } from './spotifyBrowserReady'
 import { SpotifyPlaybackController } from './spotifyPlayback'
 import { SpotifyTabAudioController } from './spotifyTabAudio'
 import { connectPlayback, playbackJson } from './spotifyPlaybackTransport'
@@ -98,6 +99,11 @@ const spotifyPlayer = new SpotifyBrowserController({
     return spawn(exe, args, { stdio: 'ignore', windowsHide: false })
   },
   getWindow: profile => querySpotifyBrowserWindow(profile, queryBrowserWindows, spotifyWindowHost.browser),
+  prepare: url => prepareSpotifyBrowser(url, {
+    readPortFile: () => fs.promises.readFile(path.join(app.getPath('userData'), 'spotify-browser', 'DevToolsActivePort'), 'utf8'),
+    json: playbackJson,
+    connect: connectPlayback,
+  }),
   attach: browser => spotifyWindowHost.attach(browser),
   focus: async handle => {
     if (spotifyWindowHost.show()) return

@@ -20,6 +20,41 @@ function setup(overrides: any = {}) {
 }
 
 describe('Spotify in a real browser', () => {
+  it('waits for the page to load before embedding a browser with an empty startup document', async () => {
+    let loaded = false
+    const prepare = vi.fn(async () => { loaded = true })
+    const attach = vi.fn(async () => { if (!loaded) throw new Error('Empty startup document embedded') })
+    const { player } = setup({ prepare, attach })
+    expect(await player.open()).toEqual({ ok: true })
+    expect(prepare).toHaveBeenCalledWith('https://open.spotify.com')
+    expect(prepare.mock.invocationCallOrder[0]).toBeLessThan(attach.mock.invocationCallOrder[0])
+  })
+
+  it('keeps an unloaded browser out of the host and out of DJ capture', async () => {
+    const prepare = vi.fn(async () => { throw new Error('A página do Spotify não carregou.') })
+    const attach = vi.fn(async () => {})
+    const { player } = setup({ prepare, attach })
+    expect(await player.open()).toEqual({ ok: false, error: 'A página do Spotify não carregou.' })
+    expect(attach).not.toHaveBeenCalled()
+    expect(player.isOpen).toBe(false)
+  })
+
+  it('does not mount a browser when opening is cancelled during page loading', async () => {
+    let complete!: () => void
+    let started!: () => void
+    const preparing = new Promise<void>(resolve => { started = resolve })
+    const prepare = vi.fn(() => { started(); return new Promise<void>(resolve => { complete = resolve }) })
+    const attach = vi.fn(async () => {})
+    const { player } = setup({ prepare, attach })
+    const opening = player.open()
+    await preparing
+    player.close()
+    complete()
+    expect(await opening).toEqual({ ok: false, error: 'Abertura do Spotify cancelada.' })
+    expect(attach).not.toHaveBeenCalled()
+    expect(player.isOpen).toBe(false)
+  })
+
   it('attaches the external browser to its tray host before focusing it', async () => {
     const attach = vi.fn(async () => {})
     const { player, deps } = setup({ attach })
