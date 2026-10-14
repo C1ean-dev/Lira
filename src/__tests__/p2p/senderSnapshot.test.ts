@@ -125,8 +125,14 @@ describe('watchRemoteTracks', () => {
 })
 
 describe('audio sender recovery', () => {
-  beforeEach(() => __resetDiagForTests())
-  afterEach(() => __resetDiagForTests())
+  beforeEach(() => {
+    __resetDiagForTests()
+    useMediaStore.setState({ localStream: null, localScreenStream: null, isScreenSharing: false })
+  })
+  afterEach(() => {
+    __resetDiagForTests()
+    useMediaStore.setState({ localStream: null, localScreenStream: null, isScreenSharing: false })
+  })
 
   it('reuses a negotiated audio sender even when its track is temporarily null', async () => {
     const replaceTrack = vi.fn(async () => undefined)
@@ -149,21 +155,43 @@ describe('audio sender recovery', () => {
   })
 
   it('reconciliation accepts a marked live screen-share track without replacing it with the mic', async () => {
-    const replaceTrack = vi.fn(async () => undefined)
-    const pc: any = {
-      getSenders: () => [{ track: null, replaceTrack }],
-      getTransceivers: () => [{ kind: 'audio', sender: { track: null, replaceTrack } }],
-    }
     const liveTrack: any = { id: 'live-screen-audio', kind: 'audio', enabled: true, readyState: 'live', __screenShareLiveAudio: true }
     const micTrack: any = { id: 'mic-track', kind: 'audio', enabled: true, readyState: 'live' }
+    const micSender = { track: micTrack, replaceTrack: vi.fn(async () => undefined) }
+    const liveSender = { track: null, replaceTrack: vi.fn(async () => undefined) }
+    const videoSender = { track: { kind: 'video' }, replaceTrack: vi.fn(async () => undefined) }
+    const pc: any = {
+      getSenders: () => [micSender, videoSender, liveSender],
+      getTransceivers: () => [
+        { sender: micSender, receiver: { track: { kind: 'audio' } } },
+        { sender: videoSender, receiver: { track: { kind: 'video' } } },
+        { sender: liveSender, receiver: { track: { kind: 'audio' } } },
+      ],
+    }
     const stream: any = { getAudioTracks: () => [micTrack] }
     const screen: any = { getAudioTracks: () => [liveTrack] }
     useMediaStore.setState({ localStream: stream, localScreenStream: screen, isScreenSharing: true })
 
     MediaCallHandler.replaceAudioTrack(new Map([['peer-screen', { peerConnection: pc } as any]]), liveTrack, 'connected-reconcile')
     await Promise.resolve()
-    expect(replaceTrack).toHaveBeenCalledWith(liveTrack)
-    expect(replaceTrack).not.toHaveBeenCalledWith(micTrack)
+    expect(liveSender.replaceTrack).toHaveBeenCalledExactlyOnceWith(liveTrack)
+    expect(micSender.replaceTrack).not.toHaveBeenCalled()
+    expect(videoSender.replaceTrack).not.toHaveBeenCalled()
+  })
+
+  it('does not reconcile live audio into a legacy call with only a microphone sender', async () => {
+    const micTrack: any = { id: 'mic-track', kind: 'audio', enabled: true, readyState: 'live' }
+    const liveTrack: any = { id: 'live-screen-audio', kind: 'audio', enabled: true, readyState: 'live', __screenShareLiveAudio: true }
+    const micSender = { track: micTrack, replaceTrack: vi.fn(async () => undefined) }
+    const pc: any = {
+      getSenders: () => [micSender],
+      getTransceivers: () => [{ sender: micSender, receiver: { track: { kind: 'audio' } } }],
+      addTrack: vi.fn(),
+    }
+    MediaCallHandler.replaceAudioTrack(new Map([['legacy-peer', { peerConnection: pc } as any]]), liveTrack, 'connected-reconcile')
+    await Promise.resolve()
+    expect(micSender.replaceTrack).not.toHaveBeenCalled()
+    expect(pc.addTrack).not.toHaveBeenCalled()
   })
 })
 
