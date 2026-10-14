@@ -7,6 +7,7 @@ import { attachStreamToVideo } from '../../media/attachVideoElement'
 import { AvatarConfig } from '../../types/game'
 import { PlayerAvatar } from '../common/PlayerAvatar'
 import { RemoteAudio } from '../common/RemoteAudio'
+import { LiveListeningAudio } from '../common/LiveListeningAudio'
 import { SpotifyIcon } from '../common/SpotifyIcon'
 import { LiveWatchPrompt } from '../LiveWatchPrompt'
 import { useLiveGate } from '../../hooks/useLiveGate'
@@ -43,6 +44,7 @@ interface Props {
   onFocus?: () => void
   onOpenLiveFullscreen?: (user: ParticipantData) => void
   onContextMenu?: (user: ParticipantData, e: React.MouseEvent) => void
+  suppressLiveAudio?: boolean
 }
 
 export const GridParticipantTile: React.FC<Props> = ({
@@ -52,6 +54,7 @@ export const GridParticipantTile: React.FC<Props> = ({
   onFocus,
   onOpenLiveFullscreen,
   onContextMenu,
+  suppressLiveAudio = false,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const isLive = Boolean(user.screenStream || user.isScreenSharing)
@@ -60,6 +63,8 @@ export const GridParticipantTile: React.FC<Props> = ({
 
   const participantVolumes = useMediaStore((s) => s.participantVolumes)
   const setParticipantVolume = useMediaStore((s) => s.setParticipantVolume)
+  const liveVolume = useMediaStore(s => s.liveStreamVolume)
+  const setLiveVolume = useMediaStore(s => s.setLiveStreamVolume)
   const outputVolume = useMediaStore((s) => s.outputVolume)
   const selectedAudioOutput = useMediaStore((s) => s.selectedAudioOutput)
   const isDeafened = useMediaStore((s) => s.isDeafened)
@@ -67,14 +72,19 @@ export const GridParticipantTile: React.FC<Props> = ({
   const removeCaptureBorder = useMediaStore((s) => s.removeCaptureBorder)
   const networkQuality = useUserNetworkQuality(user.id, user.isLocal)
 
-  const rawVolume =
+  const voiceVolume =
     participantVolumes[user.id] !== undefined
       ? participantVolumes[user.id]
       : user.gameId && participantVolumes[user.gameId] !== undefined
       ? participantVolumes[user.gameId]
       : 100
+  const rawVolume = isLive ? liveVolume : voiceVolume
+  const changeVolume = (value: number) => {
+    if (isLive) setLiveVolume(value)
+    else { setParticipantVolume(user.id, value); if (user.name) setParticipantVolume(user.name, value) }
+  }
 
-  const isEffectivelyMuted = Boolean(user.isLocal || isDeafened || isSilenced || rawVolume === 0)
+  const isEffectivelyMuted = Boolean(user.isLocal || isDeafened || isSilenced || voiceVolume === 0)
 
   useEffect(() => {
     const video = videoRef.current
@@ -93,16 +103,18 @@ export const GridParticipantTile: React.FC<Props> = ({
   useLiveViewBox(user.id, videoRef, isSidebar ? 'cover' : 'contain', liveGate.watching)
 
   const remoteAudio =
-    !user.isLocal && activeStream ? (
+    !user.isLocal ? <>
+      {user.stream && (
       <RemoteAudio
-        stream={activeStream}
+        stream={user.stream}
         tile="grid-audio"
         peer={user.id}
         muted={isEffectivelyMuted}
-        volume={(outputVolume / 100) * (rawVolume / 100)}
+        volume={(outputVolume / 100) * (voiceVolume / 100)}
         sinkId={selectedAudioOutput}
-      />
-    ) : null
+      />)}
+      {isLive && user.screenStream && <LiveListeningAudio stream={user.screenStream} peer={user.id} name={user.name} muted={suppressLiveAudio || liveGate.needsClick} />}
+    </> : null
 
   const hasLiveVideoTrack = useMemo(() => {
     if (!activeStream) return false
@@ -380,11 +392,10 @@ export const GridParticipantTile: React.FC<Props> = ({
                 onClick={(e) => {
                   e.stopPropagation()
                   const nextVol = rawVolume === 0 ? 100 : 0
-                  setParticipantVolume(user.id, nextVol)
-                  if (user.name) setParticipantVolume(user.name, nextVol)
+                  changeVolume(nextVol)
                 }}
                 className="p-0.5 rounded text-slate-300 hover:text-white transition-colors"
-                title={rawVolume === 0 ? 'Desmutar este participante' : 'Mutar este participante'}
+                title={isLive ? (rawVolume === 0 ? 'Desmutar esta live' : 'Mutar esta live') : (rawVolume === 0 ? 'Desmutar este participante' : 'Mutar este participante')}
               >
                 {rawVolume === 0 ? (
                   <VolumeX className="w-3.5 h-3.5 text-rose-400" />
@@ -403,11 +414,10 @@ export const GridParticipantTile: React.FC<Props> = ({
                   value={rawVolume}
                   onChange={(e) => {
                     const val = Number(e.target.value)
-                    setParticipantVolume(user.id, val)
-                    if (user.name) setParticipantVolume(user.name, val)
+                    changeVolume(val)
                   }}
                   className="w-16 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400"
-                  title={`Volume: ${rawVolume}%`}
+                  title={`${isLive ? 'Volume da live' : 'Volume do participante'}: ${rawVolume}%`}
                 />
                 <span className="text-[10px] font-mono text-slate-200 min-w-[32px]">
                   {rawVolume}%

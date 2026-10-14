@@ -36,7 +36,7 @@ interface MediaStore {
   isDeafened: boolean
   silencedUsers: Record<string, boolean>
   mutuallySilencedBy: Record<string, boolean>
-  adminNotice: { message: string; type: 'mute' | 'deafen'; timestamp: number } | null
+  adminNotice: { message: string; type: 'mute' | 'deafen' | 'room'; timestamp: number } | null
 
   toggleMute: () => void
   toggleCamera: () => void
@@ -54,7 +54,7 @@ interface MediaStore {
   setMutuallySilencedBy: (peerId: string, silenced: boolean) => void
   isUserLocallyMuted: (userId: string, userName?: string) => boolean
   toggleLocalMuteUser: (userId: string, userName?: string) => boolean
-  setAdminNotice: (notice: { message: string; type: 'mute' | 'deafen' } | null) => void
+  setAdminNotice: (notice: { message: string; type: 'mute' | 'deafen' | 'room' } | null) => void
 
   selectedAudioInput: string
   selectedAudioOutput: string
@@ -579,7 +579,7 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
     const vols = get().participantVolumes || {}
     const pVol = vols[id] !== undefined ? vols[id] : (name && vols[name] !== undefined ? vols[name] : 100)
     const master = (get().outputVolume !== undefined ? get().outputVolume : 100) / 100
-    return Math.max(0, Math.min(1, master * (pVol / 100)))
+    return Math.max(0, Math.min(4, master * (pVol / 100)))
   },
 
   liveBufferMode: (saved.liveBufferMode as any) || 'dynamic',

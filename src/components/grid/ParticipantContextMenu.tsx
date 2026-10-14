@@ -11,6 +11,7 @@ import {
   Radio,
   Check,
   Lock,
+  LogOut,
 } from 'lucide-react'
 import { ParticipantData } from './GridParticipantTile'
 import { useMediaStore } from '../../store/useMediaStore'
@@ -20,6 +21,7 @@ import { PeerManager } from '../../p2p/PeerManager'
 import { useSpotifyJamStore } from '../../store/useSpotifyJamStore'
 import { MediaManager } from '../../media/MediaManager'
 import { participantVolumeControl } from '../../media/participantVolumeControl'
+import { canRemoveFromZone } from '../../p2p/roomModeration'
 
 interface Props {
   user: ParticipantData
@@ -63,6 +65,8 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
     )
   )
   const isTargetMuted = remotePlayer ? Boolean(remotePlayer.isMuted) : Boolean(user.isMuted)
+  const targetZone = mapData.zones.find(z => z.id === remotePlayer?.currentZoneId)
+  const canRemove = !user.isLocal && canRemoveFromZone(localPlayer, remotePlayer, targetZone)
   const isTargetDeafened = remotePlayer ? Boolean(remotePlayer.isDeafened) : Boolean(user.isDeafened)
   const volumeControl = participantVolumeControl(user, remotePlayer, localPlayer.id,
     { volume: djVolume, isMuted: djMuted, isDjModeActive, setVolume: setDjVolume },
@@ -88,7 +92,7 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
   }, [onClose])
 
   const menuWidth = 260
-  const menuHeight = isLocalAdmin ? 410 : 300
+  const menuHeight = isLocalAdmin || canRemove ? 480 : 360
   const clampedX = Math.min(Math.max(10, x), window.innerWidth - menuWidth - 10)
   const clampedY = Math.min(Math.max(10, y), window.innerHeight - menuHeight - 10)
 
@@ -297,6 +301,14 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
           </div>
 
           <div className="space-y-1">
+            {canRemove && <button
+              type="button"
+              onClick={e => { e.stopPropagation(); PeerManager.getInstance().sendAdminRemoveFromZone(remotePlayer!.id); onClose() }}
+              className="w-full flex items-start gap-2.5 px-2.5 py-2 rounded-xl text-left hover:bg-rose-500/15 text-rose-300 transition-colors"
+            >
+              <LogOut className="w-4 h-4 mt-0.5 shrink-0" />
+              <div><span className="text-xs font-semibold">Remover da sala</span><p className="text-[10px] text-slate-400 leading-tight mt-0.5">Move este participante para o corredor</p></div>
+            </button>}
             <button
               onClick={handleAdminMuteForEveryone}
               disabled={!isLocalAdmin}

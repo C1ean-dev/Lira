@@ -10,10 +10,12 @@ import {
 import { useGameStore } from './useGameStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { setDjListeningVolume } from '../media/djListeningVolume'
+import type { DjPlaybackSnapshot } from '../p2p/djRoomController'
 
 interface SpotifyJamStore {
   jamsByZone: Record<string, ZoneJamSession>
   djStateByZone: Record<string, SpotifyDjState>
+  playbackByZone: Record<string, DjPlaybackSnapshot>
   sharedTracksByZone: Record<string, SharedSpotifyTrack[]>
   isModalOpen: boolean
   activeZoneIdForModal: string | null
@@ -36,12 +38,14 @@ interface SpotifyJamStore {
   setDjStateInZone: (zoneId: string, djState: SpotifyDjState | null, broadcast?: boolean) => void
   syncDjStateFromPeer: (zoneId: string, djState: SpotifyDjState | null) => void
   setIsDjModeActive: (active: boolean) => void
+  setPlaybackInZone: (zoneId: string, snapshot: DjPlaybackSnapshot) => void
   clearAllJams: () => void
 }
 
 export const useSpotifyJamStore = create<SpotifyJamStore>((set, get) => ({
   jamsByZone: {},
   djStateByZone: {},
+  playbackByZone: {},
   sharedTracksByZone: {},
   isModalOpen: false,
   activeZoneIdForModal: null,
@@ -246,7 +250,9 @@ export const useSpotifyJamStore = create<SpotifyJamStore>((set, get) => ({
       } else {
         delete updated[zoneId]
       }
-      return { djStateByZone: updated }
+      const playback = { ...state.playbackByZone }
+      if (!djState || state.djStateByZone[zoneId]?.startedAt !== djState.startedAt || state.djStateByZone[zoneId]?.djPeerId !== djState.djPeerId) delete playback[zoneId]
+      return { djStateByZone: updated, playbackByZone: playback }
     })
 
     if (broadcast) {
@@ -275,7 +281,9 @@ export const useSpotifyJamStore = create<SpotifyJamStore>((set, get) => ({
       } else {
         delete updated[zoneId]
       }
-      return { djStateByZone: updated }
+      const playback = { ...state.playbackByZone }
+      if (!djState || state.djStateByZone[zoneId]?.startedAt !== djState.startedAt || state.djStateByZone[zoneId]?.djPeerId !== djState.djPeerId) delete playback[zoneId]
+      return { djStateByZone: updated, playbackByZone: playback }
     })
   },
 
@@ -283,10 +291,15 @@ export const useSpotifyJamStore = create<SpotifyJamStore>((set, get) => ({
     set({ isDjModeActive: active })
   },
 
+  setPlaybackInZone: (zoneId, snapshot) => {
+    set(state => ({ playbackByZone: { ...state.playbackByZone, [zoneId]: snapshot } }))
+  },
+
   clearAllJams: () => {
     set({
       jamsByZone: {},
       djStateByZone: {},
+      playbackByZone: {},
       sharedTracksByZone: {},
       isModalOpen: false,
       activeZoneIdForModal: null,

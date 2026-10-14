@@ -80,6 +80,7 @@ export const LobbyModal: React.FC<Props> = ({
   const [createIsPublic, setCreateIsPublic] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const roomEntryError = useGameStore((s) => s.roomEntryError)
   const [chatFriend, setChatFriend] = useState<FriendProfile | null>(null)
   const [onlineFriendsCount, setOnlineFriendsCount] = useState(0)
 
@@ -618,6 +619,7 @@ export const LobbyModal: React.FC<Props> = ({
           </div>
         </div>
 
+        {roomEntryError && <p role="alert" className="mx-4 mt-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">{roomEntryError}</p>}
         <div className="flex border-b border-[#2a3142] bg-[#12151d]/80 px-3 sm:px-6 pt-2.5 sm:pt-3 gap-1.5 sm:gap-2.5 shrink-0 overflow-x-auto justify-start sm:justify-center">
           <button
             type="button"
