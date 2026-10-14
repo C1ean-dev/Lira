@@ -10,6 +10,8 @@ export interface PetState {
   walkTick: number
   history: { x: number; y: number }[]
   idleTime: number
+  lastOwnerX?: number
+  lastOwnerY?: number
 }
 
 export class PetManager {
@@ -63,6 +65,11 @@ export class PetManager {
         this.pets.set(player.id, pet)
       }
 
+      const ownerMoved = player.isMoving ||
+        (pet.lastOwnerX !== undefined && (pet.lastOwnerX !== player.x || pet.lastOwnerY !== player.y))
+      pet.idleTime = ownerMoved ? 0 : pet.idleTime + Math.max(0, deltaTime)
+      pet.lastOwnerX = player.x
+      pet.lastOwnerY = player.y
       this.updatePetFollowing(pet, player, deltaTime)
     }
 
@@ -136,7 +143,6 @@ export class PetManager {
 
     if (distToTarget > 0.08 && (distToPlayer > STOP_DIST || player.isMoving)) {
       pet.isMoving = true
-      pet.idleTime = 0
 
       const baseSpeed = 7.5
       const catchupMultiplier = distToPlayer > 2.5 ? 1.5 : distToPlayer > 1.8 ? 1.25 : 1.0
@@ -153,10 +159,9 @@ export class PetManager {
       }
 
       pet.walkTick += deltaTime * 12
-      pet.walkFrame = Math.floor(pet.walkTick) % 4
+      pet.walkFrame = Math.floor(pet.walkTick)
     } else {
       pet.isMoving = false
-      pet.idleTime += deltaTime
 
       if (pet.history.length > 3) {
         pet.history = pet.history.slice(-3)

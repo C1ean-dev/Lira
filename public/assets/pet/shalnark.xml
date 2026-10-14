@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextureAtlas imagePath="shalnark.png">
+  <SubTexture name="down" x="0" y="0" width="32" height="32"/>
+  <SubTexture name="up" x="32" y="0" width="32" height="32"/>
+  <SubTexture name="left" x="64" y="0" width="32" height="32"/>
+  <SubTexture name="right" x="96" y="0" width="32" height="32"/>
+</TextureAtlas>
