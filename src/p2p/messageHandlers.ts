@@ -10,6 +10,8 @@ import { MediaManager } from '../media/MediaManager'
 import { resolveUniquePlayerName } from '../utils/playerName'
 import { sanitizeRoomChannels } from '../utils/roomChannels'
 import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
+import { canRemoveFromZone, findCorridorPosition } from './roomModeration'
+import { PeerManager } from './PeerManager'
 
 export function processNetworkMessage(
   msg: NetworkMessage,
@@ -22,6 +24,34 @@ export function processNetworkMessage(
   onDjCallRequest?: (listenerId: string) => void
 ) {
   switch (msg.type) {
+    case 'ADMIN_REMOVE_FROM_ZONE': {
+      const state = useGameStore.getState()
+      if (msg.senderId !== peerId && (isHost || peerId !== state.connectionHostId)) return
+      const { targetId, zoneId } = msg.payload || {}
+      const actor = msg.senderId === state.localPlayer.id ? state.localPlayer : state.remotePlayers[msg.senderId]
+      const target = targetId === state.localPlayer.id ? state.localPlayer : state.remotePlayers[targetId]
+      const map = useMapStore.getState().mapData
+      const zone = map.zones.find(z => z.id === zoneId)
+      if (!canRemoveFromZone(actor, target, zone)) return
+      const position = findCorridorPosition(map, zone!)
+      if (!position || !target) return
+      const update = { ...position, currentZoneId: null, isMoving: false, isScreenSharing: false }
+      if (target.id === state.localPlayer.id) {
+        if (useMediaStore.getState().isScreenSharing) void MediaManager.getInstance().stopScreenShare()
+        state.setLocalPlayer(update)
+        useChatStore.getState().updateZoneChannel('')
+        useMediaStore.getState().setGridCallOpen(false)
+        PeerManager.getInstance().endAllZoneMediaCalls()
+        PeerManager.getInstance().sendPlayerUpdate(update)
+        useMediaStore.getState().setAdminNotice({ message: `Você foi movido para o corredor por ${actor!.name}.`, type: 'room' })
+      } else {
+        const updated = { ...target, ...update }
+        state.setRemotePlayer(updated)
+        checkZoneCallEligibility(updated)
+      }
+      useMapStore.getState().checkAndUnlockEmptyZones()
+      break
+    }
     case 'HEARTBEAT': {
       broadcast({
         type: 'HEARTBEAT_ACK',

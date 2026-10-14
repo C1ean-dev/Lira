@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-const mocks = vi.hoisted(() => ({ start: vi.fn(), stop: vi.fn(), startBot: vi.fn(), stopBot: vi.fn() }))
+const mocks = vi.hoisted(() => ({ start: vi.fn(), stop: vi.fn(), startBot: vi.fn(), stopBot: vi.fn(), claim: vi.fn(), owns: vi.fn(), publish: vi.fn(), release: vi.fn() }))
 vi.mock('../../media/ProcessAudioCapture', () => ({ ProcessAudioCapture: class {
   static isSupported() { return true }
   start = mocks.start
   stop = mocks.stop
 } }))
-vi.mock('../../p2p/PeerManager', () => ({ PeerManager: { getInstance: () => ({ startDjBot: mocks.startBot, stopDjBot: mocks.stopBot }) } }))
+vi.mock('../../p2p/PeerManager', () => ({ PeerManager: { getInstance: () => ({ startDjBot: mocks.startBot, stopDjBot: mocks.stopBot, getDjRoomController: () => ({ claim: mocks.claim, owns: mocks.owns, start: mocks.publish, release: mocks.release }) }) } }))
 import { MediaManager } from '../../media/MediaManager'
 
 describe('Spotify DJ audio startup', () => {
@@ -24,6 +24,8 @@ describe('Spotify DJ audio startup', () => {
     vi.stubGlobal('MediaStream', class { constructor(public tracks: any[]) {} getAudioTracks() { return this.tracks } })
     mocks.start.mockResolvedValue({ kind: 'audio', enabled: true })
     mocks.startBot.mockResolvedValue({ ok: true })
+    mocks.claim.mockReturnValue({ zoneId: 'room', djPeerId: 'owner', startedAt: 1 })
+    mocks.owns.mockReturnValue(true)
   })
   afterEach(() => vi.unstubAllGlobals())
 
@@ -33,6 +35,21 @@ describe('Spotify DJ audio startup', () => {
     expect(api.openSpotifyPlayer.mock.invocationCallOrder[0]).toBeLessThan(api.findSpotifySource.mock.invocationCallOrder[0])
     expect(mocks.start).toHaveBeenCalledWith('spotify-tab')
     expect(mocks.startBot).toHaveBeenCalledOnce()
+    expect(mocks.publish).toHaveBeenCalledWith(mocks.claim.mock.results[0].value)
+  })
+
+  it('does not open another browser or capture when a room DJ is already reserved', async () => {
+    mocks.claim.mockReturnValue(null)
+    expect((await manager.startDjAudio()).ok).toBe(false)
+    expect(api.openSpotifyPlayer).not.toHaveBeenCalled()
+    expect(mocks.start).not.toHaveBeenCalled()
+  })
+
+  it('cancels startup if the owner leaves or loses the room reservation while opening Spotify', async () => {
+    api.openSpotifyPlayer.mockImplementation(async () => { mocks.owns.mockReturnValue(false); return { ok: true } })
+    expect((await manager.startDjAudio()).ok).toBe(false)
+    expect(mocks.start).not.toHaveBeenCalled()
+    expect(mocks.release).toHaveBeenCalled()
   })
 
   it('propagates browser failures without capturing or advertising the DJ', async () => {

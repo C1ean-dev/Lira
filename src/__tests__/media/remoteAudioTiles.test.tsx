@@ -60,7 +60,7 @@ describe('who plays the sound of a call tile', () => {
         const html = renderToStaticMarkup(
           <GridParticipantTile user={remoteUser({ isScreenSharing: true, screenStream: peerStream() })} isSidebar={isSidebar} />
         )
-        expect(audioTags(html)).toHaveLength(1)
+        expect(audioTags(html)).toHaveLength(2)
         expect(videoTags(html).every((tag) => tag.includes('muted'))).toBe(true)
       })
 

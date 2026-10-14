@@ -16,8 +16,10 @@ export const RemoteAudio: React.FC<RemoteAudioProps> = ({ stream, tile, peer, mu
   useEffect(() => {
     const audio = audioRef.current
     if (!audio || !stream) return
-    return attachRemoteAudio(audio, stream, { tile, peer, muted })
-  }, [stream, tile, peer, muted])
+    const cleanup = attachRemoteAudio(audio, stream, { tile, peer, muted })
+    applyAudioOutput(audio, { muted, volume, sinkId })
+    return cleanup
+  }, [stream, tile, peer])
 
   useEffect(() => {
     if (audioRef.current) applyAudioOutput(audioRef.current, { muted, volume, sinkId })

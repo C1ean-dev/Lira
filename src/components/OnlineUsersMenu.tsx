@@ -38,6 +38,8 @@ import { goToPlayer } from '../utils/goToPlayer'
 import { PlayerAvatar } from './common/PlayerAvatar'
 import { SpotifyIcon } from './common/SpotifyIcon'
 import { getPlayerUserId, findFriendKey } from '../utils/userId'
+import { PeerManager } from '../p2p/PeerManager'
+import { canRemoveFromZone } from '../p2p/roomModeration'
 
 export const OnlineUsersMenu: React.FC = () => {
   const isOnlineUsersOpen = useGameStore((s) => s.isOnlineUsersOpen)
@@ -56,12 +58,10 @@ const OnlineUsersMenuInner: React.FC = () => {
     isOwner,
     isHost,
     connectionHostId,
-    setConnectionHostId,
     friends,
     friendProfiles,
     removeFriend,
     updatePlayerRole,
-    kickPlayer,
   } = useGameStore()
 
   const { mapData } = useMapStore()
@@ -453,6 +453,17 @@ const OnlineUsersMenuInner: React.FC = () => {
                       )
                     })()}
 
+                    {!isLocal && canRemoveFromZone(localPlayer, player, mapData.zones.find(z => z.id === player.currentZoneId)) && (
+                      <button
+                        type="button"
+                        onClick={() => setKickConfirmPlayer({ id: player.id, name: player.name })}
+                        className="p-1.5 rounded-lg border border-rose-500/30 text-rose-300 hover:bg-rose-500/15 transition-colors"
+                        title="Remover da sala"
+                        aria-label={`Remover ${player.name} da sala`}
+                      >
+                        <UserX className="w-3 h-3" />
+                      </button>
+                    )}
                     {!isLocal && (
                       <button
                         onClick={() =>
@@ -523,7 +534,7 @@ const OnlineUsersMenuInner: React.FC = () => {
 
                         <button
                           onClick={() => {
-                            setConnectionHostId(player.id)
+                            PeerManager.getInstance().requestHostTransfer(player.id)
                             setSelectedUserMenuId(null)
                           }}
                           className={`w-full py-1.5 px-2.5 rounded-lg text-xs font-bold border flex items-center justify-between transition-colors ${
@@ -582,14 +593,6 @@ const OnlineUsersMenuInner: React.FC = () => {
                             </span>
                           </button>
 
-                          <button
-                            onClick={() => {
-                              setKickConfirmPlayer({ id: player.id, name: player.name })
-                            }}
-                            className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border border-rose-500/40 transition-colors"
-                          >
-                            Expulsar
-                          </button>
                         </div>
                       </div>
                     )}
@@ -603,15 +606,15 @@ const OnlineUsersMenuInner: React.FC = () => {
 
       <ConfirmModal
         isOpen={!!kickConfirmPlayer}
-        title={`Expulsar ${kickConfirmPlayer?.name}?`}
-        message={`Tem certeza de que deseja expulsar ${kickConfirmPlayer?.name} desta sala? O participante será desconectado imediatamente.`}
-        confirmText="Sim, Expulsar"
+        title={`Remover ${kickConfirmPlayer?.name} da sala?`}
+        message={`${kickConfirmPlayer?.name} será movido para o corredor e continuará conectado ao espaço.`}
+        confirmText="Mover para o corredor"
         cancelText="Cancelar"
         variant="danger"
         icon="alert"
         onConfirm={() => {
           if (kickConfirmPlayer) {
-            kickPlayer(kickConfirmPlayer.id)
+            PeerManager.getInstance().sendAdminRemoveFromZone(kickConfirmPlayer.id)
             setKickConfirmPlayer(null)
             setSelectedUserMenuId(null)
           }

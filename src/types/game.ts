@@ -262,6 +262,7 @@ export interface PublicRoomInfo {
   color: string
   createdAt: number
   lastHeartbeat: number
+  announcementId?: string
   zonesCount?: number
   isOfficial?: boolean
 }

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { Player, PresenceStatus, PresenceInfo, sanitizePresence, STATUS_META, ReactionItem, AvatarConfig, UserRole, PlayerPermissions, ConnectionStatus, RoomKnockRequest, KnockStatus, FriendProfile } from '../types/game'
 import { SignalingTier } from '../types/p2p'
+import type { RoomSessionSnapshot } from '../p2p/roomSession'
 import { DEFAULT_AVATAR } from '../engine/Constants'
 import { PublicRoomsService } from '../services/publicRoomsService'
 import { generateUserId, isUserId, getPlayerUserId, getFriendUserId, findFriendKey } from '../utils/userId'
@@ -134,6 +135,8 @@ interface GameStore {
   isHost: boolean
   connectionHostId: string | null
   isConnected: boolean
+  roomEntryError: string | null
+  setRoomEntryError: (error: string | null) => void
   connectionStatus: ConnectionStatus
   setConnectionStatus: (status: ConnectionStatus) => void
   signalingTier: SignalingTier
@@ -144,6 +147,7 @@ interface GameStore {
   maxPlayers: number
   roomColor: string
   setRoomSession: (roomId: string, isOwner: boolean, options?: RoomSessionOptions) => void
+  syncRoomSession: (session: RoomSessionSnapshot) => void
   setConnected: (connected: boolean) => void
   setIsRoomPublic: (isPublic: boolean) => void
   toggleRoomPrivacy: () => void
@@ -726,9 +730,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
   isHost: false,
   connectionHostId: null,
   isConnected: false,
+  roomEntryError: null,
+  setRoomEntryError: (roomEntryError) => set({ roomEntryError }),
   connectionStatus: 'disconnected',
   setConnectionStatus: (status) => set({ connectionStatus: status }),
-  signalingTier: 'render',
+  signalingTier: 'public',
   setSignalingTier: (signalingTier) => set({ signalingTier }),
   isRoomPublic: false,
   roomName: 'Espaço Principal',
@@ -792,12 +798,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
   },
 
+  syncRoomSession: (session) => {
+    if (get().roomId !== session.roomCode) return
+    set({ isRoomPublic: session.isPublic, roomName: session.roomName, roomDescription: session.roomDescription,
+      maxPlayers: session.maxPlayers, roomColor: session.color })
+    syncPublicRoomRegistration(session.roomCode, session.isPublic, session.roomName)
+  },
+
   setIsRoomPublic: (isRoomPublic) => {
     const state = get()
-    if (!state.roomId || !state.isHost) return
+    if (!state.roomId || (!state.isHost && !state.isOwner && !state.localPlayer.isOwner)) return
 
     set({ isRoomPublic })
     syncPublicRoomRegistration(state.roomId, isRoomPublic, state.roomName)
+    if (!state.isHost) return
 
     if (isRoomPublic) {
       PublicRoomsService.getInstance().startHosting({

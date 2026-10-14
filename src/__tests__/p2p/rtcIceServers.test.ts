@@ -9,6 +9,21 @@ describe('call ICE servers', () => {
     ])
   })
 
+  it('only adds the private STUN after a failed connection', () => {
+    const env = { VITE_STUN_FALLBACK_URLS: ' stun:stun.example.com:3478,stun:192.0.2.10:3478 ' }
+    expect(buildIceServers(env)).toEqual(buildIceServers({}))
+    expect(buildIceServers(env, true)).toEqual([
+      ...buildIceServers({}),
+      { urls: ['stun:stun.example.com:3478', 'stun:192.0.2.10:3478'] },
+    ])
+  })
+
+  it.each(['https://stun.example.com', 'stun:', 'stun:lira-signaling.onrender.com:3478',
+    'stun:stun.example.com:3478,turn:relay.example.com:3478', 'stun:stun.example.com:99999'])
+    ('ignores unusable private STUN settings: %s', urls => {
+      expect(buildIceServers({ VITE_STUN_FALLBACK_URLS: urls }, true)).toEqual(buildIceServers({}))
+    })
+
   it('uses explicitly configured authenticated UDP and TLS relays', () => {
     expect(buildIceServers({
       VITE_TURN_URLS: ' turn:relay.example.com:3478, turns:relay.example.com:443?transport=tcp ',

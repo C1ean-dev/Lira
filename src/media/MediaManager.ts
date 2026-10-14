@@ -1151,13 +1151,11 @@ export class MediaManager {
       if (applicationAudioTrack) {
         applicationAudioTrack.enabled = true
         try {
-          const liveAudioTrack = await this.createLiveAudioTrack(applicationAudioTrack, localStream)
+          const liveAudioTrack = await this.createLiveAudioTrack(applicationAudioTrack)
           ;(liveAudioTrack as any).__screenShareLiveAudio = true
           liveAudioTrack.enabled = true
           screenStream.addTrack(liveAudioTrack)
-          useMediaStore.getState().setScreenShareAudioMode(
-            localStream?.getAudioTracks().length ? 'app_and_mic' : 'app_only'
-          )
+          useMediaStore.getState().setScreenShareAudioMode('app_only')
           diagLog('screenshare', 'audio-track-sent', { sourceOnly: true, microphonePreserved: true })
           diagLog('screenshare-audio', 'live-track-created', {
             sourceId: processAudioSourceId || null,
@@ -1240,7 +1238,7 @@ export class MediaManager {
     }
   }
 
-  private async createLiveAudioTrack(sourceTrack: MediaStreamTrack, localStream: MediaStream | null): Promise<MediaStreamTrack> {
+  private async createLiveAudioTrack(sourceTrack: MediaStreamTrack): Promise<MediaStreamTrack> {
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
     if (!AudioContextClass) {
       diagLog('screenshare-audio', 'live-track-web-audio-unavailable', { sourceTrack: summarizeTrack(sourceTrack) })
@@ -1264,17 +1262,12 @@ export class MediaManager {
     source.connect(applicationGain)
     applicationGain.connect(destination)
 
-    if (localStream?.getAudioTracks().length) {
-      const microphone = audioContext.createMediaStreamSource(localStream)
-      microphone.connect(destination)
-    }
-
     diagLog('screenshare-audio', 'live-track-graph', {
       contextState: audioContext.state,
       sampleRate: audioContext.sampleRate,
       applicationVolume: volume,
       applicationTrack: summarizeTrack(sourceTrack),
-      microphoneTracks: localStream?.getAudioTracks().length || 0,
+      microphoneTracks: 0,
       destinationTracks: destination.stream.getAudioTracks().length,
     })
 
@@ -1298,10 +1291,13 @@ export class MediaManager {
   public async startDjAudio(customSourceId?: string): Promise<{ ok: boolean; error?: string }> {
     if (this.isDjStreaming) return { ok: true }
     if (this.isDjStarting) return { ok: false, error: 'O DJ já está sendo preparado.' }
+    const controller = PeerManager.getInstance().getDjRoomController()
+    const session = controller.claim()
+    if (!session) return { ok: false, error: 'Esta sala já tem um DJ. Use os controles compartilhados, ou entre em uma sala para transmitir.' }
     this.isDjStarting = true
     const generation = this.djStartGeneration = (this.djStartGeneration || 0) + 1
     const checkCancelled = () => {
-      if (generation !== this.djStartGeneration) throw new Error('Inicialização do DJ cancelada.')
+      if (generation !== this.djStartGeneration || !controller.owns(session)) throw new Error('Inicialização do DJ cancelada: você saiu da sala ou outro DJ assumiu a transmissão.')
     }
     try {
       if (this.isDjStreaming) {
@@ -1360,6 +1356,7 @@ export class MediaManager {
 
       this.isDjStreaming = true
       useSpotifyJamStore.getState().setIsDjModeActive(true)
+      controller.start(session)
 
       return { ok: true }
     } catch (err) {
@@ -1368,12 +1365,14 @@ export class MediaManager {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     } finally {
       this.isDjStarting = false
+      if (!this.isDjStreaming) controller.release()
     }
   }
 
   public async stopDjAudio(): Promise<void> {
     this.djStartGeneration = (this.djStartGeneration || 0) + 1
     try {
+      PeerManager.getInstance().getDjRoomController().release()
       this.djPlayerClosedUnsubscribe?.()
       this.djPlayerClosedUnsubscribe = null
       this.isDjStreaming = false

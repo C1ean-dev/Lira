@@ -7,13 +7,14 @@ import { SpotifyIcon } from '../common/SpotifyIcon'
 import { MediaManager } from '../../media/MediaManager'
 import { SpotifyPlayerFeedback } from './SpotifyPlayerFeedback'
 import { SpotifyLoginControls } from './SpotifyLoginControls'
+import { SpotifyPlaybackCrop } from './SpotifyPlaybackCrop'
 
 export const SpotifyJamModal: React.FC = () => {
   const isModalOpen = useSpotifyJamStore((s) => s.isModalOpen)
   const setModalOpen = useSpotifyJamStore((s) => s.setModalOpen)
   const activeZoneIdForModal = useSpotifyJamStore((s) => s.activeZoneIdForModal)
   const isDjModeActive = useSpotifyJamStore((s) => s.isDjModeActive)
-  const setDjStateInZone = useSpotifyJamStore((s) => s.setDjStateInZone)
+  const djStateByZone = useSpotifyJamStore((s) => s.djStateByZone)
   const volume = useSpotifyJamStore((s) => s.volume)
   const setVolume = useSpotifyJamStore((s) => s.setVolume)
   const isMuted = useSpotifyJamStore((s) => s.isMuted)
@@ -23,6 +24,8 @@ export const SpotifyJamModal: React.FC = () => {
   const mapZones = useMapStore((s) => s.mapData.zones)
   const targetZoneId = activeZoneIdForModal || localPlayer.currentZoneId
   const currentZone = mapZones.find((z) => z.id === targetZoneId)
+  const hasRoomDj = Boolean(targetZoneId && djStateByZone[targetZoneId]?.isDjActive)
+  const canStart = !hasRoomDj && targetZoneId === localPlayer.currentZoneId
 
   const [djLoading, setDjLoading] = useState(false)
   const [djError, setDjError] = useState<string | null>(null)
@@ -30,28 +33,15 @@ export const SpotifyJamModal: React.FC = () => {
   if (!isModalOpen) return null
 
   const handleToggleDjMode = async () => {
-    if (!targetZoneId || djLoading) return
+    if (!targetZoneId || djLoading || (!isDjModeActive && !canStart)) return
     setDjError(null)
     setDjLoading(true)
     try {
       if (isDjModeActive) {
         await MediaManager.getInstance().stopDjAudio()
-        setDjStateInZone(targetZoneId, null, true)
       } else {
         const res = await MediaManager.getInstance().startDjAudio()
-        if (res.ok) {
-          setDjStateInZone(
-            targetZoneId,
-            {
-              zoneId: targetZoneId,
-              isDjActive: true,
-              djPeerId: localPlayer.id,
-              djName: localPlayer.name,
-              startedAt: Date.now(),
-            },
-            true
-          )
-        } else {
+        if (!res.ok) {
           setDjError(res.error || 'Erro ao iniciar transmissão de áudio.')
         }
       }
@@ -117,9 +107,10 @@ export const SpotifyJamModal: React.FC = () => {
             </div>
           ) : (
             <>
-              {!isDjModeActive && <SpotifyLoginControls disabled={djLoading} />}
+              {canStart && !isDjModeActive && <SpotifyLoginControls disabled={djLoading} />}
+              {(hasRoomDj || isDjModeActive) && <SpotifyPlaybackCrop zoneId={targetZoneId} />}
               <SpotifyPlayerFeedback opening={djLoading} error={djError} />
-              <button
+              {(isDjModeActive || canStart) && <button
                 type="button"
                 onClick={handleToggleDjMode}
                 disabled={djLoading}
@@ -132,7 +123,7 @@ export const SpotifyJamModal: React.FC = () => {
               >
                 <SpotifyIcon size={24} className="w-6 h-6 shrink-0" aria-hidden="true" />
                 <span>{djLoading ? (isDjModeActive ? 'Parando...' : 'Iniciando...') : isDjModeActive ? 'Parar DJ' : 'Transmitir DJ'}</span>
-              </button>
+              </button>}
 
               <div className="flex items-center gap-3 p-3 rounded-xl bg-[#141721] border border-slate-800">
                 <button
