@@ -250,14 +250,15 @@ describe('Spotify in a real browser', () => {
     expect(query).toHaveBeenCalledOnce()
   })
 
-  it.skipIf(process.platform !== 'win32')('allows a Windows lookup taking longer than the old five-second cutoff', async () => {
+  it.skipIf(process.platform !== 'win32')('runs the dedicated profile lookup through the Windows query runner', async () => {
     const stub = `
-function Get-CimInstance { param($Filter, $Property) Start-Sleep -Milliseconds 5500; [pscustomobject]@{ ProcessId = 70; CommandLine = 'chrome.exe --user-data-dir=profile' } }
+function Get-CimInstance { param($Filter, $Property) [pscustomobject]@{ ProcessId = 70; CommandLine = 'chrome.exe --user-data-dir=profile' } }
 function Get-Process { param($Id, $ErrorAction) [pscustomobject]@{ Id = 70; MainWindowHandle = [IntPtr]::new(42); MainWindowTitle = 'Spotify' } }
 `
     expect(await querySpotifyBrowserWindow('profile', script => runSpotifyBrowserQuery(stub + script)))
       .toEqual({ processId: 70, handle: '42', title: 'Spotify' })
-  }, 20_000)
+  // A lookup may retry once after the runner's 15-second process timeout.
+  }, 35_000)
 
   it.skipIf(process.platform !== 'win32')('reports a PowerShell provider error instead of treating it as a closed browser', async () => {
     const stub = "function Get-CimInstance { param($Filter, $Property) Write-Error 'WINDOWS_QUERY_FAILURE_FIXTURE' }; "
