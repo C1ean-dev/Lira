@@ -124,12 +124,23 @@ export type AvatarComponentSlot =
 
 export type PetType = 'none' | 'dog' | 'cat' | 'meowth' | 'slime' | 'chick' | 'custom'
 
+export interface PetAnimation {
+  frames: string[]
+  frameRateMs?: number
+  /** Frames before this index play once; the remaining frames repeat. */
+  loopStartFrame?: number
+}
+
+export type PetAnimations = Partial<Record<'yawn' | 'sleep', PetAnimation>>
+
 export interface PetConfig {
   type: PetType
   name?: string
   color?: string
   customAssetId?: string
   directionalFrames?: Partial<Record<Direction, string | string[]>>
+  idleFrames?: Partial<Record<Direction, string | string[]>>
+  petAnimations?: PetAnimations
 }
 
 export interface AvatarConfig {

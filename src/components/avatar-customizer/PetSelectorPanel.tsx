@@ -193,6 +193,8 @@ export const PetSelectorPanel: React.FC<Props> = ({
         customAssetId: asset.id,
         name: asset.name,
         directionalFrames: asset.directionalFrames,
+        idleFrames: asset.idleFrames,
+        petAnimations: asset.petAnimations,
       },
     })
   }
@@ -494,6 +496,8 @@ export const PetSelectorPanel: React.FC<Props> = ({
                   customAssetId: lastAsset.id,
                   name: lastAsset.name,
                   directionalFrames: lastAsset.directionalFrames,
+                  idleFrames: lastAsset.idleFrames,
+                  petAnimations: lastAsset.petAnimations,
                 },
               })
             }

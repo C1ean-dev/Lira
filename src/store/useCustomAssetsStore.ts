@@ -3,6 +3,7 @@ import { CustomAsset } from '../types/customAsset'
 import { FurnitureDefinition } from '../types/map'
 import { PeerManager } from '../p2p/PeerManager'
 import rawNativeAssetsData from '../data/nativeAssets.json'
+import rawNativeAvatarPresets from '../data/nativeAvatarPresets.json'
 import { Direction } from '../types/game'
 import { bakeLayersToDataUrl } from '../utils/imageResize'
 import { unpackImages } from '../utils/imageTable'
@@ -10,6 +11,42 @@ import { unpackImages } from '../utils/imageTable'
 const nativeAssetsData = unpackImages(rawNativeAssetsData as unknown as Record<string, unknown>) as {
   categories?: string[]
   assets?: CustomAsset[]
+}
+
+// Shipped avatar presets remain available even if an older open session saves its asset list.
+const nativeAvatarPresets = unpackImages(rawNativeAvatarPresets as unknown as Record<string, unknown>) as {
+  assets: CustomAsset[]
+  categories?: string[]
+}
+
+// Resolve paths from the original shipped presets, including avatars already equipped
+// in saved settings. Embedded PNGs also work when Electron loads through file://.
+const bundledImageSources = new Map<string, string>()
+for (const asset of nativeAvatarPresets.assets) {
+  if (!asset.sourceFileName) continue
+  const stem = asset.sourceFileName.replace(/\.png$/i, '')
+  if (asset.sourceImageSrc?.startsWith('data:image/')) {
+    for (const folder of ['avatar', 'pet']) {
+      bundledImageSources.set(`/assets/${folder}/${asset.sourceFileName}`, asset.sourceImageSrc)
+    }
+  }
+  for (const [direction, raw] of Object.entries(asset.directionalFrames ?? {})) {
+    const frames = Array.isArray(raw) ? raw : [raw]
+    frames.forEach((src, index) => {
+      if (src?.startsWith('data:image/')) {
+        bundledImageSources.set(`/assets/avatar/${stem}/${direction}_${index}.png`, src)
+      }
+    })
+  }
+}
+
+function restoreBundledImageReferences(value: unknown): unknown {
+  if (typeof value === 'string') return bundledImageSources.get(value) ?? value
+  if (Array.isArray(value)) return value.map(restoreBundledImageReferences)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, restoreBundledImageReferences(inner)]))
+  }
+  return value
 }
 
 const ASSETS_STORAGE_KEY = 'lira_custom_user_assets'
@@ -56,6 +93,7 @@ export function getCachedAssetById(id: string): CustomAsset | undefined {
 
 export function getCustomAssetImage(dataUrl: string): HTMLImageElement | null {
   if (typeof Image === 'undefined') return null
+  dataUrl = bundledImageSources.get(dataUrl) ?? dataUrl
   if (imageCache.has(dataUrl)) {
     return imageCache.get(dataUrl)!
   }
@@ -106,7 +144,10 @@ export const syncToNativeFile = async (
 }
 
 const loadSavedCustomAssets = (): CustomAsset[] => {
-  const nativeAssets: CustomAsset[] = (nativeAssetsData?.assets as CustomAsset[]) || []
+  const nativeAssets: CustomAsset[] = [
+    ...nativeAvatarPresets.assets,
+    ...((nativeAssetsData?.assets as CustomAsset[]) || []),
+  ]
   let savedAssets: CustomAsset[] = []
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
@@ -123,11 +164,27 @@ const loadSavedCustomAssets = (): CustomAsset[] => {
   }
 
   const map = new Map<string, CustomAsset>()
-  nativeAssets.forEach((a) => map.set(a.id, a))
-  savedAssets.forEach((a) => map.set(a.id, a))
+  nativeAssets.forEach((raw) => {
+    const a = restoreBundledImageReferences(raw) as CustomAsset
+    const existing = map.get(a.id)
+    if (!existing || (a.updatedAt ?? a.createdAt) > (existing.updatedAt ?? existing.createdAt)) {
+      map.set(a.id, a)
+    }
+  })
+  savedAssets.forEach((raw) => {
+    const a = restoreBundledImageReferences(raw) as CustomAsset
+    const native = map.get(a.id)
+    if (!native || (a.updatedAt ?? a.createdAt) >= (native.updatedAt ?? native.createdAt)) {
+      map.set(a.id, a)
+    }
+  })
   const merged = Array.from(map.values())
 
   merged.forEach((asset: CustomAsset) => {
+    // Older saved copies of shipped pets may predate their rest animations.
+    if ((asset.avatarSlot === 'pet' || asset.avatarSlot === 'other') && !asset.petAnimations) {
+      asset.petAnimations = nativeAvatarPresets.assets.find(a => a.id === asset.id)?.petAnimations
+    }
     const legacyCats = new Set([
       'Forja Antiga',
       'Escritório',
@@ -144,6 +201,13 @@ const loadSavedCustomAssets = (): CustomAsset[] => {
 
     if (Array.isArray(asset.frames)) {
       asset.frames.forEach(getCustomAssetImage)
+    }
+    for (const animation of Object.values(asset.petAnimations ?? {})) {
+      animation?.frames.forEach(getCustomAssetImage)
+    }
+    for (const raw of Object.values(asset.idleFrames ?? {})) {
+      const frames = Array.isArray(raw) ? raw : [raw]
+      frames.forEach(getCustomAssetImage)
     }
     if (asset.directionalFrames) {
       Object.values(asset.directionalFrames).forEach((frames) => {
@@ -263,7 +327,7 @@ const loadSavedCategories = (): string[] => {
   } catch (e) {
     console.error('Failed to load custom categories:', e)
   }
-  const merged = Array.from(new Set([...DEFAULT_CATEGORIES, ...nativeCats, ...savedCats]))
+  const merged = Array.from(new Set([...DEFAULT_CATEGORIES, ...nativeCats, ...(nativeAvatarPresets.categories ?? []), ...savedCats]))
   const legacyCats = new Set([
     'Forja Antiga',
     'Escritório',

@@ -184,6 +184,20 @@ describe('writeNativeDataFileAsync and writeNativeDataFileLatest', () => {
     )
   })
 
+  it('latest: preserves a newer asset on disk when an open client saves an older copy', async () => {
+    const file = tmp()
+    const approved = { id: 'avatar', frames: [A], updatedAt: 20 }
+    const stale = { id: 'avatar', frames: [B], updatedAt: 10 }
+    await writeNativeDataFileLatest(file, { assets: [approved] }, { optimize: false })
+    await writeNativeDataFileLatest(file, { assets: [stale] }, { optimize: false })
+    expect(readNativeDataFile(file).assets).toEqual([approved])
+    const edited = { ...stale, updatedAt: 30 }
+    await writeNativeDataFileLatest(file, { assets: [edited] }, { optimize: false })
+    expect(readNativeDataFile(file).assets).toEqual([edited])
+    await writeNativeDataFileLatest(file, { assets: [] }, { optimize: false })
+    expect(readNativeDataFile(file).assets).toEqual([])
+  })
+
   it('keeps the previous JSON readable while the new file is being written', async () => {
     const file = tmp()
     const previous = JSON.stringify({ categories: ['Anterior'], assets: [] })

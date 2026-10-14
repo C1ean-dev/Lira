@@ -209,10 +209,13 @@ export class AvatarRenderer {
           if (typeof rawFrames === 'string') return rawFrames
           if (!Array.isArray(rawFrames) || rawFrames.length === 0) return undefined
           if (!isMoving) return rawFrames[0]
-          return rawFrames[walkFrame % rawFrames.length]
+          return rawFrames[Math.floor(animationTick / 120) % rawFrames.length]
         }
 
-        dataUrl = pickDirectionFrame(resolvedComponent[dir])
+        const assetId = avatar.customAvatarId || avatar.otherType
+        const currentAsset = assetId ? getCustomById().get(assetId) : undefined
+        const idleFrames = !isMoving && assetId ? getCustomById().get(assetId)?.idleFrames?.[dir] : undefined
+        dataUrl = pickDirectionFrame(idleFrames ?? currentAsset?.directionalFrames?.[dir] ?? resolvedComponent[dir])
 
         if (!dataUrl) {
           if (dir === 'left' && resolvedComponent.right) {
