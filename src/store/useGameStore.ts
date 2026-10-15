@@ -9,6 +9,7 @@ import { registerReportContext } from '../utils/reportContext'
 import { diagLog } from '../utils/diagnosticLogger'
 import { reportStorageFailure } from '../utils/storageReport'
 import { playSoundEffect } from '../utils/soundEffects'
+import { createPortableImageQueue } from '../media/bundledImages'
 
 const PROFILE_STORAGE_KEY = 'lira_user_profile'
 const AVAILABLE_ROOMS_KEY = 'lira_available_rooms'
@@ -35,9 +36,9 @@ const getStorage = () => {
   return null
 }
 
-const loadSavedProfile = (): SavedProfile | null => {
+const loadSavedProfile = (storageOverride?: ReturnType<typeof getStorage>): SavedProfile | null => {
   try {
-    const storage = getStorage()
+    const storage = storageOverride ?? getStorage()
     if (storage) {
       const raw = storage.getItem(PROFILE_STORAGE_KEY)
       if (raw) {
@@ -50,12 +51,16 @@ const loadSavedProfile = (): SavedProfile | null => {
   return null
 }
 
+const profileWrites = createPortableImageQueue()
 const saveProfile = (data: Partial<SavedProfile>) => {
   try {
     const storage = getStorage()
     if (storage) {
-      const current = loadSavedProfile() || {}
-      storage.setItem(PROFILE_STORAGE_KEY, JSON.stringify({ ...current, ...data }))
+      const partial = Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined))
+      void profileWrites(partial, portable => {
+        const current = loadSavedProfile(storage) || {}
+        storage.setItem(PROFILE_STORAGE_KEY, JSON.stringify({ ...current, ...portable }))
+      }).catch(error => reportStorageFailure('write', PROFILE_STORAGE_KEY, error))
     }
   } catch (e) {
     reportStorageFailure('write', PROFILE_STORAGE_KEY, e)

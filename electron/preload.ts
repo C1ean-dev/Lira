@@ -89,6 +89,7 @@ export interface IElectronAPI {
   onSpotifyPlayerClosed: (callback: () => void) => () => void
   saveNativeAssets: (data: { categories: string[]; assets: any[] }) => Promise<boolean>
   loadNativeAssets: () => Promise<{ categories: string[]; assets: any[] } | null>
+  readBundledImage: (hash: string) => Promise<string>
   saveNativeSpaces: (spaces: any[]) => Promise<boolean>
   loadNativeSpaces: () => Promise<any[] | null>
   checkFirewallStatus: () => Promise<{ isAllowed: boolean }>
@@ -208,6 +209,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   saveNativeAssets: (data: { categories: string[]; assets: any[] }) => ipcRenderer.invoke('save-native-assets', data),
   loadNativeAssets: () => ipcRenderer.invoke('load-native-assets'),
+  readBundledImage: (hash: string) => ipcRenderer.invoke('read-bundled-image', hash),
   saveNativeSpaces: (spaces: any[]) => ipcRenderer.invoke('save-native-spaces', spaces),
   loadNativeSpaces: () => ipcRenderer.invoke('load-native-spaces'),
   checkFirewallStatus: () => ipcRenderer.invoke('check-firewall-status'),

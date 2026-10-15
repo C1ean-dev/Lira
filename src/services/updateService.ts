@@ -45,6 +45,7 @@ declare global {
       onUpdateProgress: (callback: (progress: UpdateProgress) => void) => () => void
       openExternal: (url: string) => Promise<void>
       getSources: () => Promise<any[]>
+      readBundledImage?: (hash: string) => Promise<string>
       setFullScreen?: (flag: boolean) => Promise<boolean>
       isFullScreen?: () => Promise<boolean>
     }
