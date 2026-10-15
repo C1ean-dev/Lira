@@ -7,6 +7,7 @@ import rawNativeAvatarPresets from '../data/nativeAvatarPresets.json'
 import { Direction } from '../types/game'
 import { bakeLayersToDataUrl } from '../utils/imageResize'
 import { unpackImages } from '../utils/imageTable'
+import { createPortableImageQueue, resolveBundledAssetUrl } from '../media/bundledImages'
 
 const nativeAssetsData = unpackImages(rawNativeAssetsData as unknown as Record<string, unknown>) as {
   categories?: string[]
@@ -25,7 +26,7 @@ const bundledImageSources = new Map<string, string>()
 for (const asset of nativeAvatarPresets.assets) {
   if (!asset.sourceFileName) continue
   const stem = asset.sourceFileName.replace(/\.png$/i, '')
-  if (asset.sourceImageSrc?.startsWith('data:image/')) {
+  if (asset.sourceImageSrc) {
     for (const folder of ['avatar', 'pet']) {
       bundledImageSources.set(`/assets/${folder}/${asset.sourceFileName}`, asset.sourceImageSrc)
     }
@@ -33,15 +34,20 @@ for (const asset of nativeAvatarPresets.assets) {
   for (const [direction, raw] of Object.entries(asset.directionalFrames ?? {})) {
     const frames = Array.isArray(raw) ? raw : [raw]
     frames.forEach((src, index) => {
-      if (src?.startsWith('data:image/')) {
+      if (src) {
         bundledImageSources.set(`/assets/avatar/${stem}/${direction}_${index}.png`, src)
       }
     })
   }
 }
 
+function bundledImageSource(source: string): string {
+  const distributed = resolveBundledAssetUrl(source)
+  return distributed !== source ? distributed : resolveBundledAssetUrl(bundledImageSources.get(source) ?? source)
+}
+
 function restoreBundledImageReferences(value: unknown): unknown {
-  if (typeof value === 'string') return bundledImageSources.get(value) ?? value
+  if (typeof value === 'string') return bundledImageSource(value)
   if (Array.isArray(value)) return value.map(restoreBundledImageReferences)
   if (value && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, restoreBundledImageReferences(inner)]))
@@ -93,7 +99,7 @@ export function getCachedAssetById(id: string): CustomAsset | undefined {
 
 export function getCustomAssetImage(dataUrl: string): HTMLImageElement | null {
   if (typeof Image === 'undefined') return null
-  dataUrl = bundledImageSources.get(dataUrl) ?? dataUrl
+  dataUrl = bundledImageSource(dataUrl)
   if (imageCache.has(dataUrl)) {
     return imageCache.get(dataUrl)!
   }
@@ -103,6 +109,9 @@ export function getCustomAssetImage(dataUrl: string): HTMLImageElement | null {
   return img
 }
 
+const nativeAssetWrites = createPortableImageQueue()
+const localAssetWrites = createPortableImageQueue()
+
 export const syncToNativeFile = async (
   assets: CustomAsset[],
   categories: string[]
@@ -110,33 +119,34 @@ export const syncToNativeFile = async (
   try {
     if (typeof window === 'undefined') return false
     const payload = { categories, assets }
+    return await nativeAssetWrites(payload, async payload => {
+      let saved = false
 
-    let saved = false
-
-    if ((window as any).electronAPI?.saveNativeAssets) {
-      try {
-        saved = await (window as any).electronAPI.saveNativeAssets(payload)
-      } catch (err) {
-        console.warn('[useCustomAssetsStore] Electron saveNativeAssets error:', err)
-      }
-    }
-
-    if (!saved && typeof fetch !== 'undefined') {
-      try {
-        const res = await fetch('/api/save-native-assets', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload, null, 2),
-        })
-        if (res.ok) {
-          saved = true
-          console.info('[useCustomAssetsStore] Synced assets to src/data/nativeAssets.json (tracked by Git)')
+      if ((window as any).electronAPI?.saveNativeAssets) {
+        try {
+          saved = await (window as any).electronAPI.saveNativeAssets(payload)
+        } catch (err) {
+          console.warn('[useCustomAssetsStore] Electron saveNativeAssets error:', err)
         }
-      } catch (err) {
       }
-    }
 
-    return saved
+      if (!saved && typeof fetch !== 'undefined') {
+        try {
+          const res = await fetch('/api/save-native-assets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload, null, 2),
+          })
+          if (res.ok) {
+            saved = true
+            console.info('[useCustomAssetsStore] Synced assets to src/data/nativeAssets.json (tracked by Git)')
+          }
+        } catch (err) {
+        }
+      }
+
+      return saved
+    })
   } catch (err) {
     console.error('Failed to sync native assets to file:', err)
     return false
@@ -292,13 +302,10 @@ export async function repairMissingDirectionalFrames(assets: CustomAsset[]): Pro
 }
 
 const saveCustomAssets = (assets: CustomAsset[]) => {
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      window.localStorage.setItem(ASSETS_STORAGE_KEY, JSON.stringify(assets))
-    }
-  } catch (e) {
-    console.error('Failed to save custom assets:', e)
-  }
+  const storage = typeof window !== 'undefined' ? window.localStorage : undefined
+  if (!storage) return
+  void localAssetWrites(assets, portable => storage.setItem(ASSETS_STORAGE_KEY, JSON.stringify(portable)))
+    .catch(error => console.error('Failed to save custom assets:', error))
 }
 
 const loadSavedCategories = (): string[] => {

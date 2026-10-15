@@ -1,4 +1,5 @@
 import Peer, { DataConnection, MediaConnection } from 'peerjs'
+import { createPortableImageQueue, hasBundledImages } from '../media/bundledImages'
 import { NetworkMessage, SignalingTier } from '../types/p2p'
 import { MessageDeliveryStatus, RoomChannel } from '../types/chat'
 import { Player, RoomKnockRequest } from '../types/game'
@@ -1395,13 +1396,26 @@ export class PeerManager {
     })
   }
 
+  private imageSendQueues?: WeakMap<DataConnection, ReturnType<typeof createPortableImageQueue>>
+
   private sendToPeer(conn: DataConnection, msg: NetworkMessage) {
     if (conn.open) {
-      try {
-        conn.send(msg)
-      } catch (err) {
-        console.warn(`[P2P Data] Failed to send ${msg.type} to ${conn.peer}:`, err)
+      const pending = this.imageSendQueues?.get(conn)
+      if (!pending?.isPending() && !hasBundledImages(msg)) {
+        try { conn.send(msg) }
+        catch (error) { console.warn(`[P2P Data] Failed to send ${msg.type} to ${conn.peer}:`, error) }
+        return
       }
+      this.imageSendQueues ??= new WeakMap()
+      let queue = this.imageSendQueues.get(conn)
+      if (!queue) { queue = createPortableImageQueue(); this.imageSendQueues.set(conn, queue) }
+      const session = this.peer
+      const identity = session?.id
+      const owned = this.connections.get(conn.peer) === conn
+      void queue(msg, portable => {
+        if (!conn.open || this.peer !== session || this.peer?.id !== identity || (owned && this.connections.get(conn.peer) !== conn)) return
+        conn.send(portable)
+      }).catch(err => console.warn(`[P2P Data] Failed to send ${msg.type} to ${conn.peer}:`, err))
     }
   }
 

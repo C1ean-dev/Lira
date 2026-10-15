@@ -1,3 +1,5 @@
+import { resolveBundledAssetUrl } from '../../media/bundledImages'
+
 export interface SubTexture {
   name: string
   x: number
@@ -151,7 +153,7 @@ export class AvatarAtlasManager {
 
     if (imageSrc && typeof Image !== 'undefined') {
       const img = new Image()
-      img.src = imageSrc
+      img.src = resolveBundledAssetUrl(imageSrc)
       this.imageCache.set(category, img)
     }
 
@@ -170,7 +172,7 @@ export class AvatarAtlasManager {
 
     const promise = (async () => {
       try {
-        const res = await fetch(xmlUrl)
+        const res = await fetch(resolveBundledAssetUrl(xmlUrl))
         if (!res.ok) {
           console.warn(`[AvatarAtlasManager] Failed to fetch atlas XML: ${xmlUrl} (${res.status})`)
           return false
@@ -180,7 +182,11 @@ export class AvatarAtlasManager {
         this.atlases.set(category, atlas)
         AvatarAtlasManager.version++
 
-        const finalImgUrl = imageUrl || atlas.imagePath || xmlUrl.replace(/\.xml$/i, '.png')
+        const finalImgUrl = imageUrl
+          ? resolveBundledAssetUrl(imageUrl)
+          : atlas.imagePath
+          ? resolveBundledAssetUrl(atlas.imagePath, xmlUrl)
+          : resolveBundledAssetUrl(xmlUrl.replace(/\.xml$/i, '.png'))
         if (typeof Image !== 'undefined' && finalImgUrl) {
           const img = new Image()
           img.src = finalImgUrl

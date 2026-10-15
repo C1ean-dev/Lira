@@ -8,6 +8,7 @@ import {
 import { isUserId } from '../utils/userId'
 import { diagLog } from '../utils/diagnosticLogger'
 import { registerReportContext } from '../utils/reportContext'
+import { createPortableImageQueue, hasBundledImages } from '../media/bundledImages'
 
 const FRIEND_PEER_PREFIX = 'lirafriend-'
 
@@ -176,12 +177,26 @@ export class FriendsNetwork {
     return Array.from(this.links.keys())
   }
 
+  private imageSendQueues?: WeakMap<LinkConnection, ReturnType<typeof createPortableImageQueue>>
+
   public send(userId: string, packet: FriendPacket): boolean {
     const set = this.links.get(userId)
     if (!set) return false
     for (const conn of set) {
       if (!conn.open) continue
       try {
+        let queue = this.imageSendQueues?.get(conn)
+        if (queue?.isPending() || hasBundledImages(packet)) {
+          this.imageSendQueues ??= new WeakMap()
+          if (!queue) { queue = createPortableImageQueue(); this.imageSendQueues.set(conn, queue) }
+          const session = this.peer
+          const identity = this.userId
+          void queue(packet, portable => {
+            if (!conn.open || this.peer !== session || this.userId !== identity || !this.links.get(userId)?.has(conn)) return
+            conn.send(portable)
+          }).catch(error => console.warn('[Friends] Failed to send portable profile:', error))
+          return true
+        }
         conn.send(packet)
         return true
       } catch (err) {

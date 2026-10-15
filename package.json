@@ -61,6 +61,13 @@
     "directories": {
       "output": "release"
     },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "public/icon.png",
+      "public/tray-icon.png",
+      "!node_modules/**/*.map"
+    ],
     "extraResources": [
       {
         "from": "native/bin",

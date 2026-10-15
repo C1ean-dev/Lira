@@ -2,6 +2,7 @@ import { Direction, PetConfig, PetType } from '../../types/game'
 import { TILE_SIZE } from '../Constants'
 import { PetState } from './PetManager'
 import { getCustomAssetImage, useCustomAssetsStore } from '../../store/useCustomAssetsStore'
+import { resolveBundledAssetUrl } from '../../media/bundledImages'
 
 const MEOWTH_SPRITE_URL =
   '/assets/pet/5660688_738696_lazy91_meowth-sprite-sheet.fff89e386a74ef7fd067b8f49695f124.png'
@@ -25,7 +26,7 @@ let meowthImg: HTMLImageElement | null = null
 const getMeowthImage = (): HTMLImageElement => {
   if (!meowthImg && typeof Image !== 'undefined') {
     meowthImg = new Image()
-    meowthImg.src = MEOWTH_SPRITE_URL
+    meowthImg.src = resolveBundledAssetUrl(MEOWTH_SPRITE_URL)
   }
   return meowthImg!
 }
