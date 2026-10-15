@@ -124,7 +124,10 @@ export class FriendsPresenceService {
   private saveToLocalStorage() {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        const list = Array.from(this.presenceMap.values())
+        // This cache is only for short-lived discovery/status. Profile media is
+        // already kept in friend profiles and sent over the live transports.
+        // Serializing embedded images here blocks the UI on every heartbeat.
+        const list = Array.from(this.presenceMap.values(), ({ avatar, profilePicture, ...presence }) => presence)
         window.localStorage.setItem(STORAGE_CACHE_KEY, JSON.stringify(list))
       }
     } catch (e) {

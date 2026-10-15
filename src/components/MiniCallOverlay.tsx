@@ -57,6 +57,7 @@ const NOISE_ENGINES = [
 ]
 import { useMediaStore } from '../store/useMediaStore'
 import { useGameStore } from '../store/useGameStore'
+import { useLocalPlayerDetails, useZonePeerDetails } from '../hooks/usePlayerDetails'
 import { useMapStore } from '../store/useMapStore'
 import { useChatStore } from '../store/useChatStore'
 import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
@@ -593,8 +594,12 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
   const toggleNoiseSuppression = useMediaStore((s) => s.toggleNoiseSuppression)
   const setAudioProcessorMode = useMediaStore((s) => s.setAudioProcessorMode)
 
-  const { localPlayer, remotePlayers, callStates, friendProfiles } = useGameStore()
-  const { mapData, toggleZoneLock } = useMapStore()
+  const localPlayer = useLocalPlayerDetails()
+  const peersInSameZone = useZonePeerDetails()
+  const callStates = useGameStore((s) => s.callStates)
+  const friendProfiles = useGameStore((s) => s.friendProfiles)
+  const mapData = useMapStore((s) => s.mapData)
+  const toggleZoneLock = useMapStore((s) => s.toggleZoneLock)
   const watchingLives = useLiveWatchStore((s) => s.watching)
 
   const isChatOpen = useChatStore((state) => state.isChatOpen)
@@ -726,10 +731,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
   const currentZone = mapData.zones.find((z) => z.id === localPlayer.currentZoneId)
   const zoneName = currentZone?.name || 'Mesa Privada'
   const isRoomLocked = !!currentZone?.isLocked
-
-  const peersInSameZone = Object.values(remotePlayers).filter(
-    (p) => p.currentZoneId === localPlayer.currentZoneId
-  )
 
   const isAnyReconnecting = peersInSameZone.some(
     (p) => callStates[p.id] === 'reconnecting'

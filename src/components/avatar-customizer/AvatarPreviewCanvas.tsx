@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { Download, Dices } from 'lucide-react'
-import { AvatarConfig, Player, PresenceStatus } from '../../types/game'
+import { AvatarConfig, PresenceStatus } from '../../types/game'
+import type { PlayerDetails } from '../../hooks/usePlayerDetails'
 import { AvatarRenderer } from '../../engine/AvatarRenderer'
 import { PetRenderer } from '../../engine/pet/PetRenderer'
 import { PetState } from '../../engine/pet/PetManager'
@@ -10,7 +11,7 @@ interface Props {
   avatar: AvatarConfig
   name: string
   status?: PresenceStatus
-  localPlayer: Player
+  localPlayer: PlayerDetails
   onRandomize: () => void
   showNameTags?: boolean
   className?: string
@@ -78,6 +79,7 @@ export const AvatarPreviewCanvas: React.FC<Props> = ({
 
       const tempPlayer = {
         ...localPlayer,
+        lastUpdated: 0,
         name: name.trim() || localPlayer.name,
         status: status || localPlayer.status || 'available',
         avatar,
@@ -125,6 +127,7 @@ export const AvatarPreviewCanvas: React.FC<Props> = ({
 
     const tempPlayer = {
       ...localPlayer,
+      lastUpdated: 0,
       avatar,
       direction: 'down' as const,
       isMoving: false,

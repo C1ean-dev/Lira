@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
 import { X, MapPin, Volume2, VolumeX } from 'lucide-react'
 import { useSpotifyJamStore } from '../../store/useSpotifyJamStore'
-import { useGameStore } from '../../store/useGameStore'
 import { useMapStore } from '../../store/useMapStore'
+import { useLocalPlayerDetails } from '../../hooks/usePlayerDetails'
 import { SpotifyIcon } from '../common/SpotifyIcon'
 import { MediaManager } from '../../media/MediaManager'
 import { SpotifyPlayerFeedback } from './SpotifyPlayerFeedback'
@@ -19,7 +19,7 @@ export const SpotifyJamModal: React.FC = () => {
   const isMuted = useSpotifyJamStore((s) => s.isMuted)
   const toggleMute = useSpotifyJamStore((s) => s.toggleMute)
 
-  const localPlayer = useGameStore((s) => s.localPlayer)
+  const localPlayer = useLocalPlayerDetails()
   const mapZones = useMapStore((s) => s.mapData.zones)
   const targetZoneId = activeZoneIdForModal || localPlayer.currentZoneId
   const currentZone = mapZones.find((z) => z.id === targetZoneId)
