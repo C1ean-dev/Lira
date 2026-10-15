@@ -202,15 +202,6 @@ describe('Audio & Media Store - Expected Behaviors', () => {
     expect(getEffectiveParticipantVolume('presenter-1')).toBeCloseTo(0.4, 2)
   })
 
-  it('keeps amplification above 100 percent in the effective participant gain', () => {
-    const store = useMediaStore.getState()
-    store.setOutputVolume(100)
-    store.setParticipantVolume('amplified-person', 200)
-    expect(store.getEffectiveParticipantVolume('amplified-person')).toBe(2)
-    store.setOutputVolume(75)
-    expect(store.getEffectiveParticipantVolume('amplified-person')).toBe(1.5)
-  })
-
   it('should manage live buffer delay settings', () => {
     const { setLiveBufferDelay } = useMediaStore.getState()
 

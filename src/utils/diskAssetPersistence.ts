@@ -1,23 +1,10 @@
 import { Direction } from '../types/game'
-import { createPortableImageQueue } from '../media/bundledImages'
-
-const assetFileWrites = createPortableImageQueue()
 
 export async function saveAssetFileToDisk(
   relativePath: string,
   content: string,
   encoding: 'utf-8' | 'base64' = 'utf-8'
 ): Promise<boolean> {
-  try {
-    return await assetFileWrites({ relativePath, content, encoding }, portable =>
-      writeAssetFileToDisk(portable.relativePath, portable.content, portable.encoding))
-  } catch (error) {
-    console.warn('[saveAssetFileToDisk] Could not read bundled image:', error)
-    return false
-  }
-}
-
-async function writeAssetFileToDisk(relativePath: string, content: string, encoding: 'utf-8' | 'base64'): Promise<boolean> {
   let saved = false
 
   if (typeof window !== 'undefined' && (window as any).electronAPI?.saveAssetFile) {

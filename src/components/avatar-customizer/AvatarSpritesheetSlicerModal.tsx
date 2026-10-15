@@ -24,10 +24,9 @@ import {
   Pipette,
   Wand2,
   Paintbrush,
-  Upload,
 } from 'lucide-react'
 import { AvatarComponentSlot, Direction } from '../../types/game'
-import { CustomAsset, SpriteSheetSource } from '../../types/customAsset'
+import { CustomAsset } from '../../types/customAsset'
 import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 import { useGameStore } from '../../store/useGameStore'
 import { DEFAULT_AVATAR } from '../../engine/Constants'
@@ -44,8 +43,6 @@ import {
 } from '../../utils/imageTransparency'
 import { convertAssetToSlicedPresets } from '../../utils/avatarAssetOrigin'
 import { saveAssetFileToDisk } from '../../utils/diskAssetPersistence'
-import { withPetRestFrames, petAnimationsFromPreset } from '../../utils/petSlicerAnimations'
-import { resolveSlicerSheets, sequentialFrameRegions } from '../../utils/slicerSpriteSheets'
 
 export interface SlicedFrameSlot {
   x: number
@@ -53,15 +50,12 @@ export interface SlicedFrameSlot {
   w?: number
   h?: number
   dataUrl: string
-  sheetId?: string
 }
-
-type FrameState = Direction | 'yawn' | 'sleep'
 
 export interface SlicedPreset {
   id: string
   name: string
-  directions: Record<Direction, SlicedFrameSlot[]> & Partial<Record<'yawn' | 'sleep', SlicedFrameSlot[]>>
+  directions: Record<Direction, SlicedFrameSlot[]>
 }
 
 interface Props {
@@ -108,20 +102,10 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
   onSaveComplete,
   editingAsset,
 }) => {
-  const hasAnimationStates = category === 'pet' || category === 'other'
-  const frameTabs: { id: FrameState; label: string; icon: string }[] = hasAnimationStates
-    ? [...DIRECTIONS, { id: 'yawn', label: 'Bocejo', icon: '🥱' }, { id: 'sleep', label: 'Sono', icon: '💤' }]
-    : DIRECTIONS
   const [sourceImg, setSourceImg] = useState<HTMLImageElement | null>(null)
-  const [sourceSheets, setSourceSheets] = useState<SpriteSheetSource[]>([])
-  const [activeSheetId, setActiveSheetId] = useState('main')
-  const [sheetError, setSheetError] = useState('')
-  const sheetInputRef = useRef<HTMLInputElement>(null)
-  const activeSheet = sourceSheets.find(sheet => sheet.id === activeSheetId)
-  const activeImageSrc = activeSheet?.imageSrc ?? imageSrc
   const [zoom, setZoom] = useState<number>(0.5)
   const [showGrid, setShowGrid] = useState<boolean>(true)
-  const [gridSnapSize, setGridSnapSize] = useState<number>(Math.min(512, editingAsset?.pixelWidth ?? 16))
+  const [gridSnapSize, setGridSnapSize] = useState<number>(16)
 
   const [enableBgRemoval, setEnableBgRemoval] = useState<boolean>(false)
   const [targetColorHex, setTargetColorHex] = useState<string>('#21232a')
@@ -175,7 +159,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
 
   const [presets, setPresets] = useState<SlicedPreset[]>(() => {
     if (editingAsset) {
-      return withPetRestFrames(editingAsset, convertAssetToSlicedPresets(editingAsset, editingAsset.sourceXmlContent))
+      return convertAssetToSlicedPresets(editingAsset, editingAsset.sourceXmlContent)
     }
     return [
       {
@@ -193,7 +177,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
 
   useEffect(() => {
     if (editingAsset) {
-      const converted = withPetRestFrames(editingAsset, convertAssetToSlicedPresets(editingAsset, editingAsset.sourceXmlContent))
+      const converted = convertAssetToSlicedPresets(editingAsset, editingAsset.sourceXmlContent)
       setPresets(converted)
       setActivePresetIndex(0)
 
@@ -218,7 +202,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
   }, [editingAsset])
 
   const [activePresetIndex, setActivePresetIndex] = useState<number>(0)
-  const [activeDirectionTab, setActiveDirectionTab] = useState<FrameState>('down')
+  const [activeDirectionTab, setActiveDirectionTab] = useState<Direction>('down')
   const [showXmlModal, setShowXmlModal] = useState<boolean>(false)
   const [savedSuccessCount, setSavedSuccessCount] = useState<number | null>(null)
 
@@ -227,28 +211,8 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
 
   const [isPixelStudioOpen, setIsPixelStudioOpen] = useState<boolean>(false)
 
-  useEffect(() => {
-    let cancelled = false
-    setSheetError('')
-    resolveSlicerSheets(editingAsset, imageSrc).then(sheets => {
-      if (!cancelled) { setSourceSheets(sheets); setActiveSheetId('main') }
-    }).catch(() => {
-      if (!cancelled) setSheetError('Não foi possível carregar todas as folhas. Tente abrir o editor novamente.')
-    })
-    return () => { cancelled = true }
-  }, [editingAsset, imageSrc])
-
-  const selectSourceSheet = (sheet: SpriteSheetSource) => {
-    setActiveSheetId(sheet.id)
-    setSelection({ x: 0, y: 0, w: sheet.frameWidth, h: sheet.frameHeight })
-    setGridSnapSize(Math.min(512, sheet.frameWidth))
-  }
-
   const getCurrentDirectionalFrames = useCallback((): Record<Direction, string[]> => {
     const p = presets[activePresetIndex] || presets[0]
-    if (activeDirectionTab === 'yawn' || activeDirectionTab === 'sleep') {
-      return { down: (p?.directions[activeDirectionTab] ?? []).map(frame => frame.dataUrl), up: [], left: [], right: [] }
-    }
 
     const getDirectionList = (dir: Direction): string[] => {
       const slots = p?.directions?.[dir] || []
@@ -278,7 +242,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
       left: getDirectionList('left'),
       right: getDirectionList('right'),
     }
-  }, [presets, activePresetIndex, editingAsset, activeDirectionTab])
+  }, [presets, activePresetIndex, editingAsset])
 
   const handleSaveFromStudio = async (
     newDirectionalFrames: Record<Direction, string | string[]>,
@@ -306,34 +270,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     const finalW = options?.pixelWidth || selection.w
     const finalH = options?.pixelHeight || selection.h
 
-    if (activeDirectionTab === 'yawn' || activeDirectionTab === 'sleep') {
-      const next = presets.map((p, idx) => idx === activePresetIndex ? {
-        ...p,
-        directions: { ...p.directions, [activeDirectionTab]: downFrames.map((dataUrl, index) => ({
-          x: p.directions[activeDirectionTab]?.[index]?.x ?? index * finalW,
-          y: p.directions[activeDirectionTab]?.[index]?.y ?? 0,
-          sheetId: p.directions[activeDirectionTab]?.[index]?.sheetId ?? activeDirectionTab,
-          w: finalW, h: finalH, dataUrl,
-        })) },
-      } : p)
-      setPresets(next)
-      if (editingAsset) {
-        const store = useCustomAssetsStore.getState()
-        const current = store.customAssets.find(a => a.id === editingAsset.id) ?? editingAsset
-        const petAnimations = petAnimationsFromPreset(next[activePresetIndex], current.petAnimations)
-        store.updateCustomAsset(editingAsset.id, { petAnimations, slicerPresets: next, sourceSheets })
-        const game = useGameStore.getState()
-        if (game.localPlayer.avatar.pet?.customAssetId === editingAsset.id) {
-          game.setLocalPlayer({ avatar: { ...game.localPlayer.avatar,
-            pet: { ...game.localPlayer.avatar.pet, petAnimations },
-          } })
-        }
-      }
-      setSavedSuccessCount(1)
-      setIsPixelStudioOpen(false)
-      return
-    }
-
     setPresets((prev) =>
       prev.map((p, idx) => {
         if (idx !== activePresetIndex) return p
@@ -341,9 +277,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
           ...p,
           name: newName || p.name,
           directions: {
-            ...p.directions,
             down: downFrames.map((url, i) => ({
-              ...p.directions.down[i],
               x: p.directions.down[i]?.x || 0,
               y: p.directions.down[i]?.y || 0,
               w: finalW,
@@ -351,7 +285,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               dataUrl: url,
             })),
             up: upFrames.map((url, i) => ({
-              ...p.directions.up[i],
               x: p.directions.up[i]?.x || 0,
               y: p.directions.up[i]?.y || 0,
               w: finalW,
@@ -359,7 +292,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               dataUrl: url,
             })),
             left: leftFrames.map((url, i) => ({
-              ...p.directions.left[i],
               x: p.directions.left[i]?.x || 0,
               y: p.directions.left[i]?.y || 0,
               w: finalW,
@@ -367,7 +299,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               dataUrl: url,
             })),
             right: rightFrames.map((url, i) => ({
-              ...p.directions.right[i],
               x: p.directions.right[i]?.x || 0,
               y: p.directions.right[i]?.y || 0,
               w: finalW,
@@ -405,7 +336,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
         category: options?.category || editingAsset.category,
         directionalFrames: newDirectionalFrames,
         frames: [firstDown, firstUp, firstLeft, firstRight],
-        sourceSheets,
       })
 
       const gameStore = useGameStore.getState()
@@ -465,23 +395,30 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
   }, [isOpen])
 
   useEffect(() => {
-    if (!activeImageSrc) return
+    if (!imageSrc) return
     const img = new Image()
-    let cancelled = false
+    img.src = imageSrc
     img.onload = () => {
-      if (cancelled) return
       setSourceImg(img)
-      const w = Math.min(selection.w, img.naturalWidth)
-      const h = Math.min(selection.h, img.naturalHeight)
-      const x = Math.max(0, Math.min(selection.x, img.naturalWidth - w))
-      const y = Math.max(0, Math.min(selection.y, img.naturalHeight - h))
-      setSelection({ x, y, w, h })
-      sliceRegion(img, x, y, w, h)
+      const firstSlot =
+        presets[0]?.directions.down[0] ||
+        presets[0]?.directions.up[0] ||
+        presets[0]?.directions.left[0] ||
+        presets[0]?.directions.right[0]
+
+      if (firstSlot && firstSlot.w && firstSlot.h) {
+        setSelection({
+          x: firstSlot.x,
+          y: firstSlot.y,
+          w: firstSlot.w,
+          h: firstSlot.h,
+        })
+        sliceRegion(img, firstSlot.x, firstSlot.y, firstSlot.w, firstSlot.h)
+      } else {
+        sliceRegion(img, selection.x, selection.y, selection.w || 16, selection.h || 16)
+      }
     }
-    img.onerror = () => { if (!cancelled) setSheetError('Esta folha não carregou. Escolha outra imagem PNG.') }
-    img.src = activeImageSrc
-    return () => { cancelled = true }
-  }, [activeImageSrc, sliceRegion])
+  }, [imageSrc, sliceRegion])
 
   useEffect(() => {
     if (sourceImg) {
@@ -531,18 +468,15 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
   }, [isPickingColor])
 
   useEffect(() => {
-    setWalkTick(0)
     if (!isPlayingWalk) {
+      setWalkTick(0)
       return
     }
-    const intervalMs = activeDirectionTab === 'sleep' || activeDirectionTab === 'yawn'
-      ? editingAsset?.petAnimations?.[activeDirectionTab]?.frameRateMs ?? (activeDirectionTab === 'sleep' ? 700 : 180)
-      : 180
     const interval = setInterval(() => {
       setWalkTick((t) => (t + 1) % 1000)
-    }, intervalMs)
+    }, 180)
     return () => clearInterval(interval)
-  }, [isPlayingWalk, activeDirectionTab, editingAsset])
+  }, [isPlayingWalk])
 
   useEffect(() => {
     const stage = stageRef.current
@@ -598,10 +532,9 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
 
     const activePreset = presets[activePresetIndex]
     if (activePreset) {
-      frameTabs.forEach(({ id: dir }) => {
+      DIRECTIONS.forEach(({ id: dir }) => {
         const frames = activePreset.directions[dir] || []
         frames.forEach((frame, idx) => {
-          if ((frame.sheetId ?? 'main') !== activeSheetId) return
           const fw = frame.w || 16
           const fh = frame.h || 16
           ctx.fillStyle = dir === activeDirectionTab ? 'rgba(59, 130, 246, 0.35)' : 'rgba(16, 185, 129, 0.3)'
@@ -633,7 +566,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     ctx.fillStyle = '#000000'
     ctx.font = 'bold 8px sans-serif'
     ctx.fillText(tagText, selection.x + 4, tagY + 9)
-  }, [sourceImg, showGrid, gridSnapSize, selection, presets, activePresetIndex, activeDirectionTab, activeSheetId])
+  }, [sourceImg, showGrid, gridSnapSize, selection, presets, activePresetIndex, activeDirectionTab])
 
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!sourceImg) return
@@ -824,7 +757,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
   }
 
   const handleUpdateGridSize = (newGridSize: number) => {
-    const safeSize = Math.max(1, Math.min(512, Math.round(newGridSize)))
+    const safeSize = Math.max(1, Math.min(64, Math.round(newGridSize)))
     setGridSnapSize(safeSize)
 
     if (sourceImg) {
@@ -853,12 +786,28 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     }
   }
 
-  const handleAddSequentialFrames = (dir: FrameState) => {
+  const handleAddSequentialFrames = (dir: Direction) => {
     if (!sourceImg) return
-    const newFrames: SlicedFrameSlot[] = sequentialFrameRegions(selection, sourceImg.naturalWidth, sourceImg.naturalHeight)
-      .map(region => ({ ...region, sheetId: activeSheetId,
-        dataUrl: sliceRegion(sourceImg, region.x, region.y, region.w, region.h) }))
-    sliceRegion(sourceImg, selection.x, selection.y, selection.w, selection.h)
+    const step = Math.max(1, gridSnapSize)
+    const cols = Math.max(1, Math.round(selection.w / step))
+    const rows = Math.max(1, Math.round(selection.h / step))
+
+    const newFrames: SlicedFrameSlot[] = []
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const bx = selection.x + c * step
+        const by = selection.y + r * step
+        const dataUrl = sliceRegion(sourceImg, bx, by, step, step)
+        newFrames.push({
+          x: bx,
+          y: by,
+          w: step,
+          h: step,
+          dataUrl,
+        })
+      }
+    }
 
     setPresets((prev) => {
       const updated = [...prev]
@@ -873,7 +822,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     })
   }
 
-  const handleAddCompositeFrame = (dir: FrameState) => {
+  const handleAddCompositeFrame = (dir: Direction) => {
     if (!sourceImg) return
     const dataUrl = sliceRegion(sourceImg, selection.x, selection.y, selection.w, selection.h)
 
@@ -891,7 +840,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
             w: selection.w,
             h: selection.h,
             dataUrl,
-            sheetId: activeSheetId,
           },
         ],
       }
@@ -900,7 +848,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     })
   }
 
-  const handleRemoveDirectionFrame = (dir: FrameState, frameIndex: number) => {
+  const handleRemoveDirectionFrame = (dir: Direction, frameIndex: number) => {
     setPresets((prev) => {
       const updated = [...prev]
       const current = { ...updated[activePresetIndex] }
@@ -914,7 +862,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     })
   }
 
-  const handleMoveFrameOrder = (dir: FrameState, fromIndex: number, toIndex: number) => {
+  const handleMoveFrameOrder = (dir: Direction, fromIndex: number, toIndex: number) => {
     setPresets((prev) => {
       const updated = [...prev]
       const current = { ...updated[activePresetIndex] }
@@ -933,7 +881,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     })
   }
 
-  const handleMoveFrameToDirection = (fromDir: FrameState, frameIndex: number, targetDir: FrameState) => {
+  const handleMoveFrameToDirection = (fromDir: Direction, frameIndex: number, targetDir: Direction) => {
     if (fromDir === targetDir) return
     setPresets((prev) => {
       const updated = [...prev]
@@ -1052,10 +1000,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     const store = useCustomAssetsStore.getState()
 
     for (const p of presets) {
-      const currentAsset = editingAsset ? store.customAssets.find(a => a.id === editingAsset.id) : undefined
-      const petAnimations = hasAnimationStates
-        ? petAnimationsFromPreset(p, currentAsset?.petAnimations ?? editingAsset?.petAnimations)
-        : undefined
       const directionalFrames: Record<Direction, string | string[]> = {
         down: '',
         up: '',
@@ -1100,18 +1044,15 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
           ],
           directionalFrames,
           creationSource: 'slicer',
-          ...(hasAnimationStates ? { petAnimations } : {}),
           sourceImageSrc: imageSrc,
           sourceFileName: imageFileName,
-          sourceSheets,
           slicerPresets: presets,
         })
-        const updated = useCustomAssetsStore.getState().customAssets.find((a) => a.id === editingAsset.id) || {
+        const updated = store.customAssets.find((a) => a.id === editingAsset.id) || {
           ...editingAsset,
           name: p.name.trim() || editingAsset.name,
           thumbnail,
           directionalFrames,
-          ...(hasAnimationStates ? { petAnimations } : {}),
         }
         createdAssets.push(updated)
       } else {
@@ -1140,12 +1081,10 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
           ],
           directionalFrames,
           frameRateMs: 160,
-          ...(hasAnimationStates ? { petAnimations } : {}),
           createdAt: Date.now(),
           creationSource: 'slicer',
           sourceImageSrc: imageSrc,
           sourceFileName: imageFileName,
-          sourceSheets,
           slicerPresets: presets,
         }
 
@@ -1201,9 +1140,9 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
         : activeDirectionFrames[0]?.dataUrl
       : selectedRegionDataUrl
 
-  const totalBlocks = sourceImg
-    ? sequentialFrameRegions(selection, sourceImg.naturalWidth, sourceImg.naturalHeight).length : 0
-  const isMultiBlock = totalBlocks > 1
+  const snapStep = Math.max(1, gridSnapSize)
+  const isMultiBlock = selection.w > snapStep || selection.h > snapStep
+  const totalBlocks = Math.max(1, Math.round(selection.w / snapStep) * Math.round(selection.h / snapStep))
 
   return (
     <div
@@ -1350,7 +1289,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                 transformOrigin: 'center center',
                 transition: isPanning ? 'none' : 'transform 0.05s ease-out',
               }}
-              className="relative shrink-0 shadow-2xl border border-slate-700/60 rounded overflow-hidden"
+              className="relative shadow-2xl border border-slate-700/60 rounded overflow-hidden"
             >
               <canvas
                 ref={canvasRef}
@@ -1363,37 +1302,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
           </div>
 
           <div className="w-96 border-l border-[#2b2d31] bg-[#18191c]/90 flex flex-col p-4 gap-3.5 overflow-y-auto">
-            <div className="flex flex-col gap-2 border-b border-[#383a40] pb-3">
-              <label htmlFor="slicer-source-sheet" className="text-xs font-bold text-slate-200">
-                Folhas de sprites ({sourceSheets.length || 1})
-              </label>
-              <div className="flex items-center gap-2">
-                <select id="slicer-source-sheet" value={activeSheetId}
-                  onChange={e => { const sheet = sourceSheets.find(s => s.id === e.target.value); if (sheet) selectSourceSheet(sheet) }}
-                  className="min-w-0 flex-1 rounded-lg border border-[#383a40] bg-[#141517] p-2 text-xs text-white focus:outline-blue-400">
-                  {(sourceSheets.length ? sourceSheets : [{ id: 'main', name: 'Base' }]).map(sheet =>
-                    <option key={sheet.id} value={sheet.id}>{sheet.name}</option>)}
-                </select>
-                <button type="button" title="Adicionar folha PNG" onClick={() => sheetInputRef.current?.click()}
-                  className="rounded-lg border border-[#383a40] p-2 text-slate-200 hover:bg-[#383a40] focus-visible:outline-blue-400">
-                  <Upload className="h-4 w-4" />
-                </button>
-                <input ref={sheetInputRef} type="file" accept="image/png" className="hidden" onChange={e => {
-                  const file = e.target.files?.[0]
-                  if (!file) return
-                  const reader = new FileReader()
-                  reader.onload = () => {
-                    const sheet: SpriteSheetSource = { id: `sheet_${Date.now()}`, name: file.name,
-                      imageSrc: String(reader.result), frameWidth: selection.w, frameHeight: selection.h }
-                    setSourceSheets(previous => [...previous, sheet]); selectSourceSheet(sheet); setSheetError('')
-                  }
-                  reader.onerror = () => setSheetError('Não foi possível abrir este PNG. Escolha outro arquivo.')
-                  reader.readAsDataURL(file)
-                  e.target.value = ''
-                }} />
-              </div>
-              {sheetError && <p role="alert" className="text-xs text-rose-300">{sheetError}</p>}
-            </div>
             <div className="flex flex-col gap-2.5 bg-[#2b2d31]/70 border border-[#383a40] p-3 rounded-2xl">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -1540,20 +1448,97 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                   Tamanho da Seleção
                 </span>
                 <div className="flex items-center gap-1.5">
-
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-[#1e1f22] text-blue-400 border border-[#383a40]">
+                    Grade: {gridSnapSize}px
+                  </span>
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-[#1e1f22] text-amber-400 border border-[#383a40]">
                     {selection.w}×{selection.h}px
                   </span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 bg-[#1e1f22] p-2 rounded-xl border border-[#383a40]/60">
-                <label htmlFor="slicer-fine-size" className="text-[10px] font-semibold text-slate-300">Ajuste fino</label>
-                <input id="slicer-fine-size" type="range" min={1} max={512} value={gridSnapSize}
-                  onChange={e => handleUpdateGridSize(parseInt(e.target.value) || 1)}
-                  className="min-w-0 flex-1 accent-blue-500 cursor-pointer"
-                  title="Ajustar o tamanho do bloco selecionado" />
-                <span className="text-[10px] text-slate-300">{gridSnapSize}px</span>
+              <div className="flex flex-col gap-1.5 bg-[#1e1f22] p-2 rounded-xl border border-[#383a40]/60">
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span className="text-[10px] font-bold text-slate-300">Grade / Snap (1 a 64px):</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min={1}
+                      max={64}
+                      value={gridSnapSize}
+                      onChange={(e) => handleUpdateGridSize(parseInt(e.target.value) || 1)}
+                      className="w-12 bg-[#141517] border border-[#383a40] focus:border-blue-500 text-blue-400 font-mono text-center text-xs px-1 py-0.5 rounded-lg outline-none"
+                    />
+                    <span className="text-[10px] text-slate-500">px</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min={1}
+                    max={64}
+                    value={gridSnapSize}
+                    onChange={(e) => handleUpdateGridSize(parseInt(e.target.value) || 1)}
+                    className="flex-1 accent-blue-500 cursor-pointer h-1.5"
+                    title="Ajuste fino da grade (sincroniza o seletor)"
+                  />
+                  <span className="text-[9px] font-mono text-slate-400 min-w-[32px] text-right">
+                    {gridSnapSize}×{gridSnapSize}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-1 pt-1 border-t border-white/5">
+                  {[1, 8, 16, 24, 32, 48, 64].map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => handleUpdateGridSize(s)}
+                      className={`flex-1 py-0.5 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                        gridSnapSize === s
+                          ? 'bg-blue-600 border-blue-400 text-white shadow'
+                          : 'bg-[#141517] border-[#383a40] text-slate-400 hover:text-white'
+                      }`}
+                      title={`Ajusta a grade para ${s}px e o seletor para ${s}×${s}px`}
+                    >
+                      {s}px
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-1">
+                {[
+                  { label: '1×1', w: 1, h: 1 },
+                  { label: '8×8', w: 8, h: 8 },
+                  { label: '16×16', w: 16, h: 16 },
+                  { label: '16×32', w: 16, h: 32 },
+                  { label: '24×24', w: 24, h: 24 },
+                  { label: '32×32', w: 32, h: 32 },
+                  { label: '32×64', w: 32, h: 64 },
+                  { label: '48×48', w: 48, h: 48 },
+                  { label: '64×64', w: 64, h: 64 },
+                ].map((s) => (
+                  <button
+                    key={s.label}
+                    type="button"
+                    onClick={() => {
+                      if (s.w === s.h) {
+                        handleUpdateGridSize(s.w)
+                      } else {
+                        setGridSnapSize(s.w)
+                        setExactDimensions(s.w, s.h)
+                      }
+                    }}
+                    className={`flex-1 min-w-[36px] py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                      selection.w === s.w && selection.h === s.h
+                        ? 'bg-amber-500/20 border-amber-500/60 text-amber-300'
+                        : 'bg-[#1e1f22] border-[#383a40] text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
               </div>
 
               <div className="grid grid-cols-2 gap-2 bg-[#1e1f22] p-2 rounded-xl border border-[#383a40]/60">
@@ -1564,7 +1549,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                       type="number"
                       min={1}
                       max={512}
-                      step={1}
+                      step={gridSnapSize > 0 ? gridSnapSize : 1}
                       value={selection.w}
                       onChange={(e) => setExactDimensions(parseInt(e.target.value) || 1, selection.h)}
                       className="w-14 bg-[#141517] border border-[#383a40] text-amber-300 font-mono text-center text-xs px-1 py-0.5 rounded-lg outline-none"
@@ -1580,7 +1565,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                       type="number"
                       min={1}
                       max={512}
-                      step={1}
+                      step={gridSnapSize > 0 ? gridSnapSize : 1}
                       value={selection.h}
                       onChange={(e) => setExactDimensions(selection.w, parseInt(e.target.value) || 1)}
                       className="w-14 bg-[#141517] border border-[#383a40] text-amber-300 font-mono text-center text-xs px-1 py-0.5 rounded-lg outline-none"
@@ -1614,7 +1599,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                         type="button"
                         onClick={() => handleAddSequentialFrames(activeDirectionTab)}
                         className="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-extrabold shadow-md shadow-emerald-600/30 transition-all cursor-pointer"
-                        title={`Adiciona os frames inteiros de ${selection.w}×${selection.h}px, da seleção até o fim da linha`}
+                        title={`Fatia em blocos de ${gridSnapSize}px sequenciais`}
                       >
                         <Layers className="w-3.5 h-3.5" />
                         <span>+ {totalBlocks} Frames Sequenciais</span>
@@ -1638,7 +1623,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>
-                        + Adicionar Frame ({selection.w}×{selection.h}px) a {frameTabs.find((d) => d.id === activeDirectionTab)?.label}
+                        + Adicionar Frame ({selection.w}×{selection.h}px) à {DIRECTIONS.find((d) => d.id === activeDirectionTab)?.label}
                       </span>
                     </button>
                   )}
@@ -1648,14 +1633,13 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
 
             <div className="bg-[#2b2d31]/70 border border-[#383a40] p-3 rounded-2xl flex flex-col gap-3">
               <div className="grid grid-cols-4 gap-1.5">
-                {frameTabs.map((d) => {
+                {DIRECTIONS.map((d) => {
                   const frameCount = activePreset?.directions[d.id]?.length || 0
                   const isSelectedTab = activeDirectionTab === d.id
                   return (
                     <button
                       key={d.id}
                       type="button"
-                      aria-pressed={isSelectedTab}
                       onClick={() => setActiveDirectionTab(d.id)}
                       className={`flex flex-col items-center py-2 px-1 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
                         isSelectedTab
@@ -1683,22 +1667,17 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
 
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between text-[11px] text-slate-300 font-bold uppercase tracking-wider">
-                  <span>Frames de {frameTabs.find((d) => d.id === activeDirectionTab)?.label}:</span>
+                  <span>Frames de {DIRECTIONS.find((d) => d.id === activeDirectionTab)?.label}:</span>
                   {activeDirectionFrames.length > 1 && (
                     <span className="text-emerald-400 lowercase font-semibold text-[10px]">
-                      {activeDirectionTab === 'yawn' ? 'Boceja aos 2 e 4 min' : activeDirectionTab === 'sleep'
-                        ? 'Dorme após 5 min' : `loop de caminhada ativo (${activeDirectionFrames.length} passos)`}
+                      loop de caminhada ativo ({activeDirectionFrames.length} passos)
                     </span>
                   )}
                 </div>
 
                 {activeDirectionFrames.length === 0 ? (
                   <div className="py-4 text-center text-xs text-slate-500 border border-dashed border-[#383a40] rounded-xl">
-                    {activeDirectionTab === 'sleep'
-                      ? 'Sem frames de sono. Escolha uma folha e adicione os frames deste estado.'
-                      : activeDirectionTab === 'yawn'
-                      ? 'Sem frames de bocejo. Escolha uma folha e adicione os frames deste estado.'
-                      : 'Nenhum frame atribuído ainda. Selecione na imagem para adicionar.'}
+                    Nenhum frame atribuído ainda. Selecione na imagem para adicionar.
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 overflow-x-auto pb-2 pt-1 px-1">
@@ -1767,10 +1746,8 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                             onClick={() => {
                               const fw = frame.w || 16
                               const fh = frame.h || 16
-                              const sheetId = frame.sheetId ?? 'main'
-                              if (sheetId !== activeSheetId && sourceSheets.some(s => s.id === sheetId)) setActiveSheetId(sheetId)
                               setSelection({ x: frame.x, y: frame.y, w: fw, h: fh })
-                              if (sourceImg && sheetId === activeSheetId) {
+                              if (sourceImg) {
                                 sliceRegion(sourceImg, frame.x, frame.y, fw, fh)
                               }
                             }}
@@ -1785,8 +1762,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                           </button>
 
                           <span className="text-[9px] font-bold text-slate-300 mt-1">
-                            {activeDirectionTab === 'yawn' || activeDirectionTab === 'sleep'
-                              ? `Frame ${idx + 1}` : idx === 0 ? '0 (Parado)' : `Passo ${idx}`}
+                            {idx === 0 ? '0 (Parado)' : `Passo ${idx}`}
                           </span>
                           <span className="text-[8px] text-slate-500 font-mono">
                             {frame.w || 16}×{frame.h || 16}
@@ -1828,7 +1804,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                                   ? 'bg-indigo-600 text-white'
                                   : 'hover:bg-[#2b2d31] text-indigo-400 hover:text-white cursor-pointer'
                               }`}
-                              title="Mover para outra direção ou animação"
+                              title="Mover para outra direção (Frente, Costas, etc.)"
                             >
                               <ArrowRightLeft className="w-3 h-3" />
                             </button>
@@ -1853,7 +1829,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                               <span className="text-[9px] font-bold text-slate-400 px-1 border-b border-white/10 pb-0.5">
                                 Mover para:
                               </span>
-                              {frameTabs.filter((d) => d.id !== activeDirectionTab).map((d) => (
+                              {DIRECTIONS.filter((d) => d.id !== activeDirectionTab).map((d) => (
                                 <button
                                   key={d.id}
                                   type="button"
@@ -1918,9 +1894,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                   }`}
                 >
                   {isPlayingWalk ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                  <span>{activeDirectionTab === 'yawn' || activeDirectionTab === 'sleep'
-                    ? isPlayingWalk ? 'Reproduzindo animação' : 'Pausado (primeiro frame)'
-                    : isPlayingWalk ? 'Andando (Loop)' : 'Parado (Frame 0)'}</span>
+                  <span>{isPlayingWalk ? 'Andando (Loop)' : 'Parado (Frame 0)'}</span>
                 </button>
               </div>
 

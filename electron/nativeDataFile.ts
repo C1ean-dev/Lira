@@ -71,29 +71,9 @@ export async function writeNativeDataFileAsync(
   }
 }
 
-const latest = createLatestWriter<{ data: Record<string, unknown>; options: WriteOptions }>(async (filePath, job) => {
-  let data = job.data
-  if (Array.isArray(data.assets)) {
-    try {
-      const existing = unpackImages(JSON.parse(await fs.promises.readFile(filePath, 'utf-8')))
-      if (Array.isArray(existing.assets)) {
-        const byId = new Map(existing.assets.map(asset => [asset.id, asset]))
-        data = {
-          ...data,
-          assets: data.assets.map(asset => {
-            const stored = byId.get(asset.id)
-            return stored && (stored.updatedAt ?? stored.createdAt ?? 0) > (asset.updatedAt ?? asset.createdAt ?? 0)
-              ? stored
-              : asset
-          }),
-        }
-      }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-    }
-  }
-  await writeNativeDataFileAsync(filePath, data, job.options)
-})
+const latest = createLatestWriter<{ data: Record<string, unknown>; options: WriteOptions }>((filePath, job) =>
+  writeNativeDataFileAsync(filePath, job.data, job.options)
+)
 
 export function writeNativeDataFileLatest(
   filePath: string,

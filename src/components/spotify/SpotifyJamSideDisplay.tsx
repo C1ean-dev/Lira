@@ -7,6 +7,7 @@ import { SpotifyIcon } from '../common/SpotifyIcon'
 import { MediaManager } from '../../media/MediaManager'
 import { SpotifyPlayerFeedback } from './SpotifyPlayerFeedback'
 import { SpotifyPlaybackCrop } from './SpotifyPlaybackCrop'
+import { SpotifyLoginControls } from './SpotifyLoginControls'
 
 export const SpotifyJamSideDisplay: React.FC = () => {
   const localPlayer = useGameStore((s) => s.localPlayer)
@@ -21,6 +22,7 @@ export const SpotifyJamSideDisplay: React.FC = () => {
   const isMuted = useSpotifyJamStore((s) => s.isMuted)
   const toggleMute = useSpotifyJamStore((s) => s.toggleMute)
   const isDjModeActive = useSpotifyJamStore((s) => s.isDjModeActive)
+  const setDjStateInZone = useSpotifyJamStore((s) => s.setDjStateInZone)
 
   const [djLoading, setDjLoading] = useState(false)
   const [djError, setDjError] = useState<string | null>(null)
@@ -40,6 +42,24 @@ export const SpotifyJamSideDisplay: React.FC = () => {
     try {
       if (isDjModeActive) {
         await MediaManager.getInstance().stopDjAudio()
+        setDjStateInZone(localZoneId, null, true)
+      } else {
+        const res = await MediaManager.getInstance().startDjAudio()
+        if (res.ok) {
+          setDjStateInZone(
+            localZoneId,
+            {
+              zoneId: localZoneId,
+              isDjActive: true,
+              djPeerId: localPlayer.id,
+              djName: localPlayer.name,
+              startedAt: Date.now(),
+            },
+            true
+          )
+        } else {
+          setDjError(res.error || 'Erro ao iniciar transmissão de áudio.')
+        }
       }
     } finally {
       setDjLoading(false)
@@ -137,18 +157,23 @@ export const SpotifyJamSideDisplay: React.FC = () => {
       </div>
 
       <div className="p-3 bg-[#0a0c12]/70 space-y-3 overflow-y-auto">
-        <SpotifyPlaybackCrop zoneId={localZoneId} />
+        {!isDjModeActive && <SpotifyLoginControls disabled={djLoading} />}
+        {isDjModeActive && <SpotifyPlaybackCrop />}
         <SpotifyPlayerFeedback opening={djLoading} error={djError} />
-        {isDjModeActive && <button
+        <button
           type="button"
           onClick={handleToggleDjMode}
           disabled={djLoading}
           aria-busy={djLoading}
-          className="w-full py-4 px-5 rounded-2xl text-base font-bold flex items-center justify-center gap-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30"
+          className={`w-full py-4 px-5 rounded-2xl text-base font-bold flex items-center justify-center gap-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+            isDjModeActive
+              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30'
+              : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-950/40'
+          }`}
         >
           <SpotifyIcon size={24} className="w-6 h-6 shrink-0" aria-hidden="true" />
-          <span>{djLoading ? 'Parando...' : 'Parar DJ'}</span>
-        </button>}
+          <span>{djLoading ? (isDjModeActive ? 'Parando...' : 'Iniciando...') : isDjModeActive ? 'Parar DJ' : 'Transmitir DJ'}</span>
+        </button>
 
         <div className="flex items-center gap-3 p-3 rounded-xl bg-[#141721] border border-slate-800">
           <button

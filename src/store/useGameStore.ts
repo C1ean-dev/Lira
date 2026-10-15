@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import { Player, PresenceStatus, PresenceInfo, sanitizePresence, STATUS_META, ReactionItem, AvatarConfig, UserRole, PlayerPermissions, ConnectionStatus, RoomKnockRequest, KnockStatus, FriendProfile } from '../types/game'
 import { SignalingTier } from '../types/p2p'
-import type { RoomSessionSnapshot } from '../p2p/roomSession'
 import { DEFAULT_AVATAR } from '../engine/Constants'
 import { PublicRoomsService } from '../services/publicRoomsService'
 import { generateUserId, isUserId, getPlayerUserId, getFriendUserId, findFriendKey } from '../utils/userId'
@@ -9,7 +8,6 @@ import { registerReportContext } from '../utils/reportContext'
 import { diagLog } from '../utils/diagnosticLogger'
 import { reportStorageFailure } from '../utils/storageReport'
 import { playSoundEffect } from '../utils/soundEffects'
-import { createPortableImageQueue } from '../media/bundledImages'
 
 const PROFILE_STORAGE_KEY = 'lira_user_profile'
 const AVAILABLE_ROOMS_KEY = 'lira_available_rooms'
@@ -36,9 +34,9 @@ const getStorage = () => {
   return null
 }
 
-const loadSavedProfile = (storageOverride?: ReturnType<typeof getStorage>): SavedProfile | null => {
+const loadSavedProfile = (): SavedProfile | null => {
   try {
-    const storage = storageOverride ?? getStorage()
+    const storage = getStorage()
     if (storage) {
       const raw = storage.getItem(PROFILE_STORAGE_KEY)
       if (raw) {
@@ -51,16 +49,12 @@ const loadSavedProfile = (storageOverride?: ReturnType<typeof getStorage>): Save
   return null
 }
 
-const profileWrites = createPortableImageQueue()
 const saveProfile = (data: Partial<SavedProfile>) => {
   try {
     const storage = getStorage()
     if (storage) {
-      const partial = Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined))
-      void profileWrites(partial, portable => {
-        const current = loadSavedProfile(storage) || {}
-        storage.setItem(PROFILE_STORAGE_KEY, JSON.stringify({ ...current, ...portable }))
-      }).catch(error => reportStorageFailure('write', PROFILE_STORAGE_KEY, error))
+      const current = loadSavedProfile() || {}
+      storage.setItem(PROFILE_STORAGE_KEY, JSON.stringify({ ...current, ...data }))
     }
   } catch (e) {
     reportStorageFailure('write', PROFILE_STORAGE_KEY, e)
@@ -140,8 +134,6 @@ interface GameStore {
   isHost: boolean
   connectionHostId: string | null
   isConnected: boolean
-  roomEntryError: string | null
-  setRoomEntryError: (error: string | null) => void
   connectionStatus: ConnectionStatus
   setConnectionStatus: (status: ConnectionStatus) => void
   signalingTier: SignalingTier
@@ -152,7 +144,6 @@ interface GameStore {
   maxPlayers: number
   roomColor: string
   setRoomSession: (roomId: string, isOwner: boolean, options?: RoomSessionOptions) => void
-  syncRoomSession: (session: RoomSessionSnapshot) => void
   setConnected: (connected: boolean) => void
   setIsRoomPublic: (isPublic: boolean) => void
   toggleRoomPrivacy: () => void
@@ -735,11 +726,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   isHost: false,
   connectionHostId: null,
   isConnected: false,
-  roomEntryError: null,
-  setRoomEntryError: (roomEntryError) => set({ roomEntryError }),
   connectionStatus: 'disconnected',
   setConnectionStatus: (status) => set({ connectionStatus: status }),
-  signalingTier: 'public',
+  signalingTier: 'render',
   setSignalingTier: (signalingTier) => set({ signalingTier }),
   isRoomPublic: false,
   roomName: 'Espaço Principal',
@@ -803,20 +792,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
   },
 
-  syncRoomSession: (session) => {
-    if (get().roomId !== session.roomCode) return
-    set({ isRoomPublic: session.isPublic, roomName: session.roomName, roomDescription: session.roomDescription,
-      maxPlayers: session.maxPlayers, roomColor: session.color })
-    syncPublicRoomRegistration(session.roomCode, session.isPublic, session.roomName)
-  },
-
   setIsRoomPublic: (isRoomPublic) => {
     const state = get()
-    if (!state.roomId || (!state.isHost && !state.isOwner && !state.localPlayer.isOwner)) return
+    if (!state.roomId || !state.isHost) return
 
     set({ isRoomPublic })
     syncPublicRoomRegistration(state.roomId, isRoomPublic, state.roomName)
-    if (!state.isHost) return
 
     if (isRoomPublic) {
       PublicRoomsService.getInstance().startHosting({

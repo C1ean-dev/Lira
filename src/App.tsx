@@ -33,20 +33,10 @@ export const App: React.FC = () => {
   const [isDisconnectModalOpen, setIsDisconnectModalOpen] = useState(false)
 
   const isConnected = useGameStore((s) => s.isConnected)
-  const roomEntryError = useGameStore((s) => s.roomEntryError)
   const toggleMute = useMediaStore((s) => s.toggleMute)
   const toggleCamera = useMediaStore((s) => s.toggleCamera)
   const { toggleChat } = useChatStore()
   const toggleEditor = useMapStore((s) => s.toggleEditor)
-
-  useEffect(() => {
-    if (roomEntryError && !inLobby) {
-      callNotificationService.clearNotification()
-      MediaManager.getInstance().stopAllMedia()
-      useMediaStore.getState().stopAllMedia()
-      setInLobby(true)
-    }
-  }, [roomEntryError, inLobby])
 
   const updateInfo = useUpdateStore((s) => s.updateInfo)
   const updateStatus = useUpdateStore((s) => s.status)

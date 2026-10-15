@@ -169,10 +169,7 @@ describe('the click to watch a live', () => {
         expect(buttonsNamed(html, WATCH)).toHaveLength(1)
         expect(videoTags(html)).toHaveLength(0)
         expect(html).not.toContain(STOP)
-        const [voice, live] = audioTags(html)
-        expect(audioTags(html)).toHaveLength(2)
-        expect(voice).not.toContain('muted')
-        expect(live).toContain('muted')
+        expect(audioTags(html)).toHaveLength(1)
       })
 
       it(`${where}: shows the picture once this user is watching`, () => {
@@ -180,9 +177,6 @@ describe('the click to watch a live', () => {
         expect(videoTags(html)).toHaveLength(1)
         expect(buttonsNamed(html, WATCH)).toHaveLength(0)
         expect(html).toContain(CONNECTING)
-        expect(videoTags(html)[0]).toContain('muted')
-        expect(audioTags(html)).toHaveLength(2)
-        for (const audio of audioTags(html)) expect(audio).not.toContain('muted')
       })
 
       it(`${where}: shows a live of a version without the click right away`, () => {

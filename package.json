@@ -1,6 +1,6 @@
 {
   "name": "lira",
-  "version": "1.1.99",
+  "version": "1.1.117",
   "description": "Lira - Espaço Virtual e Comunicação em Tempo Real",
   "main": "dist-electron/main.js",
   "type": "module",
@@ -61,13 +61,6 @@
     "directories": {
       "output": "release"
     },
-    "files": [
-      "dist/**",
-      "dist-electron/**",
-      "public/icon.png",
-      "public/tray-icon.png",
-      "!node_modules/**/*.map"
-    ],
     "extraResources": [
       {
         "from": "native/bin",

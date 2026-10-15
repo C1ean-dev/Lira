@@ -45,10 +45,6 @@ describe('Connection Recovery & Call Resilience Tests', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     vi.useFakeTimers()
-    const pm = PeerManager.getInstance() as any
-    pm.signalingReconnectTimer = null
-    pm.signalingReconnectAttempts = 0
-    pm.isIntentionalDisconnect = false
 
     useGameStore.setState({
       isConnected: true,
@@ -103,22 +99,6 @@ describe('Connection Recovery & Call Resilience Tests', () => {
   })
 
   describe('Signaling Disconnection & Auto-Reconnect', () => {
-    it('keeps retrying a silent signaling outage beyond six attempts without destroying working P2P links', () => {
-      const pm = PeerManager.getInstance() as any
-      const mockPeer = { id: 'test-peer-id', open: false, disconnected: true, destroyed: false,
-        reconnect: vi.fn(), destroy: vi.fn() }
-      pm.peer = mockPeer
-      pm.roomCode = 'TEST-ROOM'
-      pm.scheduleSignalingReconnect()
-      vi.advanceTimersByTime(180000)
-      expect(mockPeer.reconnect.mock.calls.length).toBeGreaterThan(6)
-      expect(mockPeer.destroy).not.toHaveBeenCalled()
-      expect(pm.signalingReconnectTimer).not.toBeNull()
-      pm.isIntentionalDisconnect = true
-      vi.advanceTimersByTime(30000)
-      expect(pm.signalingReconnectTimer).toBeNull()
-    })
-
     it('sets connectionStatus to reconnecting and schedules peer.reconnect() on signaling disconnect', () => {
       const pm = PeerManager.getInstance()
       const mockPeer = {

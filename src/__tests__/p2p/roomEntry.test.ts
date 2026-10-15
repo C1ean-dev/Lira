@@ -27,12 +27,10 @@ const { FakePeer, FakeConn } = vi.hoisted(() => {
     static instances: FakePeer[] = []
     id: string
     destroyed = false
-    options: any
     destroyedCount = 0
     handlers = new Map<string, ((...args: any[]) => void)[]>()
-    constructor(id: string, options: any) {
+    constructor(id: string) {
       this.id = id
-      this.options = options
       FakePeer.instances.push(this)
     }
     on(evt: string, fn: (...args: any[]) => void) {
@@ -57,7 +55,7 @@ const { FakePeer, FakeConn } = vi.hoisted(() => {
 
 vi.mock('peerjs', () => ({ default: FakePeer }))
 
-import { PeerManager, SIGNALING_TIERS, getPreferredSignalingTier, markSignalingTierFailed, setActiveSignalingTier } from '../../p2p/PeerManager'
+import { PeerManager } from '../../p2p/PeerManager'
 import { diagStats, __resetDiagForTests } from '../../utils/diagnosticLogger'
 import { useGameStore } from '../../store/useGameStore'
 
@@ -83,7 +81,6 @@ describe('room entry (createRoom)', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()
-    vi.unstubAllEnvs()
     __resetDiagForTests()
   })
 
@@ -147,7 +144,6 @@ describe('room entry (joinRoom)', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()
-    vi.unstubAllEnvs()
     __resetDiagForTests()
   })
 
@@ -162,85 +158,15 @@ describe('room entry (joinRoom)', () => {
     expect(diagStats().buffered).toBeGreaterThanOrEqual(3)
   })
 
-  it('finds a Render host after it is missing from the public server without creating a second room', async () => {
+  it('auto-hosts when the host is unreachable and logs every step', async () => {
     const pm = PeerManager.getInstance()
     const pending = pm.joinRoom('code-aaa', player() as any)
     FakePeer.instances[0].emit('open', 'client-id-1')
     FakePeer.instances[0].emit('error', { type: 'peer-unavailable', message: 'Could not connect to peer' })
     expect(FakePeer.instances).toHaveLength(2)
-    expect(FakePeer.instances[1].options.host).toBe('lira-signaling.onrender.com')
-    expect(FakePeer.instances[1].id).not.toContain('-host')
-    FakePeer.instances[1].emit('open', 'client-id-2')
-    FakeConn.instances[1].emit('open')
+    FakePeer.instances[1].emit('open', 'lira-CODE-AAA-host')
     await expect(pending).resolves.toBeUndefined()
     expect(diagStats().buffered).toBeGreaterThanOrEqual(4)
-  })
-
-  it('auto-hosts only after checking every signaling server', async () => {
-    const pm = PeerManager.getInstance()
-    const pending = pm.joinRoom('code-aaa', player() as any)
-    for (let i = 0; i < 3; i++) {
-      FakePeer.instances[i].emit('open', `client-${i}`)
-      FakePeer.instances[i].emit('error', { type: 'peer-unavailable' })
-    }
-    expect(FakePeer.instances).toHaveLength(4)
-    expect(FakePeer.instances[3].id).toBe('lira-CODE-AAA-host')
-    FakePeer.instances[3].emit('open', 'lira-CODE-AAA-host')
-    await expect(pending).resolves.toBeUndefined()
-  })
-
-  it.each(['error', 'close', 'timeout'])('checks Render after host data connection %s', async event => {
-    const pm = PeerManager.getInstance()
-    const pending = pm.joinRoom('code-aaa', player() as any)
-    FakePeer.instances[0].emit('open', 'client-id-1')
-    if (event === 'timeout') await vi.advanceTimersByTimeAsync(6000)
-    else FakeConn.instances[0].emit(event, new Error('data connection failed'))
-    expect(FakePeer.instances[1].options.host).toBe('lira-signaling.onrender.com')
-    FakePeer.instances[1].emit('open', 'client-id-2')
-    FakeConn.instances[1].emit('open')
-    await pending
-  })
-
-  it('retries the host on the same signaling server using private STUN after transport failure', async () => {
-    vi.stubEnv('VITE_STUN_FALLBACK_URLS', 'stun:stun.example.com:3478')
-    const pm = PeerManager.getInstance()
-    const pending = pm.joinRoom('code-aaa', player() as any)
-    expect(FakePeer.instances[0].options.config.iceServers).toHaveLength(2)
-    FakePeer.instances[0].emit('open', 'client-id-1')
-    FakeConn.instances[0].emit('error', new Error('ICE failed'))
-    expect(FakePeer.instances[1].options.host).toBeUndefined()
-    expect(FakePeer.instances[1].options.config.iceServers).toHaveLength(3)
-    FakePeer.instances[1].emit('open', 'client-id-2')
-    FakeConn.instances[1].emit('open')
-    await pending
-  })
-
-  it('ignores old data events after moving to another signaling server', async () => {
-    const pm = PeerManager.getInstance()
-    const pending = pm.joinRoom('code-aaa', player() as any)
-    FakePeer.instances[0].emit('open', 'client-id-1')
-    const oldConn = FakeConn.instances[0]
-    oldConn.emit('error', new Error('transport failed'))
-    FakePeer.instances[1].emit('open', 'client-id-2')
-    oldConn.emit('open')
-    oldConn.emit('close')
-    expect((pm as any).connections.has(oldConn.peer)).toBe(false)
-    expect(FakePeer.instances).toHaveLength(2)
-    FakeConn.instances[1].emit('open')
-    await pending
-  })
-
-  it('rejects failed transports rather than creating a duplicate room', async () => {
-    const pm = PeerManager.getInstance()
-    const createSpy = vi.spyOn(pm, 'createRoom')
-    const pending = pm.joinRoom('code-aaa', player() as any)
-    const failed = expect(pending).rejects.toThrow('Não foi possível conectar ao anfitrião')
-    for (let i = 0; i < 3; i++) {
-      FakePeer.instances[i].emit('open', `client-${i}`)
-      FakeConn.instances[i].emit('error', new Error('transport failed'))
-    }
-    await failed
-    expect(createSpy).not.toHaveBeenCalled()
   })
 
   it('a stale join timeout never auto-hosts over the newer session', async () => {
@@ -263,17 +189,5 @@ describe('room entry (joinRoom)', () => {
     expect(FakePeer.instances).toHaveLength(2)
     expect(peerB.destroyedCount).toBe(destroysAfterOpen)
     expect(run1Settled).toBeNull()
-  })
-})
-
-describe('signaling priority', () => {
-  it('starts with the public server and uses Render next', () => {
-    for (const tier of SIGNALING_TIERS) markSignalingTierFailed(tier, 0)
-    setActiveSignalingTier('public')
-    expect(SIGNALING_TIERS).toEqual(['public', 'render', 'local'])
-    expect(getPreferredSignalingTier()).toBe('public')
-    markSignalingTierFailed('public')
-    expect(getPreferredSignalingTier()).toBe('render')
-    for (const tier of SIGNALING_TIERS) markSignalingTierFailed(tier, 0)
   })
 })
