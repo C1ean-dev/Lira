@@ -4,6 +4,9 @@ const STORAGE_KEY = 'lira_public_hub_cache'
 const BROADCAST_CHANNEL_NAME = 'lira_public_hub_channel'
 const HEARTBEAT_INTERVAL_MS = 4000
 const STALE_ROOM_THRESHOLD_MS = 20000
+const utf8Encoder = new TextEncoder()
+const utf8Decoder = new TextDecoder('utf-8', { fatal: true })
+const legacyDecoder = new TextDecoder('windows-1252')
 
 type MessageType = 'ANNOUNCE_ROOM' | 'UNREGISTER_ROOM' | 'QUERY_ROOMS' | 'HEARTBEAT'
 
@@ -30,6 +33,7 @@ export class PublicRoomsService {
   private brokerStatus: BrokerConnectionStatus = 'connecting'
   private brokerStatusListeners: Set<(status: BrokerConnectionStatus) => void> = new Set()
   private connectTimeout: any = null
+  private mqttBuffer: Uint8Array = new Uint8Array(0)
 
   private constructor() {
     this.initLocalStorageCache()
@@ -93,7 +97,9 @@ export class PublicRoomsService {
   private saveToStorage() {
     try {
       if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
-        const activeRooms = Array.from(this.rooms.values())
+        // Discovery expires quickly; keep profile media in memory, not in a
+        // synchronous storage write on every incoming announcement/heartbeat.
+        const activeRooms = Array.from(this.rooms.values(), ({ hostAvatar, ...room }) => room)
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(activeRooms))
       }
     } catch (e) {
@@ -174,6 +180,7 @@ export class PublicRoomsService {
         const url = relayUrls[urlIndex]
         const ws = new WebSocket(url, ['mqtt'])
         ws.binaryType = 'arraybuffer'
+        this.mqttBuffer = new Uint8Array(0)
 
         ws.onopen = () => {
           if (this.connectTimeout) clearTimeout(this.connectTimeout)
@@ -300,10 +307,9 @@ export class PublicRoomsService {
   }
 
   private encodeMqttPublish(topic: string, message: string): Uint8Array {
-    const topicLen = topic.length
-    const topicBytes = [0, topicLen, ...Array.from(topic).map((c) => c.charCodeAt(0))]
-    const msgBytes = Array.from(message).map((c) => c.charCodeAt(0))
-    const remainingLength = topicBytes.length + msgBytes.length
+    const topicBytes = utf8Encoder.encode(topic)
+    const msgBytes = utf8Encoder.encode(message)
+    const remainingLength = 2 + topicBytes.length + msgBytes.length
 
     const lengthBytes: number[] = []
     let len = remainingLength
@@ -314,7 +320,17 @@ export class PublicRoomsService {
       lengthBytes.push(encodedByte)
     } while (len > 0)
 
-    return new Uint8Array([0x30, ...lengthBytes, ...topicBytes, ...msgBytes])
+    // Allocate bytes directly instead of expanding megabyte strings into JS
+    // character/number arrays and spreading them into another array.
+    const packet = new Uint8Array(1 + lengthBytes.length + remainingLength)
+    packet[0] = 0x30
+    packet.set(lengthBytes, 1)
+    const offset = 1 + lengthBytes.length
+    packet[offset] = topicBytes.length >> 8
+    packet[offset + 1] = topicBytes.length & 0xff
+    packet.set(topicBytes, offset + 2)
+    packet.set(msgBytes, offset + 2 + topicBytes.length)
+    return packet
   }
 
   private async handleMqttMessage(data: any) {
@@ -330,43 +346,78 @@ export class PublicRoomsService {
       }
 
       if (bytes && bytes.length > 0) {
-        const packetType = bytes[0] & 0xf0
-
-        if (packetType === 0x20) {
-          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            const subPacket = this.encodeMqttSubscribe('lira_public_hub/events', 1)
-            this.ws.send(subPacket)
-          }
-          return
+        if (this.mqttBuffer?.length) {
+          const combined = new Uint8Array(this.mqttBuffer.length + bytes.length)
+          combined.set(this.mqttBuffer)
+          combined.set(bytes, this.mqttBuffer.length)
+          bytes = combined
         }
-
-        if (packetType === 0x90) {
-          this.queryRooms()
-          if (this.currentHosting) {
-            this.broadcastMessage({
-              type: 'ANNOUNCE_ROOM',
-              roomInfo: this.currentHosting,
-              timestamp: Date.now(),
-            })
+        this.mqttBuffer = new Uint8Array(0)
+        let offset = 0
+        while (offset < bytes.length) {
+          let index = offset + 1
+          let remainingLength = 0
+          let multiplier = 1
+          let completeLength = false
+          for (let count = 0; count < 4; count++) {
+            if (index >= bytes.length) {
+              this.mqttBuffer = bytes.slice(offset)
+              return
+            }
+            const byte = bytes[index++]
+            remainingLength += (byte & 0x7f) * multiplier
+            if (!(byte & 0x80)) {
+              completeLength = true
+              break
+            }
+            multiplier *= 128
           }
-          return
-        }
-
-        if (packetType === 0x30) {
-          let index = 1
-          while ((bytes[index] & 0x80) !== 0) index++
-          index++
-          const topicLen = (bytes[index] << 8) | bytes[index + 1]
-          index += 2 + topicLen
-          const payloadStr = String.fromCharCode.apply(null, Array.from(bytes.slice(index)))
-          const msg = JSON.parse(payloadStr) as HubMessage
-          this.handleIncomingMessage(msg)
+          if (!completeLength) return
+          const end = index + remainingLength
+          if (end > bytes.length) {
+            this.mqttBuffer = bytes.slice(offset)
+            return
+          }
+          try {
+            this.handleMqttPacket(bytes[offset], bytes.subarray(index, end))
+          } catch {
+            // A malformed message must not discard the next framed packet.
+          }
+          offset = end
         }
       } else if (typeof data === 'string') {
         const msg = JSON.parse(data) as HubMessage
         this.handleIncomingMessage(msg)
       }
     } catch (e) {
+    }
+  }
+
+  private handleMqttPacket(header: number, body: Uint8Array) {
+    const packetType = header & 0xf0
+    if (packetType === 0x20) {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(this.encodeMqttSubscribe('lira_public_hub/events', 1))
+      }
+    } else if (packetType === 0x90) {
+      this.queryRooms()
+      if (this.currentHosting) {
+        this.broadcastMessage({ type: 'ANNOUNCE_ROOM', roomInfo: this.currentHosting, timestamp: Date.now() })
+      }
+    } else if (packetType === 0x30 && body.length >= 2) {
+      const topicLength = (body[0] << 8) | body[1]
+      const qos = (header >> 1) & 3
+      const payloadOffset = 2 + topicLength + (qos ? 2 : 0)
+      if (qos === 3 || payloadOffset > body.length) return
+      const payload = body.subarray(payloadOffset)
+      let text: string
+      try {
+        text = utf8Decoder.decode(payload)
+      } catch {
+        // Older Lira senders used single-byte characters instead of UTF-8.
+        text = legacyDecoder.decode(payload)
+      }
+      this.handleIncomingMessage(JSON.parse(text) as HubMessage)
     }
   }
 
@@ -397,8 +448,14 @@ export class PublicRoomsService {
       case 'ANNOUNCE_ROOM':
       case 'HEARTBEAT': {
         if (msg.roomInfo && msg.roomInfo.code) {
+          const previous = this.rooms.get(msg.roomInfo.code)
+          const keepAvatar = msg.type === 'HEARTBEAT' && previous &&
+            previous.hostId === msg.roomInfo.hostId &&
+            previous.announcementId === msg.roomInfo.announcementId &&
+            msg.roomInfo.hostAvatar === undefined
           const room: PublicRoomInfo = {
             ...msg.roomInfo,
+            ...(keepAvatar ? { hostAvatar: previous.hostAvatar } : {}),
             lastHeartbeat: now,
           }
           this.rooms.set(room.code, room)
@@ -462,9 +519,12 @@ export class PublicRoomsService {
       if (this.currentHosting) {
         this.currentHosting.lastHeartbeat = Date.now()
         this.rooms.set(this.currentHosting.code, this.currentHosting)
+        // The full avatar is sent on announcement/query. Repeating it every
+        // four seconds made the UI serialize and encode megabytes each time.
+        const { hostAvatar, ...roomInfo } = this.currentHosting
         this.broadcastMessage({
           type: 'HEARTBEAT',
-          roomInfo: this.currentHosting,
+          roomInfo,
           timestamp: Date.now(),
         })
       }

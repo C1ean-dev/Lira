@@ -9,8 +9,8 @@ import { SpotifyPlayerFeedback } from './SpotifyPlayerFeedback'
 import { SpotifyPlaybackCrop } from './SpotifyPlaybackCrop'
 
 export const SpotifyJamSideDisplay: React.FC = () => {
-  const localPlayer = useGameStore((s) => s.localPlayer)
-  const localZoneId = localPlayer.currentZoneId
+  const localZoneId = useGameStore((s) => s.localPlayer.currentZoneId)
+  const localPlayerName = useGameStore((s) => s.localPlayer.name)
   const mapZones = useMapStore((s) => s.mapData.zones)
   const djStateByZone = useSpotifyJamStore((s) => s.djStateByZone)
   const isMinimized = useSpotifyJamStore((s) => s.isSideDisplayMinimized)
@@ -132,7 +132,7 @@ export const SpotifyJamSideDisplay: React.FC = () => {
       <div className="px-3 py-2 bg-emerald-950/40 border-b border-emerald-500/20 flex items-center gap-2">
         <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
         <span className="text-[11px] font-bold text-emerald-300 truncate">
-          DJ: {zoneDjState?.djName || localPlayer.name}
+          DJ: {zoneDjState?.djName || localPlayerName}
         </span>
       </div>
 

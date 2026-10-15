@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
   MessageSquare,
   Hash,
@@ -33,6 +33,7 @@ const DRAWER_STORAGE_KEY = 'lira_chat_drawer_width'
 const CHANNELS_STORAGE_KEY = 'lira_chat_channels_width'
 import { useChatStore, getLocalDmChannelId } from '../store/useChatStore'
 import { useGameStore } from '../store/useGameStore'
+import { useLocalPlayerDetails, useRemotePlayerDetails } from '../hooks/usePlayerDetails'
 import { useMediaStore } from '../store/useMediaStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { FriendsPresenceService } from '../services/friendsPresenceService'
@@ -192,7 +193,14 @@ const ChatDrawerInner: React.FC = () => {
     sendRoomInvite,
   } = useChatStore()
 
-  const { localPlayer, remotePlayers, friends, friendProfiles, roomId, isOwner, removeFriend } = useGameStore()
+  const localPlayer = useLocalPlayerDetails()
+  const remoteDetails = useRemotePlayerDetails()
+  const remotePlayers = useMemo(() => Object.fromEntries(remoteDetails.map((peer) => [peer.id, peer])), [remoteDetails])
+  const friends = useGameStore((s) => s.friends)
+  const friendProfiles = useGameStore((s) => s.friendProfiles)
+  const roomId = useGameStore((s) => s.roomId)
+  const isOwner = useGameStore((s) => s.isOwner)
+  const removeFriend = useGameStore((s) => s.removeFriend)
   const isGridCallOpen = useMediaStore((s) => s.isGridCallOpen)
 
   const [inputMessage, setInputMessage] = useState('')

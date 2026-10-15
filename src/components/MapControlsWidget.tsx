@@ -31,7 +31,8 @@ export const MapControlsWidget: React.FC<MapControlsWidgetProps> = ({
   isPanned,
   isMobile,
 }) => {
-  const { mapViewMode, setMapViewMode } = useGameStore()
+  const mapViewMode = useGameStore((s) => s.mapViewMode)
+  const setMapViewMode = useGameStore((s) => s.setMapViewMode)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
 

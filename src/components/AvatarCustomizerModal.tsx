@@ -3,6 +3,7 @@ import { X, Check, Eye, EyeOff } from 'lucide-react'
 import { CustomDropdown } from './common/CustomDropdown'
 import { MoonPhaseIcon } from './common/MoonPhaseIcon'
 import { useGameStore } from '../store/useGameStore'
+import { useLocalPlayerDetails } from '../hooks/usePlayerDetails'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { AvatarConfig, AvatarComponentSlot, PresenceStatus, Direction, PetType, STATUS_OPTIONS, STATUS_META } from '../types/game'
 import { PeerManager } from '../p2p/PeerManager'
@@ -29,8 +30,11 @@ interface Props {
 }
 
 export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
-  const { localPlayer, setLocalPlayer, setLocalStatus } = useGameStore()
-  const { showNameTags, setShowNameTags } = useSettingsStore()
+  const localPlayer = useLocalPlayerDetails()
+  const setLocalPlayer = useGameStore((s) => s.setLocalPlayer)
+  const setLocalStatus = useGameStore((s) => s.setLocalStatus)
+  const showNameTags = useSettingsStore((s) => s.showNameTags)
+  const setShowNameTags = useSettingsStore((s) => s.setShowNameTags)
 
   const [activeCategory, setActiveCategory] = useState<CategoryKey>('other')
   const [name, setName] = useState(localPlayer.name || 'Player')

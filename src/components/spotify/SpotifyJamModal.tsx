@@ -20,12 +20,12 @@ export const SpotifyJamModal: React.FC = () => {
   const isMuted = useSpotifyJamStore((s) => s.isMuted)
   const toggleMute = useSpotifyJamStore((s) => s.toggleMute)
 
-  const localPlayer = useGameStore((s) => s.localPlayer)
+  const currentZoneId = useGameStore((s) => s.localPlayer.currentZoneId)
   const mapZones = useMapStore((s) => s.mapData.zones)
-  const targetZoneId = activeZoneIdForModal || localPlayer.currentZoneId
+  const targetZoneId = activeZoneIdForModal || currentZoneId
   const currentZone = mapZones.find((z) => z.id === targetZoneId)
   const hasRoomDj = Boolean(targetZoneId && djStateByZone[targetZoneId]?.isDjActive)
-  const canStart = !hasRoomDj && targetZoneId === localPlayer.currentZoneId
+  const canStart = !hasRoomDj && targetZoneId === currentZoneId
 
   const [djLoading, setDjLoading] = useState(false)
   const [djError, setDjError] = useState<string | null>(null)

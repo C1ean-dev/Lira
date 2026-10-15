@@ -40,14 +40,15 @@ function playKnockSound() {
 
 export const DoorKnockNotification: React.FC = () => {
   const pendingKnocks = useGameStore((s) => s.pendingKnocks)
-  const localPlayer = useGameStore((s) => s.localPlayer)
+  const currentZoneId = useGameStore((s) => s.localPlayer.currentZoneId)
+  const localPlayerName = useGameStore((s) => s.localPlayer.name)
   const removeKnockRequest = useGameStore((s) => s.removeKnockRequest)
   const authorizePeerInZone = useMapStore((s) => s.authorizePeerInZone)
 
   const lastSeenKnockId = useRef<string | null>(null)
 
   const activeKnocks = pendingKnocks.filter(
-    (k) => k.zoneId === localPlayer.currentZoneId
+    (k) => k.zoneId === currentZoneId
   )
 
   useEffect(() => {
@@ -79,7 +80,7 @@ export const DoorKnockNotification: React.FC = () => {
       knock.zoneId,
       knock.requesterId,
       true,
-      localPlayer.name,
+      localPlayerName,
       knock.requesterName
     )
     authorizePeerInZone(knock.zoneId, knock.requesterId, knock.requesterName)
@@ -91,7 +92,7 @@ export const DoorKnockNotification: React.FC = () => {
       knock.zoneId,
       knock.requesterId,
       false,
-      localPlayer.name
+      localPlayerName
     )
     removeKnockRequest(knock.id)
   }

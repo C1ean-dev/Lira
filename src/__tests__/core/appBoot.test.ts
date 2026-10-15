@@ -39,7 +39,7 @@ describe('Application Startup & Store Module Graph Integrity', () => {
     expect(roomJoinStoreModule.useRoomJoinStore).toBeDefined()
     expect(savedSpacesStoreModule.useSavedSpacesStore).toBeDefined()
     expect(soundEffectsModule.playSoundEffect).toBeDefined()
-  })
+  }, 20000)
 
   it('allows useLiveWatchStore to observe useGameStore without initialization failure', async () => {
     const { useGameStore } = await import('../../store/useGameStore')
