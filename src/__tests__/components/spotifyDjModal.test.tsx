@@ -9,8 +9,7 @@ const state = vi.hoisted(() => ({
     activeZoneIdForModal: 'room',
     jamsByZone: { room: { isActive: true, jamUrl: 'https://open.spotify.com/playlist/example', startedBy: 'Pessoa' } },
     sharedTracksByZone: { room: [{ id: 'track', title: 'Faixa recomendada', url: 'https://open.spotify.com/track/example' }] },
-    djStateByZone: {} as Record<string, any>,
-    playbackByZone: { room: { frame: { playing: true, track: { title: 'How Sweet', artist: 'NewJeans' }, buttons: [], seek: null }, error: null } },
+    djStateByZone: {},
     isDjModeActive: false,
     volume: 80,
     isMuted: false,
@@ -24,13 +23,11 @@ vi.mock('../../store/useSpotifyJamStore', () => ({ useSpotifyJamStore: (select: 
 vi.mock('../../store/useGameStore', () => ({ useGameStore: (select: any) => select({ localPlayer: state.player }) }))
 vi.mock('../../store/useMapStore', () => ({ useMapStore: (select: any) => select({ mapData: { zones: [{ id: 'room', name: 'Sala privada' }] } }) }))
 vi.mock('../../media/MediaManager', () => ({ MediaManager: { getInstance: vi.fn() } }))
-vi.mock('../../p2p/PeerManager', () => ({ PeerManager: { getInstance: vi.fn() } }))
 
 describe('Spotify DJ modal', () => {
   beforeEach(() => {
     state.spotify.isModalOpen = true
     state.spotify.isDjModeActive = false
-    state.spotify.djStateByZone = {}
     state.spotify.activeZoneIdForModal = 'room'
     state.player.currentZoneId = 'room'
   })
@@ -63,16 +60,6 @@ describe('Spotify DJ modal', () => {
     expect(html).toContain('Parar DJ')
     expect(html).not.toContain('Transmitir DJ')
     expect(html).not.toContain('Entrar pelo navegador')
-  })
-
-  it('shares room playback instead of opening another player when someone is already the DJ', () => {
-    state.spotify.djStateByZone.room = { isDjActive: true, djPeerId: 'owner', djName: 'owner' }
-    const html = renderToStaticMarkup(<SpotifyJamModal />)
-    expect(html).toContain('How Sweet')
-    expect(html).toContain('aria-label="Pausar"')
-    expect(html).not.toContain('Transmitir DJ')
-    expect(html).not.toContain('Entrar pelo navegador')
-    expect(html).not.toContain('Parar DJ')
   })
 
   it('requires a room and uses DJ wording in the corridor', () => {

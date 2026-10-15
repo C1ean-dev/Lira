@@ -14,7 +14,6 @@ interface HubMessage {
   type: MessageType
   roomId?: string
   roomInfo?: PublicRoomInfo
-  announcementId?: string
   timestamp: number
 }
 
@@ -467,8 +466,6 @@ export class PublicRoomsService {
 
       case 'UNREGISTER_ROOM': {
         if (msg.roomId) {
-          const current = this.rooms.get(msg.roomId)
-          if (current?.announcementId && msg.announcementId !== current.announcementId) break
           this.rooms.delete(msg.roomId)
           this.saveToStorage()
           this.notifyListeners()
@@ -498,7 +495,6 @@ export class PublicRoomsService {
     const now = Date.now()
     const fullRoomInfo: PublicRoomInfo = {
       ...roomInfo,
-      announcementId: `${now}-${Math.random().toString(36).slice(2)}`,
       createdAt: roomInfo.createdAt || now,
       lastHeartbeat: now,
     }
@@ -551,19 +547,16 @@ export class PublicRoomsService {
     })
   }
 
-  public stopHosting(options?: { preserveListing?: boolean }) {
+  public stopHosting() {
     if (!this.currentHosting) return
 
     const roomId = this.currentHosting.code
-    const announcementId = this.currentHosting.announcementId
     this.currentHosting = null
 
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer)
       this.heartbeatTimer = null
     }
-
-    if (options?.preserveListing) return
 
     this.rooms.delete(roomId)
     this.saveToStorage()
@@ -572,7 +565,6 @@ export class PublicRoomsService {
     this.broadcastMessage({
       type: 'UNREGISTER_ROOM',
       roomId,
-      announcementId,
       timestamp: Date.now(),
     })
   }

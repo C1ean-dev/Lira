@@ -6,7 +6,6 @@ import { attachStreamToVideo } from '../../media/attachVideoElement'
 import { LiveWatchPrompt } from '../LiveWatchPrompt'
 import { useLiveGate } from '../../hooks/useLiveGate'
 import { useLiveViewBox } from '../../hooks/useLiveViewBox'
-import { LiveListeningAudio } from '../common/LiveListeningAudio'
 
 interface Props {
   user: ParticipantData
@@ -50,7 +49,6 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
       tile: 'theater',
       peer: user.id,
       isLocal: !!user.isLocal,
-      muted: true,
     })
   }, [activeStream, selectedAudioOutput, liveGate.needsClick])
 
@@ -64,7 +62,7 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
       video.muted = true
       video.volume = 0
     } else {
-      video.muted = true
+      video.muted = false
       const master = (outputVolume !== undefined ? outputVolume : 100) / 100
       const participant = rawVolume / 100
       video.volume = Math.max(0, Math.min(1, master * participant))
@@ -152,8 +150,6 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
   }
 
   return (
-    <>
-    {!user.isLocal && user.screenStream && <LiveListeningAudio stream={user.screenStream} peer={user.id} name={user.name} muted={liveGate.needsClick} />}
     <div
       ref={theaterContainerRef}
       onMouseMove={handleMouseMove}
@@ -168,7 +164,7 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
             ref={theaterVideoRef}
             autoPlay
             playsInline
-            muted
+            muted={user.isLocal}
             onLoadedMetadata={() => {
               theaterVideoRef.current?.play().catch(() => {})
               if (theaterVideoRef.current?.videoWidth && theaterVideoRef.current?.videoHeight) {
@@ -311,6 +307,5 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
         </span>
       </div>
     </div>
-    </>
   )
 }

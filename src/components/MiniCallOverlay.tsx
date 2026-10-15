@@ -73,7 +73,6 @@ import { useUserNetworkQuality } from '../store/useNetworkQualityStore'
 import { AvatarConfig } from '../types/game'
 import { PlayerAvatar } from './common/PlayerAvatar'
 import { RemoteAudio } from './common/RemoteAudio'
-import { LiveListeningAudio } from './common/LiveListeningAudio'
 import { CallPanelBody } from './common/CallPanelBody'
 import { SpotifyIcon } from './common/SpotifyIcon'
 import { LiveWatchPrompt } from './LiveWatchPrompt'
@@ -425,12 +424,12 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
     const video = videoRef.current
     if (!video || !stream) return
 
-    video.muted = true
+    video.muted = !!isLocal || suppressAudio
     return attachStreamToVideo(video, stream, {
       tile: 'mini-pip',
       peer: presenterName,
       isLocal: !!isLocal,
-      muted: true,
+      muted: !!isLocal || suppressAudio,
     })
   }, [stream, isLocal, suppressAudio, liveGate.needsClick])
 
@@ -534,7 +533,7 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
             ref={videoRef}
             autoPlay
             playsInline
-            muted
+            muted={isLocal || suppressAudio}
             onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
             onCanPlay={() => videoRef.current?.play().catch(() => {})}
             onLoadedData={liveGate.onFrame}
@@ -582,7 +581,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
   const localStream = useMediaStore((s) => s.localStream)
   const localScreenStream = useMediaStore((s) => s.localScreenStream)
   const peerStreams = useMediaStore((s) => s.peerStreams)
-  const peerScreenStreams = useMediaStore(s => s.peerScreenStreams)
   const isMuted = useMediaStore((s) => s.isMuted)
   const isDeafened = useMediaStore((s) => s.isDeafened)
   const isCameraOff = useMediaStore((s) => s.isCameraOff)
@@ -738,14 +736,14 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
     (p) => callStates[p.id] === 'reconnecting'
   )
 
-  const remotePresenters = peersInSameZone.filter((p) => p.isScreenSharing && peerScreenStreams[p.id])
+  const remotePresenters = peersInSameZone.filter((p) => p.isScreenSharing && peerStreams[p.id])
   const remotePresenter = remotePresenters.find((p) => watchingLives[p.id]) || remotePresenters[0]
   const hasActiveScreenShare = isScreenSharing || !!remotePresenter
 
   const activeScreenStream = isScreenSharing
     ? localScreenStream
     : remotePresenter
-    ? peerScreenStreams[remotePresenter.id]
+    ? peerStreams[remotePresenter.id]
     : null
 
   const presenterId = isScreenSharing
@@ -782,8 +780,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
 
   return (
     <>
-      {remotePresenter && activeScreenStream && !isPresenterLocal && <LiveListeningAudio stream={activeScreenStream} peer={presenterId} name={presenterName}
-        muted={suppressAudio || (!!remotePresenter.liveOptIn && !watchingLives[remotePresenter.id])} />}
       <div
         ref={containerRef}
         onPointerDown={handleDragPointerDown}
@@ -972,7 +968,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                   isCameraOff={peer.isCameraOff ?? true}
                   isLocal={false}
                   isScreenSharing={peer.isScreenSharing}
-                  isScreenTrack={false}
+                  isScreenTrack={peer.isScreenSharing}
                   liveOptIn={peer.liveOptIn}
                   liveWatching={!!watchingLives[peer.id]}
                   profilePicture={resolvedPic}

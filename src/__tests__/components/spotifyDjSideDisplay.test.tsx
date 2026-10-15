@@ -7,8 +7,7 @@ const state = vi.hoisted(() => ({
   spotify: {
     jamsByZone: { room: { isActive: true, jamUrl: 'https://spotify.link/example', zoneName: 'Jam antiga' } },
     sharedTracksByZone: { room: [{ id: 'track', title: 'Faixa recomendada', url: 'https://open.spotify.com/track/example' }] },
-    djStateByZone: { room: { isDjActive: true, djName: 'Pessoa', djPeerId: 'local' } },
-    playbackByZone: { room: { frame: { playing: true, track: { title: 'How Sweet', artist: 'NewJeans' }, buttons: [], seek: null }, error: null } },
+    djStateByZone: { room: { isDjActive: true, djName: 'Pessoa' } },
     isDjModeActive: true,
     isSideDisplayMinimized: false,
     volume: 80,
@@ -23,7 +22,6 @@ vi.mock('../../store/useSpotifyJamStore', () => ({ useSpotifyJamStore: (select: 
 vi.mock('../../store/useGameStore', () => ({ useGameStore: (select: any) => select({ localPlayer: state.player }) }))
 vi.mock('../../store/useMapStore', () => ({ useMapStore: (select: any) => select({ mapData: { zones: [{ id: 'room', name: 'Sala privada' }] } }) }))
 vi.mock('../../media/MediaManager', () => ({ MediaManager: { getInstance: vi.fn() } }))
-vi.mock('../../p2p/PeerManager', () => ({ PeerManager: { getInstance: vi.fn() } }))
 
 describe('Spotify DJ side display', () => {
   beforeEach(() => {
@@ -57,15 +55,13 @@ describe('Spotify DJ side display', () => {
     expect(button).toContain('viewBox="0 0 24 24"')
   })
 
-  it('shows shared playback without offering a second browser or transmission', () => {
+  it('offers transmission when another DJ is active in the room', () => {
     state.spotify.isDjModeActive = false
     const html = renderToStaticMarkup(<SpotifyJamSideDisplay />)
-    expect(html).not.toContain('Transmitir DJ')
-    expect(html).not.toContain('Entrar pelo navegador')
+    expect(html).toContain('Transmitir DJ')
+    expect(html).toContain('Entrar pelo navegador')
     expect(html).not.toContain('Parar DJ')
-    expect(html).toContain('aria-label="Reprodução do Spotify"')
-    expect(html).toContain('How Sweet')
-    expect(html).toContain('aria-label="Pausar"')
+    expect(html).not.toContain('aria-label="Reprodução do Spotify"')
   })
 
   it('does not show a panel for legacy Jam or recommendations alone', () => {

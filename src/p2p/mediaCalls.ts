@@ -5,9 +5,7 @@ import { useMediaStore } from '../store/useMediaStore'
 import { prioritizeH264HardwareCodec } from '../media/hardwareCodec'
 import { silentAudioTrack } from '../media/silentAudioTrack'
 import { djMusicSdp } from './djMusicSdp'
-import { CALL_AUDIO_CHANNELS, replaceLiveAudio, reserveLiveAudio, splitCallAudio } from './callAudioChannels'
-import { SHARED_RTC_CONFIG, enableStunFallback, watchIceFallback } from './rtcConfiguration'
-export { SHARED_RTC_CONFIG } from './rtcConfiguration'
+import { buildIceServers } from './rtcIceServers'
 import { DynamicBufferManager } from '../services/DynamicBufferManager'
 import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
 import { logVideoCodecsOnce, watchLiveQuality } from './liveQualityLog'
@@ -41,6 +39,8 @@ import {
 
 setViewerOptInLookup((peerId) => useGameStore.getState().remotePlayers[peerId]?.liveOptIn === true)
 
+const ICE_POOL_SIZE = 4
+
 export const ICE_CONNECT_TIMEOUT_MS = 1200
 
 export type CallDirection = 'in' | 'out'
@@ -60,6 +60,14 @@ export function resolveCallGlare(
 const shortTrackId = (id: string | undefined): string | null => {
   if (!id) return null
   return id.length <= 10 ? id : `${id.slice(0, 6)}…${id.slice(-4)}`
+}
+
+export const SHARED_RTC_CONFIG: RTCConfiguration = {
+  iceServers: buildIceServers(import.meta.env),
+  iceTransportPolicy: 'all',
+  bundlePolicy: 'max-bundle',
+  rtcpMuxPolicy: 'require',
+  iceCandidatePoolSize: ICE_POOL_SIZE,
 }
 
 export class MediaCallHandler {
@@ -104,18 +112,7 @@ export class MediaCallHandler {
     } catch (e) {}
   }
 
-  private static liveReservations = new Map<string, MediaStreamTrack>()
-
-  private static reservedLiveTrack(peerId?: string): MediaStreamTrack | null {
-    const key = peerId || 'unassigned'
-    const existing = this.liveReservations.get(key)
-    if (existing && existing.readyState !== 'ended') return existing
-    const track = reserveLiveAudio(silentAudioTrack())
-    if (track) this.liveReservations.set(key, track)
-    return track
-  }
-
-  private static buildOutboundStream(peerId?: string, separated = true): MediaStream {
+  private static buildOutboundStream(peerId?: string): MediaStream {
     const isSharing = useMediaStore.getState().isScreenSharing
     const screenStream = useMediaStore.getState().localScreenStream
     const localStream = useMediaStore.getState().localStream
@@ -127,17 +124,20 @@ export class MediaCallHandler {
       })
     }
 
-    const tracks: MediaStreamTrack[] = []
-    const mic = localStream?.getAudioTracks().find(t => t.readyState !== 'ended') || silentAudioTrack()
-    if (mic) tracks.push(mic)
-    if (separated) {
-      const live = isSharing ? this.liveAudioTrack() : null
-      const outgoing = live && watchesLive(peerId) ? live : this.reservedLiveTrack(peerId)
-      if (outgoing) tracks.push(outgoing)
+    if (isSharing && screenStream && screenStream.getVideoTracks()[0]) {
+      const combined = new MediaStream()
+      const liveAudioTrack = screenStream.getAudioTracks().find(
+        (track) => (track as any).__screenShareLiveAudio === true
+      )
+      if (liveAudioTrack) {
+        combined.addTrack(MediaCallHandler.audioTrackFor(peerId, liveAudioTrack))
+      } else if (localStream) {
+        localStream.getAudioTracks().forEach((t) => combined.addTrack(t))
+      }
+      screenStream.getVideoTracks().forEach((t) => combined.addTrack(t))
+      return combined
     }
-    const picture = isSharing && screenStream ? screenStream : localStream
-    picture?.getVideoTracks?.().forEach(t => tracks.push(t))
-    return new MediaStream(tracks)
+    return localStream || new MediaStream()
   }
 
   private static liveAudioTrack(): MediaStreamTrack | null {
@@ -149,16 +149,17 @@ export class MediaCallHandler {
     )
   }
 
-  private static storeRemoteAudio(call: MediaConnection, peerId: string, stream: MediaStream, pc?: RTCPeerConnection) {
-    const audio = splitCallAudio(stream, pc, call.metadata?.audioChannels === CALL_AUDIO_CHANNELS)
-    useMediaStore.getState().setPeerStream(peerId, audio.voice)
-    if (audio.live) useMediaStore.getState().setPeerScreenStream(peerId, audio.live)
-    else useMediaStore.getState().removePeerScreenStream(peerId)
+  private static quietAudioTrack(): MediaStreamTrack | null {
+    const microphone = useMediaStore
+      .getState()
+      .localStream?.getAudioTracks?.()
+      .find((track) => track.readyState !== 'ended')
+    return microphone ?? silentAudioTrack()
   }
 
   private static audioTrackFor(peerId: string | undefined, track: MediaStreamTrack): MediaStreamTrack {
     if ((track as any).__screenShareLiveAudio !== true || watchesLive(peerId)) return track
-    return MediaCallHandler.reservedLiveTrack(peerId) as MediaStreamTrack
+    return MediaCallHandler.quietAudioTrack() ?? track
   }
 
   static applyEncoderCaps(pc: RTCPeerConnection, maxBitrate?: number, maxFramerate?: number, peerId?: string) {
@@ -439,7 +440,6 @@ export class MediaCallHandler {
     attemptRedialIfEligible?: () => void
   }) {
     const pc = (call as any).peerConnection as RTCPeerConnection | undefined
-    watchIceFallback(pc)
     if (pc) {
       try {
         prioritizeH264HardwareCodec(pc)
@@ -536,14 +536,14 @@ export class MediaCallHandler {
           }
         }
         const mediaState = useMediaStore.getState()
-        const localAudioTrack = mediaState.localStream?.getAudioTracks?.().find(t => t.readyState !== 'ended') || silentAudioTrack()
+        const screenAudioTrack = MediaCallHandler.liveAudioTrack()
+        const localAudioTrack = screenAudioTrack || mediaState.localStream?.getAudioTracks?.()[0] || null
         if (localAudioTrack && !isDjBot) {
           MediaCallHandler.replaceAudioTrack(mediaCalls, localAudioTrack, 'connected-reconcile')
-          MediaCallHandler.syncViewerAudio(mediaCalls, peerId)
         }
         applyBuffer()
         if (remoteStream) {
-          MediaCallHandler.storeRemoteAudio(call, peerId, remoteStream, pc)
+          useMediaStore.getState().setPeerStream(peerId, remoteStream)
         } else if (isDjBot) {
           const rxTrack = pc?.getReceivers().find((r) => r.track && r.track.kind === 'audio')?.track
           if (rxTrack) {
@@ -602,8 +602,6 @@ export class MediaCallHandler {
       clearLocalTimers()
       MediaCallHandler.clearIceDisconnectTimer(peerId)
       if (mediaCalls.get(peerId) !== call) return
-
-      if (pc && !['connected', 'completed', 'closed'].includes(pc.iceConnectionState)) enableStunFallback()
 
       isConnected = false
       console.warn(`[Zone Call] Call (${direction}) with ${remotePlayerName || peerId} degraded/failed (${reason})`)
@@ -707,7 +705,6 @@ export class MediaCallHandler {
       if (pc?.iceConnectionState !== 'failed' && pc?.connectionState !== 'failed') {
         remoteStream = incomingStream
       }
-      if (isConnected && !isDjBot) MediaCallHandler.storeRemoteAudio(call, peerId, incomingStream, pc)
       applyBuffer()
       diagLog('p2p', 'call.remote-stream', {
         fromPeer: peerId,
@@ -840,8 +837,23 @@ export class MediaCallHandler {
     if (isDjBot) {
       const silent = silentAudioTrack()
       streamToAnswer = silent ? new MediaStream([silent]) : new MediaStream()
+    } else if (isSharing && screenStream && screenStream.getVideoTracks()[0]) {
+      const combined = new MediaStream()
+      const liveAudioTrack = screenStream.getAudioTracks().find(
+        (track) => (track as any).__screenShareLiveAudio === true
+      )
+      if (liveAudioTrack) {
+        combined.addTrack(MediaCallHandler.audioTrackFor(call.peer, liveAudioTrack))
+      } else if (localStream) {
+        localStream.getAudioTracks().forEach((t) => combined.addTrack(t))
+      }
+      screenStream.getVideoTracks().forEach((t) => combined.addTrack(t))
+      streamToAnswer = combined
+    } else if (localStream) {
+      streamToAnswer = localStream
     } else {
-      streamToAnswer = MediaCallHandler.buildOutboundStream(call.peer, call.metadata?.audioChannels === CALL_AUDIO_CHANNELS)
+      streamToAnswer = new MediaStream()
+      diagLog('p2p', 'call.answer-empty-no-local-stream', { fromPeer: call.peer })
     }
 
     diagLog('p2p', 'call.answer', {
@@ -917,7 +929,7 @@ export class MediaCallHandler {
           tracks: summarizeStream(streamToSend),
         })
 
-        const call = peer.call(remotePlayer.id, streamToSend, { metadata: { audioChannels: streamToSend.getAudioTracks().length >= 2 ? CALL_AUDIO_CHANNELS : 1 } })
+        const call = peer.call(remotePlayer.id, streamToSend)
         if (!call) {
           useGameStore.getState().setCallState(remotePlayer.id, 'failed')
           diagLog('p2p', 'call.dial-nocall', { toPeer: remotePlayer.id })
@@ -1074,7 +1086,6 @@ export class MediaCallHandler {
       try {
         const pc = (call as any).peerConnection as RTCPeerConnection
         if (pc) {
-          if (!toScreen) void replaceLiveAudio(pc, null).catch(error => console.warn('[LiveAudio]', error))
           prioritizeH264HardwareCodec(pc)
           const videoSender = findVideoSender(pc)
 
@@ -1175,8 +1186,14 @@ export class MediaCallHandler {
     if (!liveAudio) return
     const call = mediaCalls.get(peerId)
     if (!call) return
-    const pc = (call as any).peerConnection as RTCPeerConnection | undefined
-    if (pc) void replaceLiveAudio(pc, MediaCallHandler.audioTrackFor(peerId, liveAudio)).catch(error => console.warn('[LiveAudio]', error))
+    MediaCallHandler.putAudioTrack(
+      mediaCalls,
+      call,
+      peerId,
+      MediaCallHandler.audioTrackFor(peerId, liveAudio),
+      'viewer',
+      true
+    )
   }
 
   private static watchLive(
@@ -1191,10 +1208,7 @@ export class MediaCallHandler {
       peerId,
       isActive: () => sameLive() && mediaCalls.get(peerId) === call,
       onTick: () => {
-        if (takeExpiredRequest(peerId)) {
-          diagLog('screenshare', 'viewer-expired', { peer: peerId }, peerId)
-          MediaCallHandler.syncViewerAudio(mediaCalls, peerId)
-        }
+        if (takeExpiredRequest(peerId)) diagLog('screenshare', 'viewer-expired', { peer: peerId }, peerId)
         const videoSender = findVideoSender(pc)
         if (videoSender) syncScreenCaps(videoSender, peerId)
       },
@@ -1235,11 +1249,6 @@ export class MediaCallHandler {
         : null,
     })
     mediaCalls.forEach((call, peerId) => {
-      if ((newTrack as any)?.__screenShareLiveAudio) {
-        const pc = (call as any).peerConnection as RTCPeerConnection | undefined
-        if (pc) void replaceLiveAudio(pc, MediaCallHandler.audioTrackFor(peerId, newTrack!)).catch(error => console.warn('[LiveAudio]', error))
-        return
-      }
       const track = newTrack ? MediaCallHandler.audioTrackFor(peerId, newTrack) : null
       MediaCallHandler.putAudioTrack(mediaCalls, call, peerId, track, reason, track !== newTrack)
     })
@@ -1339,9 +1348,6 @@ export class MediaCallHandler {
       mediaCalls.delete(peerId)
     }
     useMediaStore.getState().removePeerStream(peerId)
-    useMediaStore.getState().removePeerScreenStream(peerId)
-    MediaCallHandler.liveReservations.get(peerId)?.stop?.()
-    MediaCallHandler.liveReservations.delete(peerId)
     useGameStore.getState().setCallState(peerId, 'idle')
   }
 
@@ -1362,8 +1368,6 @@ export class MediaCallHandler {
     })
     mediaCalls.clear()
     useMediaStore.getState().clearAllPeerStreams()
-    MediaCallHandler.liveReservations.forEach(track => track.stop?.())
-    MediaCallHandler.liveReservations.clear()
     peerIds.forEach((pid) => useGameStore.getState().setCallState(pid, 'idle'))
   }
 }

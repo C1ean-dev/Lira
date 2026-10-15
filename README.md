@@ -149,8 +149,7 @@ O sistema adota uma arquitetura híbrida descentralizada, combinando topologia e
   - Candidatos ICE são coletados previamente antes do início da chamada. Isso elimina o atraso de 500 ms a 2.000 ms nas primeiras conexões WebRTC, evitando atraso ou corte.
 - **Topologia de Travessia NAT (STUN/TURN)**:
   - O sistema tenta conexões diretas via candidatos locais (`host`) e reflexivos públicos (`srflx`) utilizando servidores STUN do Google e Twilio.
-  - Um STUN próprio pode ser configurado como contingência, usado nas novas tentativas após falha de conexão. A [configuração Coturn](infra/stun/README.md) precisa de uma VPS com UDP público, como uma VM Oracle Always Free; o web service da Render não expõe STUN UDP.
-  - Para ambientes com restrições severas de rede (NAT simétrico, firewalls corporativos ou redes móveis restritivas), é necessário configurar TURN autenticado. Sem um relay válido, STUN sozinho não garante a conexão. Consulte [servidores auxiliares](docs/call-relays.md).
+  - Para ambientes com restrições severas de rede (NAT simétrico, firewalls corporativos ou redes móveis restritivas), o sistema conta com servidores TURN (OpenRelay Metered nas portas 80 e 443) como camada de contingência (*relay*). A rota de relay só é selecionada caso o roteamento direto seja inviável.
 - **Otimização de Portas UDP (`max-bundle` e `rtcp-mux`)**:
   - Todas as faixas de áudio, vídeo e mensagens de controle RTCP são multiplexadas em uma única porta UDP compartilhada por sessão, minimizando o número de portas abertas na tabela NAT do roteador.
 

@@ -10,7 +10,7 @@ import {
   __resetVideoSendPolicyForTests,
 } from '../../p2p/videoSendPolicy'
 import { LIVE_QUALITY_INTERVAL_MS } from '../../p2p/liveQualityLog'
-import { __resetSilentAudioForTests, silentAudioTrack } from '../../media/silentAudioTrack'
+import { __resetSilentAudioForTests } from '../../media/silentAudioTrack'
 import { useGameStore } from '../../store/useGameStore'
 import { useMediaStore } from '../../store/useMediaStore'
 import { flushDiagLogs, __resetDiagForTests } from '../../utils/diagnosticLogger'
@@ -71,23 +71,21 @@ function fakeCall(videoTrack: any = cameraTrack(), audioTrack: any = micTrack())
     }),
   }
   const audio: any = {
-    track: audioTrack?.readyState !== 'ended' && audioTrack ? audioTrack : silentAudioTrack(),
+    track: audioTrack,
     replaceTrack: vi.fn(async (next: any) => {
       audio.track = next
     }),
   }
-  const live: any = { track: null, replaceTrack: vi.fn(async (next: any) => { live.track = next }) }
   const pc: any = {
-    getSenders: () => [audio, live, sender],
+    getSenders: () => [audio, sender],
     getTransceivers: () => [
       { sender: audio, receiver: { track: { kind: 'audio' } } },
-      { sender: live, receiver: { track: { kind: 'audio' } } },
       { sender, receiver: { track: { kind: 'video' } } },
     ],
     addTrack: vi.fn(),
     addTransceiver: vi.fn(),
   }
-  return { call: { peerConnection: pc, metadata: { audioChannels: 2 } } as any, pc, sender, audio, live, ops, applied, last: () => applied[applied.length - 1] }
+  return { call: { peerConnection: pc } as any, pc, sender, audio, ops, applied, last: () => applied[applied.length - 1] }
 }
 
 type Fake = ReturnType<typeof fakeCall>
@@ -143,7 +141,6 @@ describe('who a live is sent to', () => {
     ;(globalThis as any).MediaStream = MockMediaStream
     __resetVideoSendPolicyForTests()
     __resetSilentAudioForTests()
-    ;(MediaCallHandler as any).liveReservations.clear()
     __resetDiagForTests()
     useGameStore.setState({ remotePlayers: {}, callStates: {} })
   })
@@ -226,7 +223,7 @@ describe('who a live is sent to', () => {
         degradationPreference: 'maintain-resolution',
       })
       expect(old.sender.track).toBe(media.screen)
-      expect(old.live.track).toBe(media.liveAudio)
+      expect(old.audio.track).toBe(media.liveAudio)
     })
 
     it('is a peer the room knows nothing about, too', () => {
@@ -277,7 +274,7 @@ describe('who a live is sent to', () => {
     it('gives that viewer the sound of the live, and only that viewer', async () => {
       const { media, viewer, other } = await watching(180)
 
-      expect(viewer.live.track).toBe(media.liveAudio)
+      expect(viewer.audio.track).toBe(media.liveAudio)
       expect(other.audio.track).toBe(media.mic)
       expect(other.last().active).toBe(false)
     })
@@ -286,7 +283,7 @@ describe('who a live is sent to', () => {
       const { viewer, calls, media } = await watching(null)
       expect(viewerMode('viewer')).toBe('on')
       expect(viewer.last()).toMatchObject({ active: true, scaleResolutionDownBy: 1, maxBitrate: 5_500_000 })
-      expect(viewer.live.track).toBe(media.liveAudio)
+      expect(viewer.audio.track).toBe(media.liveAudio)
 
       MediaCallHandler.applyViewerRequest(calls, 'viewer', true, 180)
       await vi.advanceTimersByTimeAsync(0)
@@ -402,7 +399,7 @@ describe('who a live is sent to', () => {
         maxBitrate: 187_000,
         maxFramerate: 15,
       })
-      expect(viewer.live.track).toBe(media.liveAudio)
+      expect(viewer.audio.track).toBe(media.liveAudio)
     })
 
     it('switches the video off and goes back to the microphone when the viewer stops', async () => {
@@ -554,7 +551,7 @@ describe('who a live is sent to', () => {
       await vi.advanceTimersByTimeAsync(LIVE_QUALITY_INTERVAL_MS + 1000)
       expect(viewer.last()).toMatchObject({ active: true, scaleResolutionDownBy: 1, maxBitrate: 5_500_000 })
       expect(viewerMode('viewer')).toBe('on')
-      expect(viewer.live.track).toBe(media.liveAudio)
+      expect(viewer.audio.track).toBe(media.liveAudio)
     })
 
     it('stays at its size while the viewer keeps renewing it', async () => {
@@ -651,7 +648,7 @@ describe('who a live is sent to', () => {
       startLive(calls, media)
       await vi.advanceTimersByTimeAsync(0)
       expect(late.last().active).toBe(true)
-      expect(late.live.track).toBe(media.liveAudio)
+      expect(late.audio.track).toBe(media.liveAudio)
 
       MediaCallHandler.applyViewerRequest(calls, 'late', false, 0)
       await vi.advanceTimersByTimeAsync(0)
@@ -794,16 +791,6 @@ describe('who a live is sent to', () => {
   })
 
   describe('a call made while the live is running', () => {
-    it('reserves a second audio channel before a live starts, preserving the microphone as the first', () => {
-      const silence = { kind: 'audio', id: 'silence', enabled: true, readyState: 'live', clone: () => ({ kind: 'audio', id: 'live-reserve', enabled: true, readyState: 'live' }) }
-      ;(globalThis as any).window = { AudioContext: function(this: any) { this.createMediaStreamDestination = () => ({ stream: new MockMediaStream([silence]) }) } }
-      const mic = micTrack()
-      useMediaStore.setState({ localStream: new MockMediaStream([mic, cameraTrack()]) as any, isScreenSharing: false })
-      const outgoing = (MediaCallHandler as any).buildOutboundStream('future-viewer')
-      expect(outgoing.getAudioTracks()[0]).toBe(mic)
-      expect(outgoing.getAudioTracks()[1]).toMatchObject({ id: 'live-reserve', __screenShareLiveAudio: true })
-      expect(outgoing.getAudioTracks()).toHaveLength(2)
-    })
     const remotePlayer = (id: string, liveOptIn?: boolean): any => ({
       id,
       name: id,
@@ -850,7 +837,7 @@ describe('who a live is sent to', () => {
       const { media, placed, dialed } = dial('old', false)
       await vi.advanceTimersByTimeAsync(0)
 
-      expect(dialed.getAudioTracks()).toEqual([media.mic, media.liveAudio])
+      expect(dialed.getAudioTracks()).toEqual([media.liveAudio])
       expect(dialed.getVideoTracks()).toEqual([media.screen])
       expect(placed.applied.some((p) => p.active === false)).toBe(false)
     })
@@ -866,7 +853,6 @@ describe('who a live is sent to', () => {
       let answered: any = null
       const call: any = {
         peer: id,
-        metadata: { audioChannels: 2 },
         on: vi.fn(),
         close: vi.fn(),
         answer: vi.fn((stream: any) => {
@@ -889,7 +875,7 @@ describe('who a live is sent to', () => {
 
     it('is answered with the whole live for a viewer of a version without the click', () => {
       const { media, answered } = answer('old', false)
-      expect(answered.getAudioTracks()).toEqual([media.mic, media.liveAudio])
+      expect(answered.getAudioTracks()).toEqual([media.liveAudio])
       expect(answered.getVideoTracks()).toEqual([media.screen])
     })
 
@@ -899,7 +885,7 @@ describe('who a live is sent to', () => {
       )
       await vi.advanceTimersByTimeAsync(0)
 
-      expect(answered.getAudioTracks()).toEqual([media.mic, media.liveAudio])
+      expect(answered.getAudioTracks()).toEqual([media.liveAudio])
       expect(placed.applied.some((p) => p.active === false)).toBe(false)
     })
 
@@ -975,13 +961,13 @@ describe('who a live is sent to', () => {
       startLive(calls, media)
       MediaCallHandler.applyViewerRequest(calls, 'watcher', true, 180)
       await vi.advanceTimersByTimeAsync(0)
-      expect(watcher.live.track).toBe(media.liveAudio)
+      expect(watcher.audio.track).toBe(media.liveAudio)
 
       const viewer = fakeCall(media.screen, media.mic)
       connect('viewer', viewer, calls)
       await vi.advanceTimersByTimeAsync(0)
 
-      expect(watcher.live.track).toBe(media.liveAudio)
+      expect(watcher.audio.track).toBe(media.liveAudio)
       expect(viewer.audio.track).toBe(media.mic)
     })
 
@@ -1029,7 +1015,7 @@ describe('who a live is sent to', () => {
       await vi.advanceTimersByTimeAsync(0)
 
       expect(old.last()).toMatchObject({ active: true, maxBitrate: 5_500_000, scaleResolutionDownBy: 1 })
-      expect(old.live.track).toBe(media.liveAudio)
+      expect(old.audio.track).toBe(media.liveAudio)
     })
   })
 
@@ -1051,7 +1037,7 @@ describe('who a live is sent to', () => {
 
       MediaCallHandler.applyViewerRequest(calls, 'viewer', true, 180)
       await vi.advanceTimersByTimeAsync(0)
-      expect(viewer.live.track).toBe(media.liveAudio)
+      expect(viewer.audio.track).toBe(media.liveAudio)
 
       MediaCallHandler.applyViewerRequest(calls, 'viewer', false, 0)
       await vi.advanceTimersByTimeAsync(0)
@@ -1076,7 +1062,7 @@ describe('who a live is sent to', () => {
       expect(viewer.audio.track).toBe(silent)
     })
 
-    it('keeps an unwatched live silent even when a silent placeholder cannot be created', async () => {
+    it('falls back to the sound of the live when silence cannot be made: a call with no audio never connects', async () => {
       ;(globalThis as any).window = {}
       room({ viewer: { liveOptIn: true } })
       const media = goLive({ mic: null })
@@ -1084,7 +1070,7 @@ describe('who a live is sent to', () => {
       startLive(callsOf(['viewer', viewer]), media)
       await vi.advanceTimersByTimeAsync(0)
 
-      expect(viewer.live.track).toBeNull()
+      expect(viewer.audio.track).toBe(media.liveAudio)
     })
   })
 
@@ -1105,7 +1091,7 @@ describe('who a live is sent to', () => {
     it('keeps the microphone alone for who waits for a click, and the camera on', async () => {
       const { media, viewer, old } = await soundOnly()
       expect(viewer.audio.track).toBe(media.mic)
-      expect(old.live.track).toBe(media.liveAudio)
+      expect(old.audio.track).toBe(media.liveAudio)
       expect(viewer.applied.some((p) => p.active === false)).toBe(false)
       expect(viewer.last()).toMatchObject({ ...CAMERA_CAPS, active: true })
     })
@@ -1149,7 +1135,7 @@ describe('who a live is sent to', () => {
       expect(useGameStore.getState().callStates['late']).toBe('connected')
       expect(viewer.audio.track).toBe(media.mic)
       expect(late.audio.track).toBe(media.mic)
-      expect(old.live.track).toBe(media.liveAudio)
+      expect(old.audio.track).toBe(media.liveAudio)
     })
   })
 
@@ -1185,7 +1171,6 @@ describe('who a live is sent to', () => {
 
       expect(viewer.audio.track).toBe(newMic)
       expect(old.audio.track).toBe(newMic)
-      expect(old.live.track).toBe(media.liveAudio)
     })
   })
 })

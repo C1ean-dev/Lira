@@ -105,7 +105,7 @@ const FullScreenGridInner: React.FC = () => {
           profilePicture: resolvedPic,
           avatar: resolvedAvatar,
           stream: peerStreams[p.id] || null,
-          screenStream: p.isScreenSharing ? peerScreenStreams[p.id] || null : null,
+          screenStream: peerScreenStreams[p.id] || (p.isScreenSharing ? peerStreams[p.id] : null),
           isMuted: p.isMuted,
           isMutedByAdmin: p.isMutedByAdmin,
           isDeafened: p.isDeafened,
@@ -236,7 +236,6 @@ const FullScreenGridInner: React.FC = () => {
             {focusedUser ? (
               <GridParticipantTile
                 user={focusedUser}
-                suppressLiveAudio={theaterUser?.id === focusedUser.id}
                 isFocused={true}
                 isSidebar={false}
                 onOpenLiveFullscreen={(u) => setLiveTheaterUser(u)}
@@ -257,7 +256,6 @@ const FullScreenGridInner: React.FC = () => {
                 <GridParticipantTile
                   key={otherUser.id}
                   user={otherUser}
-                  suppressLiveAudio={theaterUser?.id === otherUser.id}
                   isFocused={false}
                   isSidebar={true}
                   onFocus={() => setFocusedUserId(otherUser.id)}

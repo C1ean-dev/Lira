@@ -1,4 +1,4 @@
-import { AvatarComponentSlot, Direction, PetAnimations } from './game'
+import { AvatarComponentSlot, Direction } from './game'
 
 export type CustomAssetType = 'furniture' | 'floor' | 'wall' | 'avatar'
 
@@ -22,15 +22,6 @@ export interface DirectionalDimension {
   pixelHeight?: number
 }
 
-export interface SpriteSheetSource {
-  id: string
-  name: string
-  imageSrc: string
-  frameWidth: number
-  frameHeight: number
-  animation?: 'yawn' | 'sleep'
-}
-
 export interface CustomAsset {
   id: string
   name: string
@@ -47,8 +38,6 @@ export interface CustomAsset {
   collisionFromSprite?: boolean
   frames: string[]
   directionalFrames?: Partial<Record<Direction, string | string[]>>
-  idleFrames?: Partial<Record<Direction, string | string[]>>
-  petAnimations?: PetAnimations
   directionalFrameLayers?: Partial<Record<Direction, CustomAssetLayer[][]>>
   directionalDimensions?: Partial<Record<Direction, DirectionalDimension>>
   directionalCollisionGrids?: Partial<Record<Direction, boolean[][]>>
@@ -61,6 +50,5 @@ export interface CustomAsset {
   sourceImageSrc?: string
   sourceFileName?: string
   sourceXmlContent?: string
-  sourceSheets?: SpriteSheetSource[]
   slicerPresets?: any[]
 }

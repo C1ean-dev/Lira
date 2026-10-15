@@ -1,14 +1,15 @@
-import { enableStunFallback, watchIceFallback } from './rtcConfiguration'
-import { SignalingTier } from '../types/p2p'
+import Peer from 'peerjs'
+import { SHARED_RTC_CONFIG } from './mediaCalls'
 import {
   createPeerInstance,
   getPreferredSignalingTier,
+  getActiveSignalingTier,
   markSignalingTierFailed,
+  shouldPreferLocalSignaling,
 } from './PeerManager'
 import { isUserId } from '../utils/userId'
 import { diagLog } from '../utils/diagnosticLogger'
 import { registerReportContext } from '../utils/reportContext'
-import { createPortableImageQueue, hasBundledImages } from '../media/bundledImages'
 
 const FRIEND_PEER_PREFIX = 'lirafriend-'
 
@@ -76,7 +77,6 @@ export class FriendsNetwork {
   private userId: string | null = null
   private handlers: FriendsNetworkHandlers | null = null
   private peer: LinkPeer | null = null
-  private peerTier: SignalingTier | null = null
   private handshakeStartedAt = 0
   private running = false
 
@@ -177,26 +177,12 @@ export class FriendsNetwork {
     return Array.from(this.links.keys())
   }
 
-  private imageSendQueues?: WeakMap<LinkConnection, ReturnType<typeof createPortableImageQueue>>
-
   public send(userId: string, packet: FriendPacket): boolean {
     const set = this.links.get(userId)
     if (!set) return false
     for (const conn of set) {
       if (!conn.open) continue
       try {
-        let queue = this.imageSendQueues?.get(conn)
-        if (queue?.isPending() || hasBundledImages(packet)) {
-          this.imageSendQueues ??= new WeakMap()
-          if (!queue) { queue = createPortableImageQueue(); this.imageSendQueues.set(conn, queue) }
-          const session = this.peer
-          const identity = this.userId
-          void queue(packet, portable => {
-            if (!conn.open || this.peer !== session || this.userId !== identity || !this.links.get(userId)?.has(conn)) return
-            conn.send(portable)
-          }).catch(error => console.warn('[Friends] Failed to send portable profile:', error))
-          return true
-        }
         conn.send(packet)
         return true
       } catch (err) {
@@ -249,7 +235,6 @@ export class FriendsNetwork {
 
     let peer: LinkPeer
     try {
-      this.peerTier = this.createPeer === createCloudPeer ? getPreferredSignalingTier() : null
       peer = this.createPeer(toFriendPeerId(this.userId))
     } catch (err) {
       console.warn('[Friends] Failed to create peer:', err)
@@ -261,7 +246,6 @@ export class FriendsNetwork {
 
     peer.on('open', () => {
       if (this.peer !== peer) return
-      if (this.peerTier) markSignalingTierFailed(this.peerTier, 0)
       this.signalingAttempts = 0
       diagLog('friends', 'signaling-open')
       this.redial.clear()
@@ -319,7 +303,7 @@ export class FriendsNetwork {
       console.warn('[Friends] This profile is already online in another Lira session. Retrying...')
     }
     if (type === 'network' || type === 'socket-error' || type === 'server-error' || type === 'socket-closed') {
-      if (this.peerTier) markSignalingTierFailed(this.peerTier, 2 * 60 * 1000)
+      markSignalingTierFailed(getActiveSignalingTier(), 2 * 60 * 1000)
     }
     diagLog('friends', 'signaling-error', { type })
     this.scheduleSignalingRecovery()
@@ -339,10 +323,6 @@ export class FriendsNetwork {
   private recoverSignaling() {
     if (!this.running) return
     const peer = this.peer
-    if (peer && !peer.open && this.peerTier && getPreferredSignalingTier() !== this.peerTier) {
-      this.replacePeer()
-      return
-    }
     if (peer && !peer.destroyed) {
       if (!peer.disconnected) return
       try {
@@ -418,7 +398,6 @@ export class FriendsNetwork {
   }
 
   private attachConnection(peer: LinkPeer, conn: LinkConnection, outgoing: boolean) {
-    watchIceFallback((conn as unknown as { peerConnection?: RTCPeerConnection }).peerConnection)
     const userId = fromFriendPeerId(conn.peer)
     if (!userId || userId === this.userId) {
       try {
@@ -572,7 +551,6 @@ export class FriendsNetwork {
 
     for (const [conn, entry] of Array.from(this.pending.entries())) {
       if (now - entry.since <= CONNECT_TIMEOUT_MS) continue
-      if (!conn.open) enableStunFallback()
       try {
         conn.close()
       } catch (e) {}
@@ -583,7 +561,6 @@ export class FriendsNetwork {
     if (!peer || peer.destroyed || peer.disconnected) {
       this.scheduleSignalingRecovery()
     } else if (!peer.open && now - this.handshakeStartedAt > SIGNALING_OPEN_TIMEOUT_MS && !this.signalingTimer) {
-      if (this.peerTier) markSignalingTierFailed(this.peerTier, 2 * 60 * 1000)
       this.replacePeer()
     }
 

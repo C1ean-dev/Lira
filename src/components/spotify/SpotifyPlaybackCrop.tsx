@@ -1,9 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Shuffle, SkipBack, Play, Pause, SkipForward, Repeat } from 'lucide-react'
-import type { SpotifyPlaybackCommand, SpotifyPlaybackFrameData } from '../../types/spotifyPlayback'
-import { useSpotifyJamStore } from '../../store/useSpotifyJamStore'
-import { useGameStore } from '../../store/useGameStore'
-import { PeerManager } from '../../p2p/PeerManager'
+import type { SpotifyPlaybackCommand, SpotifyPlaybackFrameData, SpotifyPlaybackResult } from '../../types/spotifyPlayback'
+import { updateSpotifyPlaybackView, SpotifyPlaybackView } from '../../services/spotifyPlaybackView'
 
 const playbackTime = (seconds: number) => {
   const total = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0))
@@ -80,33 +78,55 @@ export const SpotifyPlaybackFrame: React.FC<{
   )
 }
 
-export const SpotifyPlaybackCrop: React.FC<{ zoneId?: string }> = ({ zoneId }) => {
-  const localZoneId = useGameStore(s => s.localPlayer.currentZoneId)
-  const targetZoneId = zoneId || localZoneId
-  const view = useSpotifyJamStore(s => targetZoneId ? s.playbackByZone[targetZoneId] : undefined)
-  const frame = view?.frame, error = view?.error
+export const SpotifyPlaybackCrop: React.FC = () => {
+  const [{ frame, error }, setView] = useState<SpotifyPlaybackView>({ frame: null, error: null })
   const [commandError, setCommandError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const refreshRef = useRef<(() => Promise<void>) | null>(null)
   const commandPending = useRef(false)
   const alive = useRef(false)
+  const api = typeof window === 'undefined' ? null : (window as any).electronAPI as {
+    getSpotifyPlaybackFrame?: () => Promise<SpotifyPlaybackResult>
+    spotifyPlaybackCommand?: (command: SpotifyPlaybackCommand) => Promise<SpotifyPlaybackResult>
+  } | null
+
   useEffect(() => {
     alive.current = true
-    return () => { alive.current = false }
-  }, [])
+    let disposed = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let refreshing = false
+    const refresh = async () => {
+      if (disposed || refreshing || commandPending.current) return
+      refreshing = true
+      try {
+        const result = await api?.getSpotifyPlaybackFrame?.()
+        if (disposed || commandPending.current) return
+        setView(previous => updateSpotifyPlaybackView(previous, result || { ok: false, error: 'Reabra o Lira para ativar os controles do Spotify.' }))
+      } catch { if (!disposed) setView(previous => updateSpotifyPlaybackView(previous, { ok: false, error: 'Não foi possível atualizar os controles do Spotify.' })) }
+      finally { refreshing = false }
+    }
+    refreshRef.current = refresh
+    const poll = async () => {
+      if (document.visibilityState !== 'hidden') await refresh()
+      if (!disposed) timer = setTimeout(poll, 1500)
+    }
+    void poll()
+    return () => { disposed = true; alive.current = false; if (timer) clearTimeout(timer); refreshRef.current = null }
+  }, [api])
 
   const command = async (selection: SpotifyPlaybackCommand) => {
-    if (commandPending.current || !targetZoneId) return
+    if (commandPending.current) return
     commandPending.current = true
     setBusy(true)
     setCommandError(null)
     try {
-      const result = await PeerManager.getInstance().getDjRoomController().request(targetZoneId, selection)
+      const result = await api?.spotifyPlaybackCommand?.(selection)
       if (!alive.current) return
       if (!result?.ok) setCommandError(result?.error || 'Não foi possível controlar o Spotify.')
     } catch { if (alive.current) setCommandError('Não foi possível controlar o Spotify.') }
     finally {
       commandPending.current = false
-      if (alive.current) setBusy(false)
+      if (alive.current) { setBusy(false); await refreshRef.current?.() }
     }
   }
 

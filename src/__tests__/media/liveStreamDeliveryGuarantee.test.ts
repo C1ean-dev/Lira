@@ -304,10 +304,9 @@ describe('Live Stream Delivery Guarantee (Video & Audio)', () => {
     expect(vTracks.length).toBe(1)
     expect(vTracks[0].id).toBe('live-screen-vid')
 
-    expect(aTracks.length).toBe(2)
-    expect(aTracks[0].id).toBe('local-mic')
-    expect(aTracks[1].id).toBe('live-screen-aud')
-    expect((aTracks[1] as any).__screenShareLiveAudio).toBe(true)
+    expect(aTracks.length).toBe(1)
+    expect(aTracks[0].id).toBe('live-screen-aud')
+    expect((aTracks[0] as any).__screenShareLiveAudio).toBe(true)
   })
 
   it('guarantees remote clients mount the screen stream with unmuted audio (muted: false) and audible volume', () => {

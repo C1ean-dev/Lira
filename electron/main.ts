@@ -18,8 +18,6 @@ import { setupSingleInstanceLock } from './singleInstance'
 import { TrayManager, AppSettings } from './trayManager'
 import { createLogWriter, installConsoleCapture, installProcessErrorCapture } from './logWriter'
 import { readNativeDataFile, writeNativeDataFileLatest } from './nativeDataFile'
-import { readBundledImageFrom } from './bundledImageReader'
-import type { BundledImageManifest } from '../src/types/bundledImages'
 import { createStartupTimer } from './startupTimer'
 import { startCpuProfile } from './startupProfile'
 import { sanitizeRecords } from '../src/utils/logFormat'
@@ -1518,15 +1516,6 @@ ipcMain.handle('export-log-bundle', async () => {
     console.error('[DiagLog] log bundle failed:', err)
     return { ok: false, path: null as string | null }
   }
-})
-
-let bundledImageManifest: Promise<BundledImageManifest> | undefined
-ipcMain.handle('read-bundled-image', async (_event, hash: string) => {
-  const root = path.join(app.getAppPath(), 'dist')
-  bundledImageManifest ??= fs.promises.readFile(path.join(root, 'assets/bundled-images.json'), 'utf8')
-    .then(content => JSON.parse(content) as BundledImageManifest)
-    .catch(error => { bundledImageManifest = undefined; throw error })
-  return readBundledImageFrom(root, await bundledImageManifest, hash)
 })
 
 ipcMain.handle('save-native-assets', async (_event, data: { categories: string[]; assets: any[] }) => {

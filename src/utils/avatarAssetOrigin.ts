@@ -3,7 +3,6 @@ import { Direction, AvatarComponentSlot } from '../types/game'
 import { SlicedPreset, SlicedFrameSlot } from '../components/avatar-customizer/AvatarSpritesheetSlicerModal'
 import { AvatarAtlasManager } from '../engine/avatar/AvatarAtlasManager'
 import { parseSubTextureIdentifier } from '../engine/avatar/avatarAtlasImporter'
-import { resolveBundledAssetUrl } from '../media/bundledImages'
 
 export interface KnownAssetInfo {
   png: string
@@ -98,17 +97,17 @@ export function detectAssetCreationSource(asset: CustomAsset): 'slicer' | 'atlas
 
 export function resolveAssetSourceImage(asset: CustomAsset): string {
   if (asset.sourceImageSrc) {
-    return resolveBundledAssetUrl(asset.sourceImageSrc)
+    return asset.sourceImageSrc
   }
 
   if (asset.sourceFileName) {
-    return resolveBundledAssetUrl(`/assets/avatar/${asset.sourceFileName}`)
+    return `/assets/avatar/${asset.sourceFileName}`
   }
 
   const clean = asset.name.toLowerCase().replace(/[^a-z0-9]/g, '_')
   for (const [key, info] of Object.entries(KNOWN_ASSET_MAP)) {
     if (clean.includes(key) || key.includes(clean)) {
-      return resolveBundledAssetUrl(info.png)
+      return info.png
     }
   }
 
@@ -148,7 +147,7 @@ export async function resolveAssetXmlContent(asset: CustomAsset): Promise<string
 
   try {
     if (typeof fetch !== 'undefined') {
-      const resp = await fetch(resolveBundledAssetUrl(xmlUrl))
+      const resp = await fetch(xmlUrl)
       if (resp.ok) {
         return await resp.text()
       }

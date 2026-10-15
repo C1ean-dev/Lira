@@ -5,7 +5,6 @@ import renderer from 'vite-plugin-electron-renderer'
 import path from 'path'
 import fs from 'fs'
 import { writeNativeDataFileLatest } from './electron/nativeDataFile'
-import { compactAssetsPlugin } from './build/compactAssetsPlugin'
 
 const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, './package.json'), 'utf-8'))
 const appVersion = process.env.VITE_APP_VERSION || process.env.LIRA_VERSION_NAME || pkg.version || '1.0.0'
@@ -15,7 +14,6 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(appVersion),
   },
   plugins: [
-    compactAssetsPlugin(),
     react(),
     ...(process.env.VITEST ? [] : [electron([
       {
