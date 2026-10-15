@@ -264,6 +264,7 @@ export interface PublicRoomInfo {
   lastHeartbeat: number
   zonesCount?: number
   isOfficial?: boolean
+  announcementId?: string
 }
 
 export interface RoomKnockRequest {

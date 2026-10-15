@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
 import { Minimize2, Volume2, VolumeX, Edit2, Radio } from 'lucide-react'
 import { useSpotifyJamStore } from '../../store/useSpotifyJamStore'
-import { useGameStore } from '../../store/useGameStore'
 import { useMapStore } from '../../store/useMapStore'
+import { useLocalPlayerDetails } from '../../hooks/usePlayerDetails'
 import { SpotifyIcon } from '../common/SpotifyIcon'
 import { MediaManager } from '../../media/MediaManager'
 import { SpotifyPlayerFeedback } from './SpotifyPlayerFeedback'
@@ -10,8 +10,9 @@ import { SpotifyPlaybackCrop } from './SpotifyPlaybackCrop'
 import { SpotifyLoginControls } from './SpotifyLoginControls'
 
 export const SpotifyJamSideDisplay: React.FC = () => {
-  const localZoneId = useGameStore((s) => s.localPlayer.currentZoneId)
-  const localPlayerName = useGameStore((s) => s.localPlayer.name)
+  const localPlayer = useLocalPlayerDetails()
+  const localZoneId = localPlayer.currentZoneId
+  const localPlayerName = localPlayer.name
   const mapZones = useMapStore((s) => s.mapData.zones)
   const djStateByZone = useSpotifyJamStore((s) => s.djStateByZone)
   const isMinimized = useSpotifyJamStore((s) => s.isSideDisplayMinimized)
