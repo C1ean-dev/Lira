@@ -22,6 +22,7 @@ export function createImageDistribution(catalogs: Record<string, any>, publicFil
   }
   for (const name of Object.keys(publicFiles).sort()) {
     if (name.includes('..') || name.startsWith('/') || name.includes('\\')) throw new Error(`Invalid public asset path: ${name}`)
+    if (name.split('/').pop() === '.gitkeep') continue
     const bytes = Buffer.from(publicFiles[name])
     const mime = mimeByExtension[name.split('.').pop()!.toLowerCase()]
     if (mime) manifest.aliases['/' + name] = addImage(bytes, mime)

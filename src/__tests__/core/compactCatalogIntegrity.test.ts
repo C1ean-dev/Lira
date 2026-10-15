@@ -51,6 +51,7 @@ it('preserves every shipped image byte and catalog field, with a file for every 
     expect(createHash('sha256').update(result.files[entry.path]).digest('hex')).toBe(hash)
   }
   for (const [name, bytes] of Object.entries(publicFiles)) {
+    if (name.split('/').pop() === '.gitkeep') continue
     const generated = result.manifest.aliases['/' + name]
     expect(result.files[generated]?.equals(bytes)).toBe(true)
   }

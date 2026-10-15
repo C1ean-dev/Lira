@@ -11,6 +11,13 @@ const hash = createHash('sha256').update(png).digest('hex')
 const imagePath = `assets/images/${hash}.png`
 
 describe('compact production distribution', () => {
+  it('does not register source-only folder placeholders that the installer excludes', () => {
+    const result = createImageDistribution({}, { 'assets/pet/.gitkeep': Buffer.alloc(0), 'assets/pet/cat.png': png })
+    expect(result.manifest.aliases['/assets/pet/.gitkeep']).toBeUndefined()
+    expect(result.files['assets/pet/.gitkeep']).toBeUndefined()
+    expect(result.manifest.aliases['/assets/pet/cat.png']).toBe(imagePath)
+  })
+
   it('stores one exact image across both catalogs, frames, layers, avatars and pets', () => {
     const asset = { id: 'cat', name: 'Gato', frames: ['@one'], sourceImageSrc: '@one', directionalFrameLayers: { down: [[{ dataUrl: '@one', x: 3 }]] }, createdAt: 12 }
     const catalog = { categories: ['Geral'], assets: [asset], images: { one: dataUrl } }
