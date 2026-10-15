@@ -55,6 +55,10 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     presetId: string
     presetName: string
     directionalFrames?: Record<Direction, string | string[]>
+    width?: number
+    height?: number
+    pixelWidth?: number
+    pixelHeight?: number
   } | null>(null)
 
   useEffect(() => {
@@ -108,6 +112,10 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
       presetId,
       presetName: presetNameForStudio(label, !!customAsset),
       directionalFrames,
+      width: customAsset?.width,
+      height: customAsset?.height,
+      pixelWidth: customAsset?.pixelWidth,
+      pixelHeight: customAsset?.pixelHeight,
     })
   }
 
@@ -123,7 +131,15 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
   const handleSavePresetFromStudio = async (
     directionalFrames: Record<Direction, string | string[]>,
-    name: string
+    name: string,
+    options?: {
+      width?: number
+      height?: number
+      pixelWidth?: number
+      pixelHeight?: number
+      isObstacle?: boolean
+      category?: string
+    }
   ) => {
     if (!editingPreset) return
     const category = editingPreset.category
@@ -157,9 +173,15 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
         thumbnail,
         frames: [firstDown, firstUp, firstLeft, firstRight],
         directionalFrames,
+        width: options?.width ?? existingAsset.width,
+        height: options?.height ?? existingAsset.height,
+        pixelWidth: options?.pixelWidth ?? existingAsset.pixelWidth,
+        pixelHeight: options?.pixelHeight ?? existingAsset.pixelHeight,
         creationSource: 'studio',
       })
     } else {
+      const finalPixelW = options?.pixelWidth || (options?.width ? options.width * 32 : 32)
+      const finalPixelH = options?.pixelHeight || (options?.height ? options.height * 32 : 32)
       const newAsset: CustomAsset = {
         id: `avatar_${category}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         name: customName,
@@ -167,9 +189,11 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
         category: 'Geral',
         avatarSlot: category,
         thumbnail,
-        width: 1,
-        height: 1,
-        isObstacle: false,
+        width: options?.width || Math.max(1, Math.ceil(finalPixelW / 32)),
+        height: options?.height || Math.max(1, Math.ceil(finalPixelH / 32)),
+        pixelWidth: finalPixelW,
+        pixelHeight: finalPixelH,
+        isObstacle: options?.isObstacle ?? false,
         frames: [firstDown, firstUp, firstLeft, firstRight],
         directionalFrames,
         frameRateMs: 160,
@@ -408,6 +432,10 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
           presetName={editingPreset.presetName}
           initialDirectionalFrames={editingPreset.directionalFrames}
           avatar={avatar}
+          initialWidth={editingPreset.width}
+          initialHeight={editingPreset.height}
+          initialPixelWidth={editingPreset.pixelWidth}
+          initialPixelHeight={editingPreset.pixelHeight}
           onSave={handleSavePresetFromStudio}
         />
       )}

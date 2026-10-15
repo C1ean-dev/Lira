@@ -228,8 +228,13 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
         }
       }
 
-      if (dir === 'down' && editingAsset?.frames?.[0]) {
-        return [editingAsset.frames[0]]
+      if (dir === 'down') {
+        if (editingAsset?.frames?.[0]) {
+          return [editingAsset.frames[0]]
+        }
+        if (selectedRegionDataUrl) {
+          return [selectedRegionDataUrl]
+        }
       }
 
       return ['']
@@ -241,7 +246,34 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
       left: getDirectionList('left'),
       right: getDirectionList('right'),
     }
-  }, [presets, activePresetIndex, editingAsset])
+  }, [presets, activePresetIndex, editingAsset, selectedRegionDataUrl])
+
+  const getStudioDimensions = useCallback(() => {
+    let maxW = selection.w || 32
+    let maxH = selection.h || 32
+    const currentPreset = presets[activePresetIndex]
+    if (currentPreset) {
+      for (const dir of ['down', 'up', 'left', 'right'] as Direction[]) {
+        const slots = currentPreset.directions[dir] || []
+        for (const slot of slots) {
+          if (slot.w && slot.w > maxW) maxW = slot.w
+          if (slot.h && slot.h > maxH) maxH = slot.h
+        }
+      }
+    }
+    if (editingAsset?.pixelWidth && editingAsset.pixelWidth > maxW) {
+      maxW = editingAsset.pixelWidth
+    }
+    if (editingAsset?.pixelHeight && editingAsset.pixelHeight > maxH) {
+      maxH = editingAsset.pixelHeight
+    }
+    return {
+      pixelWidth: maxW,
+      pixelHeight: maxH,
+      width: Math.max(1, Math.ceil(maxW / 32)),
+      height: Math.max(1, Math.ceil(maxH / 32)),
+    }
+  }, [selection, presets, activePresetIndex, editingAsset])
 
   const handleSaveFromStudio = async (
     newDirectionalFrames: Record<Direction, string | string[]>,
@@ -386,12 +418,42 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     [enableBgRemoval, targetColorHex, tolerance]
   )
 
+  const fitToScreen = useCallback((imgToFit?: HTMLImageElement | null) => {
+    const img = imgToFit || sourceImg
+    const stage = stageRef.current
+    if (!img || !stage) return
+    const stageW = Math.max(100, stage.clientWidth - 48)
+    const stageH = Math.max(100, stage.clientHeight - 48)
+    const imgW = img.naturalWidth || img.width || 1
+    const imgH = img.naturalHeight || img.height || 1
+    const fitScale = Math.min(stageW / imgW, stageH / imgH, 2.0)
+    const rounded = Math.round(Math.max(0.05, fitScale) * 100) / 100
+    setZoom(rounded)
+    setPanOffset({ x: 0, y: 0 })
+  }, [sourceImg])
+
+  const handleSelectFullSheet = useCallback(() => {
+    if (!sourceImg) return
+    const fullW = sourceImg.naturalWidth || sourceImg.width
+    const fullH = sourceImg.naturalHeight || sourceImg.height
+    const updated = {
+      x: 0,
+      y: 0,
+      w: fullW,
+      h: fullH,
+    }
+    setSelection(updated)
+    sliceRegion(sourceImg, 0, 0, fullW, fullH)
+  }, [sourceImg, sliceRegion])
+
   useEffect(() => {
     if (isOpen) {
-      setZoom(0.5)
       setPanOffset({ x: 0, y: 0 })
+      if (sourceImg) {
+        fitToScreen(sourceImg)
+      }
     }
-  }, [isOpen])
+  }, [isOpen, sourceImg, fitToScreen])
 
   useEffect(() => {
     if (!imageSrc) return
@@ -399,6 +461,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     img.src = imageSrc
     img.onload = () => {
       setSourceImg(img)
+      fitToScreen(img)
       const firstSlot =
         presets[0]?.directions.down[0] ||
         presets[0]?.directions.up[0] ||
@@ -417,7 +480,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
         sliceRegion(img, selection.x, selection.y, selection.w || 16, selection.h || 16)
       }
     }
-  }, [imageSrc, sliceRegion])
+  }, [imageSrc, sliceRegion, fitToScreen])
 
   useEffect(() => {
     if (sourceImg) {
@@ -485,10 +548,10 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault()
         e.stopPropagation()
-        const zoomDelta = e.deltaY < 0 ? 0.25 : -0.25
+        const multiplier = e.deltaY < 0 ? 1.15 : 0.85
         setZoom((prevZoom) => {
-          const next = Math.round((prevZoom + zoomDelta) * 100) / 100
-          return Math.max(0.5, Math.min(10, next))
+          const next = Math.round(prevZoom * multiplier * 100) / 100
+          return Math.max(0.05, Math.min(10, next))
         })
       }
     }
@@ -756,7 +819,8 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
   }
 
   const handleUpdateGridSize = (newGridSize: number) => {
-    const safeSize = Math.max(1, Math.min(64, Math.round(newGridSize)))
+    const maxLimit = Math.max(sourceImg?.naturalWidth || 64, sourceImg?.naturalHeight || 64, 4096)
+    const safeSize = Math.max(1, Math.min(maxLimit, Math.round(newGridSize)))
     setGridSnapSize(safeSize)
 
     if (sourceImg) {
@@ -1147,7 +1211,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               <p className="text-xs text-slate-400">
                 {editingAsset
                   ? 'Reorganize frames, recorte novos passos da folha ou ajuste as direções deste personagem.'
-                  : 'Selecione regiões menores que 32×32 (ex: 16×16, 8×8, 24×24) ou qualquer dimensão livre para recortar sprites.'}
+                  : 'Recorte sprites de qualquer dimensão (16×16, 32×32, 64×64, 128×128 ou o tamanho máximo da folha).'}
               </p>
             </div>
           </div>
@@ -1200,20 +1264,40 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
             <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 bg-[#18191c]/90 border border-[#383a40] backdrop-blur-md p-1.5 rounded-2xl shadow-xl">
               <button
                 type="button"
-                onClick={() => setZoom((z) => Math.max(0.5, Math.round((z - 0.5) * 10) / 10))}
+                onClick={() =>
+                  setZoom((z) => {
+                    const step = z <= 0.2 ? 0.02 : z <= 0.5 ? 0.05 : z <= 1 ? 0.1 : 0.25
+                    return Math.max(0.05, Math.round((z - step) * 100) / 100)
+                  })
+                }
                 className="w-8 h-8 rounded-xl hover:bg-[#2b2d31] text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
                 title="Diminuir Zoom"
               >
                 <ZoomOut className="w-4 h-4" />
               </button>
-              <span className="text-xs font-mono font-bold text-slate-300 px-2">{zoom}x</span>
+              <span className="text-xs font-mono font-bold text-slate-300 px-2 min-w-[45px] text-center">
+                {zoom < 1 ? zoom.toFixed(2) : zoom}x
+              </span>
               <button
                 type="button"
-                onClick={() => setZoom((z) => Math.min(10, Math.round((z + 0.5) * 10) / 10))}
+                onClick={() =>
+                  setZoom((z) => {
+                    const step = z < 0.2 ? 0.02 : z < 0.5 ? 0.05 : z < 1 ? 0.1 : 0.25
+                    return Math.min(10, Math.round((z + step) * 100) / 100)
+                  })
+                }
                 className="w-8 h-8 rounded-xl hover:bg-[#2b2d31] text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
                 title="Aumentar Zoom"
               >
                 <ZoomIn className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => fitToScreen()}
+                className="w-8 h-8 rounded-xl hover:bg-[#2b2d31] text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                title="Ajustar Folha à Tela"
+              >
+                <Maximize2 className="w-4 h-4" />
               </button>
               <div className="w-px h-4 bg-[#383a40] mx-1" />
               <button
@@ -1432,17 +1516,27 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                 </div>
               </div>
 
+              <button
+                type="button"
+                onClick={handleSelectFullSheet}
+                className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-amber-600/30 to-amber-500/20 hover:from-amber-600/50 hover:to-amber-500/30 text-amber-300 hover:text-white border border-amber-500/40 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-98"
+                title={`Selecionar a folha inteira (${sourceImg ? sourceImg.naturalWidth + '×' + sourceImg.naturalHeight : 'Total'}px)`}
+              >
+                <Maximize2 className="w-3.5 h-3.5 text-amber-400" />
+                <span>Folha Máxima ({sourceImg ? `${sourceImg.naturalWidth}×${sourceImg.naturalHeight}` : 'Total'}px)</span>
+              </button>
+
               <div className="flex flex-col gap-1.5 bg-[#1e1f22] p-2 rounded-xl border border-[#383a40]/60">
                 <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span className="text-[10px] font-bold text-slate-300">Grade / Snap (1 a 64px):</span>
+                  <span className="text-[10px] font-bold text-slate-300">Grade / Snap:</span>
                   <div className="flex items-center gap-1">
                     <input
                       type="number"
                       min={1}
-                      max={64}
+                      max={Math.max(4096, sourceImg ? Math.max(sourceImg.naturalWidth, sourceImg.naturalHeight) : 4096)}
                       value={gridSnapSize}
                       onChange={(e) => handleUpdateGridSize(parseInt(e.target.value) || 1)}
-                      className="w-12 bg-[#141517] border border-[#383a40] focus:border-blue-500 text-blue-400 font-mono text-center text-xs px-1 py-0.5 rounded-lg outline-none"
+                      className="w-14 bg-[#141517] border border-[#383a40] focus:border-blue-500 text-blue-400 font-mono text-center text-xs px-1 py-0.5 rounded-lg outline-none"
                     />
                     <span className="text-[10px] text-slate-500">px</span>
                   </div>
@@ -1452,7 +1546,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                   <input
                     type="range"
                     min={1}
-                    max={64}
+                    max={Math.min(512, Math.max(64, sourceImg ? Math.min(sourceImg.naturalWidth, sourceImg.naturalHeight) : 64))}
                     value={gridSnapSize}
                     onChange={(e) => handleUpdateGridSize(parseInt(e.target.value) || 1)}
                     className="flex-1 accent-blue-500 cursor-pointer h-1.5"
@@ -1464,7 +1558,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                 </div>
 
                 <div className="flex items-center justify-between gap-1 pt-1 border-t border-white/5">
-                  {[1, 8, 16, 24, 32, 48, 64].map((s) => (
+                  {[1, 8, 16, 24, 32, 48, 64, 128].map((s) => (
                     <button
                       key={s}
                       type="button"
@@ -1493,6 +1587,13 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                   { label: '32×64', w: 32, h: 64 },
                   { label: '48×48', w: 48, h: 48 },
                   { label: '64×64', w: 64, h: 64 },
+                  { label: '96×96', w: 96, h: 96 },
+                  { label: '128×128', w: 128, h: 128 },
+                  { label: '192×192', w: 192, h: 192 },
+                  { label: '256×256', w: 256, h: 256 },
+                  ...(sourceImg
+                    ? [{ label: `Máx (${sourceImg.naturalWidth}×${sourceImg.naturalHeight})`, w: sourceImg.naturalWidth, h: sourceImg.naturalHeight }]
+                    : []),
                 ].map((s) => (
                   <button
                     key={s.label}
@@ -1523,11 +1624,11 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                     <input
                       type="number"
                       min={1}
-                      max={512}
+                      max={Math.max(4096, sourceImg ? Math.max(sourceImg.naturalWidth, sourceImg.naturalHeight) : 4096)}
                       step={gridSnapSize > 0 ? gridSnapSize : 1}
                       value={selection.w}
                       onChange={(e) => setExactDimensions(parseInt(e.target.value) || 1, selection.h)}
-                      className="w-14 bg-[#141517] border border-[#383a40] text-amber-300 font-mono text-center text-xs px-1 py-0.5 rounded-lg outline-none"
+                      className="w-16 bg-[#141517] border border-[#383a40] text-amber-300 font-mono text-center text-xs px-1 py-0.5 rounded-lg outline-none"
                     />
                     <span className="text-[10px] text-slate-500">px</span>
                   </div>
@@ -1539,11 +1640,11 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                     <input
                       type="number"
                       min={1}
-                      max={512}
+                      max={Math.max(4096, sourceImg ? Math.max(sourceImg.naturalWidth, sourceImg.naturalHeight) : 4096)}
                       step={gridSnapSize > 0 ? gridSnapSize : 1}
                       value={selection.h}
                       onChange={(e) => setExactDimensions(selection.w, parseInt(e.target.value) || 1)}
-                      className="w-14 bg-[#141517] border border-[#383a40] text-amber-300 font-mono text-center text-xs px-1 py-0.5 rounded-lg outline-none"
+                      className="w-16 bg-[#141517] border border-[#383a40] text-amber-300 font-mono text-center text-xs px-1 py-0.5 rounded-lg outline-none"
                     />
                     <span className="text-[10px] text-slate-500">px</span>
                   </div>
@@ -1954,21 +2055,24 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
         </div>
       )}
 
-      {isPixelStudioOpen && (
-        <AvatarPixelArtModal
-          isOpen={isPixelStudioOpen}
-          onClose={() => setIsPixelStudioOpen(false)}
-          category={category}
-          presetName={presets[activePresetIndex]?.name || editingAsset?.name || 'Personagem'}
-          initialDirectionalFrames={getCurrentDirectionalFrames()}
-          avatar={useGameStore.getState().localPlayer.avatar || DEFAULT_AVATAR}
-          initialWidth={Math.max(1, Math.ceil(selection.w / 32))}
-          initialHeight={Math.max(1, Math.ceil(selection.h / 32))}
-          initialPixelWidth={selection.w}
-          initialPixelHeight={selection.h}
-          onSave={handleSaveFromStudio}
-        />
-      )}
+      {isPixelStudioOpen && (() => {
+        const studioDims = getStudioDimensions()
+        return (
+          <AvatarPixelArtModal
+            isOpen={isPixelStudioOpen}
+            onClose={() => setIsPixelStudioOpen(false)}
+            category={category}
+            presetName={presets[activePresetIndex]?.name || editingAsset?.name || 'Personagem'}
+            initialDirectionalFrames={getCurrentDirectionalFrames()}
+            avatar={useGameStore.getState().localPlayer.avatar || DEFAULT_AVATAR}
+            initialWidth={studioDims.width}
+            initialHeight={studioDims.height}
+            initialPixelWidth={studioDims.pixelWidth}
+            initialPixelHeight={studioDims.pixelHeight}
+            onSave={handleSaveFromStudio}
+          />
+        )
+      })()}
     </div>
   )
 }
