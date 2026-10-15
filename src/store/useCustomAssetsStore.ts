@@ -166,14 +166,33 @@ async function warmAssetImages(assets: CustomAsset[]) {
       }
     }
   }
-  await Promise.all([...sources].map(async src => {
-    try {
-      const image = getCustomAssetImage(src)
-      if (image?.decode) await image.decode()
-    } catch (error) {
-      console.warn('[Assets] Pre-warming decode skipped for image:', error)
+  const pending = [...sources].map(getCustomAssetImage)
+  let next = 0
+  let failed = 0
+  let expired = false
+  // This cache is optional. Limit simultaneous decodes, especially for large
+  // legacy libraries in Electron, after readAtlas has validated the actual PNG.
+  const warming = Promise.all(Array.from({ length: Math.min(8, pending.length) }, async () => {
+    while (!expired && next < pending.length) {
+      const image = pending[next++]
+      try {
+        if (image?.decode) await image.decode()
+      } catch {
+        failed++
+      }
     }
   }))
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      warming,
+      new Promise<void>(resolve => { timer = setTimeout(resolve, 1000) }),
+    ])
+  } finally {
+    expired = true
+    clearTimeout(timer)
+  }
+  if (failed) console.warn('[Assets] Optional image preloading skipped:', failed)
 }
 export const syncToNativeFile = async (assets: CustomAsset[], categories: string[]): Promise<boolean> => {
   try { await queue(() => commit(assets, categories)); return true } catch { return false }

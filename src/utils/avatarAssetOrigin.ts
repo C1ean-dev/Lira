@@ -3,6 +3,7 @@ import { Direction, AvatarComponentSlot } from '../types/game'
 import { SlicedPreset, SlicedFrameSlot } from '../components/avatar-customizer/AvatarSpritesheetSlicerModal'
 import { AvatarAtlasManager } from '../engine/avatar/AvatarAtlasManager'
 import { parseSubTextureIdentifier } from '../engine/avatar/avatarAtlasImporter'
+import { normalizeAssetActivityAnimations } from './avatarActivityAnimations'
 
 export interface KnownAssetInfo {
   png: string
@@ -223,6 +224,7 @@ export function convertXmlToSlicedPresets(asset: CustomAsset, xmlContent: string
 }
 
 export function convertAssetToSlicedPresets(asset: CustomAsset, xmlContent?: string): SlicedPreset[] {
+  asset = normalizeAssetActivityAnimations(asset)
   if (asset.slicerPresets && asset.slicerPresets.length > 0) {
     return asset.slicerPresets
   }

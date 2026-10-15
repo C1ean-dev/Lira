@@ -45,6 +45,24 @@ describe('avatarAtlasImporter', () => {
     expect(formatPresetLabel('jacket_leather_cool')).toBe('Jacket Leather Cool')
   })
 
+  it('keeps walking, yawning and sleeping sequences on the same imported character', async () => {
+    expect(parseSubTextureIdentifier('other_ana_yawn_left_2', 'other')).toEqual({ presetKey: 'ana', direction: 'left', animation: 'yawn' })
+    expect(parseSubTextureIdentifier('other_ana_sleep_2', 'other')).toEqual({ presetKey: 'ana', direction: 'down', animation: 'sleep' })
+    const xml = `<?xml version="1.0"?><TextureAtlas imagePath="ana.png">
+      <SubTexture name="other_ana_sleep_down_1" x="64" y="0" width="32" height="32"/>
+      <SubTexture name="other_ana_down_0" x="0" y="0" width="32" height="32"/>
+      <SubTexture name="other_ana_sleep_down_0" x="32" y="0" width="32" height="32"/>
+      <SubTexture name="other_ana_yawn_down_0" x="96" y="0" width="32" height="32"/>
+    </TextureAtlas>`
+    const presets = await parseSparrowAtlasAndSlice(xml, { width: 128, height: 32 } as HTMLCanvasElement, 'other')
+    expect(presets).toHaveLength(1)
+    expect(presets[0].slicerPresets?.[0].animations.sleep.map((frame: { x: number }) => frame.x)).toEqual([32, 64])
+    const [saved] = await importPresetsIntoStore('other', presets)
+    expect(saved.activityAnimations?.sleep).toHaveLength(2)
+    expect(saved.activityAnimations?.yawn).toHaveLength(1)
+    expect(saved.directionalFrames?.down).toBeDefined()
+  })
+
   it('should parse Sparrow XML and slice directional frames from an image canvas', async () => {
     const sampleXml = `<?xml version="1.0" encoding="UTF-8"?>
 <TextureAtlas imagePath="hair.png">

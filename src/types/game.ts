@@ -1,4 +1,5 @@
 export type Direction = 'up' | 'down' | 'left' | 'right'
+export type AvatarActivityAnimation = 'yawn' | 'sleep'
 
 export type PresenceStatus = 'available' | 'busy' | 'focusing' | 'away'
 
@@ -198,6 +199,8 @@ export interface Player {
   targetY?: number
   direction: Direction
   isMoving: boolean
+  activityAnimation?: AvatarActivityAnimation | 'none'
+  activityAnimationStartedAt?: number
   avatar: AvatarConfig
   status: PresenceStatus
   statusText?: string

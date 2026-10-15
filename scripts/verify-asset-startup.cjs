@@ -40,17 +40,23 @@ app.whenReady().then(async () => {
   }
   if (!legacy) throw new Error('No legacy asset catalog found in the read-only profile snapshot')
   fs.writeFileSync(path.join(cache, 'legacy-assets.json'), legacy)
+  if (process.env.LIRA_STARTUP_URL) {
+    await window.loadURL(new URL(process.env.LIRA_STARTUP_URL).origin)
+    await window.webContents.executeJavaScript(`localStorage.setItem('lira_custom_user_assets', ${JSON.stringify(legacy)})`)
+  }
   signals.push({ legacyAssets: JSON.parse(legacy).length })
   progress('preparing isolated Electron startup')
   window.destroy()
   await session.defaultSession.protocol.unhandle('http')
   const backendPath = path.join(directory, 'backend.cjs')
   buildSync({ entryPoints: [path.join(root, 'electron/assetAtlasFile.ts')], outfile: backendPath, bundle: true, platform: 'node', format: 'cjs' })
-  const { readAssetAtlas } = require(backendPath)
+  const { readAssetAtlas, writeAssetAtlasLatest } = require(backendPath)
+  const isolatedLibrary = path.join(directory, 'library')
+  let migrationWrites = 0
   ipcMain.on('get-signaling-port-sync', event => { event.returnValue = 9000 })
-  ipcMain.handle('load-asset-atlas', () => readAssetAtlas(path.join(root, 'public/assets/library')))
+  ipcMain.handle('load-asset-atlas', async () => await readAssetAtlas(isolatedLibrary) || readAssetAtlas(path.join(root, 'public/assets/library')))
   ipcMain.handle('load-native-assets', () => null)
-  ipcMain.handle('save-asset-atlas', () => true)
+  ipcMain.handle('save-asset-atlas', async (_, pair) => { await writeAssetAtlasLatest(isolatedLibrary, pair); migrationWrites++; return true })
   ipcMain.handle('complete-asset-atlas-migration', () => true)
   ipcMain.handle('save-native-spaces', () => true)
   ipcMain.handle('load-native-spaces', () => null)
@@ -58,19 +64,45 @@ app.whenReady().then(async () => {
   ipcMain.handle('set-app-settings', () => ({}))
   ipcMain.handle('renderer-log-batch', () => ({ ok: true }))
   ipcMain.handle('diagnostic-log-batch', () => ({ ok: true }))
-  const checkSession = session.fromPartition('startup-check')
-  checkSession.webRequest.onBeforeRequest((details, callback) => callback({ cancel: /^https?:/.test(details.url) }))
-  window = new BrowserWindow({ show: false, webPreferences: { session: checkSession, preload: path.join(root, 'out/preload.js'), contextIsolation: true, nodeIntegration: false } })
+  const startupUrl = process.env.LIRA_STARTUP_URL
+  const checkSession = startupUrl ? session.defaultSession : session.fromPartition('startup-check')
+  checkSession.webRequest.onBeforeRequest((details, callback) => {
+    const remote = /^(https?|wss?):/.test(details.url)
+    const permitted = startupUrl && new URL(details.url.replace(/^ws/, 'http')).origin === new URL(startupUrl).origin && !new URL(details.url).pathname.startsWith('/api/save-')
+    callback({ cancel: remote && !permitted })
+  })
+  checkSession.webRequest.onErrorOccurred(details => signals.push({ requestError: details.error, path: new URL(details.url).pathname }))
+  window = new BrowserWindow({ show: false, webPreferences: { session: checkSession, preload: path.join(root, 'out/preload.js'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } })
   window.webContents.on('console-message', (_, level, message) => {
-    signals.push({ level, message: message.slice(0, 1000) })
+    if (/\[Assets\]|\[Startup\]/.test(message) || (level >= 3 && !message.includes('Electron Security Warning'))) signals.push({ level, message: message.slice(0, 500) })
   })
   const seed = path.join(directory, 'seed.html')
   fs.writeFileSync(seed, '<!doctype html><title>Prepare startup check</title>')
   await window.loadFile(seed)
   progress('seeding legacy assets in storage')
   await window.webContents.executeJavaScript(`localStorage.setItem('lira_custom_user_assets', ${JSON.stringify(legacy)})`)
+  if (process.argv.includes('--probe-legacy-images')) {
+    signals.push(await window.webContents.executeJavaScript(`(async () => {
+      const assets = JSON.parse(localStorage.getItem('lira_custom_user_assets'))
+      let checked = 0
+      const seen = new Set()
+      for (const asset of assets) {
+        const sources = [...asset.frames, ...Object.values(asset.directionalFrames || {}).flat()]
+        for (const src of sources) {
+          if (!src || seen.has(src)) continue
+          seen.add(src)
+          const image = new Image(); image.src = src
+          try { await image.decode(); checked++ }
+          catch (error) { return { legacyImageProbe: 'failed', checked, assetId: asset.id, error: String(error), format: src.slice(0, 22), characters: src.length } }
+        }
+      }
+      return { legacyImageProbe: 'passed', checked }
+    })()`))
+  }
   progress('loading app with legacy assets')
-  await window.loadFile(path.join(root, 'dist/index.html'))
+  if (startupUrl) await window.loadURL(startupUrl)
+  else await window.loadFile(path.join(root, 'dist/index.html'))
+  if (!(await window.webContents.executeJavaScript('document.title')).includes('Lira')) throw new Error('The startup URL does not belong to Lira')
   progress('checking seeded legacy assets')
   const legacyLength = await window.webContents.executeJavaScript("localStorage.getItem('lira_custom_user_assets')?.length || 0")
   signals.push({ legacyCharactersAtStartup: legacyLength })
@@ -78,13 +110,18 @@ app.whenReady().then(async () => {
   for (let i = 0; i < 300; i++) {
     const state = await window.webContents.executeJavaScript(`({ splash: document.getElementById('boot-splash-status')?.textContent, rendered: !!document.querySelector('#root > *') && !document.getElementById('boot-splash-status') })`)
     if (state.rendered) {
-      signals.push({ startup: 'rendered' })
+      await new Promise(resolve => setTimeout(resolve, 300))
+      if (signals.some(signal => /decode skipped|Startup failed/.test(signal.message || ''))) throw new Error('Asset startup reported an image decode failure')
+      if (await window.webContents.executeJavaScript("!!localStorage.getItem('lira_custom_user_assets')")) throw new Error('Legacy assets were not migrated')
+      if (!migrationWrites || !await readAssetAtlas(isolatedLibrary)) throw new Error('Startup did not commit the migrated PNG/XML pair')
+      signals.push({ startup: 'rendered', migrationWrites, persistedPair: true })
       fs.writeFileSync(resultPath, JSON.stringify({ ok: true, signals }, null, 2))
       return
     }
     if (state.splash?.startsWith('Não foi possível')) throw new Error(state.splash)
     await new Promise(resolve => setTimeout(resolve, 100))
   }
+  signals.push(await window.webContents.executeJavaScript(`({ resources: performance.getEntriesByType('resource').map(e => ({ path: new URL(e.name).pathname, duration: Math.round(e.duration) })).slice(-15) })`))
   throw new Error('The app did not leave the startup splash')
 }).catch(error => {
   fs.writeFileSync(resultPath, JSON.stringify({ ok: false, error: String(error), signals }, null, 2))

@@ -39,6 +39,7 @@ interface Props {
   presetName: string
   initialDataUrl?: string
   initialDirectionalFrames?: Partial<Record<Direction, string | string[]>>
+  singleSequence?: boolean
   avatar?: AvatarConfig
   initialWidth?: number
   initialHeight?: number
@@ -118,6 +119,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
   presetName,
   initialDataUrl,
   initialDirectionalFrames,
+  singleSequence = false,
   avatar,
   initialWidth,
   initialHeight,
@@ -2407,7 +2409,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 
               <div data-section="Animation frames of the active direction" className="flex flex-col gap-1.5 mt-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  {category === 'floor' ? 'Quadros' : `Quadros (${DIRECTIONS.find((direction) => direction.id === activeDirection)?.label})`}
+                  {category === 'floor' || singleSequence ? 'Quadros' : `Quadros (${DIRECTIONS.find((direction) => direction.id === activeDirection)?.label})`}
                 </span>
                 <div className="flex flex-col gap-2 bg-[#1e1f22] p-2 rounded-xl border border-[#383a40]/60">
                   <div className="flex flex-wrap items-start gap-1 max-h-[9.5rem] overflow-y-auto px-0.5 pt-2 pb-1">
@@ -2604,7 +2606,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               </div>
 
               <span className="hidden" aria-hidden="true">4 Directions Mini Previews</span>
-              {category !== 'floor' && (
+              {category !== 'floor' && !singleSequence && (
                 <div className="flex flex-col gap-1.5 mt-1">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     Quadros das 4 Direções

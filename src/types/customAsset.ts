@@ -1,4 +1,14 @@
-import { AvatarComponentSlot, Direction } from './game'
+import { AvatarActivityAnimation, AvatarComponentSlot, Direction } from './game'
+
+export interface AssetSourceSheet {
+  id: string
+  name: string
+  src: string
+  width: number
+  height: number
+}
+
+export type ActivityAnimationFrames = Partial<Record<AvatarActivityAnimation, string[]>>
 
 export type CustomAssetType = 'furniture' | 'floor' | 'wall' | 'avatar'
 
@@ -38,6 +48,7 @@ export interface CustomAsset {
   collisionFromSprite?: boolean
   frames: string[]
   directionalFrames?: Partial<Record<Direction, string | string[]>>
+  activityAnimations?: ActivityAnimationFrames
   directionalFrameLayers?: Partial<Record<Direction, CustomAssetLayer[][]>>
   directionalDimensions?: Partial<Record<Direction, DirectionalDimension>>
   directionalCollisionGrids?: Partial<Record<Direction, boolean[][]>>
@@ -48,6 +59,7 @@ export interface CustomAsset {
   updatedAt?: number
   creationSource?: 'slicer' | 'atlas' | 'studio'
   sourceImageSrc?: string
+  sourceSheets?: AssetSourceSheet[]
   sourceFileName?: string
   sourceXmlContent?: string
   slicerPresets?: any[]

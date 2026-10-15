@@ -3,6 +3,7 @@ import { AvatarAtlasManager } from '../engine/avatar/AvatarAtlasManager'
 import { cropContentDataUrl } from '../engine/avatar/avatarBakeService'
 import { bakeLayersToDataUrl } from '../utils/imageResize'
 import { layoutSprites, parseAtlasDocument, serializeAtlas, type AtlasDocument, type PersistedAtlas } from './atlasFormat'
+import { normalizeAssetActivityAnimations } from '../utils/avatarActivityAnimations'
 
 const canvasFor = (w: number, h: number) => {
   const canvas = document.createElement('canvas')
@@ -33,7 +34,7 @@ export async function buildAtlas(assets: CustomAsset[], categories: string[] = [
   }
   const prepared: CustomAsset[] = []
   for (const asset of assets) {
-    const copy = { ...asset }
+    const copy = normalizeAssetActivityAnimations(asset)
     delete copy.thumbnail
     // The original slicer XML is editor metadata, not another image source.
     // Keep it when present so externally authored frame offsets round-trip too.
@@ -75,10 +76,11 @@ export async function buildAtlas(assets: CustomAsset[], categories: string[] = [
   }
   const contained = new Map<string, { parent: string; x: number; y: number; width: number; height: number }>()
   for (const asset of prepared) {
-    const parent = images.get(asset.sourceImageSrc || '')
-    if (!parent) continue
-    const source = loaded.get(parent)!
-    for (const preset of asset.slicerPresets || []) for (const slots of Object.values(preset.directions || {}) as any[][]) for (const slot of slots) {
+    const sheets = new Map((asset.sourceSheets || []).map(sheet => [sheet.id, sheet.src]))
+    for (const preset of asset.slicerPresets || []) for (const slots of [...Object.values(preset.directions || {}), ...Object.values(preset.animations || {})] as any[][]) for (const slot of slots) {
+      const parent = images.get(sheets.get(slot.sheetId || 'primary') || asset.sourceImageSrc || '')
+      if (!parent) continue
+      const source = loaded.get(parent)!
       const { x, y, w, h } = slot
       if (![x, y, w, h].every(Number.isInteger) || x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > source.naturalWidth || y + h > source.naturalHeight) continue
       const { canvas, ctx } = canvasFor(w, h)
@@ -123,6 +125,7 @@ export async function readAtlas(pair: PersistedAtlas): Promise<AtlasDocument> {
     if (!frame) throw new Error(`Recorte ausente: ${name}`)
     return frame
   })
+  doc.assets = doc.assets.map(normalizeAssetActivityAnimations)
   for (const asset of doc.assets) {
     const restore = async (value: string, direction?: string) => {
       if (!value.startsWith('composition:')) return value
@@ -146,28 +149,34 @@ export async function readAtlas(pair: PersistedAtlas): Promise<AtlasDocument> {
 
 async function prepareEditableSource(asset: CustomAsset): Promise<void> {
   if (asset.sourceImageSrc || asset.type !== 'avatar' || asset.creationSource === 'studio') return
-  const sprites: { name: string; width: number; height: number; image: HTMLImageElement; dir: string; url: string }[] = []
-  for (const [index, dir] of ['down', 'up', 'left', 'right'].entries()) {
-    const raw = asset.directionalFrames?.[dir as 'down'] || asset.frames[index]
-    for (const url of (Array.isArray(raw) ? raw : [raw]).filter(Boolean)) {
-      const image = await loadAtlasImage(url)
-      sprites.push({ name: `frame_${sprites.length}`, width: image.naturalWidth, height: image.naturalHeight, image, dir, url })
+  const sprites: { name: string; width: number; height: number; image: HTMLImageElement; dir: string; animation: string; url: string }[] = []
+  for (const animation of ['walk', 'yawn', 'sleep'] as const) {
+    const sourceDirections = animation === 'walk' ? ['down', 'up', 'left', 'right'] as const : ['down'] as const
+    for (const [index, dir] of sourceDirections.entries()) {
+      const raw = animation === 'walk' ? asset.directionalFrames?.[dir] || asset.frames[index] : asset.activityAnimations?.[animation]
+      for (const url of (Array.isArray(raw) ? raw : [raw])) {
+        if (!url) continue
+        const image = await loadAtlasImage(url)
+        sprites.push({ name: `frame_${sprites.length}`, width: image.naturalWidth, height: image.naturalHeight, image, dir, animation, url })
+      }
     }
   }
   if (!sprites.length) return
   const layout = layoutSprites(sprites)
   const { canvas, ctx } = canvasFor(layout.width, layout.height)
   const directions: Record<string, unknown[]> = { down: [], up: [], left: [], right: [] }
+  const animations: Record<string, unknown[]> = {}
   // Preserve animation order, independent of the physical packing order.
   const rects = new Map(layout.rects.map(rect => [rect.name, rect]))
   for (const sprite of sprites) {
     const r = rects.get(sprite.name)!
     ctx.drawImage(sprite.image, r.x, r.y)
-    directions[sprite.dir].push({ x: r.x, y: r.y, w: r.width, h: r.height, dataUrl: sprite.url })
+    const target = sprite.animation === 'walk' ? directions[sprite.dir] : (animations[sprite.animation] ||= [])
+    target.push({ x: r.x, y: r.y, w: r.width, h: r.height, dataUrl: sprite.url })
   }
   asset.sourceImageSrc = canvas.toDataURL('image/png')
   asset.sourceFileName = `${asset.id}.png`
-  asset.slicerPresets = [{ id: asset.id, name: asset.name, directions }]
+  asset.slicerPresets = [{ id: asset.id, name: asset.name, directions, animations }]
   delete asset.sourceXmlContent
 }
 
