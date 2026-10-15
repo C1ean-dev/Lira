@@ -1,3 +1,4 @@
+import '../helpers/mockAssetPersistence'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 import { CustomAsset } from '../../types/customAsset'
@@ -8,7 +9,7 @@ describe('Custom Avatar Presets & Persistence', () => {
   beforeEach(() => {
   })
 
-  it('should persist and query custom avatar presets by slot', () => {
+  it('should persist and query custom avatar presets by slot', async () => {
     const store = useCustomAssetsStore.getState()
     const testAsset: CustomAsset = {
       id: 'avatar_hair_test_123',
@@ -24,7 +25,7 @@ describe('Custom Avatar Presets & Persistence', () => {
       createdAt: Date.now(),
     }
 
-    store.addCustomAsset(testAsset)
+    await store.addCustomAsset(testAsset)
 
     const updatedAssets = useCustomAssetsStore.getState().customAssets
     const found = updatedAssets.find((a) => a.id === 'avatar_hair_test_123')
@@ -34,7 +35,7 @@ describe('Custom Avatar Presets & Persistence', () => {
     expect(found?.type).toBe('avatar')
   })
 
-  it('should allow equipping custom avatar preset on AvatarConfig', () => {
+  it('should allow equipping custom avatar preset on AvatarConfig', async () => {
     const avatar: AvatarConfig = {
       ...DEFAULT_AVATAR,
       customComponents: {},
@@ -65,7 +66,7 @@ describe('Custom Avatar Presets & Persistence', () => {
     expect(revertedAvatar.hairStyle).toBe('messy')
   })
 
-  it('should safely delete custom avatar preset and reset equipped state if in use', () => {
+  it('should safely delete custom avatar preset and reset equipped state if in use', async () => {
     const store = useCustomAssetsStore.getState()
     const testAsset: CustomAsset = {
       id: 'avatar_jacket_test_del',
@@ -81,7 +82,7 @@ describe('Custom Avatar Presets & Persistence', () => {
       createdAt: Date.now(),
     }
 
-    store.addCustomAsset(testAsset)
+    await store.addCustomAsset(testAsset)
     expect(useCustomAssetsStore.getState().customAssets.some((a) => a.id === 'avatar_jacket_test_del')).toBe(true)
 
     let avatar: AvatarConfig = {
@@ -92,7 +93,7 @@ describe('Custom Avatar Presets & Persistence', () => {
       },
     }
 
-    store.deleteCustomAsset('avatar_jacket_test_del')
+    await store.deleteCustomAsset('avatar_jacket_test_del')
     expect(useCustomAssetsStore.getState().customAssets.some((a) => a.id === 'avatar_jacket_test_del')).toBe(false)
 
     if (avatar.customComponents?.jacket === testAsset.frames[0]) {
@@ -109,7 +110,7 @@ describe('Custom Avatar Presets & Persistence', () => {
     expect(avatar.jacketType).toBe('none')
   })
 
-  it('should support multi-frame directional walk cycles in custom assets and avatar components', () => {
+  it('should support multi-frame directional walk cycles in custom assets and avatar components', async () => {
     const store = useCustomAssetsStore.getState()
     const multiFrameAsset: CustomAsset = {
       id: 'avatar_walk_cycle_test_456',
@@ -132,7 +133,7 @@ describe('Custom Avatar Presets & Persistence', () => {
       creationSource: 'studio',
     }
 
-    store.addCustomAsset(multiFrameAsset)
+    await store.addCustomAsset(multiFrameAsset)
     const stored = useCustomAssetsStore.getState().customAssets.find((a) => a.id === multiFrameAsset.id)
     expect(stored).toBeDefined()
     expect(Array.isArray(stored?.directionalFrames?.down)).toBe(true)

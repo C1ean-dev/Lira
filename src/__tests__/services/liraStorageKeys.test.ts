@@ -56,7 +56,7 @@ describe('lira storage keys and events', { timeout: 30000 }, () => {
       'lira_graphics_settings',
       'lira_custom_map',
       'lira_saved_spaces',
-      'lira_custom_user_assets',
+      'lira_custom_categories',
       'lira_hw_acceleration_enabled',
     ]))
     expect(readKeys.filter((key) => !key.startsWith('lira_'))).toEqual([])

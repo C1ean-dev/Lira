@@ -42,7 +42,6 @@ import {
   hexToRgb,
 } from '../../utils/imageTransparency'
 import { convertAssetToSlicedPresets } from '../../utils/avatarAssetOrigin'
-import { saveAssetFileToDisk } from '../../utils/diskAssetPersistence'
 
 export interface SlicedFrameSlot {
   x: number
@@ -324,7 +323,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
       const thumbnail = await cropContentDataUrl(firstDown || firstUp || firstLeft || firstRight || '')
 
       const isObstacle = options?.isObstacle !== undefined ? options.isObstacle : editingAsset.isObstacle
-      store.updateCustomAsset(editingAsset.id, {
+      await store.updateCustomAsset(editingAsset.id, {
         name: newName || editingAsset.name,
         thumbnail,
         width: options?.width || Math.max(1, Math.ceil(finalW / 32)),
@@ -350,7 +349,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
             ...currentAvatar,
             customComponents: {
               ...currentAvatar.customComponents,
-              [category]: newDirectionalFrames,
+              [category]: editingAsset.id,
             },
           },
         })
@@ -1029,7 +1028,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
       const thumbnail = await cropContentDataUrl(firstDown)
 
       if (editingAsset) {
-        store.updateCustomAsset(editingAsset.id, {
+        await store.updateCustomAsset(editingAsset.id, {
           name: p.name.trim() || editingAsset.name,
           thumbnail,
           width: Math.max(1, Math.ceil(selection.w / 32)),
@@ -1048,7 +1047,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
           sourceFileName: imageFileName,
           slicerPresets: presets,
         })
-        const updated = store.customAssets.find((a) => a.id === editingAsset.id) || {
+        const updated = useCustomAssetsStore.getState().customAssets.find((a) => a.id === editingAsset.id) || {
           ...editingAsset,
           name: p.name.trim() || editingAsset.name,
           thumbnail,
@@ -1088,35 +1087,11 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
           slicerPresets: presets,
         }
 
-        store.addCustomAsset(asset)
         createdAssets.push(asset)
       }
     }
 
-    const subfolder =
-      category === 'pet'
-        ? 'pet'
-        : category === 'furniture'
-        ? 'furniture'
-        : category === 'floor'
-        ? 'floor'
-        : category === 'wall'
-        ? 'wall'
-        : 'avatar'
-    const cleanBase = imageFileName.replace(/\.[^/.]+$/, '') || `${category}_atlas`
-    saveAssetFileToDisk(
-      `public/assets/${subfolder}/${cleanBase}.xml`,
-      generateXmlString(),
-      'utf-8'
-    ).catch((e) => console.warn('Could not auto-save atlas XML to disk:', e))
-
-    if (imageSrc) {
-      saveAssetFileToDisk(
-        `public/assets/${subfolder}/${cleanBase}.png`,
-        imageSrc,
-        'base64'
-      ).catch((e) => console.warn('Could not auto-save atlas PNG to disk:', e))
-    }
+    if (!editingAsset) await store.addCustomAssets(createdAssets)
 
     setSavedSuccessCount(createdAssets.length)
     if (onSaveComplete) {

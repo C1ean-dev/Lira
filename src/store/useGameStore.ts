@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { avatarWithAssetReferences } from '../assets/avatarReferences'
 import { Player, PresenceStatus, PresenceInfo, sanitizePresence, STATUS_META, ReactionItem, AvatarConfig, UserRole, PlayerPermissions, ConnectionStatus, RoomKnockRequest, KnockStatus, FriendProfile } from '../types/game'
 import { SignalingTier } from '../types/p2p'
 import { DEFAULT_AVATAR } from '../engine/Constants'
@@ -507,6 +508,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   setLocalPlayer: (data) => {
+    if (data.avatar) data = { ...data, avatar: avatarWithAssetReferences(data.avatar) }
     if (data.name !== undefined || data.avatar !== undefined || data.profilePicture !== undefined) {
       saveProfile({
         name: data.name,

@@ -1,5 +1,10 @@
 /// <reference types="vite/client" />
 
+declare module 'virtual:lira-asset-atlases' {
+  const xmlFileNames: string[]
+  export default xmlFileNames
+}
+
 interface ImportMetaEnv {
   readonly VITE_TURN_URLS?: string
   readonly VITE_TURN_USERNAME?: string

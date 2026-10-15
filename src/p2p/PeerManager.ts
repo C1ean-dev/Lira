@@ -7,6 +7,7 @@ import { useMapStore } from '../store/useMapStore'
 import { useMediaStore } from '../store/useMediaStore'
 import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import { useChatStore } from '../store/useChatStore'
+import { buildAtlas, atlasDigest } from '../assets/atlasService'
 import { CustomAsset } from '../types/customAsset'
 import { PublicRoomsService } from '../services/publicRoomsService'
 import { processNetworkMessage } from './messageHandlers'
@@ -782,28 +783,17 @@ export class PeerManager {
 
         const customAssets = useCustomAssetsStore.getState().customAssets
         const customCategories = useCustomAssetsStore.getState().customCategories
-        if (customAssets && customAssets.length > 0) {
-          const ASSET_BATCH_SIZE = 8
-          const ASSET_BATCH_GAP_MS = 120
-          for (let i = 0; i < customAssets.length; i += ASSET_BATCH_SIZE) {
-            const batch = customAssets.slice(i, i + ASSET_BATCH_SIZE)
-            const isFirst = i === 0
-            const sendBatch = () => {
-              this.sendToPeer(conn, {
-                type: 'CUSTOM_ASSETS_SYNC',
-                senderId: this.peer!.id,
-                payload: { customAssets: batch, categories: isFirst ? customCategories : undefined },
-                timestamp: Date.now(),
-              })
-            }
-            if (isFirst) {
-              sendBatch()
-            } else {
-              setTimeout(() => {
-                sendBatch()
-              }, (i / ASSET_BATCH_SIZE) * ASSET_BATCH_GAP_MS)
-            }
-          }
+        if (customAssets.length) {
+          const sender = this.peer!
+          this.queueAssetTransfer(async () => {
+            const atlas = await buildAtlas(customAssets, customCategories)
+            const digest = await atlasDigest(atlas)
+            if (this.peer !== sender) return
+            this.sendToPeer(conn, {
+              type: 'CUSTOM_ASSETS_SYNC', senderId: sender.id,
+              payload: { atlas, digest }, timestamp: Date.now(),
+            })
+          })
         }
 
         const remotePlayers = useGameStore.getState().remotePlayers
@@ -1552,37 +1542,49 @@ export class PeerManager {
     })
   }
 
+  private assetTransferQueue: Promise<void> = Promise.resolve()
+  private queueAssetTransfer(action: () => Promise<void>) {
+    const sender = this.peer
+    this.assetTransferQueue = this.assetTransferQueue.then(async () => {
+      if (sender && this.peer === sender) await action()
+    }).catch(error => console.error('[Assets] Transfer failed:', error))
+  }
+
   public sendCustomAssetAddOrUpdate(asset: CustomAsset) {
-    if (!this.peer) return
-    const msg: NetworkMessage = {
-      type: 'CUSTOM_ASSET_ADD_OR_UPDATE',
-      senderId: this.peer.id,
-      payload: { asset },
-      timestamp: Date.now(),
-    }
-    this.broadcast(msg)
+    const sender = this.peer
+    if (!sender) return
+    this.queueAssetTransfer(async () => {
+      const atlas = await buildAtlas([asset])
+      const digest = await atlasDigest(atlas)
+      if (this.peer !== sender) return
+      this.broadcast({ type: 'CUSTOM_ASSET_ADD_OR_UPDATE', senderId: sender.id,
+        payload: { atlas, digest }, timestamp: Date.now() })
+    })
   }
 
   public sendCustomAssetDelete(id: string) {
     if (!this.peer) return
-    const msg: NetworkMessage = {
-      type: 'CUSTOM_ASSET_DELETE',
-      senderId: this.peer.id,
-      payload: { id },
-      timestamp: Date.now(),
-    }
-    this.broadcast(msg)
+    this.queueAssetTransfer(async () => {
+      const msg: NetworkMessage = {
+        type: 'CUSTOM_ASSET_DELETE',
+        senderId: this.peer!.id,
+        payload: { id },
+        timestamp: Date.now(),
+      }
+      this.broadcast(msg)
+    })
   }
 
   public sendCustomAssetsSync(customAssets: CustomAsset[], categories?: string[]) {
-    if (!this.peer) return
-    const msg: NetworkMessage = {
-      type: 'CUSTOM_ASSETS_SYNC',
-      senderId: this.peer.id,
-      payload: { customAssets, categories },
-      timestamp: Date.now(),
-    }
-    this.broadcast(msg)
+    const sender = this.peer
+    if (!sender) return
+    this.queueAssetTransfer(async () => {
+      const atlas = await buildAtlas(customAssets, categories)
+      const digest = await atlasDigest(atlas)
+      if (this.peer !== sender) return
+      this.broadcast({ type: 'CUSTOM_ASSETS_SYNC', senderId: sender.id,
+        payload: { atlas, digest }, timestamp: Date.now() })
+    })
   }
 
   public sendMapEdit(action: string, data: any) {

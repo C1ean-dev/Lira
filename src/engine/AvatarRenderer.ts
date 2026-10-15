@@ -182,6 +182,11 @@ export class AvatarRenderer {
         const byId = getCustomById().get(component)
         if (byId?.directionalFrames) {
           resolvedComponent = byId.directionalFrames
+        } else if (byId?.frames.length) {
+          resolvedComponent = {
+            down: byId.frames[0], up: byId.frames[1] || byId.frames[0],
+            left: byId.frames[2] || byId.frames[0], right: byId.frames[3] || byId.frames[0],
+          }
         } else if (!byId) {
           const matchingAsset = customAssetsList.find(
             (a) =>

@@ -275,7 +275,7 @@ export const AssetPalette: React.FC = () => {
     await exportCategoryAtlas(cat, customAssets)
   }
 
-  const handleSaveFromStudio = (
+  const handleSaveFromStudio = async (
     directionalFrames: Record<Direction, string | string[]>,
     name: string,
     options?: {
@@ -328,12 +328,13 @@ export const AssetPalette: React.FC = () => {
       createdAt: existing?.createdAt || Date.now(),
       updatedAt: Date.now(),
       frameLayers: undefined,
+      directionalFrameLayers: undefined,
     }
 
     if (editingId) {
-      updateCustomAsset(editingId, asset)
+      await updateCustomAsset(editingId, asset)
     } else {
-      addCustomAsset(asset)
+      await addCustomAsset(asset)
     }
     syncAllAssetsToDisk()
 

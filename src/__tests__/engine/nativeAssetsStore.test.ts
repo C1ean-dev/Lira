@@ -1,88 +1,36 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-
-const SPRITE_ONE = `data:image/png;base64,${'ONE'.repeat(100)}`
-const SPRITE_TWO = `data:image/png;base64,${'TWO'.repeat(100)}`
-
-const baseAsset = {
-  type: 'furniture',
-  category: 'Mobília',
-  width: 1,
-  height: 1,
-  isObstacle: false,
-  createdAt: 1,
-}
-
-const packed = {
-  categories: ['Geral', 'Mobília'],
-  assets: [
-    { ...baseAsset, id: 'native_one', name: 'Um', frames: ['@one', '@two'], thumbnail: '@one' },
-    {
-      ...baseAsset,
-      id: 'native_two',
-      name: '@@arroba',
-      frames: ['@two'],
-      directionalFrames: { down: ['@one'], left: '@two' },
-    },
-  ],
-  images: { one: SPRITE_ONE, two: SPRITE_TWO },
-}
-
-const legacy = {
-  categories: ['Geral', 'Mobília'],
-  assets: [
-    { ...baseAsset, id: 'native_one', name: 'Um', frames: [SPRITE_ONE, SPRITE_TWO], thumbnail: SPRITE_ONE },
-    {
-      ...baseAsset,
-      id: 'native_two',
-      name: '@arroba',
-      frames: [SPRITE_TWO],
-      directionalFrames: { down: [SPRITE_ONE], left: SPRITE_TWO },
-    },
-  ],
-}
-
-async function loadStoreWith(file: unknown) {
+import '../helpers/mockAssetPersistence'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { saveStoredAtlas, loadStoredAtlas } from '../../assets/atlasStorage'
+const sprite = 'data:image/png;base64,legacy'
+const asset = { id: 'legacy', name: '@Nome á & < >', type: 'furniture', category: 'Móveis', width: 1, height: 1, frames: ['@one'], createdAt: 1, isObstacle: true }
+let items: Map<string, string>
+beforeEach(() => {
   vi.resetModules()
-  vi.doMock('../../data/nativeAssets.json', () => ({ default: file }))
-  return (await import('../../store/useCustomAssetsStore')).useCustomAssetsStore
-}
-
-describe('useCustomAssetsStore reading nativeAssets.json', () => {
-  beforeEach(() => {
-    vi.resetModules()
+  items = new Map()
+  vi.stubGlobal('localStorage', { getItem: (key: string) => items.get(key) || null, setItem: (key: string, value: string) => items.set(key, value), removeItem: (key: string) => items.delete(key) })
+  vi.stubGlobal('window', { electronAPI: { loadNativeAssets: async () => ({ categories: ['Móveis'], assets: [asset], images: { one: sprite } }), completeAssetAtlasMigration: vi.fn(async () => true) } })
+})
+afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks() })
+describe('legacy asset migration', () => {
+  it('expands the image table and keeps IDs and categories', async () => {
+    const { initializeCustomAssets, useCustomAssetsStore } = await import('../../store/useCustomAssetsStore')
+    await initializeCustomAssets()
+    expect(useCustomAssetsStore.getState().customAssets[0]).toMatchObject({ id: 'legacy', frames: [sprite], name: '@Nome á & < >' })
+    expect(useCustomAssetsStore.getState().customCategories).toContain('Móveis')
+    expect(saveStoredAtlas).toHaveBeenCalled()
   })
-
-  it.each([
-    ['the table of images', packed],
-    ['the old format, with every image in place', legacy],
-  ])('gives the assets their images back from %s', async (_name, file) => {
-    const store = await loadStoreWith(file)
-    const assets = store.getState().customAssets
-
-    const one = assets.find((a) => a.id === 'native_one')!
-    expect(one.frames).toEqual([SPRITE_ONE, SPRITE_TWO])
-    expect(one.thumbnail).toBe(SPRITE_ONE)
-
-    const two = assets.find((a) => a.id === 'native_two')!
-    expect(two.frames).toEqual([SPRITE_TWO])
-    expect(two.directionalFrames).toEqual({ down: [SPRITE_ONE], left: SPRITE_TWO })
+  it('gives local edits precedence and removes them only after saving the pair', async () => {
+    items.set('lira_custom_user_assets', JSON.stringify([{ ...asset, name: 'Local', frames: [sprite] }]))
+    const { initializeCustomAssets, useCustomAssetsStore } = await import('../../store/useCustomAssetsStore')
+    await initializeCustomAssets()
+    expect(useCustomAssetsStore.getState().getAssetById('legacy')?.name).toBe('Local')
+    expect(items.has('lira_custom_user_assets')).toBe(false)
   })
-
-  it('reads a name that starts with "@" as the text it was', async () => {
-    const store = await loadStoreWith(packed)
-    expect(store.getState().customAssets.find((a) => a.id === 'native_two')!.name).toBe('@arroba')
-  })
-
-  it('keeps the categories of the file', async () => {
-    const store = await loadStoreWith(packed)
-    expect(store.getState().customCategories).toEqual(expect.arrayContaining(['Geral', 'Mobília']))
-  })
-
-  it('leaves no reference or table behind in the assets', async () => {
-    const store = await loadStoreWith(packed)
-    const text = JSON.stringify(store.getState().customAssets)
-    expect(text).not.toContain('"@one"')
-    expect(text).not.toContain('"@two"')
-    expect(text).not.toContain('"images"')
+  it('keeps the legacy catalog when migration cannot commit', async () => {
+    items.set('lira_custom_user_assets', JSON.stringify([{ ...asset, frames: [sprite] }]))
+    vi.mocked(saveStoredAtlas).mockRejectedValueOnce(new Error('disk full'))
+    const { initializeCustomAssets } = await import('../../store/useCustomAssetsStore')
+    await expect(initializeCustomAssets()).rejects.toThrow('disk full')
+    expect(items.has('lira_custom_user_assets')).toBe(true)
   })
 })

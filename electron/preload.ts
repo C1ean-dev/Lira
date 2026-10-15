@@ -87,7 +87,9 @@ export interface IElectronAPI {
   findSpotifySource: () => Promise<SpotifySourceResult | null>
   onSpotifyTrackChanged: (callback: (info: SpotifyTrackInfo) => void) => () => void
   onSpotifyPlayerClosed: (callback: () => void) => () => void
-  saveNativeAssets: (data: { categories: string[]; assets: any[] }) => Promise<boolean>
+  completeAssetAtlasMigration: () => Promise<boolean>
+  loadAssetAtlas: () => Promise<{ xml: string; png: string } | null>
+  saveAssetAtlas: (pair: { xml: string; png: string }) => Promise<boolean>
   loadNativeAssets: () => Promise<{ categories: string[]; assets: any[] } | null>
   saveNativeSpaces: (spaces: any[]) => Promise<boolean>
   loadNativeSpaces: () => Promise<any[] | null>
@@ -206,7 +208,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.removeListener('spotify:track-changed', handler)
     }
   },
-  saveNativeAssets: (data: { categories: string[]; assets: any[] }) => ipcRenderer.invoke('save-native-assets', data),
+  loadAssetAtlas: () => ipcRenderer.invoke('load-asset-atlas'),
+  saveAssetAtlas: (pair: { xml: string; png: string }) => ipcRenderer.invoke('save-asset-atlas', pair),
+  completeAssetAtlasMigration: () => ipcRenderer.invoke('complete-asset-atlas-migration'),
   loadNativeAssets: () => ipcRenderer.invoke('load-native-assets'),
   saveNativeSpaces: (spaces: any[]) => ipcRenderer.invoke('save-native-spaces', spaces),
   loadNativeSpaces: () => ipcRenderer.invoke('load-native-spaces'),

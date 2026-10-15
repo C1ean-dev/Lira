@@ -1,3 +1,4 @@
+import '../helpers/mockAssetPersistence'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { generateSparrowXml, PackedSubTexture } from '../../engine/avatar/avatarAtlasExporter'
 import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
@@ -9,7 +10,7 @@ describe('avatarMultiFrameWalk - Multi-frame Walk Cycle and Background Removal',
     useCustomAssetsStore.setState({ customAssets: [] })
   })
 
-  it('should generate Sparrow XML with numbered indices for multiple walk frames per direction', () => {
+  it('should generate Sparrow XML with numbered indices for multiple walk frames per direction', async () => {
     const subTextures: PackedSubTexture[] = [
       { name: 'hair_afro_right_0', x: 0, y: 0, width: 32, height: 32 },
       { name: 'hair_afro_right_1', x: 32, y: 0, width: 32, height: 32 },
@@ -24,7 +25,7 @@ describe('avatarMultiFrameWalk - Multi-frame Walk Cycle and Background Removal',
     expect(xml).toContain('<SubTexture name="hair_afro_down_0" x="0" y="32" width="32" height="32"')
   })
 
-  it('should store and retrieve multi-frame directional arrays in CustomAsset', () => {
+  it('should store and retrieve multi-frame directional arrays in CustomAsset', async () => {
     const multiFrameAsset: CustomAsset = {
       id: 'avatar_hair_walk_cycle_test',
       name: 'Animated Walk Hair',
@@ -45,7 +46,7 @@ describe('avatarMultiFrameWalk - Multi-frame Walk Cycle and Background Removal',
       createdAt: Date.now(),
     }
 
-    useCustomAssetsStore.getState().addCustomAsset(multiFrameAsset)
+    await useCustomAssetsStore.getState().addCustomAsset(multiFrameAsset)
     const stored = useCustomAssetsStore.getState().customAssets.find((a) => a.id === 'avatar_hair_walk_cycle_test')
 
     expect(stored).toBeDefined()
@@ -57,7 +58,7 @@ describe('avatarMultiFrameWalk - Multi-frame Walk Cycle and Background Removal',
     expect(rightFrames[2]).toBe('data:right_2')
   })
 
-  it('should test walk cycle frame picker logic (frame 0 when idle, loop when moving)', () => {
+  it('should test walk cycle frame picker logic (frame 0 when idle, loop when moving)', async () => {
     const rightFrames = ['frame_0_idle', 'frame_1_step1', 'frame_2_step2', 'frame_3_step3']
 
     const pickFrame = (frames: string[], isMoving: boolean, walkFrame: number) => {
@@ -77,7 +78,7 @@ describe('avatarMultiFrameWalk - Multi-frame Walk Cycle and Background Removal',
     expect(pickFrame(rightFrames, true, 5)).toBe('frame_1_step1')
   })
 
-  it('should accurately reorder frames and update active frame index when moving frames in the timeline', () => {
+  it('should accurately reorder frames and update active frame index when moving frames in the timeline', async () => {
     const reorder = <T,>(arr: T[], from: number, to: number): T[] => {
       const result = [...arr]
       const [removed] = result.splice(from, 1)

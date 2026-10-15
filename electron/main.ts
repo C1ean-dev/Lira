@@ -17,7 +17,8 @@ import { createErrorReporter } from '../src/utils/errorReporter'
 import { setupSingleInstanceLock } from './singleInstance'
 import { TrayManager, AppSettings } from './trayManager'
 import { createLogWriter, installConsoleCapture, installProcessErrorCapture } from './logWriter'
-import { readNativeDataFile, writeNativeDataFileLatest } from './nativeDataFile'
+import { readNativeDataFile } from './nativeDataFile'
+import { readAssetAtlas, writeAssetAtlasLatest } from './assetAtlasFile'
 import { createStartupTimer } from './startupTimer'
 import { startCpuProfile } from './startupProfile'
 import { sanitizeRecords } from '../src/utils/logFormat'
@@ -281,7 +282,7 @@ async function startProcessAudioCapture(sourceId: string): Promise<ProcessAudioC
   const helperPath = getProcessAudioHelperPath()
   if (!fs.existsSync(helperPath)) {
     writeMainAudioDiagnostic('helper-missing', { helperPath })
-    return { ok: false, error: 'O capturador nativo não foi encontrado. Execute npm run native:build.' }
+    return { ok: false, error: 'O capturador nativo não foi encontrado. Execute npm run electron:dev ou npm run build.' }
   }
 
   if (processAudioCapture && processAudioCaptureSourceId === sourceId && !processAudioCapture.killed) {
@@ -1518,17 +1519,23 @@ ipcMain.handle('export-log-bundle', async () => {
   }
 })
 
-ipcMain.handle('save-native-assets', async (_event, data: { categories: string[]; assets: any[] }) => {
-  try {
-    const dataDir = getDataDirectory()
-    const filePath = path.join(dataDir, 'nativeAssets.json')
-    await writeNativeDataFileLatest(filePath, data, { optimize: !app.isPackaged })
-    console.log('[NativeAssets] Saved to', filePath)
-    return true
-  } catch (err) {
-    console.error('[NativeAssets] Save error:', err)
-    return false
-  }
+function assetAtlasDirectory(): string {
+  return app.isPackaged
+    ? path.join(app.getPath('userData'), 'assets', 'library')
+    : path.join(process.cwd(), 'public', 'assets', 'library')
+}
+
+ipcMain.handle('load-asset-atlas', () => readAssetAtlas(assetAtlasDirectory()))
+ipcMain.handle('save-asset-atlas', async (_event, pair) => {
+  await writeAssetAtlasLatest(assetAtlasDirectory(), pair)
+  return true
+})
+
+ipcMain.handle('complete-asset-atlas-migration', async () => {
+  if (!await readAssetAtlas(assetAtlasDirectory())) throw new Error('Atlas migrado ausente')
+  const file = path.join(getDataDirectory(), 'nativeAssets.json')
+  if (app.isPackaged && fs.existsSync(file)) fs.unlinkSync(file)
+  return true
 })
 
 ipcMain.handle('load-native-assets', async () => {
@@ -1570,30 +1577,6 @@ ipcMain.handle('load-native-spaces', async () => {
   }
   return null
 })
-
-ipcMain.handle(
-  'save-asset-file',
-  async (_event, relativePath: string, content: string, encoding: 'utf-8' | 'base64' = 'utf-8') => {
-    try {
-      const targetPath = path.join(process.cwd(), relativePath)
-      const dir = path.dirname(targetPath)
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true })
-      }
-      if (encoding === 'base64') {
-        const base64Data = content.replace(/^data:image\/\w+;base64,/, '')
-        fs.writeFileSync(targetPath, Buffer.from(base64Data, 'base64'))
-      } else {
-        fs.writeFileSync(targetPath, content, 'utf-8')
-      }
-      console.log('[AssetFile] Saved to', targetPath)
-      return true
-    } catch (err) {
-      console.error('[AssetFile] Save error:', err)
-      return false
-    }
-  }
-)
 
 function getPresenceDirectory(): string {
   const dir = path.join(app.getPath('temp'), 'lira_presence')

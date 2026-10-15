@@ -1,3 +1,4 @@
+import '../helpers/mockAssetPersistence'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { WallRenderer } from '../../engine/rendering/wallRenderer'
 import * as customAssetsStore from '../../store/useCustomAssetsStore'
@@ -59,7 +60,7 @@ describe('Custom Directional Walls (Estúdio Pixel Art: Parede)', () => {
     return { ctx: ctx as unknown as CanvasRenderingContext2D, patterns, drawn }
   }
 
-  it('drawLiraRoom uses directional frames for back (up), left (left), right (right), and front (down)', () => {
+  it('drawLiraRoom uses directional frames for back (up), left (left), right (right), and front (down)', async () => {
     const customWallAsset: CustomAsset = {
       id: customWallId,
       name: 'Parede Multicolorida',
@@ -79,7 +80,7 @@ describe('Custom Directional Walls (Estúdio Pixel Art: Parede)', () => {
       createdAt: Date.now(),
     }
 
-    customAssetsStore.useCustomAssetsStore.getState().addCustomAsset(customWallAsset)
+    await customAssetsStore.useCustomAssetsStore.getState().addCustomAsset(customWallAsset)
 
     const { ctx, patterns } = createMockCtx()
 
@@ -103,7 +104,7 @@ describe('Custom Directional Walls (Estúdio Pixel Art: Parede)', () => {
     expect(patterns).toContain('data:image/png;base64,mockBlueFront')
   })
 
-  it('drawWall resolves the correct directional frame when passed a direction', () => {
+  it('drawWall resolves the correct directional frame when passed a direction', async () => {
     const customWallAsset: CustomAsset = {
       id: customWallId,
       name: 'Parede Multicolorida',
@@ -123,7 +124,7 @@ describe('Custom Directional Walls (Estúdio Pixel Art: Parede)', () => {
       createdAt: Date.now(),
     }
 
-    customAssetsStore.useCustomAssetsStore.getState().addCustomAsset(customWallAsset)
+    await customAssetsStore.useCustomAssetsStore.getState().addCustomAsset(customWallAsset)
 
     const { ctx, drawn } = createMockCtx()
 
@@ -143,7 +144,7 @@ describe('Custom Directional Walls (Estúdio Pixel Art: Parede)', () => {
     expect(drawn).toContain('data:image/png;base64,mockBlueFront')
   })
 
-  it('falls back to default frames if directionalFrames are missing for a direction', () => {
+  it('falls back to default frames if directionalFrames are missing for a direction', async () => {
     const singleDirWall: CustomAsset = {
       id: 'custom_wall_single',
       name: 'Parede Simples',
@@ -157,7 +158,7 @@ describe('Custom Directional Walls (Estúdio Pixel Art: Parede)', () => {
       createdAt: Date.now(),
     }
 
-    customAssetsStore.useCustomAssetsStore.getState().addCustomAsset(singleDirWall)
+    await customAssetsStore.useCustomAssetsStore.getState().addCustomAsset(singleDirWall)
 
     const { ctx, drawn } = createMockCtx()
 

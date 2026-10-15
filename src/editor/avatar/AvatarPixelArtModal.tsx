@@ -58,7 +58,7 @@ interface Props {
       category?: string
       spriteCollision?: SpriteCollision | null
     }
-  ) => void
+  ) => void | Promise<void>
 }
 
 const LIVE_RESIZE_DELAY_MS = 180
@@ -1651,8 +1651,10 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
           category === 'furniture' && isObstacle
             ? await spriteCollisionFromFrames(frames, finalPixelW, finalPixelH)
             : undefined
-        onSave(frames, customName.trim() || `Preset ${CATEGORY_LABELS[category]}`, { ...saveOptions, spriteCollision })
+        await onSave(frames, customName.trim() || `Preset ${CATEGORY_LABELS[category]}`, { ...saveOptions, spriteCollision })
         onClose()
+      } catch (error) {
+        console.error('[Assets] Studio save failed:', error)
       } finally {
         savingRef.current = false
       }
@@ -1662,8 +1664,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       finalFrames.up = [...finalFrames.down]
       finalFrames.left = [...finalFrames.down]
       finalFrames.right = [...finalFrames.down]
-      onSave(finalFrames, customName.trim() || `Preset ${CATEGORY_LABELS[category]}`, saveOptions)
-      onClose()
+      void commit(finalFrames)
       return
     }
 

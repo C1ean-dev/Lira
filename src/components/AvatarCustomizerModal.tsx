@@ -18,7 +18,6 @@ import { AvatarPixelArtModal } from '../editor/avatar/AvatarPixelArtModal'
 import { bakeAllAvatarDirections, cropContentDataUrl } from '../engine/avatar/avatarBakeService'
 import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import { CustomAsset } from '../types/customAsset'
-import { saveAssetFileToDisk, savePetAtlasToDisk } from '../utils/diskAssetPersistence'
 import { resolveUniquePlayerName } from '../utils/playerName'
 import { presetNameForStudio } from '../utils/studioNaming'
 
@@ -151,34 +150,14 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
     let savedAssetId = ''
 
-    let petAtlasInfo: { pngDataUrl: string; xmlContent: string } | null = null
-    const cleanBase = customName.toLowerCase().replace(/[^a-z0-9]/g, '_') || `${category}_${Date.now()}`
-
-    if (category === 'pet') {
-      try {
-        petAtlasInfo = await savePetAtlasToDisk(cleanBase, directionalFrames)
-      } catch (e) {
-        console.warn('Could not auto-save pet atlas file to disk:', e)
-      }
-    } else if (thumbnail) {
-      saveAssetFileToDisk(`public/assets/avatar/${cleanBase}.png`, thumbnail, 'base64')
-    }
-
     if (existingAsset) {
       savedAssetId = existingAsset.id
-      store.updateCustomAsset(existingAsset.id, {
+      await store.updateCustomAsset(existingAsset.id, {
         name: customName,
         thumbnail,
         frames: [firstDown, firstUp, firstLeft, firstRight],
         directionalFrames,
         creationSource: 'studio',
-        ...(petAtlasInfo
-          ? {
-              sourceImageSrc: petAtlasInfo.pngDataUrl,
-              sourceFileName: `${cleanBase}.png`,
-              sourceXmlContent: petAtlasInfo.xmlContent,
-            }
-          : {}),
       })
     } else {
       const newAsset: CustomAsset = {
@@ -196,16 +175,9 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
         frameRateMs: 160,
         createdAt: Date.now(),
         creationSource: 'studio',
-        ...(petAtlasInfo
-          ? {
-              sourceImageSrc: petAtlasInfo.pngDataUrl,
-              sourceFileName: `${cleanBase}.png`,
-              sourceXmlContent: petAtlasInfo.xmlContent,
-            }
-          : {}),
       }
       savedAssetId = newAsset.id
-      store.addCustomAsset(newAsset)
+      await store.addCustomAsset(newAsset)
     }
 
     let updatedAvatar: AvatarConfig
@@ -216,7 +188,6 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
           type: 'custom',
           customAssetId: savedAssetId,
           name: customName,
-          directionalFrames,
         },
       }
     } else {
@@ -224,7 +195,7 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
         ...avatar,
         customComponents: {
           ...avatar.customComponents,
-          [category]: directionalFrames,
+          [category]: savedAssetId,
         },
       }
     }
@@ -277,7 +248,7 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
         ...avatar,
         customSkinUrl: undefined,
         customAvatarId: picked.id,
-        customComponents: { other: picked.directionalFrames || picked.frames[0] || picked.id },
+        customComponents: { other: picked.id },
         otherType: picked.id,
       })
     }

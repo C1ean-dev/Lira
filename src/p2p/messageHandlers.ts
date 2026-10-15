@@ -1,3 +1,5 @@
+import { readAtlas, atlasDigest } from '../assets/atlasService'
+import type { AtlasDocument, PersistedAtlas } from '../assets/atlasFormat'
 import { NetworkMessage, PlayerMovePayload } from '../types/p2p'
 import { Player } from '../types/game'
 import { useGameStore } from '../store/useGameStore'
@@ -10,6 +12,21 @@ import { MediaManager } from '../media/MediaManager'
 import { resolveUniquePlayerName } from '../utils/playerName'
 import { sanitizeRoomChannels } from '../utils/roomChannels'
 import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
+
+const receivedAtlases = new Map<string, AtlasDocument>()
+let assetReceiveQueue: Promise<void> = Promise.resolve()
+function receiveAtlas(pair: PersistedAtlas, digest: string) {
+  assetReceiveQueue = assetReceiveQueue.then(async () => {
+    if (typeof digest !== 'string' || await atlasDigest(pair) !== digest) throw new Error('Atlas recebido com assinatura inválida')
+    let doc = receivedAtlases.get(digest)
+    if (!doc) {
+      doc = await readAtlas(pair)
+      receivedAtlases.set(digest, doc)
+      if (receivedAtlases.size > 16) receivedAtlases.delete(receivedAtlases.keys().next().value!)
+    }
+    await useCustomAssetsStore.getState().syncRemoteCustomAssets(doc.assets, doc.categories)
+  }).catch(error => console.error('[Assets] Invalid incoming atlas:', error))
+}
 
 export function processNetworkMessage(
   msg: NetworkMessage,
@@ -277,6 +294,7 @@ export function processNetworkMessage(
     }
 
     case 'CUSTOM_ASSETS_SYNC': {
+      if (msg.payload.atlas) { receiveAtlas(msg.payload.atlas, msg.payload.digest); break }
       if (msg.payload.customAssets) {
         useCustomAssetsStore.getState().syncRemoteCustomAssets(
           msg.payload.customAssets,
@@ -287,6 +305,7 @@ export function processNetworkMessage(
     }
 
     case 'CUSTOM_ASSET_ADD_OR_UPDATE': {
+      if (msg.payload.atlas) { receiveAtlas(msg.payload.atlas, msg.payload.digest); break }
       if (msg.payload.asset) {
         useCustomAssetsStore.getState().syncRemoteAssetAddOrUpdate(msg.payload.asset)
       }
@@ -295,7 +314,7 @@ export function processNetworkMessage(
 
     case 'CUSTOM_ASSET_DELETE': {
       if (msg.payload.id) {
-        useCustomAssetsStore.getState().syncRemoteAssetDelete(msg.payload.id)
+        assetReceiveQueue = assetReceiveQueue.then(() => useCustomAssetsStore.getState().syncRemoteAssetDelete(msg.payload.id)).catch(error => console.error('[Assets] Delete failed:', error))
       }
       break
     }
@@ -610,7 +629,6 @@ export function processNetworkMessage(
   if (
     isHost &&
     msg.type !== 'MAP_SYNC' &&
-    msg.type !== 'CUSTOM_ASSETS_SYNC' &&
     msg.type !== 'CHANNELS_SYNC' &&
     msg.type !== 'HEARTBEAT'
   ) {

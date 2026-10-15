@@ -146,83 +146,12 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([u8arr], { type: mime })
 }
 
-export async function exportCategoryAtlas(
-  category: string,
-  customAssets: any[],
-  avatar?: any
-): Promise<{ xmlString: string; pngDataUrl?: string }> {
-  const spritesToPack: { name: string; image?: HTMLImageElement; width: number; height: number }[] = []
-
-  const categoryAssets = customAssets.filter((a) => {
-    if (category === 'furniture' || category === 'floor' || category === 'wall') {
-      return a.type === category
-    }
-    return a.type === 'avatar' && a.avatarSlot === category
-  })
-
-  const loadImage = (dataUrl: string): Promise<HTMLImageElement> => {
-    return new Promise((resolve, reject) => {
-      if (typeof Image === 'undefined') {
-        return resolve({} as HTMLImageElement)
-      }
-      const img = new Image()
-      img.onload = () => resolve(img)
-      img.onerror = reject
-      img.src = dataUrl
-    })
-  }
-
-  for (const asset of categoryAssets) {
-    const cleanName = (asset.name || 'custom').toLowerCase().replace(/[^a-z0-9]/g, '_')
-    const dirMap: { dir: string; dataUrl?: string }[] = asset.directionalFrames
-      ? [
-          { dir: 'down', dataUrl: Array.isArray(asset.directionalFrames.down) ? asset.directionalFrames.down[0] : asset.directionalFrames.down },
-          { dir: 'up', dataUrl: Array.isArray(asset.directionalFrames.up) ? asset.directionalFrames.up[0] : asset.directionalFrames.up },
-          { dir: 'left', dataUrl: Array.isArray(asset.directionalFrames.left) ? asset.directionalFrames.left[0] : asset.directionalFrames.left },
-          { dir: 'right', dataUrl: Array.isArray(asset.directionalFrames.right) ? asset.directionalFrames.right[0] : asset.directionalFrames.right },
-        ]
-      : (asset.frames || []).map((f: string, idx: number) => ({ dir: `frame_${idx}`, dataUrl: f }))
-
-    for (const item of dirMap) {
-      if (item.dataUrl) {
-        try {
-          const img = await loadImage(item.dataUrl)
-          spritesToPack.push({
-            name: `${category}_${cleanName}_${item.dir}_0`,
-            image: img,
-            width: img.naturalWidth || (asset.width || 1) * 32,
-            height: img.naturalHeight || (asset.height || 1) * 32,
-          })
-        } catch (e) {
-          console.warn('Failed to load image for export:', asset.name, item.dir, e)
-        }
-      }
-    }
-  }
-
-  if (spritesToPack.length === 0) {
-    spritesToPack.push({
-      name: `${category}_sample_down_0`,
-      width: 32,
-      height: 32,
-    })
-  }
-
-  const result = packSpritesheet(spritesToPack, {
-    imagePath: `${category}.png`,
-    columns: Math.max(1, Math.min(8, Math.ceil(Math.sqrt(spritesToPack.length)))),
-  })
-
-  if (typeof document !== 'undefined') {
-    if (result.pngDataUrl) {
-      downloadFile(`${category}.png`, result.pngDataUrl, 'image/png')
-    }
-    downloadFile(`${category}.xml`, result.xmlString, 'application/xml')
-  }
-
-  return {
-    xmlString: result.xmlString,
-    pngDataUrl: result.pngDataUrl,
-  }
+export async function exportCategoryAtlas(category: string, customAssets: import('../../types/customAsset').CustomAsset[], _avatar?: unknown): Promise<{ xmlString: string; pngDataUrl?: string }> {
+  const assets = customAssets.filter(a => ['furniture', 'floor', 'wall'].includes(category) ? a.type === category : a.type === 'avatar' && a.avatarSlot === category)
+  const { buildAtlas } = await import('../../assets/atlasService')
+  const pair = await buildAtlas(assets, [...new Set(assets.map(a => a.category))])
+  const xml = pair.xml.replace('imagePath="library.png"', `imagePath="${category}.png"`)
+  downloadFile(`${category}.png`, pair.png, 'image/png')
+  downloadFile(`${category}.xml`, xml, 'application/xml')
+  return { xmlString: xml, pngDataUrl: pair.png }
 }
-

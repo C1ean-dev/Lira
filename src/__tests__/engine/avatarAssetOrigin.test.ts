@@ -1,3 +1,4 @@
+import '../helpers/mockAssetPersistence'
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
   detectAssetCreationSource,
@@ -12,7 +13,7 @@ describe('Avatar Asset Origin Detection & Editing Routing', () => {
     useCustomAssetsStore.setState({ customAssets: [] })
   })
 
-  it('correctly detects creation source for slicer, atlas, and studio assets', () => {
+  it('correctly detects creation source for slicer, atlas, and studio assets', async () => {
     const slicerAsset: CustomAsset = {
       id: 'avatar_other_sliced_12345_abc',
       name: 'Gladion',
@@ -71,7 +72,7 @@ describe('Avatar Asset Origin Detection & Editing Routing', () => {
     expect(detectAssetCreationSource(explicitStudioAsset)).toBe('studio')
   })
 
-  it('resolves source image for known assets and custom saved assets', () => {
+  it('resolves source image for known assets and custom saved assets', async () => {
     const gladionAsset: CustomAsset = {
       id: 'avatar_other_sliced_1788360449429_7qpy',
       name: 'Gladion',
@@ -96,7 +97,7 @@ describe('Avatar Asset Origin Detection & Editing Routing', () => {
     expect(resolveAssetSourceImage(customWithSourceImage)).toBe('data:image/png;base64,CUSTOM_SPRITESHEET_DATA')
   })
 
-  it('converts CustomAsset to SlicedPreset format preserving directional frame sequences', () => {
+  it('converts CustomAsset to SlicedPreset format preserving directional frame sequences', async () => {
     const asset: CustomAsset = {
       id: 'test_asset_1',
       name: 'Hero',
@@ -128,7 +129,7 @@ describe('Avatar Asset Origin Detection & Editing Routing', () => {
     expect(presets[0].directions.right).toHaveLength(1)
   })
 
-  it('updates existing asset in store when saved in edit mode rather than creating duplicate', () => {
+  it('updates existing asset in store when saved in edit mode rather than creating duplicate', async () => {
     const store = useCustomAssetsStore.getState()
     const initialAsset: CustomAsset = {
       id: 'avatar_other_sliced_target_123',
@@ -150,10 +151,10 @@ describe('Avatar Asset Origin Detection & Editing Routing', () => {
       createdAt: 1000,
     }
 
-    useCustomAssetsStore.getState().addCustomAsset(initialAsset)
+    await useCustomAssetsStore.getState().addCustomAsset(initialAsset)
     expect(useCustomAssetsStore.getState().customAssets).toHaveLength(1)
 
-    useCustomAssetsStore.getState().updateCustomAsset('avatar_other_sliced_target_123', {
+    await useCustomAssetsStore.getState().updateCustomAsset('avatar_other_sliced_target_123', {
       name: 'New Name',
       directionalFrames: {
         down: ['new_down_0', 'new_down_1'],
@@ -168,10 +169,11 @@ describe('Avatar Asset Origin Detection & Editing Routing', () => {
     expect(updatedList).toHaveLength(1)
     expect(updatedList[0].id).toBe('avatar_other_sliced_target_123')
     expect(updatedList[0].name).toBe('New Name')
-    expect(updatedList[0].creationSource).toBe('slicer')
+    expect(updatedList[0].creationSource).toBe('studio')
+    expect(updatedList[0].sourceImageSrc).toBeUndefined()
   })
 
-  it('converts Sparrow XML into exact-pixel SlicedPresets', () => {
+  it('converts Sparrow XML into exact-pixel SlicedPresets', async () => {
     const retroAsset: CustomAsset = {
       id: 'avatar_other_sliced_retro',
       name: 'Retro',

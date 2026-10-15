@@ -2,13 +2,18 @@ import { AvatarAtlasManager, SubTexture } from './AvatarAtlasManager'
 import { cropContentDataUrl } from './avatarBakeService'
 import { CustomAsset } from '../../types/customAsset'
 import { AvatarComponentSlot, Direction } from '../../types/game'
+import { readAtlas, loadAtlasImage } from '../../assets/atlasService'
 import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 
 export interface ParsedAtlasPreset {
   presetKey: string
   name: string
-  directionalFrames: Partial<Record<Direction, string>>
+  directionalFrames: Partial<Record<Direction, string | string[]>>
   thumbnail?: string
+  sourceImageSrc?: string
+  sourceXmlContent?: string
+  slicerPresets?: any[]
+  asset?: CustomAsset
 }
 
 export function formatPresetLabel(rawName: string): string {
@@ -26,6 +31,7 @@ export function parseSubTextureIdentifier(subName: string, category: string): { 
     clean = clean.slice(catPrefix.length)
   }
 
+  if (/^(down|up|left|right)$/i.test(clean)) return { presetKey: category, direction: clean.toLowerCase() as Direction }
   const dirMatch = clean.match(/^(.*?)[_-](down|up|left|right)(?:[_-]\d+)?$/i)
   if (dirMatch) {
     const rawKey = dirMatch[1].trim() || clean
@@ -43,164 +49,87 @@ export async function parseSparrowAtlasAndSlice(
   category: AvatarComponentSlot | 'furniture' | 'floor' | 'wall'
 ): Promise<ParsedAtlasPreset[]> {
   const atlasData = AvatarAtlasManager.parseAtlasXml(xmlContent)
-  if (!atlasData.subTextures || atlasData.subTextures.size === 0) {
-    return []
+  if (!atlasData.subTextures.size) return []
+  const width = 'naturalWidth' in imageElement ? imageElement.naturalWidth : imageElement.width
+  const height = 'naturalHeight' in imageElement ? imageElement.naturalHeight : imageElement.height
+  const source = typeof document === 'undefined' ? null : document.createElement('canvas')
+  if (source) { source.width = width; source.height = height; source.getContext('2d')!.drawImage(imageElement, 0, 0) }
+  if (xmlContent.includes('liraVersion="1"') && source) {
+    const doc = await readAtlas({ xml: xmlContent, png: source.toDataURL('image/png') })
+    return doc.assets.filter(asset => ['furniture', 'floor', 'wall'].includes(category) ? asset.type === category : asset.type === 'avatar' && asset.avatarSlot === category).map(asset => ({ presetKey: asset.id, name: asset.name, directionalFrames: asset.directionalFrames || {}, thumbnail: asset.thumbnail, asset }))
   }
-
-  if (typeof document === 'undefined') {
-    const results: ParsedAtlasPreset[] = []
-    const presetGroups = new Map<string, Map<Direction, SubTexture>>()
-    atlasData.subTextures.forEach((sub, name) => {
-      const { presetKey, direction } = parseSubTextureIdentifier(name, category)
-      if (!presetGroups.has(presetKey)) {
-        presetGroups.set(presetKey, new Map())
-      }
-      const group = presetGroups.get(presetKey)!
-      if (!group.has(direction)) {
-        group.set(direction, sub)
-      }
-    })
-
-    for (const [presetKey, dirMap] of presetGroups.entries()) {
-      const directionalFrames: Partial<Record<Direction, string>> = {}
-      for (const [dir] of dirMap.entries()) {
-        directionalFrames[dir] = 'data:image/png;base64,mock'
-      }
-      results.push({
-        presetKey,
-        name: formatPresetLabel(presetKey),
-        directionalFrames,
-        thumbnail: 'data:image/png;base64,mock',
-      })
-    }
-    return results
-  }
-
-  const sourceCanvas = document.createElement('canvas')
-  const srcW = 'naturalWidth' in imageElement ? imageElement.naturalWidth : imageElement.width
-  const srcH = 'naturalHeight' in imageElement ? imageElement.naturalHeight : imageElement.height
-  sourceCanvas.width = srcW
-  sourceCanvas.height = srcH
-  const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true })
-  if (!sourceCtx) return []
-  sourceCtx.drawImage(imageElement, 0, 0)
-
-  const presetGroups = new Map<string, Map<Direction, SubTexture>>()
-
-  atlasData.subTextures.forEach((sub, name) => {
+  const groups = new Map<string, Map<Direction, SubTexture[]>>()
+  for (const [name, sub] of atlasData.subTextures) {
     const { presetKey, direction } = parseSubTextureIdentifier(name, category)
-    if (!presetGroups.has(presetKey)) {
-      presetGroups.set(presetKey, new Map())
-    }
-    const group = presetGroups.get(presetKey)!
-    if (!group.has(direction)) {
-      group.set(direction, sub)
-    }
-  })
-
-  const results: ParsedAtlasPreset[] = []
-
-  for (const [presetKey, dirMap] of presetGroups.entries()) {
-    const directionalFrames: Partial<Record<Direction, string>> = {}
-
-    for (const [dir, sub] of dirMap.entries()) {
-      const tileCanvas = document.createElement('canvas')
-      tileCanvas.width = sub.width || 32
-      tileCanvas.height = sub.height || 32
-      const tileCtx = tileCanvas.getContext('2d', { willReadFrequently: true })
-      if (!tileCtx) continue
-
-      tileCtx.imageSmoothingEnabled = false
-      tileCtx.drawImage(
-        sourceCanvas,
-        sub.x,
-        sub.y,
-        sub.width,
-        sub.height,
-        0,
-        0,
-        tileCanvas.width,
-        tileCanvas.height
-      )
-
-      directionalFrames[dir] = tileCanvas.toDataURL('image/png')
-    }
-
-    if (directionalFrames.left && !directionalFrames.right) {
-      directionalFrames.right = createMirroredDataUrl(directionalFrames.left)
-    } else if (directionalFrames.right && !directionalFrames.left) {
-      directionalFrames.left = createMirroredDataUrl(directionalFrames.right)
-    }
-
-    const thumbSource = directionalFrames.down || Object.values(directionalFrames).find(Boolean) || ''
-    const thumbnail = thumbSource ? await cropContentDataUrl(thumbSource) : undefined
-
-    results.push({
-      presetKey,
-      name: formatPresetLabel(presetKey),
-      directionalFrames,
-      thumbnail,
-    })
+    if (!groups.has(presetKey)) groups.set(presetKey, new Map())
+    const dirs = groups.get(presetKey)!
+    if (!dirs.has(direction)) dirs.set(direction, [])
+    dirs.get(direction)!.push(sub)
   }
-
+  const results: ParsedAtlasPreset[] = []
+  for (const [presetKey, directions] of groups) {
+    const frames: Partial<Record<Direction, string | string[]>> = {}
+    const slots: Record<string, unknown[]> = { down: [], up: [], left: [], right: [] }
+    for (const [direction, entries] of directions) {
+      entries.sort((a, b) => Number(a.name.match(/[_-](\d+)$/)?.[1] || 0) - Number(b.name.match(/[_-](\d+)$/)?.[1] || 0))
+      const urls: string[] = []
+      for (const sub of entries) {
+        let url = 'data:image/png;base64,mock'
+        if (source) {
+          if (![sub.x, sub.y, sub.width, sub.height].every(Number.isInteger) || sub.x < 0 || sub.y < 0 || sub.width <= 0 || sub.height <= 0 || sub.x + sub.width > width || sub.y + sub.height > height) throw new Error('Recorte fora dos limites da imagem')
+          const tile = document.createElement('canvas')
+          tile.width = sub.frameWidth || sub.width; tile.height = sub.frameHeight || sub.height
+          const ctx = tile.getContext('2d')!
+          ctx.imageSmoothingEnabled = false
+          ctx.drawImage(source, sub.x, sub.y, sub.width, sub.height, -(sub.frameX || 0), -(sub.frameY || 0), sub.width, sub.height)
+          url = tile.toDataURL('image/png')
+        }
+        urls.push(url)
+        slots[direction].push({ x: sub.x, y: sub.y, w: sub.width, h: sub.height, dataUrl: url })
+      }
+      frames[direction] = urls.length === 1 ? urls[0] : urls
+    }
+    const mirror = async (raw: string | string[]) => {
+      const urls = await Promise.all((Array.isArray(raw) ? raw : [raw]).map(createMirroredDataUrl))
+      return Array.isArray(raw) ? urls : urls[0]
+    }
+    if (frames.left && !frames.right) frames.right = await mirror(frames.left)
+    else if (frames.right && !frames.left) frames.left = await mirror(frames.right)
+    const raw = frames.down || Object.values(frames).find(Boolean)
+    const first = Array.isArray(raw) ? raw[0] : raw
+    results.push({ presetKey, name: formatPresetLabel(presetKey), directionalFrames: frames, thumbnail: first ? await cropContentDataUrl(first) : undefined,
+      sourceImageSrc: source?.toDataURL('image/png'), sourceXmlContent: xmlContent,
+      slicerPresets: [{ id: presetKey, name: formatPresetLabel(presetKey), directions: slots }] })
+  }
   return results
 }
-
-function createMirroredDataUrl(dataUrl: string): string {
-  if (typeof document === 'undefined') return dataUrl
+async function createMirroredDataUrl(url: string): Promise<string> {
+  if (typeof document === 'undefined') return url
+  const image = await loadAtlasImage(url)
   const canvas = document.createElement('canvas')
-  canvas.width = 32
-  canvas.height = 32
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return dataUrl
-
-  const img = new Image()
-  img.src = dataUrl
-  ctx.imageSmoothingEnabled = false
-  ctx.translate(32, 0)
-  ctx.scale(-1, 1)
-  ctx.drawImage(img, 0, 0)
+  canvas.width = image.naturalWidth; canvas.height = image.naturalHeight
+  const ctx = canvas.getContext('2d')!
+  ctx.translate(canvas.width, 0); ctx.scale(-1, 1); ctx.drawImage(image, 0, 0)
   return canvas.toDataURL('image/png')
 }
-
-export function importPresetsIntoStore(
+export async function importPresetsIntoStore(
   category: AvatarComponentSlot | 'furniture' | 'floor' | 'wall',
   presets: ParsedAtlasPreset[]
-): CustomAsset[] {
-  const createdAssets: CustomAsset[] = []
-  const store = useCustomAssetsStore.getState()
-
-  for (const p of presets) {
+): Promise<CustomAsset[]> {
+  const first = (raw?: string | string[]) => Array.isArray(raw) ? raw[0] || '' : raw || ''
+  const createdAssets = presets.map(p => {
+    if (p.asset) return p.asset
     const isMapAsset = category === 'furniture' || category === 'floor' || category === 'wall'
-    const assetType = isMapAsset ? category : 'avatar'
-    const avatarSlot = isMapAsset ? undefined : (category as AvatarComponentSlot)
-    const isObstacle = category === 'furniture' || category === 'wall'
-
-    const asset: CustomAsset = {
-      id: `${assetType}_${category}_${p.presetKey}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      name: p.name,
-      type: assetType,
-      category: 'Geral',
-      avatarSlot,
-      thumbnail: p.thumbnail,
-      width: 1,
-      height: 1,
-      isObstacle,
-      frames: [
-        p.directionalFrames?.down || '',
-        p.directionalFrames?.up || '',
-        p.directionalFrames?.left || '',
-        p.directionalFrames?.right || '',
-      ],
-      directionalFrames: p.directionalFrames,
-      frameRateMs: 160,
-      createdAt: Date.now(),
-      creationSource: 'atlas',
-    }
-
-    store.addCustomAsset(asset)
-    createdAssets.push(asset)
-  }
-
+    return {
+      id: `${isMapAsset ? category : 'avatar'}_${category}_${p.presetKey}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: p.name, type: isMapAsset ? category : 'avatar', category: 'Geral',
+      avatarSlot: isMapAsset ? undefined : category, thumbnail: p.thumbnail,
+      width: 1, height: 1, isObstacle: category === 'furniture' || category === 'wall',
+      frames: [first(p.directionalFrames.down), first(p.directionalFrames.up), first(p.directionalFrames.left), first(p.directionalFrames.right)],
+      directionalFrames: p.directionalFrames, frameRateMs: 160, createdAt: Date.now(), creationSource: 'atlas',
+      sourceImageSrc: p.sourceImageSrc, sourceXmlContent: p.sourceXmlContent, slicerPresets: p.slicerPresets,
+    } as CustomAsset
+  })
+  await useCustomAssetsStore.getState().addCustomAssets(createdAssets)
   return createdAssets
 }

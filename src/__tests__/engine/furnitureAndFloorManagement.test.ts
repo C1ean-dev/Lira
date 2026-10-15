@@ -1,3 +1,4 @@
+import '../helpers/mockAssetPersistence'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useCustomAssetsStore, onCustomAssetsChange } from '../../store/useCustomAssetsStore'
 import { useMapStore } from '../../store/useMapStore'
@@ -35,7 +36,7 @@ describe('Furniture & Floor Management (Edit and Delete)', () => {
     })
   })
 
-  it('should allow adding, editing and deleting furniture', () => {
+  it('should allow adding, editing and deleting furniture', async () => {
     const assetStore = useCustomAssetsStore.getState()
     const mapStore = useMapStore.getState()
 
@@ -47,7 +48,7 @@ describe('Furniture & Floor Management (Edit and Delete)', () => {
       height: 2,
       frames: ['data:image/png;base64,mockThrone'],
     })
-    assetStore.addCustomAsset(furnAsset)
+    await assetStore.addCustomAsset(furnAsset)
 
     expect(useCustomAssetsStore.getState().getAssetById('furn_throne_001')).toBeDefined()
     expect(useCustomAssetsStore.getState().getAssetById('furn_throne_001')?.name).toBe('Trono Real')
@@ -60,7 +61,7 @@ describe('Furniture & Floor Management (Edit and Delete)', () => {
     })
     expect(useMapStore.getState().mapData.furniture.some((f) => f.defId === 'furn_throne_001')).toBe(true)
 
-    assetStore.updateCustomAsset('furn_throne_001', {
+    await assetStore.updateCustomAsset('furn_throne_001', {
       name: 'Trono Dourado Renovado',
       width: 3,
       height: 3,
@@ -69,14 +70,14 @@ describe('Furniture & Floor Management (Edit and Delete)', () => {
     expect(updated?.name).toBe('Trono Dourado Renovado')
     expect(updated?.width).toBe(3)
 
-    assetStore.deleteCustomAsset('furn_throne_001')
+    await assetStore.deleteCustomAsset('furn_throne_001')
     useMapStore.getState().removeFurnitureByDefId('furn_throne_001')
 
     expect(useCustomAssetsStore.getState().getAssetById('furn_throne_001')).toBeUndefined()
     expect(useMapStore.getState().mapData.furniture.some((f) => f.defId === 'furn_throne_001')).toBe(false)
   })
 
-  it('should allow adding, editing and deleting floors and safely restore default floor on map', () => {
+  it('should allow adding, editing and deleting floors and safely restore default floor on map', async () => {
     const assetStore = useCustomAssetsStore.getState()
     const mapStore = useMapStore.getState()
 
@@ -86,7 +87,7 @@ describe('Furniture & Floor Management (Edit and Delete)', () => {
       type: 'floor',
       frames: ['data:image/png;base64,mockLava'],
     })
-    assetStore.addCustomAsset(floorAsset)
+    await assetStore.addCustomAsset(floorAsset)
     expect(useCustomAssetsStore.getState().getAssetById('floor_lava_tiles')).toBeDefined()
 
     mapStore.setFloorTile(0, 0, 'floor_lava_tiles' as any)
@@ -94,12 +95,12 @@ describe('Furniture & Floor Management (Edit and Delete)', () => {
     expect(useMapStore.getState().mapData.floors[0][0]).toBe('floor_lava_tiles')
     expect(useMapStore.getState().mapData.floors[1][0]).toBe('floor_lava_tiles')
 
-    assetStore.updateCustomAsset('floor_lava_tiles', {
+    await assetStore.updateCustomAsset('floor_lava_tiles', {
       name: 'Piso de Magma Ardente',
     })
     expect(useCustomAssetsStore.getState().getAssetById('floor_lava_tiles')?.name).toBe('Piso de Magma Ardente')
 
-    assetStore.deleteCustomAsset('floor_lava_tiles')
+    await assetStore.deleteCustomAsset('floor_lava_tiles')
     useMapStore.getState().replaceFloorGlobally('floor_lava_tiles', 'wood_parquet')
 
     expect(useCustomAssetsStore.getState().getAssetById('floor_lava_tiles')).toBeUndefined()
@@ -107,7 +108,7 @@ describe('Furniture & Floor Management (Edit and Delete)', () => {
     expect(useMapStore.getState().mapData.floors[1][0]).toBe('wood_parquet')
   })
 
-  it('should support multi-tile floor creation and footprint stamping (e.g. 2x1, 4x4)', () => {
+  it('should support multi-tile floor creation and footprint stamping (e.g. 2x1, 4x4)', async () => {
     const assetStore = useCustomAssetsStore.getState()
     const mapStore = useMapStore.getState()
 
@@ -121,7 +122,7 @@ describe('Furniture & Floor Management (Edit and Delete)', () => {
       pixelHeight: 32,
       frames: ['data:image/png;base64,mockCarpet'],
     })
-    assetStore.addCustomAsset(floor2x1)
+    await assetStore.addCustomAsset(floor2x1)
 
     const retrieved2x1 = assetStore.getAssetById('floor_carpet_2x1')
     expect(retrieved2x1?.width).toBe(2)
@@ -149,7 +150,7 @@ describe('Furniture & Floor Management (Edit and Delete)', () => {
       pixelHeight: 128,
       frames: ['data:image/png;base64,mockDanceFloor'],
     })
-    assetStore.addCustomAsset(floor4x4)
+    await assetStore.addCustomAsset(floor4x4)
 
     const retrieved4x4 = assetStore.getAssetById('floor_dance_4x4')
     expect(retrieved4x4?.width).toBe(4)
@@ -168,7 +169,7 @@ describe('Furniture & Floor Management (Edit and Delete)', () => {
     }
   })
 
-  it('should only erase the targeted element (furniture only erases furniture, floor only floor, zone only zone)', () => {
+  it('should only erase the targeted element (furniture only erases furniture, floor only floor, zone only zone)', async () => {
     const mapStore = useMapStore.getState()
 
     mapStore.addOrUpdateZone({
@@ -227,7 +228,7 @@ describe('Furniture & Floor Management (Edit and Delete)', () => {
     expect(useMapStore.getState().mapData.furniture.some((f) => f.id === 'chair_2')).toBe(true)
   })
 
-  it('should allow user to paint individual floor tiles inside a room instead of filling everything', () => {
+  it('should allow user to paint individual floor tiles inside a room instead of filling everything', async () => {
     const mapStore = useMapStore.getState()
 
     mapStore.addOrUpdateZone({
@@ -259,7 +260,7 @@ describe('Furniture & Floor Management (Edit and Delete)', () => {
     }
   })
 
-  it('should immediately update updatedAt and notify listeners when editing floor asset', () => {
+  it('should immediately update updatedAt and notify listeners when editing floor asset', async () => {
     let notified = false
     const unsubscribe = onCustomAssetsChange(() => {
       notified = true
@@ -272,10 +273,10 @@ describe('Furniture & Floor Management (Edit and Delete)', () => {
       type: 'floor',
       frames: ['data:image/png;base64,originalFrame'],
     })
-    assetStore.addCustomAsset(floorAsset)
+    await assetStore.addCustomAsset(floorAsset)
 
     const beforeUpdate = Date.now()
-    assetStore.updateCustomAsset('custom_floor_test', {
+    await assetStore.updateCustomAsset('custom_floor_test', {
       frames: ['data:image/png;base64,newEditedFrame'],
       thumbnail: 'data:image/png;base64,newEditedFrame',
     })

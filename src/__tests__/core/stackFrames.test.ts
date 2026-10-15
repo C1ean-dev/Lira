@@ -34,6 +34,7 @@ describe('normalizeFramePath', () => {
 
   it('drops the checkout folder of a dev build', () => {
     expect(normalizeFramePath('C:\\Users\\ana\\lira\\dist-electron\\main.js')).toBe('dist-electron/main.js')
+    expect(normalizeFramePath('C:\\Users\\ana\\lira\\out\\main.js')).toBe('out/main.js')
     expect(normalizeFramePath('file:///C:/Users/ana/lira/electron/main.ts')).toBe('electron/main.ts')
     expect(normalizeFramePath('/home/ana/lira/src/utils/logger.ts')).toBe('src/utils/logger.ts')
   })
@@ -58,6 +59,7 @@ describe('isAppPath', () => {
     expect(isAppPath('electron/main.ts')).toBe(true)
     expect(isAppPath('dist/assets/index-BxK3.js')).toBe(true)
     expect(isAppPath('dist-electron/main.js')).toBe(true)
+    expect(isAppPath('out/main.js')).toBe(true)
     expect(isAppPath('node_modules/peerjs/dist/bundler.mjs')).toBe(false)
     expect(isAppPath('src/vendor/node_modules/lib/index.js')).toBe(false)
     expect(isAppPath('node:events')).toBe(false)
