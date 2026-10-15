@@ -1,3 +1,4 @@
+import '../helpers/mockAssetPersistence'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { exportCategoryAtlas } from '../../engine/avatar/avatarAtlasExporter'
 import { importPresetsIntoStore, ParsedAtlasPreset } from '../../engine/avatar/avatarAtlasImporter'
@@ -45,17 +46,13 @@ describe('furnitureCreatorSuite - Unified Studio & Atlas for Furniture, Floors, 
     const allAssets = [mockFurniture, mockFloor]
 
     const furnAtlas = await exportCategoryAtlas('furniture', allAssets)
-    expect(furnAtlas.xmlString).toContain('<TextureAtlas imagePath="furniture.png">')
-    expect(furnAtlas.xmlString).toContain('sof__moderno_down_0')
-    expect(furnAtlas.xmlString).not.toContain('m_rmore_real')
+    expect((await import('../../assets/atlasService')).buildAtlas).toHaveBeenCalledWith([mockFurniture], ['Sala'])
 
     const floorAtlas = await exportCategoryAtlas('floor', allAssets)
-    expect(floorAtlas.xmlString).toContain('<TextureAtlas imagePath="floor.png">')
-    expect(floorAtlas.xmlString).toContain('m_rmore_real')
-    expect(floorAtlas.xmlString).not.toContain('sof__moderno')
+    expect((await import('../../assets/atlasService')).buildAtlas).toHaveBeenCalledWith([mockFloor], ['Geral'])
   })
 
-  it('importPresetsIntoStore should create CustomAsset with proper type and obstacle settings for furniture, floor, and wall', () => {
+  it('importPresetsIntoStore should create CustomAsset with proper type and obstacle settings for furniture, floor, and wall', async () => {
     const presets: ParsedAtlasPreset[] = [
       {
         presetKey: 'armchair_red',
@@ -74,7 +71,7 @@ describe('furnitureCreatorSuite - Unified Studio & Atlas for Furniture, Floors, 
       },
     ]
 
-    const createdFurn = importPresetsIntoStore('furniture', [presets[0]])
+    const createdFurn = await importPresetsIntoStore('furniture', [presets[0]])
     expect(createdFurn.length).toBe(1)
     expect(createdFurn[0].type).toBe('furniture')
     expect(createdFurn[0].isObstacle).toBe(true)
@@ -85,12 +82,12 @@ describe('furnitureCreatorSuite - Unified Studio & Atlas for Furniture, Floors, 
     expect(inStoreFurn).toBeDefined()
     expect(inStoreFurn?.name).toBe('Poltrona Vermelha')
 
-    const createdFloor = importPresetsIntoStore('floor', [presets[1]])
+    const createdFloor = await importPresetsIntoStore('floor', [presets[1]])
     expect(createdFloor.length).toBe(1)
     expect(createdFloor[0].type).toBe('floor')
     expect(createdFloor[0].isObstacle).toBe(false)
 
-    const createdWall = importPresetsIntoStore('wall', [presets[0]])
+    const createdWall = await importPresetsIntoStore('wall', [presets[0]])
     expect(createdWall.length).toBe(1)
     expect(createdWall[0].type).toBe('wall')
     expect(createdWall[0].isObstacle).toBe(true)
@@ -116,7 +113,7 @@ describe('furnitureCreatorSuite - Unified Studio & Atlas for Furniture, Floors, 
       createdAt: Date.now(),
     }
 
-    useCustomAssetsStore.getState().addCustomAsset(potionAsset)
+    await useCustomAssetsStore.getState().addCustomAsset(potionAsset)
     const stored = useCustomAssetsStore.getState().getAssetById('furn_potion_bottle_1')
     expect(stored?.pixelWidth).toBe(20)
     expect(stored?.pixelHeight).toBe(36)

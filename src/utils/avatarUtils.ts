@@ -1,6 +1,7 @@
 import { AvatarConfig, Player } from '../types/game'
 import { DEFAULT_AVATAR } from '../engine/Constants'
 import { AvatarRenderer } from '../engine/AvatarRenderer'
+import { getAssetRevision } from '../assets/assetRevision'
 
 const avatarSnapshotCache = new Map<string, string>()
 
@@ -14,7 +15,7 @@ export function renderAvatarSnapshot(avatar?: AvatarConfig, targetSize: number =
   }
 
   const effectiveAvatar: AvatarConfig = avatar ? { ...DEFAULT_AVATAR, ...avatar } : { ...DEFAULT_AVATAR }
-  const cacheKey = `v3_${JSON.stringify(effectiveAvatar)}_${targetSize}`
+  const cacheKey = `v4_${getAssetRevision()}_${JSON.stringify(effectiveAvatar)}_${targetSize}`
 
   const cached = avatarSnapshotCache.get(cacheKey)
   if (cached) return cached

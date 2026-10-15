@@ -1,3 +1,4 @@
+import '../helpers/mockAssetPersistence'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { generateSparrowXml, PackedSubTexture } from '../../engine/avatar/avatarAtlasExporter'
 import { AvatarAtlasManager } from '../../engine/avatar/AvatarAtlasManager'
@@ -10,7 +11,7 @@ describe('avatarSpritesheetSlicer - Interactive Slicer and XML Generator', () =>
     AvatarAtlasManager.clearCache()
   })
 
-  it('should generate valid Sparrow XML from sliced tile coordinates', () => {
+  it('should generate valid Sparrow XML from sliced tile coordinates', async () => {
     const subTextures: PackedSubTexture[] = [
       { name: 'hair_afro_down_0', x: 0, y: 0, width: 32, height: 32 },
       { name: 'hair_afro_up_0', x: 32, y: 0, width: 32, height: 32 },
@@ -42,7 +43,7 @@ describe('avatarSpritesheetSlicer - Interactive Slicer and XML Generator', () =>
     })
   })
 
-  it('should store sliced presets with 4 directional frames in useCustomAssetsStore', () => {
+  it('should store sliced presets with 4 directional frames in useCustomAssetsStore', async () => {
     const asset: CustomAsset = {
       id: 'avatar_hair_sliced_test',
       name: 'Afro Sliced',
@@ -63,7 +64,7 @@ describe('avatarSpritesheetSlicer - Interactive Slicer and XML Generator', () =>
       createdAt: Date.now(),
     }
 
-    useCustomAssetsStore.getState().addCustomAsset(asset)
+    await useCustomAssetsStore.getState().addCustomAsset(asset)
     const stored = useCustomAssetsStore.getState().customAssets
     expect(stored).toHaveLength(1)
     expect(stored[0].directionalFrames?.down).toBe('data:down')
@@ -72,7 +73,7 @@ describe('avatarSpritesheetSlicer - Interactive Slicer and XML Generator', () =>
     expect(stored[0].directionalFrames?.right).toBe('data:right')
   })
 
-  it('should support sub-32x32 dimensions (e.g. 16x16, 8x8, 24x24) in XML and asset definition', () => {
+  it('should support sub-32x32 dimensions (e.g. 16x16, 8x8, 24x24) in XML and asset definition', async () => {
     const subTextures: PackedSubTexture[] = [
       { name: 'glasses_tiny_down_0', x: 0, y: 0, width: 16, height: 16 },
       { name: 'skin_blush_down_0', x: 16, y: 0, width: 8, height: 8 },
@@ -93,7 +94,7 @@ describe('avatarSpritesheetSlicer - Interactive Slicer and XML Generator', () =>
     expect(parsed.subTextures.get('hat_cap_down_0')?.height).toBe(24)
   })
 
-  it('should support reordering frames within a direction sequence', () => {
+  it('should support reordering frames within a direction sequence', async () => {
     const moveFrameOrder = (frames: { id: string }[], fromIndex: number, toIndex: number) => {
       const list = [...frames]
       const [item] = list.splice(fromIndex, 1)
@@ -109,7 +110,7 @@ describe('avatarSpritesheetSlicer - Interactive Slicer and XML Generator', () =>
     expect(reordered2.map((f) => f.id)).toEqual(['step_2', 'step_1', 'step_0'])
   })
 
-  it('should support moving frames between directions (e.g. from down to up)', () => {
+  it('should support moving frames between directions (e.g. from down to up)', async () => {
     const transferFrame = (
       directions: Record<string, { id: string }[]>,
       fromDir: string,
@@ -138,7 +139,7 @@ describe('avatarSpritesheetSlicer - Interactive Slicer and XML Generator', () =>
     expect(transferred.up[1].id).toBe('frame_down_1')
   })
 
-  it('should synchronize selector dimensions whenever the grid size is changed from 1 to 64', () => {
+  it('should synchronize selector dimensions whenever the grid size is changed from 1 to 64', async () => {
     const updateGridAndSelector = (
       currentSelection: { x: number; y: number; w: number; h: number },
       newGridSize: number,

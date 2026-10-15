@@ -2,7 +2,7 @@ import type { ErrorReport, ReportedError } from '../src/utils/errorReport'
 import { RawSourceMap, lookupPositions } from '../src/utils/sourceMapLookup'
 import { StackFrame, isAppPath, normalizeFramePath } from '../src/utils/stackFrames'
 
-const BUNDLE_FILE = /^(?:dist|dist-electron)\/.+\.(?:js|mjs|cjs)$/
+const BUNDLE_FILE = /^(?:dist|dist-electron|out)\/.+\.(?:js|mjs|cjs)$/
 const MAX_ERROR_CHAIN = 4
 
 export interface Symbolicator {

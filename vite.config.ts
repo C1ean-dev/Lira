@@ -4,10 +4,11 @@ import electron from 'vite-plugin-electron'
 import renderer from 'vite-plugin-electron-renderer'
 import path from 'path'
 import fs from 'fs'
-import { writeNativeDataFileLatest } from './electron/nativeDataFile'
+import { readAssetAtlas, writeAssetAtlasLatest } from './electron/assetAtlasFile'
 
 const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, './package.json'), 'utf-8'))
 const appVersion = process.env.VITE_APP_VERSION || process.env.LIRA_VERSION_NAME || pkg.version || '1.0.0'
+const enableElectron = !process.env.VITEST && process.env.LIRA_TARGET !== 'web'
 
 export default defineConfig({
   define: {
@@ -15,11 +16,22 @@ export default defineConfig({
   },
   plugins: [
     react(),
-    ...(process.env.VITEST ? [] : [electron([
+    {
+      name: 'asset-atlas-index',
+      resolveId(id) { if (id === 'virtual:lira-asset-atlases') return '\0virtual:lira-asset-atlases' },
+      load(id) {
+        if (id !== '\0virtual:lira-asset-atlases') return
+        const directory = path.resolve(__dirname, 'public/assets/library')
+        const names = fs.existsSync(directory) ? fs.readdirSync(directory).filter(name => name.endsWith('.xml')).sort() : []
+        return `export default ${JSON.stringify(names)}`
+      },
+    },
+    ...(!enableElectron ? [] : [electron([
       {
         entry: 'electron/main.ts',
         vite: {
           build: {
+            outDir: 'out',
             sourcemap: 'hidden',
             // Keep ws optional native dependencies inside Node's runtime try/catch.
             rollupOptions: { external: ['ws'], output: { sourcemapExcludeSources: true } },
@@ -33,6 +45,7 @@ export default defineConfig({
         },
         vite: {
           build: {
+            outDir: 'out',
             lib: {
               entry: 'electron/preload.ts',
               formats: ['cjs'],
@@ -42,59 +55,28 @@ export default defineConfig({
         },
       },
     ])]),
-    ...(process.env.VITEST ? [] : [renderer()]),
+    ...(!enableElectron ? [] : [renderer()]),
     {
       name: 'disk-file-persistence-middleware',
       configureServer(server) {
         server.middlewares.use(async (req, res, next) => {
-          if (req.url === '/api/save-asset-file' && req.method === 'POST') {
-            let body = ''
-            req.on('data', (chunk) => {
-              body += chunk
-            })
-            req.on('end', () => {
-              try {
-                const { relativePath, content, encoding } = JSON.parse(body)
-                const targetPath = path.resolve(process.cwd(), relativePath)
-                fs.mkdirSync(path.dirname(targetPath), { recursive: true })
-                if (encoding === 'base64') {
-                  const base64Data = content.replace(/^data:image\/\w+;base64,/, '')
-                  fs.writeFileSync(targetPath, Buffer.from(base64Data, 'base64'))
-                } else {
-                  fs.writeFileSync(targetPath, content, 'utf-8')
-                }
-                console.log('[DiskMiddleware] Saved asset to disk:', targetPath)
-                res.setHeader('Content-Type', 'application/json')
-                res.statusCode = 200
-                res.end(JSON.stringify({ success: true, path: targetPath }))
-              } catch (e) {
-                console.error('[DiskMiddleware] Error saving asset:', e)
-                res.statusCode = 500
-                res.end(JSON.stringify({ error: String(e) }))
+          if (req.url === '/api/asset-atlas' && (req.method === 'PUT' || req.method === 'GET')) {
+            const directory = path.resolve(process.cwd(), 'public/assets/library')
+            try {
+              let result: unknown = null
+              if (req.method === 'GET') result = await readAssetAtlas(directory)
+              else {
+                const chunks: Buffer[] = []
+                for await (const chunk of req) chunks.push(Buffer.from(chunk))
+                await writeAssetAtlasLatest(directory, JSON.parse(Buffer.concat(chunks).toString('utf8')))
+                result = { success: true }
               }
-            })
-            return
-          }
-          if (req.url === '/api/save-native-assets' && req.method === 'POST') {
-            let body = ''
-            req.on('data', (chunk) => {
-              body += chunk
-            })
-            req.on('end', async () => {
-              try {
-                const parsed = JSON.parse(body)
-                const targetPath = path.resolve(process.cwd(), 'src/data/nativeAssets.json')
-                await writeNativeDataFileLatest(targetPath, parsed)
-                console.log('[DiskMiddleware] Saved nativeAssets.json to disk successfully')
-                res.setHeader('Content-Type', 'application/json')
-                res.statusCode = 200
-                res.end(JSON.stringify({ success: true }))
-              } catch (e) {
-                console.error('[DiskMiddleware] Error saving nativeAssets.json:', e)
-                res.statusCode = 500
-                res.end(JSON.stringify({ error: String(e) }))
-              }
-            })
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify(result))
+            } catch (error) {
+              res.statusCode = 500
+              res.end(JSON.stringify({ error: String(error) }))
+            }
             return
           }
           if (req.url === '/api/save-native-spaces' && req.method === 'POST') {

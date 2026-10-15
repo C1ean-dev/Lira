@@ -1,3 +1,4 @@
+import '../helpers/mockAssetPersistence'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 import { useMapStore } from '../../store/useMapStore'
@@ -33,12 +34,13 @@ describe('Independent Review Fixes & Hardening Tests', () => {
   })
 
   describe('Category Management & Deletion Resurrection Fix', () => {
-    it('deleting a category reassigns its assets to Geral and prevents resurrection in getAllCategories', () => {
+    it('deleting a category reassigns its assets to Geral and prevents resurrection in getAllCategories', async () => {
       const store = useCustomAssetsStore.getState()
 
       const asset1: CustomAsset = {
         id: 'asset-furn-1',
         name: 'Mesa Real',
+        frames: [],
         type: 'furniture',
         category: 'Móveis',
         width: 1,
@@ -46,12 +48,12 @@ describe('Independent Review Fixes & Hardening Tests', () => {
         isObstacle: true,
         createdAt: Date.now(),
       }
-      store.addCustomAsset(asset1)
+      await store.addCustomAsset(asset1)
 
       expect(useCustomAssetsStore.getState().getAllCategories()).toContain('Móveis')
       expect(useCustomAssetsStore.getState().getAssetById('asset-furn-1')?.category).toBe('Móveis')
 
-      useCustomAssetsStore.getState().deleteCategory('Móveis')
+      await useCustomAssetsStore.getState().deleteCategory('Móveis')
 
       const updatedAsset = useCustomAssetsStore.getState().getAssetById('asset-furn-1')
       expect(updatedAsset?.category).toBe('Geral')
@@ -61,12 +63,12 @@ describe('Independent Review Fixes & Hardening Tests', () => {
       expect(allCategories).toContain('Geral')
     })
 
-    it('prevents deleting the default Geral category', () => {
-      useCustomAssetsStore.getState().deleteCategory('Geral')
+    it('prevents deleting the default Geral category', async () => {
+      await useCustomAssetsStore.getState().deleteCategory('Geral')
       expect(useCustomAssetsStore.getState().customCategories).toContain('Geral')
     })
 
-    it('defaults to Geral and pokemon categories, ignoring legacy categories', () => {
+    it('defaults to Geral and pokemon categories, ignoring legacy categories', async () => {
       useCustomAssetsStore.setState({
         customCategories: ['Geral', 'pokemon'],
         customAssets: [],
@@ -75,10 +77,11 @@ describe('Independent Review Fixes & Hardening Tests', () => {
       expect(cats).toEqual(['Geral', 'pokemon'])
     })
 
-    it('syncRemoteCustomAssets preloads directionalFrames', () => {
+    it('syncRemoteCustomAssets preloads directionalFrames', async () => {
       const incomingAsset: CustomAsset = {
         id: 'asset-dir-1',
         name: 'Boneco Direcional',
+        frames: [],
         type: 'furniture',
         category: 'Geral',
         width: 1,
@@ -93,16 +96,14 @@ describe('Independent Review Fixes & Hardening Tests', () => {
         createdAt: Date.now(),
       }
 
-      expect(() => {
-        useCustomAssetsStore.getState().syncRemoteCustomAssets([incomingAsset], ['Geral'])
-      }).not.toThrow()
+      await expect(useCustomAssetsStore.getState().syncRemoteCustomAssets([incomingAsset], ['Geral'])).resolves.toBeUndefined()
 
       expect(useCustomAssetsStore.getState().getAssetById('asset-dir-1')).toBeDefined()
     })
   })
 
   describe('Zone Deletion & Occupant Presence Cleanup', () => {
-    it('removeZone resets local player currentZoneId if inside deleted zone', () => {
+    it('removeZone resets local player currentZoneId if inside deleted zone', async () => {
       const mapStore = useMapStore.getState()
       const gameStore = useGameStore.getState()
 
@@ -130,7 +131,7 @@ describe('Independent Review Fixes & Hardening Tests', () => {
   })
 
   describe('Crop Bounding Box with Padding', () => {
-    it('applies padding parameter when cropping content bounding box', () => {
+    it('applies padding parameter when cropping content bounding box', async () => {
       let drawnArgs: any = null
 
       const mockCropCtx = {
@@ -190,7 +191,7 @@ describe('Independent Review Fixes & Hardening Tests', () => {
   })
 
   describe('ColorWheelPicker HSL / Hex Math', () => {
-    it('correctly converts primary and secondary colors between hex and hsl', () => {
+    it('correctly converts primary and secondary colors between hex and hsl', async () => {
       expect(hexToHsl('#ff0000')).toEqual({ h: 0, s: 100, l: 50 })
       expect(hexToHsl('#00ff00')).toEqual({ h: 120, s: 100, l: 50 })
       expect(hexToHsl('#0000ff')).toEqual({ h: 240, s: 100, l: 50 })
@@ -202,7 +203,7 @@ describe('Independent Review Fixes & Hardening Tests', () => {
   })
 
   describe('FloorRenderer Subpixel Seam Overlap', () => {
-    it('renders built-in floors without throwing', () => {
+    it('renders built-in floors without throwing', async () => {
       const mockCtx = {
         save: () => {},
         restore: () => {},

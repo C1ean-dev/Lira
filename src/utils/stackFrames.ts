@@ -10,7 +10,7 @@ export interface StackFrame {
 
 export const MAX_STACK_FRAMES = 30
 
-const PROJECT_DIRS = ['src', 'electron', 'dist-electron', 'dist']
+const PROJECT_DIRS = ['src', 'electron', 'dist-electron', 'out', 'dist']
 
 export function isAppPath(file: string): boolean {
   if (file.includes('node_modules/')) return false
@@ -29,8 +29,10 @@ export function normalizeFramePath(raw: string): string {
   const modules = text.lastIndexOf('node_modules/')
   if (modules !== -1) return text.slice(modules)
 
-  const mainBuild = text.lastIndexOf('/dist-electron/')
-  if (mainBuild !== -1) return text.slice(mainBuild + 1)
+  for (const dir of ['dist-electron', 'out']) {
+    const mainBuild = text.lastIndexOf(`/${dir}/`)
+    if (mainBuild !== -1) return text.slice(mainBuild + 1)
+  }
   for (const dir of ['src', 'electron']) {
     const index = text.indexOf(`/${dir}/`)
     if (index !== -1) return text.slice(index + 1)

@@ -20,7 +20,6 @@ import { cropContentDataUrl } from '../../engine/avatar/avatarBakeService'
 import { exportCategoryAtlas } from '../../engine/avatar/avatarAtlasExporter'
 import { AtlasImportModal } from './AtlasImportModal'
 import { AvatarSpritesheetSlicerModal } from './AvatarSpritesheetSlicerModal'
-import { savePetAtlasToDisk } from '../../utils/diskAssetPersistence'
 import {
   detectAssetCreationSource,
   resolveAssetSourceImage,
@@ -102,17 +101,6 @@ export const PetSelectorPanel: React.FC<Props> = ({
     }
   }, [avatar.pet, onChangeAvatar])
 
-  useEffect(() => {
-    for (const asset of petCustomAssets) {
-      if (asset.directionalFrames) {
-        const cleanBase = asset.name.toLowerCase().replace(/[^a-z0-9]/g, '_') || `pet_${asset.id}`
-        savePetAtlasToDisk(cleanBase, asset.directionalFrames as Record<Direction, string>).catch((e) =>
-          console.warn('[PetSelectorPanel] Auto-sync pet to disk error:', e)
-        )
-      }
-    }
-  }, [petCustomAssets])
-
   const [deletingAsset, setDeletingAsset] = useState<CustomAsset | null>(null)
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false)
 
@@ -192,13 +180,12 @@ export const PetSelectorPanel: React.FC<Props> = ({
         type: 'custom',
         customAssetId: asset.id,
         name: asset.name,
-        directionalFrames: asset.directionalFrames,
       },
     })
   }
 
-  const handleConfirmDelete = (asset: CustomAsset) => {
-    deleteCustomAsset(asset.id)
+  const handleConfirmDelete = async (asset: CustomAsset) => {
+    await deleteCustomAsset(asset.id)
     if (currentPet.customAssetId === asset.id) {
       onChangeAvatar({
         ...avatar,
@@ -493,7 +480,6 @@ export const PetSelectorPanel: React.FC<Props> = ({
                   type: 'custom',
                   customAssetId: lastAsset.id,
                   name: lastAsset.name,
-                  directionalFrames: lastAsset.directionalFrames,
                 },
               })
             }

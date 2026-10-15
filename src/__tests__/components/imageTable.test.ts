@@ -373,9 +373,11 @@ describe('the data file shipped in the repo', () => {
     expect(unpackImages(roundTrip(packed))).toEqual(expanded)
   })
 
-  it('has each image once after packing, and that is not bigger than the expanded form', () => {
+  it('keeps the retired legacy catalog empty of assets and images', () => {
+    expect(nativeAssets.assets).toEqual([])
+    expect(nativeAssets.images).toEqual({})
     const packed = packImages(expanded)
     expect(longImages({ ...packed, images: {} })).toEqual([])
-    expect(JSON.stringify(packed).length).toBeLessThanOrEqual(JSON.stringify(expanded).length)
+    expect(longImages(expanded)).toEqual([])
   })
 })

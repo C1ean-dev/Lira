@@ -1858,7 +1858,7 @@ export const CustomElementModal: React.FC = () => {
     const basePixelHeight = elementType === 'furniture' && finalDirDims.down ? (finalDirDims.down.pixelHeight || finalDirDims.down.height * 32) : (pixelHeight || tileHeight * 32)
 
     if (editingAssetId) {
-      updateCustomAsset(editingAssetId, {
+      await updateCustomAsset(editingAssetId, {
         name: elementName.trim() || 'Elemento Customizado',
         type: elementType,
         category: finalCategory,
@@ -1901,7 +1901,7 @@ export const CustomElementModal: React.FC = () => {
         setActiveTool('paint_wall')
       } else if (elementType === 'avatar') {
         const curAvatar = useGameStore.getState().localPlayer.avatar
-        const updatedAvatar = { ...curAvatar, customSkinUrl: finalFrames[0], customAvatarId: editingAssetId }
+        const updatedAvatar = { ...curAvatar, customSkinUrl: undefined, customAvatarId: editingAssetId, customComponents: { ...curAvatar.customComponents, other: editingAssetId } }
         useGameStore.getState().setLocalPlayer({ avatar: updatedAvatar })
         PeerManager.getInstance().sendPlayerUpdate({ avatar: updatedAvatar })
       }
@@ -1946,7 +1946,7 @@ export const CustomElementModal: React.FC = () => {
       createdAt: Date.now(),
     }
 
-    addCustomAsset(newAsset)
+    await addCustomAsset(newAsset)
 
     if (elementType === 'furniture') {
       setSelectedFurnitureDefId(id)
@@ -1959,7 +1959,7 @@ export const CustomElementModal: React.FC = () => {
       setActiveTool('paint_wall')
     } else if (elementType === 'avatar') {
       const curAvatar = useGameStore.getState().localPlayer.avatar
-      const updatedAvatar = { ...curAvatar, customSkinUrl: finalFrames[0], customAvatarId: id }
+      const updatedAvatar = { ...curAvatar, customSkinUrl: undefined, customAvatarId: id, customComponents: { ...curAvatar.customComponents, other: id } }
       useGameStore.getState().setLocalPlayer({ avatar: updatedAvatar })
       PeerManager.getInstance().sendPlayerUpdate({ avatar: updatedAvatar })
     }

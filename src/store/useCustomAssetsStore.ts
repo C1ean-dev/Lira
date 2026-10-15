@@ -1,168 +1,50 @@
 import { create } from 'zustand'
-import { CustomAsset } from '../types/customAsset'
-import { FurnitureDefinition } from '../types/map'
+import type { CustomAsset } from '../types/customAsset'
+import type { FurnitureDefinition } from '../types/map'
+import type { Direction } from '../types/game'
 import { PeerManager } from '../p2p/PeerManager'
-import rawNativeAssetsData from '../data/nativeAssets.json'
-import { Direction } from '../types/game'
 import { bakeLayersToDataUrl } from '../utils/imageResize'
+import { buildAtlas, readAtlas } from '../assets/atlasService'
+import { loadBundledAtlases, loadStoredAtlas, saveStoredAtlas } from '../assets/atlasStorage'
 import { unpackImages } from '../utils/imageTable'
-
-const nativeAssetsData = unpackImages(rawNativeAssetsData as unknown as Record<string, unknown>) as {
-  categories?: string[]
-  assets?: CustomAsset[]
-}
+import { setAvatarAssetCatalog, migrateStoredAvatarReferences } from '../assets/avatarReferences'
+import { bumpAssetRevision } from '../assets/assetRevision'
 
 const ASSETS_STORAGE_KEY = 'lira_custom_user_assets'
 const CATEGORIES_STORAGE_KEY = 'lira_custom_categories'
-
 const DEFAULT_CATEGORIES = ['Geral', 'pokemon']
-
-const imageCache: Map<string, HTMLImageElement> = new Map()
-
-type AssetChangeListener = () => void
-const assetChangeListeners = new Set<AssetChangeListener>()
-
-export function onCustomAssetsChange(listener: AssetChangeListener): () => void {
-  assetChangeListeners.add(listener)
-  return () => {
-    assetChangeListeners.delete(listener)
-  }
+const imageCache = new Map<string, HTMLImageElement>()
+const listeners = new Set<() => void>()
+export function onCustomAssetsChange(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
 }
-
 export function notifyCustomAssetsChanged(): void {
-  assetChangeListeners.forEach((fn) => {
-    try {
-      fn()
-    } catch (e) {
-      console.error('[useCustomAssetsStore] Listener error:', e)
-    }
-  })
+  setAvatarAssetCatalog(useCustomAssetsStore.getState().customAssets)
+  bumpAssetRevision()
+  for (const listener of listeners) {
+    try { listener() } catch (error) { console.error('[Assets] Listener:', error) }
+  }
 }
-
-let assetByIdCache = new Map<string, CustomAsset>()
-let assetByIdCacheSource: CustomAsset[] | null = null
-
-function syncAssetByIdCache(assets: CustomAsset[]) {
-  if (assetByIdCacheSource === assets) return
-  assetByIdCache = new Map(assets.map((a) => [a.id, a]))
-  assetByIdCacheSource = assets
+export function getCustomAssetImage(src: string): HTMLImageElement | null {
+  if (!src || typeof Image === 'undefined') return null
+  let image = imageCache.get(src)
+  if (!image) { image = new Image(); image.src = src; imageCache.set(src, image) }
+  return image
 }
-
 export function getCachedAssetById(id: string): CustomAsset | undefined {
-  const assets = useCustomAssetsStore.getState().customAssets
-  syncAssetByIdCache(assets)
-  return assetByIdCache.get(id)
+  return useCustomAssetsStore.getState().customAssets.find(a => a.id === id)
 }
-
-export function getCustomAssetImage(dataUrl: string): HTMLImageElement | null {
-  if (typeof Image === 'undefined') return null
-  if (imageCache.has(dataUrl)) {
-    return imageCache.get(dataUrl)!
-  }
-  const img = new Image()
-  img.src = dataUrl
-  imageCache.set(dataUrl, img)
-  return img
-}
-
-export const syncToNativeFile = async (
-  assets: CustomAsset[],
-  categories: string[]
-): Promise<boolean> => {
+function loadSavedCategories(): string[] {
   try {
-    if (typeof window === 'undefined') return false
-    const payload = { categories, assets }
-
-    let saved = false
-
-    if ((window as any).electronAPI?.saveNativeAssets) {
-      try {
-        saved = await (window as any).electronAPI.saveNativeAssets(payload)
-      } catch (err) {
-        console.warn('[useCustomAssetsStore] Electron saveNativeAssets error:', err)
-      }
-    }
-
-    if (!saved && typeof fetch !== 'undefined') {
-      try {
-        const res = await fetch('/api/save-native-assets', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload, null, 2),
-        })
-        if (res.ok) {
-          saved = true
-          console.info('[useCustomAssetsStore] Synced assets to src/data/nativeAssets.json (tracked by Git)')
-        }
-      } catch (err) {
-      }
-    }
-
-    return saved
-  } catch (err) {
-    console.error('Failed to sync native assets to file:', err)
-    return false
-  }
+    const saved = JSON.parse(localStorage.getItem(CATEGORIES_STORAGE_KEY) || '[]')
+    if (Array.isArray(saved)) return [...new Set([...DEFAULT_CATEGORIES, ...saved.filter(c => typeof c === 'string')])]
+  } catch { /* No browser storage in headless contexts. */ }
+  return DEFAULT_CATEGORIES
 }
-
-const loadSavedCustomAssets = (): CustomAsset[] => {
-  const nativeAssets: CustomAsset[] = (nativeAssetsData?.assets as CustomAsset[]) || []
-  let savedAssets: CustomAsset[] = []
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const raw = window.localStorage.getItem(ASSETS_STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        if (Array.isArray(parsed)) {
-          savedAssets = parsed
-        }
-      }
-    }
-  } catch (e) {
-    console.error('Failed to load custom assets:', e)
-  }
-
-  const map = new Map<string, CustomAsset>()
-  nativeAssets.forEach((a) => map.set(a.id, a))
-  savedAssets.forEach((a) => map.set(a.id, a))
-  const merged = Array.from(map.values())
-
-  merged.forEach((asset: CustomAsset) => {
-    const legacyCats = new Set([
-      'Forja Antiga',
-      'Escritório',
-      'Medieval',
-      'Decoração',
-      'Avatares',
-      'Pisos Personalizados',
-      'Paredes das Zonas',
-      'Mascotes',
-    ])
-    if (!asset.category || !asset.category.trim() || legacyCats.has(asset.category)) {
-      asset.category = 'Geral'
-    }
-
-    if (Array.isArray(asset.frames)) {
-      asset.frames.forEach(getCustomAssetImage)
-    }
-    if (asset.directionalFrames) {
-      Object.values(asset.directionalFrames).forEach((frames) => {
-        if (Array.isArray(frames)) {
-          frames.forEach((f) => f && getCustomAssetImage(f))
-        } else if (typeof frames === 'string' && frames.length > 0) {
-          getCustomAssetImage(frames)
-        }
-      })
-    }
-  })
-
-  if (savedAssets.length > 0 && typeof window !== 'undefined') {
-    setTimeout(() => {
-      syncToNativeFile(merged, loadSavedCategories())
-    }, 500)
-  }
-
-  return merged
+function saveCategories(categories: string[]) {
+  try { if (typeof localStorage !== 'undefined') localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(categories)) }
+  catch (error) { console.warn('[Assets] Could not save category preferences:', error) }
 }
 
 export async function repairMissingDirectionalFrames(assets: CustomAsset[]): Promise<boolean> {
@@ -227,66 +109,6 @@ export async function repairMissingDirectionalFrames(assets: CustomAsset[]): Pro
   return hasChanges
 }
 
-const saveCustomAssets = (assets: CustomAsset[]) => {
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      window.localStorage.setItem(ASSETS_STORAGE_KEY, JSON.stringify(assets))
-    }
-  } catch (e) {
-    console.error('Failed to save custom assets:', e)
-  }
-}
-
-const loadSavedCategories = (): string[] => {
-  const nativeCats: string[] = (nativeAssetsData?.categories as string[]) || DEFAULT_CATEGORIES
-  let savedCats: string[] = []
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const raw = window.localStorage.getItem(CATEGORIES_STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const legacyCats = new Set([
-            'Forja Antiga',
-            'Escritório',
-            'Medieval',
-            'Decoração',
-            'Avatares',
-            'Pisos Personalizados',
-            'Paredes das Zonas',
-            'Mascotes',
-          ])
-          savedCats = parsed.filter((c) => typeof c === 'string' && !legacyCats.has(c))
-        }
-      }
-    }
-  } catch (e) {
-    console.error('Failed to load custom categories:', e)
-  }
-  const merged = Array.from(new Set([...DEFAULT_CATEGORIES, ...nativeCats, ...savedCats]))
-  const legacyCats = new Set([
-    'Forja Antiga',
-    'Escritório',
-    'Medieval',
-    'Decoração',
-    'Avatares',
-    'Pisos Personalizados',
-    'Paredes das Zonas',
-    'Mascotes',
-  ])
-  const filtered = merged.filter((c) => !legacyCats.has(c))
-  return filtered.length > 0 ? filtered : DEFAULT_CATEGORIES
-}
-
-const saveCategories = (cats: string[]) => {
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      window.localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(cats))
-    }
-  } catch (e) {
-    console.error('Failed to save custom categories:', e)
-  }
-}
 
 interface CustomAssetsState {
   customAssets: CustomAsset[]
@@ -299,249 +121,142 @@ interface CustomAssetsState {
   setEditingAssetId: (id: string | null) => void
   openCreateModal: (mode?: 'crop' | 'compose', initialCategory?: string) => void
   openEditModal: (id: string, mode?: 'crop' | 'compose') => void
-  addCustomAsset: (asset: CustomAsset) => void
-  updateCustomAsset: (id: string, asset: Partial<CustomAsset>) => void
-  deleteCustomAsset: (id: string) => void
-  syncRemoteCustomAssets: (incomingAssets: CustomAsset[], incomingCategories?: string[]) => void
-  syncRemoteAssetAddOrUpdate: (asset: CustomAsset) => void
-  syncRemoteAssetDelete: (id: string) => void
-  addCategory: (categoryName: string) => void
-  deleteCategory: (categoryName: string) => void
+  addCustomAsset: (asset: CustomAsset) => Promise<void>
+  addCustomAssets: (assets: CustomAsset[]) => Promise<void>
+  updateCustomAsset: (id: string, asset: Partial<CustomAsset>) => Promise<void>
+  deleteCustomAsset: (id: string) => Promise<void>
+  syncRemoteCustomAssets: (assets: CustomAsset[], categories?: string[]) => Promise<void>
+  syncRemoteAssetAddOrUpdate: (asset: CustomAsset) => Promise<void>
+  syncRemoteAssetDelete: (id: string) => Promise<void>
+  addCategory: (name: string) => Promise<void>
+  deleteCategory: (name: string) => Promise<void>
   getAssetById: (id: string) => CustomAsset | undefined
   getAllCategories: () => string[]
-  getFurnitureCatalog: (baseCatalog: FurnitureDefinition[]) => FurnitureDefinition[]
+  getFurnitureCatalog: (base: FurnitureDefinition[]) => FurnitureDefinition[]
   syncAllAssetsToDisk: () => Promise<boolean>
 }
-
+let writes: Promise<unknown> = Promise.resolve()
+function queue(action: () => Promise<void>): Promise<void> {
+  const next = writes.catch(() => {}).then(action)
+  writes = next
+  return next.catch(error => {
+    console.error('[Assets] Save failed:', error)
+    if (typeof window !== 'undefined' && typeof window.alert === 'function') window.alert('Não foi possível salvar os assets. Os dados anteriores foram preservados.\n' + String(error))
+    throw error
+  })
+}
+async function commit(assets: CustomAsset[], categories: string[]) {
+  const pair = await buildAtlas(assets, categories)
+  // Decode before committing: missing references or images must not replace a valid library.
+  const doc = await readAtlas(pair)
+  await warmAssetImages(doc.assets)
+  await saveStoredAtlas(pair)
+  useCustomAssetsStore.setState({ customAssets: doc.assets, customCategories: categories })
+  saveCategories(categories)
+  notifyCustomAssetsChanged()
+}
+async function warmAssetImages(assets: CustomAsset[]) {
+  imageCache.clear()
+  const sources = new Set<string>()
+  for (const asset of assets) {
+    asset.frames.forEach(src => { if (src && !src.startsWith('composition:')) sources.add(src) })
+    for (const raw of Object.values(asset.directionalFrames || {})) {
+      for (const src of typeof raw === 'string' ? [raw] : raw) {
+        if (src && !src.startsWith('composition:')) sources.add(src)
+      }
+    }
+  }
+  const pending = [...sources].map(getCustomAssetImage)
+  let next = 0
+  let failed = 0
+  let expired = false
+  // This cache is optional. Limit simultaneous decodes, especially for large
+  // legacy libraries in Electron, after readAtlas has validated the actual PNG.
+  const warming = Promise.all(Array.from({ length: Math.min(8, pending.length) }, async () => {
+    while (!expired && next < pending.length) {
+      const image = pending[next++]
+      try {
+        if (image?.decode) await image.decode()
+      } catch {
+        failed++
+      }
+    }
+  }))
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([
+      warming,
+      new Promise<void>(resolve => { timer = setTimeout(resolve, 1000) }),
+    ])
+  } finally {
+    expired = true
+    clearTimeout(timer)
+  }
+  if (failed) console.warn('[Assets] Optional image preloading skipped:', failed)
+}
+export const syncToNativeFile = async (assets: CustomAsset[], categories: string[]): Promise<boolean> => {
+  try { await queue(() => commit(assets, categories)); return true } catch { return false }
+}
+const merge = (current: CustomAsset[], incoming: CustomAsset[]) => [...new Map([...current, ...incoming].map(a => [a.id, a])).values()]
+async function addAssets(incoming: CustomAsset[], broadcast: boolean, categories?: string[]) {
+  await queue(async () => {
+    const state = useCustomAssetsStore.getState()
+    const cats = [...new Set([...state.customCategories, ...(categories || []), ...incoming.map(a => a.category || 'Geral')])]
+    await commit(merge(state.customAssets, incoming), cats)
+    if (broadcast) PeerManager.getInstance().sendCustomAssetsSync(incoming, cats)
+  })
+}
+async function deleteAsset(id: string, broadcast: boolean) {
+  await queue(async () => {
+    const state = useCustomAssetsStore.getState()
+    await commit(state.customAssets.filter(a => a.id !== id), state.customCategories)
+    if (broadcast) PeerManager.getInstance().sendCustomAssetDelete(id)
+  })
+}
 export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
-  customAssets: loadSavedCustomAssets(),
+  customAssets: [],
   customCategories: loadSavedCategories(),
   isCustomModalOpen: false,
   editingAssetId: null,
   initialStudioMode: 'crop',
   initialCategory: 'Geral',
-  setCustomModalOpen: (open) =>
-    set({
-      isCustomModalOpen: open,
-      editingAssetId: open ? get().editingAssetId : null,
-    }),
-  setEditingAssetId: (id) => set({ editingAssetId: id }),
-  openCreateModal: (mode = 'crop', initialCategory = 'Geral') =>
-    set({ isCustomModalOpen: true, editingAssetId: null, initialStudioMode: mode, initialCategory }),
-  openEditModal: (id, mode = 'compose') =>
-    set({ isCustomModalOpen: true, editingAssetId: id, initialStudioMode: mode }),
-
-  addCustomAsset: (asset) => {
-    if (Array.isArray(asset.frames)) {
-      asset.frames.forEach(getCustomAssetImage)
+  setCustomModalOpen: open => set({ isCustomModalOpen: open, editingAssetId: open ? get().editingAssetId : null }),
+  setEditingAssetId: id => set({ editingAssetId: id }),
+  openCreateModal: (mode = 'crop', initialCategory = 'Geral') => set({ isCustomModalOpen: true, editingAssetId: null, initialStudioMode: mode, initialCategory }),
+  openEditModal: (id, mode = 'compose') => set({ isCustomModalOpen: true, editingAssetId: id, initialStudioMode: mode }),
+  addCustomAsset: asset => addAssets([asset], true),
+  addCustomAssets: assets => addAssets(assets, true),
+  updateCustomAsset: (id, partial) => queue(async () => {
+    const state = get()
+    const previous = state.customAssets.find(a => a.id === id)
+    if (!previous) throw new Error('Asset não encontrado')
+    const asset = { ...previous, ...partial, updatedAt: Date.now() }
+    if ((partial.frames || partial.directionalFrames) && !Object.prototype.hasOwnProperty.call(partial, 'sourceImageSrc')) {
+      // A pixel edit changes the source of truth. Reopening the original slicer
+      // sheet would discard those edits, so route this asset back to the studio.
+      asset.creationSource = 'studio'
+      delete asset.sourceImageSrc
+      delete asset.sourceXmlContent
+      delete asset.sourceFileName
+      delete asset.slicerPresets
     }
-    if (asset.directionalFrames) {
-      Object.values(asset.directionalFrames).forEach((frames) => {
-        if (Array.isArray(frames)) {
-          frames.forEach((f) => f && getCustomAssetImage(f))
-        } else if (typeof frames === 'string' && frames.length > 0) {
-          getCustomAssetImage(frames)
-        }
-      })
-    }
-    const updated = [...get().customAssets.filter((a) => a.id !== asset.id), asset]
-    saveCustomAssets(updated)
-
-    let newCats = get().customCategories
-    if (asset.category && !newCats.includes(asset.category)) {
-      newCats = [...newCats, asset.category]
-      saveCategories(newCats)
-    }
-
-    set({ customAssets: updated, customCategories: newCats })
-    syncToNativeFile(updated, newCats)
-    notifyCustomAssetsChanged()
-
+    await commit(merge(state.customAssets, [asset]), [...new Set([...state.customCategories, asset.category])])
     PeerManager.getInstance().sendCustomAssetAddOrUpdate(asset)
-  },
-
-  updateCustomAsset: (id, partial) => {
-    let fullAsset: CustomAsset | null = null
-    const updated = get().customAssets.map((a) => {
-      if (a.id === id) {
-        const res = { ...a, ...partial, updatedAt: Date.now() }
-        if (partial.thumbnail) {
-          getCustomAssetImage(partial.thumbnail)
-        }
-        if (partial.frames) {
-          partial.frames.forEach(getCustomAssetImage)
-        }
-        if (partial.directionalFrames) {
-          Object.values(partial.directionalFrames).forEach((frames) => {
-            if (Array.isArray(frames)) {
-              frames.forEach((f) => f && getCustomAssetImage(f))
-            } else if (typeof frames === 'string' && frames.length > 0) {
-              getCustomAssetImage(frames)
-            }
-          })
-        }
-        fullAsset = res
-        return res
-      }
-      return a
-    })
-    let updatedCats = get().customCategories
-    if (partial.category && !updatedCats.includes(partial.category)) {
-      updatedCats = [...updatedCats, partial.category]
-      saveCategories(updatedCats)
-    }
-    saveCustomAssets(updated)
-    set({ customAssets: updated, customCategories: updatedCats })
-    syncToNativeFile(updated, updatedCats)
-    notifyCustomAssetsChanged()
-
-    if (fullAsset) {
-      PeerManager.getInstance().sendCustomAssetAddOrUpdate(fullAsset)
-    }
-  },
-
-  deleteCustomAsset: (id) => {
-    const updated = get().customAssets.filter((a) => a.id !== id)
-    saveCustomAssets(updated)
-    set({ customAssets: updated })
-    syncToNativeFile(updated, get().customCategories)
-    notifyCustomAssetsChanged()
-
-    PeerManager.getInstance().sendCustomAssetDelete(id)
-  },
-
-  syncRemoteCustomAssets: (incomingAssets, incomingCategories) => {
-    if (!Array.isArray(incomingAssets)) return
-
-    incomingAssets.forEach((asset) => {
-      if (Array.isArray(asset.frames)) {
-        asset.frames.forEach(getCustomAssetImage)
-      }
-      if (asset.directionalFrames) {
-        Object.values(asset.directionalFrames).forEach((frames) => {
-          if (Array.isArray(frames)) {
-            frames.forEach((f) => f && getCustomAssetImage(f))
-          } else if (typeof frames === 'string' && frames.length > 0) {
-            getCustomAssetImage(frames)
-          }
-        })
-      }
-    })
-
-    const current = get().customAssets
-    const incomingMap = new Map(incomingAssets.map((a) => [a.id, a]))
-    const merged = current.map((a) => incomingMap.get(a.id) || a)
-    incomingAssets.forEach((a) => {
-      if (!current.some((c) => c.id === a.id)) {
-        merged.push(a)
-      }
-    })
-
-    saveCustomAssets(merged)
-
-    let updatedCats = get().customCategories
-    if (Array.isArray(incomingCategories)) {
-      const mergedCats = Array.from(new Set([...updatedCats, ...incomingCategories]))
-      saveCategories(mergedCats)
-      updatedCats = mergedCats
-    }
-
-    set({ customAssets: merged, customCategories: updatedCats })
-    notifyCustomAssetsChanged()
-  },
-
-  syncRemoteAssetAddOrUpdate: (asset) => {
-    if (!asset || !asset.id) return
-    if (Array.isArray(asset.frames)) {
-      asset.frames.forEach(getCustomAssetImage)
-    }
-    if (asset.directionalFrames) {
-      Object.values(asset.directionalFrames).forEach((frames) => {
-        if (Array.isArray(frames)) {
-          frames.forEach((f) => f && getCustomAssetImage(f))
-        } else if (typeof frames === 'string' && frames.length > 0) {
-          getCustomAssetImage(frames)
-        }
-      })
-    }
-    const current = get().customAssets
-    const exists = current.some((a) => a.id === asset.id)
-    const updated = exists ? current.map((a) => (a.id === asset.id ? asset : a)) : [...current, asset]
-    saveCustomAssets(updated)
-
-    let updatedCats = get().customCategories
-    if (asset.category && !updatedCats.includes(asset.category)) {
-      updatedCats = [...updatedCats, asset.category]
-      saveCategories(updatedCats)
-    }
-
-    set({ customAssets: updated, customCategories: updatedCats })
-    notifyCustomAssetsChanged()
-  },
-
-  syncRemoteAssetDelete: (id) => {
-    const updated = get().customAssets.filter((a) => a.id !== id)
-    saveCustomAssets(updated)
-    set({ customAssets: updated })
-    notifyCustomAssetsChanged()
-  },
-
-  addCategory: (categoryName) => {
-    const trimmed = categoryName.trim()
-    if (!trimmed) return
-    if (!get().customCategories.includes(trimmed)) {
-      const updated = [...get().customCategories, trimmed]
-      saveCategories(updated)
-      set({ customCategories: updated })
-      syncToNativeFile(get().customAssets, updated)
-    }
-  },
-
-  deleteCategory: (categoryName) => {
-    if (!categoryName || categoryName === 'Geral') return
-    const updatedCats = get().customCategories.filter((c) => c !== categoryName)
-    saveCategories(updatedCats)
-
-    let assetsChanged = false
-    const updatedAssets = get().customAssets.map((asset) => {
-      if (asset.category === categoryName) {
-        assetsChanged = true
-        return { ...asset, category: 'Geral' }
-      }
-      return asset
-    })
-
-    if (assetsChanged) {
-      saveCustomAssets(updatedAssets)
-    }
-
-    set({ customCategories: updatedCats, customAssets: updatedAssets })
-    syncToNativeFile(updatedAssets, updatedCats)
-  },
-
-  getAllCategories: () => {
-    const legacyCats = new Set([
-      'Forja Antiga',
-      'Escritório',
-      'Medieval',
-      'Decoração',
-      'Avatares',
-      'Pisos Personalizados',
-      'Paredes das Zonas',
-      'Mascotes',
-    ])
-    const list = get().customCategories.filter((c) => !legacyCats.has(c))
-    return list.length > 0 ? list : DEFAULT_CATEGORIES
-  },
-
-  getAssetById: (id) => {
-    const assets = get().customAssets
-    syncAssetByIdCache(assets)
-    const hit = assetByIdCache.get(id)
-    if (hit) return hit
-    return assets.find((a) => a.id === id)
-  },
-
+  }),
+  deleteCustomAsset: id => deleteAsset(id, true),
+  syncRemoteCustomAssets: (assets, categories) => addAssets(assets, false, categories),
+  syncRemoteAssetAddOrUpdate: asset => addAssets([asset], false),
+  syncRemoteAssetDelete: id => deleteAsset(id, false),
+  addCategory: name => queue(async () => {
+    if (!name.trim()) return
+    await commit(get().customAssets, [...new Set([...get().customCategories, name.trim()])])
+  }),
+  deleteCategory: name => queue(async () => {
+    if (name === 'Geral') return
+    await commit(get().customAssets.map(a => a.category === name ? { ...a, category: 'Geral' } : a), get().customCategories.filter(c => c !== name))
+  }),
+  getAssetById: id => get().customAssets.find(a => a.id === id),
+  getAllCategories: () => get().customCategories,
   getFurnitureCatalog: (baseCatalog) => {
     const customFurns: FurnitureDefinition[] = get()
       .customAssets.filter((a) => a.type === 'furniture')
@@ -558,29 +273,46 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
 
     return [...baseCatalog, ...customFurns]
   },
-
-  syncAllAssetsToDisk: async () => {
-    return syncToNativeFile(get().customAssets, get().customCategories)
-  },
+  syncAllAssetsToDisk: () => syncToNativeFile(get().customAssets, get().customCategories),
 }))
 
-if (typeof window !== 'undefined') {
-  try {
-    const state = useCustomAssetsStore.getState()
-    saveCustomAssets(state.customAssets)
-    saveCategories(state.customCategories)
-    syncToNativeFile(state.customAssets, state.customCategories)
-  } catch (err) {
-    console.error('Failed to persist normalized assets/categories:', err)
-  }
-
-  setTimeout(() => {
-    repairMissingDirectionalFrames(useCustomAssetsStore.getState().customAssets).then((changed) => {
-      if (changed) {
-        const updated = [...useCustomAssetsStore.getState().customAssets]
-        useCustomAssetsStore.setState({ customAssets: updated })
-        saveCustomAssets(updated)
-      }
-    })
-  }, 100)
+let initialization: Promise<void> | undefined
+export function initializeCustomAssets(): Promise<void> {
+  if (initialization) return initialization
+  initialization = (async () => {
+    const stored = await loadStoredAtlas()
+    const pairs = stored ? [stored] : await loadBundledAtlases()
+    let assets: CustomAsset[] = []
+    let categories = loadSavedCategories()
+    for (const pair of pairs) {
+      const doc = await readAtlas(pair)
+      assets = merge(assets, doc.assets)
+      categories = [...new Set([...categories, ...doc.categories])]
+    }
+    const api = (window as any).electronAPI
+    const native = api?.loadNativeAssets ? await api.loadNativeAssets() : null
+    const legacy = native ? unpackImages(native) as { assets?: CustomAsset[]; categories?: string[] } : null
+    if (legacy?.assets?.length) {
+      assets = merge(assets, legacy.assets)
+      categories = [...new Set([...categories, ...(legacy.categories || [])])]
+    }
+    const raw = localStorage.getItem(ASSETS_STORAGE_KEY)
+    if (raw) {
+      const local = JSON.parse(raw)
+      if (!Array.isArray(local)) throw new Error('Catálogo local antigo inválido; não foi removido')
+      assets = merge(assets, local)
+    }
+    await repairMissingDirectionalFrames(assets)
+    if (raw || legacy?.assets?.length) {
+      await commit(assets, categories)
+      localStorage.removeItem(ASSETS_STORAGE_KEY)
+      if (legacy?.assets?.length && api?.completeAssetAtlasMigration) await api.completeAssetAtlasMigration()
+    } else {
+      await warmAssetImages(assets)
+      useCustomAssetsStore.setState({ customAssets: assets, customCategories: categories })
+      notifyCustomAssetsChanged()
+    }
+    migrateStoredAvatarReferences(localStorage)
+  })().catch(error => { initialization = undefined; throw error })
+  return initialization
 }

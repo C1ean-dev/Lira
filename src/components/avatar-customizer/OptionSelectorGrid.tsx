@@ -124,8 +124,8 @@ export const OptionSelectorGrid: React.FC<Props> = ({
       return 0
     })
 
-  const handleConfirmDelete = (asset: CustomAsset) => {
-    deleteCustomAsset(asset.id)
+  const handleConfirmDelete = async (asset: CustomAsset) => {
+    await deleteCustomAsset(asset.id)
 
     const slot = activeCategory as AvatarComponentSlot
     const currentComp = avatar.customComponents?.[slot]
@@ -189,7 +189,7 @@ export const OptionSelectorGrid: React.FC<Props> = ({
               otherType: asset.id,
               customComponents: {
                 ...avatar.customComponents,
-                [activeCategory as AvatarComponentSlot]: asset.directionalFrames || asset.frames[0],
+                [activeCategory as AvatarComponentSlot]: asset.id,
               },
             })
           }}
@@ -376,7 +376,7 @@ export const OptionSelectorGrid: React.FC<Props> = ({
                 customComponents: {
                   ...avatar.customComponents,
                   [activeCategory as AvatarComponentSlot]:
-                    lastAsset.directionalFrames || lastAsset.frames[0],
+                    lastAsset.id,
                 },
               })
             }

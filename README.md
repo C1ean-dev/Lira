@@ -250,38 +250,37 @@ npm run electron:dev
 npm run electron:dual
 ```
 
+Abre duas janelas do Electron, com perfis separados. Os três modos de desenvolvimento usam a porta 5173; encerre o modo atual antes de iniciar outro.
+
 ### 4. Testes Automatizados
 ```bash
-npm test
+npx vitest run
 ```
 
 Para executar em modo interativo contínuo:
 ```bash
-npm run test:watch
+npx vitest
 ```
 
 ### 5. Verificação de Tipos TypeScript
 ```bash
-npm run build
+npx tsc --noEmit
 ```
 
 ### 6. Compilação de Produção
 
-- **Bundle Web e Electron**:
+- **Instalador Windows para o GitHub Releases**:
 ```bash
 npm run build
 ```
 
-- **Instalador Desktop (.exe)**:
-```bash
-npm run electron:build
-```
+O comando compila o capturador nativo, verifica os tipos, gera os processos do Electron em `out/` e o instalador em `release/`. O fluxo de GitHub Actions executa esse mesmo comando e publica o instalador no GitHub Releases a cada envio para `main`, ou quando acionado manualmente. Executar o comando localmente gera os arquivos em `release/`.
 
 ### 7. Logs e Relatórios de Erro
 
 O app grava em `logs/` (desenvolvimento) ou em `%APPDATA%\lira\logs` (instalado) a linha do tempo de cada execução e um relatório estruturado por erro, com a pilha, o estado do app e o que aconteceu antes. Para ver os erros do dia agrupados:
 ```bash
-npm run logs:errors
+node scripts/error-reports.js
 ```
 
 Quem usa o app envia os logs pelo botão **Gerar arquivo de logs** (configurações de áudio e tela de erro), que cria um `.zip` na pasta Downloads. Para ler o zip recebido:

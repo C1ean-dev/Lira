@@ -39,6 +39,7 @@ interface Props {
   presetName: string
   initialDataUrl?: string
   initialDirectionalFrames?: Partial<Record<Direction, string | string[]>>
+  singleSequence?: boolean
   avatar?: AvatarConfig
   initialWidth?: number
   initialHeight?: number
@@ -58,7 +59,7 @@ interface Props {
       category?: string
       spriteCollision?: SpriteCollision | null
     }
-  ) => void
+  ) => void | Promise<void>
 }
 
 const LIVE_RESIZE_DELAY_MS = 180
@@ -95,6 +96,22 @@ const DIRECTIONS: { id: Direction; label: string; icon: string }[] = [
   { id: 'right', label: 'Direita', icon: '➡️' },
 ]
 
+const calcBestZoom = (w: number, h: number) => {
+  const maxDim = Math.max(w, h)
+  if (maxDim <= 16) return 20
+  if (maxDim <= 24) return 16
+  if (maxDim <= 32) return 14
+  if (maxDim <= 48) return 10
+  if (maxDim <= 64) return 8
+  if (maxDim <= 96) return 5
+  if (maxDim <= 128) return 4
+  if (maxDim <= 256) return 2
+  if (maxDim <= 512) return 1
+  if (maxDim <= 1024) return 0.5
+  if (maxDim <= 2048) return 0.25
+  return 0.1
+}
+
 export const AvatarPixelArtModal: React.FC<Props> = ({
   isOpen,
   onClose,
@@ -102,6 +119,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
   presetName,
   initialDataUrl,
   initialDirectionalFrames,
+  singleSequence = false,
   avatar,
   initialWidth,
   initialHeight,
@@ -223,8 +241,8 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     '#ffd1a4',
   ])
 
-  const [zoom, setZoom] = useState<number>(14)
-  const [defaultZoom, setDefaultZoom] = useState<number>(14)
+  const [zoom, setZoom] = useState<number>(() => calcBestZoom(pixelWidth, pixelHeight))
+  const [defaultZoom, setDefaultZoom] = useState<number>(() => calcBestZoom(pixelWidth, pixelHeight))
   const zoomRef = useRef(zoom)
   zoomRef.current = zoom
   const defaultZoomRef = useRef(defaultZoom)
@@ -280,18 +298,37 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     }
   }, [])
 
-  const calcBestZoom = (w: number, h: number) => {
-    const maxDim = Math.max(w, h)
-    if (maxDim <= 16) return 20
-    if (maxDim <= 24) return 16
-    if (maxDim <= 32) return 14
-    if (maxDim <= 48) return 10
-    if (maxDim <= 64) return 8
-    if (maxDim <= 96) return 5
-    if (maxDim <= 128) return 4
-    if (maxDim <= 256) return 2
-    return 1
-  }
+  useEffect(() => {
+    if (!isOpen) return
+    const allUrls = [
+      ...(directionalFrames.down || []),
+      ...(directionalFrames.up || []),
+      ...(directionalFrames.left || []),
+      ...(directionalFrames.right || []),
+      initialDataUrl || '',
+    ].filter(Boolean)
+
+    if (allUrls.length === 0) return
+
+    let cancelled = false
+    allUrls.forEach((url) => {
+      const img = new Image()
+      img.src = url
+      img.onload = () => {
+        if (cancelled) return
+        if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+          setPixelWidth((prevW) => Math.max(prevW, img.naturalWidth))
+          setPixelHeight((prevH) => Math.max(prevH, img.naturalHeight))
+          setTamanhoWidth((prevW) => Math.max(prevW, img.naturalWidth))
+          setTamanhoHeight((prevH) => Math.max(prevH, img.naturalHeight))
+        }
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, directionalFrames, initialDataUrl])
 
   const [isDrawing, setIsDrawing] = useState<boolean>(false)
   const [hoverPixel, setHoverPixel] = useState<{ x: number; y: number } | null>(null)
@@ -668,14 +705,14 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 
         let deltaZoom = 0
         if (e.deltaY < 0) {
-          deltaZoom = currentZoom < 4 ? 1 : currentZoom < 12 ? 2 : 4
+          deltaZoom = currentZoom < 0.5 ? 0.05 : currentZoom < 1 ? 0.1 : currentZoom < 4 ? 1 : currentZoom < 12 ? 2 : 4
         } else if (e.deltaY > 0) {
-          deltaZoom = currentZoom <= 4 ? -1 : currentZoom <= 12 ? -2 : -4
+          deltaZoom = currentZoom <= 0.5 ? -0.05 : currentZoom <= 1 ? -0.1 : currentZoom <= 4 ? -1 : currentZoom <= 12 ? -2 : -4
         }
 
         if (deltaZoom === 0) return
 
-        const nextZoom = Math.min(32, Math.max(1, currentZoom + deltaZoom))
+        const nextZoom = Math.min(32, Math.max(0.1, Math.round((currentZoom + deltaZoom) * 100) / 100))
         if (nextZoom === currentZoom) return
 
         const k = nextZoom / currentZoom
@@ -807,18 +844,24 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       const img = new Image()
       img.src = currentImgUrl
       img.onload = () => {
-        if (!initialLoadedRef.current && img.naturalWidth > 0 && img.naturalHeight > 0) {
-          initialLoadedRef.current = true
-          if (img.naturalWidth !== canvasPixelWidth || img.naturalHeight !== canvasPixelHeight) {
-            setPixelWidth(img.naturalWidth)
-            setPixelHeight(img.naturalHeight)
-            setInputWidthStr(String(img.naturalWidth))
-            setInputHeightStr(String(img.naturalHeight))
-            const bestZ = calcBestZoom(img.naturalWidth, img.naturalHeight)
-            setZoom(bestZ)
-            setDefaultZoom(bestZ)
-            setPanOffset({ x: 0, y: 0 })
-            return
+        if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+          const targetW = Math.max(canvasPixelWidth, img.naturalWidth)
+          const targetH = Math.max(canvasPixelHeight, img.naturalHeight)
+          if (!initialLoadedRef.current || targetW > canvasPixelWidth || targetH > canvasPixelHeight) {
+            initialLoadedRef.current = true
+            if (targetW !== canvasPixelWidth || targetH !== canvasPixelHeight) {
+              setPixelWidth(targetW)
+              setPixelHeight(targetH)
+              setInputWidthStr(String(targetW))
+              setInputHeightStr(String(targetH))
+              setTamanhoWidth((tw) => Math.max(tw, targetW))
+              setTamanhoHeight((th) => Math.max(th, targetH))
+              const bestZ = calcBestZoom(targetW, targetH)
+              setZoom(bestZ)
+              setDefaultZoom(bestZ)
+              setPanOffset({ x: 0, y: 0 })
+              return
+            }
           }
         }
 
@@ -1629,8 +1672,8 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       [activeDirection]: currentDirFrames,
     }
 
-    const finalPixelW = Math.max(1, tamanhoWidth)
-    const finalPixelH = Math.max(1, tamanhoHeight)
+    const finalPixelW = Math.max(1, tamanhoWidth, canvasPixelWidth)
+    const finalPixelH = Math.max(1, tamanhoHeight, canvasPixelHeight)
     const finalTileW = Math.max(1, Math.ceil(finalPixelW / 32))
     const finalTileH = Math.max(1, Math.ceil(finalPixelH / 32))
 
@@ -1651,8 +1694,10 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
           category === 'furniture' && isObstacle
             ? await spriteCollisionFromFrames(frames, finalPixelW, finalPixelH)
             : undefined
-        onSave(frames, customName.trim() || `Preset ${CATEGORY_LABELS[category]}`, { ...saveOptions, spriteCollision })
+        await onSave(frames, customName.trim() || `Preset ${CATEGORY_LABELS[category]}`, { ...saveOptions, spriteCollision })
         onClose()
+      } catch (error) {
+        console.error('[Assets] Studio save failed:', error)
       } finally {
         savingRef.current = false
       }
@@ -1662,8 +1707,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       finalFrames.up = [...finalFrames.down]
       finalFrames.left = [...finalFrames.down]
       finalFrames.right = [...finalFrames.down]
-      onSave(finalFrames, customName.trim() || `Preset ${CATEGORY_LABELS[category]}`, saveOptions)
-      onClose()
+      void commit(finalFrames)
       return
     }
 
@@ -2054,7 +2098,8 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               <button
                 onClick={() => {
                   const currentZ = zoom
-                  const nextZoom = Math.max(1, currentZ <= 4 ? currentZ - 1 : currentZ - 2)
+                  const step = currentZ <= 0.5 ? 0.05 : currentZ <= 1 ? 0.1 : currentZ <= 4 ? 1 : 2
+                  const nextZoom = Math.max(0.1, Math.round((currentZ - step) * 100) / 100)
                   if (nextZoom !== currentZ) {
                     const k = nextZoom / currentZ
                     setZoom(nextZoom)
@@ -2066,11 +2111,14 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               >
                 <ZoomOut className="w-4 h-4" />
               </button>
-              <span className="text-xs font-mono font-bold text-slate-300 min-w-[36px] text-center">{zoom}x</span>
+              <span className="text-xs font-mono font-bold text-slate-300 min-w-[42px] text-center">
+                {zoom < 1 ? zoom.toFixed(2) : zoom}x
+              </span>
               <button
                 onClick={() => {
                   const currentZ = zoom
-                  const nextZoom = Math.min(32, currentZ < 4 ? currentZ + 1 : currentZ + 2)
+                  const step = currentZ < 0.5 ? 0.05 : currentZ < 1 ? 0.1 : currentZ < 4 ? 1 : 2
+                  const nextZoom = Math.min(32, Math.round((currentZ + step) * 100) / 100)
                   if (nextZoom !== currentZ) {
                     const k = nextZoom / currentZ
                     setZoom(nextZoom)
@@ -2361,7 +2409,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 
               <div data-section="Animation frames of the active direction" className="flex flex-col gap-1.5 mt-1">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                  {category === 'floor' ? 'Quadros' : `Quadros (${DIRECTIONS.find((direction) => direction.id === activeDirection)?.label})`}
+                  {category === 'floor' || singleSequence ? 'Quadros' : `Quadros (${DIRECTIONS.find((direction) => direction.id === activeDirection)?.label})`}
                 </span>
                 <div className="flex flex-col gap-2 bg-[#1e1f22] p-2 rounded-xl border border-[#383a40]/60">
                   <div className="flex flex-wrap items-start gap-1 max-h-[9.5rem] overflow-y-auto px-0.5 pt-2 pb-1">
@@ -2558,7 +2606,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               </div>
 
               <span className="hidden" aria-hidden="true">4 Directions Mini Previews</span>
-              {category !== 'floor' && (
+              {category !== 'floor' && !singleSequence && (
                 <div className="flex flex-col gap-1.5 mt-1">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     Quadros das 4 Direções

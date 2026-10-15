@@ -42,11 +42,11 @@ describe('symbolicator', () => {
     ])
   })
 
-  it('translates the main process bundle too', () => {
-    const { symbolicator } = setup()
-    expect(symbolicator.frames([frame(MAIN, 2, 10, 'createWindow'), frame(MAIN, 3, 1)])).toEqual([
-      { fn: 'createWindow', file: 'electron/main.ts', line: 401, col: 3, app: true, min: `${MAIN}:2:10` },
-      { file: 'src/utils/logFormat.ts', line: 51, col: 5, app: true, min: `${MAIN}:3:1` },
+  it.each([MAIN, 'out/main.js'])('translates the main process bundle at %s', (bundle) => {
+    const { symbolicator } = setup({ [bundle]: MAIN_MAP })
+    expect(symbolicator.frames([frame(bundle, 2, 10, 'createWindow'), frame(bundle, 3, 1)])).toEqual([
+      { fn: 'createWindow', file: 'electron/main.ts', line: 401, col: 3, app: true, min: `${bundle}:2:10` },
+      { file: 'src/utils/logFormat.ts', line: 51, col: 5, app: true, min: `${bundle}:3:1` },
     ])
   })
 

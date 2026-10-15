@@ -3,6 +3,7 @@ import { TILE_SIZE } from './Constants'
 import { getCustomAssetImage, useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import { NameTagRenderer } from './avatar/nameTagRenderer'
 import { AvatarAtlasManager, SubTexture } from './avatar/AvatarAtlasManager'
+import { activitySequence } from '../utils/avatarActivityAnimations'
 export { NameTagRenderer } from './avatar/nameTagRenderer'
 export { AvatarAtlasManager } from './avatar/AvatarAtlasManager'
 
@@ -124,6 +125,18 @@ export class AvatarRenderer {
     let bodyBob = 0
     let walkFrame = 0
     const isMoving = !!player.isMoving
+    const activity = !isMoving && player.activityAnimation !== 'none' ? player.activityAnimation : undefined
+    const activityElapsed = Math.max(0, Date.now() - (player.activityAnimationStartedAt || Date.now()))
+    let renderedActivity = false
+    const drawActivityCue = () => {
+      if (!activity || renderedActivity) return
+      ctx.save()
+      ctx.font = 'bold 10px sans-serif'
+      ctx.fillStyle = '#c4b5fd'
+      ctx.textAlign = 'center'
+      ctx.fillText(activity === 'sleep' ? 'Zzz' : '…', px + size, py - 4 - Math.sin(animationTick / 400) * 2)
+      ctx.restore()
+    }
 
     if (isMoving) {
       walkFrame = Math.floor((animationTick / 120) % 4)
@@ -157,6 +170,7 @@ export class AvatarRenderer {
         if (showNameTag) {
           NameTagRenderer.drawNameTag(ctx, player, isLocal, centerX, py - 13)
         }
+        drawActivityCue()
         ctx.restore()
         return
       }
@@ -177,11 +191,23 @@ export class AvatarRenderer {
     const drawCustomComponent = (component?: string | Partial<Record<Direction, string | string[]>>) => {
       if (!component) return
       let resolvedComponent = component
+      let activeFrames = false
+      let activityFrame = 0
 
       if (typeof component === 'string') {
         const byId = getCustomById().get(component)
-        if (byId?.directionalFrames) {
+        const animationFrames = activitySequence(activity ? byId?.activityAnimations?.[activity] : undefined)
+        if (animationFrames.length) {
+          resolvedComponent = { down: animationFrames }
+          activeFrames = true
+          activityFrame = Math.floor(activityElapsed / Math.max(1, byId?.frameRateMs || 160))
+        } else if (byId?.directionalFrames) {
           resolvedComponent = byId.directionalFrames
+        } else if (byId?.frames.length) {
+          resolvedComponent = {
+            down: byId.frames[0], up: byId.frames[1] || byId.frames[0],
+            left: byId.frames[2] || byId.frames[0], right: byId.frames[3] || byId.frames[0],
+          }
         } else if (!byId) {
           const matchingAsset = customAssetsList.find(
             (a) =>
@@ -208,21 +234,23 @@ export class AvatarRenderer {
           if (!rawFrames) return undefined
           if (typeof rawFrames === 'string') return rawFrames
           if (!Array.isArray(rawFrames) || rawFrames.length === 0) return undefined
+          if (activeFrames) return rawFrames[activityFrame % rawFrames.length]
           if (!isMoving) return rawFrames[0]
           return rawFrames[walkFrame % rawFrames.length]
         }
 
-        dataUrl = pickDirectionFrame(resolvedComponent[dir])
+        dataUrl = pickDirectionFrame(resolvedComponent[activeFrames ? 'down' : dir])
 
         if (!dataUrl) {
-          if (dir === 'left' && resolvedComponent.right) {
+          if (dir === 'left') {
             dataUrl = pickDirectionFrame(resolvedComponent.right)
-            shouldFlip = true
-          } else if (dir === 'right' && resolvedComponent.left) {
+            shouldFlip = !!dataUrl
+          } else if (dir === 'right') {
             dataUrl = pickDirectionFrame(resolvedComponent.left)
-            shouldFlip = true
+            shouldFlip = !!dataUrl
           }
         }
+        if (!dataUrl && activeFrames) dataUrl = pickDirectionFrame(resolvedComponent.down) || Object.values(resolvedComponent).map(pickDirectionFrame).find(Boolean)
       }
 
       if (!dataUrl) return
@@ -238,6 +266,7 @@ export class AvatarRenderer {
         const drawHeight = size * imgAspect
         const drawY = py + size - drawHeight + bodyBob
         ctx.drawImage(img, px, drawY, size, drawHeight)
+        if (activeFrames) renderedActivity = true
         ctx.restore()
       }
     }
@@ -251,8 +280,10 @@ export class AvatarRenderer {
       avatar.customAvatarId ||
       DEFAULT_RETRO_ID
 
+    const hasActivityFrames = activity && typeof otherComp === 'string' &&
+      activitySequence(getCustomById().get(otherComp)?.activityAnimations?.[activity]).length > 0
     const renderedAtlas =
-      typeof otherComp === 'string'
+      typeof otherComp === 'string' && !hasActivityFrames
         ? AvatarRenderer.drawAtlasPart(ctx, px, py, bodyBob, size, dir, 'other', otherComp, walkFrame)
         : false
 
@@ -263,6 +294,8 @@ export class AvatarRenderer {
     if (showNameTag) {
       NameTagRenderer.drawNameTag(ctx, player, isLocal, centerX, py - 13)
     }
+
+    drawActivityCue()
 
     ctx.restore()
     return

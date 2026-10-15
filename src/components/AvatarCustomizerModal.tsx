@@ -18,7 +18,6 @@ import { AvatarPixelArtModal } from '../editor/avatar/AvatarPixelArtModal'
 import { bakeAllAvatarDirections, cropContentDataUrl } from '../engine/avatar/avatarBakeService'
 import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import { CustomAsset } from '../types/customAsset'
-import { saveAssetFileToDisk, savePetAtlasToDisk } from '../utils/diskAssetPersistence'
 import { resolveUniquePlayerName } from '../utils/playerName'
 import { presetNameForStudio } from '../utils/studioNaming'
 
@@ -56,6 +55,10 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     presetId: string
     presetName: string
     directionalFrames?: Record<Direction, string | string[]>
+    width?: number
+    height?: number
+    pixelWidth?: number
+    pixelHeight?: number
   } | null>(null)
 
   useEffect(() => {
@@ -109,6 +112,10 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
       presetId,
       presetName: presetNameForStudio(label, !!customAsset),
       directionalFrames,
+      width: customAsset?.width,
+      height: customAsset?.height,
+      pixelWidth: customAsset?.pixelWidth,
+      pixelHeight: customAsset?.pixelHeight,
     })
   }
 
@@ -124,7 +131,15 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
   const handleSavePresetFromStudio = async (
     directionalFrames: Record<Direction, string | string[]>,
-    name: string
+    name: string,
+    options?: {
+      width?: number
+      height?: number
+      pixelWidth?: number
+      pixelHeight?: number
+      isObstacle?: boolean
+      category?: string
+    }
   ) => {
     if (!editingPreset) return
     const category = editingPreset.category
@@ -151,36 +166,22 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
     let savedAssetId = ''
 
-    let petAtlasInfo: { pngDataUrl: string; xmlContent: string } | null = null
-    const cleanBase = customName.toLowerCase().replace(/[^a-z0-9]/g, '_') || `${category}_${Date.now()}`
-
-    if (category === 'pet') {
-      try {
-        petAtlasInfo = await savePetAtlasToDisk(cleanBase, directionalFrames)
-      } catch (e) {
-        console.warn('Could not auto-save pet atlas file to disk:', e)
-      }
-    } else if (thumbnail) {
-      saveAssetFileToDisk(`public/assets/avatar/${cleanBase}.png`, thumbnail, 'base64')
-    }
-
     if (existingAsset) {
       savedAssetId = existingAsset.id
-      store.updateCustomAsset(existingAsset.id, {
+      await store.updateCustomAsset(existingAsset.id, {
         name: customName,
         thumbnail,
         frames: [firstDown, firstUp, firstLeft, firstRight],
         directionalFrames,
+        width: options?.width ?? existingAsset.width,
+        height: options?.height ?? existingAsset.height,
+        pixelWidth: options?.pixelWidth ?? existingAsset.pixelWidth,
+        pixelHeight: options?.pixelHeight ?? existingAsset.pixelHeight,
         creationSource: 'studio',
-        ...(petAtlasInfo
-          ? {
-              sourceImageSrc: petAtlasInfo.pngDataUrl,
-              sourceFileName: `${cleanBase}.png`,
-              sourceXmlContent: petAtlasInfo.xmlContent,
-            }
-          : {}),
       })
     } else {
+      const finalPixelW = options?.pixelWidth || (options?.width ? options.width * 32 : 32)
+      const finalPixelH = options?.pixelHeight || (options?.height ? options.height * 32 : 32)
       const newAsset: CustomAsset = {
         id: `avatar_${category}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         name: customName,
@@ -188,24 +189,19 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
         category: 'Geral',
         avatarSlot: category,
         thumbnail,
-        width: 1,
-        height: 1,
-        isObstacle: false,
+        width: options?.width || Math.max(1, Math.ceil(finalPixelW / 32)),
+        height: options?.height || Math.max(1, Math.ceil(finalPixelH / 32)),
+        pixelWidth: finalPixelW,
+        pixelHeight: finalPixelH,
+        isObstacle: options?.isObstacle ?? false,
         frames: [firstDown, firstUp, firstLeft, firstRight],
         directionalFrames,
         frameRateMs: 160,
         createdAt: Date.now(),
         creationSource: 'studio',
-        ...(petAtlasInfo
-          ? {
-              sourceImageSrc: petAtlasInfo.pngDataUrl,
-              sourceFileName: `${cleanBase}.png`,
-              sourceXmlContent: petAtlasInfo.xmlContent,
-            }
-          : {}),
       }
       savedAssetId = newAsset.id
-      store.addCustomAsset(newAsset)
+      await store.addCustomAsset(newAsset)
     }
 
     let updatedAvatar: AvatarConfig
@@ -216,7 +212,6 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
           type: 'custom',
           customAssetId: savedAssetId,
           name: customName,
-          directionalFrames,
         },
       }
     } else {
@@ -224,7 +219,7 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
         ...avatar,
         customComponents: {
           ...avatar.customComponents,
-          [category]: directionalFrames,
+          [category]: savedAssetId,
         },
       }
     }
@@ -277,7 +272,7 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
         ...avatar,
         customSkinUrl: undefined,
         customAvatarId: picked.id,
-        customComponents: { other: picked.directionalFrames || picked.frames[0] || picked.id },
+        customComponents: { other: picked.id },
         otherType: picked.id,
       })
     }
@@ -437,6 +432,10 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
           presetName={editingPreset.presetName}
           initialDirectionalFrames={editingPreset.directionalFrames}
           avatar={avatar}
+          initialWidth={editingPreset.width}
+          initialHeight={editingPreset.height}
+          initialPixelWidth={editingPreset.pixelWidth}
+          initialPixelHeight={editingPreset.pixelHeight}
           onSave={handleSavePresetFromStudio}
         />
       )}

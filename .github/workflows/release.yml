@@ -32,7 +32,7 @@ jobs:
         run: npm ci
 
       - name: Run Test Suite
-        run: npm test
+        run: npx vitest run
 
       - name: Generate Dynamic Version Tag and Bump package.json
         id: tag
@@ -43,7 +43,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
-        run: npm run electron:build
+        run: npm run build
 
       - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2

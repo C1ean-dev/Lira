@@ -7,7 +7,6 @@ import {
   ParsedAtlasPreset,
 } from '../../engine/avatar/avatarAtlasImporter'
 import { AvatarSpritesheetSlicerModal } from './AvatarSpritesheetSlicerModal'
-import { saveAssetFileToDisk } from '../../utils/diskAssetPersistence'
 
 interface Props {
   isOpen: boolean
@@ -116,35 +115,13 @@ export const AtlasImportModal: React.FC<Props> = ({
     }
   }
 
-  const handleConfirmImport = () => {
+  const handleConfirmImport = async () => {
     if (parsedPresets.length === 0) return
-    const created = importPresetsIntoStore(category, parsedPresets)
-
-    const subfolder =
-      category === 'pet'
-        ? 'pet'
-        : category === 'furniture'
-        ? 'furniture'
-        : category === 'floor'
-        ? 'floor'
-        : category === 'wall'
-        ? 'wall'
-        : 'avatar'
-    const baseName = `${category}_imported_${Date.now()}`
-    if (xmlContent) {
-      saveAssetFileToDisk(
-        `public/assets/${subfolder}/${baseName}.xml`,
-        xmlContent,
-        'utf-8'
-      ).catch((e) => console.warn('Could not auto-save imported XML to disk:', e))
-    }
-    if (pngDataUrl) {
-      saveAssetFileToDisk(
-        `public/assets/${subfolder}/${baseName}.png`,
-        pngDataUrl,
-        'base64'
-      ).catch((e) => console.warn('Could not auto-save imported PNG to disk:', e))
-    }
+    let created
+    setIsProcessing(true)
+    try { created = await importPresetsIntoStore(category, parsedPresets) }
+    catch (error) { setErrorMessage(String(error)); return }
+    finally { setIsProcessing(false) }
 
     setSuccessCount(created.length)
     if (onImportSuccess) {
@@ -332,7 +309,7 @@ export const AtlasImportModal: React.FC<Props> = ({
                           >
                             {frame ? (
                               <img
-                                src={frame}
+                                src={Array.isArray(frame) ? frame[0] : frame}
                                 alt={dir}
                                 className="w-6 h-6 [image-rendering:pixelated]"
                               />

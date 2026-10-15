@@ -12,6 +12,7 @@ import { DoorKnockPrompt } from './DoorKnockPrompt'
 import { SpotifyJamSideDisplay } from './spotify/SpotifyJamSideDisplay'
 import { SpotifyJamModal } from './spotify/SpotifyJamModal'
 import { useSpotifyPresence } from '../hooks/useSpotifyPresence'
+import { useAvatarInactivity } from '../hooks/useAvatarInactivity'
 
 interface Props {
   onOpenAvatarModal: () => void
@@ -31,6 +32,7 @@ export const SpaceShell: React.FC<Props> = ({
   onDisconnect,
 }) => {
   useSpotifyPresence()
+  useAvatarInactivity()
 
   return (
   <>
