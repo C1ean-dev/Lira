@@ -1,3 +1,5 @@
+import { loadSeasonalSound } from './seasonalSoundLibrary'
+
 export type SoundEffectType =
   | 'mute'
   | 'unmute'
@@ -7,6 +9,9 @@ export type SoundEffectType =
   | 'user_leave'
   | 'live_start'
   | 'live_stop'
+  | 'message'
+  | 'knock'
+  | 'call'
 
 export type SoundTheme = 'auto' | 'default' | 'halloween' | 'christmas'
 export type ResolvedSoundTheme = 'default' | 'halloween' | 'christmas'
@@ -40,7 +45,7 @@ export const SOUND_THEMES: Record<SoundTheme, SoundThemeInfo> = {
     name: 'Halloween',
     label: 'Halloween',
     icon: '🎃',
-    description: 'Timbres de terror, gemidos fantasmagóricos, órgão gótico e suspense',
+    description: 'Risada de bruxa, portas rangendo, assombrações e órgão de castelo',
     seasonLabel: 'Outubro (Dia das Bruxas)',
   },
   christmas: {
@@ -48,7 +53,7 @@ export const SOUND_THEMES: Record<SoundTheme, SoundThemeInfo> = {
     name: 'Natal',
     label: 'Natal',
     icon: '🎄',
-    description: 'Sinos natalinos prateados, celesta e trenó com Jingle Bells',
+    description: 'Guizos de trenó, sinos de Natal e trechos instrumentais de Jingle Bells',
     seasonLabel: 'Dezembro (Boas Festas)',
   },
 }
@@ -150,6 +155,9 @@ export const SOUND_EFFECT_LABELS: Record<SoundEffectType, { label: string; icon:
   user_leave: { label: 'Saída da Chamada', icon: '🚶' },
   live_start: { label: 'Início da Live', icon: '📺' },
   live_stop: { label: 'Fim da Live', icon: '⏹️' },
+  message: { label: 'Nova Mensagem', icon: '💬' },
+  knock: { label: 'Batida na Porta', icon: '🚪' },
+  call: { label: 'Convite de Chamada', icon: '☎️' },
 }
 
 const THROTTLE_MS: Record<SoundEffectType, number> = {
@@ -161,6 +169,9 @@ const THROTTLE_MS: Record<SoundEffectType, number> = {
   user_leave: 450,
   live_start: 350,
   live_stop: 350,
+  message: 180,
+  knock: 450,
+  call: 700,
 }
 
 /* Helper para sintetizar tom com envelope e pitch glide */
@@ -289,6 +300,16 @@ function playChristmasBell(
 
 function playDefaultSound(ctx: AudioContext, masterGain: GainNode, type: SoundEffectType, now: number): void {
   switch (type) {
+    case 'message':
+      playTone(ctx, masterGain, { freq: 587.33, time: now, dur: .28, vol: .55 })
+      playTone(ctx, masterGain, { freq: 880, time: now + .09, dur: .42, vol: .65 })
+      break
+    case 'knock':
+      for (const offset of [0, .13]) playTone(ctx, masterGain, { type: 'triangle', freq: 195 - offset * 230, endFreq: 65, time: now + offset, dur: .08, vol: .8, attack: .002 })
+      break
+    case 'call':
+      for (const [index, freq] of [440, 554.37, 659.25].entries()) playTone(ctx, masterGain, { type: 'triangle', freq, time: now + index * .1, dur: .35, vol: .55 })
+      break
     case 'mute': {
       const osc = ctx.createOscillator()
       const gain = ctx.createGain()
@@ -721,7 +742,7 @@ export function playSoundEffect(type: SoundEffectType, force: boolean = false): 
 
     const now = ctx.currentTime
     const rawVol = options && typeof options.volume === 'number' ? options.volume : 80
-    const baseVolume = (rawVol / 100) * 0.35
+    const baseVolume = (Math.max(0, Math.min(100, Number.isFinite(rawVol) ? rawVol : 80)) / 100) * 0.35
 
     if (baseVolume <= 0.001) return
 
@@ -731,17 +752,48 @@ export function playSoundEffect(type: SoundEffectType, force: boolean = false): 
 
     const effectiveTheme = resolveEffectiveSoundTheme(options?.soundTheme)
 
-    switch (effectiveTheme) {
-      case 'halloween':
-        playHalloweenSound(ctx, masterGain, type, now)
-        break
-      case 'christmas':
-        playChristmasSound(ctx, masterGain, type, now)
-        break
-      case 'default':
-      default:
-        playDefaultSound(ctx, masterGain, type, now)
-        break
+    const synthesizeFallback = () => {
+      const time = ctx.currentTime
+      if (type === 'message' || type === 'knock' || type === 'call' || effectiveTheme === 'default') {
+        playDefaultSound(ctx, masterGain, type, time)
+      } else if (effectiveTheme === 'halloween') {
+        playHalloweenSound(ctx, masterGain, type, time)
+      } else {
+        playChristmasSound(ctx, masterGain, type, time)
+      }
+      setTimeout(() => masterGain.disconnect?.(), 1500)
     }
+
+    if (effectiveTheme !== 'default' && typeof ctx.createBufferSource === 'function') {
+      const stillAllowed = () => {
+        const latest = optionsProvider?.()
+        return audioCtx === ctx && ctx.state !== 'closed' && (latest?.volume ?? 80) > 0 && resolveEffectiveSoundTheme(latest?.soundTheme) === effectiveTheme &&
+          (force || latest?.enabled !== false) &&
+          (force || !latest?.isDeafened || (type !== 'user_join' && type !== 'user_leave')) &&
+          Date.now() - nowMs < 3000
+      }
+      void loadSeasonalSound(ctx, effectiveTheme, type).then(buffer => {
+        if (!stillAllowed()) { masterGain.disconnect(); return }
+        const latestVolume = optionsProvider?.()?.volume ?? 80
+        const volume = Math.max(0, Math.min(100, Number.isFinite(latestVolume) ? latestVolume : 80)) / 100 * .35
+        if (volume <= .001) { masterGain.disconnect(); return }
+        masterGain.gain.setValueAtTime(volume, ctx.currentTime)
+        const source = ctx.createBufferSource()
+        source.buffer = buffer
+        source.connect(masterGain)
+        source.onended = () => { source.disconnect(); masterGain.disconnect() }
+        source.start(ctx.currentTime)
+      }).catch(() => {
+        if (stillAllowed()) {
+          const latestVolume = optionsProvider?.()?.volume ?? 80
+          masterGain.gain.setValueAtTime(Math.max(0, Math.min(100, Number.isFinite(latestVolume) ? latestVolume : 80)) / 100 * .35, ctx.currentTime)
+          synthesizeFallback()
+        }
+        else masterGain.disconnect()
+      })
+      return
+    }
+
+    synthesizeFallback()
   } catch (err) {}
 }

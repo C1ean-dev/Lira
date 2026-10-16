@@ -7,37 +7,6 @@ import { RoomKnockRequest } from '../types/game'
 import { sendNotification } from '../services/notificationService'
 import { PlayerAvatar } from './common/PlayerAvatar'
 
-function playKnockSound() {
-  try {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
-    if (!AudioCtx) return
-    const ctx = new AudioCtx()
-
-    const playTap = (time: number, freq: number) => {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.type = 'triangle'
-      osc.frequency.setValueAtTime(freq, time)
-      osc.frequency.exponentialRampToValueAtTime(70, time + 0.08)
-      gain.gain.setValueAtTime(0.25, time)
-      gain.gain.exponentialRampToValueAtTime(0.001, time + 0.08)
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.start(time)
-      osc.stop(time + 0.09)
-    }
-
-    const now = ctx.currentTime
-    playTap(now, 190)
-    playTap(now + 0.13, 160)
-
-    setTimeout(() => {
-      ctx.close().catch(() => {})
-    }, 300)
-  } catch (e) {
-  }
-}
-
 export const DoorKnockNotification: React.FC = () => {
   const pendingKnocks = useGameStore((s) => s.pendingKnocks)
   const currentZoneId = useGameStore((s) => s.localPlayer.currentZoneId)
@@ -56,7 +25,6 @@ export const DoorKnockNotification: React.FC = () => {
       const newest = activeKnocks[activeKnocks.length - 1]
       if (newest.id !== lastSeenKnockId.current) {
         lastSeenKnockId.current = newest.id
-        playKnockSound()
         sendNotification({
           title: 'Batida na Porta - Lira',
           body: `${newest.requesterName} está pedindo para entrar em "${newest.zoneName}".`,

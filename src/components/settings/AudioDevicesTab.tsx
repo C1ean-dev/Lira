@@ -676,6 +676,9 @@ export const AudioDevicesTab: React.FC<Props> = ({
                     'user_leave',
                     'live_start',
                     'live_stop',
+                    'message',
+                    'knock',
+                    'call',
                   ] as SoundEffectType[]
                 ).map((type) => {
                   const meta = SOUND_EFFECT_LABELS[type]

@@ -1,81 +1,9 @@
+import { playSoundEffect } from '../utils/soundEffects'
 
 export type NotificationSoundType = 'knock' | 'message' | 'call'
 
-let audioCtx: AudioContext | null = null
-
-function getAudioContext(): AudioContext | null {
-  try {
-    if (!audioCtx || audioCtx.state === 'closed') {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
-      if (AudioContextClass) {
-        audioCtx = new AudioContextClass()
-      }
-    }
-    if (audioCtx && audioCtx.state === 'suspended') {
-      audioCtx.resume().catch(() => {})
-    }
-    return audioCtx
-  } catch {
-    return null
-  }
-}
-
 export function playNotificationSound(type: NotificationSoundType = 'message') {
-  try {
-    const ctx = getAudioContext()
-    if (!ctx) return
-
-    const now = ctx.currentTime
-
-    if (type === 'knock') {
-      const playTap = (time: number, freq: number) => {
-        const osc = ctx.createOscillator()
-        const gain = ctx.createGain()
-        osc.type = 'triangle'
-        osc.frequency.setValueAtTime(freq, time)
-        osc.frequency.exponentialRampToValueAtTime(65, time + 0.08)
-        gain.gain.setValueAtTime(0.3, time)
-        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.08)
-        osc.connect(gain)
-        gain.connect(ctx.destination)
-        osc.start(time)
-        osc.stop(time + 0.09)
-      }
-      playTap(now, 195)
-      playTap(now + 0.13, 165)
-    } else if (type === 'message') {
-      const playTone = (time: number, freq: number, duration: number, vol: number) => {
-        const osc = ctx.createOscillator()
-        const gain = ctx.createGain()
-        osc.type = 'sine'
-        osc.frequency.setValueAtTime(freq, time)
-        gain.gain.setValueAtTime(vol, time)
-        gain.gain.exponentialRampToValueAtTime(0.0001, time + duration)
-        osc.connect(gain)
-        gain.connect(ctx.destination)
-        osc.start(time)
-        osc.stop(time + duration)
-      }
-      playTone(now, 587.33, 0.28, 0.2)
-      playTone(now + 0.09, 880, 0.42, 0.25)
-    } else if (type === 'call') {
-      const notes = [440, 554.37, 659.25]
-      notes.forEach((freq, idx) => {
-        const osc = ctx.createOscillator()
-        const gain = ctx.createGain()
-        osc.type = 'triangle'
-        osc.frequency.setValueAtTime(freq, now + idx * 0.1)
-        gain.gain.setValueAtTime(0.2, now + idx * 0.1)
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.1 + 0.35)
-        osc.connect(gain)
-        gain.connect(ctx.destination)
-        osc.start(now + idx * 0.1)
-        osc.stop(now + idx * 0.1 + 0.36)
-      })
-    }
-  } catch (err) {
-    console.debug('[NotificationSound] Audio playback ignored:', err)
-  }
+  playSoundEffect(type)
 }
 
 export interface NativeNotificationOptions {
@@ -153,6 +81,7 @@ export async function sendNotification(options: NativeNotificationOptions) {
           body: options.body,
           icon: '/favicon.ico',
           tag,
+          silent: true,
         })
         notif.onclick = () => {
           window.focus()
