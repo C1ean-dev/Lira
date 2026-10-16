@@ -44,28 +44,38 @@ class MockAnalyserNode extends MockAudioNode {
 }
 
 let addModuleImpl: () => Promise<void> = async () => {}
+let resumeImpl: (() => Promise<void>) | null = null
+let contextStartsSuspended = false
+let nodeCreationFailures = 0
 const contexts: MockAudioContext[] = []
 
 class MockAudioContext {
   sampleRate = 48000
   currentTime = 10
-  state = 'running'
+  state = contextStartsSuspended ? 'suspended' : 'running'
   destination = new MockAudioNode()
   audioWorklet = { addModule: vi.fn(() => addModuleImpl()) }
-  resume = vi.fn(async () => { this.state = 'running' })
+  resume = vi.fn(async () => {
+    if (resumeImpl) await resumeImpl()
+    this.state = 'running'
+  })
   close = vi.fn(async () => { this.state = 'closed' })
   createGain = vi.fn(() => new MockGainNode())
   createBiquadFilter = vi.fn(() => new MockBiquadFilterNode())
   createDynamicsCompressor = vi.fn(() => new MockDynamicsCompressorNode())
   createAnalyser = vi.fn(() => new MockAnalyserNode())
   createMediaStreamSource = vi.fn(() => new MockAudioNode())
-  createMediaStreamDestination = vi.fn(() => ({
-    stream: {
-      getAudioTracks: () => [{ id: 'processed-audio', kind: 'audio', enabled: true }],
-      getVideoTracks: () => [],
-      addTrack: vi.fn(),
-    },
-  }))
+  createMediaStreamDestination = vi.fn(() => {
+    const audioTrack = { id: 'processed-audio', kind: 'audio', enabled: true, stop: vi.fn() }
+    return {
+      stream: {
+        getAudioTracks: () => [audioTrack],
+        getVideoTracks: () => [],
+        getTracks: () => [audioTrack],
+        addTrack: vi.fn(),
+      },
+    }
+  })
   constructor() {
     contexts.push(this)
   }
@@ -74,6 +84,7 @@ class MockAudioContext {
 const workletNodes: MockAudioWorkletNode[] = []
 
 class MockAudioWorkletNode extends MockAudioNode {
+  onprocessorerror: ((event: { message?: string }) => void) | null = null
   port = {
     onmessage: null as ((e: { data: unknown }) => void) | null,
     postMessage: vi.fn(),
@@ -81,10 +92,17 @@ class MockAudioWorkletNode extends MockAudioNode {
   }
   constructor() {
     super()
+    if (nodeCreationFailures > 0) {
+      nodeCreationFailures--
+      throw new Error('not defined in AudioWorkletGlobalScope')
+    }
     workletNodes.push(this)
   }
   emit(data: unknown) {
     this.port.onmessage?.({ data })
+  }
+  emitProcessorError(message = 'processor crashed') {
+    this.onprocessorerror?.({ message })
   }
 }
 
@@ -131,6 +149,9 @@ describe('RNNoise engine lifecycle', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     addModuleImpl = async () => {}
+    resumeImpl = null
+    contextStartsSuspended = false
+    nodeCreationFailures = 0
     workletNodes.length = 0
     contexts.length = 0
     useMediaStore.getState().setRnnoiseStatus('idle')
@@ -173,6 +194,22 @@ describe('RNNoise engine lifecycle', () => {
   })
 
   describe('being disposed while it is still starting', () => {
+    it('settles a cancelled load immediately even if addModule never settles', async () => {
+      addModuleImpl = () => new Promise(() => {})
+      const rnn = new RnnoiseProcessor()
+      const mic = makeMicStream()
+      const start = track(rnn.processStream(mic))
+      await flush()
+
+      rnn.dispose()
+      await flush()
+
+      expect(start.settled).toBe(true)
+      expect(start.value).toBe(mic)
+      expect(contexts[0].state).toBe('closed')
+      expect(vi.getTimerCount()).toBe(0)
+    })
+
     it('finishes instead of hanging when disposed while waiting for the worklet', async () => {
       const rnn = new RnnoiseProcessor()
       const mic = makeMicStream()
@@ -238,7 +275,127 @@ describe('RNNoise engine lifecycle', () => {
     })
   })
 
+  describe('one deadline for the whole startup', () => {
+    it.each(['resume', 'addModule'] as const)('times out a stuck %s after five seconds and ignores its late completion', async (stage) => {
+      const pending = deferred()
+      contextStartsSuspended = stage === 'resume'
+      if (stage === 'resume') resumeImpl = () => pending.promise
+      else addModuleImpl = () => pending.promise
+      const rnn = new RnnoiseProcessor()
+      const mic = makeMicStream()
+      const start = track(rnn.processStream(mic))
+      await flush()
+
+      await vi.advanceTimersByTimeAsync(5000)
+
+      expect(start.settled).toBe(true)
+      expect(start.value).toBe(mic)
+      expect(useMediaStore.getState().rnnoiseStatus).toBe('error')
+      expect(useMediaStore.getState().rnnoiseError).toContain('timeout')
+      expect(contexts[0].close).toHaveBeenCalledTimes(1)
+      expect(vi.getTimerCount()).toBe(0)
+
+      contextStartsSuspended = false
+      addModuleImpl = async () => {}
+      const next = track(rnn.processStream(mic))
+      await flush()
+      const node = lastNode()
+      node.emit({ type: 'ready' })
+      await flush()
+      const status = useMediaStore.getState().rnnoiseStage
+      pending.resolve()
+      await flush()
+
+      expect(next.settled).toBe(true)
+      expect(workletNodes).toHaveLength(1)
+      expect(useMediaStore.getState().rnnoiseStatus).toBe('ready')
+      expect(useMediaStore.getState().rnnoiseStage).toBe(status)
+      expect(contexts[1].state).toBe('running')
+      rnn.dispose()
+    })
+
+    it.each([false, true])('shares the deadline between module loading and readiness (retry=%s)', async (retry) => {
+      const loading = deferred()
+      addModuleImpl = () => loading.promise
+      nodeCreationFailures = retry ? 1 : 0
+      const rnn = new RnnoiseProcessor()
+      const start = track(rnn.processStream(makeMicStream()))
+      await flush()
+      await vi.advanceTimersByTimeAsync(4000)
+      if (retry) addModuleImpl = () => new Promise(() => {})
+      loading.resolve()
+      await flush()
+      expect(start.settled).toBe(false)
+
+      await vi.advanceTimersByTimeAsync(1000)
+
+      expect(start.settled).toBe(true)
+      expect(useMediaStore.getState().rnnoiseStatus).toBe('error')
+      expect(useMediaStore.getState().rnnoiseError).toContain('timeout')
+      expect(contexts.every(ctx => ctx.state === 'closed')).toBe(true)
+      expect(vi.getTimerCount()).toBe(0)
+    })
+  })
+
   describe('failing in the middle of a call', () => {
+    it('ends initialization immediately when the native processorerror event fires', async () => {
+      const rnn = new RnnoiseProcessor()
+      const onFailure = vi.fn()
+      rnn.setRuntimeFailureHandler(onFailure)
+      const mic = makeMicStream()
+      const start = track(rnn.processStream(mic))
+      await flush()
+
+      lastNode().emitProcessorError('constructor failed')
+      await flush()
+
+      expect(start.settled).toBe(true)
+      expect(start.value).toBe(mic)
+      expect(useMediaStore.getState().rnnoiseStatus).toBe('error')
+      expect(useMediaStore.getState().rnnoiseError).toBe('constructor failed')
+      expect(onFailure).not.toHaveBeenCalled()
+      expect(vi.getTimerCount()).toBe(0)
+    })
+
+    it('handles a native crash once and ignores duplicate and stale callbacks', async () => {
+      const rnn = new RnnoiseProcessor()
+      const onFailure = vi.fn()
+      rnn.setRuntimeFailureHandler(onFailure)
+      const mic = makeMicStream()
+      const start = track(rnn.processStream(mic))
+      await flush()
+      const oldNode = lastNode()
+      oldNode.emit({ type: 'ready' })
+      await flush()
+      expect(start.settled).toBe(true)
+      const oldErrorHandler = oldNode.onprocessorerror
+      const oldMessageHandler = oldNode.port.onmessage
+
+      oldNode.emitProcessorError('render thread failed')
+      oldNode.emit({ type: 'error', message: 'duplicate error' })
+      oldNode.emit({ type: 'ready' })
+
+      expect(onFailure).toHaveBeenCalledExactlyOnceWith('render thread failed')
+      expect(rnn.isReady()).toBe(false)
+      expect(useMediaStore.getState().rnnoiseError).toBe('render thread failed')
+
+      rnn.dispose()
+      expect(oldNode.onprocessorerror).toBeNull()
+      expect(oldNode.port.onmessage).toBeNull()
+      const next = track(rnn.processStream(mic))
+      await flush()
+      oldErrorHandler?.({ message: 'stale crash' })
+      oldMessageHandler?.({ data: { type: 'error', message: 'stale message' } })
+      lastNode().emit({ type: 'ready' })
+      await flush()
+
+      expect(next.settled).toBe(true)
+      expect(onFailure).toHaveBeenCalledTimes(1)
+      expect(useMediaStore.getState().rnnoiseStatus).toBe('ready')
+      expect(useMediaStore.getState().rnnoiseError).toBeNull()
+      rnn.dispose()
+    })
+
     it('reports a worklet that gave up processing and stops claiming to be active', async () => {
       const rnn = new RnnoiseProcessor()
       const onFailure = vi.fn()
@@ -364,7 +521,7 @@ describe('RNNoise engine lifecycle', () => {
       })
     })
 
-    it('swaps to Soft DSP when RNNoise gives up in the middle of a call, and can be retried', async () => {
+    it.each(['message', 'processorerror'])('swaps to Soft DSP after %s and can be retried', async (failureType) => {
       const mm = MediaManager.getInstance()
       vi.spyOn(mm, 'stopScreenShare').mockImplementation(() => {})
       const replaceAudioTrack = vi
@@ -380,7 +537,8 @@ describe('RNNoise engine lifecycle', () => {
       expect(useMediaStore.getState().rnnoiseStatus).toBe('ready')
       expect(replaceAudioTrack).toHaveBeenCalledTimes(1)
 
-      lastNode().emit({ type: 'error', fatal: true, message: 'processing keeps failing: boom' })
+      if (failureType === 'message') lastNode().emit({ type: 'error', fatal: true, message: 'processing keeps failing: boom' })
+      else lastNode().emitProcessorError('processing keeps failing: boom')
       await flush()
 
       expect(useMediaStore.getState().rnnoiseStatus).toBe('fallback')
@@ -400,7 +558,94 @@ describe('RNNoise engine lifecycle', () => {
       expect((mm as any).softEngine.audioCtx).toBeNull()
 
       mm.stopAllMedia()
+      expect(contexts.every(ctx => ctx.state === 'closed')).toBe(true)
+      expect((useMediaStore.getState().localStream)).toBeNull()
+      // Processed output tracks are explicitly stopped at the end of the session.
+      const latestTrack = replaceAudioTrack.mock.calls[2][0]
+      expect((latestTrack as any).stop).toHaveBeenCalled()
       useMediaStore.setState({ localStream: null })
+    })
+
+    it.each(['ready', 'fallback', 'error'] as const)('clears %s status and diagnostics when media stops', (status) => {
+      const mm = MediaManager.getInstance()
+      vi.spyOn(mm, 'stopScreenShare').mockImplementation(() => {})
+      useMediaStore.setState({ localStream: null })
+      useMediaStore.getState().setRnnoiseStatus(status, 'old failure')
+      useMediaStore.getState().setRnnoiseStage('old stage')
+
+      mm.stopAllMedia()
+
+      expect(useMediaStore.getState().rnnoiseStatus).toBe('idle')
+      expect(useMediaStore.getState().rnnoiseError).toBeNull()
+      expect(useMediaStore.getState().rnnoiseStage).toBe('')
+    })
+
+    it.each(['timeout', 'stop'] as const)('releases the engine queue after %s during module loading', async (reason) => {
+      const mm = MediaManager.getInstance()
+      vi.spyOn(mm, 'stopScreenShare').mockImplementation(() => {})
+      addModuleImpl = () => new Promise(() => {})
+      const mic = makeMicStream()
+      const first = run(mm, mic)
+      await flush()
+      if (reason === 'timeout') await vi.advanceTimersByTimeAsync(5000)
+      else mm.stopAllMedia()
+      await flush()
+
+      expect(first.settled).toBe(true)
+      if (reason === 'timeout') {
+        expect(useMediaStore.getState().rnnoiseStatus).toBe('fallback')
+        expect((mm as any).activeEngine).toBe((mm as any).softEngine)
+      }
+      addModuleImpl = async () => {}
+      const next = run(mm, mic)
+      await flush()
+      lastNode().emit({ type: 'ready' })
+      await flush()
+
+      expect(next.settled).toBe(true)
+      expect(useMediaStore.getState().rnnoiseStatus).toBe('ready')
+      mm.stopAllMedia()
+      expect(vi.getTimerCount()).toBe(0)
+    })
+
+    it('does not restart a queued engine after the session was stopped', async () => {
+      const mm = MediaManager.getInstance()
+      vi.spyOn(mm, 'stopScreenShare').mockImplementation(() => {})
+      addModuleImpl = () => new Promise(() => {})
+      const mic = makeMicStream()
+      const first = run(mm, mic)
+      await flush()
+      const queued = run(mm, mic)
+
+      mm.stopAllMedia()
+      await flush()
+
+      expect(first.settled).toBe(true)
+      expect(queued.settled).toBe(true)
+      expect(contexts).toHaveLength(1)
+      expect(contexts[0].state).toBe('closed')
+      expect(useMediaStore.getState().rnnoiseStatus).toBe('idle')
+      expect(vi.getTimerCount()).toBe(0)
+    })
+
+    it.each(['addModule', 'ready'] as const)('does not republish audio after stopping during %s', async (stage) => {
+      const mm = MediaManager.getInstance()
+      vi.spyOn(mm, 'stopScreenShare').mockImplementation(() => {})
+      const replace = vi.spyOn(PeerManager.getInstance(), 'replaceAudioTrack').mockImplementation(() => {})
+      if (stage === 'addModule') addModuleImpl = () => new Promise(() => {})
+      ;(mm as any).rawUserStream = makeMicStream()
+      const pending = track(mm.reprocessStream())
+      await flush()
+
+      mm.stopAllMedia()
+      await flush()
+
+      expect(pending.settled).toBe(true)
+      expect(pending.value).toBe(false)
+      expect(useMediaStore.getState().localStream).toBeNull()
+      expect(useMediaStore.getState().rnnoiseStatus).toBe('idle')
+      expect(replace).not.toHaveBeenCalled()
+      expect(vi.getTimerCount()).toBe(0)
     })
 
     it('does not bring up Soft DSP for a start that was cancelled by stopping media', async () => {

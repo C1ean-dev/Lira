@@ -126,7 +126,6 @@ export const App: React.FC = () => {
     callNotificationService.clearNotification()
     PeerManager.getInstance().disconnect()
     MediaManager.getInstance().stopAllMedia()
-    useMediaStore.getState().stopAllMedia()
     useGameStore.getState().setOnlineUsersOpen(false)
     useMapStore.getState().setEditorOpen(false)
     useSpotifyJamStore.getState().clearAllJams()
