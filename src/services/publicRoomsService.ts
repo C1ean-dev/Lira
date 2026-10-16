@@ -162,6 +162,16 @@ export class PublicRoomsService {
     return this.relays.map(({ name, host, status }) => ({ name, host, status }))
   }
 
+  public getRoomPublicationServers(roomId: string): BrokerServerStatus[] {
+    const sources = this.roomSources.get(roomId)
+    const now = Date.now()
+    return this.getBrokerServers().filter(server => {
+      const lastPublished = sources?.get(server.host)
+      return server.status === 'connected' && lastPublished !== undefined &&
+        now - lastPublished < STALE_ROOM_THRESHOLD_MS
+    })
+  }
+
   public subscribeBrokerStatus(listener: (status: BrokerConnectionStatus) => void): () => void {
     this.brokerStatusListeners.add(listener)
     listener(this.getBrokerStatus())
@@ -178,6 +188,7 @@ export class PublicRoomsService {
     relay.mqttBuffer = new Uint8Array(0)
     const ws = relay.ws
     relay.ws = null
+    if (this.currentHosting) this.roomSources.get(this.currentHosting.code)?.delete(relay.host)
     if (ws) {
       ws.onopen = null
       ws.onmessage = null
@@ -458,6 +469,7 @@ export class PublicRoomsService {
   private publishToRelays(msg: HubMessage, relays = this.relays) {
     let packet: Uint8Array | undefined
     let json: string | undefined
+    let publicationChanged = false
     for (const relay of relays) {
       if (!relay.ws || relay.ws.readyState !== WebSocket.OPEN) continue
       if (relay.protocol === 'json' && relay.status !== 'connected') continue
@@ -470,8 +482,16 @@ export class PublicRoomsService {
           packet ??= this.encodeMqttPublish('lira_public_hub/events', JSON.stringify(msg))
           relay.ws.send(packet)
         }
+        if (msg.roomInfo && this.currentHosting?.code === msg.roomInfo.code &&
+          (msg.type === 'ANNOUNCE_ROOM' || msg.type === 'HEARTBEAT')) {
+          const sources = this.roomSources.get(msg.roomInfo.code) ?? new Map<string, number>()
+          publicationChanged ||= !sources.has(relay.host)
+          sources.set(relay.host, Date.now())
+          this.roomSources.set(msg.roomInfo.code, sources)
+        }
       } catch {}
     }
+    if (publicationChanged) this.notifyListeners()
   }
 
   private handleIncomingMessage(msg: HubMessage, relay?: BrokerRelay) {
@@ -516,6 +536,7 @@ export class PublicRoomsService {
             if (sources.size) {
               const room = this.rooms.get(msg.roomId)
               if (room) room.lastHeartbeat = Math.max(...sources.values())
+              this.notifyListeners()
               break
             }
           }
@@ -556,6 +577,7 @@ export class PublicRoomsService {
     }
 
     this.currentHosting = fullRoomInfo
+    this.roomSources.delete(fullRoomInfo.code)
     this.rooms.set(fullRoomInfo.code, fullRoomInfo)
     this.saveToStorage()
     this.notifyListeners()
@@ -638,6 +660,15 @@ export class PublicRoomsService {
     this.pruneTimer = setInterval(() => {
       const now = Date.now()
       let changed = false
+
+      for (const sources of this.roomSources.values()) {
+        for (const [source, updatedAt] of sources) {
+          if (now - updatedAt >= STALE_ROOM_THRESHOLD_MS) {
+            sources.delete(source)
+            changed = true
+          }
+        }
+      }
 
       this.rooms.forEach((room, code) => {
         if (this.currentHosting && this.currentHosting.code === code) return
