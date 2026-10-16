@@ -1,5 +1,6 @@
 import { spotifyBrowserArgs, spotifyPlayerUrl, type SpotifyBrowserProcess, findSpotifyBrowser } from './spotifyBrowser'
 import type { PlaybackConnection } from './spotifyPlayback'
+import type { SpotifyLoginState } from '../src/types/spotifyLogin'
 
 type Result = { ok: boolean; error?: string }
 type Deps = {
@@ -29,9 +30,15 @@ export class SpotifyLoginController {
   get isAuthenticating() { return this.pending }
   constructor(private deps: Deps) { this.pending = deps.pending?.() ?? false }
 
-  async state(): Promise<{ pending: boolean }> {
-    if (!this.pending && (await this.deps.getProcess())?.remoteDebugging === false) this.pending = true
-    return { pending: this.pending }
+  async state(): Promise<SpotifyLoginState> {
+    const generation = this.generation
+    const process = await this.deps.getProcess()
+    const browserOpen = process?.remoteDebugging === false
+    if (browserOpen && !this.pending && !this.busy && generation === this.generation) {
+      this.deps.confirm(false)
+      this.pending = true
+    }
+    return { pending: this.pending, confirmed: !this.pending && this.deps.confirmed(), browserOpen }
   }
 
   cancel() { this.generation++ }
@@ -39,7 +46,7 @@ export class SpotifyLoginController {
   private async run(work: (generation: number) => Promise<Result>): Promise<Result> {
     if (this.busy) return { ok: false, error: 'Aguarde a abertura do Spotify terminar.' }
     this.busy = true
-    const generation = this.generation
+    const generation = ++this.generation
     try { return await work(generation) }
     catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'Não foi possível abrir o Spotify.' } }
     finally { this.busy = false }

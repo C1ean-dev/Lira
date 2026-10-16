@@ -76,7 +76,7 @@ export interface IElectronAPI {
   openSpotifyPlayer: (url?: string) => Promise<{ ok: boolean; error?: string }>
   openSpotifyLogin: () => Promise<{ ok: boolean; error?: string }>
   completeSpotifyLogin: () => Promise<{ ok: boolean; error?: string }>
-  getSpotifyLoginState: () => Promise<{ pending: boolean }>
+  getSpotifyLoginState: () => Promise<import('../src/types/spotifyLogin').SpotifyLoginState>
   getSpotifyPlaybackFrame: () => Promise<SpotifyPlaybackResult>
   startSpotifyTabAudioCapture: () => Promise<{ ok: boolean; error?: string }>
   stopSpotifyTabAudioCapture: () => Promise<boolean>

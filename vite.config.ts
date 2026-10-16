@@ -5,6 +5,9 @@ import renderer from 'vite-plugin-electron-renderer'
 import path from 'path'
 import fs from 'fs'
 import { readAssetAtlas, writeAssetAtlasLatest } from './electron/assetAtlasFile'
+import { ensureNativeSpacesFile, writeNativeSpacesFileLatest } from './electron/nativeSpacesFile'
+
+ensureNativeSpacesFile(path.resolve(__dirname, 'src/data/nativeSpaces.json'))
 
 const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, './package.json'), 'utf-8'))
 const appVersion = process.env.VITE_APP_VERSION || process.env.LIRA_VERSION_NAME || pkg.version || '1.0.0'
@@ -24,6 +27,24 @@ export default defineConfig({
         const directory = path.resolve(__dirname, 'public/assets/library')
         const names = fs.existsSync(directory) ? fs.readdirSync(directory).filter(name => name.endsWith('.xml')).sort() : []
         return `export default ${JSON.stringify(names)}`
+      },
+    },
+    {
+      name: 'native-spaces-auto-create',
+      buildStart() {
+        ensureNativeSpacesFile(path.resolve(__dirname, 'src/data/nativeSpaces.json'))
+      },
+      resolveId(source) {
+        if (source.includes('nativeSpaces.json')) {
+          ensureNativeSpacesFile(path.resolve(__dirname, 'src/data/nativeSpaces.json'))
+        }
+        return null
+      },
+      load(id) {
+        if (id.includes('nativeSpaces.json')) {
+          ensureNativeSpacesFile(path.resolve(__dirname, 'src/data/nativeSpaces.json'))
+        }
+        return null
       },
     },
     ...(!enableElectron ? [] : [electron([
@@ -84,11 +105,11 @@ export default defineConfig({
             req.on('data', (chunk) => {
               body += chunk
             })
-            req.on('end', () => {
+            req.on('end', async () => {
               try {
                 const parsed = JSON.parse(body)
                 const targetPath = path.resolve(process.cwd(), 'src/data/nativeSpaces.json')
-                fs.writeFileSync(targetPath, JSON.stringify(parsed, null, 2), 'utf-8')
+                await writeNativeSpacesFileLatest(targetPath, parsed)
                 console.log('[DiskMiddleware] Saved nativeSpaces.json to disk successfully')
                 res.setHeader('Content-Type', 'application/json')
                 res.statusCode = 200

@@ -487,20 +487,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
 
   const fitToScreen = fitSpritesheet
 
-  const handleSelectFullSheet = useCallback(() => {
-    if (!sourceImg) return
-    const fullW = sourceImg.naturalWidth || sourceImg.width
-    const fullH = sourceImg.naturalHeight || sourceImg.height
-    const updated = {
-      x: 0,
-      y: 0,
-      w: fullW,
-      h: fullH,
-    }
-    setSelection(updated)
-    sliceRegion(sourceImg, 0, 0, fullW, fullH)
-  }, [sourceImg, sliceRegion])
-
   const handleAddSheets = async (files: FileList | null) => {
     if (!files?.length) return
     setIsAddingSheets(true)
@@ -1650,15 +1636,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleSelectFullSheet}
-                className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-amber-600/30 to-amber-500/20 hover:from-amber-600/50 hover:to-amber-500/30 text-amber-300 hover:text-white border border-amber-500/40 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-98"
-                title={`Selecionar a folha inteira (${sourceImg ? sourceImg.naturalWidth + '×' + sourceImg.naturalHeight : 'Total'}px)`}
-              >
-                <Maximize2 className="w-3.5 h-3.5 text-amber-400" />
-                <span>Folha Máxima ({sourceImg ? `${sourceImg.naturalWidth}×${sourceImg.naturalHeight}` : 'Total'}px)</span>
-              </button>
+
 
               <div className="flex flex-col gap-1.5 bg-[#1e1f22] p-2 rounded-xl border border-[#383a40]/60">
                 <div className="flex items-center justify-between text-xs text-slate-400">
@@ -1708,47 +1686,6 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                     </button>
                   ))}
                 </div>
-              </div>
-
-              <div className="flex flex-wrap gap-1">
-                {[
-                  { label: '1×1', w: 1, h: 1 },
-                  { label: '8×8', w: 8, h: 8 },
-                  { label: '16×16', w: 16, h: 16 },
-                  { label: '16×32', w: 16, h: 32 },
-                  { label: '24×24', w: 24, h: 24 },
-                  { label: '32×32', w: 32, h: 32 },
-                  { label: '32×64', w: 32, h: 64 },
-                  { label: '48×48', w: 48, h: 48 },
-                  { label: '64×64', w: 64, h: 64 },
-                  { label: '96×96', w: 96, h: 96 },
-                  { label: '128×128', w: 128, h: 128 },
-                  { label: '192×192', w: 192, h: 192 },
-                  { label: '256×256', w: 256, h: 256 },
-                  ...(sourceImg
-                    ? [{ label: `Máx (${sourceImg.naturalWidth}×${sourceImg.naturalHeight})`, w: sourceImg.naturalWidth, h: sourceImg.naturalHeight }]
-                    : []),
-                ].map((s) => (
-                  <button
-                    key={s.label}
-                    type="button"
-                    onClick={() => {
-                      if (s.w === s.h) {
-                        handleUpdateGridSize(s.w)
-                      } else {
-                        setGridSnapSize(s.w)
-                        setExactDimensions(s.w, s.h)
-                      }
-                    }}
-                    className={`flex-1 min-w-[36px] py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
-                      selection.w === s.w && selection.h === s.h
-                        ? 'bg-amber-500/20 border-amber-500/60 text-amber-300'
-                        : 'bg-[#1e1f22] border-[#383a40] text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    {s.label}
-                  </button>
-                ))}
               </div>
 
               <div className="grid grid-cols-2 gap-2 bg-[#1e1f22] p-2 rounded-xl border border-[#383a40]/60">

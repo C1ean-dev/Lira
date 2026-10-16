@@ -19,6 +19,7 @@ import { TrayManager, AppSettings } from './trayManager'
 import { createLogWriter, installConsoleCapture, installProcessErrorCapture } from './logWriter'
 import { readNativeDataFile } from './nativeDataFile'
 import { readAssetAtlas, writeAssetAtlasLatest } from './assetAtlasFile'
+import { ensureNativeSpacesFile, readNativeSpacesFile, writeNativeSpacesFileLatest } from './nativeSpacesFile'
 import { createStartupTimer } from './startupTimer'
 import { startCpuProfile } from './startupProfile'
 import { sanitizeRecords } from '../src/utils/logFormat'
@@ -1412,12 +1413,14 @@ function getDataDirectory(): string {
     if (!fs.existsSync(projectSrcData)) {
       fs.mkdirSync(projectSrcData, { recursive: true })
     }
+    ensureNativeSpacesFile(path.join(projectSrcData, 'nativeSpaces.json'))
     return projectSrcData
   }
   const userDataDir = path.join(app.getPath('userData'), 'data')
   if (!fs.existsSync(userDataDir)) {
     fs.mkdirSync(userDataDir, { recursive: true })
   }
+  ensureNativeSpacesFile(path.join(userDataDir, 'nativeSpaces.json'))
   return userDataDir
 }
 
@@ -1555,7 +1558,7 @@ ipcMain.handle('save-native-spaces', async (_event, spaces: any[]) => {
   try {
     const dataDir = getDataDirectory()
     const filePath = path.join(dataDir, 'nativeSpaces.json')
-    fs.writeFileSync(filePath, JSON.stringify(spaces, null, 2), 'utf-8')
+    await writeNativeSpacesFileLatest(filePath, spaces)
     console.log('[NativeSpaces] Saved to', filePath)
     return true
   } catch (err) {
@@ -1568,10 +1571,7 @@ ipcMain.handle('load-native-spaces', async () => {
   try {
     const dataDir = getDataDirectory()
     const filePath = path.join(dataDir, 'nativeSpaces.json')
-    if (fs.existsSync(filePath)) {
-      const raw = fs.readFileSync(filePath, 'utf-8')
-      return JSON.parse(raw)
-    }
+    return readNativeSpacesFile(filePath)
   } catch (err) {
     console.error('[NativeSpaces] Load error:', err)
   }

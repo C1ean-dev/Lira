@@ -249,7 +249,7 @@ export const LobbyModal: React.FC<Props> = ({
       }
 
       await Promise.all([
-        MediaManager.getInstance().startMedia(true, true),
+        MediaManager.getInstance().startMedia(false, true),
         PeerManager.getInstance().joinRoom(room.code, playerPayload),
       ])
       onJoined()
@@ -298,7 +298,7 @@ export const LobbyModal: React.FC<Props> = ({
       }
 
       await Promise.all([
-        MediaManager.getInstance().startMedia(true, true),
+        MediaManager.getInstance().startMedia(false, true),
         PeerManager.getInstance().joinRoom(code.trim(), playerPayload),
       ])
       onJoined()
@@ -340,7 +340,7 @@ export const LobbyModal: React.FC<Props> = ({
         return
       }
 
-      const mediaReady = MediaManager.getInstance().startMedia(true, true)
+      const mediaReady = MediaManager.getInstance().startMedia(false, true)
 
       if (mode === 'create') {
         const roomTitle = createRoomName.trim() || `Espaço de ${userName.trim()}`
@@ -472,7 +472,7 @@ export const LobbyModal: React.FC<Props> = ({
 
       useMediaStore.getState().setMuted(true)
       useMediaStore.getState().setCameraOff(true)
-      const mediaReady = MediaManager.getInstance().startMedia(true, true)
+      const mediaReady = MediaManager.getInstance().startMedia(false, true)
 
       let persistentCode = targetSpace.roomCode
       if (!persistentCode) {

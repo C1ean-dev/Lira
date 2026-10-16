@@ -52,6 +52,7 @@ export class MediaManager {
   private softEngine: SoftDspProcessor
   private rnnoiseEngine: RnnoiseProcessor
   private activeEngine: AudioEngine | null = null
+  private mediaGeneration = 0
   private rawUserStream: MediaStream | null = null
   private rawScreenStream: MediaStream | null = null
   private screenAudioContext: AudioContext | null = null
@@ -282,11 +283,13 @@ export class MediaManager {
     inputStream: MediaStream,
     levelCallback: (level: number, isGateOpen: boolean, rawRms?: number, dynamicThresholdPercent?: number) => void
   ): Promise<MediaStream> {
+    const generation = this.mediaGeneration
     const prev = this.runQueue
     let release!: () => void
     this.runQueue = new Promise<void>((r) => (release = r))
     await prev
     try {
+      if (generation !== this.mediaGeneration) return inputStream
       return await this.doRunEngine(inputStream, levelCallback)
     } finally {
       release()
@@ -297,6 +300,7 @@ export class MediaManager {
     inputStream: MediaStream,
     levelCallback: (level: number, isGateOpen: boolean, rawRms?: number, dynamicThresholdPercent?: number) => void
   ): Promise<MediaStream> {
+    const generation = this.mediaGeneration
     const state = useMediaStore.getState()
     let nextEngine = this.selectEngine()
     const runtimeFailure = this.rnnoiseRuntimeFailure
@@ -332,6 +336,7 @@ export class MediaManager {
     )
 
     const processed = result instanceof Promise ? await result : result
+    if (generation !== this.mediaGeneration) return inputStream
 
     if (
       processed === inputStream &&
@@ -396,8 +401,11 @@ export class MediaManager {
     return null as any
   }
 
-  public async startMedia(video: boolean = true, audio: boolean = true): Promise<MediaStream | null> {
+  public async startMedia(video: boolean = false, audio: boolean = true): Promise<MediaStream | null> {
+    const generation = this.mediaGeneration
+    if (!video) useMediaStore.setState({ isCameraOff: true })
     const state = useMediaStore.getState()
+    const captureCamera = video && !state.isCameraOff
 
     const audioConstraints: any = audio
       ? {
@@ -422,7 +430,7 @@ export class MediaManager {
 
     let stream: MediaStream | null = null
 
-    const videoConstraints: any = video
+    const videoConstraints: any = captureCamera
       ? {
           ...(state.selectedVideoInput && state.selectedVideoInput !== 'default'
             ? { deviceId: { exact: state.selectedVideoInput } }
@@ -464,7 +472,7 @@ export class MediaManager {
         stream = new MediaStream()
       }
 
-      if (video && stream.getVideoTracks().length === 0) {
+      if (captureCamera && stream.getVideoTracks().length === 0) {
         try {
           const camOnlyStream = await safeGetUserMedia({
             video: videoConstraints,
@@ -481,6 +489,10 @@ export class MediaManager {
       }
     }
 
+    if (generation !== this.mediaGeneration) {
+      stream?.getTracks().forEach(track => track.stop())
+      return null
+    }
     if (!stream) {
       stream = new MediaStream()
     }
@@ -494,7 +506,7 @@ export class MediaManager {
 
     this.rawUserStream = stream
     diagLog('media', 'startMedia.capture', {
-      videoRequested: video,
+      videoRequested: captureCamera,
       audioRequested: audio,
       selectedAudioInput: state.selectedAudioInput,
       tracks: summarizeStream(stream),
@@ -505,6 +517,7 @@ export class MediaManager {
       this.rawUserStream,
       this.handleEngineLevel
     )
+    if (generation !== this.mediaGeneration) return null
 
     if (processedStream.getVideoTracks().length === 0 && this.rawUserStream.getVideoTracks().length > 0) {
       processedStream.addTrack(this.rawUserStream.getVideoTracks()[0])
@@ -815,6 +828,7 @@ export class MediaManager {
   }
 
   public async changeAudioInput(deviceId: string): Promise<boolean> {
+    const generation = this.mediaGeneration
     try {
       useMediaStore.getState().setSelectedAudioInput(deviceId)
       const state = useMediaStore.getState()
@@ -856,6 +870,10 @@ export class MediaManager {
       }
 
       const newAudioTrack = newAudioStream.getAudioTracks()[0]
+      if (generation !== this.mediaGeneration) {
+        newAudioStream.getTracks().forEach(track => track.stop())
+        return false
+      }
       if (!newAudioTrack) return false
 
       if (this.rawUserStream) {
@@ -872,6 +890,7 @@ export class MediaManager {
         this.rawUserStream,
         this.handleEngineLevel
       )
+      if (generation !== this.mediaGeneration) return false
 
       useMediaStore.getState().setLocalStream(processedStream)
 
@@ -1672,7 +1691,9 @@ export class MediaManager {
   }
 
   public stopAllMedia() {
+    this.mediaGeneration++
     this.stopScreenShare()
+    useMediaStore.getState().stopAllMedia()
     if (this.rawUserStream) {
       try {
         this.rawUserStream.getTracks().forEach((t) => t.stop())
@@ -1685,6 +1706,8 @@ export class MediaManager {
       this.rnnoiseEngine.dispose()
       this.activeEngine = null
     } catch (e) {}
+    useMediaStore.getState().setRnnoiseStatus('idle')
+    useMediaStore.getState().setRnnoiseStage('')
   }
 
   public updateScreenShareAudioVolume(percent: number) {
@@ -1728,11 +1751,13 @@ export class MediaManager {
 
   public async reprocessStream(): Promise<boolean> {
     if (!this.rawUserStream) return false
+    const generation = this.mediaGeneration
     try {
       const processed = await this.runEngine(
         this.rawUserStream,
         this.handleEngineLevel
       )
+      if (generation !== this.mediaGeneration) return false
       const isMuted = useMediaStore.getState().isMuted
       processed.getAudioTracks().forEach((track) => {
         track.enabled = !isMuted
@@ -1907,14 +1932,6 @@ export class MediaManager {
   }
 
   public stopAll() {
-    this.stopScreenShare()
-    if (this.rawUserStream) {
-      this.rawUserStream.getTracks().forEach((t) => t.stop())
-      this.rawUserStream = null
-    }
-    useMediaStore.getState().setLocalStream(null)
-    this.classicEngine.dispose()
-    this.softEngine.dispose()
-    this.rnnoiseEngine.dispose()
+    this.stopAllMedia()
   }
 }

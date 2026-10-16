@@ -66,6 +66,14 @@ export interface PrivateZone {
   welcomeMessage?: string
 }
 
+export interface FloorRectangle {
+  x: number
+  y: number
+  width: number
+  height: number
+  floor: FloorType
+}
+
 export interface MapData {
   id: string
   name: string
@@ -78,6 +86,7 @@ export interface MapData {
   furniture: PlacedFurniture[]
   zones: PrivateZone[]
   defaultFloor?: FloorType
+  floorRectangles?: FloorRectangle[]
   floorOverrides?: Record<string, FloorType>
   wallOverrides?: Record<string, WallType | null>
 }
@@ -86,6 +95,7 @@ export interface StoredMapData extends Omit<MapData, 'floors' | 'walls'> {
   floors?: FloorType[][]
   walls?: (WallType | null)[][]
   defaultFloor?: FloorType
+  floorRectangles?: FloorRectangle[]
   floorOverrides?: Record<string, FloorType>
   wallOverrides?: Record<string, WallType | null>
 }
