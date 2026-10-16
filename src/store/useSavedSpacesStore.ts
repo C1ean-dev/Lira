@@ -254,14 +254,3 @@ export const useSavedSpacesStore = create<SavedSpacesState>((set, get) => {
   }
 })
 
-if (typeof window !== 'undefined') {
-  setTimeout(() => {
-    try {
-      const state = useSavedSpacesStore.getState()
-      if (state.savedSpaces.length > 0) {
-        syncSpacesToNativeFile(state.savedSpaces)
-      }
-    } catch {}
-  }, 1000)
-}
-

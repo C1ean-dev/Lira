@@ -1,1 +1,47 @@
-[]
+[
+  {
+    "id": "space-exgc3j0",
+    "roomCode": "087cbbd7-48e7-47e4-abd1-554505b1a968",
+    "name": "Espaço #1",
+    "description": "Novo espaço de trabalho virtual",
+    "createdAt": 1792105893217,
+    "updatedAt": 1792106540861,
+    "mapData": {
+      "id": "empty_workspace",
+      "name": "Espaço #1",
+      "width": 68,
+      "height": 40,
+      "tileSize": 32,
+      "spawnPoint": {
+        "x": 34,
+        "y": 20
+      },
+      "furniture": [],
+      "zones": [
+        {
+          "id": "zone-num1f",
+          "name": "Nova Sala Privada",
+          "color": "#4c6ef5",
+          "x": 29,
+          "y": 10,
+          "width": 15,
+          "height": 10,
+          "hasWalls": true,
+          "wallType": "drywall_white",
+          "description": "Zona de chamada privada demarcada com mouse"
+        }
+      ],
+      "defaultFloor": "wood_parquet",
+      "floorRectangles": [
+        {
+          "x": 29,
+          "y": 12,
+          "width": 15,
+          "height": 8,
+          "floor": "custom_1789056184157_ewpqg"
+        }
+      ]
+    },
+    "color": "#fa5252"
+  }
+]
