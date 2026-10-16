@@ -16,7 +16,6 @@ interface HubMessage {
   roomId?: string
   roomInfo?: PublicRoomInfo
   timestamp: number
-  publicationServices?: string[]
 }
 
 export type BrokerConnectionStatus = 'connecting' | 'connected' | 'disconnected'
@@ -60,7 +59,6 @@ export class PublicRoomsService {
   private heartbeatTimer: any = null
   private pruneTimer: any = null
   private currentHosting: PublicRoomInfo | null = null
-  private amqpServer: BrokerServerStatus | null = null
   private brokerStatusListeners: Set<(status: BrokerConnectionStatus) => void> = new Set()
 
   private constructor() {
@@ -140,14 +138,6 @@ export class PublicRoomsService {
   private setRelayStatus(relay: BrokerRelay, status: BrokerConnectionStatus) {
     if (relay.status === status) return
     relay.status = status
-    if (relay.protocol === 'json' && status !== 'connected' && this.amqpServer) {
-      this.amqpServer.status = 'disconnected'
-      this.clearAmqpPublications()
-    }
-    this.notifyBrokerStatus()
-  }
-
-  private notifyBrokerStatus() {
     // Notify on individual changes even if another server keeps the hub connected.
     for (const listener of this.brokerStatusListeners) {
       try {
@@ -169,35 +159,7 @@ export class PublicRoomsService {
   }
 
   public getBrokerServers(): BrokerServerStatus[] {
-    const servers: BrokerServerStatus[] = this.relays.map(({ name, host, status }) => ({ name, host, status }))
-    if (this.amqpServer) servers.push({ ...this.amqpServer })
-    return servers
-  }
-
-  private clearAmqpPublications() {
-    if (!this.amqpServer) return
-    for (const sources of this.roomSources.values()) sources.delete(this.amqpServer.host)
-  }
-
-  private updateAmqpService(services: unknown) {
-    if (!Array.isArray(services)) return
-    const server = services.find(service => service?.name === 'RabbitMQ')
-    if (!server || typeof server.host !== 'string' || server.host.length > 253 ||
-      !/^[a-z0-9.-]+$/i.test(server.host) ||
-      !['connecting', 'connected', 'disconnected'].includes(server.status)) return
-    if (this.amqpServer?.host !== server.host || server.status !== 'connected') this.clearAmqpPublications()
-    this.amqpServer = { name: 'RabbitMQ', host: server.host, status: server.status }
-    this.notifyBrokerStatus()
-  }
-
-  private markAmqpPublication(roomId: string, hostId: string, announcementId?: string) {
-    const room = this.rooms.get(roomId)
-    if (this.amqpServer?.status !== 'connected' || !room || room.hostId !== hostId ||
-      room.announcementId !== announcementId) return
-    const sources = this.roomSources.get(roomId) ?? new Map<string, number>()
-    sources.set(this.amqpServer.host, Date.now())
-    this.roomSources.set(roomId, sources)
-    this.notifyListeners()
+    return this.relays.map(({ name, host, status }) => ({ name, host, status }))
   }
 
   public getRoomPublicationServers(roomId: string): BrokerServerStatus[] {
@@ -335,19 +297,9 @@ export class PublicRoomsService {
         if (relay.connectTimeout !== null) clearTimeout(relay.connectTimeout)
         relay.connectTimeout = null
         this.setRelayStatus(relay, 'connected')
-        this.updateAmqpService(message.services)
         this.queryRelay(relay)
       } else if (relay.status === 'connected') {
-        if (message.type === 'SERVICE_STATUS') this.updateAmqpService(message.services)
-        else if (message.type === 'ROOM_PUBLISHED' && message.service === 'RabbitMQ') {
-          this.markAmqpPublication(message.roomId, message.hostId, message.announcementId)
-        } else {
-          this.handleIncomingMessage(message as HubMessage, relay)
-          if ((message.type === 'ANNOUNCE_ROOM' || message.type === 'HEARTBEAT') &&
-            Array.isArray(message.publicationServices) && message.publicationServices.includes('RabbitMQ') && message.roomInfo) {
-            this.markAmqpPublication(message.roomInfo.code, message.roomInfo.hostId, message.roomInfo.announcementId)
-          }
-        }
+        this.handleIncomingMessage(message as HubMessage, relay)
       }
     } catch {}
   }
@@ -578,7 +530,6 @@ export class PublicRoomsService {
           const sources = this.roomSources.get(msg.roomId)
           if (sources) {
             sources.delete(relay?.host ?? 'local')
-            if (relay?.protocol === 'json' && this.amqpServer) sources.delete(this.amqpServer.host)
             for (const [source, updatedAt] of sources) {
               if (now - updatedAt >= STALE_ROOM_THRESHOLD_MS) sources.delete(source)
             }

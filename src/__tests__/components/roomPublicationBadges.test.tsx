@@ -27,7 +27,6 @@ describe('room publication in the navigation bar', () => {
       { name: 'EMQX', host: 'broker.emqx.io' },
       { name: 'HiveMQ', host: 'broker.hivemq.com' },
       { name: 'Render', host: 'lira-signaling.onrender.com' },
-      { name: 'RabbitMQ', host: 'jaragua.lmq.cloudamqp.com' },
     ]
     const html = renderBar()
     for (const server of publication.servers) {

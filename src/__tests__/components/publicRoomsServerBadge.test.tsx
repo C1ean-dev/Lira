@@ -65,15 +65,6 @@ describe('public rooms server badge', () => {
     expect(html).toContain('aria-label="HiveMQ: Não conectado"')
   })
 
-  it('shows RabbitMQ through Render when the backend advertises it', () => {
-    broker.servers.push({ name: 'RabbitMQ', host: 'jaragua.lmq.cloudamqp.com', status: 'connected' })
-    try {
-      const html = renderTab()
-      expect(html).toContain('aria-label="RabbitMQ: Conectado"')
-      expect(html).toContain('title="jaragua.lmq.cloudamqp.com"')
-    } finally { broker.servers.pop() }
-  })
-
   it.each(['connecting', 'disconnected'])('does not announce a server as available while %s', status => {
     broker.status = status
     broker.serverHost = null
