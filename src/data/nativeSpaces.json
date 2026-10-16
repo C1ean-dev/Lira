@@ -5,7 +5,7 @@
     "name": "Espaço #1",
     "description": "Novo espaço de trabalho virtual",
     "createdAt": 1792105893217,
-    "updatedAt": 1792106540861,
+    "updatedAt": 1792189594597,
     "mapData": {
       "id": "empty_workspace",
       "name": "Espaço #1",
@@ -28,19 +28,17 @@
           "height": 10,
           "hasWalls": true,
           "wallType": "drywall_white",
-          "description": "Zona de chamada privada demarcada com mouse"
+          "description": "Zona de chamada privada demarcada com mouse",
+          "isLocked": false,
+          "allowKnock": true,
+          "admins": [
+            "Player"
+          ],
+          "members": [],
+          "authorizedPeers": []
         }
       ],
-      "defaultFloor": "wood_parquet",
-      "floorRectangles": [
-        {
-          "x": 29,
-          "y": 12,
-          "width": 15,
-          "height": 8,
-          "floor": "custom_1789056184157_ewpqg"
-        }
-      ]
+      "defaultFloor": "wood_parquet"
     },
     "color": "#fa5252"
   }
