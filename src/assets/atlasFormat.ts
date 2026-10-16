@@ -2,7 +2,7 @@ import type { CustomAsset } from '../types/customAsset'
 
 export interface AtlasRect { name: string; x: number; y: number; width: number; height: number }
 export interface PersistedAtlas { xml: string; png: string }
-export interface AtlasDocument { assets: CustomAsset[]; categories: string[] }
+export interface AtlasDocument { assets: CustomAsset[]; categories: string[]; deletedAssetIds?: string[] }
 export const xmlEscape = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;')
 const unescape = (s: string): string => s.replace(/&(amp|lt|gt|quot|apos);/g, (_, n: string) => ({ amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }[n]!))
 
@@ -83,6 +83,7 @@ export function parseAtlasDocument(xml: string, image: (name: string) => string)
   if (!metadata) throw new Error('Atlas sem metadados')
   const doc = decodeValue(metadata[1], image) as AtlasDocument
   if (!doc || !Array.isArray(doc.assets) || !Array.isArray(doc.categories) || doc.categories.some(c => typeof c !== 'string')) throw new Error('Catálogo XML inválido')
+  if (doc.deletedAssetIds !== undefined && (!Array.isArray(doc.deletedAssetIds) || doc.deletedAssetIds.some(id => typeof id !== 'string' || !id) || new Set(doc.deletedAssetIds).size !== doc.deletedAssetIds.length)) throw new Error('Exclusões do atlas inválidas')
   const ids = new Set<string>()
   for (const asset of doc.assets) {
     if (!asset || typeof asset.id !== 'string' || !asset.id || ids.has(asset.id) || typeof asset.name !== 'string' || !['avatar', 'furniture', 'floor', 'wall'].includes(asset.type) || !Array.isArray(asset.frames) || !Number.isFinite(asset.width) || !Number.isFinite(asset.height)) throw new Error('Asset XML inválido')

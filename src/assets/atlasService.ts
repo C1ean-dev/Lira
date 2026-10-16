@@ -21,7 +21,7 @@ export const loadAtlasImage = (src: string): Promise<HTMLImageElement> => new Pr
   img.src = src
 })
 
-export async function buildAtlas(assets: CustomAsset[], categories: string[] = []): Promise<PersistedAtlas> {
+export async function buildAtlas(assets: CustomAsset[], categories: string[] = [], deletedAssetIds: string[] = []): Promise<PersistedAtlas> {
   const images = new Map<string, string>()
   // Transient editor buffers retain their existing shape; only XML references reach storage.
   const clean = (value: unknown): unknown => {
@@ -103,7 +103,7 @@ export async function buildAtlas(assets: CustomAsset[], categories: string[] = [
     return rect
   }
   for (const name of contained.keys()) resolve(name)
-  return { png: canvas.toDataURL('image/png'), xml: serializeAtlas({ assets: prepared, categories }, [...rects.values()], images, 'library.png') }
+  return { png: canvas.toDataURL('image/png'), xml: serializeAtlas({ assets: prepared, categories, ...(deletedAssetIds.length ? { deletedAssetIds } : {}) }, [...rects.values()], images, 'library.png') }
 }
 
 export async function readAtlas(pair: PersistedAtlas): Promise<AtlasDocument> {

@@ -5,6 +5,12 @@ import type { CustomAsset } from '../../types/customAsset'
 
 const asset: CustomAsset = { id: 'same-id', name: 'Sofá á & < > "', type: 'furniture', category: 'Sala', width: 2, height: 1, frames: ['pixels'], isObstacle: true, collisionGrid: [[true, false]], createdAt: 1 }
 describe('PNG/XML format', () => {
+  it('round-trips local exclusions in XML and rejects invalid exclusion IDs', () => {
+    const xml = serializeAtlas({ assets: [], categories: [], deletedAssetIds: ['removed-á'] }, [], new Map(), 'library.png')
+    expect(parseAtlasDocument(xml, String).deletedAssetIds).toEqual(['removed-á'])
+    expect(() => parseAtlasDocument(xml.replace('<String>removed-á</String>', '<Number>1</Number>'), String)).toThrow('Exclusões')
+    expect(() => parseAtlasDocument(xml.replace('<String>removed-á</String>', '<String></String>'), String)).toThrow('Exclusões')
+  })
   it('round-trips Unicode, nested editor metadata and image references without JSON/base64', () => {
     const source = { assets: [{ ...asset, frameLayers: [[{ id: 'layer', name: 'Peça', clipId: 'clip', dataUrl: 'pixels', x: -2, y: 3, width: 12, height: 8, opacity: 0.5, flipH: true }]] }], categories: ['Sala'] }
     const xml = serializeAtlas(source, [{ name: 'sprite', x: 0, y: 0, width: 12, height: 8 }], new Map([['pixels', 'sprite']]), 'library.png')
