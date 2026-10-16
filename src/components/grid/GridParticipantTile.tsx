@@ -38,6 +38,7 @@ export interface ParticipantData {
 
 interface Props {
   user: ParticipantData
+  mediaKind?: 'participant' | 'live'
   isFocused?: boolean
   isSidebar?: boolean
   onFocus?: () => void
@@ -47,6 +48,7 @@ interface Props {
 
 export const GridParticipantTile: React.FC<Props> = ({
   user,
+  mediaKind,
   isFocused = false,
   isSidebar = false,
   onFocus,
@@ -54,12 +56,20 @@ export const GridParticipantTile: React.FC<Props> = ({
   onContextMenu,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const isLive = Boolean(user.screenStream || user.isScreenSharing)
-  const activeStream = user.screenStream || user.stream
+  const hasLive = Boolean(user.screenStream || user.isScreenSharing)
+  const isLive = mediaKind !== 'participant' && hasLive
+  // Some peers send the screen in the regular call stream. It cannot also be
+  // displayed as their camera or played a second time in the participant card.
+  const participantStream = hasLive && !user.isLocal && (!user.screenStream || user.stream === user.screenStream)
+    ? null
+    : user.stream
+  const activeStream = isLive ? user.screenStream || user.stream : participantStream
   const liveGate = useLiveGate(user.id, Boolean(!user.isLocal && isLive && user.liveOptIn), !!user.liveWatching)
 
   const participantVolumes = useMediaStore((s) => s.participantVolumes)
   const setParticipantVolume = useMediaStore((s) => s.setParticipantVolume)
+  const liveStreamVolume = useMediaStore((s) => s.liveStreamVolume)
+  const setLiveStreamVolume = useMediaStore((s) => s.setLiveStreamVolume)
   const outputVolume = useMediaStore((s) => s.outputVolume)
   const selectedAudioOutput = useMediaStore((s) => s.selectedAudioOutput)
   const isDeafened = useMediaStore((s) => s.isDeafened)
@@ -67,12 +77,21 @@ export const GridParticipantTile: React.FC<Props> = ({
   const removeCaptureBorder = useMediaStore((s) => s.removeCaptureBorder)
   const networkQuality = useUserNetworkQuality(user.id, user.isLocal)
 
-  const rawVolume =
-    participantVolumes[user.id] !== undefined
+  const rawVolume = isLive ? (liveStreamVolume ?? 100)
+    : participantVolumes[user.id] !== undefined
       ? participantVolumes[user.id]
       : user.gameId && participantVolumes[user.gameId] !== undefined
       ? participantVolumes[user.gameId]
       : 100
+
+  const setVolume = (value: number) => {
+    if (isLive) {
+      setLiveStreamVolume(value)
+    } else {
+      setParticipantVolume(user.id, value)
+      if (user.name) setParticipantVolume(user.name, value)
+    }
+  }
 
   const isEffectivelyMuted = Boolean(user.isLocal || isDeafened || isSilenced || rawVolume === 0)
 
@@ -380,11 +399,10 @@ export const GridParticipantTile: React.FC<Props> = ({
                 onClick={(e) => {
                   e.stopPropagation()
                   const nextVol = rawVolume === 0 ? 100 : 0
-                  setParticipantVolume(user.id, nextVol)
-                  if (user.name) setParticipantVolume(user.name, nextVol)
+                  setVolume(nextVol)
                 }}
                 className="p-0.5 rounded text-slate-300 hover:text-white transition-colors"
-                title={rawVolume === 0 ? 'Desmutar este participante' : 'Mutar este participante'}
+                title={isLive ? (rawVolume === 0 ? 'Desmutar transmissão' : 'Mutar transmissão') : (rawVolume === 0 ? 'Desmutar este participante' : 'Mutar este participante')}
               >
                 {rawVolume === 0 ? (
                   <VolumeX className="w-3.5 h-3.5 text-rose-400" />
@@ -403,11 +421,11 @@ export const GridParticipantTile: React.FC<Props> = ({
                   value={rawVolume}
                   onChange={(e) => {
                     const val = Number(e.target.value)
-                    setParticipantVolume(user.id, val)
-                    if (user.name) setParticipantVolume(user.name, val)
+                    setVolume(val)
                   }}
                   className="w-16 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400"
-                  title={`Volume: ${rawVolume}%`}
+                  aria-label={isLive ? 'Volume da live' : 'Volume da voz'}
+                  title={`${isLive ? 'Volume da live' : 'Volume da voz'}: ${rawVolume}%`}
                 />
                 <span className="text-[10px] font-mono text-slate-200 min-w-[32px]">
                   {rawVolume}%
