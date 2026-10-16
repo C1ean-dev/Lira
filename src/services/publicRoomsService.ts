@@ -581,6 +581,7 @@ export class PublicRoomsService {
     this.rooms.set(fullRoomInfo.code, fullRoomInfo)
     this.saveToStorage()
     this.notifyListeners()
+    this.initWebSocketRelay(true)
 
     this.broadcastMessage({
       type: 'ANNOUNCE_ROOM',

@@ -47,6 +47,17 @@ describe('Render public room discovery', () => {
     expect(service.getBrokerServers().find(server => server.name === 'Render')).toMatchObject({ status: 'connecting' })
   })
 
+  it('immediately retries every unavailable service when making a room public', async () => {
+    sockets.forEach(socket => socket.close())
+    service.startHosting(room)
+    expect(sockets).toHaveLength(6)
+    const retried = sockets.slice(3)
+    retried.forEach(socket => socket.open())
+    await retried[2].receive({ type: 'READY', protocolVersion: 1 })
+    await vi.advanceTimersByTimeAsync(800)
+    expect(service.getRoomPublicationServers(room.code).map(server => server.name)).toEqual(['EMQX', 'HiveMQ', 'Render'])
+  })
+
   it('reports publication per room only after sending, and clears it on disconnect or stop', async () => {
     sockets[0].open()
     expect(service.getRoomPublicationServers(room.code)).toEqual([])
