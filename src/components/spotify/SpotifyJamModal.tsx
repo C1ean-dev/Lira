@@ -7,6 +7,7 @@ import { SpotifyIcon } from '../common/SpotifyIcon'
 import { MediaManager } from '../../media/MediaManager'
 import { SpotifyPlayerFeedback } from './SpotifyPlayerFeedback'
 import { SpotifyLoginControls } from './SpotifyLoginControls'
+import { useSpotifyLogin } from '../../hooks/useSpotifyLogin'
 
 export const SpotifyJamModal: React.FC = () => {
   const isModalOpen = useSpotifyJamStore((s) => s.isModalOpen)
@@ -26,11 +27,12 @@ export const SpotifyJamModal: React.FC = () => {
 
   const [djLoading, setDjLoading] = useState(false)
   const [djError, setDjError] = useState<string | null>(null)
+  const login = useSpotifyLogin(isModalOpen && !!currentZone && !isDjModeActive)
 
   if (!isModalOpen) return null
 
   const handleToggleDjMode = async () => {
-    if (!targetZoneId || djLoading) return
+    if (!targetZoneId || djLoading || (!isDjModeActive && !login.ready)) return
     setDjError(null)
     setDjLoading(true)
     try {
@@ -117,12 +119,12 @@ export const SpotifyJamModal: React.FC = () => {
             </div>
           ) : (
             <>
-              {!isDjModeActive && <SpotifyLoginControls disabled={djLoading} />}
+              {!isDjModeActive && <SpotifyLoginControls login={login} disabled={djLoading} />}
               <SpotifyPlayerFeedback opening={djLoading} error={djError} />
               <button
                 type="button"
                 onClick={handleToggleDjMode}
-                disabled={djLoading}
+                disabled={djLoading || (!isDjModeActive && !login.ready)}
                 aria-busy={djLoading}
                 className={`w-full py-4 px-5 rounded-2xl text-base font-bold flex items-center justify-center gap-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                   isDjModeActive

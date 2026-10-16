@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SpotifyJamSideDisplay } from '../../components/spotify/SpotifyJamSideDisplay'
 
 const state = vi.hoisted(() => ({
+  login: { ready: false, state: { pending: false, confirmed: false, browserOpen: false }, busy: null, error: null, act: vi.fn() },
   spotify: {
     jamsByZone: { room: { isActive: true, jamUrl: 'https://spotify.link/example', zoneName: 'Jam antiga' } },
     sharedTracksByZone: { room: [{ id: 'track', title: 'Faixa recomendada', url: 'https://open.spotify.com/track/example' }] },
@@ -22,6 +23,7 @@ vi.mock('../../store/useSpotifyJamStore', () => ({ useSpotifyJamStore: (select: 
 vi.mock('../../store/useGameStore', () => ({ useGameStore: (select: any) => select({ localPlayer: state.player }) }))
 vi.mock('../../store/useMapStore', () => ({ useMapStore: (select: any) => select({ mapData: { zones: [{ id: 'room', name: 'Sala privada' }] } }) }))
 vi.mock('../../media/MediaManager', () => ({ MediaManager: { getInstance: vi.fn() } }))
+vi.mock('../../hooks/useSpotifyLogin', () => ({ useSpotifyLogin: () => state.login }))
 
 describe('Spotify DJ side display', () => {
   beforeEach(() => {
@@ -29,6 +31,7 @@ describe('Spotify DJ side display', () => {
     state.spotify.djStateByZone.room.isDjActive = true
     state.spotify.isSideDisplayMinimized = false
     state.player.currentZoneId = 'room'
+    state.login.ready = false
   })
 
   it('shows DJ controls without old Jam, player shortcuts or recommendation options', () => {
@@ -62,6 +65,15 @@ describe('Spotify DJ side display', () => {
     expect(html).toContain('Entrar pelo navegador')
     expect(html).not.toContain('Parar DJ')
     expect(html).not.toContain('aria-label="Reprodução do Spotify"')
+  })
+
+  it('requires login before broadcasting while keeping stop available', () => {
+    const button = (label: string) => renderToStaticMarkup(<SpotifyJamSideDisplay />).match(/<button\b[^>]*>[\s\S]*?<\/button>/g)?.find(item => item.includes(label))
+    expect(button('Parar DJ')).not.toContain('disabled=""')
+    state.spotify.isDjModeActive = false
+    expect(button('Transmitir DJ')).toContain('disabled=""')
+    state.login.ready = true
+    expect(button('Transmitir DJ')).not.toContain('disabled=""')
   })
 
   it('does not show a panel for legacy Jam or recommendations alone', () => {

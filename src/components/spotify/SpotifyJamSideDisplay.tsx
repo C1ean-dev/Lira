@@ -8,6 +8,7 @@ import { MediaManager } from '../../media/MediaManager'
 import { SpotifyPlayerFeedback } from './SpotifyPlayerFeedback'
 import { SpotifyPlaybackCrop } from './SpotifyPlaybackCrop'
 import { SpotifyLoginControls } from './SpotifyLoginControls'
+import { useSpotifyLogin } from '../../hooks/useSpotifyLogin'
 
 export const SpotifyJamSideDisplay: React.FC = () => {
   const localPlayer = useLocalPlayerDetails()
@@ -27,6 +28,7 @@ export const SpotifyJamSideDisplay: React.FC = () => {
 
   const [djLoading, setDjLoading] = useState(false)
   const [djError, setDjError] = useState<string | null>(null)
+  const login = useSpotifyLogin(!!localZoneId && !!djStateByZone[localZoneId]?.isDjActive && !isMinimized && !isDjModeActive)
 
   if (!localZoneId) return null
   const zoneDjState = djStateByZone[localZoneId]
@@ -37,7 +39,7 @@ export const SpotifyJamSideDisplay: React.FC = () => {
   const zoneDisplayName = currentZone?.name || 'Sala Privada'
 
   const handleToggleDjMode = async () => {
-    if (djLoading) return
+    if (djLoading || (!isDjModeActive && !login.ready)) return
     setDjError(null)
     setDjLoading(true)
     try {
@@ -158,13 +160,13 @@ export const SpotifyJamSideDisplay: React.FC = () => {
       </div>
 
       <div className="p-3 bg-[#0a0c12]/70 space-y-3 overflow-y-auto">
-        {!isDjModeActive && <SpotifyLoginControls disabled={djLoading} />}
+        {!isDjModeActive && <SpotifyLoginControls login={login} disabled={djLoading} />}
         {isDjModeActive && <SpotifyPlaybackCrop />}
         <SpotifyPlayerFeedback opening={djLoading} error={djError} />
         <button
           type="button"
           onClick={handleToggleDjMode}
-          disabled={djLoading}
+          disabled={djLoading || (!isDjModeActive && !login.ready)}
           aria-busy={djLoading}
           className={`w-full py-4 px-5 rounded-2xl text-base font-bold flex items-center justify-center gap-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
             isDjModeActive

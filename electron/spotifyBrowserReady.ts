@@ -46,11 +46,12 @@ export async function prepareSpotifyBrowser(input: string, deps: Deps): Promise<
         }
         if (connection) {
           const reply = await connection.request('Runtime.evaluate', {
-            expression: 'location.origin === "https://open.spotify.com" || location.origin === "null" ? ({ origin: location.origin, state: document.readyState, children: document.body?.childElementCount ?? 0 }) : ({ origin: location.origin })',
+            expression: 'location.origin === "https://open.spotify.com" || location.origin === "null" ? ({ origin: location.origin, state: document.readyState, children: document.body?.childElementCount ?? 0, loginRequired: !!document.querySelector(\'[data-testid="login-button"]\') }) : ({ origin: location.origin })',
             returnByValue: true,
           }, 1500)
           const document = reply?.result?.value
           if (document && loginOrigins.includes(document.origin)) { loginRequired = true; break }
+          if (document?.origin === 'https://open.spotify.com' && document.loginRequired) { loginRequired = true; break }
           if (document?.origin === 'https://open.spotify.com' && document.children > 0) return
           // Recover only an empty initial document; authentication is handled externally.
           if (document?.origin === 'null' && document.state === 'complete' && document.children === 0) {

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SpotifyJamModal } from '../../components/spotify/SpotifyJamModal'
 
 const state = vi.hoisted(() => ({
+  login: { ready: false, state: { pending: false, confirmed: false, browserOpen: false }, busy: null, error: null, act: vi.fn() },
   spotify: {
     isModalOpen: true,
     activeZoneIdForModal: 'room',
@@ -23,6 +24,7 @@ vi.mock('../../store/useSpotifyJamStore', () => ({ useSpotifyJamStore: (select: 
 vi.mock('../../store/useGameStore', () => ({ useGameStore: (select: any) => select({ localPlayer: state.player }) }))
 vi.mock('../../store/useMapStore', () => ({ useMapStore: (select: any) => select({ mapData: { zones: [{ id: 'room', name: 'Sala privada' }] } }) }))
 vi.mock('../../media/MediaManager', () => ({ MediaManager: { getInstance: vi.fn() } }))
+vi.mock('../../hooks/useSpotifyLogin', () => ({ useSpotifyLogin: () => state.login }))
 
 describe('Spotify DJ modal', () => {
   beforeEach(() => {
@@ -30,6 +32,7 @@ describe('Spotify DJ modal', () => {
     state.spotify.isDjModeActive = false
     state.spotify.activeZoneIdForModal = 'room'
     state.player.currentZoneId = 'room'
+    state.login.ready = false
   })
 
   it('shows only DJ controls even when an old Jam and recommendations exist', () => {
@@ -60,6 +63,14 @@ describe('Spotify DJ modal', () => {
     expect(html).toContain('Parar DJ')
     expect(html).not.toContain('Transmitir DJ')
     expect(html).not.toContain('Entrar pelo navegador')
+    expect(html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g)?.find(button => button.includes('Parar DJ'))).not.toContain('disabled=""')
+  })
+
+  it('enables broadcasting only after login confirmation', () => {
+    const transmit = () => renderToStaticMarkup(<SpotifyJamModal />).match(/<button\b[^>]*>[\s\S]*?<\/button>/g)?.find(button => button.includes('Transmitir DJ'))
+    expect(transmit()).toContain('disabled=""')
+    state.login.ready = true
+    expect(transmit()).not.toContain('disabled=""')
   })
 
   it('requires a room and uses DJ wording in the corridor', () => {
