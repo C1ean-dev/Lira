@@ -128,11 +128,12 @@ export class RnnoiseProcessor {
   private lastVad = 0
   private lastMetricsLogAt = 0
   private readySettler: { resolve: (ok: boolean) => void } | null = null
-  private readyTimer: ReturnType<typeof setTimeout> | null = null
+  private startupTimer: ReturnType<typeof setTimeout> | null = null
+  private cancelStart: (() => void) | null = null
   private generation = 0
   private starting = false
   private workletBlobUrl: string | null = null
-  private static readonly READY_TIMEOUT_MS = 5000
+  private static readonly START_TIMEOUT_MS = 5000
 
   private onRuntimeFailure: ((message: string) => void) | null = null
 
@@ -171,6 +172,17 @@ export class RnnoiseProcessor {
       store.setRnnoiseStatus('loading', null)
       store.setRnnoiseStage('start')
 
+      // Every asynchronous startup step shares this deadline and cancellation.
+      let interrupt!: (error: Error) => void
+      const interrupted = new Promise<never>((_, reject) => { interrupt = reject })
+      // A synchronous failure can dispose the start before its first await.
+      void interrupted.catch(() => {})
+      const waitForStart = <T>(pending: Promise<T>): Promise<T> => Promise.race([pending, interrupted])
+      this.cancelStart = () => interrupt(new Error('start cancelled'))
+      this.startupTimer = setTimeout(() => {
+        interrupt(new Error('init timeout'))
+      }, RnnoiseProcessor.START_TIMEOUT_MS)
+
       const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext
       const outSink = useMediaStore.getState().selectedAudioOutput
       const targetSink = !outSink || outSink === 'default' ? '' : outSink
@@ -183,7 +195,7 @@ export class RnnoiseProcessor {
         ;(this.audioCtx as any).setSinkId(targetSink).catch(() => {})
       }
       if (this.audioCtx.state === 'suspended') {
-        await this.audioCtx.resume().catch(() => {})
+        await waitForStart(this.audioCtx.resume().catch(() => {}))
         if (cancelled()) return inputStream
       }
       if (this.audioCtx.sampleRate !== 48000) {
@@ -200,7 +212,7 @@ export class RnnoiseProcessor {
       this.workletBlobUrl = blobUrl
       store.setRnnoiseStage(`blob ${debug}`)
       try {
-        await this.audioCtx.audioWorklet.addModule(blobUrl)
+        await waitForStart(this.audioCtx.audioWorklet.addModule(blobUrl))
       } catch (err) {
         throw new Error(
           `addModule(Blob): ${(err as Error)?.message ?? String(err)}`
@@ -263,7 +275,7 @@ export class RnnoiseProcessor {
           if (this.workletBlobUrl) URL.revokeObjectURL(this.workletBlobUrl)
           this.workletBlobUrl = retry.blobUrl
           useMediaStore.getState().setRnnoiseStage(`blob retry ${retry.debug}`)
-          await this.audioCtx.audioWorklet.addModule(retry.blobUrl)
+          await waitForStart(this.audioCtx.audioWorklet.addModule(retry.blobUrl))
           if (cancelled()) return inputStream
           useMediaStore.getState().setRnnoiseStage('addModule retry ok')
           try {
@@ -286,27 +298,33 @@ export class RnnoiseProcessor {
       }
       this.workletNode = workletNode
       useMediaStore.getState().setRnnoiseStage('node ok, waiting ready')
+      const handleFailure = (message: string) => {
+        if (cancelled() || this.workletError !== null) return
+        const wasRunning = this.workletReady && !this.starting
+        this.workletReady = false
+        this.workletError = message
+        console.warn('[rnnoise] worklet reported error:', message)
+        this.readySettler?.resolve(false)
+        this.readySettler = null
+        if (wasRunning) {
+          useMediaStore.getState().setRnnoiseStatus('error', message)
+          diagLog('audio', 'rnnoise.runtime-failure', { message })
+          this.onRuntimeFailure?.(message)
+        }
+      }
+      this.workletNode.onprocessorerror = (event) => {
+        handleFailure((event as ErrorEvent).message || 'audio worklet processor error')
+      }
       this.workletNode.port.onmessage = (e: MessageEvent) => {
         const data = e.data
-        if (!data || cancelled()) return
+        if (!data || cancelled() || this.workletError !== null) return
         if (data.type === 'ready') {
           this.workletReady = true
           this.workletError = null
           this.readySettler?.resolve(true)
           this.readySettler = null
         } else if (data.type === 'error') {
-          const wasRunning = this.workletReady
-          const message: string = data.message ?? 'unknown worklet error'
-          this.workletReady = false
-          this.workletError = message
-          console.warn('[rnnoise] worklet reported error:', message)
-          this.readySettler?.resolve(false)
-          this.readySettler = null
-          if (wasRunning) {
-            useMediaStore.getState().setRnnoiseStatus('error', message)
-            diagLog('audio', 'rnnoise.runtime-failure', { message })
-            this.onRuntimeFailure?.(message)
-          }
+          handleFailure(data.message ?? 'unknown worklet error')
         } else if (data.type === 'vad') {
           this.lastVad = typeof data.probability === 'number' ? data.probability : 0
         } else if (data.type === 'metrics') {
@@ -344,27 +362,15 @@ export class RnnoiseProcessor {
 
       this.startLevelLoop()
 
-      const ready = await new Promise<boolean>((resolve) => {
+      const ready = await waitForStart(new Promise<boolean>((resolve) => {
         if (this.workletReady) return resolve(true)
         if (this.workletError) return resolve(false)
         this.readySettler = { resolve }
-        this.readyTimer = setTimeout(() => {
-          this.readyTimer = null
-          if (this.readySettler) {
-            this.readySettler = null
-            console.warn('[rnnoise] init timed out, falling back')
-            resolve(false)
-          }
-        }, RnnoiseProcessor.READY_TIMEOUT_MS)
-      })
+      }))
       if (cancelled()) return inputStream
-      if (this.readyTimer) {
-        clearTimeout(this.readyTimer)
-        this.readyTimer = null
-      }
 
       this.starting = false
-      if (!ready) {
+      if (!ready || this.workletError !== null) {
         const cause = this.workletError || 'init timeout'
         this.dispose()
         useMediaStore.getState().setRnnoiseStatus('error', cause)
@@ -388,6 +394,13 @@ export class RnnoiseProcessor {
         .getState()
         .setRnnoiseStatus('error', (err as Error)?.message ?? String(err))
       return inputStream
+    } finally {
+      // A cancelled generation must not clear a newer generation's deadline.
+      if (!cancelled()) {
+        if (this.startupTimer !== null) clearTimeout(this.startupTimer)
+        this.startupTimer = null
+        this.cancelStart = null
+      }
     }
   }
 
@@ -572,9 +585,11 @@ export class RnnoiseProcessor {
       this.levelIntervalId = null
     }
     this.generation++
-    if (this.readyTimer) {
-      clearTimeout(this.readyTimer)
-      this.readyTimer = null
+    this.cancelStart?.()
+    this.cancelStart = null
+    if (this.startupTimer !== null) {
+      clearTimeout(this.startupTimer)
+      this.startupTimer = null
     }
     const settler = this.readySettler
     this.readySettler = null
@@ -590,6 +605,10 @@ export class RnnoiseProcessor {
       this.workletBlobUrl = null
     }
     try {
+      if (this.workletNode) {
+        this.workletNode.onprocessorerror = null
+        this.workletNode.port.onmessage = null
+      }
       this.workletNode?.port.postMessage({ type: 'destroy' })
       this.workletNode?.port.close()
     } catch {}

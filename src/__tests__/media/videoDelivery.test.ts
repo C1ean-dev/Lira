@@ -124,6 +124,81 @@ describe('Video Delivery & Screen Share Guarantee Tests', () => {
     })
   })
 
+  it.each([undefined, true])('does not capture the webcam at startup when the camera is off (video=%s)', async (video) => {
+    const manager = MediaManager.getInstance()
+    const gum = vi.spyOn(navigator.mediaDevices, 'getUserMedia').mockResolvedValue(new MockMediaStream() as any)
+    vi.spyOn(manager as any, 'runEngine').mockImplementation(async (stream) => stream)
+    vi.spyOn(manager as any, 'initDeviceWatcher').mockImplementation(() => {})
+
+    await manager.startMedia(video)
+
+    expect(gum).toHaveBeenCalledWith(expect.objectContaining({ video: false }))
+    expect(gum.mock.calls.every(([constraints]) => constraints?.video === false)).toBe(true)
+    expect(useMediaStore.getState().isCameraOff).toBe(true)
+  })
+
+  it('does not try a camera fallback when audio acquisition fails with the camera off', async () => {
+    const manager = MediaManager.getInstance()
+    const gum = vi.spyOn(navigator.mediaDevices, 'getUserMedia').mockRejectedValue(new Error('Microphone unavailable'))
+    vi.spyOn(manager as any, 'runEngine').mockImplementation(async (stream) => stream)
+    vi.spyOn(manager as any, 'initDeviceWatcher').mockImplementation(() => {})
+
+    await manager.startMedia(true, true)
+
+    expect(gum.mock.calls.every(([constraints]) => constraints?.video === false)).toBe(true)
+  })
+
+  it('starts a new audio-only session with camera off even after a previous activation', async () => {
+    const manager = MediaManager.getInstance()
+    useMediaStore.setState({ isCameraOff: false })
+    const gum = vi.spyOn(navigator.mediaDevices, 'getUserMedia').mockResolvedValue(new MockMediaStream() as any)
+    vi.spyOn(manager as any, 'runEngine').mockImplementation(async (stream) => stream)
+    vi.spyOn(manager as any, 'initDeviceWatcher').mockImplementation(() => {})
+
+    await manager.startMedia(false, true)
+
+    expect(gum).toHaveBeenCalledWith(expect.objectContaining({ video: false }))
+    expect(useMediaStore.getState().isCameraOff).toBe(true)
+    expect(useMediaStore.getState().localStream?.getVideoTracks().every(track => !track.enabled)).toBe(true)
+  })
+
+  it.each(['stopAllMedia', 'stopAll'] as const)('clears camera activation and stops capture on %s', (method) => {
+    const manager = MediaManager.getInstance()
+    const camera = { kind: 'video', enabled: true, stop: vi.fn() }
+    const stream = new MockMediaStream([camera])
+    ;(manager as any).rawUserStream = stream
+    useMediaStore.setState({ localStream: stream as any, isCameraOff: false })
+    vi.spyOn(manager, 'stopScreenShare').mockImplementation(() => {})
+
+    manager[method]()
+
+    expect(camera.stop).toHaveBeenCalled()
+    expect(useMediaStore.getState().isCameraOff).toBe(true)
+    expect(useMediaStore.getState().localStream).toBeNull()
+  })
+
+  it.each(['startMedia', 'changeAudioInput'] as const)('does not publish %s that completes after leaving the session', async (method) => {
+    const manager = MediaManager.getInstance()
+    const audio = { id: 'mic-cancelled', kind: 'audio', enabled: true, stop: vi.fn() }
+    const stream = new MockMediaStream([audio])
+    vi.spyOn(navigator.mediaDevices, 'getUserMedia').mockResolvedValue(stream as any)
+    vi.spyOn(manager, 'createDummyVideoTrack').mockReturnValue(null as any)
+    const replace = vi.spyOn(PeerManager.getInstance(), 'replaceAudioTrack').mockImplementation(() => {})
+    let finish!: (stream: MediaStream) => void
+    const processing = new Promise<MediaStream>(resolve => { finish = resolve })
+    const engine = vi.spyOn(manager as any, 'runEngine').mockReturnValue(processing)
+    const started = method === 'startMedia' ? manager.startMedia(false, true) : manager.changeAudioInput('new-mic')
+    await vi.waitFor(() => expect(engine).toHaveBeenCalled())
+
+    manager.stopAllMedia()
+    finish(stream as any)
+
+    await expect(started).resolves.toBe(method === 'startMedia' ? null : false)
+    expect(useMediaStore.getState().localStream).toBeNull()
+    expect(audio.stop).toHaveBeenCalled()
+    expect(replace).not.toHaveBeenCalled()
+  })
+
   it('should generate a dummy video track when canvas is available to guarantee video transceiver', () => {
     const mediaManager = MediaManager.getInstance()
     const dummyTrack = mediaManager.createDummyVideoTrack()

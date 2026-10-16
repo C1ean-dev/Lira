@@ -491,7 +491,9 @@ export const AdvancedAudioTab: React.FC = () => {
                 <div className="mt-1.5 space-y-1">
                   <div
                     className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-semibold border ${
-                      rnnoiseStatus === 'ready'
+                      !isNoiseSuppressionEnabled
+                        ? 'bg-slate-500/10 border-slate-500/40 text-slate-300'
+                        : rnnoiseStatus === 'ready'
                         ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
                         : rnnoiseStatus === 'loading'
                           ? 'bg-amber-500/10 border-amber-500/40 text-amber-300 animate-pulse'
@@ -502,7 +504,9 @@ export const AdvancedAudioTab: React.FC = () => {
                   >
                     <span
                       className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                        rnnoiseStatus === 'ready'
+                        !isNoiseSuppressionEnabled
+                          ? 'bg-slate-400'
+                          : rnnoiseStatus === 'ready'
                           ? 'bg-emerald-400'
                           : rnnoiseStatus === 'loading'
                             ? 'bg-amber-400 animate-ping'
@@ -511,11 +515,12 @@ export const AdvancedAudioTab: React.FC = () => {
                               : 'bg-slate-400'
                       }`}
                     />
-                    {rnnoiseStatus === 'ready' && 'Rede neural ativa'}
-                    {rnnoiseStatus === 'loading' && 'Carregando rede neural…'}
-                    {rnnoiseStatus === 'idle' && 'Aguardando microfone…'}
-                    {rnnoiseStatus === 'fallback' && 'RNNoise indisponível — usando DSP Suave'}
-                    {rnnoiseStatus === 'error' && 'Falha no RNNoise — usando DSP Suave'}
+                    {!isNoiseSuppressionEnabled && 'Supressão desativada'}
+                    {isNoiseSuppressionEnabled && rnnoiseStatus === 'ready' && 'Rede neural ativa'}
+                    {isNoiseSuppressionEnabled && rnnoiseStatus === 'loading' && 'Carregando rede neural…'}
+                    {isNoiseSuppressionEnabled && rnnoiseStatus === 'idle' && 'Aguardando microfone…'}
+                    {isNoiseSuppressionEnabled && rnnoiseStatus === 'fallback' && 'RNNoise indisponível — usando DSP Suave'}
+                    {isNoiseSuppressionEnabled && rnnoiseStatus === 'error' && 'Falha no RNNoise'}
                     {(rnnoiseStatus === 'fallback' || rnnoiseStatus === 'error') && (
                       <button
                         type="button"
