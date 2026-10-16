@@ -36,7 +36,7 @@ export const PublicRoomsTab: React.FC<Props> = ({
   error,
   setError,
 }) => {
-  const { status: brokerStatus, isResolving, feedback, resolveConnection } = useBrokerStatus()
+  const { status: brokerStatus, servers, isResolving, feedback, resolveConnection } = useBrokerStatus()
 
   const handleSearchSubmit = () => {
     const raw = searchQuery.trim()
@@ -86,22 +86,7 @@ export const PublicRoomsTab: React.FC<Props> = ({
           </div>
 
           <div className="flex items-center gap-1.5">
-            {brokerStatus === 'connected' ? (
-              <div
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs font-semibold"
-                title="Conectado ao broker de salas públicas em tempo real"
-              >
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span>Conectado</span>
-              </div>
-            ) : brokerStatus === 'connecting' || isResolving ? (
-              <div
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-blue-500/10 border border-blue-500/25 text-blue-400 text-xs font-semibold"
-              >
-                <RefreshCw className="w-3 h-3 animate-spin text-blue-400" />
-                <span>Conectando...</span>
-              </div>
-            ) : (
+            {brokerStatus === 'disconnected' && (
               <button
                 type="button"
                 onClick={resolveConnection}
@@ -125,6 +110,37 @@ export const PublicRoomsTab: React.FC<Props> = ({
               <span>{isRefreshing ? 'Atualizando...' : 'Atualizar'}</span>
             </button>
           </div>
+        </div>
+
+        <div role="group" aria-label="Servidores de salas" className="flex flex-wrap gap-2">
+          {servers.map((server) => {
+            const connected = server.status === 'connected'
+            const connecting = server.status === 'connecting'
+            const label = connected ? 'Conectado' : connecting ? 'Conectando...' : 'Não conectado'
+            return (
+              <div
+                key={server.host}
+                role="status"
+                aria-label={`${server.name}: ${label}`}
+                title={server.host}
+                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border text-xs ${
+                  connected
+                    ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
+                    : connecting
+                      ? 'bg-blue-500/10 border-blue-500/25 text-blue-400'
+                      : 'bg-[#12151d] border-[#2a3142] text-slate-400'
+                }`}
+              >
+                {connecting ? (
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                ) : (
+                  <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                )}
+                <span className="font-semibold">{server.name}</span>
+                <span>{label}</span>
+              </div>
+            )
+          })}
         </div>
 
         {error && (

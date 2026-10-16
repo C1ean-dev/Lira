@@ -1,15 +1,19 @@
 import { useState, useEffect, useCallback } from 'react'
-import { PublicRoomsService, BrokerConnectionStatus } from '../services/publicRoomsService'
+import { PublicRoomsService, BrokerConnectionStatus, BrokerServerStatus } from '../services/publicRoomsService'
 
 export function useBrokerStatus() {
   const service = PublicRoomsService.getInstance()
-  const [status, setStatus] = useState<BrokerConnectionStatus>(service.getBrokerStatus())
+  const [{ status, serverHost, servers }, setConnection] = useState<{
+    status: BrokerConnectionStatus
+    serverHost: string | null
+    servers: BrokerServerStatus[]
+  }>(() => ({ status: service.getBrokerStatus(), serverHost: service.getBrokerServerHost(), servers: service.getBrokerServers() }))
   const [isResolving, setIsResolving] = useState<boolean>(false)
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
     return service.subscribeBrokerStatus((newStatus) => {
-      setStatus(newStatus)
+      setConnection({ status: newStatus, serverHost: service.getBrokerServerHost(), servers: service.getBrokerServers() })
       if (newStatus === 'connected') {
         setFeedback(null)
       }
@@ -53,6 +57,8 @@ export function useBrokerStatus() {
 
   return {
     status,
+    serverHost,
+    servers,
     isResolving,
     feedback,
     resolveConnection,

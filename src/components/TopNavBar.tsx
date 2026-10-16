@@ -27,6 +27,7 @@ import { useNetworkQualityStore } from '../store/useNetworkQualityStore'
 import { STATUS_META } from '../types/game'
 import { PlayerAvatar } from './common/PlayerAvatar'
 import { isAndroid } from '../utils/platform'
+import { useRoomPublication } from '../hooks/useRoomPublication'
 
 interface Props {
   onOpenAvatarModal: () => void
@@ -60,7 +61,7 @@ export const TopNavBar: React.FC<Props> = ({
   const isOwner = useGameStore((s) => s.isOwner)
   const isRoomPublic = useGameStore((s) => s.isRoomPublic)
   const toggleRoomPrivacy = useGameStore((s) => s.toggleRoomPrivacy)
-  const signalingTier = useGameStore((s) => s.signalingTier)
+  const publicationServers = useRoomPublication(isRoomPublic ? roomId : null)
   const isOnlineUsersOpen = useGameStore((s) => s.isOnlineUsersOpen)
   const toggleOnlineUsers = useGameStore((s) => s.toggleOnlineUsers)
   const remotePlayerCount = useGameStore((s) => Object.keys(s.remotePlayers).length)
@@ -170,18 +171,19 @@ export const TopNavBar: React.FC<Props> = ({
             {!isAndroidPlatform && (
               <>
                 <span>{isRoomPublic ? 'Pública' : 'Privada'}</span>
-                <span
-                  className={`text-[9px] border px-1.5 py-0.5 rounded font-mono font-bold ml-0.5 lowercase ${
-                    signalingTier === 'render'
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                      : signalingTier === 'public'
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                      : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
-                  }`}
-                  title={`Servidor de sinalização P2P ativo: ${signalingTier || 'render'}`}
-                >
-                  {signalingTier || 'render'}
-                </span>
+                {isRoomPublic && publicationServers.map(server => (
+                  <span
+                    key={server.host}
+                    className="text-[9px] border px-1.5 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                    aria-label={`Sala publicada em ${server.name}`}
+                    title={server.host}
+                  >
+                    {server.name}
+                  </span>
+                ))}
+                {isRoomPublic && publicationServers.length === 0 && (
+                  <span className="text-[9px] text-amber-300">Aguardando publicação</span>
+                )}
               </>
             )}
           </button>
