@@ -5,9 +5,9 @@ import { vi } from 'vitest'
 vi.mock('../../assets/atlasService', () => {
   const documents = new Map<string, unknown>()
   return {
-    buildAtlas: vi.fn(async (assets, categories = []) => {
+    buildAtlas: vi.fn(async (assets, categories = [], deletedAssetIds: string[] = []) => {
       const xml = `<mock-atlas id="${documents.size}"/>`
-      documents.set(xml, { assets, categories })
+      documents.set(xml, { assets, categories, ...(deletedAssetIds.length ? { deletedAssetIds } : {}) })
       return { xml, png: 'data:image/png;base64,mock' }
     }),
     readAtlas: vi.fn(async pair => documents.get(pair.xml)),

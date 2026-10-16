@@ -9,7 +9,7 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(
 describe('asset transactions', () => {
   it('persists PNG/XML through the atlas service', async () => {
     expect(await syncToNativeFile([], ['Geral'])).toBe(true)
-    expect(buildAtlas).toHaveBeenCalledWith([], ['Geral'])
+    expect(buildAtlas).toHaveBeenCalledWith([], ['Geral'], [])
     expect(saveStoredAtlas).toHaveBeenCalledWith(expect.objectContaining({ xml: expect.any(String), png: expect.stringContaining('data:image/png') }))
   })
   it('preserves the previous state if storage fails', async () => {

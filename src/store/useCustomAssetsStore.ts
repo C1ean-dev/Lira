@@ -113,6 +113,7 @@ export async function repairMissingDirectionalFrames(assets: CustomAsset[]): Pro
 interface CustomAssetsState {
   customAssets: CustomAsset[]
   customCategories: string[]
+  deletedAssetIds: string[]
   isCustomModalOpen: boolean
   editingAssetId: string | null
   initialStudioMode: 'crop' | 'compose'
@@ -145,13 +146,15 @@ function queue(action: () => Promise<void>): Promise<void> {
     throw error
   })
 }
-async function commit(assets: CustomAsset[], categories: string[]) {
-  const pair = await buildAtlas(assets, categories)
+async function commit(assets: CustomAsset[], categories: string[], deletedAssetIds = useCustomAssetsStore.getState().deletedAssetIds) {
+  const activeIds = new Set(assets.map(asset => asset.id))
+  const deleted = deletedAssetIds.filter(id => !activeIds.has(id))
+  const pair = await buildAtlas(assets, categories, deleted)
   // Decode before committing: missing references or images must not replace a valid library.
   const doc = await readAtlas(pair)
   await warmAssetImages(doc.assets)
   await saveStoredAtlas(pair)
-  useCustomAssetsStore.setState({ customAssets: doc.assets, customCategories: categories })
+  useCustomAssetsStore.setState({ customAssets: doc.assets, customCategories: categories, deletedAssetIds: deleted })
   saveCategories(categories)
   notifyCustomAssetsChanged()
 }
@@ -209,13 +212,14 @@ async function addAssets(incoming: CustomAsset[], broadcast: boolean, categories
 async function deleteAsset(id: string, broadcast: boolean) {
   await queue(async () => {
     const state = useCustomAssetsStore.getState()
-    await commit(state.customAssets.filter(a => a.id !== id), state.customCategories)
+    await commit(state.customAssets.filter(a => a.id !== id), state.customCategories, [...new Set([...state.deletedAssetIds, id])])
     if (broadcast) PeerManager.getInstance().sendCustomAssetDelete(id)
   })
 }
 export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
   customAssets: [],
   customCategories: loadSavedCategories(),
+  deletedAssetIds: [],
   isCustomModalOpen: false,
   editingAssetId: null,
   initialStudioMode: 'crop',
@@ -281,11 +285,20 @@ export function initializeCustomAssets(): Promise<void> {
   if (initialization) return initialization
   initialization = (async () => {
     const stored = await loadStoredAtlas()
-    const pairs = stored ? [stored] : await loadBundledAtlases()
+    // An existing local library must not hide additions shipped in an update.
+    // Apply it last so edited assets retain their local pixels and metadata.
+    const bundled = await loadBundledAtlases()
+    const pairs = [...bundled.filter(pair => !stored || pair.xml !== stored.xml || pair.png !== stored.png), ...(stored ? [stored] : [])]
     let assets: CustomAsset[] = []
     let categories = loadSavedCategories()
+    let deletedAssetIds: string[] = []
     for (const pair of pairs) {
       const doc = await readAtlas(pair)
+      if (pair === stored) {
+        deletedAssetIds = doc.deletedAssetIds || []
+        const deleted = new Set(deletedAssetIds)
+        assets = assets.filter(asset => !deleted.has(asset.id))
+      }
       assets = merge(assets, doc.assets)
       categories = [...new Set([...categories, ...doc.categories])]
     }
@@ -304,12 +317,12 @@ export function initializeCustomAssets(): Promise<void> {
     }
     await repairMissingDirectionalFrames(assets)
     if (raw || legacy?.assets?.length) {
-      await commit(assets, categories)
+      await commit(assets, categories, deletedAssetIds)
       localStorage.removeItem(ASSETS_STORAGE_KEY)
       if (legacy?.assets?.length && api?.completeAssetAtlasMigration) await api.completeAssetAtlasMigration()
     } else {
       await warmAssetImages(assets)
-      useCustomAssetsStore.setState({ customAssets: assets, customCategories: categories })
+      useCustomAssetsStore.setState({ customAssets: assets, customCategories: categories, deletedAssetIds })
       notifyCustomAssetsChanged()
     }
     migrateStoredAvatarReferences(localStorage)
