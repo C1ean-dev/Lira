@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { prepareSpotifyBrowser } from '../../../electron/spotifyBrowserReady'
 
 const blank = { origin: 'null', state: 'complete', children: 0 }
-const loaded = { origin: 'https://open.spotify.com', state: 'complete', children: 3 }
+const loaded = { origin: 'https://open.spotify.com', state: 'complete', children: 3, loginRequired: false }
 function setup(documents = [loaded]) {
   let index = 0
   const request = vi.fn(async (method: string) => method === 'Runtime.evaluate'
@@ -34,6 +34,13 @@ describe('Spotify browser initial navigation', () => {
     await prepareSpotifyBrowser('https://open.spotify.com', s.deps)
     expect(s.request.mock.calls.map(call => call[0])).toEqual(['Runtime.evaluate'])
     expect(s.connection.close).toHaveBeenCalledOnce()
+  })
+
+  it('rejects a loaded guest page before confirming completion of login', async () => {
+    const s = setup([{ ...loaded, loginRequired: true }])
+    await expect(prepareSpotifyBrowser('https://open.spotify.com', s.deps)).rejects.toThrow('Entrar pelo navegador')
+    expect(s.connection.close).toHaveBeenCalledOnce()
+    expect(s.request.mock.calls.map(call => call[0])).not.toContain('Page.navigate')
   })
 
   it.each(['https://accounts.google.com', 'https://accounts.spotify.com'])('keeps an authentication page outside the host without connecting to it: %s', async origin => {

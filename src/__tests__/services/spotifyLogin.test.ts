@@ -110,7 +110,7 @@ describe('Spotify authentication in the external browser', () => {
 
   it('restores the completion step when a panel is reopened or Lira restarts during login', async () => {
     const { login, deps, setProcess } = setup({ processId: 70, remoteDebugging: false })
-    expect(await login.state()).toEqual({ pending: true })
+    expect(await login.state()).toEqual({ pending: true, confirmed: false, browserOpen: true })
     setProcess(null)
     expect(await login.complete()).toEqual({ ok: true })
     const restored = new SpotifyLoginController({ ...deps, pending: () => true })
@@ -121,6 +121,43 @@ describe('Spotify authentication in the external browser', () => {
     const { login, deps } = setup()
     expect((await login.complete()).ok).toBe(false)
     expect(deps.openPlayer).not.toHaveBeenCalled()
+  })
+
+  it('reports the saved completion when reopening the DJ panel, even with the player closed', async () => {
+    const { login, confirm } = setup()
+    expect(await login.state()).toEqual({ pending: false, confirmed: false, browserOpen: false })
+    confirm()
+    expect(await login.state()).toEqual({ pending: false, confirmed: true, browserOpen: false })
+  })
+
+  it('distinguishes a closed login browser from a completed login', async () => {
+    const { login, setProcess } = setup()
+    await login.open()
+    expect(await login.state()).toEqual({ pending: true, confirmed: false, browserOpen: true })
+    setProcess(null)
+    expect(await login.state()).toEqual({ pending: true, confirmed: false, browserOpen: false })
+    await login.complete()
+    expect(await login.state()).toEqual({ pending: false, confirmed: true, browserOpen: false })
+  })
+
+  it('does not report a saved confirmation while a normal login browser is open', async () => {
+    const { login, confirm } = setup({ processId: 70, remoteDebugging: false })
+    confirm()
+    expect(await login.state()).toEqual({ pending: true, confirmed: false, browserOpen: true })
+  })
+
+  it('ignores a stale normal-browser query that finishes after login completion', async () => {
+    const { login, deps, setProcess } = setup()
+    await login.open()
+    let resolve!: (value: SpotifyBrowserProcess | null) => void
+    deps.getProcess.mockImplementationOnce(() => new Promise(done => { resolve = done }))
+    const state = login.state()
+    setProcess(null)
+    await login.complete()
+    resolve({ processId: 70, remoteDebugging: false })
+    await state
+    expect(login.isAuthenticating).toBe(false)
+    expect(deps.confirmed()).toBe(true)
   })
 
   it('requires the user to stop DJ capture before replacing the player for login', async () => {
