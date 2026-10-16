@@ -47,6 +47,51 @@ describe('Render public room discovery', () => {
     expect(service.getBrokerServers().find(server => server.name === 'Render')).toMatchObject({ status: 'connecting' })
   })
 
+  it('shows RabbitMQ status via Render but only marks rooms published after broker confirmation', async () => {
+    const serviceStatus = { name: 'RabbitMQ', host: 'jaragua.lmq.cloudamqp.com', status: 'connected' }
+    service.startHosting(room)
+    render().open()
+    await render().receive({ type: 'READY', protocolVersion: 1, services: [serviceStatus] })
+    expect(service.getBrokerServers()).toContainEqual(serviceStatus)
+    expect(service.getRoomPublicationServers(room.code).map(server => server.name)).toEqual(['Render'])
+    await render().receive({ type: 'ROOM_PUBLISHED', service: 'RabbitMQ', roomId: room.code, hostId: room.hostId })
+    expect(service.getRoomPublicationServers(room.code).map(server => server.name)).toEqual(['Render', 'RabbitMQ'])
+    await render().receive({ type: 'SERVICE_STATUS', services: [{ ...serviceStatus, status: 'disconnected' }] })
+    expect(service.getBrokerServers().find(server => server.name === 'RabbitMQ')?.status).toBe('disconnected')
+    expect(service.getRoomPublicationServers(room.code).map(server => server.name)).toEqual(['Render'])
+    await render().receive({ type: 'SERVICE_STATUS', services: [serviceStatus] })
+    expect(service.getRoomPublicationServers(room.code).map(server => server.name)).toEqual(['Render'])
+    service.stopHosting()
+    await render().receive({ type: 'ROOM_PUBLISHED', service: 'RabbitMQ', roomId: room.code, hostId: room.hostId })
+    expect(service.getRoomPublicationServers(room.code)).toEqual([])
+  })
+
+  it('attributes RabbitMQ rooms for guests, rejects stale identities and clears state when Render disconnects', async () => {
+    render().open()
+    const rabbit = { name: 'RabbitMQ', host: 'jaragua.lmq.cloudamqp.com', status: 'connected' }
+    await render().receive({ type: 'READY', protocolVersion: 1, services: [rabbit] })
+    await render().receive({ type: 'ANNOUNCE_ROOM', roomInfo: { ...room, announcementId: 'new' }, publicationServices: ['RabbitMQ'] })
+    expect(service.getRoomPublicationServers(room.code).map(server => server.name)).toEqual(['Render', 'RabbitMQ'])
+    await render().receive({ type: 'SERVICE_STATUS', services: [{ ...rabbit, status: 'disconnected' }] })
+    await render().receive({ type: 'SERVICE_STATUS', services: [rabbit] })
+    await render().receive({ type: 'ROOM_PUBLISHED', service: 'RabbitMQ', roomId: room.code, hostId: 'impostor', announcementId: 'new' })
+    await render().receive({ type: 'ROOM_PUBLISHED', service: 'RabbitMQ', roomId: room.code, hostId: room.hostId, announcementId: 'old' })
+    expect(service.getRoomPublicationServers(room.code).map(server => server.name)).toEqual(['Render'])
+    await render().receive({ type: 'ROOM_PUBLISHED', service: 'RabbitMQ', roomId: room.code, hostId: room.hostId, announcementId: 'new' })
+    expect(service.getRoomPublicationServers(room.code).map(server => server.name)).toEqual(['Render', 'RabbitMQ'])
+    render().close()
+    expect(service.getBrokerServers().find(server => server.name === 'RabbitMQ')?.status).toBe('disconnected')
+    expect(service.getRoomPublicationServers(room.code)).toEqual([])
+  })
+
+  it('ignores RabbitMQ status and publication claims received from public MQTT brokers', async () => {
+    sockets[0].open()
+    await sockets[0].receive({ type: 'SERVICE_STATUS', services: [{ name: 'RabbitMQ', host: 'forged.example', status: 'connected' }] })
+    await sockets[0].receive({ type: 'ANNOUNCE_ROOM', roomInfo: room, publicationServices: ['RabbitMQ'] })
+    expect(service.getBrokerServers().some(server => server.name === 'RabbitMQ')).toBe(false)
+    expect(service.getRoomPublicationServers(room.code).map(server => server.name)).toEqual(['EMQX'])
+  })
+
   it('immediately retries every unavailable service when making a room public', async () => {
     sockets.forEach(socket => socket.close())
     service.startHosting(room)
