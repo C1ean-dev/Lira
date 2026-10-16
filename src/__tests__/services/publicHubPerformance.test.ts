@@ -52,11 +52,13 @@ describe('public room heartbeat and MQTT payload cost', () => {
   let service: any
   let saved: Map<string, string>
   let send: ReturnType<typeof vi.fn>
+  let secondSend: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     vi.useFakeTimers()
     saved = new Map()
     send = vi.fn()
+    secondSend = vi.fn()
     vi.stubGlobal('WebSocket', { OPEN: 1 })
     vi.stubGlobal('window', { localStorage: {
       getItem: (key: string) => saved.get(key) ?? null,
@@ -64,8 +66,12 @@ describe('public room heartbeat and MQTT payload cost', () => {
     } })
     service = Object.create(PublicRoomsService.prototype)
     Object.assign(service, {
-      rooms: new Map(), listeners: new Set(), currentHosting: null,
-      ws: { readyState: 1, send }, broadcastChannel: { postMessage: vi.fn() },
+      rooms: new Map(), roomSources: new Map(), listeners: new Set(), currentHosting: null,
+      relays: [
+        { host: 'broker.emqx.io', status: 'connected', ws: { readyState: 1, send }, mqttBuffer: new Uint8Array(0) },
+        { host: 'broker.hivemq.com', status: 'connected', ws: { readyState: 1, send: secondSend }, mqttBuffer: new Uint8Array(0) },
+      ],
+      broadcastChannel: { postMessage: vi.fn() },
     })
   })
 
@@ -86,6 +92,8 @@ describe('public room heartbeat and MQTT payload cost', () => {
     const hostAvatar = { ...DEFAULT_AVATAR, toJSON }
     service.startHosting({ ...room, hostAvatar })
     expect(send.mock.calls[0][0].byteLength).toBeGreaterThan(1_200_000)
+    expect(secondSend.mock.calls[0][0]).toBe(send.mock.calls[0][0])
+    expect(toJSON).toHaveBeenCalledTimes(1)
     toJSON.mockClear()
 
     await vi.advanceTimersByTimeAsync(8000)
@@ -113,7 +121,7 @@ describe('public room heartbeat and MQTT payload cost', () => {
   it('receives legacy megabyte announcements without overflowing the JavaScript argument stack', async () => {
     const hostAvatar = { ...DEFAULT_AVATAR, customSkinUrl: 'a'.repeat(1_200_000) }
     const packet = publish({ type: 'ANNOUNCE_ROOM', roomInfo: { ...room, hostAvatar }, timestamp: Date.now() })
-    await service.handleMqttMessage(packet.buffer)
+    await service.handleMqttMessage(packet.buffer, service.relays[0])
     expect(service.getRooms()[0]?.name).toBe('São Paulo 🎵')
     expect(service.getRooms()[0]?.hostName).toBe('João')
     expect(service.getRooms()[0]?.hostAvatar?.customSkinUrl?.length).toBe(1_200_000)
@@ -124,7 +132,7 @@ describe('public room heartbeat and MQTT payload cost', () => {
     const packet = publish({ type: 'ANNOUNCE_ROOM', roomInfo: room, timestamp: Date.now() })
     const split = packet.indexOf(0xf0) + 2
     for (const part of [packet.subarray(0, 2), packet.subarray(2, split), packet.subarray(split)]) {
-      await service.handleMqttMessage(part)
+      await service.handleMqttMessage(part, service.relays[0])
     }
     expect(service.getRooms()[0]?.name).toBe('São Paulo 🎵')
   })
@@ -135,12 +143,12 @@ describe('public room heartbeat and MQTT payload cost', () => {
     const packet = new Uint8Array(first.length + second.length)
     packet.set(first)
     packet.set(second, first.length)
-    await service.handleMqttMessage(packet)
+    await service.handleMqttMessage(packet, service.relays[0])
     expect(service.getRooms().map((item: any) => item.code)).toEqual(['TEST', 'SECOND'])
   })
 
   it('still accepts accented names from the old single-byte sender', async () => {
-    await service.handleMqttMessage(publish({ type: 'ANNOUNCE_ROOM', roomInfo: { ...room, name: 'Café' } }, true))
+    await service.handleMqttMessage(publish({ type: 'ANNOUNCE_ROOM', roomInfo: { ...room, name: 'Café' } }, true), service.relays[0])
     expect(service.getRooms()[0]?.name).toBe('Café')
     expect(service.getRooms()[0]?.hostName).toBe('João')
   })
