@@ -1,6 +1,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import shutil
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
@@ -13,9 +14,18 @@ spec.loader.exec_module(migration)
 
 class MigrationTest(unittest.TestCase):
     def test_distributed_library_preserves_all_original_image_pixels_and_metadata(self):
-        directory = Path(__file__).resolve().parent.parent / 'public' / 'assets' / 'library'
-        legacy = ET.fromstring((directory / 'library.xml').read_text(encoding='utf-8'))
-        catalog = json.loads((directory / 'catalog.json').read_text(encoding='utf-8'))
+        source = Path(__file__).resolve().parent.parent / 'public' / 'assets' / 'library'
+        legacy = ET.fromstring((source / 'library.xml').read_text(encoding='utf-8'))
+        # Exercise a fresh conversion rather than assuming the editor's current
+        # catalog still has exactly the original metadata and characters.
+        with tempfile.TemporaryDirectory() as folder:
+            directory = Path(folder)
+            shutil.copyfile(source / 'library.xml', directory / 'library.xml')
+            shutil.copyfile(source / legacy.attrib['imagePath'], directory / legacy.attrib['imagePath'])
+            catalog = migration.migrate(directory)
+            self.assert_original_library_pixels(legacy, catalog, directory)
+
+    def assert_original_library_pixels(self, legacy, catalog, directory):
         previous = legacy.find('LiraAssets')[0]
         current = ET.fromstring(catalog['document'])
         regions = {region.attrib['name']: region.attrib for region in legacy.findall('SubTexture')}

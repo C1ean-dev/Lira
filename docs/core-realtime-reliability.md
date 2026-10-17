@@ -67,7 +67,7 @@ de falhas em todos os computadores e redes.
 ## Verificação local de 17/10/2026
 
 - Windows, Node.js 24.20.0, Chrome instalado e Playwright 1.64.1.
-- Suíte completa: 253 arquivos, 2.586 testes aprovados, zero falhas e quatro
+- Suíte completa consolidada: 253 arquivos, 2.588 testes aprovados, zero falhas e quatro
   variações condicionais de cursor ignoradas. Execução final com
   `npx vitest run src/__tests__ --maxWorkers=4` e relatório JSON.
 - 44 novos testes de regressão de captura, call, voz e sinalização aprovados.
