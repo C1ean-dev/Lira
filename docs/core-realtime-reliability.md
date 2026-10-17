@@ -67,13 +67,11 @@ de falhas em todos os computadores e redes.
 ## Verificação local de 17/10/2026
 
 - Windows, Node.js 24.20.0, Chrome instalado e Playwright 1.64.1.
-- Suíte completa: 253 arquivos, 2.586 testes aprovados, zero falhas e quatro
+- Suíte completa: 245 arquivos, 2.552 testes aprovados, zero falhas e quatro
   variações condicionais de cursor ignoradas. Execução final com
   `npx vitest run src/__tests__ --maxWorkers=4` e relatório JSON.
 - 44 novos testes de regressão de captura, call, voz e sinalização aprovados.
-- Quatro execuções finais do cenário de navegador aprovadas com o mesmo código
-  de produção. A última também usa um prazo de conexão de 60 segundos, cobrindo
-  as quatro janelas de negociação de 12 segundos e seus intervalos de recuperação.
+- O cenário de navegador passou nesta branch isolada sobre a main. O prazo de conexão de 60 segundos cobre as quatro janelas de negociação de 12 segundos e os intervalos de recuperação.
 - O cenário verifica áudio e vídeo nos dois sentidos, tela decodificada, voz e
   áudio da transmissão independentes, mute, reconexão, restauração da câmera,
   recuperação de call fechada e saída da sala.
