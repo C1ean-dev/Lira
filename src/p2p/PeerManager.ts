@@ -130,6 +130,9 @@ export class PeerManager {
   private mediaCalls: Map<string, MediaConnection> = new Map()
   private liveVoiceCalls: Map<string, MediaConnection> = new Map()
   private incomingLiveVoiceCalls: Map<string, MediaConnection> = new Map()
+  private liveVoiceRetryTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private liveVoiceReadyTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private liveVoiceRetryCounts = new Map<string, number>()
   private peerLastSeen: Map<string, number> = new Map()
   private pendingHeartbeats = new Map<string, { connection: DataConnection; timestamp: number }>
   private hostRecovery: HostRecovery | null = null
@@ -690,11 +693,25 @@ export class PeerManager {
   }
 
   private setupSignalingListeners(myPeer: Peer) {
-    myPeer.on('disconnected', () => {
-      console.warn(`[P2P Signaling] Disconnected from server (Peer ID: ${myPeer.id})`)
-      diagLog('room', 'peer-disconnected', { roomCode: this.roomCode, peerId: myPeer.id })
+    myPeer.on('open', () => {
+      if (this.peer !== myPeer || this.isIntentionalDisconnect || !this.roomCode) return
+      clearTimeout(this.signalingReconnectTimer)
+      this.signalingReconnectTimer = null
+      this.signalingReconnectAttempts = 0
+      if (this.isHost || [...this.connections.values()].some(connection => connection.open)) {
+        useGameStore.getState().setConnectionStatus('connected')
+      }
+      for (const [peerId, state] of Object.entries(useGameStore.getState().callStates)) {
+        if (state === 'failed' && !this.mediaCalls.has(peerId)) this.retryZoneCall(peerId)
+      }
+      this.liveVoiceRetryCounts.clear()
+      if (useMediaStore.getState().isScreenSharing) this.startLiveVoiceCalls()
+    })
+    myPeer.on('disconnected', (previousId) => {
+      console.warn(`[P2P Signaling] Disconnected from server (Peer ID: ${previousId || myPeer.id})`)
+      diagLog('room', 'peer-disconnected', { roomCode: this.roomCode, peerId: previousId || myPeer.id })
 
-      if (this.isIntentionalDisconnect || !this.roomCode || this.peer !== myPeer || !myPeer.id) return
+      if (this.isIntentionalDisconnect || !this.roomCode || this.peer !== myPeer) return
 
       useGameStore.getState().setConnectionStatus('reconnecting')
       this.scheduleSignalingReconnect()
@@ -711,6 +728,7 @@ export class PeerManager {
 
   public scheduleSignalingReconnect() {
     if (this.signalingReconnectTimer || this.isIntentionalDisconnect || !this.roomCode || this.hostRecovery) return
+    const owner = this.peer
 
     this.signalingReconnectAttempts++
     if (this.signalingReconnectAttempts > 6) {
@@ -724,13 +742,30 @@ export class PeerManager {
 
     this.signalingReconnectTimer = setTimeout(() => {
       this.signalingReconnectTimer = null
-      if (!this.peer || this.isIntentionalDisconnect || !this.roomCode) return
+      if (!this.peer || this.peer !== owner || this.isIntentionalDisconnect || !this.roomCode) return
 
-      if (!this.peer.destroyed && this.peer.id) {
+      // PeerJS retains the reconnect ID internally and clears public id on disconnect.
+      if (!this.peer.destroyed && (this.peer.id || this.peer.disconnected)) {
         console.log('[P2P Signaling] Calling this.peer.reconnect()...')
+        this.signalingReconnectTimer = setTimeout(() => {
+          const stalled = this.peer === owner && !this.isIntentionalDisconnect && this.roomCode && !owner?.open
+          if (stalled && owner && !owner.destroyed && !owner.disconnected) {
+            // reconnect() clears disconnected before OPEN arrives. Reset only
+            // the signaling socket so a silent handshake can actually retry.
+            // Keep this timer registered while disconnect emits to avoid a
+            // second retry being scheduled by the disconnected listener.
+            try { owner.disconnect() } catch {}
+          }
+          this.signalingReconnectTimer = null
+          if (stalled && this.peer === owner) {
+            this.scheduleSignalingReconnect()
+          }
+        }, 5000)
         try {
           this.peer.reconnect()
         } catch (err) {
+          clearTimeout(this.signalingReconnectTimer)
+          this.signalingReconnectTimer = null
           console.warn('[P2P Signaling] peer.reconnect() error:', err)
           this.scheduleSignalingReconnect()
         }
@@ -1330,20 +1365,57 @@ export class PeerManager {
   private startLiveVoiceCall(peerId: string): void {
     if (peerId.startsWith('dj-') || useGameStore.getState().remotePlayers[peerId]?.isDjBot) return
     const mainCall = this.mediaCalls.get(peerId)
-    if (!this.peer || this.liveVoiceCalls.has(peerId) || !mainCall) return
+    const owner = this.peer
+    if (!owner || owner.destroyed || this.isIntentionalDisconnect || !useMediaStore.getState().isScreenSharing ||
+        this.liveVoiceCalls.has(peerId) || !mainCall || this.liveVoiceRetryTimers.has(peerId) ||
+        (this.liveVoiceRetryCounts.get(peerId) || 0) > 3) return
     if (!useMediaStore.getState().localScreenStream?.getAudioTracks().some((track) => (track as any).__screenShareLiveAudio)) {
       MediaCallHandler.replaceAudioTrack(new Map([[peerId, mainCall]]), null)
     }
     const microphone = useMediaStore.getState().localStream?.getAudioTracks()[0]
     if (!microphone) return
-    const call = this.peer.call(peerId, new MediaStream([microphone]), { metadata: { kind: 'live-voice' } })
-    if (!call) return
+    const eligible = () => this.peer === owner && !owner.destroyed && !this.isIntentionalDisconnect &&
+      useMediaStore.getState().isScreenSharing && this.mediaCalls.get(peerId) === mainCall
+    const retry = () => {
+      if (!eligible() || this.liveVoiceRetryTimers.has(peerId)) return
+      const attempts = (this.liveVoiceRetryCounts.get(peerId) || 0) + 1
+      this.liveVoiceRetryCounts.set(peerId, attempts)
+      if (attempts > 3) return
+      this.liveVoiceRetryTimers.set(peerId, setTimeout(() => {
+        this.liveVoiceRetryTimers.delete(peerId)
+        if (eligible()) this.startLiveVoiceCall(peerId)
+      }, Math.min(3000, 1000 * 1.5 ** (attempts - 1))))
+    }
+    let call: MediaConnection | undefined
+    try { call = owner.call(peerId, new MediaStream([microphone]), { metadata: { kind: 'live-voice' } }) }
+    catch (error) { diagLog('p2p', 'live-voice.dial-error', { peerId, error: String(error) }); retry(); return }
+    if (!call) { retry(); return }
+    const voiceCall = call
     this.liveVoiceCalls.set(peerId, call)
+    const clearReadyTimer = () => {
+      clearTimeout(this.liveVoiceReadyTimers.get(peerId))
+      this.liveVoiceReadyTimers.delete(peerId)
+    }
+    const ready = () => {
+      if (this.liveVoiceCalls.get(peerId) !== voiceCall) return
+      clearReadyTimer()
+      this.liveVoiceRetryCounts.delete(peerId)
+    }
     const cleanup = () => {
-      if (this.liveVoiceCalls.get(peerId) === call) this.liveVoiceCalls.delete(peerId)
+      if (this.liveVoiceCalls.get(peerId) !== voiceCall) return
+      this.liveVoiceCalls.delete(peerId)
+      clearReadyTimer()
+      try { voiceCall.close() } catch {}
+      retry()
     }
     call.on('close', cleanup)
     call.on('error', cleanup)
+    call.on('stream', ready)
+    call.peerConnection?.addEventListener?.('connectionstatechange', () => {
+      if (call!.peerConnection?.connectionState === 'connected') ready()
+      else if (['failed', 'closed'].includes(call!.peerConnection?.connectionState || '')) cleanup()
+    })
+    this.liveVoiceReadyTimers.set(peerId, setTimeout(cleanup, 12000))
   }
 
   public startLiveVoiceCalls(): void {
@@ -1351,15 +1423,28 @@ export class PeerManager {
   }
 
   public stopLiveVoiceCalls(): void {
-    this.liveVoiceCalls?.forEach((call) => call.close())
+    const calls = [...(this.liveVoiceCalls?.values() || [])]
     this.liveVoiceCalls?.clear()
+    this.liveVoiceRetryTimers?.forEach(clearTimeout)
+    this.liveVoiceRetryTimers?.clear()
+    this.liveVoiceReadyTimers?.forEach(clearTimeout)
+    this.liveVoiceReadyTimers?.clear()
+    this.liveVoiceRetryCounts?.clear()
+    calls.forEach(call => { try { call.close() } catch {} })
   }
 
   private endLiveVoiceCallsWithPeer(peerId: string): void {
-    this.liveVoiceCalls?.get(peerId)?.close()
+    const outgoing = this.liveVoiceCalls?.get(peerId)
     this.liveVoiceCalls?.delete(peerId)
-    this.incomingLiveVoiceCalls?.get(peerId)?.close()
+    clearTimeout(this.liveVoiceRetryTimers?.get(peerId))
+    this.liveVoiceRetryTimers?.delete(peerId)
+    clearTimeout(this.liveVoiceReadyTimers?.get(peerId))
+    this.liveVoiceReadyTimers?.delete(peerId)
+    this.liveVoiceRetryCounts?.delete(peerId)
+    outgoing?.close()
+    const incoming = this.incomingLiveVoiceCalls?.get(peerId)
     this.incomingLiveVoiceCalls?.delete(peerId)
+    incoming?.close()
     useMediaStore.getState().removePeerVoiceStream(peerId)
   }
 
