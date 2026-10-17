@@ -515,9 +515,11 @@ export class MediaCallHandler {
     const isDjBot = peerId.startsWith('dj-') || !!useGameStore.getState().remotePlayers[peerId]?.isDjBot
 
     const markConnected = (reason: string) => {
+      if (mediaCalls.get(peerId) !== call) return
       clearLocalTimers()
       MediaCallHandler.clearIceDisconnectTimer(peerId)
       MediaCallHandler.callRetryCounts.delete(peerId)
+      MediaCallHandler.clearCallRetryTimer(peerId)
 
       if (!isConnected) {
         isConnected = true
@@ -550,13 +552,26 @@ export class MediaCallHandler {
             useMediaStore.getState().setPeerStream(peerId, new MediaStream([rxTrack]))
           }
         }
-        useGameStore.getState().setCallState(peerId, 'connected')
         onCallConnected?.(peerId)
       }
+      useGameStore.getState().setCallState(peerId, 'connected')
     }
 
     tryFinalizeReadiness = (reason: string) => {
-      if (isConnected) return
+      if (mediaCalls.get(peerId) !== call) return
+      if (isConnected) {
+        // An established call may temporarily lose ICE during capture startup.
+        // Restore its state and cancel the previous grace timer on recovery,
+        // without re-running media setup or creating another voice call.
+        const ice = pc?.iceConnectionState
+        const connection = pc?.connectionState
+        if ((ice === 'connected' || ice === 'completed' || connection === 'connected') &&
+            !['disconnected', 'failed', 'closed'].includes(ice ?? '') &&
+            !['disconnected', 'failed', 'closed'].includes(connection ?? '')) {
+          markConnected(`transport-recovered:${reason}`)
+        }
+        return
+      }
       const readiness = MediaCallHandler.evaluateCallReadiness(pc, remoteStream, isDjBot)
       const signature = JSON.stringify(readiness)
       if (signature !== lastReadinessSignature) {
@@ -648,6 +663,7 @@ export class MediaCallHandler {
 
     if (pc && pc.addEventListener) {
       pc.addEventListener('iceconnectionstatechange', () => {
+        if (mediaCalls.get(peerId) !== call) return
         const s = pc.iceConnectionState
         if (s === 'connected' || s === 'completed') {
           if (isDjBot && remoteStream?.getAudioTracks?.().some((t) => t.readyState !== 'ended')) {
@@ -674,6 +690,7 @@ export class MediaCallHandler {
       })
 
       pc.addEventListener('connectionstatechange', () => {
+        if (mediaCalls.get(peerId) !== call) return
         const s = pc.connectionState
         if (s === 'connected') {
           if (isDjBot && remoteStream?.getAudioTracks?.().some((t) => t.readyState !== 'ended')) {
@@ -916,6 +933,7 @@ export class MediaCallHandler {
     const hasAudioTrack = Boolean(localStream?.getAudioTracks?.().some((track) => hasUsableAudio(track)) || hasScreenAudio)
 
     if (inSameZone) {
+      if (!existingCall && (MediaCallHandler.callRetryTimers.has(remotePlayer.id) || useGameStore.getState().callStates[remotePlayer.id] === 'failed')) return
       if (!existingCall && peer && localStream && hasAudioTrack) {
         console.log(`[Zone Call] Dialing ${remotePlayer.name} in zone ${localPlayer.currentZoneId}`)
 
@@ -929,7 +947,14 @@ export class MediaCallHandler {
           tracks: summarizeStream(streamToSend),
         })
 
-        const call = peer.call(remotePlayer.id, streamToSend)
+        let call: MediaConnection | undefined
+        try {
+          call = peer.call(remotePlayer.id, streamToSend)
+        } catch (error) {
+          useGameStore.getState().setCallState(remotePlayer.id, 'failed')
+          diagLog('p2p', 'call.dial-error', { toPeer: remotePlayer.id, error: String(error) })
+          return
+        }
         if (!call) {
           useGameStore.getState().setCallState(remotePlayer.id, 'failed')
           diagLog('p2p', 'call.dial-nocall', { toPeer: remotePlayer.id })
@@ -964,13 +989,13 @@ export class MediaCallHandler {
         })
       }
     } else {
+      MediaCallHandler.callRetryCounts.delete(remotePlayer.id)
+      MediaCallHandler.clearCallRetryTimer(remotePlayer.id)
+      MediaCallHandler.clearIceDisconnectTimer(remotePlayer.id)
+      useGameStore.getState().setCallState(remotePlayer.id, 'idle')
       if (existingCall) {
         console.log(`[Zone Call] Leaving zone with ${remotePlayer.name}, terminating media call`)
         diagLog('p2p', 'call.terminated-left-zone', { withPeer: remotePlayer.id })
-        MediaCallHandler.callRetryCounts.delete(remotePlayer.id)
-        MediaCallHandler.clearCallRetryTimer(remotePlayer.id)
-        MediaCallHandler.clearIceDisconnectTimer(remotePlayer.id)
-        useGameStore.getState().setCallState(remotePlayer.id, 'idle')
         endMediaCallWithPeer(remotePlayer.id)
       }
     }
@@ -987,6 +1012,7 @@ export class MediaCallHandler {
     MediaCallHandler.clearCallRetryTimer(remotePlayer.id)
     MediaCallHandler.clearIceDisconnectTimer(remotePlayer.id)
     endMediaCallWithPeer(remotePlayer.id)
+    useGameStore.getState().setCallState(remotePlayer.id, 'idle')
     MediaCallHandler.checkZoneCallEligibility(remotePlayer, peer, mediaCalls, endMediaCallWithPeer, onCallConnected)
   }
 

@@ -1,6 +1,7 @@
 import { getTrimmedBounds } from '../utils/imageTransparency'
 import { loadRasterImage } from '../utils/loadRasterImage'
 import { canvasToPngDataUrl } from '../utils/canvasPng'
+import { isLibraryImageSource } from './individualLibrary'
 import type { CustomAsset } from '../types/customAsset'
 import { AvatarAtlasManager } from '../engine/avatar/AvatarAtlasManager'
 import { cropContentDataUrl } from '../engine/avatar/avatarBakeService'
@@ -23,7 +24,7 @@ export async function buildAtlas(assets: CustomAsset[], categories: string[] = [
   const images = new Map<string, string>()
   // Transient editor buffers retain their existing shape; only XML references reach storage.
   const clean = (value: unknown): unknown => {
-    if (typeof value === 'string' && /^(data:image\/|blob:|\/assets\/)/.test(value)) {
+    if (typeof value === 'string' && isLibraryImageSource(value)) {
       if (!images.has(value)) images.set(value, `image_${images.size}`)
     }
     if (Array.isArray(value)) return value.map(clean)

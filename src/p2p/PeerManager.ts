@@ -1,5 +1,6 @@
 import { sendAtlasChunks } from '../assets/atlasChunks'
 import { getTransferAtlas } from '../assets/atlasTransferCache'
+import { IndividualLibrarySync, type LibraryMessage } from '../assets/individualLibrarySync'
 import Peer, { DataConnection, MediaConnection } from 'peerjs'
 import { NetworkMessage, SignalingTier } from '../types/p2p'
 import { MessageDeliveryStatus, RoomChannel } from '../types/chat'
@@ -130,6 +131,9 @@ export class PeerManager {
   private mediaCalls: Map<string, MediaConnection> = new Map()
   private liveVoiceCalls: Map<string, MediaConnection> = new Map()
   private incomingLiveVoiceCalls: Map<string, MediaConnection> = new Map()
+  private liveVoiceRetryTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private liveVoiceReadyTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private liveVoiceRetryCounts = new Map<string, number>()
   private peerLastSeen: Map<string, number> = new Map()
   private pendingHeartbeats = new Map<string, { connection: DataConnection; timestamp: number }>
   private hostRecovery: HostRecovery | null = null
@@ -602,7 +606,7 @@ export class PeerManager {
           gameId: currentLocal.gameId || currentLocal.id,
         }
         const conn = this.peer!.connect(hostPeerId, {
-          metadata: { player: minimalMetadata, assetAtlasChunks: 'binary-v1' },
+          metadata: { player: minimalMetadata, assetAtlasChunks: 'binary-v1', individualLibrary: 2 },
           reliable: true,
         })
 
@@ -690,11 +694,25 @@ export class PeerManager {
   }
 
   private setupSignalingListeners(myPeer: Peer) {
-    myPeer.on('disconnected', () => {
-      console.warn(`[P2P Signaling] Disconnected from server (Peer ID: ${myPeer.id})`)
-      diagLog('room', 'peer-disconnected', { roomCode: this.roomCode, peerId: myPeer.id })
+    myPeer.on('open', () => {
+      if (this.peer !== myPeer || this.isIntentionalDisconnect || !this.roomCode) return
+      clearTimeout(this.signalingReconnectTimer)
+      this.signalingReconnectTimer = null
+      this.signalingReconnectAttempts = 0
+      if (this.isHost || [...this.connections.values()].some(connection => connection.open)) {
+        useGameStore.getState().setConnectionStatus('connected')
+      }
+      for (const [peerId, state] of Object.entries(useGameStore.getState().callStates)) {
+        if (state === 'failed' && !this.mediaCalls.has(peerId)) this.retryZoneCall(peerId)
+      }
+      this.liveVoiceRetryCounts.clear()
+      if (useMediaStore.getState().isScreenSharing) this.startLiveVoiceCalls()
+    })
+    myPeer.on('disconnected', (previousId) => {
+      console.warn(`[P2P Signaling] Disconnected from server (Peer ID: ${previousId || myPeer.id})`)
+      diagLog('room', 'peer-disconnected', { roomCode: this.roomCode, peerId: previousId || myPeer.id })
 
-      if (this.isIntentionalDisconnect || !this.roomCode || this.peer !== myPeer || !myPeer.id) return
+      if (this.isIntentionalDisconnect || !this.roomCode || this.peer !== myPeer) return
 
       useGameStore.getState().setConnectionStatus('reconnecting')
       this.scheduleSignalingReconnect()
@@ -711,6 +729,7 @@ export class PeerManager {
 
   public scheduleSignalingReconnect() {
     if (this.signalingReconnectTimer || this.isIntentionalDisconnect || !this.roomCode || this.hostRecovery) return
+    const owner = this.peer
 
     this.signalingReconnectAttempts++
     if (this.signalingReconnectAttempts > 6) {
@@ -724,13 +743,30 @@ export class PeerManager {
 
     this.signalingReconnectTimer = setTimeout(() => {
       this.signalingReconnectTimer = null
-      if (!this.peer || this.isIntentionalDisconnect || !this.roomCode) return
+      if (!this.peer || this.peer !== owner || this.isIntentionalDisconnect || !this.roomCode) return
 
-      if (!this.peer.destroyed && this.peer.id) {
+      // PeerJS retains the reconnect ID internally and clears public id on disconnect.
+      if (!this.peer.destroyed && (this.peer.id || this.peer.disconnected)) {
         console.log('[P2P Signaling] Calling this.peer.reconnect()...')
+        this.signalingReconnectTimer = setTimeout(() => {
+          const stalled = this.peer === owner && !this.isIntentionalDisconnect && this.roomCode && !owner?.open
+          if (stalled && owner && !owner.destroyed && !owner.disconnected) {
+            // reconnect() clears disconnected before OPEN arrives. Reset only
+            // the signaling socket so a silent handshake can actually retry.
+            // Keep this timer registered while disconnect emits to avoid a
+            // second retry being scheduled by the disconnected listener.
+            try { owner.disconnect() } catch {}
+          }
+          this.signalingReconnectTimer = null
+          if (stalled && this.peer === owner) {
+            this.scheduleSignalingReconnect()
+          }
+        }, 5000)
         try {
           this.peer.reconnect()
         } catch (err) {
+          clearTimeout(this.signalingReconnectTimer)
+          this.signalingReconnectTimer = null
           console.warn('[P2P Signaling] peer.reconnect() error:', err)
           this.scheduleSignalingReconnect()
         }
@@ -793,6 +829,8 @@ export class PeerManager {
       useGameStore.getState().setConnectionStatus('connected')
       this.connections.set(conn.peer, conn)
       this.peerLastSeen.set(conn.peer, Date.now())
+      this.sendToPeer(conn, { type: 'INDIVIDUAL_LIBRARY', senderId: this.peer!.id,
+        payload: { kind: 'hello', id: 'individual-images-v2' }, timestamp: Date.now() })
 
       const localPlayer = useGameStore.getState().localPlayer
       this.sendToPeer(conn, {
@@ -831,6 +869,11 @@ export class PeerManager {
         if (customAssets.length) {
           const sender = this.peer!
           this.queueAssetTransfer(async () => {
+            if (await this.confirmIndividualLibrary(conn)) {
+              await this.offerIndividualLibrary(conn, customAssets, customCategories)
+              return
+            }
+            if (this.peer !== sender || !conn.open || this.connections.get(conn.peer) !== conn) return
             const { atlas, digest } = await getTransferAtlas(customAssets, customCategories)
             if (this.peer !== sender) return
             if (conn.metadata?.assetAtlasChunks === 'binary-v1') {
@@ -1197,7 +1240,7 @@ export class PeerManager {
     let connection: DataConnection | undefined
     try {
       connection = this.peer.connect(recovery.hostPeerId, {
-        metadata: { player: minimalMetadata, assetAtlasChunks: 'binary-v1' },
+        metadata: { player: minimalMetadata, assetAtlasChunks: 'binary-v1', individualLibrary: 2 },
         reliable: true,
       })
     } catch (error) {
@@ -1242,6 +1285,23 @@ export class PeerManager {
             this.pendingHeartbeats.delete(peerId)
             useGameStore.getState().updatePlayerPing(peerId, Math.max(1, Math.round(Date.now() - pending.timestamp)))
           }
+        }
+        return
+      }
+      if (msg.type === 'INDIVIDUAL_LIBRARY') {
+        const connection = this.connections.get(peerId)
+        if (connection?.open && this.peer) {
+          this.individualLibraryPeers.add(connection)
+          for (const ready of this.individualLibraryReady.get(connection) || []) ready()
+          if (msg.payload?.kind === 'hello') return
+          const owner = this.peer
+          void this.individualLibrarySession(connection).receive(msg.payload,
+            payload => this.sendIndividualLibraryMessage(connection, payload),
+            async document => {
+              if (this.peer === owner && this.connections.get(peerId) === connection && connection.open) {
+                await useCustomAssetsStore.getState().syncRemoteCustomAssets(document.assets, document.categories)
+              }
+            }).catch(error => console.error('[Assets] Invalid individual image transfer:', error))
         }
         return
       }
@@ -1330,20 +1390,57 @@ export class PeerManager {
   private startLiveVoiceCall(peerId: string): void {
     if (peerId.startsWith('dj-') || useGameStore.getState().remotePlayers[peerId]?.isDjBot) return
     const mainCall = this.mediaCalls.get(peerId)
-    if (!this.peer || this.liveVoiceCalls.has(peerId) || !mainCall) return
+    const owner = this.peer
+    if (!owner || owner.destroyed || this.isIntentionalDisconnect || !useMediaStore.getState().isScreenSharing ||
+        this.liveVoiceCalls.has(peerId) || !mainCall || this.liveVoiceRetryTimers.has(peerId) ||
+        (this.liveVoiceRetryCounts.get(peerId) || 0) > 3) return
     if (!useMediaStore.getState().localScreenStream?.getAudioTracks().some((track) => (track as any).__screenShareLiveAudio)) {
       MediaCallHandler.replaceAudioTrack(new Map([[peerId, mainCall]]), null)
     }
     const microphone = useMediaStore.getState().localStream?.getAudioTracks()[0]
     if (!microphone) return
-    const call = this.peer.call(peerId, new MediaStream([microphone]), { metadata: { kind: 'live-voice' } })
-    if (!call) return
+    const eligible = () => this.peer === owner && !owner.destroyed && !this.isIntentionalDisconnect &&
+      useMediaStore.getState().isScreenSharing && this.mediaCalls.get(peerId) === mainCall
+    const retry = () => {
+      if (!eligible() || this.liveVoiceRetryTimers.has(peerId)) return
+      const attempts = (this.liveVoiceRetryCounts.get(peerId) || 0) + 1
+      this.liveVoiceRetryCounts.set(peerId, attempts)
+      if (attempts > 3) return
+      this.liveVoiceRetryTimers.set(peerId, setTimeout(() => {
+        this.liveVoiceRetryTimers.delete(peerId)
+        if (eligible()) this.startLiveVoiceCall(peerId)
+      }, Math.min(3000, 1000 * 1.5 ** (attempts - 1))))
+    }
+    let call: MediaConnection | undefined
+    try { call = owner.call(peerId, new MediaStream([microphone]), { metadata: { kind: 'live-voice' } }) }
+    catch (error) { diagLog('p2p', 'live-voice.dial-error', { peerId, error: String(error) }); retry(); return }
+    if (!call) { retry(); return }
+    const voiceCall = call
     this.liveVoiceCalls.set(peerId, call)
+    const clearReadyTimer = () => {
+      clearTimeout(this.liveVoiceReadyTimers.get(peerId))
+      this.liveVoiceReadyTimers.delete(peerId)
+    }
+    const ready = () => {
+      if (this.liveVoiceCalls.get(peerId) !== voiceCall) return
+      clearReadyTimer()
+      this.liveVoiceRetryCounts.delete(peerId)
+    }
     const cleanup = () => {
-      if (this.liveVoiceCalls.get(peerId) === call) this.liveVoiceCalls.delete(peerId)
+      if (this.liveVoiceCalls.get(peerId) !== voiceCall) return
+      this.liveVoiceCalls.delete(peerId)
+      clearReadyTimer()
+      try { voiceCall.close() } catch {}
+      retry()
     }
     call.on('close', cleanup)
     call.on('error', cleanup)
+    call.on('stream', ready)
+    call.peerConnection?.addEventListener?.('connectionstatechange', () => {
+      if (call!.peerConnection?.connectionState === 'connected') ready()
+      else if (['failed', 'closed'].includes(call!.peerConnection?.connectionState || '')) cleanup()
+    })
+    this.liveVoiceReadyTimers.set(peerId, setTimeout(cleanup, 12000))
   }
 
   public startLiveVoiceCalls(): void {
@@ -1351,15 +1448,28 @@ export class PeerManager {
   }
 
   public stopLiveVoiceCalls(): void {
-    this.liveVoiceCalls?.forEach((call) => call.close())
+    const calls = [...(this.liveVoiceCalls?.values() || [])]
     this.liveVoiceCalls?.clear()
+    this.liveVoiceRetryTimers?.forEach(clearTimeout)
+    this.liveVoiceRetryTimers?.clear()
+    this.liveVoiceReadyTimers?.forEach(clearTimeout)
+    this.liveVoiceReadyTimers?.clear()
+    this.liveVoiceRetryCounts?.clear()
+    calls.forEach(call => { try { call.close() } catch {} })
   }
 
   private endLiveVoiceCallsWithPeer(peerId: string): void {
-    this.liveVoiceCalls?.get(peerId)?.close()
+    const outgoing = this.liveVoiceCalls?.get(peerId)
     this.liveVoiceCalls?.delete(peerId)
-    this.incomingLiveVoiceCalls?.get(peerId)?.close()
+    clearTimeout(this.liveVoiceRetryTimers?.get(peerId))
+    this.liveVoiceRetryTimers?.delete(peerId)
+    clearTimeout(this.liveVoiceReadyTimers?.get(peerId))
+    this.liveVoiceReadyTimers?.delete(peerId)
+    this.liveVoiceRetryCounts?.delete(peerId)
+    outgoing?.close()
+    const incoming = this.incomingLiveVoiceCalls?.get(peerId)
     this.incomingLiveVoiceCalls?.delete(peerId)
+    incoming?.close()
     useMediaStore.getState().removePeerVoiceStream(peerId)
   }
 
@@ -1858,6 +1968,42 @@ export class PeerManager {
   }
 
   private assetTransferQueue: Promise<void> = Promise.resolve()
+  private individualLibrarySessions = new WeakMap<DataConnection, IndividualLibrarySync>()
+  private individualLibraryPeers = new WeakSet<DataConnection>()
+  private individualLibraryReady = new WeakMap<DataConnection, Set<() => void>>()
+  private async confirmIndividualLibrary(connection: DataConnection): Promise<boolean> {
+    if (this.individualLibraryPeers.has(connection)) return true
+    if (connection.metadata?.individualLibrary !== 2) return false
+    const owner = this.peer
+    return new Promise(resolve => {
+      let listeners = this.individualLibraryReady.get(connection)
+      if (!listeners) { listeners = new Set(); this.individualLibraryReady.set(connection, listeners) }
+      const finish = () => {
+        clearTimeout(timeout)
+        listeners!.delete(finish)
+        resolve(this.peer === owner && connection.open && this.connections.get(connection.peer) === connection && this.individualLibraryPeers.has(connection))
+      }
+      const timeout = setTimeout(finish, 500)
+      listeners.add(finish)
+    })
+  }
+  private individualLibrarySession(connection: DataConnection) {
+    let session = this.individualLibrarySessions.get(connection)
+    if (!session) { session = new IndividualLibrarySync(); this.individualLibrarySessions.set(connection, session) }
+    return session
+  }
+  private async sendIndividualLibraryMessage(connection: DataConnection, payload: LibraryMessage) {
+    const owner = this.peer
+    while ((connection.dataChannel?.bufferedAmount || 0) > 512 * 1024) {
+      if (!owner || this.peer !== owner || !connection.open || this.connections.get(connection.peer) !== connection) throw new Error('Transferência interrompida')
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    if (!owner || this.peer !== owner || !connection.open || this.connections.get(connection.peer) !== connection) throw new Error('Transferência interrompida')
+    this.sendToPeer(connection, { type: 'INDIVIDUAL_LIBRARY', senderId: owner.id, payload, timestamp: Date.now() })
+  }
+  private async offerIndividualLibrary(connection: DataConnection, assets: CustomAsset[], categories: string[] = []) {
+    await this.individualLibrarySession(connection).offer({ assets, categories }, payload => this.sendIndividualLibraryMessage(connection, payload))
+  }
   private queueAssetTransfer(action: () => Promise<void>) {
     const sender = this.peer
     this.assetTransferQueue = this.assetTransferQueue.then(async () => {
@@ -1869,10 +2015,13 @@ export class PeerManager {
     const sender = this.peer
     if (!sender) return
     this.queueAssetTransfer(async () => {
+      const legacyConnections = [...this.connections.values()].filter(connection => connection.open && !this.individualLibraryPeers.has(connection))
+      for (const connection of this.connections.values()) if (connection.open && this.individualLibraryPeers.has(connection)) await this.offerIndividualLibrary(connection, [asset])
+      if (!legacyConnections.length) return
       const atlas = await buildAtlas([asset])
       const digest = await atlasDigest(atlas)
       if (this.peer !== sender) return
-      this.broadcast({ type: 'CUSTOM_ASSET_ADD_OR_UPDATE', senderId: sender.id,
+      for (const connection of legacyConnections) this.sendToPeer(connection, { type: 'CUSTOM_ASSET_ADD_OR_UPDATE', senderId: sender.id,
         payload: { atlas, digest }, timestamp: Date.now() })
     })
   }
@@ -1894,10 +2043,13 @@ export class PeerManager {
     const sender = this.peer
     if (!sender) return
     this.queueAssetTransfer(async () => {
+      const legacyConnections = [...this.connections.values()].filter(connection => connection.open && !this.individualLibraryPeers.has(connection))
+      for (const connection of this.connections.values()) if (connection.open && this.individualLibraryPeers.has(connection)) await this.offerIndividualLibrary(connection, customAssets, categories)
+      if (!legacyConnections.length) return
       const atlas = await buildAtlas(customAssets, categories)
       const digest = await atlasDigest(atlas)
       if (this.peer !== sender) return
-      this.broadcast({ type: 'CUSTOM_ASSETS_SYNC', senderId: sender.id,
+      for (const connection of legacyConnections) this.sendToPeer(connection, { type: 'CUSTOM_ASSETS_SYNC', senderId: sender.id,
         payload: { atlas, digest }, timestamp: Date.now() })
     })
   }

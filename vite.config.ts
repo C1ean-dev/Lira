@@ -5,6 +5,7 @@ import renderer from 'vite-plugin-electron-renderer'
 import path from 'path'
 import fs from 'fs'
 import { readAssetAtlas, writeAssetAtlasLatest } from './electron/assetAtlasFile'
+import { readIndividualLibrary, writeIndividualLibraryLatest } from './electron/individualLibraryFile'
 import { ensureNativeSpacesFile, writeNativeSpacesFileLatest } from './electron/nativeSpacesFile'
 
 ensureNativeSpacesFile(path.resolve(__dirname, 'src/data/nativeSpaces.json'))
@@ -21,8 +22,9 @@ export default defineConfig({
     react(),
     {
       name: 'asset-atlas-index',
-      resolveId(id) { if (id === 'virtual:lira-asset-atlases') return '\0virtual:lira-asset-atlases' },
+      resolveId(id) { if (['virtual:lira-asset-atlases', 'virtual:lira-individual-library'].includes(id)) return '\0' + id },
       load(id) {
+        if (id === '\0virtual:lira-individual-library') return `export default ${fs.existsSync(path.resolve(__dirname, 'public/assets/library/catalog.json'))}`
         if (id !== '\0virtual:lira-asset-atlases') return
         const directory = path.resolve(__dirname, 'public/assets/library')
         const names = fs.existsSync(directory) ? fs.readdirSync(directory).filter(name => name.endsWith('.xml')).sort() : []
@@ -81,6 +83,19 @@ export default defineConfig({
       name: 'disk-file-persistence-middleware',
       configureServer(server) {
         server.middlewares.use(async (req, res, next) => {
+          if (req.url === '/api/individual-library' && (req.method === 'GET' || req.method === 'PUT')) {
+            const directory = path.resolve(process.cwd(), 'public/assets/library')
+            try {
+              if (req.method === 'PUT') {
+                const chunks: Buffer[] = []
+                for await (const chunk of req) chunks.push(Buffer.from(chunk))
+                await writeIndividualLibraryLatest(directory, JSON.parse(Buffer.concat(chunks).toString('utf8')))
+              }
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify(await readIndividualLibrary(directory)))
+            } catch (error) { res.statusCode = 500; res.end(JSON.stringify({ error: String(error) })) }
+            return
+          }
           if (req.url === '/api/asset-atlas' && (req.method === 'PUT' || req.method === 'GET')) {
             const directory = path.resolve(process.cwd(), 'public/assets/library')
             try {
@@ -153,6 +168,7 @@ export default defineConfig({
     },
   },
   test: {
+    include: ['src/__tests__/**/*.test.{ts,tsx,js,mjs}'],
     exclude: ['**/node_modules/**', '**/.claude/**', '**/dist/**'],
   },
 })

@@ -89,6 +89,8 @@ export interface IElectronAPI {
   onSpotifyPlayerClosed: (callback: () => void) => () => void
   completeAssetAtlasMigration: () => Promise<boolean>
   loadAssetAtlas: () => Promise<{ xml: string; png: string } | null>
+  loadIndividualLibrary: () => Promise<import('../src/assets/individualLibrary').LibraryLocation | null>
+  saveIndividualLibrary: (packet: import('../src/assets/individualLibrary').LibraryPacket) => Promise<import('../src/assets/individualLibrary').LibraryLocation>
   saveAssetAtlas: (pair: { xml: string; png: string }) => Promise<boolean>
   loadNativeAssets: () => Promise<{ categories: string[]; assets: any[] } | null>
   saveNativeSpaces: (spaces: any[]) => Promise<boolean>
@@ -209,6 +211,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
   loadAssetAtlas: () => ipcRenderer.invoke('load-asset-atlas'),
+  loadIndividualLibrary: () => ipcRenderer.invoke('load-individual-library'),
+  saveIndividualLibrary: (packet) => ipcRenderer.invoke('save-individual-library', packet),
   saveAssetAtlas: (pair: { xml: string; png: string }) => ipcRenderer.invoke('save-asset-atlas', pair),
   completeAssetAtlasMigration: () => ipcRenderer.invoke('complete-asset-atlas-migration'),
   loadNativeAssets: () => ipcRenderer.invoke('load-native-assets'),

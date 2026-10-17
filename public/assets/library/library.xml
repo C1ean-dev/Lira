@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<TextureAtlas imagePath="library-69caf2f41e55a54934c8f5ef8b84f7d0333d88b7ddc011206b6f5ff57ec3b719.png" liraVersion="1">
+<TextureAtlas imagePath="library-9e30f42b39a65d84ed87e3176d14ee00b13952a42a6c7aa608a633225316b851.png" liraVersion="1">
   <SubTexture name="image_660" x="0" y="0" width="1024" height="1792"/>
   <SubTexture name="image_685" x="1024" y="0" width="1024" height="1792"/>
   <SubTexture name="image_710" x="2048" y="0" width="1024" height="1792"/>

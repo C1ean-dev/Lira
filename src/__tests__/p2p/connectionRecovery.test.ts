@@ -185,7 +185,7 @@ describe('Connection Recovery & Call Resilience Tests', () => {
       expect(useGameStore.getState().callStates['remote-peer-1']).toBe('reconnecting')
     })
 
-    it('switches callState to reconnecting on ice=disconnected while connected', () => {
+    it.each(['connected', 'completed'])('restores the call after a temporary ICE interruption recovers to %s', (recoveredState) => {
       const mediaCalls = new Map<string, any>()
       const listeners: Record<string, () => void> = {}
       const callListeners: Record<string, (value?: any) => void> = {}
@@ -201,7 +201,7 @@ describe('Connection Recovery & Call Resilience Tests', () => {
         },
         removeEventListener: vi.fn(),
         getSenders: () => [
-          { track: { kind: 'audio', enabled: true, readyState: 'live', id: 'local-audio' } },
+          { track: { kind: 'audio', enabled: true, readyState: 'live', id: 'local-audio' }, replaceTrack: vi.fn().mockResolvedValue(undefined) },
           { track: { kind: 'video', enabled: true, readyState: 'live', id: 'local-video' } },
         ],
         getReceivers: () => [{ track: audioTrack }, { track: videoTrack }],
@@ -217,6 +217,8 @@ describe('Connection Recovery & Call Resilience Tests', () => {
       }
 
       mediaCalls.set('remote-peer-1', mockCall)
+      const endMediaCall = vi.fn()
+      const onCallConnected = vi.fn()
 
       MediaCallHandler.setupCallLifecycle({
         call: mockCall as any,
@@ -224,7 +226,8 @@ describe('Connection Recovery & Call Resilience Tests', () => {
         direction: 'out',
         remotePlayerName: 'Remote Hero',
         mediaCalls,
-        endMediaCallWithPeer: vi.fn(),
+        endMediaCallWithPeer: endMediaCall,
+        onCallConnected,
       })
 
       mockPc.iceConnectionState = 'connected'
@@ -235,6 +238,31 @@ describe('Connection Recovery & Call Resilience Tests', () => {
       mockPc.iceConnectionState = 'disconnected'
       listeners['iceconnectionstatechange']()
       expect(useGameStore.getState().callStates['remote-peer-1']).toBe('reconnecting')
+      vi.advanceTimersByTime(2000)
+      mockPc.iceConnectionState = recoveredState
+      listeners['iceconnectionstatechange']()
+      expect(useGameStore.getState().callStates['remote-peer-1']).toBe('connected')
+      expect(onCallConnected).toHaveBeenCalledTimes(1)
+
+      // A second interruption must get a fresh grace period, rather than reuse
+      // the timer from the first interruption during screen-share startup.
+      mockPc.iceConnectionState = 'disconnected'
+      listeners['iceconnectionstatechange']()
+      vi.advanceTimersByTime(2000)
+      expect(endMediaCall).not.toHaveBeenCalled()
+      mockPc.iceConnectionState = recoveredState
+      listeners['iceconnectionstatechange']()
+      vi.advanceTimersByTime(15000)
+      expect(useGameStore.getState().callStates['remote-peer-1']).toBe('connected')
+      expect(endMediaCall).not.toHaveBeenCalled()
+      expect(onCallConnected).toHaveBeenCalledTimes(1)
+
+      mediaCalls.set('remote-peer-1', { peer: 'remote-peer-1' })
+      mockPc.iceConnectionState = 'disconnected'
+      listeners['iceconnectionstatechange']()
+      expect(useGameStore.getState().callStates['remote-peer-1']).toBe('connected')
+      vi.advanceTimersByTime(4000)
+      expect(endMediaCall).not.toHaveBeenCalled()
     })
 
     it('cleans up dead call and schedules redial with backoff when ICE definitively fails', () => {

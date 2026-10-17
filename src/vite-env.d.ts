@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+declare module 'virtual:lira-individual-library' { const exists: boolean; export default exists }
 
 declare module 'virtual:lira-asset-atlases' {
   const xmlFileNames: string[]
