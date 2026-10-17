@@ -627,8 +627,7 @@ export function processNetworkMessage(
   if (
     isHost &&
     msg.type !== 'MAP_SYNC' &&
-    msg.type !== 'CHANNELS_SYNC' &&
-    msg.type !== 'HEARTBEAT'
+    msg.type !== 'CHANNELS_SYNC'
   ) {
     broadcast(msg, peerId)
   }
