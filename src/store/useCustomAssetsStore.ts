@@ -1,3 +1,4 @@
+import type { AtlasDocument, PersistedAtlas } from '../assets/atlasFormat'
 import { create } from 'zustand'
 import type { CustomAsset } from '../types/customAsset'
 import type { FurnitureDefinition } from '../types/map'
@@ -127,6 +128,7 @@ interface CustomAssetsState {
   updateCustomAsset: (id: string, asset: Partial<CustomAsset>) => Promise<void>
   deleteCustomAsset: (id: string) => Promise<void>
   syncRemoteCustomAssets: (assets: CustomAsset[], categories?: string[]) => Promise<void>
+  syncRemoteAtlas: (pair: PersistedAtlas, document: AtlasDocument) => Promise<void>
   syncRemoteAssetAddOrUpdate: (asset: CustomAsset) => Promise<void>
   syncRemoteAssetDelete: (id: string) => Promise<void>
   addCategory: (name: string) => Promise<void>
@@ -248,6 +250,25 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
     PeerManager.getInstance().sendCustomAssetAddOrUpdate(asset)
   }),
   deleteCustomAsset: id => deleteAsset(id, true),
+  syncRemoteAtlas: (pair, document) => queue(async () => {
+    const state = get()
+    const ids = new Set(document.assets.map(asset => asset.id))
+    const categories = [...new Set([...state.customCategories, ...document.categories, ...document.assets.map(asset => asset.category || 'Geral')])]
+    const deleted = state.deletedAssetIds.filter(id => !ids.has(id))
+    if (state.customAssets.some(asset => !ids.has(asset.id)) || deleted.length || document.deletedAssetIds?.length
+      || categories.some(category => !document.categories.includes(category))) {
+      await commit(merge(state.customAssets, document.assets), categories)
+      return
+    }
+    if (state.customAssets === document.assets) return
+    // receiveAtlas already verified and decoded this exact pair. Retain it
+    // atomically instead of encoding and decoding the entire library again.
+    await saveStoredAtlas(pair)
+    imageCache.clear()
+    set({ customAssets: document.assets, customCategories: categories, deletedAssetIds: [] })
+    saveCategories(categories)
+    notifyCustomAssetsChanged()
+  }),
   syncRemoteCustomAssets: (assets, categories) => addAssets(assets, false, categories),
   syncRemoteAssetAddOrUpdate: asset => addAssets([asset], false),
   syncRemoteAssetDelete: id => deleteAsset(id, false),

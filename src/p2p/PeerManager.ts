@@ -1,3 +1,5 @@
+import { sendAtlasChunks } from '../assets/atlasChunks'
+import { getTransferAtlas } from '../assets/atlasTransferCache'
 import Peer, { DataConnection, MediaConnection } from 'peerjs'
 import { NetworkMessage, SignalingTier } from '../types/p2p'
 import { MessageDeliveryStatus, RoomChannel } from '../types/chat'
@@ -126,8 +128,10 @@ export class PeerManager {
   private connections: Map<string, DataConnection> = new Map()
   private mediaCalls: Map<string, MediaConnection> = new Map()
   private peerLastSeen: Map<string, number> = new Map()
-  private pendingHeartbeats = new Map<string, { connection: DataConnection; timestamp: number }>()
+  private pendingHeartbeats = new Map<string, { connection: DataConnection; timestamp: number }>
   private hostRecovery: HostRecovery | null = null
+  private pendingZoneCalls = new Map<string, Peer>()
+  private zoneCallTimer: ReturnType<typeof setTimeout> | null = null
   private heartbeatInterval: any = null
   private staleCheckInterval: any = null
   private roomCode: string | null = null
@@ -217,6 +221,7 @@ export class PeerManager {
   ): Promise<string> {
     this.cancelHostRecovery()
     this.stopHeartbeat()
+    this.clearPendingZoneCalls()
     this.roomCode = sanitizeRoomCode(roomCode)
     this.isHost = true
     this.isIntentionalDisconnect = false
@@ -418,6 +423,7 @@ export class PeerManager {
   ): Promise<void> {
     this.cancelHostRecovery()
     this.stopHeartbeat()
+    this.clearPendingZoneCalls()
     this.roomCode = sanitizeRoomCode(roomCode)
     this.isHost = false
     this.isIntentionalDisconnect = false
@@ -583,7 +589,7 @@ export class PeerManager {
           gameId: currentLocal.gameId || currentLocal.id,
         }
         const conn = this.peer!.connect(hostPeerId, {
-          metadata: { player: minimalMetadata },
+          metadata: { player: minimalMetadata, assetAtlasChunks: 'binary-v1' },
           reliable: true,
         })
 
@@ -808,13 +814,21 @@ export class PeerManager {
         if (customAssets.length) {
           const sender = this.peer!
           this.queueAssetTransfer(async () => {
-            const atlas = await buildAtlas(customAssets, customCategories)
-            const digest = await atlasDigest(atlas)
+            const { atlas, digest } = await getTransferAtlas(customAssets, customCategories)
             if (this.peer !== sender) return
-            this.sendToPeer(conn, {
-              type: 'CUSTOM_ASSETS_SYNC', senderId: sender.id,
-              payload: { atlas, digest }, timestamp: Date.now(),
-            })
+            if (conn.metadata?.assetAtlasChunks === 'binary-v1') {
+              await sendAtlasChunks(atlas, digest, chunk => this.sendToPeer(conn, {
+                type: 'CUSTOM_ASSETS_SYNC', senderId: sender.id,
+                payload: { chunk }, timestamp: Date.now(),
+              }), () => this.peer === sender && conn.open && this.connections.get(conn.peer) === conn,
+              () => conn.dataChannel?.bufferedAmount || 0)
+            } else {
+              // Keep the legacy payload for clients that do not advertise chunk support.
+              this.sendToPeer(conn, {
+                type: 'CUSTOM_ASSETS_SYNC', senderId: sender.id,
+                payload: { atlas, digest }, timestamp: Date.now(),
+              })
+            }
           })
         }
 
@@ -1163,7 +1177,7 @@ export class PeerManager {
     let connection: DataConnection | undefined
     try {
       connection = this.peer.connect(recovery.hostPeerId, {
-        metadata: { player: minimalMetadata },
+        metadata: { player: minimalMetadata, assetAtlasChunks: 'binary-v1' },
         reliable: true,
       })
     } catch (error) {
@@ -1335,16 +1349,43 @@ export class PeerManager {
   }
 
   public checkZoneCallEligibility(remotePlayer: Player) {
-    MediaCallHandler.checkZoneCallEligibility(
-      remotePlayer,
-      this.peer,
-      this.mediaCalls,
-      (pid) => this.endMediaCallWithPeer(pid),
-      (pid) => this.onMediaCallConnected(pid)
-    )
-    if (this.isDjBotRunning()) {
-      this.recheckDjCalls()
-    }
+    if (!this.peer || this.isIntentionalDisconnect) return
+    this.pendingZoneCalls.set(remotePlayer.id, this.peer)
+    this.scheduleZoneCallCheck()
+  }
+
+  private scheduleZoneCallCheck() {
+    if (this.zoneCallTimer !== null || this.pendingZoneCalls.size === 0) return
+    // Yield to input and rendering between negotiations. Do not wait for ICE
+    // readiness before allowing the next participant or map update to proceed.
+    this.zoneCallTimer = setTimeout(() => {
+      this.zoneCallTimer = null
+      const next = this.pendingZoneCalls.entries().next().value
+      if (!next) return
+      const [peerId, ownerPeer] = next
+      this.pendingZoneCalls.delete(peerId)
+      const remotePlayer = useGameStore.getState().remotePlayers[peerId]
+      try {
+        if (remotePlayer && this.peer === ownerPeer && !ownerPeer.destroyed && !this.isIntentionalDisconnect) {
+          MediaCallHandler.checkZoneCallEligibility(
+            remotePlayer, ownerPeer, this.mediaCalls,
+            (pid) => this.endMediaCallWithPeer(pid),
+            (pid) => this.onMediaCallConnected(pid)
+          )
+          if (this.isDjBotRunning()) this.recheckDjCalls()
+        }
+      } catch (error) {
+        console.warn('[P2P Media] Could not start zone call:', peerId, error)
+      } finally {
+        this.scheduleZoneCallCheck()
+      }
+    }, 16)
+  }
+
+  private clearPendingZoneCalls() {
+    this.pendingZoneCalls.clear()
+    if (this.zoneCallTimer !== null) clearTimeout(this.zoneCallTimer)
+    this.zoneCallTimer = null
   }
 
   public recheckZoneCalls() {
@@ -1605,6 +1646,7 @@ export class PeerManager {
   }
 
   public endMediaCallWithPeer(peerId: string) {
+    this.pendingZoneCalls.delete(peerId)
     MediaCallHandler.endMediaCall(this.mediaCalls, peerId)
   }
 
@@ -1641,6 +1683,7 @@ export class PeerManager {
   }
 
   public endAllZoneMediaCalls() {
+    this.clearPendingZoneCalls()
     MediaCallHandler.endAllMediaCalls(this.mediaCalls)
   }
 
@@ -1991,12 +2034,7 @@ export class PeerManager {
 
     this.peerLastSeen.clear()
 
-    this.mediaCalls.forEach((call) => {
-      try {
-        call.close()
-      } catch (e) { }
-    })
-    this.mediaCalls.clear()
+    this.endAllZoneMediaCalls()
 
     this.connections.forEach((conn) => {
       try {

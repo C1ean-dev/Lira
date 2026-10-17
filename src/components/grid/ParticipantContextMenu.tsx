@@ -49,6 +49,8 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
   const isDeafened = useMediaStore((s) => s.isDeafened)
   const participantVolumes = useMediaStore((s) => s.participantVolumes)
   const setParticipantVolume = useMediaStore((s) => s.setParticipantVolume)
+  const liveStreamVolume = useMediaStore((s) => s.liveStreamVolume)
+  const setLiveStreamVolume = useMediaStore((s) => s.setLiveStreamVolume)
   const isLive = Boolean(user.screenStream || user.isScreenSharing)
 
   const djVolume = useSpotifyJamStore((s) => s.volume)
@@ -68,7 +70,10 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
     { volume: djVolume, isMuted: djMuted, isDjModeActive, setVolume: setDjVolume },
     { participantVolumes, setParticipantVolume },
     (value) => MediaManager.getInstance().setDjVolume(value))
-  const currentVol = volumeControl.volume
+  const volumeControls = [
+    { label: user.isDjBot || remotePlayer?.isDjBot ? 'Volume do player' : 'Volume da voz', ...volumeControl },
+    ...(isLive ? [{ label: 'Volume da live', volume: liveStreamVolume ?? 100, setVolume: setLiveStreamVolume }] : []),
+  ]
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -88,9 +93,9 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
   }, [onClose])
 
   const menuWidth = 260
-  const menuHeight = isLocalAdmin ? 410 : 300
+  const menuHeight = user.isLocal ? 150 : isLive ? 530 : 450
   const clampedX = Math.min(Math.max(10, x), window.innerWidth - menuWidth - 10)
-  const clampedY = Math.min(Math.max(10, y), window.innerHeight - menuHeight - 10)
+  const clampedY = Math.max(10, Math.min(y, window.innerHeight - menuHeight - 10))
 
   const handleToggleSilenceForMe = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -124,8 +129,8 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
   return (
     <div
       ref={menuRef}
-      style={{ left: clampedX, top: clampedY }}
-      className="fixed z-[100] w-64 bg-[#12151d]/95 backdrop-blur-xl border border-[#2a3142] rounded-2xl shadow-2xl p-2 select-none text-slate-200 animate-in fade-in zoom-in-95 duration-150"
+      style={{ left: clampedX, top: clampedY, maxHeight: 'calc(100vh - 20px)' }}
+      className="fixed z-[100] w-64 overflow-y-auto bg-[#12151d]/95 backdrop-blur-xl border border-[#2a3142] rounded-2xl shadow-2xl p-2 select-none text-slate-200 animate-in fade-in zoom-in-95 duration-150"
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -151,90 +156,95 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
         </div>
       </div>
 
-      {!user.isLocal && (
-        <div
-          className="px-2.5 py-2 mb-1.5 bg-[#1b202c]/90 rounded-xl border border-[#2a3142]/90 shadow-inner"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-300 mb-1.5">
-            <span className="flex items-center gap-1.5">
-              {currentVol === 0 ? (
-                <VolumeX className="w-3.5 h-3.5 text-rose-400" />
-              ) : currentVol < 50 ? (
-                <Volume1 className="w-3.5 h-3.5 text-slate-400" />
-              ) : (
-                <Volume2 className="w-3.5 h-3.5 text-indigo-400" />
-              )}
-              <span>Volume</span>
-            </span>
-            <span
-              className={`text-[11px] font-mono font-bold ${
-                currentVol === 0
-                  ? 'text-rose-400'
-                  : currentVol > 100
-                  ? 'text-amber-400'
-                  : 'text-indigo-300'
-              }`}
-            >
-              {currentVol}%
-            </span>
-          </div>
+      {!user.isLocal && volumeControls.map((control) => {
+        const currentVol = control.volume
+        return (
+          <div
+            key={control.label}
+            className="px-2.5 py-2 mb-1.5 bg-[#1b202c]/90 rounded-xl border border-[#2a3142]/90 shadow-inner"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between text-xs font-semibold text-slate-300 mb-1.5">
+              <span className="flex items-center gap-1.5">
+                {currentVol === 0 ? (
+                  <VolumeX className="w-3.5 h-3.5 text-rose-400" />
+                ) : currentVol < 50 ? (
+                  <Volume1 className="w-3.5 h-3.5 text-slate-400" />
+                ) : (
+                  <Volume2 className="w-3.5 h-3.5 text-indigo-400" />
+                )}
+                <span>{control.label}</span>
+              </span>
+              <span
+                className={`text-[11px] font-mono font-bold ${
+                  currentVol === 0
+                    ? 'text-rose-400'
+                    : currentVol > 100
+                    ? 'text-amber-400'
+                    : 'text-indigo-300'
+                }`}
+              >
+                {currentVol}%
+              </span>
+            </div>
 
-          <div className="flex items-center gap-2">
-            <input
-              type="range"
-              min="0"
-              max="200"
-              step="1"
-              value={currentVol}
-              onChange={(e) => {
-                const val = Number(e.target.value)
-                volumeControl.setVolume(val)
-              }}
-              className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400"
-            />
-          </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                aria-label={control.label}
+                min="0"
+                max="200"
+                step="1"
+                value={currentVol}
+                onChange={(e) => {
+                  const val = Number(e.target.value)
+                  control.setVolume(val)
+                }}
+                className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400"
+              />
+            </div>
 
-          <div className="flex items-center justify-between mt-1.5 text-[9px] text-slate-400">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                volumeControl.setVolume(0)
-              }}
-              className={`px-1.5 py-0.5 rounded transition-colors ${
-                currentVol === 0 ? 'text-rose-400 font-bold bg-rose-500/10' : 'hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              0%
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                volumeControl.setVolume(100)
-              }}
-              className={`px-1.5 py-0.5 rounded transition-colors ${
-                currentVol === 100 ? 'text-indigo-400 font-bold bg-indigo-500/10' : 'hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              100% (Padrão)
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                volumeControl.setVolume(200)
-              }}
-              className={`px-1.5 py-0.5 rounded transition-colors ${
-                currentVol === 200 ? 'text-amber-400 font-bold bg-amber-500/10' : 'hover:text-amber-300 hover:bg-slate-800'
-              }`}
-            >
-              200%
-            </button>
+            <div className="flex items-center justify-between mt-1.5 text-[9px] text-slate-400">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  control.setVolume(0)
+                }}
+                className={`px-1.5 py-0.5 rounded transition-colors ${
+                  currentVol === 0 ? 'text-rose-400 font-bold bg-rose-500/10' : 'hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                0%
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  control.setVolume(100)
+                }}
+                className={`px-1.5 py-0.5 rounded transition-colors ${
+                  currentVol === 100 ? 'text-indigo-400 font-bold bg-indigo-500/10' : 'hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                100% (Padrão)
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  control.setVolume(200)
+                }}
+                className={`px-1.5 py-0.5 rounded transition-colors ${
+                  currentVol === 200 ? 'text-amber-400 font-bold bg-amber-500/10' : 'hover:text-amber-300 hover:bg-slate-800'
+                }`}
+              >
+                200%
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })}
 
       {!user.isLocal && (
         <div className="space-y-1">

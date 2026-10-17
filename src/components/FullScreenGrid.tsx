@@ -148,7 +148,10 @@ const FullScreenGridInner: React.FC = () => {
     setIsScreenModalOpen(true)
   }
 
-  const otherParticipants = allInMeeting.filter((u) => u.id !== focusedUser?.id)
+  const isLiveFocused = Boolean(focusedUser?.screenStream || focusedUser?.isScreenSharing)
+  const otherParticipants = isLiveFocused
+    ? allInMeeting
+    : allInMeeting.filter((u) => u.id !== focusedUser?.id)
 
   const theaterUser = liveTheaterUser
     ? allInMeeting.find((u) => u.id === liveTheaterUser.id) || liveTheaterUser
@@ -258,6 +261,7 @@ const FullScreenGridInner: React.FC = () => {
                   user={otherUser}
                   isFocused={false}
                   isSidebar={true}
+                  mediaKind="participant"
                   onFocus={() => setFocusedUserId(otherUser.id)}
                   onOpenLiveFullscreen={(u) => setLiveTheaterUser(u)}
                   onContextMenu={handleParticipantContextMenu}

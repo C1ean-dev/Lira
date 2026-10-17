@@ -88,7 +88,8 @@ beforeEach(() => {
   manager = Object.assign(Object.create(PeerManager.prototype), {
     peer: null, roomCode: null, isHost: false, isIntentionalDisconnect: false,
     connections: new Map(), mediaCalls: new Map(), peerLastSeen: new Map(),
-    pendingHeartbeats: new Map(), heartbeatInterval: null, staleCheckInterval: null,
+    pendingHeartbeats: new Map(), pendingZoneCalls: new Map(), zoneCallTimer: null,
+    heartbeatInterval: null, staleCheckInterval: null,
     hostRecovery: null, signalingReconnectTimer: null, signalingReconnectAttempts: 0,
     currentSignalingTier: 'render', djPeer: null, djMediaCalls: new Map(),
   })
