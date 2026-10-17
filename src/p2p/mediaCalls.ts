@@ -1341,11 +1341,12 @@ export class MediaCallHandler {
     MediaCallHandler.clearIceDisconnectTimer(peerId)
     forgetViewer(peerId)
     const call = mediaCalls.get(peerId)
+    // close can synchronously invoke the lifecycle failure handler.
+    mediaCalls.delete(peerId)
     if (call) {
       try {
         call.close()
       } catch (e) {}
-      mediaCalls.delete(peerId)
     }
     useMediaStore.getState().removePeerStream(peerId)
     useGameStore.getState().setCallState(peerId, 'idle')
@@ -1359,14 +1360,15 @@ export class MediaCallHandler {
     MediaCallHandler.iceDisconnectTimers.clear()
     forgetAllViewers()
     const peerIds: string[] = []
-    mediaCalls.forEach((call, peerId) => {
+    const closingCalls = new Map(mediaCalls)
+    mediaCalls.clear()
+    closingCalls.forEach((call, peerId) => {
       try {
         call.close()
       } catch (e) {}
       peerIds.push(peerId)
       useMediaStore.getState().removePeerStream(peerId)
     })
-    mediaCalls.clear()
     useMediaStore.getState().clearAllPeerStreams()
     peerIds.forEach((pid) => useGameStore.getState().setCallState(pid, 'idle'))
   }

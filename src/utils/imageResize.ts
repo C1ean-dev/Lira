@@ -1,3 +1,5 @@
+import { loadRasterImage } from './loadRasterImage'
+import { canvasToPngDataUrl } from './canvasPng'
 import { getTrimmedBounds, cropImage } from './imageTransparency'
 
 export interface ResizeImageOptions {
@@ -295,7 +297,7 @@ export async function bakeLayersToDataUrl(
   layers: LayerBakeInput[],
   imageCache?: Record<string, HTMLImageElement>
 ): Promise<string> {
-  if (typeof document === 'undefined' || !layers || layers.length === 0) {
+  if ((typeof document === 'undefined' && typeof OffscreenCanvas === 'undefined') || !layers || layers.length === 0) {
     return ''
   }
 
@@ -307,20 +309,10 @@ export async function bakeLayersToDataUrl(
     if (cached && cached.complete && cached.naturalWidth > 0) {
       imgs[idx] = cached
     } else {
-      const img = new Image()
-      promises.push(
-        new Promise<void>((resolve) => {
-          img.onload = () => {
-            imgs[idx] = img
-            resolve()
-          }
-          img.onerror = () => {
-            imgs[idx] = null
-            resolve()
-          }
-          img.src = layer.dataUrl
-        })
-      )
+      promises.push(loadRasterImage(layer.dataUrl).then(
+        image => { imgs[idx] = image },
+        () => { imgs[idx] = null }
+      ))
     }
   })
 
@@ -334,7 +326,9 @@ export async function bakeLayersToDataUrl(
     layers
   )
 
-  const offscreen = document.createElement('canvas')
+  const offscreen = typeof OffscreenCanvas !== 'undefined'
+    ? new OffscreenCanvas(bakeWidth, bakeHeight)
+    : document.createElement('canvas')
   offscreen.width = bakeWidth
   offscreen.height = bakeHeight
   const ctx = offscreen.getContext('2d')
@@ -368,7 +362,7 @@ export async function bakeLayersToDataUrl(
     ctx.restore()
   })
 
-  return offscreen.toDataURL('image/png')
+  return canvasToPngDataUrl(offscreen)
 }
 
 export interface SmartRescaleOptions {

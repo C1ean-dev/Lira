@@ -114,6 +114,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   FakePeer.instances.length = 0
   FakeConn.instances.length = 0
+  pm().clearPendingZoneCalls()
   pm().peer = null
   pm().roomCode = null
   pm().isHost = false
@@ -138,6 +139,7 @@ afterEach(() => {
     localPlayer: { ...useGameStore.getState().localPlayer, currentZoneId: null },
   })
   __resetLiveViewForTests()
+  pm().clearPendingZoneCalls()
   pm().peer = null
   pm().connections.clear()
   vi.useRealTimers()
@@ -374,6 +376,7 @@ describe('the click, from the button to who is live', () => {
     const before = liveViews(hostConn).length
 
     PeerManager.getInstance().checkZoneCallEligibility(sharing(SHARER))
+    await vi.advanceTimersByTimeAsync(16)
     const onCallConnected = dial.mock.calls[dial.mock.calls.length - 1][4] as (peerId: string) => void
     expect(onCallConnected).toBeTypeOf('function')
     onCallConnected(SHARER)
