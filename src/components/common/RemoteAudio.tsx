@@ -21,7 +21,7 @@ export const RemoteAudio: React.FC<RemoteAudioProps> = ({ stream, tile, peer, mu
 
   useEffect(() => {
     if (audioRef.current) applyAudioOutput(audioRef.current, { muted, volume, sinkId })
-  }, [muted, volume, sinkId])
+  }, [stream, tile, peer, muted, volume, sinkId])
 
   return <audio ref={audioRef} autoPlay muted={muted} className="hidden" />
 }

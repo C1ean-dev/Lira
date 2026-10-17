@@ -29,7 +29,6 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
   const [prevVolume, setPrevVolume] = useState<number>(rawVolume > 0 ? rawVolume : 100)
   const removeCaptureBorder = useMediaStore((s) => s.removeCaptureBorder)
   const toggleRemoveCaptureBorder = useMediaStore((s) => s.toggleRemoveCaptureBorder)
-  const [aspectRatio, setAspectRatio] = useState<number | null>(null)
 
   const activeStream = user.screenStream || user.stream
   const isLive = Boolean(user.screenStream || user.isScreenSharing)
@@ -157,8 +156,7 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
     >
       {!liveGate.needsClick && (
         <div
-          className="relative max-w-full max-h-full overflow-hidden flex items-center justify-center"
-          style={aspectRatio ? { aspectRatio: `${aspectRatio}` } : { width: '100%', height: '100%' }}
+          className="relative w-full h-full overflow-hidden flex items-center justify-center"
         >
           <video
             ref={theaterVideoRef}
@@ -167,19 +165,13 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
             muted={user.isLocal}
             onLoadedMetadata={() => {
               theaterVideoRef.current?.play().catch(() => {})
-              if (theaterVideoRef.current?.videoWidth && theaterVideoRef.current?.videoHeight) {
-                setAspectRatio(theaterVideoRef.current.videoWidth / theaterVideoRef.current.videoHeight)
-              }
             }}
             onCanPlay={() => {
               theaterVideoRef.current?.play().catch(() => {})
-              if (theaterVideoRef.current?.videoWidth && theaterVideoRef.current?.videoHeight) {
-                setAspectRatio(theaterVideoRef.current.videoWidth / theaterVideoRef.current.videoHeight)
-              }
             }}
             onLoadedData={liveGate.onFrame}
             onPlaying={liveGate.onFrame}
-            className={`w-full h-full object-cover bg-black transition-transform duration-200 ${
+            className={`w-full h-full object-contain bg-black transition-transform duration-200 ${
               removeCaptureBorder ? 'scale-[1.01]' : 'scale-100'
             }`}
             onDoubleClick={handleDoubleClickVideo}

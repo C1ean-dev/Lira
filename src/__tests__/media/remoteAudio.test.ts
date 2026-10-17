@@ -99,6 +99,73 @@ describe('remote call audio', () => {
   })
 
   describe('attachRemoteAudio', () => {
+    it('amplifies to 200%, follows volume and mute changes, and releases its audio graph', () => {
+      const gain = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() }
+      const source = { connect: vi.fn(), disconnect: vi.fn() }
+      const destination = { stream: new FakeMediaStream([track('audio', 'amplified')]), disconnect: vi.fn() }
+      const context = {
+        createMediaStreamSource: vi.fn(() => source),
+        createGain: vi.fn(() => gain),
+        createMediaStreamDestination: vi.fn(() => destination),
+        state: 'running', resume: vi.fn(async () => {}), close: vi.fn(async () => {}),
+      }
+      vi.stubGlobal('AudioContext', class { constructor() { return context } })
+      try {
+        const { stream, mic } = peerStream()
+        const el = fakeElement({ setSinkId: vi.fn(async () => {}) })
+        const cleanup = attachRemoteAudio(el, stream, { tile: 'grid-audio', peer: 'Ana', muted: false })
+        expect(context.createMediaStreamSource).toHaveBeenCalledWith(audioOnlyStream(stream))
+        expect(source.connect).toHaveBeenCalledWith(gain)
+        expect(gain.connect).toHaveBeenCalledWith(destination)
+        expect(el.srcObject).toBe(destination.stream)
+        for (const volume of [1, 1.5, 2, 0.4, 0]) {
+          applyAudioOutput(el, { muted: false, volume, sinkId: 'headphones' })
+          expect(gain.gain.value).toBe(volume)
+          expect(el.volume).toBe(1)
+        }
+        applyAudioOutput(el, { muted: true, volume: 2 })
+        expect(gain.gain.value).toBe(0)
+        expect(el.muted).toBe(true)
+        applyAudioOutput(el, { muted: false, volume: 2 })
+        expect(gain.gain.value).toBe(2)
+        expect(el.setSinkId).toHaveBeenLastCalledWith('headphones')
+        context.state = 'suspended'
+        applyAudioOutput(el, { muted: false, volume: 1.5 })
+        expect(context.resume).toHaveBeenCalledTimes(1)
+        const click = el.addEventListener.mock.calls.find((call: any[]) => call[0] === 'click' && call[1].name === 'resume')
+        click[1]()
+        expect(context.resume).toHaveBeenCalledTimes(2)
+        cleanup()
+        expect(source.disconnect).toHaveBeenCalled()
+        expect(gain.disconnect).toHaveBeenCalled()
+        expect(context.close).toHaveBeenCalled()
+        expect(el.srcObject).toBeNull()
+        expect(mic.enabled).toBe(true)
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    })
+
+    it('keeps ordinary playback when audio processing is unavailable', () => {
+      const close = vi.fn(async () => {})
+      vi.stubGlobal('AudioContext', class {
+        close = close
+        createMediaStreamSource() { throw new Error('Audio processing unavailable') }
+      })
+      try {
+        const { stream } = peerStream()
+        const el = fakeElement()
+        const cleanup = attachRemoteAudio(el, stream, { tile: 'grid-audio', peer: 'Ana', muted: false })
+        applyAudioOutput(el, { muted: false, volume: 0.7 })
+        expect(el.srcObject).toBe(audioOnlyStream(stream))
+        expect(el.volume).toBeCloseTo(0.7)
+        expect(close).toHaveBeenCalledTimes(1)
+        cleanup()
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    })
+
     it('plays the peer audio without waiting for a video frame', () => {
       const { stream, mic } = peerStream()
       const el = fakeElement()

@@ -5,11 +5,12 @@ import type { FurnitureDefinition } from '../types/map'
 import type { Direction } from '../types/game'
 import { PeerManager } from '../p2p/PeerManager'
 import { bakeLayersToDataUrl } from '../utils/imageResize'
-import { buildAtlas, readAtlas } from '../assets/atlasService'
-import { loadBundledAtlases, loadStoredAtlas, saveStoredAtlas } from '../assets/atlasStorage'
+import { readAtlas } from '../assets/atlasService'
+import { loadBundledAtlases, loadStoredAtlas } from '../assets/atlasStorage'
+import { loadBundledLibrary, loadStoredLibrary, saveStoredLibrary } from '../assets/individualLibraryStorage'
 import { unpackImages } from '../utils/imageTable'
 import { setAvatarAssetCatalog, migrateStoredAvatarReferences } from '../assets/avatarReferences'
-import { bumpAssetRevision } from '../assets/assetRevision'
+import { bumpAssetRevision, bumpAssetImageRevision } from '../assets/assetRevision'
 
 const ASSETS_STORAGE_KEY = 'lira_custom_user_assets'
 const CATEGORIES_STORAGE_KEY = 'lira_custom_categories'
@@ -30,7 +31,17 @@ export function notifyCustomAssetsChanged(): void {
 export function getCustomAssetImage(src: string): HTMLImageElement | null {
   if (!src || typeof Image === 'undefined') return null
   let image = imageCache.get(src)
-  if (!image) { image = new Image(); image.src = src; imageCache.set(src, image) }
+  if (!image) {
+    image = new Image()
+    image.addEventListener?.('load', () => {
+      bumpAssetImageRevision()
+      for (const listener of listeners) {
+        try { listener() } catch (error) { console.error('[Assets] Image listener:', error) }
+      }
+    }, { once: true })
+    imageCache.set(src, image)
+    image.src = src
+  }
   return image
 }
 export function getCachedAssetById(id: string): CustomAsset | undefined {
@@ -151,53 +162,10 @@ function queue(action: () => Promise<void>): Promise<void> {
 async function commit(assets: CustomAsset[], categories: string[], deletedAssetIds = useCustomAssetsStore.getState().deletedAssetIds) {
   const activeIds = new Set(assets.map(asset => asset.id))
   const deleted = deletedAssetIds.filter(id => !activeIds.has(id))
-  const pair = await buildAtlas(assets, categories, deleted)
-  // Decode before committing: missing references or images must not replace a valid library.
-  const doc = await readAtlas(pair)
-  await warmAssetImages(doc.assets)
-  await saveStoredAtlas(pair)
+  const doc = await saveStoredLibrary({ assets, categories, deletedAssetIds: deleted })
   useCustomAssetsStore.setState({ customAssets: doc.assets, customCategories: categories, deletedAssetIds: deleted })
   saveCategories(categories)
   notifyCustomAssetsChanged()
-}
-async function warmAssetImages(assets: CustomAsset[]) {
-  imageCache.clear()
-  const sources = new Set<string>()
-  for (const asset of assets) {
-    asset.frames.forEach(src => { if (src && !src.startsWith('composition:')) sources.add(src) })
-    for (const raw of Object.values(asset.directionalFrames || {})) {
-      for (const src of typeof raw === 'string' ? [raw] : raw) {
-        if (src && !src.startsWith('composition:')) sources.add(src)
-      }
-    }
-  }
-  const pending = [...sources].map(getCustomAssetImage)
-  let next = 0
-  let failed = 0
-  let expired = false
-  // This cache is optional. Limit simultaneous decodes, especially for large
-  // legacy libraries in Electron, after readAtlas has validated the actual PNG.
-  const warming = Promise.all(Array.from({ length: Math.min(8, pending.length) }, async () => {
-    while (!expired && next < pending.length) {
-      const image = pending[next++]
-      try {
-        if (image?.decode) await image.decode()
-      } catch {
-        failed++
-      }
-    }
-  }))
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    await Promise.race([
-      warming,
-      new Promise<void>(resolve => { timer = setTimeout(resolve, 1000) }),
-    ])
-  } finally {
-    expired = true
-    clearTimeout(timer)
-  }
-  if (failed) console.warn('[Assets] Optional image preloading skipped:', failed)
 }
 export const syncToNativeFile = async (assets: CustomAsset[], categories: string[]): Promise<boolean> => {
   try { await queue(() => commit(assets, categories)); return true } catch { return false }
@@ -250,25 +218,7 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
     PeerManager.getInstance().sendCustomAssetAddOrUpdate(asset)
   }),
   deleteCustomAsset: id => deleteAsset(id, true),
-  syncRemoteAtlas: (pair, document) => queue(async () => {
-    const state = get()
-    const ids = new Set(document.assets.map(asset => asset.id))
-    const categories = [...new Set([...state.customCategories, ...document.categories, ...document.assets.map(asset => asset.category || 'Geral')])]
-    const deleted = state.deletedAssetIds.filter(id => !ids.has(id))
-    if (state.customAssets.some(asset => !ids.has(asset.id)) || deleted.length || document.deletedAssetIds?.length
-      || categories.some(category => !document.categories.includes(category))) {
-      await commit(merge(state.customAssets, document.assets), categories)
-      return
-    }
-    if (state.customAssets === document.assets) return
-    // receiveAtlas already verified and decoded this exact pair. Retain it
-    // atomically instead of encoding and decoding the entire library again.
-    await saveStoredAtlas(pair)
-    imageCache.clear()
-    set({ customAssets: document.assets, customCategories: categories, deletedAssetIds: [] })
-    saveCategories(categories)
-    notifyCustomAssetsChanged()
-  }),
+  syncRemoteAtlas: (_pair, document) => addAssets(document.assets, false, document.categories),
   syncRemoteCustomAssets: (assets, categories) => addAssets(assets, false, categories),
   syncRemoteAssetAddOrUpdate: asset => addAssets([asset], false),
   syncRemoteAssetDelete: id => deleteAsset(id, false),
@@ -305,14 +255,17 @@ let initialization: Promise<void> | undefined
 export function initializeCustomAssets(): Promise<void> {
   if (initialization) return initialization
   initialization = (async () => {
-    const stored = await loadStoredAtlas()
+    const storedLibrary = await loadStoredLibrary()
+    const bundledLibrary = await loadBundledLibrary()
+    const stored = storedLibrary ? null : await loadStoredAtlas()
     // An existing local library must not hide additions shipped in an update.
     // Apply it last so edited assets retain their local pixels and metadata.
-    const bundled = await loadBundledAtlases()
+    const bundled = bundledLibrary ? [] : await loadBundledAtlases()
     const pairs = [...bundled.filter(pair => !stored || pair.xml !== stored.xml || pair.png !== stored.png), ...(stored ? [stored] : [])]
-    let assets: CustomAsset[] = []
+    let assets: CustomAsset[] = bundledLibrary?.assets || []
     let categories = loadSavedCategories()
-    let deletedAssetIds: string[] = []
+    let deletedAssetIds: string[] = storedLibrary?.deletedAssetIds || []
+    categories = [...new Set([...categories, ...(bundledLibrary?.categories || [])])]
     for (const pair of pairs) {
       const doc = await readAtlas(pair)
       if (pair === stored) {
@@ -323,26 +276,30 @@ export function initializeCustomAssets(): Promise<void> {
       assets = merge(assets, doc.assets)
       categories = [...new Set([...categories, ...doc.categories])]
     }
+    if (storedLibrary) {
+      const deleted = new Set(deletedAssetIds)
+      assets = merge(assets.filter(asset => !deleted.has(asset.id)), storedLibrary.assets)
+      categories = [...new Set([...categories, ...storedLibrary.categories])]
+    }
     const api = (window as any).electronAPI
-    const native = api?.loadNativeAssets ? await api.loadNativeAssets() : null
+    const native = !storedLibrary && api?.loadNativeAssets ? await api.loadNativeAssets() : null
     const legacy = native ? unpackImages(native) as { assets?: CustomAsset[]; categories?: string[] } : null
     if (legacy?.assets?.length) {
       assets = merge(assets, legacy.assets)
       categories = [...new Set([...categories, ...(legacy.categories || [])])]
     }
-    const raw = localStorage.getItem(ASSETS_STORAGE_KEY)
+    const raw = storedLibrary ? null : localStorage.getItem(ASSETS_STORAGE_KEY)
     if (raw) {
       const local = JSON.parse(raw)
       if (!Array.isArray(local)) throw new Error('Catálogo local antigo inválido; não foi removido')
       assets = merge(assets, local)
     }
     await repairMissingDirectionalFrames(assets)
-    if (raw || legacy?.assets?.length) {
+    if (raw || legacy?.assets?.length || stored || bundled.length) {
       await commit(assets, categories, deletedAssetIds)
       localStorage.removeItem(ASSETS_STORAGE_KEY)
       if (legacy?.assets?.length && api?.completeAssetAtlasMigration) await api.completeAssetAtlasMigration()
     } else {
-      await warmAssetImages(assets)
       useCustomAssetsStore.setState({ customAssets: assets, customCategories: categories, deletedAssetIds })
       notifyCustomAssetsChanged()
     }

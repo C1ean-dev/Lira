@@ -1,4 +1,9 @@
 import { vi } from 'vitest'
+vi.mock('../../assets/individualLibraryStorage', () => ({
+  loadStoredLibrary: vi.fn(async () => null),
+  loadBundledLibrary: vi.fn(async () => null),
+  saveStoredLibrary: vi.fn(async document => document),
+}))
 
 // Store behavior tests use synthetic image strings. Real canvas/PNG round trips
 // are covered by scripts/verify-asset-atlas.mjs in Chromium.

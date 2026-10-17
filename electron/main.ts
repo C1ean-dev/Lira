@@ -19,6 +19,7 @@ import { TrayManager, AppSettings } from './trayManager'
 import { createLogWriter, installConsoleCapture, installProcessErrorCapture } from './logWriter'
 import { readNativeDataFile } from './nativeDataFile'
 import { readAssetAtlas, writeAssetAtlasLatest } from './assetAtlasFile'
+import { readIndividualLibrary, writeIndividualLibraryLatest, stageBundledLibraryImages } from './individualLibraryFile'
 import { ensureNativeSpacesFile, readNativeSpacesFile, writeNativeSpacesFileLatest } from './nativeSpacesFile'
 import { createStartupTimer } from './startupTimer'
 import { startCpuProfile } from './startupProfile'
@@ -1529,13 +1530,19 @@ function assetAtlasDirectory(): string {
 }
 
 ipcMain.handle('load-asset-atlas', () => readAssetAtlas(assetAtlasDirectory()))
+ipcMain.handle('load-individual-library', () => readIndividualLibrary(assetAtlasDirectory()))
+ipcMain.handle('save-individual-library', async (_event, packet) => {
+  await stageBundledLibraryImages(assetAtlasDirectory(), packet, path.join(app.getAppPath(), 'dist', 'assets', 'library'))
+  await writeIndividualLibraryLatest(assetAtlasDirectory(), packet)
+  return readIndividualLibrary(assetAtlasDirectory())
+})
 ipcMain.handle('save-asset-atlas', async (_event, pair) => {
   await writeAssetAtlasLatest(assetAtlasDirectory(), pair)
   return true
 })
 
 ipcMain.handle('complete-asset-atlas-migration', async () => {
-  if (!await readAssetAtlas(assetAtlasDirectory())) throw new Error('Atlas migrado ausente')
+  if (!await readIndividualLibrary(assetAtlasDirectory()) && !await readAssetAtlas(assetAtlasDirectory())) throw new Error('Biblioteca migrada ausente')
   const file = path.join(getDataDirectory(), 'nativeAssets.json')
   if (app.isPackaged && fs.existsSync(file)) fs.unlinkSync(file)
   return true

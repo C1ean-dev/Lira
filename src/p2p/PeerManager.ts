@@ -1,5 +1,6 @@
 import { sendAtlasChunks } from '../assets/atlasChunks'
 import { getTransferAtlas } from '../assets/atlasTransferCache'
+import { IndividualLibrarySync, type LibraryMessage } from '../assets/individualLibrarySync'
 import Peer, { DataConnection, MediaConnection } from 'peerjs'
 import { NetworkMessage, SignalingTier } from '../types/p2p'
 import { MessageDeliveryStatus, RoomChannel } from '../types/chat'
@@ -602,7 +603,7 @@ export class PeerManager {
           gameId: currentLocal.gameId || currentLocal.id,
         }
         const conn = this.peer!.connect(hostPeerId, {
-          metadata: { player: minimalMetadata, assetAtlasChunks: 'binary-v1' },
+          metadata: { player: minimalMetadata, assetAtlasChunks: 'binary-v1', individualLibrary: 2 },
           reliable: true,
         })
 
@@ -793,6 +794,8 @@ export class PeerManager {
       useGameStore.getState().setConnectionStatus('connected')
       this.connections.set(conn.peer, conn)
       this.peerLastSeen.set(conn.peer, Date.now())
+      this.sendToPeer(conn, { type: 'INDIVIDUAL_LIBRARY', senderId: this.peer!.id,
+        payload: { kind: 'hello', id: 'individual-images-v2' }, timestamp: Date.now() })
 
       const localPlayer = useGameStore.getState().localPlayer
       this.sendToPeer(conn, {
@@ -831,6 +834,11 @@ export class PeerManager {
         if (customAssets.length) {
           const sender = this.peer!
           this.queueAssetTransfer(async () => {
+            if (await this.confirmIndividualLibrary(conn)) {
+              await this.offerIndividualLibrary(conn, customAssets, customCategories)
+              return
+            }
+            if (this.peer !== sender || !conn.open || this.connections.get(conn.peer) !== conn) return
             const { atlas, digest } = await getTransferAtlas(customAssets, customCategories)
             if (this.peer !== sender) return
             if (conn.metadata?.assetAtlasChunks === 'binary-v1') {
@@ -1197,7 +1205,7 @@ export class PeerManager {
     let connection: DataConnection | undefined
     try {
       connection = this.peer.connect(recovery.hostPeerId, {
-        metadata: { player: minimalMetadata, assetAtlasChunks: 'binary-v1' },
+        metadata: { player: minimalMetadata, assetAtlasChunks: 'binary-v1', individualLibrary: 2 },
         reliable: true,
       })
     } catch (error) {
@@ -1242,6 +1250,23 @@ export class PeerManager {
             this.pendingHeartbeats.delete(peerId)
             useGameStore.getState().updatePlayerPing(peerId, Math.max(1, Math.round(Date.now() - pending.timestamp)))
           }
+        }
+        return
+      }
+      if (msg.type === 'INDIVIDUAL_LIBRARY') {
+        const connection = this.connections.get(peerId)
+        if (connection?.open && this.peer) {
+          this.individualLibraryPeers.add(connection)
+          for (const ready of this.individualLibraryReady.get(connection) || []) ready()
+          if (msg.payload?.kind === 'hello') return
+          const owner = this.peer
+          void this.individualLibrarySession(connection).receive(msg.payload,
+            payload => this.sendIndividualLibraryMessage(connection, payload),
+            async document => {
+              if (this.peer === owner && this.connections.get(peerId) === connection && connection.open) {
+                await useCustomAssetsStore.getState().syncRemoteCustomAssets(document.assets, document.categories)
+              }
+            }).catch(error => console.error('[Assets] Invalid individual image transfer:', error))
         }
         return
       }
@@ -1858,6 +1883,42 @@ export class PeerManager {
   }
 
   private assetTransferQueue: Promise<void> = Promise.resolve()
+  private individualLibrarySessions = new WeakMap<DataConnection, IndividualLibrarySync>()
+  private individualLibraryPeers = new WeakSet<DataConnection>()
+  private individualLibraryReady = new WeakMap<DataConnection, Set<() => void>>()
+  private async confirmIndividualLibrary(connection: DataConnection): Promise<boolean> {
+    if (this.individualLibraryPeers.has(connection)) return true
+    if (connection.metadata?.individualLibrary !== 2) return false
+    const owner = this.peer
+    return new Promise(resolve => {
+      let listeners = this.individualLibraryReady.get(connection)
+      if (!listeners) { listeners = new Set(); this.individualLibraryReady.set(connection, listeners) }
+      const finish = () => {
+        clearTimeout(timeout)
+        listeners!.delete(finish)
+        resolve(this.peer === owner && connection.open && this.connections.get(connection.peer) === connection && this.individualLibraryPeers.has(connection))
+      }
+      const timeout = setTimeout(finish, 500)
+      listeners.add(finish)
+    })
+  }
+  private individualLibrarySession(connection: DataConnection) {
+    let session = this.individualLibrarySessions.get(connection)
+    if (!session) { session = new IndividualLibrarySync(); this.individualLibrarySessions.set(connection, session) }
+    return session
+  }
+  private async sendIndividualLibraryMessage(connection: DataConnection, payload: LibraryMessage) {
+    const owner = this.peer
+    while ((connection.dataChannel?.bufferedAmount || 0) > 512 * 1024) {
+      if (!owner || this.peer !== owner || !connection.open || this.connections.get(connection.peer) !== connection) throw new Error('Transferência interrompida')
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    if (!owner || this.peer !== owner || !connection.open || this.connections.get(connection.peer) !== connection) throw new Error('Transferência interrompida')
+    this.sendToPeer(connection, { type: 'INDIVIDUAL_LIBRARY', senderId: owner.id, payload, timestamp: Date.now() })
+  }
+  private async offerIndividualLibrary(connection: DataConnection, assets: CustomAsset[], categories: string[] = []) {
+    await this.individualLibrarySession(connection).offer({ assets, categories }, payload => this.sendIndividualLibraryMessage(connection, payload))
+  }
   private queueAssetTransfer(action: () => Promise<void>) {
     const sender = this.peer
     this.assetTransferQueue = this.assetTransferQueue.then(async () => {
@@ -1869,10 +1930,13 @@ export class PeerManager {
     const sender = this.peer
     if (!sender) return
     this.queueAssetTransfer(async () => {
+      const legacyConnections = [...this.connections.values()].filter(connection => connection.open && !this.individualLibraryPeers.has(connection))
+      for (const connection of this.connections.values()) if (connection.open && this.individualLibraryPeers.has(connection)) await this.offerIndividualLibrary(connection, [asset])
+      if (!legacyConnections.length) return
       const atlas = await buildAtlas([asset])
       const digest = await atlasDigest(atlas)
       if (this.peer !== sender) return
-      this.broadcast({ type: 'CUSTOM_ASSET_ADD_OR_UPDATE', senderId: sender.id,
+      for (const connection of legacyConnections) this.sendToPeer(connection, { type: 'CUSTOM_ASSET_ADD_OR_UPDATE', senderId: sender.id,
         payload: { atlas, digest }, timestamp: Date.now() })
     })
   }
@@ -1894,10 +1958,13 @@ export class PeerManager {
     const sender = this.peer
     if (!sender) return
     this.queueAssetTransfer(async () => {
+      const legacyConnections = [...this.connections.values()].filter(connection => connection.open && !this.individualLibraryPeers.has(connection))
+      for (const connection of this.connections.values()) if (connection.open && this.individualLibraryPeers.has(connection)) await this.offerIndividualLibrary(connection, customAssets, categories)
+      if (!legacyConnections.length) return
       const atlas = await buildAtlas(customAssets, categories)
       const digest = await atlasDigest(atlas)
       if (this.peer !== sender) return
-      this.broadcast({ type: 'CUSTOM_ASSETS_SYNC', senderId: sender.id,
+      for (const connection of legacyConnections) this.sendToPeer(connection, { type: 'CUSTOM_ASSETS_SYNC', senderId: sender.id,
         payload: { atlas, digest }, timestamp: Date.now() })
     })
   }

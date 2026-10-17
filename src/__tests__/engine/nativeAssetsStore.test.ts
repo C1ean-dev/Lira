@@ -1,6 +1,7 @@
 import '../helpers/mockAssetPersistence'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { saveStoredAtlas, loadStoredAtlas, loadBundledAtlases } from '../../assets/atlasStorage'
+import { loadStoredAtlas, loadBundledAtlases } from '../../assets/atlasStorage'
+import { saveStoredLibrary, loadStoredLibrary } from '../../assets/individualLibraryStorage'
 import { buildAtlas } from '../../assets/atlasService'
 import { parseAtlasDocument } from '../../assets/atlasFormat'
 import fs from 'node:fs'
@@ -21,7 +22,7 @@ describe('legacy asset migration', () => {
     await initializeCustomAssets()
     expect(useCustomAssetsStore.getState().customAssets[0]).toMatchObject({ id: 'legacy', frames: [sprite], name: '@Nome á & < >' })
     expect(useCustomAssetsStore.getState().customCategories).toContain('Móveis')
-    expect(saveStoredAtlas).toHaveBeenCalled()
+    expect(saveStoredLibrary).toHaveBeenCalled()
   })
   it('gives local edits precedence and removes them only after saving the pair', async () => {
     items.set('lira_custom_user_assets', JSON.stringify([{ ...asset, name: 'Local', frames: [sprite] }]))
@@ -32,7 +33,7 @@ describe('legacy asset migration', () => {
   })
   it('keeps the legacy catalog when migration cannot commit', async () => {
     items.set('lira_custom_user_assets', JSON.stringify([{ ...asset, frames: [sprite] }]))
-    vi.mocked(saveStoredAtlas).mockRejectedValueOnce(new Error('disk full'))
+    vi.mocked(saveStoredLibrary).mockRejectedValueOnce(new Error('disk full'))
     const { initializeCustomAssets } = await import('../../store/useCustomAssetsStore')
     await expect(initializeCustomAssets()).rejects.toThrow('disk full')
     expect(items.has('lira_custom_user_assets')).toBe(true)
@@ -71,7 +72,7 @@ describe('distributed library updates', () => {
     expect(state.getAssetById(edited.id)).toMatchObject({ name: 'Minha edição', frames: ['local-pixels'] })
     for (const name of addedNames) expect(state.customAssets.some(a => a.name === name)).toBe(true)
     expect(state.customCategories).toEqual(expect.arrayContaining(['Pessoal', ...bundled.categories]))
-    expect(saveStoredAtlas).not.toHaveBeenCalled()
+    expect(saveStoredLibrary).toHaveBeenCalled()
   })
 
   it('keeps deletions across restarts without hiding newly shipped characters, and permits re-adding an asset', async () => {
@@ -82,12 +83,12 @@ describe('distributed library updates', () => {
     const first = await import('../../store/useCustomAssetsStore')
     await first.initializeCustomAssets()
     await first.useCustomAssetsStore.getState().deleteCustomAsset(existing.id)
-    const saved = vi.mocked(saveStoredAtlas).mock.calls.at(-1)![0]
+    const saved = vi.mocked(saveStoredLibrary).mock.calls.at(-1)![0]
 
     vi.resetModules()
     const added = { ...existing, id: 'new-character', name: 'Machi' }
     const update = await buildAtlas([existing, added], [])
-    vi.mocked(loadStoredAtlas).mockResolvedValueOnce(saved)
+    vi.mocked(loadStoredLibrary).mockResolvedValueOnce(saved)
     vi.mocked(loadBundledAtlases).mockResolvedValueOnce([update])
     const restarted = await import('../../store/useCustomAssetsStore')
     await restarted.initializeCustomAssets()
@@ -95,9 +96,9 @@ describe('distributed library updates', () => {
     expect(restarted.useCustomAssetsStore.getState().getAssetById(added.id)?.name).toBe('Machi')
 
     await restarted.useCustomAssetsStore.getState().addCustomAsset(existing)
-    const restored = vi.mocked(saveStoredAtlas).mock.calls.at(-1)![0]
+    const restored = vi.mocked(saveStoredLibrary).mock.calls.at(-1)![0]
     vi.resetModules()
-    vi.mocked(loadStoredAtlas).mockResolvedValueOnce(restored)
+    vi.mocked(loadStoredLibrary).mockResolvedValueOnce(restored)
     vi.mocked(loadBundledAtlases).mockResolvedValueOnce([update])
     const readded = await import('../../store/useCustomAssetsStore')
     await readded.initializeCustomAssets()
@@ -110,7 +111,7 @@ describe('distributed library updates', () => {
     vi.mocked(loadBundledAtlases).mockResolvedValueOnce([await buildAtlas([{ ...asset, frames: [sprite] }], [])])
     const { initializeCustomAssets, useCustomAssetsStore } = await import('../../store/useCustomAssetsStore')
     await initializeCustomAssets()
-    vi.mocked(saveStoredAtlas).mockRejectedValueOnce(new Error('disk full'))
+    vi.mocked(saveStoredLibrary).mockRejectedValueOnce(new Error('disk full'))
 
     await expect(useCustomAssetsStore.getState().deleteCustomAsset(asset.id)).rejects.toThrow('disk full')
     expect(useCustomAssetsStore.getState().getAssetById(asset.id)).toBeDefined()

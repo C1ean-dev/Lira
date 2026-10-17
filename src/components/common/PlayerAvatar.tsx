@@ -3,7 +3,8 @@ import { AvatarConfig, PresenceStatus, STATUS_META } from '../../types/game'
 import { getPlayerAvatarSrc } from '../../utils/avatarUtils'
 import { MoonPhaseIcon } from './MoonPhaseIcon'
 import { SpotifyIcon } from './SpotifyIcon'
-import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
+import { useCustomAssetsStore, onCustomAssetsChange } from '../../store/useCustomAssetsStore'
+import { getAssetImageRevision } from '../../assets/assetRevision'
 
 export interface PlayerAvatarProps {
   player?: {
@@ -56,6 +57,7 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
 }) => {
   const [imgError, setImgError] = useState(false)
   const customAssets = useCustomAssetsStore(state => state.customAssets)
+  const imageRevision = React.useSyncExternalStore(onCustomAssetsChange, getAssetImageRevision, getAssetImageRevision)
 
   const effectiveName = name || player?.name || 'Player'
   const effectiveCustomPic = profilePicture !== undefined ? profilePicture : player?.profilePicture
@@ -76,7 +78,7 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
       },
       targetSize
     )
-  }, [effectiveName, effectiveCustomPic, effectiveAvatar, size, customAssets])
+  }, [effectiveName, effectiveCustomPic, effectiveAvatar, size, customAssets, imageRevision])
 
   React.useEffect(() => {
     setImgError(false)

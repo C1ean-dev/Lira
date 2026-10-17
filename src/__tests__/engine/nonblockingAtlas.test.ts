@@ -29,6 +29,14 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 
 describe('atlas generation during room entry', () => {
+  it.each(['file:///profiles/library/images/frame.png', 'https://example.test/assets/library/images/frame.png', './assets/library/images/frame.png'])('embeds individual image URLs when exporting to legacy clients: %s', async src => {
+    const result = buildAtlas([{ ...asset, type: 'furniture', frames: [src] }], []).catch(error => error)
+    await vi.runAllTimersAsync()
+    const pair = await result
+    expect(pair).not.toBeInstanceOf(Error)
+    expect(pair.xml).not.toContain(src)
+    expect(parseAtlasDocument(pair.xml, () => png).assets[0].frames).toEqual([png])
+  })
   it('yields to UI tasks while generating PNGs and preserves asset metadata', async () => {
     const order: string[] = []
     setTimeout(() => { order.push('input') }, 0)

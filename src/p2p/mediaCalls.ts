@@ -515,6 +515,7 @@ export class MediaCallHandler {
     const isDjBot = peerId.startsWith('dj-') || !!useGameStore.getState().remotePlayers[peerId]?.isDjBot
 
     const markConnected = (reason: string) => {
+      if (mediaCalls.get(peerId) !== call) return
       clearLocalTimers()
       MediaCallHandler.clearIceDisconnectTimer(peerId)
       MediaCallHandler.callRetryCounts.delete(peerId)
@@ -550,13 +551,26 @@ export class MediaCallHandler {
             useMediaStore.getState().setPeerStream(peerId, new MediaStream([rxTrack]))
           }
         }
-        useGameStore.getState().setCallState(peerId, 'connected')
         onCallConnected?.(peerId)
       }
+      useGameStore.getState().setCallState(peerId, 'connected')
     }
 
     tryFinalizeReadiness = (reason: string) => {
-      if (isConnected) return
+      if (mediaCalls.get(peerId) !== call) return
+      if (isConnected) {
+        // An established call may temporarily lose ICE during capture startup.
+        // Restore its state and cancel the previous grace timer on recovery,
+        // without re-running media setup or creating another voice call.
+        const ice = pc?.iceConnectionState
+        const connection = pc?.connectionState
+        if ((ice === 'connected' || ice === 'completed' || connection === 'connected') &&
+            !['disconnected', 'failed', 'closed'].includes(ice ?? '') &&
+            !['disconnected', 'failed', 'closed'].includes(connection ?? '')) {
+          markConnected(`transport-recovered:${reason}`)
+        }
+        return
+      }
       const readiness = MediaCallHandler.evaluateCallReadiness(pc, remoteStream, isDjBot)
       const signature = JSON.stringify(readiness)
       if (signature !== lastReadinessSignature) {
@@ -648,6 +662,7 @@ export class MediaCallHandler {
 
     if (pc && pc.addEventListener) {
       pc.addEventListener('iceconnectionstatechange', () => {
+        if (mediaCalls.get(peerId) !== call) return
         const s = pc.iceConnectionState
         if (s === 'connected' || s === 'completed') {
           if (isDjBot && remoteStream?.getAudioTracks?.().some((t) => t.readyState !== 'ended')) {
@@ -674,6 +689,7 @@ export class MediaCallHandler {
       })
 
       pc.addEventListener('connectionstatechange', () => {
+        if (mediaCalls.get(peerId) !== call) return
         const s = pc.connectionState
         if (s === 'connected') {
           if (isDjBot && remoteStream?.getAudioTracks?.().some((t) => t.readyState !== 'ended')) {
