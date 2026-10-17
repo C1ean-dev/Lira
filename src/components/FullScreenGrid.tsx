@@ -25,6 +25,7 @@ const FullScreenGridInner: React.FC = () => {
   const localStream = useMediaStore((s) => s.localStream)
   const localScreenStream = useMediaStore((s) => s.localScreenStream)
   const peerStreams = useMediaStore((s) => s.peerStreams)
+  const peerVoiceStreams = useMediaStore((s) => s.peerVoiceStreams)
   const peerScreenStreams = useMediaStore((s) => s.peerScreenStreams)
   const isMuted = useMediaStore((s) => s.isMuted)
   const isDeafened = useMediaStore((s) => s.isDeafened)
@@ -104,7 +105,7 @@ const FullScreenGridInner: React.FC = () => {
           name: p.name,
           profilePicture: resolvedPic,
           avatar: resolvedAvatar,
-          stream: peerStreams[p.id] || null,
+          stream: p.isScreenSharing ? peerVoiceStreams[p.id] || null : peerStreams[p.id] || null,
           screenStream: peerScreenStreams[p.id] || (p.isScreenSharing ? peerStreams[p.id] : null),
           isMuted: p.isMuted,
           isMutedByAdmin: p.isMutedByAdmin,
@@ -130,6 +131,7 @@ const FullScreenGridInner: React.FC = () => {
     localStream,
     localScreenStream,
     peerStreams,
+    peerVoiceStreams,
     peerScreenStreams,
     isMuted,
     isDeafened,

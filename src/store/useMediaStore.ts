@@ -124,6 +124,7 @@ interface MediaStore {
   setIsTestingMic: (testing: boolean) => void
 
   peerStreams: Record<string, MediaStream>
+  peerVoiceStreams: Record<string, MediaStream>
   peerScreenStreams: Record<string, MediaStream>
   participantVolumes: Record<string, number>
   setParticipantVolume: (id: string, volume: number) => void
@@ -147,6 +148,8 @@ interface MediaStore {
   ) => void
   setPeerStream: (peerId: string, stream: MediaStream) => void
   removePeerStream: (peerId: string) => void
+  setPeerVoiceStream: (peerId: string, stream: MediaStream) => void
+  removePeerVoiceStream: (peerId: string) => void
   setPeerScreenStream: (peerId: string, stream: MediaStream) => void
   removePeerScreenStream: (peerId: string) => void
   clearAllPeerStreams: () => void
@@ -549,6 +552,7 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   }),
 
   peerStreams: {},
+  peerVoiceStreams: {},
   peerScreenStreams: {},
   participantVolumes: saved.participantVolumes || {},
   liveStreamVolume: typeof saved.liveStreamVolume === 'number' ? saved.liveStreamVolume : 100,
@@ -661,6 +665,16 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
       return { peerStreams: copy }
     }),
 
+  setPeerVoiceStream: (peerId, stream) =>
+    set((state) => ({ peerVoiceStreams: { ...state.peerVoiceStreams, [peerId]: stream } })),
+
+  removePeerVoiceStream: (peerId) =>
+    set((state) => {
+      const peerVoiceStreams = { ...state.peerVoiceStreams }
+      delete peerVoiceStreams[peerId]
+      return { peerVoiceStreams }
+    }),
+
   setPeerScreenStream: (peerId, stream) =>
     set((state) => ({
       peerScreenStreams: { ...state.peerScreenStreams, [peerId]: stream },
@@ -676,6 +690,7 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   clearAllPeerStreams: () =>
     set({
       peerStreams: {},
+      peerVoiceStreams: {},
       peerScreenStreams: {},
     }),
 
@@ -704,6 +719,7 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
       localStream: null,
       localScreenStream: null,
       peerStreams: {},
+      peerVoiceStreams: {},
       peerScreenStreams: {},
       isMuted: true,
       isCameraOff: true,

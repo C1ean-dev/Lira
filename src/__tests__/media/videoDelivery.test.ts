@@ -583,7 +583,7 @@ describe('Video Delivery & Screen Share Guarantee Tests', () => {
         expect.objectContaining({ audio: false })
       )
       expect(micTrack.enabled).toBe(true)
-      expect(replaceSpy).not.toHaveBeenCalled()
+      expect(replaceSpy).toHaveBeenCalledWith(null)
 
       MediaManager.getInstance().stopScreenShare()
       expect(micTrack.enabled).toBe(true)
