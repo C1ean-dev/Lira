@@ -365,11 +365,16 @@ export class PeerManager {
           message: String(err?.message || err || '').slice(0, 160),
         })
 
-        if (
-          (err?.type === 'unavailable-id' || err?.message?.includes('is taken')) &&
-          retryCount === 0
-        ) {
+        if (err?.type === 'unavailable-id' || err?.message?.includes('is taken')) {
           resolved = true
+          // An occupied ID is not a signaling outage. Keep this room on its original tier.
+          if (retryCount > 0) {
+            this.peer = null
+            myPeer.removeAllListeners?.()
+            myPeer.destroy()
+            reject(err)
+            return
+          }
           console.log(`[P2P] Host ID already registered. Joining as client to active room on tier '${currentTier}'...`)
           try {
             if (this.peer) {
@@ -491,13 +496,18 @@ export class PeerManager {
         diagLog('room', 'join-autohost', { roomCode: this.roomCode })
 
         try {
-          if (this.peer) {
-            try {
-              this.peer.destroy()
-            } catch (e) { }
-            this.peer = null
+          if (retryCount === 1) {
+            // A previous host registration can outlive its socket briefly.
+            await new Promise<void>(done => setTimeout(done, 1000))
+            if (this.peer !== myPeer || this.isIntentionalDisconnect) {
+              reject(new Error('Conexão cancelada durante a retomada da sala.'))
+              return
+            }
           }
-          if (retryCount === 0) {
+          this.peer = null
+          myPeer.removeAllListeners?.()
+          try { myPeer.destroy() } catch { }
+          if (retryCount < 2) {
             await this.createRoom(
               this.roomCode!,
               localPlayer,
@@ -505,7 +515,7 @@ export class PeerManager {
                 roomName: `Espaço ${this.roomCode}`,
                 isPublic: false,
               },
-              0,
+              tierIndex,
               retryCount + 1
             )
             resolve()
@@ -518,7 +528,7 @@ export class PeerManager {
           if (err?.type === 'unavailable-id' || err?.message?.includes('Host ID already registered') || err?.message?.includes('is taken')) {
             try {
               console.log('[P2P AutoHost] Host ainda está ativo na rede. Tentando reconectar como cliente...')
-              await this.joinRoom(this.roomCode!, localPlayer, 0, retryCount + 1)
+              await this.joinRoom(this.roomCode!, localPlayer, tierIndex, retryCount + 1)
               resolve()
               return
             } catch (rejoinErr: any) {

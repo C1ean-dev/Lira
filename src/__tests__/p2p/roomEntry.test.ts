@@ -191,3 +191,39 @@ describe('room entry (joinRoom)', () => {
     expect(run1Settled).toBeNull()
   })
 })
+
+describe('saved room re-entry after host registration has not been released', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    FakePeer.instances.length = 0
+    FakeConn.instances.length = 0
+    const pm = PeerManager.getInstance() as any
+    pm.peer = null
+    pm.connections.clear()
+    vi.spyOn(pm, 'startHeartbeat').mockImplementation(() => {})
+    vi.spyOn(pm, 'setupPeerListeners').mockImplementation(() => {})
+  })
+  afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks() })
+
+  it('retries claiming the host on the same signaling server after an unreachable occupied ID', async () => {
+    const pm = PeerManager.getInstance()
+    const pending = pm.createRoom('code-aaa', player() as any)
+    FakePeer.instances[0].emit('error', { type: 'unavailable-id', message: 'ID is taken' })
+    FakePeer.instances[1].emit('open', 'client-id')
+    FakePeer.instances[1].emit('error', { type: 'peer-unavailable', message: 'Could not connect to peer' })
+    const settled = pending.then(() => 'ok', () => 'failed')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(FakePeer.instances).toHaveLength(3)
+    FakePeer.instances[2].emit('open', 'lira-CODE-AAA-host')
+    expect(await settled).toBe('ok')
+  })
+
+  it('rejects an occupied recovery host ID without creating a parallel room on another server', async () => {
+    const pm = PeerManager.getInstance()
+    const pending = pm.createRoom('code-aaa', player() as any, undefined, 0, 2)
+    const result = pending.catch((error) => error.type)
+    FakePeer.instances[0].emit('error', { type: 'unavailable-id', message: 'ID is taken' })
+    expect(FakePeer.instances).toHaveLength(1)
+    expect(await result).toBe('unavailable-id')
+  })
+})
