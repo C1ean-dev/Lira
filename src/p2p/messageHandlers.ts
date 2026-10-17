@@ -1,4 +1,5 @@
-import { readAtlas, atlasDigest } from '../assets/atlasService'
+import { AtlasChunkReceiver } from '../assets/atlasChunks'
+import { readAtlas, atlasDigest, decodeTransferredAtlas } from '../assets/atlasService'
 import type { AtlasDocument, PersistedAtlas } from '../assets/atlasFormat'
 import { NetworkMessage, PlayerMovePayload } from '../types/p2p'
 import { Player } from '../types/game'
@@ -14,6 +15,7 @@ import { sanitizeRoomChannels } from '../utils/roomChannels'
 import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
 
 const receivedAtlases = new Map<string, AtlasDocument>()
+const atlasChunks = new AtlasChunkReceiver()
 let assetReceiveQueue: Promise<void> = Promise.resolve()
 function receiveAtlas(pair: PersistedAtlas, digest: string) {
   assetReceiveQueue = assetReceiveQueue.then(async () => {
@@ -24,7 +26,7 @@ function receiveAtlas(pair: PersistedAtlas, digest: string) {
       receivedAtlases.set(digest, doc)
       if (receivedAtlases.size > 16) receivedAtlases.delete(receivedAtlases.keys().next().value!)
     }
-    await useCustomAssetsStore.getState().syncRemoteCustomAssets(doc.assets, doc.categories)
+    await useCustomAssetsStore.getState().syncRemoteAtlas(pair, doc)
   }).catch(error => console.error('[Assets] Invalid incoming atlas:', error))
 }
 
@@ -294,6 +296,16 @@ export function processNetworkMessage(
     }
 
     case 'CUSTOM_ASSETS_SYNC': {
+      if (msg.payload.chunk) {
+        const complete = atlasChunks.accept(peerId, msg.payload.chunk)
+        if (complete) {
+          assetReceiveQueue = assetReceiveQueue.then(async () => {
+            const { atlas, document } = await decodeTransferredAtlas(complete)
+            await useCustomAssetsStore.getState().syncRemoteAtlas(atlas, document)
+          }).catch(error => console.error('[Assets] Invalid incoming atlas:', error))
+        }
+        break
+      }
       if (msg.payload.atlas) { receiveAtlas(msg.payload.atlas, msg.payload.digest); break }
       if (msg.payload.customAssets) {
         useCustomAssetsStore.getState().syncRemoteCustomAssets(
