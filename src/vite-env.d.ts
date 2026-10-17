@@ -1,4 +1,9 @@
 /// <reference types="vite/client" />
+
+interface Window {
+  electronAPI?: import('../electron/preload').IElectronAPI
+}
+
 declare module 'virtual:lira-individual-library' { const exists: boolean; export default exists }
 
 declare module 'virtual:lira-asset-atlases' {

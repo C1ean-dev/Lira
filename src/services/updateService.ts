@@ -32,25 +32,6 @@ export interface AppUpdatePluginInterface {
 
 export const AppUpdate = registerPlugin<AppUpdatePluginInterface>('AppUpdatePlugin')
 
-declare global {
-  interface Window {
-    electronAPI?: {
-      isElectron: boolean
-      checkForUpdates: () => Promise<UpdateInfo>
-      downloadUpdate?: (downloadUrl: string, targetVersion?: string) => Promise<boolean>
-      applyUpdate?: (targetVersion?: string) => Promise<boolean>
-      isUpdateDownloaded?: (targetVersion?: string) => Promise<boolean>
-      onUpdateDownloaded?: (callback: (payload?: { installerPath?: string; version?: string }) => void) => () => void
-      downloadAndInstallUpdate: (downloadUrl: string, targetVersion?: string) => Promise<boolean>
-      onUpdateProgress: (callback: (progress: UpdateProgress) => void) => () => void
-      openExternal: (url: string) => Promise<void>
-      getSources: () => Promise<any[]>
-      setFullScreen?: (flag: boolean) => Promise<boolean>
-      isFullScreen?: () => Promise<boolean>
-    }
-  }
-}
-
 declare const __APP_VERSION__: string | undefined
 
 export const GITHUB_REPO = 'C1ean-dev/Lira'
