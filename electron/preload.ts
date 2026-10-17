@@ -261,7 +261,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return 9000
     }
   })(),
-})
+} satisfies IElectronAPI)
 
 try {
   const p = ipcRenderer.sendSync('get-signaling-port-sync')
