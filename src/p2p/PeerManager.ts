@@ -113,12 +113,23 @@ export function createPeerInstance(
   })
 }
 
+interface HostRecovery {
+  roomCode: string
+  hostPeerId: string
+  clientPeerId: string
+  attempts: number
+  timer: ReturnType<typeof setTimeout> | null
+  connection: DataConnection | null
+}
+
 export class PeerManager {
   private static instance: PeerManager
   private peer: Peer | null = null
   private connections: Map<string, DataConnection> = new Map()
   private mediaCalls: Map<string, MediaConnection> = new Map()
   private peerLastSeen: Map<string, number> = new Map()
+  private pendingHeartbeats = new Map<string, { connection: DataConnection; timestamp: number }>
+  private hostRecovery: HostRecovery | null = null
   private pendingZoneCalls = new Map<string, Peer>()
   private zoneCallTimer: ReturnType<typeof setTimeout> | null = null
   private heartbeatInterval: any = null
@@ -208,6 +219,8 @@ export class PeerManager {
     tierIndex: number = 0,
     retryCount: number = 0
   ): Promise<string> {
+    this.cancelHostRecovery()
+    this.stopHeartbeat()
     this.clearPendingZoneCalls()
     this.roomCode = sanitizeRoomCode(roomCode)
     this.isHost = true
@@ -408,6 +421,8 @@ export class PeerManager {
     tierIndex: number = 0,
     retryCount: number = 0
   ): Promise<void> {
+    this.cancelHostRecovery()
+    this.stopHeartbeat()
     this.clearPendingZoneCalls()
     this.roomCode = sanitizeRoomCode(roomCode)
     this.isHost = false
@@ -682,7 +697,7 @@ export class PeerManager {
   }
 
   public scheduleSignalingReconnect() {
-    if (this.signalingReconnectTimer || this.isIntentionalDisconnect || !this.roomCode) return
+    if (this.signalingReconnectTimer || this.isIntentionalDisconnect || !this.roomCode || this.hostRecovery) return
 
     this.signalingReconnectAttempts++
     if (this.signalingReconnectAttempts > 6) {
@@ -749,7 +764,14 @@ export class PeerManager {
   }
 
   private setupDataConnection(conn: DataConnection) {
+    const owner = this.peer
+    const roomCode = this.roomCode
+    let retired = false
+    const isCurrentSession = () => !retired && this.peer === owner && this.roomCode === roomCode && !this.isIntentionalDisconnect
+    const isActive = () => isCurrentSession() && this.connections.get(conn.peer) === conn
     conn.on('open', () => {
+      if (!isCurrentSession()) { conn.close(); return }
+      this.pendingHeartbeats.delete(conn.peer)
       console.log('[P2P Data] Connected to peer:', conn.peer)
       useGameStore.getState().setConnectionStatus('connected')
       this.connections.set(conn.peer, conn)
@@ -840,11 +862,15 @@ export class PeerManager {
     })
 
     conn.on('data', (data: any) => {
+      if (!isActive()) return
       this.peerLastSeen.set(conn.peer, Date.now())
       this.handleNetworkMessage(data as NetworkMessage, conn.peer)
     })
 
     conn.on('close', () => {
+      const active = isActive()
+      retired = true
+      if (!active) return
       console.log('[P2P Data] Peer disconnected cleanly:', conn.peer)
       this.removePeer(conn.peer)
     })
@@ -863,8 +889,10 @@ export class PeerManager {
           dataConnDisconnectTimer = null
         }
       }
+      conn.on('close', clearDisconnectTimer)
 
       pc.addEventListener('connectionstatechange', () => {
+        if (!isActive()) return
         const state = pc.connectionState
         if (state === 'connected') {
           clearDisconnectTimer()
@@ -877,6 +905,7 @@ export class PeerManager {
           if (!dataConnDisconnectTimer) {
             dataConnDisconnectTimer = setTimeout(() => {
               dataConnDisconnectTimer = null
+              if (!isActive()) return
               if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
                 console.log(`[P2P WebRTC] Disconnect grace period expired for ${conn.peer}. Removing peer.`)
                 this.removePeer(conn.peer)
@@ -887,6 +916,7 @@ export class PeerManager {
       })
 
       pc.addEventListener('iceconnectionstatechange', () => {
+        if (!isActive()) return
         const ice = pc.iceConnectionState
         if (ice === 'connected' || ice === 'completed') {
           clearDisconnectTimer()
@@ -899,6 +929,7 @@ export class PeerManager {
           if (!dataConnDisconnectTimer) {
             dataConnDisconnectTimer = setTimeout(() => {
               dataConnDisconnectTimer = null
+              if (!isActive()) return
               if (['disconnected', 'failed', 'closed'].includes(pc.iceConnectionState)) {
                 console.log(`[P2P ICE] Disconnect grace period expired for ${conn.peer}. Removing peer.`)
                 this.removePeer(conn.peer)
@@ -912,12 +943,13 @@ export class PeerManager {
 
   private removePeer(peerId: string) {
     this.peerLastSeen.delete(peerId)
+    this.pendingHeartbeats.delete(peerId)
     const conn = this.connections.get(peerId)
     if (conn) {
+      this.connections.delete(peerId)
       try {
         conn.close()
       } catch (e) { }
-      this.connections.delete(peerId)
     }
 
     const wasHost = peerId.endsWith('-host') || (this.roomCode && peerId === `lira-${this.roomCode}-host`)
@@ -940,62 +972,112 @@ export class PeerManager {
         },
         peerId
       )
-    } else if (wasHost && this.roomCode) {
+    } else if (wasHost && this.roomCode && !this.isIntentionalDisconnect) {
       this.handleHostDisconnected(peerId)
     }
   }
 
   private handleHostDisconnected(hostPeerId: string) {
-    console.log('[P2P Failover] Host disconnected from room:', this.roomCode)
-    if (!this.roomCode) return
+    if (!this.roomCode || !this.peer || this.peer.destroyed || this.isHost || this.isIntentionalDisconnect || this.hostRecovery) return
     useGameStore.getState().setConnectionStatus('reconnecting')
+    this.stopHeartbeat()
+    if (this.signalingReconnectTimer) clearTimeout(this.signalingReconnectTimer)
+    this.signalingReconnectTimer = null
 
-    const remainingPeers = Array.from(this.connections.keys()).filter((pid) => pid !== hostPeerId)
-    const myId = this.peer ? this.peer.id : ''
-    const candidateList = [myId, ...remainingPeers].filter(Boolean).sort()
-
-    console.log('[P2P Failover] Candidates for host election:', candidateList)
-
-    if (candidateList.length > 0 && candidateList[0] === myId) {
-      console.log('[P2P Failover] This client was ELECTED as the NEW ROOM HOST!')
-      this.promoteToHost()
+    // Clients only connect to the host; use their replicated player roster.
+    const myId = this.peer.id
+    const candidates = [...new Set([
+      myId,
+      ...Object.values(useGameStore.getState().remotePlayers)
+        .filter(player => !player.isDjBot).map(player => player.id),
+    ])].filter(id => id && id !== hostPeerId && !id.startsWith('dj-')).sort()
+    const recovery: HostRecovery = {
+      roomCode: this.roomCode, hostPeerId, clientPeerId: myId,
+      attempts: 0, timer: null, connection: null,
+    }
+    this.hostRecovery = recovery
+    if (candidates[0] === myId) {
+      this.promoteToHost(recovery)
     } else {
-      console.log(`[P2P Failover] Peer ${candidateList[0]} elected. Reconnecting in 2.5s...`)
-      setTimeout(() => {
-        if (!this.isHost && this.roomCode) {
-          this.reconnectToHost(`lira-${this.roomCode}-host`)
-        }
-      }, 2500)
+      this.scheduleHostReconnect(recovery)
     }
   }
 
-  private async promoteToHost() {
-    if (!this.roomCode) return
-    this.isHost = true
-    const localPlayer = useGameStore.getState().localPlayer
+  private isCurrentHostRecovery(recovery: HostRecovery) {
+    return this.hostRecovery === recovery && this.roomCode === recovery.roomCode && !this.isIntentionalDisconnect
+  }
 
-    useGameStore.getState().setConnectionHostId(localPlayer.id)
-    useGameStore.getState().updatePlayerRole(localPlayer.id, 'host', {
-      canEditMap: true,
-      canManageRoles: true,
-      canMuteOthers: true,
-      canKick: true,
+  private cancelHostRecovery() {
+    const recovery = this.hostRecovery
+    this.hostRecovery = null
+    if (!recovery) return
+    if (recovery.timer !== null) clearTimeout(recovery.timer)
+    recovery.timer = null
+    const connection = recovery.connection
+    recovery.connection = null
+    try { connection?.close() } catch { }
+  }
+
+  private failHostRecovery(recovery: HostRecovery) {
+    if (!this.isCurrentHostRecovery(recovery)) return
+    this.cancelHostRecovery()
+    useGameStore.getState().setConnected(false)
+    useGameStore.getState().setConnectionStatus('disconnected')
+  }
+
+  private setupRecoveredPeerListeners(peer: Peer) {
+    this.setupPeerListeners()
+    this.setupSignalingListeners(peer)
+    const isCurrent = () => this.peer === peer && !this.isIntentionalDisconnect && !this.hostRecovery
+    peer.on('open', () => {
+      if (!isCurrent()) return
+      if (this.signalingReconnectTimer) clearTimeout(this.signalingReconnectTimer)
+      this.signalingReconnectTimer = null
+      this.signalingReconnectAttempts = 0
+      useGameStore.getState().setConnected(true)
+      useGameStore.getState().setConnectionStatus('connected')
+      this.recheckZoneCalls()
     })
+    peer.on('error', error => {
+      if (!isCurrent()) return
+      if (['network', 'server-error', 'socket-error', 'socket-closed'].includes(error.type)) {
+        useGameStore.getState().setConnectionStatus('reconnecting')
+        this.scheduleSignalingReconnect()
+      }
+    })
+  }
 
-    this.stopHeartbeat()
-    if (this.peer) {
-      try {
-        this.peer.destroy()
-      } catch (e) { }
-      this.peer = null
-    }
+  private retireRecoveryPeer() {
+    const peer = this.peer
+    this.peer = null
     this.connections.clear()
+    this.peerLastSeen.clear()
+    this.stopHeartbeat()
+    // Retire the session before closing: close events may fire synchronously.
+    this.mediaCalls.forEach(call => { try { call.close() } catch { } })
+    this.mediaCalls.clear()
+    useMediaStore.getState().clearAllPeerStreams()
+    try {
+      peer?.removeAllListeners?.()
+      peer?.destroy()
+    } catch { }
+  }
 
-    const hostPeerId = `lira-${this.roomCode}-host`
-    this.peer = createPeerInstance(hostPeerId, { tier: this.currentSignalingTier })
+  private promoteToHost(recovery: HostRecovery) {
+    this.retireRecoveryPeer()
+    const claimant = createPeerInstance(recovery.hostPeerId, { tier: this.currentSignalingTier })
+    this.peer = claimant
+    const isCurrent = () => this.isCurrentHostRecovery(recovery) && this.peer === claimant
+    recovery.timer = setTimeout(() => {
+      if (!isCurrent()) return
+      this.retireRecoveryPeer()
+      this.failHostRecovery(recovery)
+    }, 15_000)
 
-    this.peer.on('open', (id) => {
-      console.log('[P2P Failover] Successfully claimed Host ID:', id)
+    claimant.on('open', (id) => {
+      if (!isCurrent()) return
+      this.cancelHostRecovery()
+      this.isHost = true
       useGameStore.getState().setSignalingTier(this.currentSignalingTier)
       const currentLocal = useGameStore.getState().localPlayer
       useGameStore.getState().setLocalPlayer({
@@ -1004,21 +1086,25 @@ export class PeerManager {
         isHost: true,
         role: 'host',
       })
+      useGameStore.getState().setConnectionHostId(id)
+      useGameStore.getState().updatePlayerRole(id, 'host', {
+        canEditMap: true, canManageRoles: true, canMuteOthers: true, canKick: true,
+      })
       useGameStore.getState().setConnected(true)
       useGameStore.getState().setConnectionStatus('connected')
-      this.setupPeerListeners()
+      this.setupRecoveredPeerListeners(claimant)
       this.startHeartbeat()
 
       if (useGameStore.getState().isRoomPublic) {
         PublicRoomsService.getInstance().startHosting({
-          id: 'room-' + this.roomCode,
-          code: this.roomCode!,
+          id: 'room-' + recovery.roomCode,
+          code: recovery.roomCode,
           name: useGameStore.getState().roomName,
           description: useGameStore.getState().roomDescription,
-          hostId: localPlayer.id,
-          hostName: localPlayer.name,
-          hostAvatar: localPlayer.avatar,
-          hostColor: localPlayer.avatar?.shirtColor || '#4c6ef5',
+          hostId: id,
+          hostName: currentLocal.name,
+          hostAvatar: currentLocal.avatar,
+          hostColor: currentLocal.avatar?.shirtColor || '#4c6ef5',
           playerCount: Object.keys(useGameStore.getState().remotePlayers).length + 1,
           maxPlayers: useGameStore.getState().maxPlayers,
           color: useGameStore.getState().roomColor,
@@ -1026,24 +1112,94 @@ export class PeerManager {
       }
     })
 
-    this.peer.on('error', (err) => {
-      console.error('[P2P Failover] Error claiming host:', err)
+    claimant.on('error', (error) => {
+      if (!isCurrent()) return
+      if (recovery.timer !== null) clearTimeout(recovery.timer)
+      recovery.timer = null
+      this.retireRecoveryPeer()
+      if (error.type === 'unavailable-id') this.restoreRecoveryClient(recovery)
+      else this.failHostRecovery(recovery)
     })
   }
 
-  private reconnectToHost(hostPeerId: string) {
+  private restoreRecoveryClient(recovery: HostRecovery) {
+    const client = createPeerInstance(recovery.clientPeerId, { tier: this.currentSignalingTier })
+    this.peer = client
+    let registered = false
+    const isCurrent = () => this.isCurrentHostRecovery(recovery) && this.peer === client
+    recovery.timer = setTimeout(() => {
+      if (!isCurrent()) return
+      this.retireRecoveryPeer()
+      this.failHostRecovery(recovery)
+    }, 15_000)
+    client.on('open', (id) => {
+      if (!isCurrent() || registered) return
+      registered = true
+      if (recovery.timer !== null) clearTimeout(recovery.timer)
+      recovery.timer = null
+      useGameStore.getState().setLocalPlayer({ id, isHost: false })
+      this.setupRecoveredPeerListeners(client)
+      this.scheduleHostReconnect(recovery)
+    })
+    client.on('error', (error) => {
+      if (!isCurrent() || error.type === 'peer-unavailable') return
+      this.retireRecoveryPeer()
+      this.failHostRecovery(recovery)
+    })
+  }
+
+  private scheduleHostReconnect(recovery: HostRecovery) {
+    if (!this.isCurrentHostRecovery(recovery)) return
+    recovery.timer = setTimeout(() => {
+      recovery.timer = null
+      if (!this.isCurrentHostRecovery(recovery)) return
+      const previous = recovery.connection
+      recovery.connection = null
+      try { previous?.close() } catch { }
+      if (recovery.attempts >= 6) {
+        this.failHostRecovery(recovery)
+        return
+      }
+      recovery.attempts++
+      this.reconnectToHost(recovery)
+      if (this.isCurrentHostRecovery(recovery)) this.scheduleHostReconnect(recovery)
+    }, 2500)
+  }
+
+  private reconnectToHost(recovery: HostRecovery) {
     if (!this.peer || this.peer.destroyed) return
-    console.log('[P2P Failover] Attempting to reconnect to new host endpoint:', hostPeerId)
-    useGameStore.getState().setConnectionStatus('reconnecting')
     const localPlayer = useGameStore.getState().localPlayer
     const minimalMetadata = {
       id: localPlayer.id,
       name: localPlayer.name,
       gameId: localPlayer.gameId || localPlayer.id,
     }
-    const conn = this.peer.connect(hostPeerId, {
-      metadata: { player: minimalMetadata, assetAtlasChunks: 'binary-v1' },
-      reliable: true,
+    let connection: DataConnection | undefined
+    try {
+      connection = this.peer.connect(recovery.hostPeerId, {
+        metadata: { player: minimalMetadata, assetAtlasChunks: 'binary-v1' },
+        reliable: true,
+      })
+    } catch (error) {
+      console.warn('[P2P Failover] Could not create host connection:', error)
+      return
+    }
+    const conn = connection
+    if (!conn) return
+    if (!this.isCurrentHostRecovery(recovery)) { conn.close(); return }
+    recovery.connection = conn
+    // Retire stale opens before setupDataConnection can publish a player.
+    conn.on('open', () => {
+      if (!this.isCurrentHostRecovery(recovery) || recovery.connection !== conn) {
+        conn.close()
+        return
+      }
+      recovery.connection = null
+      this.cancelHostRecovery()
+      useGameStore.getState().setConnectionHostId(recovery.hostPeerId)
+      useGameStore.getState().setConnected(true)
+      useGameStore.getState().setConnectionStatus('connected')
+      this.startHeartbeat()
     })
     this.setupDataConnection(conn)
   }
@@ -1051,6 +1207,24 @@ export class PeerManager {
   private handleNetworkMessage(msg: NetworkMessage, peerId: string) {
     this.peerLastSeen.set(peerId, Date.now())
     try {
+      if (msg.type === 'HEARTBEAT' || msg.type === 'HEARTBEAT_ACK') {
+        const connection = this.connections.get(peerId)
+        if (!connection?.open || !this.peer) return
+        if (msg.type === 'HEARTBEAT') {
+          this.sendToPeer(connection, {
+            type: 'HEARTBEAT_ACK', senderId: this.peer.id,
+            payload: { clientTimestamp: msg.timestamp }, timestamp: Date.now(),
+          })
+        } else {
+          const pending = this.pendingHeartbeats.get(peerId)
+          if (pending?.connection === connection && msg.senderId === peerId &&
+            pending.timestamp === msg.payload?.clientTimestamp) {
+            this.pendingHeartbeats.delete(peerId)
+            useGameStore.getState().updatePlayerPing(peerId, Math.max(1, Math.round(Date.now() - pending.timestamp)))
+          }
+        }
+        return
+      }
       processNetworkMessage(
         msg,
         peerId,
@@ -1123,7 +1297,11 @@ export class PeerManager {
         payload: {},
         timestamp: Date.now(),
       }
-      this.broadcast(pingMsg)
+      this.connections.forEach((connection, peerId) => {
+        if (!connection.open) return
+        this.pendingHeartbeats.set(peerId, { connection, timestamp: pingMsg.timestamp })
+        this.sendToPeer(connection, pingMsg)
+      })
     }, 3000)
 
     this.staleCheckInterval = setInterval(() => {
@@ -1141,6 +1319,7 @@ export class PeerManager {
   }
 
   private stopHeartbeat() {
+    this.pendingHeartbeats.clear()
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval)
       this.heartbeatInterval = null
@@ -1831,6 +2010,7 @@ export class PeerManager {
 
   public disconnect() {
     this.isIntentionalDisconnect = true
+    this.cancelHostRecovery()
     if (this.isDjBotRunning()) {
       this.stopDjBot()
     }

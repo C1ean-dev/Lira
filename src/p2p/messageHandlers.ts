@@ -41,24 +41,10 @@ export function processNetworkMessage(
   onDjCallRequest?: (listenerId: string) => void
 ) {
   switch (msg.type) {
-    case 'HEARTBEAT': {
-      broadcast({
-        type: 'HEARTBEAT_ACK',
-        senderId: useGameStore.getState().localPlayer.id,
-        payload: { clientTimestamp: msg.timestamp },
-        timestamp: Date.now(),
-      })
-      break
-    }
-
-    case 'HEARTBEAT_ACK': {
-      if (msg.payload?.clientTimestamp) {
-        const rtt = Math.max(1, Math.round(Date.now() - msg.payload.clientTimestamp))
-        const sender = msg.senderId || peerId
-        useGameStore.getState().updatePlayerPing(sender, rtt)
-      }
-      break
-    }
+    // PeerManager handles these on the originating data connection.
+    case 'HEARTBEAT':
+    case 'HEARTBEAT_ACK':
+      return
 
     case 'PLAYER_JOIN': {
       const remotePeerId = msg.senderId || msg.payload.player?.id || peerId
