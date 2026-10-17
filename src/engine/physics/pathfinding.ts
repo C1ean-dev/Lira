@@ -201,6 +201,15 @@ export function findPath(
   }
 
   const key = (x: number, y: number) => `${x},${y}`
+  const walkableCells = new Map<string, boolean>()
+  const isWalkable = (x: number, y: number): boolean => {
+    const cellKey = key(x, y)
+    const cached = walkableCells.get(cellKey)
+    if (cached !== undefined) return cached
+    const walkable = !checkCollision(x, y, map)
+    walkableCells.set(cellKey, walkable)
+    return walkable
+  }
   const openSet = new MinHeap<{ x: number; y: number }>()
   const cameFrom = new Map<string, Point>()
   const gScore = new Map<string, number>()
@@ -254,24 +263,23 @@ export function findPath(
       if (closedSet.has(nKey)) continue
       if (nx < 0 || nx >= map.width || ny < 0 || ny >= map.height) continue
 
-      if (!hasLineOfSight(current.x, current.y, nx, ny, map)) continue
-
-      if (offset.dx !== 0 && offset.dy !== 0) {
-        if (checkCollision(current.x + offset.dx, current.y, map)) continue
-        if (checkCollision(current.x, current.y + offset.dy, map)) continue
-      }
-
-      if (checkCollision(nx, ny, map)) continue
-
       const tentativeG = currentG + offset.cost
       const existingG = gScore.get(nKey) ?? Infinity
+      if (tentativeG >= existingG) continue
 
-      if (tentativeG < existingG) {
-        cameFrom.set(nKey, current)
-        gScore.set(nKey, tentativeG)
-        const fScore = tentativeG + heuristic(nx, ny)
-        openSet.push({ x: nx, y: ny }, fScore)
+      if (!isWalkable(nx, ny)) continue
+      if (offset.dx !== 0 && offset.dy !== 0) {
+        if (!isWalkable(current.x + offset.dx, current.y)) continue
+        if (!isWalkable(current.x, current.y + offset.dy)) continue
       }
+
+      // Keep sub-tile obstacle checks, but only for edges that can improve the path.
+      if (!hasLineOfSight(current.x, current.y, nx, ny, map)) continue
+
+      cameFrom.set(nKey, current)
+      gScore.set(nKey, tentativeG)
+      const fScore = tentativeG + heuristic(nx, ny)
+      openSet.push({ x: nx, y: ny }, fScore)
     }
   }
 

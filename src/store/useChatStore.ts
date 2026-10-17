@@ -265,6 +265,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   addMessage: (message) =>
     set((state) => {
       const local = useGameStore.getState().localPlayer
+      const alreadyHasMessage = state.messages.some((m) => m.id === message.id)
       const localId = local?.id || 'local'
       const isFromMe =
         message.senderId === localId ||
@@ -309,13 +310,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           name: otherName,
           type: isDm ? 'dm' : 'general',
           description: isDm ? `Conversa direta com ${otherName}` : undefined,
-          unreadCount: (isCurrent || isFromMe) ? 0 : 1,
+          unreadCount: (isCurrent || isFromMe || alreadyHasMessage) ? 0 : 1,
           recipientId: otherParticipantId || undefined,
         }
         updatedChannels = [...updatedChannels, newChannel]
       } else {
         updatedChannels = state.channels.map((c, idx) => {
-          if (idx === channelIndex && !isCurrent && !isFromMe) {
+          if (idx === channelIndex && !isCurrent && !isFromMe && !alreadyHasMessage) {
             return { ...c, unreadCount: c.unreadCount + 1 }
           }
           return c
@@ -382,7 +383,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           }
         }
 
-        const alreadyHasMessage = nextMessages.some((m) => m.id === normalizedMessage.id)
         if (existingReqIndex !== -1) {
           if (!alreadyHasMessage && normalizedMessage.content) {
             const { friendRequest, ...plainMsg } = normalizedMessage
@@ -392,7 +392,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           nextMessages = [...nextMessages, normalizedMessage]
         }
       } else {
-        const alreadyHasMessage = nextMessages.some((m) => m.id === normalizedMessage.id)
         if (!alreadyHasMessage) {
           nextMessages = [...nextMessages, normalizedMessage]
         }
@@ -400,7 +399,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       if (isDm) {
         persistDmsAndChannels(nextMessages, updatedChannels)
-        if (!isFromMe) {
+        if (!isFromMe && !alreadyHasMessage) {
           playMessageNotificationChime()
         }
       }
@@ -431,7 +430,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         } catch (e) {}
       }
 
-      if (message.senderId && !isFromMe && message.senderId !== 'system') {
+      if (!alreadyHasMessage && message.senderId && !isFromMe && message.senderId !== 'system') {
         if (isDm || !isCurrent) {
           sendNotification({
             title: isDm ? `Mensagem de ${message.senderName}` : `#${message.channelId} - ${message.senderName}`,
