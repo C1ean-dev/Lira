@@ -10,13 +10,15 @@ const png = 'data:image/png;base64,iVBORw0KGgo='
 const asset: CustomAsset = { id: 'hero', name: 'Hero', type: 'avatar', category: 'People', width: 1, height: 1, frames: [png], sourceImageSrc: png, sourceSheets: [{ id: 'primary', name: 'Original', src: png, width: 32, height: 32 }], slicerPresets: [{ directions: { down: [{ x: 0, y: 0, w: 16, h: 16, dataUrl: png }] } }], createdAt: 1 }
 
 describe('individual image library', () => {
-  it('ships every existing character and its metadata with complete, matching image files', () => {
+  it('preserves legacy characters while allowing added sprites, with complete, matching image files', () => {
     const directory = path.resolve('public/assets/library')
     const catalog = JSON.parse(fs.readFileSync(path.join(directory, 'catalog.json'), 'utf8'))
     const current = openLibrary(catalog, name => name, false)
     const legacy = parseAtlasDocument(fs.readFileSync(path.join(directory, 'library.xml'), 'utf8'), name => name)
-    expect(current.assets.map(a => a.id)).toEqual(legacy.assets.map(a => a.id))
-    expect(current.categories).toEqual(legacy.categories)
+    // The editor can add characters/categories after the initial migration.
+    // Every legacy entry must still be present; all current images are checked below.
+    expect(current.assets.map(a => a.id)).toEqual(expect.arrayContaining(legacy.assets.map(a => a.id)))
+    expect(current.categories).toEqual(expect.arrayContaining(legacy.categories))
     for (const asset of current.assets) {
       expect(asset.frames.every(frame => !frame.startsWith('composition:'))).toBe(true)
       for (const frames of Object.values(asset.directionalFrames || {})) {

@@ -8,6 +8,7 @@
     "test": "vitest run src/__tests__ --maxWorkers=2",
     "test:core": "vitest run src/__tests__/p2p src/__tests__/media --maxWorkers=2",
     "test:core:browser": "cross-env LIRA_RUN_BROWSER_TESTS=1 node --test --test-force-exit scripts/core-realtime.browser.test.mjs",
+    "test:sprites:electron": "cross-env LIRA_RUN_SPRITE_TESTS=1 node --test scripts/individual-library.electron.test.mjs",
     "dev": "cross-env LIRA_TARGET=web vite --open --strictPort",
     "electron:dev": "powershell -ExecutionPolicy Bypass -File scripts/build-process-audio.ps1 && vite --strictPort",
     "electron:dual": "concurrently -k -s first \"npm run electron:dev\" \"wait-on http://localhost:5173 out/main.js out/preload.js && cross-env INSTANCE=2 VITE_DEV_SERVER_URL=http://localhost:5173 electron . --instance=2\"",

@@ -5,6 +5,18 @@ vi.mock('virtual:lira-individual-library', () => ({ default: true }))
 const hero = { id: 'hero', name: 'Hero', type: 'avatar' as const, category: 'People', width: 1, height: 1, frames: ['data:image/png;base64,aGVybw=='], createdAt: 1 }
 afterEach(() => vi.unstubAllGlobals())
 describe('individual library renderer storage', () => {
+  it('loads desktop library images through the dev server when the renderer uses HTTP', async () => {
+    const packet = await buildLibrary({ assets: [hero], categories: [] })
+    vi.stubGlobal('window', { location: { protocol: 'http:', href: 'http://localhost:5173/' }, electronAPI: { loadIndividualLibrary: async () => ({ catalog: packet.catalog, baseUrl: 'file:///project/public/assets/library/' }) } })
+    const document = (await loadStoredLibrary())!
+    expect(document.assets[0].frames[0]).toBe(`http://localhost:5173/assets/library/images/${packet.catalog.images[0]}`)
+  })
+  it('keeps desktop images usable after saving in the HTTP renderer', async () => {
+    const packet = await buildLibrary({ assets: [hero], categories: [] })
+    vi.stubGlobal('window', { location: { protocol: 'http:', href: 'http://localhost:5173/' }, electronAPI: { saveIndividualLibrary: async () => ({ catalog: packet.catalog, baseUrl: 'file:///project/public/assets/library/' }) } })
+    const document = await saveStoredLibrary({ assets: [hero], categories: [] })
+    expect(document.assets[0].frames[0]).toBe(`http://localhost:5173/assets/library/images/${packet.catalog.images[0]}`)
+  })
   it('loads bundled metadata with no image requests or decoding', async () => {
     const packet = await buildLibrary({ assets: [hero], categories: ['People'] })
     const fetch = vi.fn(async () => ({ ok: true, json: async () => packet.catalog }))

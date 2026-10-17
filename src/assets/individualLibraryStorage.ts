@@ -4,7 +4,14 @@ import type { AtlasDocument } from './atlasFormat'
 const indexedImageUrls = new Map<string, string>()
 
 const baseUrl = () => new URL(`${window.location.protocol === 'file:' && import.meta.env.BASE_URL === '/' ? './' : import.meta.env.BASE_URL}assets/library/`, window.location.href).href
-const openLocation = (location: LibraryLocation) => openLibrary(location.catalog, name => new URL(`images/${name}`, location.baseUrl).href)
+const openLocation = (location: LibraryLocation) => {
+  // Electron dev renders over HTTP: Chromium blocks file:// image URLs there.
+  // Its library directory is public/assets/library, already served by Vite.
+  const imageBase = import.meta.env.DEV && /^https?:$/.test(window.location?.protocol) && location.baseUrl.startsWith('file:')
+    ? baseUrl()
+    : location.baseUrl
+  return openLibrary(location.catalog, name => new URL(`images/${name}`, imageBase).href)
+}
 const database = (): Promise<IDBDatabase> => new Promise((resolve, reject) => {
   const request = indexedDB.open('lira-image-library', 1)
   request.onupgradeneeded = () => { request.result.createObjectStore('catalog'); request.result.createObjectStore('images') }
