@@ -3,6 +3,11 @@ import { TILE_SIZE } from '../Constants'
 import { PetState } from './PetManager'
 import { getCustomAssetImage, useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 
+const PET_BASELINE = 26
+const CUSTOM_PET_SIZE = 28
+const MAX_PET_BOB = 1.5
+const NAME_TAG_GAP = 4
+
 const MEOWTH_SPRITE_URL =
   '/assets/pet/5660688_738696_lazy91_meowth-sprite-sheet.fff89e386a74ef7fd067b8f49695f124.png'
 
@@ -74,10 +79,10 @@ export class PetRenderer {
     const frameIdx = pet.isMoving ? pet.walkFrame % dirFrames.length : 0
     const frame = dirFrames[frameIdx] || dirFrames[0]
 
-    const bob = pet.isMoving ? Math.sin(currentTime / 100) * 1.5 : Math.sin(currentTime / 400) * 0.8
+    const bob = pet.isMoving ? Math.sin(currentTime / 100) * MAX_PET_BOB : Math.sin(currentTime / 400) * 0.8
     const petSize = 26
     const drawX = px + 16 - petSize / 2
-    const drawY = py + 26 - petSize + bob
+    const drawY = py + PET_BASELINE - petSize + bob
 
     ctx.drawImage(img, frame.x, frame.y, frame.w, frame.h, drawX, drawY, petSize, petSize)
   }
@@ -129,10 +134,10 @@ export class PetRenderer {
     const img = getCustomAssetImage(frameUrl)
     if (!img || !img.complete || img.naturalWidth === 0) return
 
-    const bob = pet.isMoving ? Math.sin(currentTime / 100) * 1.5 : Math.sin(currentTime / 400) * 0.8
-    const petSize = 28
+    const bob = pet.isMoving ? Math.sin(currentTime / 100) * MAX_PET_BOB : Math.sin(currentTime / 400) * 0.8
+    const petSize = CUSTOM_PET_SIZE
     const drawX = px + 16 - petSize / 2
-    const drawY = py + 26 - petSize + bob
+    const drawY = py + PET_BASELINE - petSize + bob
 
     ctx.drawImage(img, drawX, drawY, petSize, petSize)
   }
@@ -154,7 +159,9 @@ export class PetRenderer {
     const tagW = textW + 10
     const tagH = 13
     const tagX = px + 16 - tagW / 2
-    const tagY = py + 2
+    // Reserve space above the entire sprite, including its upward animation.
+    const spriteTop = py + PET_BASELINE - CUSTOM_PET_SIZE - MAX_PET_BOB
+    const tagY = spriteTop - NAME_TAG_GAP - tagH
 
     ctx.fillStyle = 'rgba(15, 23, 42, 0.85)'
     ctx.beginPath()
