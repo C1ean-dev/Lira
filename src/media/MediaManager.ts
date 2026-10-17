@@ -53,6 +53,7 @@ export class MediaManager {
   private rnnoiseEngine: RnnoiseProcessor
   private activeEngine: AudioEngine | null = null
   private mediaGeneration = 0
+  private screenShareGeneration = 0
   private rawUserStream: MediaStream | null = null
   private rawScreenStream: MediaStream | null = null
   private screenAudioContext: AudioContext | null = null
@@ -1022,10 +1023,12 @@ export class MediaManager {
   }
 
   public async startScreenShare(config: ScreenShareConfig = {}): Promise<MediaStream | null> {
+    const generation = this.screenShareGeneration = (this.screenShareGeneration || 0) + 1
+    const isCurrent = () => generation === this.screenShareGeneration
+    let acquired: MediaStream | null = null
     try {
       this.isStoppingScreenShare = false
       this.isRecoveringScreenShare = false
-      this.activeScreenConfig = { ...config }
       const {
         sourceId,
         sourceName,
@@ -1036,7 +1039,7 @@ export class MediaManager {
       } = config
       const includeAudio = true
 
-      if (sourceName) {
+      if (sourceName && !useMediaStore.getState().isScreenSharing) {
         useMediaStore.getState().setScreenShareTargetTitle(sourceName)
       }
 
@@ -1105,9 +1108,11 @@ export class MediaManager {
         } catch (ipcErr) {
           console.warn('[MediaManager] set-screen-source IPC failed, capturing primary screen:', ipcErr)
         }
+        if (!isCurrent()) return null
         try {
           screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions)
-        } catch {
+        } catch (error) {
+          if (!isCurrent() || ['NotAllowedError', 'AbortError', 'SecurityError'].includes((error as Error)?.name)) throw error
           screenStream = await navigator.mediaDevices.getDisplayMedia({
             ...displayMediaOptions,
             audio: false,
@@ -1116,7 +1121,8 @@ export class MediaManager {
       } else {
         try {
           screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions)
-        } catch {
+        } catch (error) {
+          if (!isCurrent() || ['NotAllowedError', 'AbortError', 'SecurityError'].includes((error as Error)?.name)) throw error
           screenStream = await navigator.mediaDevices.getDisplayMedia({
             ...displayMediaOptions,
             audio: false,
@@ -1124,6 +1130,17 @@ export class MediaManager {
         }
       }
 
+      acquired = screenStream
+      if (!isCurrent()) { this.releaseScreenCapture(screenStream); return null }
+      const capturedVideo = screenStream.getVideoTracks()[0]
+      if (!capturedVideo || capturedVideo.readyState === 'ended') throw new Error('A captura não disponibilizou uma faixa de vídeo ativa.')
+      const previousCaptures = new Set([this.rawScreenStream, useMediaStore.getState().localScreenStream])
+      for (const previous of previousCaptures) {
+        if (previous && previous !== screenStream) this.releaseScreenCapture(previous)
+      }
+      this.isRecoveringScreenShare = false
+      this.activeScreenConfig = { ...config }
+      if (sourceName) useMediaStore.getState().setScreenShareTargetTitle(sourceName)
       this.rawScreenStream = screenStream
       let applicationAudioTrack = screenStream.getAudioTracks()[0] || null
       const localStream = useMediaStore.getState().localStream
@@ -1153,8 +1170,10 @@ export class MediaManager {
         try {
           this.processAudioCapture = new ProcessAudioCapture()
           applicationAudioTrack = await this.processAudioCapture.start(processAudioSourceId)
+          if (!isCurrent()) throw new Error('Captura cancelada.')
           diagLog('screenshare', 'process-audio-started', { sourceId: processAudioSourceId })
         } catch (audioErr) {
+          if (!isCurrent()) throw audioErr
           this.processAudioCapture?.stop()
           this.processAudioCapture = null
           console.warn('Process-scoped audio capture unavailable:', audioErr)
@@ -1170,7 +1189,8 @@ export class MediaManager {
       if (applicationAudioTrack) {
         applicationAudioTrack.enabled = true
         try {
-          const liveAudioTrack = await this.createLiveAudioTrack(applicationAudioTrack)
+          const liveAudioTrack = await this.createLiveAudioTrack(applicationAudioTrack, undefined, generation)
+          if (!isCurrent()) throw new Error('Captura cancelada.')
           ;(liveAudioTrack as any).__screenShareLiveAudio = true
           liveAudioTrack.enabled = true
           screenStream.addTrack(liveAudioTrack)
@@ -1183,6 +1203,7 @@ export class MediaManager {
           })
           PeerManager.getInstance().replaceAudioTrack(liveAudioTrack)
         } catch (audioErr) {
+          if (!isCurrent()) throw audioErr
           PeerManager.getInstance().replaceAudioTrack(null)
           console.warn('Could not build the isolated live audio track:', audioErr)
           diagLog('screenshare', 'audio-track-failed', { error: errShort(audioErr) })
@@ -1237,6 +1258,7 @@ export class MediaManager {
         PeerManager.getInstance().sendPlayerUpdate({ isScreenSharing: true })
 
         screenVideoTrack.onended = () => {
+          if (this.rawScreenStream !== screenStream) return
           if (this.isStoppingScreenShare) {
             this.stopScreenShare()
             return
@@ -1249,18 +1271,33 @@ export class MediaManager {
 
       return screenStream
     } catch (err) {
+      if (!isCurrent()) {
+        if (acquired) this.releaseScreenCapture(acquired)
+        return null
+      }
       console.warn('Screen share cancelled or failed:', err)
       diagLog('screenshare', 'cancelled-or-failed', { error: errShort(err) })
-      if (!useMediaStore.getState().isScreenSharing) {
+      if (acquired && this.rawScreenStream === acquired) {
+        this.stopScreenShare()
+      } else if (!useMediaStore.getState().isScreenSharing) {
         try {
           PeerManager.getInstance().cancelScreenSharePrime()
         } catch {}
+        useMediaStore.getState().setScreenShareTargetTitle(null)
       }
+      if (acquired) this.releaseScreenCapture(acquired)
       return null
     }
   }
 
-  private async createLiveAudioTrack(sourceTrack: MediaStreamTrack, _localStream?: MediaStream | null): Promise<MediaStreamTrack> {
+  private releaseScreenCapture(stream: MediaStream): void {
+    for (const track of stream.getTracks()) {
+      track.onended = null
+      if (track.readyState !== 'ended') track.stop()
+    }
+  }
+
+  private async createLiveAudioTrack(sourceTrack: MediaStreamTrack, _localStream?: MediaStream | null, generation?: number): Promise<MediaStreamTrack> {
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
     if (!AudioContextClass) {
       diagLog('screenshare-audio', 'live-track-web-audio-unavailable', { sourceTrack: summarizeTrack(sourceTrack) })
@@ -1272,6 +1309,11 @@ export class MediaManager {
       try {
         await audioContext.resume()
       } catch {}
+    }
+
+    if (generation !== undefined && generation !== this.screenShareGeneration) {
+      void audioContext.close().catch(() => {})
+      throw new Error('Captura cancelada.')
     }
 
     const source = audioContext.createMediaStreamSource(new MediaStream([sourceTrack]))
@@ -1463,6 +1505,7 @@ export class MediaManager {
   }
 
   public stopScreenShare() {
+    this.screenShareGeneration = (this.screenShareGeneration || 0) + 1
     const wasScreenSharing = useMediaStore.getState().isScreenSharing
     this.isStoppingScreenShare = true
     this.activeScreenConfig = null
@@ -1536,6 +1579,9 @@ export class MediaManager {
   private async handleUnexpectedScreenTrackEnded(): Promise<void> {
     if (this.isStoppingScreenShare || this.isRecoveringScreenShare) return
     if (!useMediaStore.getState().isScreenSharing) return
+    const generation = this.screenShareGeneration
+    const recoveringCapture = this.rawScreenStream
+    const isCurrent = () => generation === this.screenShareGeneration && this.rawScreenStream === recoveringCapture
 
     this.isRecoveringScreenShare = true
     diagLog('screenshare', 'track-ended-unexpected', {
@@ -1556,6 +1602,7 @@ export class MediaManager {
 
     for (let attempt = 1; attempt <= 3; attempt++) {
       await new Promise((r) => setTimeout(r, attempt === 1 ? 600 : 1000))
+      if (!isCurrent()) return
       if (this.isStoppingScreenShare || !useMediaStore.getState().isScreenSharing) {
         this.isRecoveringScreenShare = false
         return
@@ -1601,6 +1648,7 @@ export class MediaManager {
           }
         }
 
+        if (!isCurrent()) return
         const { resolution: effectiveResolution, fps: effectiveFps, targetBitrate } =
           MediaManager.resolveOptimalScreenQuality(config.resolution, config.fps)
 
@@ -1622,6 +1670,10 @@ export class MediaManager {
           },
           audio: false,
         })
+        if (!isCurrent() || this.isStoppingScreenShare || !useMediaStore.getState().isScreenSharing) {
+          this.releaseScreenCapture(newStream)
+          return
+        }
 
         const newVideoTrack = newStream.getVideoTracks()[0]
         if (newVideoTrack && newVideoTrack.readyState === 'live') {
@@ -1629,6 +1681,7 @@ export class MediaManager {
           if (currentScreenStream) {
             currentScreenStream.getVideoTracks().forEach((t) => {
               try {
+                t.onended = null
                 t.stop()
               } catch {}
               currentScreenStream.removeTrack(t)
@@ -1648,6 +1701,7 @@ export class MediaManager {
           PeerManager.getInstance().replaceVideoTrack(newVideoTrack, true, targetBitrate, effectiveFps)
 
           newVideoTrack.onended = () => {
+            if (this.rawScreenStream !== newStream) return
             if (this.isStoppingScreenShare) {
               this.stopScreenShare()
               return
@@ -1662,7 +1716,9 @@ export class MediaManager {
           recovered = true
           break
         }
+        this.releaseScreenCapture(newStream)
       } catch (err) {
+        if (!isCurrent()) return
         diagLog('screenshare', 'recovery-attempt-failed', { attempt, error: errShort(err) })
       }
     }

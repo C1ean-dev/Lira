@@ -519,6 +519,7 @@ export class MediaCallHandler {
       clearLocalTimers()
       MediaCallHandler.clearIceDisconnectTimer(peerId)
       MediaCallHandler.callRetryCounts.delete(peerId)
+      MediaCallHandler.clearCallRetryTimer(peerId)
 
       if (!isConnected) {
         isConnected = true
@@ -932,6 +933,7 @@ export class MediaCallHandler {
     const hasAudioTrack = Boolean(localStream?.getAudioTracks?.().some((track) => hasUsableAudio(track)) || hasScreenAudio)
 
     if (inSameZone) {
+      if (!existingCall && (MediaCallHandler.callRetryTimers.has(remotePlayer.id) || useGameStore.getState().callStates[remotePlayer.id] === 'failed')) return
       if (!existingCall && peer && localStream && hasAudioTrack) {
         console.log(`[Zone Call] Dialing ${remotePlayer.name} in zone ${localPlayer.currentZoneId}`)
 
@@ -945,7 +947,14 @@ export class MediaCallHandler {
           tracks: summarizeStream(streamToSend),
         })
 
-        const call = peer.call(remotePlayer.id, streamToSend)
+        let call: MediaConnection | undefined
+        try {
+          call = peer.call(remotePlayer.id, streamToSend)
+        } catch (error) {
+          useGameStore.getState().setCallState(remotePlayer.id, 'failed')
+          diagLog('p2p', 'call.dial-error', { toPeer: remotePlayer.id, error: String(error) })
+          return
+        }
         if (!call) {
           useGameStore.getState().setCallState(remotePlayer.id, 'failed')
           diagLog('p2p', 'call.dial-nocall', { toPeer: remotePlayer.id })
@@ -980,13 +989,13 @@ export class MediaCallHandler {
         })
       }
     } else {
+      MediaCallHandler.callRetryCounts.delete(remotePlayer.id)
+      MediaCallHandler.clearCallRetryTimer(remotePlayer.id)
+      MediaCallHandler.clearIceDisconnectTimer(remotePlayer.id)
+      useGameStore.getState().setCallState(remotePlayer.id, 'idle')
       if (existingCall) {
         console.log(`[Zone Call] Leaving zone with ${remotePlayer.name}, terminating media call`)
         diagLog('p2p', 'call.terminated-left-zone', { withPeer: remotePlayer.id })
-        MediaCallHandler.callRetryCounts.delete(remotePlayer.id)
-        MediaCallHandler.clearCallRetryTimer(remotePlayer.id)
-        MediaCallHandler.clearIceDisconnectTimer(remotePlayer.id)
-        useGameStore.getState().setCallState(remotePlayer.id, 'idle')
         endMediaCallWithPeer(remotePlayer.id)
       }
     }
@@ -1003,6 +1012,7 @@ export class MediaCallHandler {
     MediaCallHandler.clearCallRetryTimer(remotePlayer.id)
     MediaCallHandler.clearIceDisconnectTimer(remotePlayer.id)
     endMediaCallWithPeer(remotePlayer.id)
+    useGameStore.getState().setCallState(remotePlayer.id, 'idle')
     MediaCallHandler.checkZoneCallEligibility(remotePlayer, peer, mediaCalls, endMediaCallWithPeer, onCallConnected)
   }
 

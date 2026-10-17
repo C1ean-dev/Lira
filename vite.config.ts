@@ -168,6 +168,7 @@ export default defineConfig({
     },
   },
   test: {
+    include: ['src/__tests__/**/*.test.{ts,tsx,js,mjs}'],
     exclude: ['**/node_modules/**', '**/.claude/**', '**/dist/**'],
   },
 })
