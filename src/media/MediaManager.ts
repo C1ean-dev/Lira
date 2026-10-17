@@ -1170,13 +1170,11 @@ export class MediaManager {
       if (applicationAudioTrack) {
         applicationAudioTrack.enabled = true
         try {
-          const liveAudioTrack = await this.createLiveAudioTrack(applicationAudioTrack, localStream)
+          const liveAudioTrack = await this.createLiveAudioTrack(applicationAudioTrack)
           ;(liveAudioTrack as any).__screenShareLiveAudio = true
           liveAudioTrack.enabled = true
           screenStream.addTrack(liveAudioTrack)
-          useMediaStore.getState().setScreenShareAudioMode(
-            localStream?.getAudioTracks().length ? 'app_and_mic' : 'app_only'
-          )
+          useMediaStore.getState().setScreenShareAudioMode('app_only')
           diagLog('screenshare', 'audio-track-sent', { sourceOnly: true, microphonePreserved: true })
           diagLog('screenshare-audio', 'live-track-created', {
             sourceId: processAudioSourceId || null,
@@ -1185,10 +1183,12 @@ export class MediaManager {
           })
           PeerManager.getInstance().replaceAudioTrack(liveAudioTrack)
         } catch (audioErr) {
+          PeerManager.getInstance().replaceAudioTrack(null)
           console.warn('Could not build the isolated live audio track:', audioErr)
           diagLog('screenshare', 'audio-track-failed', { error: errShort(audioErr) })
         }
       } else {
+        PeerManager.getInstance().replaceAudioTrack(null)
         diagLog('screenshare', 'audio-track-unavailable', {
           reason: isElectronCapture ? 'process-audio-unavailable' : 'no-source-audio-track',
           microphonePreserved: true,
@@ -1202,6 +1202,7 @@ export class MediaManager {
 
       useMediaStore.getState().setLocalScreenStream(screenStream)
       useMediaStore.getState().setScreenSharing(true)
+      PeerManager.getInstance().startLiveVoiceCalls()
       useGameStore.getState().setLocalPlayer({ isScreenSharing: true })
       diagLog('screenshare', 'start', {
         resolution, fps, includeAudio, sourceOnlyAudio: true,
@@ -1259,7 +1260,7 @@ export class MediaManager {
     }
   }
 
-  private async createLiveAudioTrack(sourceTrack: MediaStreamTrack, localStream: MediaStream | null): Promise<MediaStreamTrack> {
+  private async createLiveAudioTrack(sourceTrack: MediaStreamTrack, _localStream?: MediaStream | null): Promise<MediaStreamTrack> {
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext
     if (!AudioContextClass) {
       diagLog('screenshare-audio', 'live-track-web-audio-unavailable', { sourceTrack: summarizeTrack(sourceTrack) })
@@ -1283,17 +1284,12 @@ export class MediaManager {
     source.connect(applicationGain)
     applicationGain.connect(destination)
 
-    if (localStream?.getAudioTracks().length) {
-      const microphone = audioContext.createMediaStreamSource(localStream)
-      microphone.connect(destination)
-    }
-
     diagLog('screenshare-audio', 'live-track-graph', {
       contextState: audioContext.state,
       sampleRate: audioContext.sampleRate,
       applicationVolume: volume,
       applicationTrack: summarizeTrack(sourceTrack),
-      microphoneTracks: localStream?.getAudioTracks().length || 0,
+      microphoneTracks: 0,
       destinationTracks: destination.stream.getAudioTracks().length,
     })
 
@@ -1467,6 +1463,7 @@ export class MediaManager {
   }
 
   public stopScreenShare() {
+    const wasScreenSharing = useMediaStore.getState().isScreenSharing
     this.isStoppingScreenShare = true
     this.activeScreenConfig = null
     this.isRecoveringScreenShare = false
@@ -1527,9 +1524,8 @@ export class MediaManager {
     }
 
     PeerManager.getInstance().replaceVideoTrack(camTrack, false)
-    if (micTrack) {
-      PeerManager.getInstance().replaceAudioTrack(micTrack)
-    }
+    if (wasScreenSharing || micTrack) PeerManager.getInstance().replaceAudioTrack(micTrack)
+    PeerManager.getInstance().stopLiveVoiceCalls()
     diagLog('screenshare', 'stop-restore', {
       cam: camTrack ? { enabled: camTrack.enabled, dummy: (camTrack as any).__isDummy === true } : null,
       mic: micTrack ? { enabled: micTrack.enabled } : null,

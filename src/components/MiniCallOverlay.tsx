@@ -581,6 +581,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
   const localStream = useMediaStore((s) => s.localStream)
   const localScreenStream = useMediaStore((s) => s.localScreenStream)
   const peerStreams = useMediaStore((s) => s.peerStreams)
+  const peerVoiceStreams = useMediaStore((s) => s.peerVoiceStreams)
   const isMuted = useMediaStore((s) => s.isMuted)
   const isDeafened = useMediaStore((s) => s.isDeafened)
   const isCameraOff = useMediaStore((s) => s.isCameraOff)
@@ -939,18 +940,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               }}
             />
 
-            {isScreenSharing && localScreenStream && (
-              <VideoTile
-                stream={localScreenStream}
-                name={localPlayer.name}
-                isLocal={true}
-                isScreenSharing={true}
-                isScreenTrack={true}
-                suppressAudio={suppressAudio}
-                onClick={() => setGridCallOpen(true)}
-              />
-            )}
-
             {peersInSameZone.map((peer) => {
               const friendProfile = friendProfiles[peer.id] || (peer.gameId ? friendProfiles[peer.gameId] : undefined)
               const resolvedPic = peer.profilePicture || friendProfile?.profilePicture
@@ -960,15 +949,15 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                 <VideoTile
                   key={peer.id}
                   id={peer.id}
-                  stream={peerStreams[peer.id] || null}
+                  stream={peer.isScreenSharing ? peerVoiceStreams[peer.id] || null : peerStreams[peer.id] || null}
                   name={peer.name}
                   isMuted={peer.isMuted}
                   isMutedByAdmin={peer.isMutedByAdmin}
                   isDeafened={peer.isDeafened}
                   isCameraOff={peer.isCameraOff ?? true}
                   isLocal={false}
-                  isScreenSharing={peer.isScreenSharing}
-                  isScreenTrack={peer.isScreenSharing}
+                  isScreenSharing={false}
+                  isScreenTrack={false}
                   liveOptIn={peer.liveOptIn}
                   liveWatching={!!watchingLives[peer.id]}
                   profilePicture={resolvedPic}
@@ -984,7 +973,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                       id: peer.id,
                       gameId: peer.gameId || peer.id,
                       name: peer.name,
-                      stream: peerStreams[peer.id] || null,
+                      stream: peer.isScreenSharing ? peerVoiceStreams[peer.id] || null : peerStreams[peer.id] || null,
                       isLocal: false,
                       isMuted: peer.isMuted,
                       isMutedByAdmin: peer.isMutedByAdmin,

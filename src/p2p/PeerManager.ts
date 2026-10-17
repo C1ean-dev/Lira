@@ -17,6 +17,7 @@ import { MediaCallHandler, ICE_CONNECT_TIMEOUT_MS, SHARED_RTC_CONFIG, resolveCal
 import { VideoDegradation } from './videoSendPolicy'
 import { prioritizeH264HardwareCodec } from '../media/hardwareCodec'
 import { MediaManager } from '../media/MediaManager'
+import { silentAudioTrack } from '../media/silentAudioTrack'
 import { waitForDjPeerReady } from './djPeerReady'
 import { djMusicSdp } from './djMusicSdp'
 import { connectLiveView, liveViewReporter } from '../media/liveView'
@@ -127,6 +128,8 @@ export class PeerManager {
   private peer: Peer | null = null
   private connections: Map<string, DataConnection> = new Map()
   private mediaCalls: Map<string, MediaConnection> = new Map()
+  private liveVoiceCalls: Map<string, MediaConnection> = new Map()
+  private incomingLiveVoiceCalls: Map<string, MediaConnection> = new Map()
   private peerLastSeen: Map<string, number> = new Map()
   private pendingHeartbeats = new Map<string, { connection: DataConnection; timestamp: number }>
   private hostRecovery: HostRecovery | null = null
@@ -753,6 +756,10 @@ export class PeerManager {
     })
 
     this.peer.on('call', (call) => {
+      if ((call.metadata as { kind?: string } | undefined)?.kind === 'live-voice') {
+        this.handleIncomingLiveVoiceCall(call)
+        return
+      }
       MediaCallHandler.handleIncomingCall({
         call,
         myId: this.peer ? this.peer.id : '',
@@ -1064,6 +1071,9 @@ export class PeerManager {
     this.peerLastSeen.clear()
     this.stopHeartbeat()
     // Retire the session before closing: close events may fire synchronously.
+    this.stopLiveVoiceCalls()
+    this.incomingLiveVoiceCalls?.forEach(call => { try { call.close() } catch { } })
+    this.incomingLiveVoiceCalls?.clear()
     this.mediaCalls.forEach(call => { try { call.close() } catch { } })
     this.mediaCalls.clear()
     useMediaStore.getState().clearAllPeerStreams()
@@ -1294,6 +1304,63 @@ export class PeerManager {
 
   private onMediaCallConnected(peerId: string) {
     liveViewReporter.callConnected(peerId)
+    if (useMediaStore.getState().isScreenSharing) this.startLiveVoiceCall(peerId)
+  }
+
+  private handleIncomingLiveVoiceCall(call: MediaConnection): void {
+    const previous = this.incomingLiveVoiceCalls.get(call.peer)
+    if (previous && previous !== call) previous.close()
+    this.incomingLiveVoiceCalls.set(call.peer, call)
+    const silent = silentAudioTrack()
+    call.answer(silent ? new MediaStream([silent]) : new MediaStream())
+    call.on('stream', (stream) => {
+      if (this.incomingLiveVoiceCalls.get(call.peer) === call) {
+        useMediaStore.getState().setPeerVoiceStream(call.peer, stream)
+      }
+    })
+    const cleanup = () => {
+      if (this.incomingLiveVoiceCalls.get(call.peer) !== call) return
+      this.incomingLiveVoiceCalls.delete(call.peer)
+      useMediaStore.getState().removePeerVoiceStream(call.peer)
+    }
+    call.on('close', cleanup)
+    call.on('error', cleanup)
+  }
+
+  private startLiveVoiceCall(peerId: string): void {
+    if (peerId.startsWith('dj-') || useGameStore.getState().remotePlayers[peerId]?.isDjBot) return
+    const mainCall = this.mediaCalls.get(peerId)
+    if (!this.peer || this.liveVoiceCalls.has(peerId) || !mainCall) return
+    if (!useMediaStore.getState().localScreenStream?.getAudioTracks().some((track) => (track as any).__screenShareLiveAudio)) {
+      MediaCallHandler.replaceAudioTrack(new Map([[peerId, mainCall]]), null)
+    }
+    const microphone = useMediaStore.getState().localStream?.getAudioTracks()[0]
+    if (!microphone) return
+    const call = this.peer.call(peerId, new MediaStream([microphone]), { metadata: { kind: 'live-voice' } })
+    if (!call) return
+    this.liveVoiceCalls.set(peerId, call)
+    const cleanup = () => {
+      if (this.liveVoiceCalls.get(peerId) === call) this.liveVoiceCalls.delete(peerId)
+    }
+    call.on('close', cleanup)
+    call.on('error', cleanup)
+  }
+
+  public startLiveVoiceCalls(): void {
+    this.mediaCalls.forEach((_call, peerId) => this.startLiveVoiceCall(peerId))
+  }
+
+  public stopLiveVoiceCalls(): void {
+    this.liveVoiceCalls?.forEach((call) => call.close())
+    this.liveVoiceCalls?.clear()
+  }
+
+  private endLiveVoiceCallsWithPeer(peerId: string): void {
+    this.liveVoiceCalls?.get(peerId)?.close()
+    this.liveVoiceCalls?.delete(peerId)
+    this.incomingLiveVoiceCalls?.get(peerId)?.close()
+    this.incomingLiveVoiceCalls?.delete(peerId)
+    useMediaStore.getState().removePeerVoiceStream(peerId)
   }
 
   private startHeartbeat() {
@@ -1657,6 +1724,7 @@ export class PeerManager {
 
   public endMediaCallWithPeer(peerId: string) {
     this.pendingZoneCalls.delete(peerId)
+    this.endLiveVoiceCallsWithPeer(peerId)
     MediaCallHandler.endMediaCall(this.mediaCalls, peerId)
   }
 
@@ -1694,6 +1762,10 @@ export class PeerManager {
 
   public endAllZoneMediaCalls() {
     this.clearPendingZoneCalls()
+    this.stopLiveVoiceCalls()
+    this.incomingLiveVoiceCalls?.forEach((call) => call.close())
+    this.incomingLiveVoiceCalls?.clear()
+    useMediaStore.getState().clearAllPeerStreams()
     MediaCallHandler.endAllMediaCalls(this.mediaCalls)
   }
 
@@ -1725,16 +1797,27 @@ export class PeerManager {
   }
 
   public replaceAudioTrack(newTrack: MediaStreamTrack | null) {
+    if (useMediaStore.getState().isScreenSharing && !(newTrack as any)?.__screenShareLiveAudio) {
+      this.liveVoiceCalls.forEach((call) => {
+        const senders = (call as any).peerConnection?.getSenders?.() as RTCRtpSender[] | undefined
+        senders?.filter((sender) => sender.track?.kind === 'audio').forEach((sender) => {
+          void sender.replaceTrack(newTrack).catch(() => {})
+        })
+      })
+      if (newTrack) this.startLiveVoiceCalls()
+      return
+    }
     MediaCallHandler.replaceAudioTrack(this.mediaCalls, newTrack)
   }
 
   public syncSenderTracksMuteState(enabled: boolean): void {
+    useMediaStore.getState().localStream?.getAudioTracks().forEach((track) => { track.enabled = enabled })
     this.mediaCalls.forEach((call) => {
       try {
         const pc = (call as any).peerConnection as RTCPeerConnection | undefined
         if (pc && typeof pc.getSenders === 'function') {
           pc.getSenders().forEach((sender) => {
-            if (sender.track && sender.track.kind === 'audio') {
+            if (sender.track && sender.track.kind === 'audio' && !(sender.track as any).__screenShareLiveAudio) {
               sender.track.enabled = enabled
             }
           })

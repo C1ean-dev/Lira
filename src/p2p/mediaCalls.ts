@@ -1268,7 +1268,9 @@ export class MediaCallHandler {
         const senders = pc.getSenders()
         const audioSender = MediaCallHandler.findAudioSender(pc, senders)
         if (onlyIfDifferent && audioSender && audioSender.track === newTrack) return
-        if (audioSender && newTrack) {
+        if (audioSender && !newTrack) {
+          void audioSender.replaceTrack(null).catch(() => {})
+        } else if (audioSender && newTrack) {
           diagLog('p2p', 'audio-replace-sender-found', {
             toPeer: peerId,
             previousTrack: audioSender.track
