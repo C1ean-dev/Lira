@@ -1,5 +1,8 @@
 import React, { useState } from 'react'
-import { Shield, Users, Minimize2, X, Radio } from 'lucide-react'
+import { Shield, Users, Minimize2, X, Radio, FileText } from 'lucide-react'
+import { selectTranscriptionSources } from '../media/callTranscription'
+import { useCallTranscription } from '../hooks/useCallTranscription'
+import { CallTranscriptPanel } from './grid/CallTranscriptPanel'
 import { useMediaStore } from '../store/useMediaStore'
 import { useGameStore } from '../store/useGameStore'
 import { useMapStore } from '../store/useMapStore'
@@ -45,6 +48,7 @@ const FullScreenGridInner: React.FC = () => {
   const [focusedUserId, setFocusedUserId] = useState<string | null>(null)
   const [liveTheaterUser, setLiveTheaterUser] = useState<ParticipantData | null>(null)
   const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [isTranscriptOpen, setIsTranscriptOpen] = useState(false)
   const [contextMenuState, setContextMenuState] = useState<{
     user: ParticipantData
     x: number
@@ -142,6 +146,8 @@ const FullScreenGridInner: React.FC = () => {
   ])
 
   const activePresenter = allInMeeting.find((u) => u.screenStream || u.isScreenSharing)
+  const transcriptionSources = React.useMemo(() => selectTranscriptionSources(allInMeeting, peerVoiceStreams), [allInMeeting, peerVoiceStreams])
+  const transcription = useCallTranscription(transcriptionSources, localPlayer.currentZoneId)
   const focusedUser = focusedUserId
     ? allInMeeting.find((u) => u.id === focusedUserId)
     : activePresenter || (allInMeeting.length > 0 ? allInMeeting[0] : null)
@@ -226,6 +232,18 @@ const FullScreenGridInner: React.FC = () => {
               </button>
             )}
 
+            <button type="button"
+              onClick={() => setIsTranscriptOpen(open => !open)}
+              aria-expanded={isTranscriptOpen}
+              aria-controls="call-transcript"
+              title="Transcrição da chamada por participante"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${isTranscriptOpen ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'}`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Transcrição</span>
+              {transcription.status === 'recording' && <span aria-label="Transcrição ativa" className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+            </button>
+
             <button
               onClick={() => setGridCallOpen(false)}
               className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition-colors"
@@ -271,6 +289,7 @@ const FullScreenGridInner: React.FC = () => {
               ))}
             </div>
           )}
+          {isTranscriptOpen && <CallTranscriptPanel {...transcription} onStart={transcription.start} onStop={transcription.stop} onClose={() => setIsTranscriptOpen(false)} />}
         </div>
 
         <CallControlsBar

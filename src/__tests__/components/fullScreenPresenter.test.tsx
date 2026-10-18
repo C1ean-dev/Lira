@@ -45,6 +45,16 @@ function setup(localSharing = false) {
 }
 
 describe('presenter beside the live in the expanded call', () => {
+  it('places transcription immediately beside Jam without starting capture automatically', () => {
+    setup()
+    const html = renderToStaticMarkup(<FullScreenGrid />)
+    const buttons = [...html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)]
+      .map(match => match[1].replace(/<[^>]*>/g, '').trim())
+    expect(buttons[buttons.indexOf('Jam') + 1]).toBe('Transcrição')
+    expect(html).toContain('aria-expanded="false" aria-controls="call-transcript"')
+    expect(html).not.toContain('aria-label="Transcrição da chamada"')
+  })
+
   it.each([false, true])('keeps the presenter in the participant sidebar (local sharing: %s)', (localSharing) => {
     setup(localSharing)
     const presenterId = localSharing ? 'local' : 'remote'
