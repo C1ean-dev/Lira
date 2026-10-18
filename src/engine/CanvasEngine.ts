@@ -15,6 +15,7 @@ export class CanvasEngine {
   private ctx: CanvasRenderingContext2D
   private isRunning: boolean = false
   private animationFrameId: number | null = null
+  private unsubscribeViewMode: (() => void) | null = null
 
   public camera: CameraManager
   public input: InputHandler
@@ -48,7 +49,6 @@ export class CanvasEngine {
     this.camera = new CameraManager()
     this.input = new InputHandler()
 
-    this.setupInputs()
   }
 
   private setupInputs() {
@@ -108,6 +108,17 @@ export class CanvasEngine {
   public start() {
     if (this.isRunning) return
     this.isRunning = true
+    this.unsubscribeViewMode = useGameStore.subscribe((state, previous) => {
+      if (state.mapViewMode === previous.mapViewMode) return
+      if (state.mapViewMode === 'simplified') this.suspend()
+      else this.resume()
+    })
+    if (useGameStore.getState().mapViewMode === 'simplified') this.suspend()
+    else this.resume()
+  }
+
+  private resume() {
+    this.setupInputs()
     this.lastTime = performance.now()
     this.lastRenderTime = performance.now()
     this.lastFpsUpdate = performance.now()
@@ -115,27 +126,39 @@ export class CanvasEngine {
     this.loop(performance.now())
   }
 
+  private suspend() {
+    if (this.animationFrameId !== null) {
+      cancelAnimationFrame(this.animationFrameId)
+      this.animationFrameId = null
+    }
+    this.input.dispose()
+    window.removeEventListener('keydown', this.onKeyDown)
+    window.removeEventListener('keyup', this.onKeyUp)
+    this.input.keysPressed.clear()
+    this.input.clearPath()
+    this.isShiftPressed = false
+
+    const { localPlayer, setLocalPosition } = useGameStore.getState()
+    if (localPlayer.isMoving) {
+      setLocalPosition(localPlayer.x, localPlayer.y, localPlayer.direction, false)
+      PeerManager.getInstance().sendMovement(localPlayer.x, localPlayer.y, localPlayer.direction, false)
+    }
+  }
+
   public stop() {
     this.isRunning = false
-    if (this.animationFrameId) {
-      cancelAnimationFrame(this.animationFrameId)
-    }
+    this.unsubscribeViewMode?.()
+    this.unsubscribeViewMode = null
+    this.suspend()
   }
 
   public dispose() {
     this.stop()
-    this.input.dispose()
   }
 
   private loop = (currentTime: number) => {
-    if (!this.isRunning) return
-
-    if (useGameStore.getState().mapViewMode === 'simplified') {
-      this.lastTime = currentTime
-      this.lastRenderTime = currentTime
-      this.animationFrameId = requestAnimationFrame(this.loop)
-      return
-    }
+    this.animationFrameId = null
+    if (!this.isRunning || useGameStore.getState().mapViewMode === 'simplified') return
 
     const settings = useSettingsStore.getState()
     const targetFps = settings.targetFps
@@ -165,7 +188,9 @@ export class CanvasEngine {
     this.update(deltaTime)
     this.render(currentTime)
 
-    this.animationFrameId = requestAnimationFrame(this.loop)
+    if (this.isRunning && useGameStore.getState().mapViewMode === 'immersive') {
+      this.animationFrameId = requestAnimationFrame(this.loop)
+    }
   }
 
   private lastMovementBroadcast: number = 0

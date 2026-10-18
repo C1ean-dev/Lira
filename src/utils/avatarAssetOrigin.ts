@@ -3,7 +3,9 @@ import { Direction, AvatarComponentSlot } from '../types/game'
 import { SlicedPreset, SlicedFrameSlot } from '../components/avatar-customizer/AvatarSpritesheetSlicerModal'
 import { AvatarAtlasManager } from '../engine/avatar/AvatarAtlasManager'
 import { parseSubTextureIdentifier } from '../engine/avatar/avatarAtlasImporter'
-import { normalizeAssetActivityAnimations } from './avatarActivityAnimations'
+import { activitySequence, normalizeAssetActivityAnimations } from './avatarActivityAnimations'
+import { loadRasterImage } from './loadRasterImage'
+import { canvasToPngDataUrl } from './canvasPng'
 
 export interface KnownAssetInfo {
   png: string
@@ -96,7 +98,7 @@ export function detectAssetCreationSource(asset: CustomAsset): 'slicer' | 'atlas
   return 'studio'
 }
 
-export function resolveAssetSourceImage(asset: CustomAsset): string {
+export async function resolveAssetSourceImage(asset: CustomAsset): Promise<string> {
   if (asset.sourceImageSrc) {
     return asset.sourceImageSrc
   }
@@ -112,7 +114,36 @@ export function resolveAssetSourceImage(asset: CustomAsset): string {
     }
   }
 
-  return generateSpritesheetFromAsset(asset)
+  return (await generateSpritesheetFromAsset(asset)).src
+}
+
+/** Keep editable cuts and their sheet in the same coordinate system. Studio
+ * edits can replace the frames while leaving an older source sheet behind. */
+export async function prepareAssetForSlicer(asset: CustomAsset): Promise<{ asset: CustomAsset; imageSrc: string }> {
+  const clean = asset.name.toLowerCase().replace(/[^a-z0-9]/g, '_')
+  const known = !!clean && Object.keys(KNOWN_ASSET_MAP).some(key => clean.includes(key) || key.includes(clean))
+  if (detectAssetCreationSource(asset) !== 'studio' && (asset.sourceImageSrc || asset.sourceFileName || asset.sourceSheets?.length || known)) {
+    try {
+      const imageSrc = asset.sourceSheets?.[0]?.src || await resolveAssetSourceImage(asset)
+      await loadRasterImage(imageSrc)
+      const xml = await resolveAssetXmlContent(asset)
+      return { imageSrc, asset: {
+        ...asset, slicerPresets: convertAssetToSlicedPresets(asset, xml || undefined),
+        sourceXmlContent: xml || asset.sourceXmlContent,
+      } }
+    } catch {
+      // Distributed or older assets may no longer have the original PNG.
+      // Rebuild from their current frames instead of opening a blank sheet.
+    }
+  }
+  const { animations, ...sheet } = await generateSpritesheetFromAsset(asset)
+  const editable: CustomAsset = {
+    ...asset, sourceImageSrc: sheet.src, sourceXmlContent: undefined,
+    sourceFileName: `${asset.name}.png`, slicerPresets: undefined,
+    sourceSheets: [{ id: 'primary', name: `${asset.name}.png`, ...sheet }],
+  }
+  editable.slicerPresets = convertAssetToSlicedPresets(editable).map(preset => ({ ...preset, animations }))
+  return { asset: editable, imageSrc: sheet.src }
 }
 
 export async function resolveAssetXmlContent(asset: CustomAsset): Promise<string | null> {
@@ -241,8 +272,8 @@ export function convertAssetToSlicedPresets(asset: CustomAsset, xmlContent?: str
     }
   }
 
-  const fw = (asset.width || 1) * 32
-  const fh = (asset.height || 1) * 32
+  const fw = asset.pixelWidth || (asset.width || 1) * 32
+  const fh = asset.pixelHeight || (asset.height || 1) * 32
 
   const toSlot = (url: string, index: number, dir: Direction): SlicedFrameSlot => {
     const rowIdx = dir === 'down' ? 0 : dir === 'up' ? 1 : dir === 'left' ? 2 : 3
@@ -281,8 +312,10 @@ export function convertAssetToSlicedPresets(asset: CustomAsset, xmlContent?: str
   ]
 }
 
-function generateSpritesheetFromAsset(asset: CustomAsset): string {
-  if (typeof document === 'undefined') return ''
+async function generateSpritesheetFromAsset(asset: CustomAsset): Promise<{
+  src: string; width: number; height: number; animations: NonNullable<SlicedPreset['animations']>
+}> {
+  if (typeof document === 'undefined') throw new Error('Não foi possível criar a folha de sprites')
   const dirs: Direction[] = ['down', 'up', 'left', 'right']
 
   const getFrames = (d: Direction): string[] => {
@@ -293,26 +326,32 @@ function generateSpritesheetFromAsset(asset: CustomAsset): string {
     return asset.frames[idx] ? [asset.frames[idx]] : []
   }
 
-  const maxSteps = Math.max(...dirs.map((d) => getFrames(d).length), 1)
-  const fw = (asset.width || 1) * 32
-  const fh = (asset.height || 1) * 32
+  const activityRows = (['yawn', 'sleep'] as const)
+    .map(animation => ({ animation, frames: activitySequence(asset.activityAnimations?.[animation]).filter(Boolean) }))
+    .filter(({ frames }) => frames.length > 0)
+    .map((activity, index) => ({ ...activity, row: dirs.length + index }))
+  const maxSteps = Math.max(...dirs.map((d) => getFrames(d).length), ...activityRows.map(({ frames }) => frames.length), 1)
+  const fw = asset.pixelWidth || (asset.width || 1) * 32
+  const fh = asset.pixelHeight || (asset.height || 1) * 32
 
   const canvas = document.createElement('canvas')
   canvas.width = maxSteps * fw
-  canvas.height = 4 * fh
+  canvas.height = (dirs.length + activityRows.length) * fh
   const ctx = canvas.getContext('2d')
-  if (!ctx) return ''
-
-  dirs.forEach((dir, row) => {
-    const frames = getFrames(dir)
-    frames.forEach((dataUrl, col) => {
-      const img = new Image()
-      img.src = dataUrl
-      if (img.complete) {
-        ctx.drawImage(img, col * fw, row * fh, fw, fh)
-      }
-    })
-  })
-
-  return canvas.toDataURL('image/png')
+  if (!ctx) throw new Error('Não foi possível criar a folha de sprites')
+  ctx.imageSmoothingEnabled = false
+  const slots = [
+    ...dirs.flatMap((dir, row) => getFrames(dir).map((src, col) => ({ src, row, col }))),
+    ...activityRows.flatMap(({ frames, row }) => frames.map((src, col) => ({ src, row, col }))),
+  ]
+  if (!slots.length) throw new Error('Este sprite não possui imagens para editar')
+  const images = await Promise.all(slots.map(slot => loadRasterImage(slot.src)))
+  slots.forEach((slot, index) => ctx.drawImage(images[index], slot.col * fw, slot.row * fh, fw, fh))
+  const animations: NonNullable<SlicedPreset['animations']> = {}
+  for (const { animation, frames, row } of activityRows) {
+    animations[animation] = frames.map((dataUrl, col) => ({
+      x: col * fw, y: row * fh, w: fw, h: fh, dataUrl,
+    }))
+  }
+  return { src: await canvasToPngDataUrl(canvas), width: canvas.width, height: canvas.height, animations }
 }
