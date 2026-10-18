@@ -1,18 +1,5 @@
 import React, { useState, useRef, useMemo } from 'react'
-import {
-  Users,
-  Maximize2,
-  Plus,
-  Minus,
-  Sparkles,
-  MapPin,
-  Compass,
-  Monitor,
-  Zap,
-  Lock,
-  Crown,
-  Shield,
-} from 'lucide-react'
+import { Zap, Lock, Crown } from 'lucide-react'
 import { useGameStore } from '../store/useGameStore'
 import { useMapStore } from '../store/useMapStore'
 import { useMediaStore } from '../store/useMediaStore'
@@ -21,22 +8,18 @@ import { PeerManager } from '../p2p/PeerManager'
 import { PrivateZone } from '../types/map'
 import { Player } from '../types/game'
 import { knockOnLockedDoor } from '../utils/doorKnockHelper'
+import { useSimplifiedMapSnapshot } from '../hooks/useSimplifiedMapSnapshot'
 
-export const SimplifiedMapView: React.FC = () => {
-  const { localPlayer, remotePlayers, setLocalPlayer } = useGameStore()
-  const { mapData } = useMapStore()
+export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
+  const { localPlayer, remotePlayers, width, height, zones } = useSimplifiedMapSnapshot()
 
   const [zoom, setZoom] = useState(1.0)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isPanning, setIsPanning] = useState(false)
   const panStartRef = useRef({ x: 0, y: 0 })
 
-  const mapWidth = Math.max(20, mapData.width || 70)
-  const mapHeight = Math.max(15, mapData.height || 45)
-
-  const zones: PrivateZone[] = useMemo(() => {
-    return mapData.zones || []
-  }, [mapData.zones])
+  const mapWidth = Math.max(20, width || 70)
+  const mapHeight = Math.max(15, height || 45)
 
   const getZoneIcon = (name: string) => {
     const n = name.toLowerCase()
@@ -48,9 +31,12 @@ export const SimplifiedMapView: React.FC = () => {
     return '🚪'
   }
 
-  const handleRoomClick = (zone: PrivateZone, e: React.MouseEvent) => {
+  const handleRoomClick = (displayedZone: PrivateZone, e: React.MouseEvent) => {
     e.stopPropagation()
 
+    const zone = useMapStore.getState().mapData.zones?.find(z => z.id === displayedZone.id)
+    if (!zone) return
+    const { localPlayer, setLocalPlayer } = useGameStore.getState()
     if (zone.isLocked && !useMapStore.getState().isPeerAuthorizedForZone(zone.id, localPlayer.id, localPlayer.name)) {
       knockOnLockedDoor(zone)
       return
@@ -84,6 +70,10 @@ export const SimplifiedMapView: React.FC = () => {
   }
 
   const handleFloorClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const { localPlayer, setLocalPlayer } = useGameStore.getState()
+    const { mapData } = useMapStore.getState()
+    const mapWidth = Math.max(20, mapData.width || 70)
+    const mapHeight = Math.max(15, mapData.height || 45)
     const rect = e.currentTarget.getBoundingClientRect()
     const clickX = (e.clientX - rect.left) / rect.width
     const clickY = (e.clientY - rect.top) / rect.height
@@ -91,7 +81,7 @@ export const SimplifiedMapView: React.FC = () => {
     const targetX = Math.max(1, Math.min(mapWidth - 1, Math.floor(clickX * mapWidth)))
     const targetY = Math.max(1, Math.min(mapHeight - 1, Math.floor(clickY * mapHeight)))
 
-    const targetZone = zones.find(
+    const targetZone = mapData.zones?.find(
       (z) =>
         targetX >= z.x &&
         targetX < z.x + z.width &&
@@ -155,7 +145,16 @@ export const SimplifiedMapView: React.FC = () => {
     setZoom((prev) => Math.max(0.6, Math.min(2.2, Number((prev + delta).toFixed(2)))))
   }
 
-  const allRemotePlayers: Player[] = Object.values(remotePlayers)
+  const playersByZone = useMemo(() => {
+    const grouped = new Map<string | null, Player[]>()
+    for (const player of Object.values(remotePlayers)) {
+      const zoneId = player.currentZoneId || null
+      const players = grouped.get(zoneId)
+      if (players) players.push(player)
+      else grouped.set(zoneId, [player])
+    }
+    return grouped
+  }, [remotePlayers])
 
   return (
     <div
@@ -168,17 +167,17 @@ export const SimplifiedMapView: React.FC = () => {
         backgroundImage: `radial-gradient(circle at 50% 50%, #0d383c 0%, #061c1f 100%)`,
       }}
     >
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-[#0c2428]/90 backdrop-blur-md border border-[#1a4a4f] text-teal-200 px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 text-xs font-semibold pointer-events-none z-20">
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-[#0c2428] border border-[#1a4a4f] text-teal-200 px-4 py-1.5 rounded-full flex items-center gap-2 text-xs font-semibold pointer-events-none z-20">
         <Zap className="w-3.5 h-3.5 text-emerald-400" />
         <span>Modo Simplificado (Baixo Consumo)</span>
         <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.2 rounded-full border border-emerald-500/30">
-          60 FPS
+          Baixo consumo
         </span>
       </div>
 
       <div
         onClick={handleFloorClick}
-        className="relative transition-transform duration-75 rounded-3xl bg-[#0e2a2e]/60 border border-[#194c52]/70 shadow-2xl overflow-hidden"
+        className="relative rounded-3xl bg-[#0e2a2e]/60 border border-[#194c52]/70 overflow-hidden"
         style={{
           width: '860px',
           height: `${Math.round(860 * (mapHeight / mapWidth))}px`,
@@ -199,7 +198,7 @@ export const SimplifiedMapView: React.FC = () => {
           <span>🏢 Corredor Geral ({mapWidth}x{mapHeight})</span>
         </div>
 
-        {zones.map((zone) => {
+        {zones?.map((zone) => {
           const leftPercent = (zone.x / mapWidth) * 100
           const topPercent = (zone.y / mapHeight) * 100
           const widthPercent = (zone.width / mapWidth) * 100
@@ -207,7 +206,7 @@ export const SimplifiedMapView: React.FC = () => {
 
           const isLocalInside = localPlayer.currentZoneId === zone.id
           const isAuthorized = !zone.isLocked || useMapStore.getState().isPeerAuthorizedForZone(zone.id, localPlayer.id, localPlayer.name)
-          const playersInZone = allRemotePlayers.filter((p) => p.currentZoneId === zone.id)
+          const playersInZone = playersByZone.get(zone.id) || []
           const totalInZone = playersInZone.length + (isLocalInside ? 1 : 0)
 
           return (
@@ -219,7 +218,7 @@ export const SimplifiedMapView: React.FC = () => {
                   ? `${zone.name} (Trancada - Clique para bater na porta)`
                   : `${zone.name} - Clique para entrar`
               }
-              className={`absolute rounded-xl transition-all duration-200 cursor-pointer flex flex-col items-center justify-between p-2.5 group shadow-lg ${
+              className={`absolute rounded-xl cursor-pointer flex flex-col items-center justify-between p-2.5 group ${
                 isLocalInside
                   ? 'bg-[#182030] border-2 border-emerald-400 shadow-emerald-500/20 ring-4 ring-emerald-500/10 z-10'
                   : zone.isLocked && !isAuthorized
@@ -257,7 +256,7 @@ export const SimplifiedMapView: React.FC = () => {
 
               <div className="flex items-center gap-2 mt-auto flex-wrap justify-center pointer-events-none pb-1">
                 {isLocalInside && (
-                  <div className="flex flex-col items-center animate-in zoom-in-90 duration-150">
+                  <div className="flex flex-col items-center">
                     <div className="flex items-center gap-1.5 bg-[#5b50e6] text-white px-2 py-0.5 rounded-lg shadow-md border border-[#7268f2] text-[11px] font-bold">
                       <div className="w-3.5 h-3.5 rounded-full bg-white/20 flex items-center justify-center text-[8px]">
                         {localPlayer.name.charAt(0).toUpperCase()}
@@ -294,7 +293,7 @@ export const SimplifiedMapView: React.FC = () => {
 
               {isLocalInside && (
                 <div className="absolute -top-2.5 -right-2.5 bg-emerald-500 text-slate-950 font-extrabold text-[9px] px-2 py-0.5 rounded-full shadow-lg border border-emerald-300 flex items-center gap-1">
-                  <div className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-slate-950" />
                   <span>Sua Sala</span>
                 </div>
               )}
@@ -308,7 +307,7 @@ export const SimplifiedMapView: React.FC = () => {
 
         {!localPlayer.currentZoneId && (
           <div
-            className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none z-30 transition-all duration-100"
+            className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none z-30"
             style={{
               left: `${(localPlayer.x / mapWidth) * 100}%`,
               top: `${(localPlayer.y / mapHeight) * 100}%`,
@@ -331,12 +330,11 @@ export const SimplifiedMapView: React.FC = () => {
           </div>
         )}
 
-        {allRemotePlayers
-          .filter((p) => !p.currentZoneId)
+        {(playersByZone.get(null) || [])
           .map((remote) => (
             <div
               key={remote.id}
-              className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none z-20 transition-all duration-100"
+              className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none z-20"
               style={{
                 left: `${(remote.x / mapWidth) * 100}%`,
                 top: `${(remote.y / mapHeight) * 100}%`,
@@ -358,4 +356,4 @@ export const SimplifiedMapView: React.FC = () => {
       </div>
     </div>
   )
-}
+})

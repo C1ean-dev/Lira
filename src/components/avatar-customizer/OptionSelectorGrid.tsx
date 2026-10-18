@@ -11,12 +11,7 @@ import { exportCategoryAtlas } from '../../engine/avatar/avatarAtlasExporter'
 import { cropContentDataUrl } from '../../engine/avatar/avatarBakeService'
 import { AtlasImportModal } from './AtlasImportModal'
 import { AvatarSpritesheetSlicerModal } from './AvatarSpritesheetSlicerModal'
-import {
-  detectAssetCreationSource,
-  resolveAssetSourceImage,
-  resolveAssetXmlContent,
-  convertAssetToSlicedPresets,
-} from '../../utils/avatarAssetOrigin'
+import { prepareAssetForSlicer } from '../../utils/avatarAssetOrigin'
 
 interface Props {
   activeCategory: CategoryKey
@@ -76,6 +71,7 @@ export const OptionSelectorGrid: React.FC<Props> = ({
   const [slicerImageName, setSlicerImageName] = useState<string>('')
   const [isDirectSlicerOpen, setIsDirectSlicerOpen] = useState<boolean>(false)
   const [editingSlicerAsset, setEditingSlicerAsset] = useState<CustomAsset | null>(null)
+  const [slicerError, setSlicerError] = useState<string | null>(null)
 
   const handleDirectSlicerFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -92,25 +88,15 @@ export const OptionSelectorGrid: React.FC<Props> = ({
   }
 
   const handleEditAsset = async (asset: CustomAsset) => {
-    const source = detectAssetCreationSource(asset)
-    if (source === 'slicer' || source === 'atlas') {
-      const resolvedImage = resolveAssetSourceImage(asset)
-      const xmlContent = await resolveAssetXmlContent(asset)
-      const initialPresets = convertAssetToSlicedPresets(asset, xmlContent || undefined)
-
-      setEditingSlicerAsset({
-        ...asset,
-        slicerPresets: initialPresets,
-        sourceXmlContent: xmlContent || asset.sourceXmlContent,
-      })
-      setSlicerImageSrc(resolvedImage)
+    setSlicerError(null)
+    try {
+      const prepared = await prepareAssetForSlicer(asset)
+      setEditingSlicerAsset(prepared.asset)
+      setSlicerImageSrc(prepared.imageSrc)
       setSlicerImageName(asset.sourceFileName || `${asset.name}.png`)
       setIsDirectSlicerOpen(true)
-      return
-    }
-
-    if (onEditPreset) {
-      onEditPreset(activeCategory as AvatarComponentSlot, asset.id, asset.name)
+    } catch {
+      setSlicerError(`Não foi possível carregar as imagens de ${asset.name} para edição. Tente novamente.`)
     }
   }
 
@@ -212,7 +198,7 @@ export const OptionSelectorGrid: React.FC<Props> = ({
             </div>
           )}
 
-          {(detectAssetCreationSource(asset) === 'slicer' || detectAssetCreationSource(asset) === 'atlas') && (
+          {(
             <div
               onClick={(e) => {
                 e.stopPropagation()
@@ -259,6 +245,7 @@ export const OptionSelectorGrid: React.FC<Props> = ({
 
   return (
     <div className="flex-1 overflow-y-auto pr-1">
+      {slicerError && <p role="alert" className="text-xs text-rose-300 mb-3">{slicerError}</p>}
       {activeCategory === 'other' && (
         <div className="flex flex-wrap items-center justify-between mb-3 px-1 gap-2">
           <span className="text-xs font-bold text-slate-300">Modelos & Presets</span>

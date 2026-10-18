@@ -87,14 +87,14 @@ describe('Avatar Asset Origin Detection & Editing Routing', () => {
       createdAt: Date.now(),
     }
 
-    const gladionImage = resolveAssetSourceImage(gladionAsset)
+    const gladionImage = await resolveAssetSourceImage(gladionAsset)
     expect(gladionImage).toContain('alola_gladion')
 
     const customWithSourceImage: CustomAsset = {
       ...gladionAsset,
       sourceImageSrc: 'data:image/png;base64,CUSTOM_SPRITESHEET_DATA',
     }
-    expect(resolveAssetSourceImage(customWithSourceImage)).toBe('data:image/png;base64,CUSTOM_SPRITESHEET_DATA')
+    expect(await resolveAssetSourceImage(customWithSourceImage)).toBe('data:image/png;base64,CUSTOM_SPRITESHEET_DATA')
   })
 
   it('converts CustomAsset to SlicedPreset format preserving directional frame sequences', async () => {
