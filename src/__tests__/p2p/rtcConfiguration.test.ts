@@ -4,6 +4,10 @@ import { SHARED_RTC_CONFIG } from '../../p2p/mediaCalls'
 vi.mock('../../data/nativeAssets.json', () => ({ default: { categories: [], assets: [] } }))
 
 describe('shared call relay configuration', () => {
+  it('avoids pre-gathered candidates for PeerJS data and media transports', () => {
+    expect(SHARED_RTC_CONFIG.iceCandidatePoolSize).toBe(0)
+  })
+
   it('does not ask Chromium to resolve the obsolete anonymous relay', () => {
     const urls = SHARED_RTC_CONFIG.iceServers!.flatMap(server =>
       typeof server.urls === 'string' ? [server.urls] : server.urls)

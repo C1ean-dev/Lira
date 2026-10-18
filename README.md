@@ -145,8 +145,8 @@ O sistema adota uma arquitetura híbrida descentralizada, combinando topologia e
 
 ### 3. Estabelecimento de Transporte, ICE, STUN e Fallback TURN
 
-- **Pool de Candidatos Antecipado (`iceCandidatePoolSize: 4`)**:
-  - Candidatos ICE são coletados previamente antes do início da chamada. Isso elimina o atraso de 500 ms a 2.000 ms nas primeiras conexões WebRTC, evitando atraso ou corte.
+- **Coleta de Candidatos ICE sob Demanda (`iceCandidatePoolSize: 0`)**:
+  - A coleta acompanha a negociação de cada transporte via trickle ICE do PeerJS. A pré-coleta foi desabilitada após reproduzir conexões que ficavam com ICE conectado, mas sem concluir a abertura do canal de dados ou da mídia.
 - **Topologia de Travessia NAT (STUN/TURN)**:
   - O sistema tenta conexões diretas via candidatos locais (`host`) e reflexivos públicos (`srflx`) utilizando servidores STUN do Google e Twilio.
   - Para redes que impedem conexão direta (como certos NATs e firewalls), é necessário configurar um servidor TURN autenticado. Isso vale tanto para entrar no espaço pelo canal de dados quanto para chamadas de áudio, vídeo e compartilhamento de tela. Não há relay anônimo habilitado por padrão.
