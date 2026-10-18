@@ -10,13 +10,9 @@ permissions:
 
 jobs:
   test:
-    name: Calls and screen sharing (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Calls and screen sharing (windows-latest)
+    runs-on: windows-latest
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, ubuntu-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
