@@ -78,6 +78,9 @@ jobs:
           LIRA_TARGET: web
           VITE_APP_VERSION: ${{ steps.tag.outputs.version }}
           LIRA_VERSION_NAME: ${{ steps.tag.outputs.version }}
+          VITE_TURN_URLS: ${{ secrets.VITE_TURN_URLS }}
+          VITE_TURN_USERNAME: ${{ secrets.VITE_TURN_USERNAME }}
+          VITE_TURN_CREDENTIAL: ${{ secrets.VITE_TURN_CREDENTIAL }}
         run: |
           node -e "const fs = require('fs'); const p = JSON.parse(fs.readFileSync('package.json', 'utf8')); p.version = '${{ steps.tag.outputs.version }}'; fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');"
           npx tsc && npx vite build
