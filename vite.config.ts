@@ -151,6 +151,7 @@ export default defineConfig({
     exclude: ['@jitsi/rnnoise-wasm'],
   },
   assetsInclude: ['**/*.wasm'],
+  worker: { format: 'es' },
   build: {
     chunkSizeWarningLimit: 6000,
     sourcemap: 'hidden',
