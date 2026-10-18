@@ -255,7 +255,7 @@ export const LobbyModal: React.FC<Props> = ({
       onJoined()
     } catch (err: any) {
       console.error(err)
-      setError(`Não foi possível conectar à sala "${room.name}". O host pode ter fechado o app.`)
+      setError(err?.message || `Não foi possível conectar à sala "${room.name}". Tente novamente em instantes.`)
     } finally {
       enterGuardRef.current.release()
       setLoading(false)
@@ -304,7 +304,7 @@ export const LobbyModal: React.FC<Props> = ({
       onJoined()
     } catch (err: any) {
       console.error(err)
-      setError(`Não foi possível conectar à sala (${code}). O host pode ter fechado o app ou o código está incorreto.`)
+      setError(err?.message || `Não foi possível conectar à sala (${code}). Tente novamente em instantes.`)
     } finally {
       enterGuardRef.current.release()
       setLoading(false)

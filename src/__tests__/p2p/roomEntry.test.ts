@@ -3,6 +3,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 const { FakePeer, FakeConn } = vi.hoisted(() => {
   class FakeConn {
     peer: string
+    open = false
+    peerConnection = {
+      connectionState: 'connecting',
+      iceConnectionState: 'checking',
+      iceGatheringState: 'gathering',
+      signalingState: 'have-local-offer',
+      addEventListener() {},
+    }
     sent: unknown[] = []
     handlers = new Map<string, ((...args: any[]) => void)[]>()
     constructor(peer: string) {
@@ -17,7 +25,12 @@ const { FakePeer, FakeConn } = vi.hoisted(() => {
       return this
     }
     emit(evt: string, ...args: any[]) {
+      if (evt === 'open') this.open = true
       ;(this.handlers.get(evt) || []).forEach((fn) => fn(...args))
+    }
+    close() {
+      this.open = false
+      this.emit('close')
     }
     send(msg: unknown) {
       this.sent.push(msg)
@@ -45,6 +58,9 @@ const { FakePeer, FakeConn } = vi.hoisted(() => {
     destroy() {
       this.destroyed = true
       this.destroyedCount += 1
+    }
+    removeAllListeners() {
+      this.handlers.clear()
     }
     connect(peerId: string) {
       return new FakeConn(peerId)
@@ -79,6 +95,7 @@ describe('room entry (createRoom)', () => {
   })
 
   afterEach(() => {
+    vi.clearAllTimers()
     vi.useRealTimers()
     vi.restoreAllMocks()
     __resetDiagForTests()
@@ -142,6 +159,7 @@ describe('room entry (joinRoom)', () => {
   })
 
   afterEach(() => {
+    vi.clearAllTimers()
     vi.useRealTimers()
     vi.restoreAllMocks()
     __resetDiagForTests()
@@ -167,6 +185,148 @@ describe('room entry (joinRoom)', () => {
     FakePeer.instances[1].emit('open', 'lira-CODE-AAA-host')
     await expect(pending).resolves.toBeUndefined()
     expect(diagStats().buffered).toBeGreaterThanOrEqual(4)
+  })
+
+  it('lets the host transport negotiate beyond the old six and ten second deadlines', async () => {
+    const pm = PeerManager.getInstance()
+    const pending = pm.joinRoom('code-aaa', player() as any)
+    const peer = FakePeer.instances[0]
+    peer.emit('open', peer.id)
+    await vi.advanceTimersByTimeAsync(15000)
+
+    expect(FakePeer.instances).toHaveLength(1)
+    expect(peer.destroyed).toBe(false)
+    expect(useGameStore.getState().connectionStatus).toBe('connecting')
+    FakeConn.instances[0].emit('open')
+    await expect(pending).resolves.toBeUndefined()
+    expect(useGameStore.getState().connectionStatus).toBe('connected')
+    await vi.advanceTimersByTimeAsync(30000)
+    expect(peer.destroyed).toBe(false)
+  })
+
+  it('gives the host a full transport deadline after slow signaling registration', async () => {
+    const pm = PeerManager.getInstance()
+    const pending = pm.joinRoom('code-aaa', player() as any)
+    const peer = FakePeer.instances[0]
+    await vi.advanceTimersByTimeAsync(9000)
+    peer.emit('open', peer.id)
+    await vi.advanceTimersByTimeAsync(25000)
+
+    expect(FakePeer.instances).toHaveLength(1)
+    expect(peer.destroyed).toBe(false)
+    FakeConn.instances[0].emit('open')
+    await expect(pending).resolves.toBeUndefined()
+  })
+
+  it('reports a transport timeout without claiming that the registered host is offline or taking over', async () => {
+    const pm = PeerManager.getInstance()
+    const create = vi.spyOn(pm, 'createRoom')
+    const diagnostic = vi.spyOn(console, 'debug').mockImplementation(() => {})
+    const pending = pm.joinRoom('code-aaa', player() as any)
+    const result = pending.catch(error => error)
+    const peer = FakePeer.instances[0]
+    peer.emit('open', peer.id)
+    await vi.advanceTimersByTimeAsync(29999)
+    expect(peer.destroyed).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+
+    const error = await result
+    expect(error).toBeInstanceOf(Error)
+    expect(error.message).toMatch(/conexão.*anfitrião/i)
+    expect(error.message).not.toMatch(/offline|código.*correto|continua online/i)
+    expect(create).not.toHaveBeenCalled()
+    expect(FakePeer.instances).toHaveLength(1)
+    expect(peer.destroyed).toBe(true)
+    expect((pm as any).peer).toBeNull()
+    expect(useGameStore.getState().isConnected).toBe(false)
+    expect(useGameStore.getState().connectionStatus).toBe('disconnected')
+    expect(diagnostic).toHaveBeenCalledWith('[diag:room] join-host-failed', expect.objectContaining({
+      reason: 'timeout',
+      connectionState: 'connecting',
+      iceConnectionState: 'checking',
+      iceGatheringState: 'gathering',
+      signalingState: 'have-local-offer',
+      relayConfigured: expect.any(Boolean),
+    }))
+    FakeConn.instances[0].emit('open')
+    expect((pm as any).connections.size).toBe(0)
+    expect(useGameStore.getState().connectionStatus).toBe('disconnected')
+  })
+
+  it.each(['error', 'close', 'webrtc'])('rejects a host transport %s without attempting to become host', async event => {
+    const pm = PeerManager.getInstance()
+    const create = vi.spyOn(pm, 'createRoom')
+    const pending = pm.joinRoom('code-aaa', player() as any)
+    const result = pending.catch(error => error)
+    const peer = FakePeer.instances[0]
+    peer.emit('open', peer.id)
+    if (event === 'webrtc') peer.emit('error', { type: 'webrtc', message: 'ICE negotiation failed' })
+    else FakeConn.instances[0].emit(event, new Error('ICE negotiation failed'))
+
+    expect(peer.destroyed).toBe(true)
+    expect(create).not.toHaveBeenCalled()
+    expect((await result).message).toMatch(/conexão.*anfitrião/i)
+    await vi.advanceTimersByTimeAsync(40000)
+    expect(FakePeer.instances).toHaveLength(1)
+  })
+
+  it.each(['throw', 'unavailable'])('settles the join when dialing the host is %s', async failure => {
+    const pm = PeerManager.getInstance()
+    const pending = pm.joinRoom('code-aaa', player() as any)
+    const result = pending.catch(error => error)
+    const peer = FakePeer.instances[0]
+    vi.spyOn(peer, 'connect').mockImplementation(() => {
+      if (failure === 'throw') throw new Error('Transport unavailable')
+      return undefined as any
+    })
+    expect(() => peer.emit('open', peer.id)).not.toThrow()
+    expect((await result).message).toMatch(/conexão.*anfitrião/i)
+    expect(peer.destroyed).toBe(true)
+    expect(FakePeer.instances).toHaveLength(1)
+  })
+
+  it('does not let an unrelated incoming connection suppress the host deadline', async () => {
+    const pm = PeerManager.getInstance()
+    const pending = pm.joinRoom('code-aaa', player() as any)
+    const result = pending.catch(error => error)
+    FakePeer.instances[0].emit('open', 'client-id')
+    ;(pm as any).connections.set('another-visitor', new FakeConn('another-visitor'))
+    await vi.advanceTimersByTimeAsync(30000)
+    expect((await result).message).toMatch(/conexão.*anfitrião/i)
+    expect(FakePeer.instances).toHaveLength(1)
+  })
+
+  it('settles the join when every signaling tier times out', async () => {
+    const pm = PeerManager.getInstance()
+    const create = vi.spyOn(pm, 'createRoom')
+    const pending = pm.joinRoom('code-aaa', player() as any)
+    const outcome = vi.fn()
+    const result = pending.then(() => outcome('connected'), error => outcome(error.message))
+    await vi.advanceTimersByTimeAsync(30000)
+
+    expect(outcome).toHaveBeenCalledOnce()
+    expect(outcome.mock.calls[0][0]).toMatch(/servidor.*sinalização/i)
+    await result
+    expect(FakePeer.instances).toHaveLength(3)
+    expect(create).not.toHaveBeenCalled()
+    expect(useGameStore.getState().connectionStatus).toBe('disconnected')
+  })
+
+  it('ignores a late host connection from a join replaced by another room', async () => {
+    const pm = PeerManager.getInstance()
+    void pm.joinRoom('code-aaa', player() as any)
+    FakePeer.instances[0].emit('open', 'old-client')
+    const oldConnection = FakeConn.instances[0]
+    const newerRoom = pm.createRoom('code-bbb', player() as any)
+    const newPeer = FakePeer.instances[1]
+    oldConnection.emit('open')
+
+    expect(useGameStore.getState().connectionStatus).not.toBe('connected')
+    expect((pm as any).connections.size).toBe(0)
+    newPeer.emit('open', newPeer.id)
+    await expect(newerRoom).resolves.toBe('CODE-BBB')
+    expect(useGameStore.getState().roomId).toBe('CODE-BBB')
+    expect(newPeer.destroyed).toBe(false)
   })
 
   it('a stale join timeout never auto-hosts over the newer session', async () => {

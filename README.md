@@ -134,7 +134,7 @@ O sistema adota uma arquitetura híbrida descentralizada, combinando topologia e
   - Os demais clientes conectam-se ao Host por meio de canais de dados seguros (`RTCDataChannel` via PeerJS) com entrega ordenada (`ordered: true`).
   - O Host centraliza a retransmissão de coordenadas de movimento dos avatares, mensagens de chat, alterações no mapa em tempo real e sincronização de permissões administrativas.
 - **Mídia por Zonas Acústicas (Topologia em Malha Direta)**:
-  - Os fluxos de áudio, vídeo e compartilhamento de tela não passam pelo Host nem por servidores intermediários, garantindo tráfego direto ponto a ponto com latência mínima e privacidade ponta a ponta.
+  - Os fluxos de áudio, vídeo e compartilhamento de tela preferem conexões diretas entre os participantes. Quando configurado e necessário para atravessar redes restritivas, um servidor TURN retransmite o tráfego WebRTC criptografado.
   - As conexões de mídia (`MediaConnection`) são estabelecidas sob demanda apenas entre participantes posicionados dentro do mesmo polígono de zona privada ou mesa.
   - Quando um participante sai da zona, todas as conexões de mídia com os membros daquela área são imediatamente fechadas (`call.close()`), liberando recursos de rede e processamento local.
 
@@ -149,7 +149,36 @@ O sistema adota uma arquitetura híbrida descentralizada, combinando topologia e
   - Candidatos ICE são coletados previamente antes do início da chamada. Isso elimina o atraso de 500 ms a 2.000 ms nas primeiras conexões WebRTC, evitando atraso ou corte.
 - **Topologia de Travessia NAT (STUN/TURN)**:
   - O sistema tenta conexões diretas via candidatos locais (`host`) e reflexivos públicos (`srflx`) utilizando servidores STUN do Google e Twilio.
-  - Para ambientes com restrições severas de rede (NAT simétrico, firewalls corporativos ou redes móveis restritivas), o sistema conta com servidores TURN (OpenRelay Metered nas portas 80 e 443) como camada de contingência (*relay*). A rota de relay só é selecionada caso o roteamento direto seja inviável.
+  - Para redes que impedem conexão direta (como certos NATs e firewalls), é necessário configurar um servidor TURN autenticado. Isso vale tanto para entrar no espaço pelo canal de dados quanto para chamadas de áudio, vídeo e compartilhamento de tela. Não há relay anônimo habilitado por padrão.
+  - A entrada aguarda até 30 segundos pela conexão com o anfitrião, a partir do registro no servidor de sinalização. Falhas de transporte não promovem o visitante a anfitrião; a retomada automática continua disponível quando o servidor informa que o anfitrião está indisponível.
+
+Configure as três variáveis abaixo no ambiente de build (ou em `.env.local` no desenvolvimento). Para os instaladores Windows e Android, cadastre secrets do GitHub Actions com esses mesmos nomes antes de gerar uma nova versão:
+
+| Variável | Valor |
+| --- | --- |
+| `VITE_TURN_URLS` | URLs do seu servidor separadas por vírgula, por exemplo `turn:relay.example.com:3478,turns:relay.example.com:443?transport=tcp` |
+| `VITE_TURN_USERNAME` | Usuário autorizado pelo servidor TURN |
+| `VITE_TURN_CREDENTIAL` | Credencial desse usuário |
+
+No Metered, use as credenciais TURN da sua conta e copie os endereços de **Get credential → Show ICE Servers Array**, mantendo as opções UDP, TCP e TLS fornecidas pelo painel. O hostname depende do plano e da região; não substitua pelo hostname de um exemplo. O STUN do Google e do Twilio continua disponível na configuração compartilhada do Lira. Essas credenciais TURN de cliente podem ser usadas diretamente pelo aplicativo; a chave administrativa do Metered não faz parte dessa configuração. Veja o [guia do Metered](https://www.metered.ca/docs/turn-server-service/quickstart/).
+
+O arquivo [`.env.example`](.env.example) contém as quatro rotas TURN do Metered usadas neste projeto, com usuário e senha vazios. Para configurar outro ambiente local:
+
+1. Crie `.env.local` a partir do modelo, caso ainda não exista. No PowerShell:
+
+   ```powershell
+   if (-not (Test-Path -LiteralPath .env.local)) {
+     Copy-Item -LiteralPath .env.example -Destination .env.local
+   }
+   ```
+
+2. Preencha `VITE_TURN_USERNAME` com o `username` da credencial TURN e `VITE_TURN_CREDENTIAL` com o valor de `credential` fornecido pelo Metered. Confira também os hostnames de `VITE_TURN_URLS` no painel.
+3. Reinicie o processo de desenvolvimento para carregar as variáveis. O arquivo `.env.local` já é ignorado pelo Git.
+
+Para gerar os instaladores pelo GitHub Actions, cadastre `VITE_TURN_URLS`, `VITE_TURN_USERNAME` e `VITE_TURN_CREDENTIAL` como secrets do repositório. Os workflows de Windows e Android recebem os três valores na etapa que gera o aplicativo. O modelo `.env.example` mantém as credenciais vazias para poder ser versionado.
+
+Sem esses valores, o aplicativo usa apenas STUN e pode não conectar participantes em redes diferentes que bloqueiem a ligação direta. As configurações são incorporadas ao aplicativo durante o build: use credenciais próprias para clientes, com limites de uso e rotação, e não coloque os valores no repositório. Alterar os secrets exige gerar e distribuir novos instaladores.
+
 - **Otimização de Portas UDP (`max-bundle` e `rtcp-mux`)**:
   - Todas as faixas de áudio, vídeo e mensagens de controle RTCP são multiplexadas em uma única porta UDP compartilhada por sessão, minimizando o número de portas abertas na tabela NAT do roteador.
 

@@ -35,6 +35,7 @@ import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
 export type { SignalingTier }
 export const SIGNALING_TIERS: SignalingTier[] = ['render', 'public', 'local']
 export const RENDER_SIGNALING_HOST = 'lira-signaling.onrender.com'
+const HOST_TRANSPORT_TIMEOUT_MS = 30_000
 
 let activeSignalingTier: SignalingTier = 'render'
 const tierFailedUntil: Record<SignalingTier, number> = {
@@ -463,8 +464,37 @@ export class PeerManager {
       let isResolved = false
       let fallbackTimer: any = null
       let joinTimeout: any = null
+      let hostConnection: DataConnection | null = null
 
       diagLog('room', 'join-begin', { roomCode: this.roomCode, clientPeerId, tier: currentTier })
+
+      const failHostConnection = (reason: string) => {
+        if (isResolved || this.peer !== myPeer || this.isIntentionalDisconnect) return
+        isResolved = true
+        if (fallbackTimer) clearTimeout(fallbackTimer)
+        if (joinTimeout) clearTimeout(joinTimeout)
+        const pc = hostConnection?.peerConnection
+        diagLog('room', 'join-host-failed', {
+          roomCode: this.roomCode,
+          tier: currentTier,
+          reason,
+          connectionState: pc?.connectionState ?? null,
+          iceConnectionState: pc?.iceConnectionState ?? null,
+          iceGatheringState: pc?.iceGatheringState ?? null,
+          signalingState: pc?.signalingState ?? null,
+          relayConfigured: SHARED_RTC_CONFIG.iceServers?.some(server =>
+            (typeof server.urls === 'string' ? [server.urls] : server.urls).some(url => /^turns?:/.test(url))) ?? false,
+        })
+        // A registered signaling peer is not proof of an established transport.
+        // A failed transport is not proof that the host has left, either.
+        this.peer = null
+        this.stopHeartbeat()
+        myPeer.removeAllListeners?.()
+        try { myPeer.destroy() } catch { }
+        useGameStore.getState().setConnected(false)
+        useGameStore.getState().setConnectionStatus('disconnected')
+        reject(new Error(`Não foi possível estabelecer conexão com o anfitrião da sala ${this.roomCode}. A rede pode estar bloqueando a conexão entre os participantes. Confira a conexão dos dois participantes ou tente outra rede.`))
+      }
 
       const tryNextTier = () => {
         if (isResolved) return
@@ -489,7 +519,10 @@ export class PeerManager {
             .then(resolve)
             .catch(reject)
         } else {
-          triggerAutoHost()
+          this.stopHeartbeat()
+          useGameStore.getState().setConnected(false)
+          useGameStore.getState().setConnectionStatus('disconnected')
+          reject(new Error('Não foi possível conectar aos servidores de sinalização P2P. Verifique sua conexão ou tente novamente em instantes.'))
         }
       }
 
@@ -584,6 +617,9 @@ export class PeerManager {
           return
         }
         if (this.peer !== myPeer) return
+        // Registration and ICE negotiation have separate deadlines. Changing
+        // signaling servers during ICE can split visitors from an active host.
+        if (joinTimeout) clearTimeout(joinTimeout)
         diagLog('room', 'join-open', { roomCode: this.roomCode, clientPeerId: id, tier: currentTier })
         const currentLocal = useGameStore.getState().localPlayer
         useGameStore.getState().setLocalPlayer({
@@ -605,19 +641,27 @@ export class PeerManager {
           name: currentLocal.name,
           gameId: currentLocal.gameId || currentLocal.id,
         }
-        const conn = this.peer!.connect(hostPeerId, {
-          metadata: { player: minimalMetadata, assetAtlasChunks: 'binary-v1', individualLibrary: 2 },
-          reliable: true,
-        })
+        try {
+          hostConnection = myPeer.connect(hostPeerId, {
+            metadata: { player: minimalMetadata, assetAtlasChunks: 'binary-v1', individualLibrary: 2 },
+            reliable: true,
+          })
+        } catch {
+          failHostConnection('dial-error')
+          return
+        }
+        const conn = hostConnection
+        if (!conn) {
+          failHostConnection('dial-unavailable')
+          return
+        }
 
         fallbackTimer = setTimeout(() => {
-          if (!isResolved && this.connections.size === 0) {
-            triggerAutoHost()
-          }
-        }, 6000)
+          failHostConnection('timeout')
+        }, HOST_TRANSPORT_TIMEOUT_MS)
 
         conn.on('open', () => {
-          if (!isResolved) {
+          if (!isResolved && this.peer === myPeer && !this.isIntentionalDisconnect) {
             if (fallbackTimer) clearTimeout(fallbackTimer)
             if (joinTimeout) clearTimeout(joinTimeout)
             isResolved = true
@@ -639,14 +683,14 @@ export class PeerManager {
         conn.on('error', (connErr) => {
           console.warn(`[P2P Data] Failed to connect to host:`, connErr)
           if (!isResolved) {
-            triggerAutoHost()
+            failHostConnection('data-error')
           }
         })
 
         conn.on('close', () => {
           if (!isResolved) {
             console.warn(`[P2P Data] Host connection closed before open`)
-            triggerAutoHost()
+            failHostConnection('data-closed')
           }
         })
 
@@ -679,6 +723,8 @@ export class PeerManager {
           err?.type === 'unavailable-id'
         ) {
           triggerAutoHost()
+        } else if (err?.type === 'webrtc') {
+          failHostConnection('webrtc-error')
         } else if (
           err?.type === 'network' ||
           err?.type === 'server-error' ||
