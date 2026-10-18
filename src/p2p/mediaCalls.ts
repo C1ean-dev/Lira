@@ -40,7 +40,7 @@ import {
 setViewerOptInLookup((peerId) => useGameStore.getState().remotePlayers[peerId]?.liveOptIn === true)
 
 // PeerJS uses trickle ICE. A prefetched pool reproduced one-sided ICE success
-// with DTLS/SCTP still connecting in real browser sessions. Gather candidates
+// with DTLS/SCTP still connecting in real browser sessions. Collect candidates
 // on demand for data channels and media alike.
 const ICE_POOL_SIZE = 0
 
