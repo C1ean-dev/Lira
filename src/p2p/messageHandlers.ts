@@ -13,6 +13,7 @@ import { MediaManager } from '../media/MediaManager'
 import { resolveUniquePlayerName } from '../utils/playerName'
 import { sanitizeRoomChannels } from '../utils/roomChannels'
 import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
+import { DEFAULT_AVATAR } from '../engine/Constants'
 
 const receivedAtlases = new Map<string, AtlasDocument>()
 const atlasChunks = new AtlasChunkReceiver()
@@ -218,6 +219,32 @@ export function processNetworkMessage(
         checkZoneCallEligibility(nextPlayer)
         if (updated?.currentZoneId !== undefined) {
           useMapStore.getState().checkAndUnlockEmptyZones()
+        }
+      } else if (updated) {
+        const fallbackKey = targetSender || peerId
+        if (fallbackKey) {
+          const isPeerHost = fallbackKey.endsWith('-host')
+          const nextPlayer: Player = {
+            id: fallbackKey,
+            gameId: updated.gameId || fallbackKey,
+            name: updated.name || (isPeerHost ? 'Host' : 'Guest'),
+            x: updated.x ?? 0,
+            y: updated.y ?? 0,
+            direction: updated.direction ?? 'down',
+            isMoving: updated.isMoving ?? false,
+            avatar: updated.avatar ? { ...DEFAULT_AVATAR, ...updated.avatar } : { ...DEFAULT_AVATAR },
+            status: updated.status || 'available',
+            lastUpdated: Date.now(),
+            role: isPeerHost ? 'host' : updated.role || 'member',
+            ...updated,
+            isCameraOff: updated.isCameraOff !== undefined ? updated.isCameraOff : true,
+            isHost: isPeerHost,
+          }
+          useGameStore.getState().setRemotePlayer(nextPlayer)
+          checkZoneCallEligibility(nextPlayer)
+          if (updated.currentZoneId !== undefined) {
+            useMapStore.getState().checkAndUnlockEmptyZones()
+          }
         }
       }
       break
