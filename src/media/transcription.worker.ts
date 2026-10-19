@@ -1,20 +1,12 @@
-import { env, pipeline, type AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers'
-
-env.allowLocalModels = false
-// WASM executes inside this worker, including on Electron without WebGPU.
-env.backends.onnx.wasm!.numThreads = 1
+import type { AutomaticSpeechRecognitionPipeline } from '@huggingface/transformers'
+import { loadTranscriptionRuntime } from './transcriptionRuntime'
 let recognizer: AutomaticSpeechRecognitionPipeline | null = null
 let queue = Promise.resolve()
-// Narrow the generic factory before calling it: its union of every supported
-// model exceeds TypeScript's complexity limit when instantiated by Whisper.
-const createRecognizer = pipeline as unknown as (
-  task: 'automatic-speech-recognition', model: string, options: { device: 'wasm'; dtype: 'q8' },
-) => Promise<AutomaticSpeechRecognitionPipeline>
 
 self.onmessage = ({ data }) => {
   queue = queue.then(async () => {
     if (data.type === 'load') {
-      recognizer = await createRecognizer('automatic-speech-recognition', 'Xenova/whisper-base', { device: 'wasm', dtype: 'q8' })
+      recognizer = await loadTranscriptionRuntime(progress => self.postMessage({ type: 'progress', progress }))
       self.postMessage({ type: 'ready' })
     } else if (data.type === 'audio' && recognizer) {
       const result = await recognizer(data.audio, {
@@ -30,7 +22,7 @@ self.onmessage = ({ data }) => {
       self.postMessage({ type: 'stopped' })
     }
   }).catch(() => {
-    self.postMessage({ type: 'error', message: 'Não foi possível transcrever. Verifique a conexão para baixar o modelo e tente novamente.' })
+    self.postMessage({ type: 'error', message: 'Não foi possível preparar a transcrição. Verifique a conexão e o espaço livre no dispositivo e tente novamente.' })
   })
 }
 

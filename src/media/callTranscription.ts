@@ -1,3 +1,5 @@
+import type { TranscriptionDownload } from './transcriptionModule'
+
 export interface TranscriptionSource {
   id: string
   name: string
@@ -86,9 +88,11 @@ export class CallTranscription {
     private onStatus: (status: TranscriptionStatus, error?: string) => void,
     private onEntry: (entry: TranscriptEntry) => void,
     private onReady: () => void,
+    private onDownload: (progress: TranscriptionDownload) => void = () => {},
   ) {
     worker.onmessage = ({ data }) => {
       if (this.disposed) return
+      if (data.type === 'progress') this.onDownload(data.progress)
       if (data.type === 'ready') { this.ready = true; this.recording = true; onStatus('recording'); onReady() }
       if (data.type === 'result') { this.pending--; if (data.entry.text.trim()) onEntry(data.entry) }
       if (data.type === 'stopped') { onStatus('idle'); this.dispose() }

@@ -35,6 +35,7 @@ import { SpotifyWindowHost } from './spotifyWindowHost'
 import { SpotifyNativeWindowBridge } from './spotifyNativeWindow'
 import { singleFlightDownload } from './updateDownload'
 import { downloadUpdateFile, updateDownloadErrorMessage } from './updateFileDownload'
+import { runtimeAssetPath } from './assetPaths'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -80,7 +81,7 @@ const spotifyWindowHost = new SpotifyWindowHost({
     return window
   },
   createTray: (restore, close) => {
-    const iconPaths = [path.join(app.getAppPath(), 'public', 'tray-icon.png'), path.join(process.resourcesPath, 'tray-icon.png'), path.join(process.resourcesPath, 'public', 'tray-icon.png'), path.join(__dirname, '../public/tray-icon.png')]
+    const iconPaths = [runtimeAssetPath(app.getAppPath(), app.isPackaged, 'tray-icon.png'), path.join(process.resourcesPath, 'tray-icon.png')]
     const iconPath = iconPaths.find(candidate => fs.existsSync(candidate))
     if (!iconPath) throw new Error('Ícone da bandeja do Spotify não encontrado.')
     const tray = new Tray(nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 }))
@@ -557,7 +558,7 @@ function createWindow() {
     ...(yOffset !== undefined ? { y: yOffset } : {}),
     title: isMultiInstance ? `Lira (Instância ${instanceId})` : 'Lira',
     backgroundColor: '#0c0e14',
-    icon: path.join(__dirname, '../public/icon.png'),
+    icon: runtimeAssetPath(app.getAppPath(), app.isPackaged, 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -1395,7 +1396,7 @@ ipcMain.handle('find-spotify-source', () => spotifyPlayer.source().catch(() => n
 
 function getDataDirectory(): string {
   const projectSrcData = path.join(process.cwd(), 'src', 'data')
-  if (fs.existsSync(path.join(process.cwd(), 'src'))) {
+  if (!app.isPackaged && fs.existsSync(path.join(process.cwd(), 'src'))) {
     if (!fs.existsSync(projectSrcData)) {
       fs.mkdirSync(projectSrcData, { recursive: true })
     }
@@ -1412,7 +1413,7 @@ function getDataDirectory(): string {
 
 function getLogsDirectory(): string {
   const base = path.join(process.cwd(), 'src')
-  const dir = fs.existsSync(base)
+  const dir = !app.isPackaged && fs.existsSync(base)
     ? path.join(process.cwd(), 'logs')
     : path.join(app.getPath('userData'), 'logs')
   if (!fs.existsSync(dir)) {
@@ -1938,7 +1939,7 @@ ipcMain.handle(
   ) => {
     try {
       if (!Notification.isSupported()) return { ok: false, reason: 'unsupported' }
-      const iconPath = path.join(process.cwd(), 'public', 'tray-icon.png')
+      const iconPath = runtimeAssetPath(app.getAppPath(), app.isPackaged, 'tray-icon.png')
       const notif = new Notification({
         title: options.title,
         body: options.body,
