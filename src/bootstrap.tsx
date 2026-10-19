@@ -10,6 +10,7 @@ markStartup('graph')
 
 async function start() {
   await initializeCustomAssets()
+  markStartup('assets')
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <ErrorBoundary>

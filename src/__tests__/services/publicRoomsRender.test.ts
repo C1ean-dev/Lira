@@ -10,12 +10,12 @@ class FakeWebSocket {
   onopen: (() => void) | null = null
   onclose: (() => void) | null = null
   onerror: (() => void) | null = null
-  onmessage: ((event: { data: string }) => void | Promise<void>) | null = null
+  onmessage: ((event: { data: string | Uint8Array }) => void | Promise<void>) | null = null
   send = vi.fn()
   close = vi.fn(() => { this.readyState = 3; this.onclose?.() })
   constructor(public url: string, public protocols?: string[]) { sockets.push(this) }
   open() { this.readyState = 1; this.onopen?.() }
-  async receive(message: unknown) { await this.onmessage?.({ data: typeof message === 'string' ? message : JSON.stringify(message) }) }
+  async receive(message: unknown) { await this.onmessage?.({ data: typeof message === 'string' || message instanceof Uint8Array ? message : JSON.stringify(message) }) }
 }
 
 const room = { id: 'room-test', code: 'TEST', name: 'Public room', hostId: 'host', hostName: 'Ana', color: '#fff', playerCount: 1, maxPlayers: 12 }
@@ -53,6 +53,10 @@ describe('Render public room discovery', () => {
     expect(sockets).toHaveLength(6)
     const retried = sockets.slice(3)
     retried.forEach(socket => socket.open())
+    for (const socket of retried.slice(0, 2)) {
+      await socket.receive(Uint8Array.from([0x20, 0x02, 0x00, 0x00]))
+      await socket.receive(Uint8Array.from([0x90, 0x03, 0x00, 0x01, 0x00]))
+    }
     await retried[2].receive({ type: 'READY', protocolVersion: 1 })
     await vi.advanceTimersByTimeAsync(800)
     expect(service.getRoomPublicationServers(room.code).map(server => server.name)).toEqual(['EMQX', 'HiveMQ', 'Render'])
@@ -76,7 +80,8 @@ describe('Render public room discovery', () => {
     const reconnectedEmqx = sockets.filter(socket => socket.url.includes('emqx'))[1]
     reconnectedEmqx.open()
     expect(service.getRoomPublicationServers(room.code).map(server => server.name)).toEqual(['Render'])
-    await vi.advanceTimersByTimeAsync(1000)
+    await reconnectedEmqx.receive(Uint8Array.from([0x20, 0x02, 0x00, 0x00]))
+    await reconnectedEmqx.receive(Uint8Array.from([0x90, 0x03, 0x00, 0x01, 0x00]))
     expect(service.getRoomPublicationServers(room.code).map(server => server.name)).toEqual(['EMQX', 'Render'])
     service.stopHosting()
     expect(service.getRoomPublicationServers(room.code)).toEqual([])

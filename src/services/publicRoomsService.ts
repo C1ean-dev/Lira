@@ -42,7 +42,6 @@ interface BrokerRelay {
   mqttBuffer: Uint8Array
   connectTimeout: ReturnType<typeof setTimeout> | null
   reconnectTimer: ReturnType<typeof setTimeout> | null
-  startupTimers: ReturnType<typeof setTimeout>[]
 }
 
 export class PublicRoomsService {
@@ -53,7 +52,7 @@ export class PublicRoomsService {
   private broadcastChannel: BroadcastChannel | null = null
   private relays: BrokerRelay[] = ROOM_BROKERS.map(broker => ({
     ...broker, status: 'disconnected', ws: null, mqttBuffer: new Uint8Array(0),
-    connectTimeout: null, reconnectTimer: null, startupTimers: [],
+    connectTimeout: null, reconnectTimer: null,
   }))
   private networkOnline = true
   private heartbeatTimer: any = null
@@ -181,10 +180,8 @@ export class PublicRoomsService {
   private closeRelay(relay: BrokerRelay) {
     if (relay.connectTimeout !== null) clearTimeout(relay.connectTimeout)
     if (relay.reconnectTimer !== null) clearTimeout(relay.reconnectTimer)
-    relay.startupTimers.forEach(timer => clearTimeout(timer))
     relay.connectTimeout = null
     relay.reconnectTimer = null
-    relay.startupTimers = []
     relay.mqttBuffer = new Uint8Array(0)
     const ws = relay.ws
     relay.ws = null
@@ -242,7 +239,7 @@ export class PublicRoomsService {
         if (relay.connectTimeout !== null) clearTimeout(relay.connectTimeout)
         relay.connectTimeout = null
         this.setRelayStatus(relay, 'connected')
-        this.sendMqttConnectAndSubscribe(relay)
+        this.sendMqttConnect(relay)
       }
       ws.onmessage = event => {
         if (!isCurrent()) return
@@ -304,20 +301,13 @@ export class PublicRoomsService {
     } catch {}
   }
 
-  private sendMqttConnectAndSubscribe(relay: BrokerRelay) {
+  private sendMqttConnect(relay: BrokerRelay) {
     const ws = relay.ws
     if (!ws || ws.readyState !== WebSocket.OPEN) return
     try {
       const clientId = 'lira_hub_' + Math.random().toString(36).substring(2, 10)
       ws.send(this.encodeMqttConnect(clientId))
-      relay.startupTimers.push(setTimeout(() => {
-        if (relay.ws === ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(this.encodeMqttSubscribe('lira_public_hub/events', 1))
-        }
-      }, 350))
-      relay.startupTimers.push(setTimeout(() => {
-        if (relay.ws === ws && ws.readyState === WebSocket.OPEN) this.queryRelay(relay)
-      }, 800))
+      // CONNACK sends the subscription; SUBACK starts discovery below.
     } catch (e) {
       console.warn('[PublicRoomsHub] MQTT framing failed:', e)
       this.scheduleReconnect(relay)

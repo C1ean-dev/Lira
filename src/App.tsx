@@ -60,11 +60,9 @@ export const App: React.FC = () => {
     }
     const win = window as any
     if (typeof win.requestIdleCallback === 'function') {
-      const id = win.requestIdleCallback(preload, { timeout: 4000 })
+      const id = win.requestIdleCallback(preload)
       return () => win.cancelIdleCallback?.(id)
     }
-    const timer = setTimeout(preload, 1500)
-    return () => clearTimeout(timer)
   }, [])
 
   useEffect(() => startAutoUpdateChecks(), [])

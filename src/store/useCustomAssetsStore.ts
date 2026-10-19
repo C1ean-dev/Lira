@@ -16,8 +16,8 @@ const ASSETS_STORAGE_KEY = 'lira_custom_user_assets'
 const CATEGORIES_STORAGE_KEY = 'lira_custom_categories'
 const DEFAULT_CATEGORIES = ['Geral', 'pokemon']
 const imageCache = new Map<string, HTMLImageElement>()
-const listeners = new Set<() => void>()
-export function onCustomAssetsChange(listener: () => void): () => void {
+const listeners = new Set<(imageSource?: string) => void>()
+export function onCustomAssetsChange(listener: (imageSource?: string) => void): () => void {
   listeners.add(listener)
   return () => { listeners.delete(listener) }
 }
@@ -36,7 +36,7 @@ export function getCustomAssetImage(src: string): HTMLImageElement | null {
     image.addEventListener?.('load', () => {
       bumpAssetImageRevision()
       for (const listener of listeners) {
-        try { listener() } catch (error) { console.error('[Assets] Image listener:', error) }
+        try { listener(src) } catch (error) { console.error('[Assets] Image listener:', error) }
       }
     }, { once: true })
     imageCache.set(src, image)

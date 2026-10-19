@@ -40,8 +40,9 @@ describe('asset transactions', () => {
     const asset: CustomAsset = { id: 'pending-decode', name: 'Pending decode', type: 'furniture', category: 'Geral', width: 1, height: 1, isObstacle: false, frames: ['data:image/png;base64,validated'], createdAt: 1 }
     const saving = syncToNativeFile([asset], ['Geral'])
     try {
-      await vi.advanceTimersByTimeAsync(2000)
+      await vi.advanceTimersByTimeAsync(0)
       expect(await Promise.race([saving, Promise.resolve('still waiting')])).toBe(true)
+      expect(vi.getTimerCount()).toBe(0)
     } finally {
       finishDecode?.()
       await saving

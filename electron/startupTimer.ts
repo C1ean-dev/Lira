@@ -5,7 +5,7 @@ export interface StartupTimerOptions {
 }
 
 export function createStartupTimer(options: StartupTimerOptions): (step: string) => void {
-  const now = options.now ?? Date.now
+  const now = options.now ?? (() => performance.now())
   const uptimeMs = options.uptimeMs ?? (() => process.uptime() * 1000)
   const start = now()
   const seen = new Set<string>()

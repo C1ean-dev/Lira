@@ -1,6 +1,6 @@
 
-export type StartupMark = 'entry' | 'splash' | 'graph' | 'commit' | 'painted'
-const MARK_ORDER: StartupMark[] = ['entry', 'splash', 'graph', 'commit', 'painted']
+export type StartupMark = 'entry' | 'bootstrap' | 'graph' | 'assets' | 'commit' | 'painted'
+const MARK_ORDER: StartupMark[] = ['entry', 'bootstrap', 'graph', 'assets', 'commit', 'painted']
 const SLOWEST_SHOWN = 5
 
 export interface StorageStats {

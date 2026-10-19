@@ -86,6 +86,20 @@ describe('public rooms available server', () => {
     expect(mqttServers().map(server => server.status)).toEqual(['connected', 'connected'])
   })
 
+  it('waits for protocol acknowledgements instead of sending duplicate setup packets on timers', async () => {
+    const socket = sockets[0]
+    socket.open()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(socket.send.mock.calls.map(([packet]) => packet[0])).toEqual([0x10])
+
+    await socket.receive(Uint8Array.from([0x20, 0x02, 0x00, 0x00]))
+    expect(socket.send.mock.calls.map(([packet]) => packet[0])).toEqual([0x10, 0x82])
+    await socket.receive(Uint8Array.from([0x90, 0x03, 0x00, 0x01, 0x00]))
+    expect(publications(socket).map(message => message.type)).toEqual(['QUERY_ROOMS'])
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(socket.send).toHaveBeenCalledTimes(3)
+  })
+
   it('reconnects only the failed server without disrupting a healthy connection', async () => {
     sockets[0].open()
     sockets[1].open()
@@ -139,9 +153,8 @@ describe('public rooms available server', () => {
 
   it('sends MQTT setup independently to each socket', async () => {
     sockets.forEach(socket => socket.open())
-    await vi.advanceTimersByTimeAsync(350)
     for (const socket of sockets) {
-      expect(socket.send.mock.calls.map(([packet]) => packet[0])).toEqual([0x10, 0x82])
+      expect(socket.send.mock.calls.map(([packet]) => packet[0])).toEqual([0x10])
       socket.send.mockClear()
     }
     await sockets[1].receive(Uint8Array.from([0x20, 0x02, 0x00, 0x00]))
@@ -187,7 +200,8 @@ describe('public rooms available server', () => {
     await vi.advanceTimersByTimeAsync(800)
     sockets[0].send.mockClear()
     sockets[1].open()
-    await vi.advanceTimersByTimeAsync(800)
+    await sockets[1].receive(Uint8Array.from([0x20, 0x02, 0x00, 0x00]))
+    await sockets[1].receive(Uint8Array.from([0x90, 0x03, 0x00, 0x01, 0x00]))
     expect(publications(sockets[1]).map(msg => msg.type)).toEqual(['QUERY_ROOMS', 'ANNOUNCE_ROOM'])
     expect(sockets[0].send).not.toHaveBeenCalled()
   })

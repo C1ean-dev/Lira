@@ -3,6 +3,19 @@ import { useUpdateStore } from '../../store/useUpdateStore'
 import { UpdateService } from '../../services/updateService'
 
 describe('useUpdateStore - Silent Background Download & Direct Button Update Flow', () => {
+  it('launches an already downloaded installer without an artificial delay', async () => {
+    vi.useFakeTimers()
+    try {
+      useUpdateStore.setState({ status: 'ready', updateInfo: { hasUpdate: true, currentVersion: '1.0', latestVersion: '1.1', releaseName: '', releaseNotes: '', downloadUrl: 'https://example.com/setup.exe', releaseUrl: '' } })
+      vi.spyOn(UpdateService, 'isUpdateDownloaded').mockResolvedValue(true)
+      const apply = vi.spyOn(UpdateService, 'applyUpdate').mockResolvedValue(true)
+      const pending = useUpdateStore.getState().applyUpdate()
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(apply).toHaveBeenCalledOnce()
+      expect(await pending).toBe(true)
+    } finally { vi.clearAllTimers(); vi.useRealTimers() }
+  })
   it('shows the download reason when an interactive retry fails instead of leaving an unhandled rejection', async () => {
     useUpdateStore.setState({ updateInfo: { hasUpdate: true, currentVersion: '1.0', latestVersion: '1.1', releaseName: '', releaseNotes: '', downloadUrl: 'https://example.com/setup.exe', releaseUrl: '' } })
     vi.spyOn(UpdateService, 'isUpdateDownloaded').mockResolvedValue(false)

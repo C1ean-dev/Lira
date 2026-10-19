@@ -73,6 +73,7 @@ describe('individual library store migration and lazy loading', () => {
     expect(callbacks).toHaveLength(1)
     callbacks[0]()
     expect(loaded).toHaveBeenCalledOnce()
+    expect(loaded).toHaveBeenCalledWith(hero.frames[0])
     useCustomAssetsStore.setState({ customAssets: [hero] })
     await useCustomAssetsStore.getState().updateCustomAsset('hero', { name: 'Renamed' })
     expect(getCustomAssetImage(hero.frames[0])).toBe(image)

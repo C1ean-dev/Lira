@@ -158,7 +158,6 @@ export const LobbyModal: React.FC<Props> = ({
 
   const [publicRooms, setPublicRooms] = useState<PublicRoomInfo[]>([])
   const [searchQuery, setSearchQuery] = useState('')
-  const [isRefreshing, setIsRefreshing] = useState(false)
   const [copiedRoomCode, setCopiedRoomCode] = useState<string | null>(null)
 
   const enterGuardRef = useRef(createEnterGuard())
@@ -184,11 +183,9 @@ export const LobbyModal: React.FC<Props> = ({
   }, [])
 
   const handleManualRefresh = () => {
-    setIsRefreshing(true)
     const hub = PublicRoomsService.getInstance()
     hub.refresh()
     setPublicRooms(hub.getRooms())
-    setTimeout(() => setIsRefreshing(false), 500)
   }
 
   const filteredPublicRooms = useMemo(() => {
@@ -733,7 +730,6 @@ export const LobbyModal: React.FC<Props> = ({
             filteredPublicRooms={filteredPublicRooms}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
-            isRefreshing={isRefreshing}
             handleManualRefresh={handleManualRefresh}
             copiedRoomCode={copiedRoomCode}
             handleCopyCode={handleCopyCode}
