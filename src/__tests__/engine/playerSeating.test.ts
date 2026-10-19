@@ -56,6 +56,16 @@ afterEach(() => {
 })
 
 describe('player seating', () => {
+  it.each(['up', 'down', 'left', 'right'] as const)('stays stationary facing the furniture direction %s', direction => {
+    const map = useMapStore.getState().mapData
+    useMapStore.setState({ mapData: { ...map, furniture: [{ ...map.furniture[0], direction }] } })
+    engine.setClickTarget(5, 5)
+    tick(30)
+    expect(player()).toMatchObject({ x: 5, y: 5, direction, isMoving: false, seatedOn: 'bench-1:0:0' })
+    tick(30)
+    expect(player()).toMatchObject({ x: 5, y: 5, direction, isMoving: false, seatedOn: 'bench-1:0:0' })
+  })
+
   it('walks to a clicked seat, snaps to its center, faces the furniture direction and broadcasts sitting', () => {
     engine.setClickTarget(5, 5)
     tick(30)
