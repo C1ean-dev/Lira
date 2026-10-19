@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { RemoteAudio } from '../../components/common/RemoteAudio'
 import { GridParticipantTile, ParticipantData } from '../../components/grid/GridParticipantTile'
 import { VideoTile } from '../../components/MiniCallOverlay'
+import { FullScreenLiveOverlay } from '../../components/grid/FullScreenLiveOverlay'
 
 const peerStream = () =>
   ({
@@ -25,6 +26,17 @@ const remoteUser = (extra: Partial<ParticipantData> = {}): ParticipantData => ({
 })
 
 describe('who plays the sound of a call tile', () => {
+  it('keeps a single audio output when the same live is expanded to fullscreen', () => {
+    const user = remoteUser({ isScreenSharing: true, screenStream: peerStream() })
+    const html = renderToStaticMarkup(<>
+      <GridParticipantTile user={user} />
+      <FullScreenLiveOverlay user={user} onClose={() => {}} />
+    </>)
+    const audible = [...audioTags(html), ...videoTags(html)].filter(tag => !tag.includes('muted'))
+    expect(audible).toHaveLength(1)
+    expect(audible[0]).toMatch(/^<audio\b/)
+  })
+
   describe('RemoteAudio', () => {
     it('is an autoplaying audio element, not a video', () => {
       const html = renderToStaticMarkup(

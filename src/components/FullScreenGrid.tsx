@@ -162,8 +162,12 @@ const FullScreenGridInner: React.FC = () => {
     : allInMeeting.filter((u) => u.id !== focusedUser?.id)
 
   const theaterUser = liveTheaterUser
-    ? allInMeeting.find((u) => u.id === liveTheaterUser.id) || liveTheaterUser
+    ? allInMeeting.find((u) => u.id === liveTheaterUser.id && u.isScreenSharing)
     : null
+
+  React.useEffect(() => {
+    if (liveTheaterUser && !theaterUser) setLiveTheaterUser(null)
+  }, [liveTheaterUser, theaterUser])
 
   return (
     <>

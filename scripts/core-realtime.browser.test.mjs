@@ -95,7 +95,11 @@ test('two real browser sessions exchange media and recover calls', {
     // Let the real recovery policy finish before declaring the scenario failed.
     const connectionTimeout = 60000
     async function connected(page) {
-      await page.waitForFunction(() => core.peer.mediaCalls.size === 1 && Object.values(core.game.getState().callStates).includes('connected'), null, { timeout: connectionTimeout })
+      await page.waitForFunction(() => (
+        core.peer.mediaCalls.size === 1 &&
+        Object.values(core.game.getState().callStates).includes('connected') &&
+        Object.keys(core.game.getState().remotePlayers).length === 1
+      ), null, { timeout: connectionTimeout })
     }
     await Promise.all([connected(host), connected(guest)])
     async function stats(page) {

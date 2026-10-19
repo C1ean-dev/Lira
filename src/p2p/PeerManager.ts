@@ -876,7 +876,10 @@ export class PeerManager {
     let retired = false
     const isCurrentSession = () => !retired && this.peer === owner && this.roomCode === roomCode && !this.isIntentionalDisconnect
     const isActive = () => isCurrentSession() && this.connections.get(conn.peer) === conn
-    conn.on('open', () => {
+    let openHandled = false
+    const handleOpen = () => {
+      if (openHandled) return
+      openHandled = true
       if (!isCurrentSession()) { conn.close(); return }
       this.pendingHeartbeats.delete(conn.peer)
       console.log('[P2P Data] Connected to peer:', conn.peer)
@@ -973,9 +976,15 @@ export class PeerManager {
           }
         })
       }
-    })
+    }
+
+    conn.on('open', handleOpen)
 
     conn.on('data', (data: any) => {
+      if (!isCurrentSession()) return
+      if (!openHandled && (!this.connections.has(conn.peer) || this.connections.get(conn.peer) === conn)) {
+        handleOpen()
+      }
       if (!isActive()) return
       this.peerLastSeen.set(conn.peer, Date.now())
       this.handleNetworkMessage(data as NetworkMessage, conn.peer)

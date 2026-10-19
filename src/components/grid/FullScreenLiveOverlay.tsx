@@ -21,8 +21,6 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
 
   const liveStreamVolume = useMediaStore((s) => s.liveStreamVolume)
   const setLiveStreamVolume = useMediaStore((s) => s.setLiveStreamVolume)
-  const outputVolume = useMediaStore((s) => s.outputVolume)
-  const selectedAudioOutput = useMediaStore((s) => s.selectedAudioOutput)
 
   const rawVolume = liveStreamVolume !== undefined ? liveStreamVolume : 100
 
@@ -38,35 +36,17 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
     const video = theaterVideoRef.current
     if (!video || !activeStream) return
 
-    video.srcObject = activeStream
-
-    if (selectedAudioOutput && typeof (video as any).setSinkId === 'function') {
-      ;(video as any).setSinkId(selectedAudioOutput === 'default' ? '' : selectedAudioOutput).catch(() => {})
-    }
-
+    // The grid's RemoteAudio keeps playing while the theater is open.
+    video.muted = true
     return attachStreamToVideo(video, activeStream, {
       tile: 'theater',
       peer: user.id,
       isLocal: !!user.isLocal,
+      muted: true,
     })
-  }, [activeStream, selectedAudioOutput, liveGate.needsClick])
+  }, [activeStream, user.id, user.isLocal, liveGate.needsClick])
 
   useLiveViewBox(user.id, theaterVideoRef, 'contain', liveGate.watching)
-
-  useEffect(() => {
-    const video = theaterVideoRef.current
-    if (!video) return
-
-    if (user.isLocal) {
-      video.muted = true
-      video.volume = 0
-    } else {
-      video.muted = false
-      const master = (outputVolume !== undefined ? outputVolume : 100) / 100
-      const participant = rawVolume / 100
-      video.volume = Math.max(0, Math.min(1, master * participant))
-    }
-  }, [rawVolume, outputVolume, user.isLocal, liveGate.needsClick])
 
   const handleVolumeChange = (newVal: number) => {
     const clamped = Math.max(0, Math.min(200, newVal))
@@ -162,7 +142,7 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
             ref={theaterVideoRef}
             autoPlay
             playsInline
-            muted={user.isLocal}
+            muted
             onLoadedMetadata={() => {
               theaterVideoRef.current?.play().catch(() => {})
             }}

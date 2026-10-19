@@ -93,7 +93,7 @@ export const CustomElementModal: React.FC = () => {
     layerY: 0,
   })
 
-  const [composeTool, setComposeTool] = useState<'move' | 'collision'>('move')
+  const [composeTool, setComposeTool] = useState<'move' | 'collision' | 'seat'>('move')
   const [composeZoom, setComposeZoom] = useState<number>(2)
   const [showCollisionOverlay, setShowCollisionOverlay] = useState<boolean>(true)
   const [isPaintingCollision, setIsPaintingCollision] = useState<boolean>(false)
@@ -143,6 +143,8 @@ export const CustomElementModal: React.FC = () => {
     right: { tileWidth: 2, tileHeight: 2, pixelWidth: 64, pixelHeight: 64 },
   })
   const [directionalCollisionGrids, setDirectionalCollisionGrids] = useState<Partial<Record<Direction, boolean[][]>>>({})
+  const [seatGrid, setSeatGrid] = useState<boolean[][]>([[false, false], [false, false]])
+  const [directionalSeatGrids, setDirectionalSeatGrids] = useState<Partial<Record<Direction, boolean[][]>>>({})
 
   const handleSelectDirection = (newDir: Direction) => {
     if (newDir === activeDirection) return
@@ -189,11 +191,13 @@ export const CustomElementModal: React.FC = () => {
       ...directionalCollisionGrids,
       [activeDirection]: collisionGrid,
     }
+    const updatedSeats = { ...directionalSeatGrids, [activeDirection]: seatGrid }
 
     setDirectionalFrameLayers(updatedLayers)
     setDirectionalFrames(updatedFrames)
     setDirectionalDimensions(updatedDims)
     setDirectionalCollisionGrids(updatedCollisions)
+    setDirectionalSeatGrids(updatedSeats)
 
     setActiveDirection(newDir)
 
@@ -210,6 +214,8 @@ export const CustomElementModal: React.FC = () => {
     setPixelHeight(targetDim.pixelHeight)
     setCompositeBoardWidth(targetDim.pixelWidth)
     setCompositeBoardHeight(targetDim.pixelHeight)
+    setSeatGrid(updatedSeats[newDir] || Array.from({ length: Math.ceil(targetDim.tileHeight) },
+      () => Array(Math.ceil(targetDim.tileWidth)).fill(false)))
 
     if (updatedCollisions[newDir] && updatedCollisions[newDir]!.length === targetDim.tileHeight) {
       setCollisionGrid(updatedCollisions[newDir]!)
@@ -399,6 +405,8 @@ export const CustomElementModal: React.FC = () => {
   }
 
   useEffect(() => {
+    setSeatGrid(prev => Array.from({ length: Math.ceil(tileHeight) }, (_, r) =>
+      Array.from({ length: Math.ceil(tileWidth) }, (_, c) => prev[r]?.[c] ?? false)))
     setCollisionGrid((prev) => {
       const newGrid: boolean[][] = []
       for (let r = 0; r < tileHeight; r++) {
@@ -430,6 +438,7 @@ export const CustomElementModal: React.FC = () => {
     setElementType(newType)
     if (newType !== 'furniture') {
       setActiveDirection('down')
+      if (composeTool === 'seat') setComposeTool('move')
     }
     if (newType === 'avatar') {
       setTileWidth(1)
@@ -461,6 +470,9 @@ export const CustomElementModal: React.FC = () => {
         setCompositeBoardHeight(initPxH)
         setFrames(asset.frames || [])
         setFrameRateMs(asset.frameRateMs || 160)
+        setSeatGrid(asset.directionalSeatGrids?.down || asset.seatGrid ||
+          Array.from({ length: Math.ceil(asset.height) }, () => Array(Math.ceil(asset.width)).fill(false)))
+        setDirectionalSeatGrids(asset.directionalSeatGrids || {})
         if (asset.collisionGrid && asset.collisionGrid.length > 0) {
           setCollisionGrid(asset.collisionGrid)
         }
@@ -621,6 +633,8 @@ export const CustomElementModal: React.FC = () => {
         right: { tileWidth: 2, tileHeight: 2, pixelWidth: 64, pixelHeight: 64 },
       })
       setDirectionalCollisionGrids({})
+      setDirectionalSeatGrids({})
+      setSeatGrid([[false, false], [false, false]])
       const emptyGrid: boolean[][] = []
       for (let r = 0; r < 2; r++) {
         emptyGrid.push([false, false])
@@ -869,7 +883,7 @@ export const CustomElementModal: React.FC = () => {
       const targetH = pixelHeight || tileHeight * 32
       for (let r = 0; r < tileHeight; r++) {
         for (let c = 0; c < tileWidth; c++) {
-          if (collisionGrid[r]?.[c]) {
+          if (collisionGrid[r]?.[c] || (elementType === 'furniture' && seatGrid[r]?.[c])) {
             const cellLeft = c * 32
             const cellTop = r * 32
             const cellRight = Math.min((c + 1) * 32, targetW)
@@ -880,9 +894,10 @@ export const CustomElementModal: React.FC = () => {
             if (cellW > 0 && cellH > 0) {
               const bx = cellLeft * renderZoom
               const by = cellTop * renderZoom
-              ctx.fillStyle = 'rgba(239, 68, 68, 0.25)'
+              const isSeat = elementType === 'furniture' && seatGrid[r]?.[c]
+              ctx.fillStyle = isSeat ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.25)'
               ctx.fillRect(bx, by, cellW, cellH)
-              ctx.strokeStyle = '#ef4444'
+              ctx.strokeStyle = isSeat ? '#10b981' : '#ef4444'
               ctx.lineWidth = 2
               ctx.strokeRect(bx + 1, by + 1, cellW - 2, cellH - 2)
             }
@@ -901,6 +916,8 @@ export const CustomElementModal: React.FC = () => {
     isCustomModalOpen,
     showCollisionOverlay,
     collisionGrid,
+    seatGrid,
+    elementType,
     composeTool,
     composeZoom,
     tileWidth,
@@ -1347,7 +1364,7 @@ export const CustomElementModal: React.FC = () => {
     const clickX = Math.floor((e.clientX - rect.left) / composeZoom)
     const clickY = Math.floor((e.clientY - rect.top) / composeZoom)
 
-    if (composeTool === 'collision') {
+    if (composeTool === 'collision' || composeTool === 'seat') {
       const targetW = pixelWidth || tileWidth * 32
       const targetH = pixelHeight || tileHeight * 32
       if (clickX < 0 || clickX >= targetW || clickY < 0 || clickY >= targetH) {
@@ -1358,11 +1375,12 @@ export const CustomElementModal: React.FC = () => {
       const tileRow = Math.floor(clickY / 32)
 
       if (tileRow >= 0 && tileRow < tileHeight && tileCol >= 0 && tileCol < tileWidth) {
-        const currentValue = collisionGrid[tileRow]?.[tileCol] ?? false
+        const currentValue = (composeTool === 'seat' ? seatGrid : collisionGrid)[tileRow]?.[tileCol] ?? false
         const nextValue = !currentValue
         setCollisionPaintValue(nextValue)
         setIsPaintingCollision(true)
-        setCollisionGrid((prev) =>
+        const setGrid = composeTool === 'seat' ? setSeatGrid : setCollisionGrid
+        setGrid((prev) =>
           prev.map((row, r) =>
             row.map((val, c) => (r === tileRow && c === tileCol ? nextValue : val))
           )
@@ -1400,7 +1418,7 @@ export const CustomElementModal: React.FC = () => {
     const currentX = Math.floor((e.clientX - rect.left) / composeZoom)
     const currentY = Math.floor((e.clientY - rect.top) / composeZoom)
 
-    if (composeTool === 'collision') {
+    if (composeTool === 'collision' || composeTool === 'seat') {
       if (!isPaintingCollision) return
       const targetW = pixelWidth || tileWidth * 32
       const targetH = pixelHeight || tileHeight * 32
@@ -1412,7 +1430,8 @@ export const CustomElementModal: React.FC = () => {
       const tileRow = Math.floor(currentY / 32)
 
       if (tileRow >= 0 && tileRow < tileHeight && tileCol >= 0 && tileCol < tileWidth) {
-        setCollisionGrid((prev) =>
+        const setGrid = composeTool === 'seat' ? setSeatGrid : setCollisionGrid
+        setGrid((prev) =>
           prev.map((row, r) =>
             row.map((val, c) => (r === tileRow && c === tileCol ? collisionPaintValue : val))
           )
@@ -1657,6 +1676,8 @@ export const CustomElementModal: React.FC = () => {
       right: { tileWidth: 2, tileHeight: 2, pixelWidth: 64, pixelHeight: 64 },
     })
     setDirectionalCollisionGrids({})
+    setDirectionalSeatGrids({})
+    setSeatGrid([[false, false], [false, false]])
     const emptyGrid: boolean[][] = []
     for (let r = 0; r < 2; r++) {
       emptyGrid.push([false, false])
@@ -1680,6 +1701,7 @@ export const CustomElementModal: React.FC = () => {
     const finalDirLayers: Partial<Record<Direction, CompositeLayer[][]>> = {}
     const finalDirDims: Partial<Record<Direction, DirectionalDimension>> = {}
     const finalDirCollisionsRecord: Partial<Record<Direction, boolean[][]>> = {}
+    const finalSeatGrids = elementType === 'furniture' ? { ...directionalSeatGrids, [activeDirection]: seatGrid } : undefined
 
     const isFloor = elementType === 'floor'
     const isWall = elementType === 'wall'
@@ -1868,6 +1890,8 @@ export const CustomElementModal: React.FC = () => {
         pixelHeight: basePixelHeight,
         isObstacle: finalIsObstacle,
         collisionGrid: finalCollisionGrid,
+        seatGrid: finalSeatGrids?.down,
+        directionalSeatGrids: finalSeatGrids,
         collisionFromSprite: undefined,
         frames: finalFrames,
         frameLayers: finalFrameLayers,
@@ -1923,6 +1947,8 @@ export const CustomElementModal: React.FC = () => {
       pixelHeight: basePixelHeight,
       isObstacle: finalIsObstacle,
       collisionGrid: finalCollisionGrid,
+      seatGrid: finalSeatGrids?.down,
+      directionalSeatGrids: finalSeatGrids,
       frames: finalFrames,
       frameLayers: finalFrameLayers,
       directionalFrames:
@@ -2073,6 +2099,7 @@ export const CustomElementModal: React.FC = () => {
                 collisionGrid={collisionGrid}
                 onSetAllCollision={handleSetAllCollision}
                 onSetBottomHalfCollision={handleSetBottomHalfCollision}
+                onClearSeats={() => setSeatGrid(prev => prev.map(row => row.map(() => false)))}
                 onFitLayersToBoard={handleFitLayersToBoard}
                 onComposeMouseDown={handleComposeCanvasMouseDown}
                 onComposeMouseMove={handleComposeCanvasMouseMove}

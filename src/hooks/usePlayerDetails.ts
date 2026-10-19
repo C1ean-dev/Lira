@@ -4,10 +4,10 @@ import { shallow } from 'zustand/vanilla/shallow'
 import { useGameStore } from '../store/useGameStore'
 import { Player } from '../types/game'
 
-export type PlayerDetails = Omit<Player, 'x' | 'y' | 'targetX' | 'targetY' | 'direction' | 'isMoving' | 'lastUpdated'>
+export type PlayerDetails = Omit<Player, 'x' | 'y' | 'targetX' | 'targetY' | 'direction' | 'isMoving' | 'seatedOn' | 'lastUpdated'>
 
 function playerDetails(player: Player): PlayerDetails {
-  const { x, y, targetX, targetY, direction, isMoving, lastUpdated, ...details } = player
+  const { x, y, targetX, targetY, direction, isMoving, seatedOn, lastUpdated, ...details } = player
   return details
 }
 

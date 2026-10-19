@@ -115,6 +115,27 @@ export class AvatarRenderer {
     size: number = TILE_SIZE,
     showNameTag: boolean = true
   ) {
+    if (!player.seatedOn || player.isMoving) {
+      AvatarRenderer.drawPlayerSprite(ctx, player, isLocal, animationTick, size, showNameTag)
+      return
+    }
+    // Keep the feet on the seat while lowering the body for existing avatar sprites.
+    ctx.save()
+    ctx.translate(0, (player.y * size + size) * 0.25)
+    ctx.scale(1, 0.75)
+    AvatarRenderer.drawPlayerSprite(ctx, player, isLocal, animationTick, size, false)
+    ctx.restore()
+    if (showNameTag) NameTagRenderer.drawNameTag(ctx, player, isLocal, (player.x + 0.5) * size, player.y * size - 13)
+  }
+
+  private static drawPlayerSprite(
+    ctx: CanvasRenderingContext2D,
+    player: Player,
+    isLocal: boolean,
+    animationTick: number,
+    size: number = TILE_SIZE,
+    showNameTag: boolean = true
+  ) {
     const px = player.x * size
     const py = player.y * size
     const avatar = player.avatar || {}
