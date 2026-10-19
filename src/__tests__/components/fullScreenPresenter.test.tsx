@@ -5,12 +5,18 @@ import { FullScreenGrid } from '../../components/FullScreenGrid'
 import { useGameStore } from '../../store/useGameStore'
 import { useMediaStore } from '../../store/useMediaStore'
 
+const theaterState = vi.hoisted(() => ({ hook: 0, user: null as any }))
+vi.mock('react', async () => {
+  const actual = await vi.importActual<typeof import('react')>('react')
+  return { ...actual, useState: (initial: unknown) => actual.useState(theaterState.hook++ === 2 ? theaterState.user : initial) }
+})
+
 vi.mock('../../data/nativeAssets.json', () => ({ default: { categories: [], assets: [] } }))
 vi.mock('../../p2p/PeerManager', () => ({ PeerManager: {} }))
 vi.mock('../../media/MediaManager', () => ({ MediaManager: {} }))
 vi.mock('../../components/ScreenShareModal', () => ({ ScreenShareModal: () => null }))
 vi.mock('../../components/grid/CallControlsBar', () => ({ CallControlsBar: () => null }))
-vi.mock('../../components/grid/FullScreenLiveOverlay', () => ({ FullScreenLiveOverlay: () => null }))
+vi.mock('../../components/grid/FullScreenLiveOverlay', () => ({ FullScreenLiveOverlay: () => <div data-theater="open" /> }))
 vi.mock('../../components/grid/ParticipantContextMenu', () => ({ ParticipantContextMenu: () => null }))
 vi.mock('../../components/grid/GridParticipantTile', () => ({
   GridParticipantTile: ({ user, isSidebar, mediaKind }: any) => (
@@ -30,11 +36,14 @@ vi.mock('../../store/useMediaStore', async () => {
 const originalGame = useGameStore.getState()
 const originalMedia = useMediaStore.getState()
 afterEach(() => {
+  theaterState.user = null
+  theaterState.hook = 0
   useGameStore.setState(originalGame)
   useMediaStore.setState(originalMedia)
 })
 
 function setup(localSharing = false) {
+  theaterState.hook = 0
   const local = { ...originalGame.localPlayer, id: 'local', currentZoneId: 'room', isScreenSharing: localSharing }
   useGameStore.setState({
     localPlayer: local,
@@ -45,6 +54,22 @@ function setup(localSharing = false) {
 }
 
 describe('presenter beside the live in the expanded call', () => {
+  it('closes the theater when the presenter stops sharing instead of keeping their camera fullscreen', () => {
+    setup()
+    theaterState.user = { id: 'remote', name: 'Presenter', isScreenSharing: true }
+    expect(renderToStaticMarkup(<FullScreenGrid />)).toContain('data-theater="open"')
+    useGameStore.setState({ remotePlayers: { remote: { ...useGameStore.getState().remotePlayers.remote, isScreenSharing: false } } })
+    theaterState.hook = 0
+    expect(renderToStaticMarkup(<FullScreenGrid />)).not.toContain('data-theater="open"')
+  })
+
+  it('closes the theater when the presenter leaves the call', () => {
+    setup()
+    theaterState.user = { id: 'remote', name: 'Presenter', isScreenSharing: true }
+    useGameStore.setState({ remotePlayers: {} })
+    expect(renderToStaticMarkup(<FullScreenGrid />)).not.toContain('data-theater="open"')
+  })
+
   it('places transcription immediately beside Jam without starting capture automatically', () => {
     setup()
     const html = renderToStaticMarkup(<FullScreenGrid />)

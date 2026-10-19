@@ -124,6 +124,50 @@ describe('core screen capture lifetime', () => {
     expect(useMediaStore.getState().isScreenSharing).toBe(false)
     expect(peer.replaceVideoTrack).not.toHaveBeenCalled()
   })
+
+  it.each([
+    { sources: [] },
+    { sources: [{ id: 'screen:0:0', name: 'Desktop' }] },
+    { sources: [{ id: 'window:other', name: 'Google Chrome - Video' }, { id: 'screen:0:0', name: 'Desktop' }] },
+  ])('stops sharing when the selected window disappears, without capturing another source (%j)', async ({ sources }) => {
+    const getSources = vi.fn(async () => sources)
+    const setScreenSource = vi.fn(async () => true)
+    vi.stubGlobal('window', { electronAPI: { getSources, setScreenSource } })
+    const video = new Track('video', 'selected-window')
+    const audio = new Track('audio', 'window-audio')
+    capture.mockResolvedValueOnce(new Stream([video, audio])).mockResolvedValue(new Stream([new Track('video', 'desktop')]))
+    await manager.startScreenShare({ sourceId: 'window:selected', sourceName: 'Google Chrome - Video' })
+    video.onended!()
+    await vi.advanceTimersByTimeAsync(4000)
+    expect(capture).toHaveBeenCalledOnce()
+    expect(useMediaStore.getState()).toMatchObject({ isScreenSharing: false, localScreenStream: null, screenShareTargetTitle: null })
+    expect(useGameStore.getState().localPlayer.isScreenSharing).toBe(false)
+    expect(audio.stop).toHaveBeenCalled()
+    expect(peer.stopLiveVoiceCalls).toHaveBeenCalled()
+    expect(peer.sendPlayerUpdate).toHaveBeenLastCalledWith({ isScreenSharing: false })
+  })
+
+  it('recovers the same window after its title changes', async () => {
+    const setScreenSource = vi.fn(async () => true)
+    vi.stubGlobal('window', { electronAPI: { setScreenSource, getSources: vi.fn(async () => [{ id: 'window:selected', name: 'New title' }]) } })
+    const first = new Track('video', 'original')
+    const recovered = new Track('video', 'recovered')
+    capture.mockResolvedValueOnce(new Stream([first])).mockResolvedValueOnce(new Stream([recovered]))
+    await manager.startScreenShare({ sourceId: 'window:selected', sourceName: 'Old title' })
+    first.onended!()
+    await vi.advanceTimersByTimeAsync(600)
+    expect(useMediaStore.getState().isScreenSharing).toBe(true)
+    expect(peer.replaceVideoTrack).toHaveBeenLastCalledWith(recovered, true, expect.any(Number), expect.any(Number))
+    expect(setScreenSource.mock.calls.every(([id]) => id === 'window:selected')).toBe(true)
+  })
+
+  it('does not capture the desktop when selecting the requested window through IPC fails', async () => {
+    vi.stubGlobal('window', { electronAPI: { setScreenSource: vi.fn(async () => { throw new Error('Window unavailable') }) } })
+    capture.mockResolvedValue(new Stream([new Track('video', 'desktop')]))
+    expect(await manager.startScreenShare({ sourceId: 'window:missing' })).toBeNull()
+    expect(capture).not.toHaveBeenCalled()
+    expect(useMediaStore.getState().isScreenSharing).toBe(false)
+  })
   it('does not let recovery of the old source overwrite a newly selected source', async () => {
     vi.stubGlobal('window', { electronAPI: { setScreenSource: vi.fn(async () => {}) } })
     const old = new Stream([new Track('video', 'old')])

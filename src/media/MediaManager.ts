@@ -1099,14 +1099,10 @@ export class MediaManager {
       }
 
       if (sourceId && electronAPI?.setScreenSource) {
-        try {
-          if (sourceName) {
-            await electronAPI.setScreenSource(sourceId, includeAudio, captureMethod, sourceName)
-          } else {
-            await electronAPI.setScreenSource(sourceId, includeAudio, captureMethod)
-          }
-        } catch (ipcErr) {
-          console.warn('[MediaManager] set-screen-source IPC failed, capturing primary screen:', ipcErr)
+        if (sourceName) {
+          await electronAPI.setScreenSource(sourceId, includeAudio, captureMethod, sourceName)
+        } else {
+          await electronAPI.setScreenSource(sourceId, includeAudio, captureMethod)
         }
         if (!isCurrent()) return null
         try {
@@ -1599,6 +1595,10 @@ export class MediaManager {
 
     let recovered = false
     const config = this.activeScreenConfig ? { ...this.activeScreenConfig } : {}
+    if (!config.sourceId) {
+      this.stopScreenShare()
+      return
+    }
 
     for (let attempt = 1; attempt <= 3; attempt++) {
       await new Promise((r) => setTimeout(r, attempt === 1 ? 600 : 1000))
@@ -1609,35 +1609,16 @@ export class MediaManager {
       }
 
       try {
-        let targetSourceId = config.sourceId
+        const targetSourceId = config.sourceId
 
         if (electronAPI.getSources) {
-          try {
-            const sources = (await electronAPI.getSources()) as Array<{ id: string; name: string }>
-            if (sources && sources.length > 0) {
-              const exact = targetSourceId ? sources.find((s) => s.id === targetSourceId) : null
-              if (exact) {
-                targetSourceId = exact.id
-              } else if (config.sourceName) {
-                const cleanWanted = config.sourceName.toLowerCase().trim()
-                const byName = sources.find((s) => {
-                  if (!s.id.startsWith('window:')) return false
-                  const sName = s.name.toLowerCase().trim()
-                  return sName.includes(cleanWanted) || cleanWanted.includes(sName)
-                })
-                if (byName) {
-                  targetSourceId = byName.id
-                } else {
-                  const browserKeywords = ['chrome', 'firefox', 'edge', 'brave', 'opera', 'vivaldi']
-                  const matched = browserKeywords.find((k) => cleanWanted.includes(k))
-                  if (matched) {
-                    const byApp = sources.find((s) => s.id.startsWith('window:') && s.name.toLowerCase().includes(matched))
-                    if (byApp) targetSourceId = byApp.id
-                  }
-                }
-              }
-            }
-          } catch {}
+          const sources = (await electronAPI.getSources()) as Array<{ id: string; name: string }>
+          if (!isCurrent()) return
+          if (!sources.some(source => source.id === targetSourceId)) {
+            diagLog('screenshare', 'source-closed-stopping', { sourceId: targetSourceId })
+            this.stopScreenShare()
+            return
+          }
         }
 
         if (targetSourceId) {

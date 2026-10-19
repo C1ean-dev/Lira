@@ -586,7 +586,6 @@ function createWindow() {
     const captureMethod = pendingScreenCapture?.captureMethod || 'auto'
     console.info(`[Electron] display capture method=${captureMethod}`)
     const wantedId = pendingScreenCapture?.sourceId || (now - lastSelectedSourceTime < 30000 ? lastSelectedSourceId : null)
-    const wantedName = pendingScreenCapture?.sourceName || (now - lastSelectedSourceTime < 30000 ? lastSelectedSourceName : null)
     pendingScreenCapture = null
 
     desktopCapturer
@@ -596,24 +595,10 @@ function createWindow() {
           callback({})
           return
         }
-        let picked = (wantedId && sources.find((s) => s.id === wantedId)) || null
-        if (!picked && wantedId && wantedId.startsWith('window:') && wantedName) {
-          const cleanWanted = wantedName.toLowerCase().trim()
-          picked = sources.find((s) => {
-            if (!s.id.startsWith('window:')) return false
-            const sName = s.name.toLowerCase().trim()
-            return sName.includes(cleanWanted) || cleanWanted.includes(sName)
-          }) || null
-          if (!picked) {
-            const browserMatches = ['google chrome', 'chrome', 'brave', 'firefox', 'edge', 'opera', 'vivaldi']
-            const matchedBrowser = browserMatches.find((b) => cleanWanted.includes(b))
-            if (matchedBrowser) {
-              picked = sources.find((s) => s.id.startsWith('window:') && s.name.toLowerCase().includes(matchedBrowser)) || null
-            }
-          }
-        }
+        const picked = wantedId ? sources.find((s) => s.id === wantedId) : sources[0]
         if (!picked) {
-          picked = (wantedId && sources.find((s) => s.id === wantedId)) || sources[0]
+          callback({})
+          return
         }
 
         if (requestedAudio) {
