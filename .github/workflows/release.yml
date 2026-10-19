@@ -9,6 +9,11 @@ on:
 permissions:
   contents: write
 
+# Version allocation and both platform uploads share one release tag namespace.
+concurrency:
+  group: lira-release-publication
+  cancel-in-progress: false
+
 jobs:
   build-and-release:
     name: Build and Release Windows App
@@ -43,7 +48,9 @@ jobs:
       - name: Generate Dynamic Version Tag and Bump package.json
         id: tag
         shell: bash
-        run: node scripts/bump-version.js
+        run: |
+          git fetch origin --tags
+          node scripts/bump-version.js
 
       - name: Build and Package Electron App
         env:
@@ -59,6 +66,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag_name }}
+          target_commitish: ${{ github.sha }}
           name: ${{ steps.tag.outputs.release_title }}
           draft: false
           prerelease: false
