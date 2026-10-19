@@ -21,10 +21,10 @@ describe('avatar activity rendering', () => {
   })
   afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers() })
 
-  const render = (change: Partial<Player>) => {
+  const render = (change: Partial<Player>, isLocal = true, animationTick = 0) => {
     const ctx = { save: vi.fn(), restore: vi.fn(), translate: vi.fn(), scale: vi.fn(), drawImage: vi.fn(), fillText: vi.fn() }
     const player = { x: 0, y: 0, direction: 'down', isMoving: false, avatar: { customAvatarId: 'character' }, activityAnimationStartedAt: 9600, ...change } as Player
-    AvatarRenderer.drawPlayer(ctx as unknown as CanvasRenderingContext2D, player, true, 0, 32, false)
+    AvatarRenderer.drawPlayer(ctx as unknown as CanvasRenderingContext2D, player, isLocal, animationTick, 32, false)
     return ctx
   }
 
@@ -57,9 +57,27 @@ describe('avatar activity rendering', () => {
     expect(ctx.scale).not.toHaveBeenCalled()
   })
 
-  it('shows a seated pose for local and remote characters and restores standing when moving', () => {
-    expect(render({ seatedOn: 'chair:0:0' }).scale).toHaveBeenCalledWith(1, 0.75)
-    expect(render({ seatedOn: null }).scale).not.toHaveBeenCalled()
-    expect(render({ seatedOn: 'chair:0:0', isMoving: true }).scale).not.toHaveBeenCalled()
+  it.each(['up', 'down', 'left', 'right'] as const)('keeps seated characters at their normal size facing %s', direction => {
+    mocks.assets[0].directionalFrames = {
+      up: ['up-idle', 'up-step'], down: ['down-idle', 'down-step'],
+      left: ['left-idle', 'left-step'], right: ['right-idle', 'right-step'],
+    }
+    for (const isLocal of [true, false]) {
+      const standing = render({ direction, x: 7, y: 5 }, isLocal)
+      const seated = render({ direction, x: 7, y: 5, seatedOn: 'chair:0:0' }, isLocal, 360)
+      expect(seated.drawImage.mock.calls[0][0].src).toBe(`${direction}-idle`)
+      expect(seated.drawImage.mock.calls).toEqual(standing.drawImage.mock.calls)
+      expect(seated.scale.mock.calls).toEqual(standing.scale.mock.calls)
+      expect(seated.translate.mock.calls).toEqual(standing.translate.mock.calls)
+    }
+  })
+
+  it('also preserves the proportions and position of a custom skin while seated', () => {
+    const skin = { avatar: { customSkinUrl: 'skin' } } as Partial<Player>
+    const standing = render({ ...skin, x: 7, y: 5 })
+    const seated = render({ ...skin, x: 7, y: 5, seatedOn: 'chair:0:0' })
+    expect(seated.drawImage.mock.calls).toEqual(standing.drawImage.mock.calls)
+    expect(seated.scale.mock.calls).toEqual(standing.scale.mock.calls)
+    expect(seated.translate.mock.calls).toEqual(standing.translate.mock.calls)
   })
 })
