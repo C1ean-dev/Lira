@@ -38,8 +38,8 @@ interface Props {
   pixelHeight?: number
   setBoardSizeInTiles: (w: number, h: number) => void
   composeCanvasRef: React.RefObject<HTMLCanvasElement>
-  composeTool: 'move' | 'collision'
-  setComposeTool: (tool: 'move' | 'collision') => void
+  composeTool: 'move' | 'collision' | 'seat'
+  setComposeTool: (tool: 'move' | 'collision' | 'seat') => void
   composeZoom: number
   setComposeZoom: (z: number | ((prev: number) => number)) => void
   showCollisionOverlay: boolean
@@ -47,6 +47,7 @@ interface Props {
   collisionGrid: boolean[][]
   onSetAllCollision: (solid: boolean) => void
   onSetBottomHalfCollision: () => void
+  onClearSeats?: () => void
   onFitLayersToBoard?: () => void
   onComposeMouseDown: (e: React.MouseEvent<HTMLCanvasElement>) => void
   onComposeMouseMove: (e: React.MouseEvent<HTMLCanvasElement>) => void
@@ -76,6 +77,7 @@ export const CompositionStudio: React.FC<Props> = ({
   collisionGrid,
   onSetAllCollision,
   onSetBottomHalfCollision,
+  onClearSeats,
   onFitLayersToBoard,
   onComposeMouseDown,
   onComposeMouseMove,
@@ -195,6 +197,19 @@ export const CompositionStudio: React.FC<Props> = ({
               <Brush className="w-3.5 h-3.5" />
               <span>Pintar Colisão (Tiles)</span>
             </button>
+            {elementType === 'furniture' && (
+              <button
+                type="button"
+                onClick={() => { setComposeTool('seat'); setShowCollisionOverlay(true) }}
+                className={`px-3 py-1 text-xs font-bold rounded-lg flex items-center gap-1.5 ${
+                  composeTool === 'seat' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Pinte as hitboxes onde o player pode sentar"
+              >
+                <Brush className="w-3.5 h-3.5" />
+                <span>Pintar Assento</span>
+              </button>
+            )}
           </div>
 
           {onFitLayersToBoard && (
@@ -247,7 +262,7 @@ export const CompositionStudio: React.FC<Props> = ({
                 ? 'bg-rose-600/20 border-rose-500 text-rose-400'
                 : 'bg-[#12151d] border-[#2b2d31] text-slate-400 hover:text-white'
             }`}
-            title="Exibir/Ocultar grade de colisão vermelha"
+            title="Exibir/Ocultar hitboxes: colisão vermelha e assento verde"
           >
             <Eye className="w-4 h-4" />
           </button>
@@ -346,11 +361,18 @@ export const CompositionStudio: React.FC<Props> = ({
             onMouseMove={onComposeMouseMove}
             onMouseUp={onComposeMouseUp}
             className={`pixelated ${
-              composeTool === 'collision' ? 'cursor-crosshair' : 'cursor-move'
+              composeTool !== 'move' ? 'cursor-crosshair' : 'cursor-move'
             }`}
           />
         </div>
       </div>
+
+      {elementType === 'furniture' && composeTool === 'seat' && (
+        <div className="p-3 bg-[#18191c] border-t border-[#2b2d31] flex items-center justify-between gap-3 text-xs text-emerald-300">
+          <span>Pinte ou apague os blocos verdes para sentar ao clicar ou passar pela hitbox. O player olha na direção do móvel e levanta ao andar.</span>
+          <button type="button" onClick={onClearSeats} className="px-3 py-1 rounded-xl bg-slate-800 text-slate-200 shrink-0">Limpar Assentos</button>
+        </div>
+      )}
 
       {elementType === 'furniture' && composeTool === 'collision' && (
         <div className="p-3 bg-[#18191c] border-t border-[#2b2d31] flex items-center justify-between shrink-0 animate-in fade-in duration-150">

@@ -56,4 +56,10 @@ describe('avatar activity rendering', () => {
     expect(ctx.drawImage.mock.calls[0][0].src).toBe('yawn2')
     expect(ctx.scale).not.toHaveBeenCalled()
   })
+
+  it('shows a seated pose for local and remote characters and restores standing when moving', () => {
+    expect(render({ seatedOn: 'chair:0:0' }).scale).toHaveBeenCalledWith(1, 0.75)
+    expect(render({ seatedOn: null }).scale).not.toHaveBeenCalled()
+    expect(render({ seatedOn: 'chair:0:0', isMoving: true }).scale).not.toHaveBeenCalled()
+  })
 })

@@ -415,7 +415,8 @@ export const MapViewport: React.FC = () => {
         }
       }
     } else {
-      engineRef.current.setClickTarget(tile.x, tile.y)
+      const point = engineRef.current.screenToTile(mouseX, mouseY, 0)
+      engineRef.current.setClickTarget(point.x, point.y)
     }
   }
 
@@ -765,12 +766,6 @@ export const MapViewport: React.FC = () => {
       const mouseX = (touch.x - rect.left) * scaleX
       const mouseY = (touch.y - rect.top) * scaleY
 
-      let snapStep = 1
-      if (activeTool === 'place_furniture') {
-        snapStep = getPlacementSnapStep(false, selectedFurnitureDefId)
-      }
-      const tile = engineRef.current.screenToTile(mouseX, mouseY, snapStep)
-
       if (isEditorOpen) {
         const mouseEv = {
           clientX: touch.x,
@@ -779,7 +774,8 @@ export const MapViewport: React.FC = () => {
         } as React.MouseEvent<HTMLCanvasElement>
         handleCanvasMouseDown(mouseEv)
       } else {
-        engineRef.current.setClickTarget(tile.x, tile.y)
+        const point = engineRef.current.screenToTile(mouseX, mouseY, 0)
+        engineRef.current.setClickTarget(point.x, point.y)
       }
     }
 

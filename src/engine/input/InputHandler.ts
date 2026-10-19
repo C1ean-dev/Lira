@@ -5,6 +5,7 @@ export class InputHandler {
   public keysPressed: Set<string> = new Set()
   public path: Point[] = []
   public finalDestination: Point | null = null
+  public movementIntent: number = 0
 
   public setup() {
     window.addEventListener('keydown', this.handleKeyDown)
@@ -23,6 +24,7 @@ export class InputHandler {
 
     const key = e.key.toLowerCase()
     if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+      if (!e.repeat && !this.keysPressed.has(key)) this.movementIntent++
       this.keysPressed.add(key)
       this.clearPath()
     }
@@ -36,6 +38,7 @@ export class InputHandler {
   public simulateKey = (key: string, pressed: boolean) => {
     const k = key.toLowerCase()
     if (pressed) {
+      if (!this.keysPressed.has(k)) this.movementIntent++
       this.keysPressed.add(k)
       this.clearPath()
     } else {
@@ -44,6 +47,7 @@ export class InputHandler {
   }
 
   public setPath(path: Point[]) {
+    this.movementIntent++
     this.path = [...path]
     this.finalDestination = path.length > 0 ? path[path.length - 1] : null
   }

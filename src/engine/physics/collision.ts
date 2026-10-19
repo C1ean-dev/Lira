@@ -8,6 +8,7 @@ import { useChatStore } from '../../store/useChatStore'
 import { useMediaStore } from '../../store/useMediaStore'
 import { MediaManager } from '../../media/MediaManager'
 import { PeerManager } from '../../p2p/PeerManager'
+import { resolveSeatGrid, seatCellBounds } from './seating'
 
 let neighborCacheMap: MapData | null = null
 let neighborCacheZones: PrivateZone[] | null = null
@@ -15,6 +16,33 @@ const leftNeighborCache = new Map<string, PrivateZone | undefined>()
 const rightNeighborCache = new Map<string, PrivateZone | undefined>()
 const topNeighborCache = new Map<string, PrivateZone | undefined>()
 const bottomNeighborCache = new Map<string, PrivateZone | undefined>()
+
+interface Bounds { minX: number; maxX: number; minY: number; maxY: number }
+
+function collidesOutsideSeats(player: Bounds, obstacle: Bounds, seats: Bounds[]): boolean {
+  const overlap = {
+    minX: Math.max(player.minX, obstacle.minX), maxX: Math.min(player.maxX, obstacle.maxX),
+    minY: Math.max(player.minY, obstacle.minY), maxY: Math.min(player.maxY, obstacle.maxY),
+  }
+  if (overlap.minX >= overlap.maxX || overlap.minY >= overlap.maxY) return false
+  if (seats.length === 0) return true
+  let remaining = [overlap]
+  for (const seat of seats) {
+    const outside: Bounds[] = []
+    for (const rect of remaining) {
+      const minX = Math.max(rect.minX, seat.minX), maxX = Math.min(rect.maxX, seat.maxX)
+      const minY = Math.max(rect.minY, seat.minY), maxY = Math.min(rect.maxY, seat.maxY)
+      if (minX >= maxX || minY >= maxY) { outside.push(rect); continue }
+      if (rect.minY < minY) outside.push({ ...rect, maxY: minY })
+      if (maxY < rect.maxY) outside.push({ ...rect, minY: maxY })
+      if (rect.minX < minX) outside.push({ minX: rect.minX, maxX: minX, minY, maxY })
+      if (maxX < rect.maxX) outside.push({ minX: maxX, maxX: rect.maxX, minY, maxY })
+    }
+    remaining = outside
+    if (remaining.length === 0) return false
+  }
+  return remaining.length > 0
+}
 
 function getCachedNeighbors(
   map: MapData,
@@ -311,6 +339,12 @@ export function checkCollision(x: number, y: number, map: MapData): boolean {
       : undefined
 
     const hasActiveGridCollisions = activeCollisionGrid?.some((row) => row?.some((cell) => cell === true))
+    const seats = customAsset ? resolveSeatGrid(furn, customAsset) : undefined
+    const seatBounds: Bounds[] = []
+    seats?.grid.forEach((row, r) => row?.forEach((isSeat, c) => {
+      if (isSeat && r < tileH && c < tileW) seatBounds.push(seatCellBounds(furn, tileW, tileH, r, c, seats.mirrorH))
+    }))
+    const playerBounds = { minX: pMinX, maxX: pMaxX, minY: pMinY, maxY: pMaxY }
 
     if (customAsset && hasActiveGridCollisions && activeCollisionGrid && activeCollisionGrid.length > 0) {
       const maxR = Math.min(Math.ceil(tileH), activeCollisionGrid.length)
@@ -324,7 +358,7 @@ export function checkCollision(x: number, y: number, map: MapData): boolean {
             const tileMaxY = Math.min(furn.y + r + 1, furn.y + tileH) - 0.05
 
             if (tileMaxX > tileMinX && tileMaxY > tileMinY) {
-              if (pMaxX > tileMinX && pMinX < tileMaxX && pMaxY > tileMinY && pMinY < tileMaxY) {
+              if (collidesOutsideSeats(playerBounds, { minX: tileMinX, maxX: tileMaxX, minY: tileMinY, maxY: tileMaxY }, seatBounds)) {
                 return true
               }
             }
@@ -340,7 +374,7 @@ export function checkCollision(x: number, y: number, map: MapData): boolean {
       const furnMaxY = furn.y + tileH - marginY
 
       if (furnMaxX > furnMinX && furnMaxY > furnMinY) {
-        if (pMaxX > furnMinX && pMinX < furnMaxX && pMaxY > furnMinY && pMinY < furnMaxY) {
+        if (collidesOutsideSeats(playerBounds, { minX: furnMinX, maxX: furnMaxX, minY: furnMinY, maxY: furnMaxY }, seatBounds)) {
           return true
         }
       }

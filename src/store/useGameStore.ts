@@ -539,6 +539,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
           y,
           direction,
           isMoving,
+          ...(isMoving ? { seatedOn: null } : {}),
           lastUpdated: Date.now(),
         },
       }
@@ -671,6 +672,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             y,
             direction,
             isMoving,
+            ...(isMoving ? { seatedOn: null } : {}),
             lastUpdated: Date.now(),
           },
         },

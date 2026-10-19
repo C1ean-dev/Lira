@@ -199,6 +199,7 @@ export interface Player {
   targetY?: number
   direction: Direction
   isMoving: boolean
+  seatedOn?: string | null
   activityAnimation?: AvatarActivityAnimation | 'none'
   activityAnimationStartedAt?: number
   avatar: AvatarConfig

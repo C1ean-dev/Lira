@@ -45,6 +45,8 @@ export interface CustomAsset {
   pixelHeight?: number
   isObstacle: boolean
   collisionGrid?: boolean[][]
+  seatGrid?: boolean[][]
+  directionalSeatGrids?: Partial<Record<Direction, boolean[][]>>
   collisionFromSprite?: boolean
   frames: string[]
   directionalFrames?: Partial<Record<Direction, string | string[]>>

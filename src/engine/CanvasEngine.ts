@@ -9,6 +9,8 @@ import { useMapStore } from '../store/useMapStore'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { getZoneDoorTarget } from '../utils/doorKnockHelper'
+import { findFurnitureSeatAt } from './physics/seating'
+import type { MapData } from '../types/map'
 
 export class CanvasEngine {
   private canvas: HTMLCanvasElement
@@ -26,6 +28,8 @@ export class CanvasEngine {
   private lastFpsUpdate: number = performance.now()
   private fps: number = 60
   private stuckCounter: number = 0
+  private seatedMovementIntent: number = 0
+  private ignoredSeat: string | null = null
 
   public hoverTile: { x: number; y: number } | null = null
   public zoneDragStart: { x: number; y: number } | null = null
@@ -62,8 +66,8 @@ export class CanvasEngine {
     const mapStore = useMapStore.getState()
     const map = mapStore.mapData
 
-    let targetX = tileX
-    let targetY = tileY
+    let targetX = Math.floor(tileX)
+    let targetY = Math.floor(tileY)
 
     const targetZone = map.zones?.find(
       (z) =>
@@ -89,6 +93,15 @@ export class CanvasEngine {
         targetX = door.x
         targetY = door.y
       }
+    }
+
+    const seat = !mapStore.isEditorOpen && targetX === Math.floor(tileX) && targetY === Math.floor(tileY)
+      ? findFurnitureSeatAt(tileX, tileY, map)
+      : null
+    if (seat && local.seatedOn === seat.id) return
+    if (seat) {
+      targetX = seat.x
+      targetY = seat.y
     }
 
     const path = findPath(local.x, local.y, targetX, targetY, map)
@@ -195,6 +208,31 @@ export class CanvasEngine {
 
   private lastMovementBroadcast: number = 0
 
+  private standUp() {
+    const store = useGameStore.getState()
+    const local = store.localPlayer
+    const seat = findFurnitureSeatAt(local.x + 0.5, local.y + 0.5, useMapStore.getState().mapData)
+    this.ignoredSeat = seat?.id || null
+    store.setLocalPlayer({ seatedOn: null })
+    PeerManager.getInstance().sendPlayerUpdate({ seatedOn: null })
+  }
+
+  private trySitAt(x: number, y: number, map: MapData): boolean {
+    if (useMapStore.getState().isEditorOpen) return false
+    const seat = findFurnitureSeatAt(x + 0.5, y + 0.5, map)
+    if (!seat || seat.id === this.ignoredSeat || checkCollision(seat.x, seat.y, map) ||
+        !hasLineOfSight(x, y, seat.x, seat.y, map)) return false
+    const seated = { x: seat.x, y: seat.y, direction: seat.direction, isMoving: false, seatedOn: seat.id }
+    useGameStore.getState().setLocalPlayer(seated)
+    this.input.clearPath()
+    this.seatedMovementIntent = this.input.movementIntent
+    this.stuckCounter = 0
+    PeerManager.getInstance().sendPlayerUpdate(seated)
+    PeerManager.getInstance().sendMovement(seat.x, seat.y, seat.direction, false)
+    checkZonePresence(seat.x, seat.y, map)
+    return true
+  }
+
   private update(deltaTime: number) {
     const gameStore = useGameStore.getState()
     const mapStore = useMapStore.getState()
@@ -202,7 +240,21 @@ export class CanvasEngine {
     const map = mapStore.mapData
     const moveSpeed = useSettingsStore.getState().moveSpeed || 8.0
 
-    const { dx, dy, nextDirection } = this.input.computeMovement(local.x, local.y, local.direction)
+    const currentSeat = findFurnitureSeatAt(local.x + 0.5, local.y + 0.5, map)
+    if (this.ignoredSeat && currentSeat?.id !== this.ignoredSeat) {
+      this.ignoredSeat = null
+    }
+    const validSeat = local.seatedOn && currentSeat?.id === local.seatedOn && !mapStore.isEditorOpen
+    const holdingSeat = validSeat && this.input.movementIntent === this.seatedMovementIntent
+    if (local.seatedOn && !holdingSeat) this.standUp()
+    if (!local.seatedOn && !mapStore.isEditorOpen && this.trySitAt(local.x, local.y, map)) {
+      this.camera.followPlayer(useGameStore.getState().localPlayer.x, useGameStore.getState().localPlayer.y, deltaTime)
+      return
+    }
+
+    const { dx, dy, nextDirection } = holdingSeat
+      ? { dx: 0, dy: 0, nextDirection: local.direction }
+      : this.input.computeMovement(local.x, local.y, local.direction)
 
     if (dx !== 0 || dy !== 0) {
       const requestedStep = moveSpeed * deltaTime
@@ -229,6 +281,12 @@ export class CanvasEngine {
         if (canMoveTogether) {
           finalX = tryX
           finalY = tryY
+          if (this.trySitAt(finalX, finalY, map)) {
+            const seated = useGameStore.getState().localPlayer
+            this.camera.isManualPan = false
+            this.camera.followPlayer(seated.x, seated.y, deltaTime)
+            return
+          }
           continue
         }
 
@@ -253,6 +311,11 @@ export class CanvasEngine {
           finalY = tryY
         } else {
           break
+        }
+        if (this.trySitAt(finalX, finalY, map)) {
+          const seated = useGameStore.getState().localPlayer
+          this.camera.followPlayer(seated.x, seated.y, deltaTime)
+          return
         }
       }
 
