@@ -2,6 +2,7 @@ import { app, BrowserWindow, Tray, Menu, nativeImage, NativeImage } from 'electr
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
+import { runtimeAssetPath } from './assetPaths'
 import {
   AppSettings,
   DEFAULT_APP_SETTINGS,
@@ -150,6 +151,7 @@ export class TrayManager {
 
   private resolveIcon(): NativeImage {
     const pathsToTry = [
+      runtimeAssetPath(app.getAppPath(), app.isPackaged, 'tray-icon.png'),
       path.join(process.cwd(), 'public/tray-icon.png'),
       path.join(__dirname, '../public/tray-icon.png'),
       path.join(__dirname, 'resources/tray-icon.png'),

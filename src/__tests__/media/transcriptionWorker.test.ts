@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const { pipeline, recognize } = vi.hoisted(() => ({ pipeline: vi.fn(), recognize: vi.fn() }))
-vi.mock('@huggingface/transformers', () => ({ env: { backends: { onnx: { wasm: {} } } }, pipeline }))
+vi.mock('../../media/transcriptionRuntime', () => ({ loadTranscriptionRuntime: pipeline }))
 
 afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); vi.resetAllMocks() })
 
@@ -16,7 +16,7 @@ describe('local transcription worker', () => {
     await import('../../media/transcription.worker')
     scope.onmessage({ data: { type: 'load' } })
     await vi.waitFor(() => expect(scope.postMessage).toHaveBeenCalledWith({ type: 'ready' }))
-    expect(pipeline).toHaveBeenCalledWith('automatic-speech-recognition', 'Xenova/whisper-base', expect.objectContaining({ device: 'wasm' }))
+    expect(pipeline).toHaveBeenCalledOnce()
     scope.onmessage({ data: { type: 'audio', audio: new Float32Array(16000), entry: { speakerId: 'ana', speakerName: 'Ana' } } })
     scope.onmessage({ data: { type: 'audio', audio: new Float32Array(16000), entry: { speakerId: 'bruno', speakerName: 'Bruno' } } })
     scope.onmessage({ data: { type: 'stop' } })

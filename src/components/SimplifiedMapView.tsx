@@ -148,6 +148,7 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
   const playersByZone = useMemo(() => {
     const grouped = new Map<string | null, Player[]>()
     for (const player of Object.values(remotePlayers)) {
+      if (player.isDjBot || player.id.startsWith('dj-')) continue
       const zoneId = player.currentZoneId || null
       const players = grouped.get(zoneId)
       if (players) players.push(player)

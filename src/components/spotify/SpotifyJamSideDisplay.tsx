@@ -7,8 +7,6 @@ import { SpotifyIcon } from '../common/SpotifyIcon'
 import { MediaManager } from '../../media/MediaManager'
 import { SpotifyPlayerFeedback } from './SpotifyPlayerFeedback'
 import { SpotifyPlaybackCrop } from './SpotifyPlaybackCrop'
-import { SpotifyLoginControls } from './SpotifyLoginControls'
-import { useSpotifyLogin } from '../../hooks/useSpotifyLogin'
 
 export const SpotifyJamSideDisplay: React.FC = () => {
   const localPlayer = useLocalPlayerDetails()
@@ -28,7 +26,6 @@ export const SpotifyJamSideDisplay: React.FC = () => {
 
   const [djLoading, setDjLoading] = useState(false)
   const [djError, setDjError] = useState<string | null>(null)
-  const login = useSpotifyLogin(!!localZoneId && !!djStateByZone[localZoneId]?.isDjActive && !isMinimized && !isDjModeActive)
 
   if (!localZoneId) return null
   const zoneDjState = djStateByZone[localZoneId]
@@ -38,35 +35,15 @@ export const SpotifyJamSideDisplay: React.FC = () => {
   const currentZone = mapZones.find((z) => z.id === localZoneId)
   const zoneDisplayName = currentZone?.name || 'Sala Privada'
 
-  const handleToggleDjMode = async () => {
-    if (djLoading || (!isDjModeActive && !login.ready)) return
+  const handleStopDj = async () => {
+    if (djLoading || !isDjModeActive) return
     setDjError(null)
     setDjLoading(true)
     try {
-      if (isDjModeActive) {
-        await MediaManager.getInstance().stopDjAudio()
-        setDjStateInZone(localZoneId, null, true)
-      } else {
-        const res = await MediaManager.getInstance().startDjAudio()
-        if (res.ok) {
-          setDjStateInZone(
-            localZoneId,
-            {
-              zoneId: localZoneId,
-              isDjActive: true,
-              djPeerId: localPlayer.id,
-              djName: localPlayer.name,
-              startedAt: Date.now(),
-            },
-            true
-          )
-        } else {
-          setDjError(res.error || 'Erro ao iniciar transmissão de áudio.')
-        }
-      }
-    } finally {
-      setDjLoading(false)
-    }
+      await MediaManager.getInstance().stopDjAudio()
+      setDjStateInZone(localZoneId, null, true)
+    } catch { setDjError('Não foi possível parar a transmissão. Tente novamente.') }
+    finally { setDjLoading(false) }
   }
 
   if (isMinimized) {
@@ -160,23 +137,18 @@ export const SpotifyJamSideDisplay: React.FC = () => {
       </div>
 
       <div className="p-3 bg-[#0a0c12]/70 space-y-3 overflow-y-auto">
-        {!isDjModeActive && <SpotifyLoginControls login={login} disabled={djLoading} />}
-        {isDjModeActive && <SpotifyPlaybackCrop />}
+        <SpotifyPlaybackCrop />
         <SpotifyPlayerFeedback opening={djLoading} error={djError} />
-        <button
+        {isDjModeActive && <button
           type="button"
-          onClick={handleToggleDjMode}
-          disabled={djLoading || (!isDjModeActive && !login.ready)}
+          onClick={handleStopDj}
+          disabled={djLoading}
           aria-busy={djLoading}
-          className={`w-full py-4 px-5 rounded-2xl text-base font-bold flex items-center justify-center gap-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-            isDjModeActive
-              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30'
-              : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-950/40'
-          }`}
+          className="w-full py-4 px-5 rounded-2xl text-base font-bold flex items-center justify-center gap-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30"
         >
           <SpotifyIcon size={24} className="w-6 h-6 shrink-0" aria-hidden="true" />
-          <span>{djLoading ? (isDjModeActive ? 'Parando...' : 'Iniciando...') : isDjModeActive ? 'Parar DJ' : 'Transmitir DJ'}</span>
-        </button>
+          <span>{djLoading ? 'Parando...' : 'Parar DJ'}</span>
+        </button>}
 
         <div className="flex items-center gap-3 p-3 rounded-xl bg-[#141721] border border-slate-800">
           <button
@@ -197,7 +169,6 @@ export const SpotifyJamSideDisplay: React.FC = () => {
             onChange={(e) => {
               const v = Number(e.target.value)
               setVolume(v)
-              MediaManager.getInstance().setDjVolume(v)
             }}
             className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
           />

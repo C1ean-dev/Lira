@@ -197,7 +197,7 @@ export class WorldRenderer {
         | { kind: 'player'; y: number; player: Player; isLocal: boolean }
         | { kind: 'pet'; y: number; pet: PetState; petConfig: PetConfig }
 
-      const remoteList = Object.values(remotePlayers)
+      const remoteList = Object.values(remotePlayers).filter(p => !p.isDjBot && !p.id.startsWith('dj-'))
       const allEntities: RenderableEntity[] = [
         { kind: 'player', y: localPlayer.y, player: localPlayer, isLocal: true },
       ]

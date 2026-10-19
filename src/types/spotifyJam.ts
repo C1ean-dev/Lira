@@ -1,3 +1,4 @@
+import type { SpotifyPlaybackFrameData } from './spotifyPlayback'
 export interface ZoneJamSession {
   zoneId: string
   zoneName: string
@@ -113,6 +114,8 @@ export interface SpotifyDjState {
   isDjActive: boolean
   djPeerId: string
   djName: string
+  playback?: SpotifyPlaybackFrameData
+  playbackError?: string | null
   trackTitle?: string
   trackArtist?: string
   startedAt?: number

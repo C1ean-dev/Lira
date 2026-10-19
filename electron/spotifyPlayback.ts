@@ -11,7 +11,7 @@ export function readSpotifyPlaybackRegion() {
   const ids = { shuffle: 'control-button-shuffle', previous: 'control-button-skip-back', playpause: 'control-button-playpause', next: 'control-button-skip-forward', repeat: 'control-button-repeat' }
   const buttons = Object.entries(ids).flatMap(([id, testid]) => {
     const node = root.querySelector<HTMLButtonElement>(`[data-testid="${testid}"]`)
-      || (id === 'shuffle' ? document.querySelector<HTMLButtonElement>(`[data-testid="${testid}"]`) : null)
+      || document.querySelector<HTMLButtonElement>(`[data-testid="${testid}"]`)
     if (!node) return []
     const box = node.getBoundingClientRect()
     if (!box.width || !box.height) return []
@@ -43,6 +43,21 @@ export function readSpotifyPlaybackRegion() {
   const title = metadata?.title || document.querySelector('[data-testid="context-item-info-title"], [data-testid="nowplaying-track-link"]')?.textContent?.trim() || ''
   const artist = metadata?.artist || document.querySelector('[data-testid="context-item-info-subtitles"]')?.textContent?.trim() || ''
   return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, playing, buttons, seek, track: title ? { title, artist } : null }
+}
+
+// Evaluated in the dedicated tab. Track changes can reflow Spotify's controls;
+// identify the current button rather than clicking a coordinate from a prior read.
+export function clickSpotifyPlaybackButton(action: string) {
+  if (location.origin !== 'https://open.spotify.com') return false
+  const ids: Record<string, string> = {
+    previous: 'control-button-skip-back', playpause: 'control-button-playpause',
+    next: 'control-button-skip-forward', repeat: 'control-button-repeat',
+  }
+  if (!Object.prototype.hasOwnProperty.call(ids, action)) return false
+  const button = document.querySelector<HTMLButtonElement>(`[data-testid="${ids[action]}"]`)
+  if (!button || button.disabled || button.getAttribute('aria-disabled') === 'true') return false
+  button.click()
+  return true
 }
 
 type Region = PlaybackRect & {
@@ -99,7 +114,7 @@ export class SpotifyPlaybackController {
     const region: Region = result?.result?.value
     if (!rectValid(region) || region.width > 1600 || region.height > 240 || !Array.isArray(region.buttons) || !region.buttons.length) throw new Error('Escolha uma música no Spotify para mostrar os controles.')
     region.buttons = region.buttons.filter(button => actions.includes(button.id) && button.id !== 'seek'
-      && (button.id === 'shuffle' ? rectValid(button) : contained(button, region)))
+      && rectValid(button))
     if (region.seek && (!contained(region.seek, region) || !Number.isFinite(region.seek.value))) region.seek = null
     if (!region.buttons.length) throw new Error('Os controles do Spotify ainda não estão disponíveis.')
     return region
@@ -140,6 +155,14 @@ export class SpotifyPlaybackController {
       const button = region.buttons.find(button => button.id === command.action)
       const box = command.action === 'seek' ? region.seek : button
       if (!box || button?.disabled) throw new Error('Esse controle não está disponível no Spotify agora.')
+      if (command.action !== 'seek') {
+        const result = await connection.request('Runtime.evaluate', {
+          expression: `(${clickSpotifyPlaybackButton.toString()})(${JSON.stringify(command.action)})`,
+          returnByValue: true, userGesture: true,
+        })
+        if (result?.result?.value !== true) throw new Error('Esse controle não está disponível no Spotify agora.')
+        return { ok: true }
+      }
       const x = box.x + box.width * (command.action === 'seek' ? command.fraction! : 0.5)
       const y = box.y + box.height / 2
       await connection.request('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, x, y })

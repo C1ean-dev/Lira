@@ -32,6 +32,8 @@ export type NetworkMessageType =
   | 'SPOTIFY_JAM_SYNC'
   | 'SPOTIFY_TRACK_SHARE'
   | 'SPOTIFY_DJ_STATUS'
+  | 'SPOTIFY_DJ_COMMAND'
+  | 'SPOTIFY_DJ_COMMAND_RESULT'
   | 'DJ_CALL_REQUEST'
 
 export interface NetworkMessage {

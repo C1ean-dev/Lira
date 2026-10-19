@@ -64,7 +64,7 @@ export const TopNavBar: React.FC<Props> = ({
   const publicationServers = useRoomPublication(isRoomPublic ? roomId : null)
   const isOnlineUsersOpen = useGameStore((s) => s.isOnlineUsersOpen)
   const toggleOnlineUsers = useGameStore((s) => s.toggleOnlineUsers)
-  const remotePlayerCount = useGameStore((s) => Object.keys(s.remotePlayers).length)
+  const remotePlayerCount = useGameStore((s) => Object.values(s.remotePlayers).filter(p => !p.isDjBot && !p.id.startsWith('dj-')).length)
   const mapZones = useMapStore((s) => s.mapData.zones)
   const isEditorOpen = useMapStore((s) => s.isEditorOpen)
   const toggleEditor = useMapStore((s) => s.toggleEditor)

@@ -23,6 +23,7 @@ const state = vi.hoisted(() => ({
 vi.mock('../../store/useSpotifyJamStore', () => ({ useSpotifyJamStore: (select: any) => select(state.spotify) }))
 vi.mock('../../store/useGameStore', () => ({ useGameStore: (select: any) => select({ localPlayer: state.player }) }))
 vi.mock('../../store/useMapStore', () => ({ useMapStore: (select: any) => select({ mapData: { zones: [{ id: 'room', name: 'Sala privada' }] } }) }))
+vi.mock('../../services/spotifyDjPlayback', () => ({ commandDjPlayback: vi.fn() }))
 vi.mock('../../media/MediaManager', () => ({ MediaManager: { getInstance: vi.fn() } }))
 vi.mock('../../hooks/useSpotifyLogin', () => ({ useSpotifyLogin: () => state.login }))
 

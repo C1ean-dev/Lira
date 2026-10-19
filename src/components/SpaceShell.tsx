@@ -12,6 +12,8 @@ import { DoorKnockPrompt } from './DoorKnockPrompt'
 import { SpotifyJamSideDisplay } from './spotify/SpotifyJamSideDisplay'
 import { SpotifyJamModal } from './spotify/SpotifyJamModal'
 import { useSpotifyPresence } from '../hooks/useSpotifyPresence'
+import { SpotifyDjAudio } from './spotify/SpotifyDjAudio'
+import { useSpotifyDjPlaybackSync } from '../hooks/useSpotifyDjPlaybackSync'
 import { useAvatarInactivity } from '../hooks/useAvatarInactivity'
 
 interface Props {
@@ -32,6 +34,7 @@ export const SpaceShell: React.FC<Props> = ({
   onDisconnect,
 }) => {
   useSpotifyPresence()
+  useSpotifyDjPlaybackSync()
   useAvatarInactivity()
 
   return (
@@ -61,6 +64,7 @@ export const SpaceShell: React.FC<Props> = ({
 
     <OnlineUsersMenu />
 
+    <SpotifyDjAudio />
     <SpotifyJamSideDisplay />
     <SpotifyJamModal />
   </>

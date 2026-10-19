@@ -77,7 +77,7 @@ const FullScreenGridInner: React.FC = () => {
   const isLocalSpeaking = localAudioLevel > 0.15 && !isMuted
   const allInMeeting: ParticipantData[] = React.useMemo(() => {
     const peersInSameZone = Object.values(remotePlayers).filter(
-      (p) => p.currentZoneId === localPlayer.currentZoneId
+      (p) => !p.isDjBot && !p.id.startsWith('dj-') && p.currentZoneId === localPlayer.currentZoneId
     )
     return [
       {
