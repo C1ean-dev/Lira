@@ -45,6 +45,15 @@ afterEach(() => {
 })
 
 describe('core call retry contract', () => {
+  it('preserves the ICE servers already selected by the transport controller', () => {
+    const fixture = setup()
+    const call = fakeCall()
+    const setConfiguration = vi.fn()
+    ;(call.peerConnection as any).setConfiguration = setConfiguration
+    fixture.peer.call.mockReturnValue(call)
+    fixture.check()
+    expect(setConfiguration).not.toHaveBeenCalled()
+  })
   it('preserves backoff while frequent participant updates arrive', async () => {
     const fixture = setup()
     fixture.check(); fixture.fail()

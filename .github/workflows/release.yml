@@ -52,6 +52,7 @@ jobs:
           VITE_TURN_URLS: ${{ secrets.VITE_TURN_URLS }}
           VITE_TURN_USERNAME: ${{ secrets.VITE_TURN_USERNAME }}
           VITE_TURN_CREDENTIAL: ${{ secrets.VITE_TURN_CREDENTIAL }}
+          VITE_TURN_CREDENTIALS_URL: ${{ secrets.VITE_TURN_CREDENTIALS_URL }}
         run: npm run build
 
       - name: Create or Update GitHub Release

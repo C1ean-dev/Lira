@@ -47,4 +47,14 @@ describe('relay configuration in published apps', () => {
       credential: secrets.VITE_TURN_CREDENTIAL,
     })
   })
+
+  it.each([
+    ['release.yml', 'build-and-release', 'Build and Package Electron App'],
+    ['android.yml', 'build-apk', 'Build web bundle'],
+  ])('bundles only the credential service URL for Cloudflare in %s', (file, job, stepName) => {
+    const workflow = load(readFileSync(`.github/workflows/${file}`, 'utf8')) as any
+    const env = workflow.jobs[job].steps.find((step: any) => step.name === stepName).env
+    expect(env.VITE_TURN_CREDENTIALS_URL).toBe('${{ secrets.VITE_TURN_CREDENTIALS_URL }}')
+    expect(Object.keys(env).some(key => /CLOUDFLARE.*TOKEN|CLOUDFLARE.*KEY/.test(key))).toBe(false)
+  })
 })
