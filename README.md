@@ -145,6 +145,13 @@ O sistema adota uma arquitetura híbrida descentralizada, combinando topologia e
 
 ### 3. Estabelecimento de Transporte, ICE, STUN e Fallback TURN
 
+As conexões usam prioridade automática **P2P → Cloudflare → Metered**, com reinício
+ICE na mesma conexão quando uma etapa falha. O backend emite credenciais Cloudflare
+temporárias; o token administrativo fica somente no servidor. Configure
+`CLOUDFLARE_TURN_KEY_ID` e `CLOUDFLARE_TURN_API_TOKEN` no Render. O cliente usa
+`VITE_TURN_CREDENTIALS_URL` (padrão: `https://lira-signaling.onrender.com/turn/credentials`).
+Consulte [configuração e fallback TURN](docs/call-relays.md) para implantação.
+
 - **Coleta de Candidatos ICE sob Demanda (`iceCandidatePoolSize: 0`)**:
   - A coleta acompanha a negociação de cada transporte via trickle ICE do PeerJS. A pré-coleta foi desabilitada após reproduzir conexões que ficavam com ICE conectado, mas sem concluir a abertura do canal de dados ou da mídia.
 - **Topologia de Travessia NAT (STUN/TURN)**:
@@ -152,7 +159,7 @@ O sistema adota uma arquitetura híbrida descentralizada, combinando topologia e
   - Para redes que impedem conexão direta (como certos NATs e firewalls), é necessário configurar um servidor TURN autenticado. Isso vale tanto para entrar no espaço pelo canal de dados quanto para chamadas de áudio, vídeo e compartilhamento de tela. Não há relay anônimo habilitado por padrão.
   - A entrada aguarda até 30 segundos pela conexão com o anfitrião, a partir do registro no servidor de sinalização. Falhas de transporte não promovem o visitante a anfitrião; a retomada automática continua disponível quando o servidor informa que o anfitrião está indisponível.
 
-Configure as três variáveis abaixo no ambiente de build (ou em `.env.local` no desenvolvimento). Para os instaladores Windows e Android, cadastre secrets do GitHub Actions com esses mesmos nomes antes de gerar uma nova versão:
+Para habilitar o último fallback, Metered, configure as três variáveis abaixo no ambiente de build (ou em `.env.local` no desenvolvimento). Para os instaladores Windows e Android, cadastre secrets do GitHub Actions com esses mesmos nomes antes de gerar uma nova versão:
 
 | Variável | Valor |
 | --- | --- |
@@ -177,7 +184,7 @@ O arquivo [`.env.example`](.env.example) contém as quatro rotas TURN do Metered
 
 Para gerar os instaladores pelo GitHub Actions, cadastre `VITE_TURN_URLS`, `VITE_TURN_USERNAME` e `VITE_TURN_CREDENTIAL` como secrets do repositório. Os workflows de Windows e Android recebem os três valores na etapa que gera o aplicativo. O modelo `.env.example` mantém as credenciais vazias para poder ser versionado.
 
-Sem esses valores, o aplicativo usa apenas STUN e pode não conectar participantes em redes diferentes que bloqueiem a ligação direta. As configurações são incorporadas ao aplicativo durante o build: use credenciais próprias para clientes, com limites de uso e rotação, e não coloque os valores no repositório. Alterar os secrets exige gerar e distribuir novos instaladores.
+Sem esses valores, o aplicativo tenta P2P e Cloudflare. Se ambos estiverem indisponíveis, não haverá relay adicional. As configurações Metered são incorporadas ao aplicativo durante o build: use credenciais próprias para clientes, com limites de uso e rotação, e não coloque os valores no repositório. Alterar os secrets Metered exige gerar e distribuir novos instaladores.
 
 - **Otimização de Portas UDP (`max-bundle` e `rtcp-mux`)**:
   - Todas as faixas de áudio, vídeo e mensagens de controle RTCP são multiplexadas em uma única porta UDP compartilhada por sessão, minimizando o número de portas abertas na tabela NAT do roteador.

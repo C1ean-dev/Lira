@@ -66,7 +66,7 @@ const shortTrackId = (id: string | undefined): string | null => {
 }
 
 export const SHARED_RTC_CONFIG: RTCConfiguration = {
-  iceServers: buildIceServers(import.meta.env),
+  iceServers: buildIceServers({}),
   iceTransportPolicy: 'all',
   bundlePolicy: 'max-bundle',
   rtcpMuxPolicy: 'require',
@@ -450,12 +450,6 @@ export class MediaCallHandler {
           pc.addEventListener('negotiationneeded', () => {
             prioritizeH264HardwareCodec(pc)
           })
-        }
-      } catch (e) {}
-
-      try {
-        if (typeof (pc as any).setConfiguration === 'function') {
-          ;(pc as any).setConfiguration(SHARED_RTC_CONFIG)
         }
       } catch (e) {}
 

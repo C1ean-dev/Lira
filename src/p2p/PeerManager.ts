@@ -31,6 +31,9 @@ import { getPlayerUserId } from '../utils/userId'
 import { getRoomChannels } from '../utils/roomChannels'
 import { restoreRoomChannels } from '../services/roomChannelsService'
 import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
+import { buildIceServers } from './rtcIceServers'
+import { loadCloudflareIceServers } from './cloudflareTurn'
+import { installRtcTransportPriority } from './rtcTransportPriority'
 
 export type { SignalingTier }
 export const SIGNALING_TIERS: SignalingTier[] = ['render', 'public', 'local']
@@ -80,6 +83,11 @@ export function createPeerInstance(
   id: string,
   options?: { tier?: SignalingTier; useLocalFallback?: boolean }
 ): Peer {
+  const prioritize = (peer: Peer) => installRtcTransportPriority(peer, {
+    discovery: SHARED_RTC_CONFIG.iceServers || [],
+    cloudflare: loadCloudflareIceServers,
+    metered: buildIceServers(import.meta.env).slice(2),
+  })
   const localPort =
     (typeof window !== 'undefined' &&
       ((window as any).__LIRA_LOCAL_SIGNALING_PORT__ ||
@@ -90,30 +98,30 @@ export function createPeerInstance(
 
   if (tier === 'render') {
     console.log(`[P2P] Connecting via Primary Render signaling server (${RENDER_SIGNALING_HOST}:443)...`)
-    return new Peer(id, {
+    return prioritize(new Peer(id, {
       host: RENDER_SIGNALING_HOST,
       port: 443,
       path: '/',
       secure: true,
       config: SHARED_RTC_CONFIG,
-    })
+    }))
   }
 
   if (tier === 'public') {
     console.log('[P2P] Connecting via Fallback public signaling server (0.peerjs.com)...')
-    return new Peer(id, {
+    return prioritize(new Peer(id, {
       config: SHARED_RTC_CONFIG,
-    })
+    }))
   }
 
   console.log(`[P2P] Connecting via Embedded local signaling server (127.0.0.1:${localPort})...`)
-  return new Peer(id, {
+  return prioritize(new Peer(id, {
     host: '127.0.0.1',
     port: localPort,
     path: '/',
     secure: false,
     config: SHARED_RTC_CONFIG,
-  })
+  }))
 }
 
 interface HostRecovery {

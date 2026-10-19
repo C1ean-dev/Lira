@@ -4,6 +4,19 @@ type TurnEnvironment = {
   VITE_TURN_CREDENTIAL?: string
 }
 
+export function parseIceServers(value: unknown): RTCIceServer[] {
+  if (!Array.isArray(value)) return []
+  const servers: RTCIceServer[] = []
+  for (const server of value) {
+    const urls = typeof server?.urls === 'string' ? [server.urls] : server?.urls
+    if (!Array.isArray(urls) || !urls.length || !urls.every(url => typeof url === 'string' && /^(?:stun|turn)s?:[^\s/?#]+(?:\?transport=(?:udp|tcp))?$/.test(url))) return []
+    const relay = urls.some(url => /^turns?:/.test(url))
+    if (relay && (typeof server.username !== 'string' || !server.username.trim() || typeof server.credential !== 'string' || !server.credential.trim())) return []
+    servers.push({ urls: server.urls, ...(relay ? { username: server.username, credential: server.credential } : {}) })
+  }
+  return servers
+}
+
 export function buildIceServers(env: TurnEnvironment): RTCIceServer[] {
   const servers: RTCIceServer[] = [
     { urls: 'stun:stun.l.google.com:19302' },
