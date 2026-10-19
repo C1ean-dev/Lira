@@ -20,7 +20,7 @@ vi.mock('../../hooks/useBrokerStatus', () => ({ useBrokerStatus: () => broker })
 function renderTab() {
   return renderToStaticMarkup(<PublicRoomsTab
     publicRooms={[]} filteredPublicRooms={[]} searchQuery="" setSearchQuery={() => {}}
-    isRefreshing={false} handleManualRefresh={() => {}} copiedRoomCode={null}
+    handleManualRefresh={() => {}} copiedRoomCode={null}
     handleCopyCode={() => {}} handleJoinPublicRoom={() => {}} handleJoinByCode={() => {}} loading={false}
   />)
 }

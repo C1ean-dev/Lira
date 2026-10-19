@@ -261,7 +261,6 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
 
     set({ status: 'installing', isUpdateScreenOpen: true, error: null })
     try {
-      await new Promise((r) => setTimeout(r, 1200))
       const success = await UpdateService.applyUpdate(info?.releaseUrl, targetVer)
       if (!success) {
         set({

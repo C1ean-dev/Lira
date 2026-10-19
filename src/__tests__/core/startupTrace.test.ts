@@ -33,12 +33,12 @@ describe('formatStartupReport', () => {
     expect(line).toContain('total 10303 ms')
   })
 
-  it('places the splash mark between the entry and the end of the evaluation', () => {
-    const withSplash = formatStartupReport({
+  it('separates module loading, asset preparation and the React commit', () => {
+    const withAssets = formatStartupReport({
       ...base,
-      marks: { entry: 100.4, splash: 250.4, graph: 2650.4, commit: 2780.4, painted: 2900.4 },
+      marks: { entry: 100.4, bootstrap: 250.4, graph: 2650.4, assets: 2750.4, commit: 2780.4, painted: 2900.4 },
     })
-    expect(withSplash).toContain('entry 100 ms | splash +150 | graph +2400 | commit +130 | painted +120 | total 2900 ms')
+    expect(withAssets).toContain('entry 100 ms | bootstrap +150 | graph +2400 | assets +100 | commit +30 | painted +120 | total 2900 ms')
   })
 
   it('says when the page arrived and the first paint', () => {

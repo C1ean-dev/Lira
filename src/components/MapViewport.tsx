@@ -179,6 +179,8 @@ export const MapViewport: React.FC = () => {
     applySize()
     restoreZoomOrFit(engine)
     window.addEventListener('resize', handleResize)
+    const sizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(handleResize) : null
+    if (canvas.parentElement) sizeObserver?.observe(canvas.parentElement)
 
     const handleFocusOrVisibility = () => {
       applySize()
@@ -188,17 +190,8 @@ export const MapViewport: React.FC = () => {
 
     engine.start()
 
-    setTimeout(() => {
-      if (!engineRef.current) return
-      const parentW = canvas.parentElement?.clientWidth || 0
-      const parentH = canvas.parentElement?.clientHeight || 0
-      if (parentW !== canvas.width || parentH !== canvas.height) {
-        applySize()
-      }
-      restoreZoomOrFit(engine)
-    }, 50)
-
     return () => {
+      sizeObserver?.disconnect()
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('focus', handleFocusOrVisibility)
       document.removeEventListener('visibilitychange', handleFocusOrVisibility)

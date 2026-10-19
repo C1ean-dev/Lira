@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { createStartupTimer } from '../../../electron/startupTimer'
 
 function setup(clock: number[], uptimes: number[]) {
@@ -14,6 +14,16 @@ function setup(clock: number[], uptimes: number[]) {
 }
 
 describe('createStartupTimer (main process)', () => {
+  it('uses elapsed time even if the wall clock changes', () => {
+    const clock = vi.spyOn(performance, 'now').mockReturnValueOnce(100).mockReturnValueOnce(125)
+    const wall = vi.spyOn(Date, 'now').mockReturnValue(-100000)
+    try {
+      const lines: string[] = []
+      createStartupTimer({ log: line => lines.push(line), uptimeMs: () => 200 })('ready')
+      expect(lines[0]).toContain('ready +25 ms')
+      expect(wall).not.toHaveBeenCalled()
+    } finally { clock.mockRestore(); wall.mockRestore() }
+  })
   it('logs each step with the time since the timer started and how long the process has been up', () => {
     const { mark, lines } = setup([1000, 1000, 1180, 2650], [1500, 1680, 3150])
     mark('window-created')

@@ -11,19 +11,14 @@ describe('start-up measurements', () => {
     expect(imports[0]).toBe("import './utils/startupEntry'")
   })
 
-  it('main.tsx is tiny: it lets the splash paint, then loads the app', () => {
+  it('main.tsx is tiny and begins the dynamic import immediately', () => {
     const main = read('src/main.tsx')
     const imports = main.split(/\r?\n/).filter((l) => l.startsWith('import '))
     expect(imports.filter((l) => /from '\.\/(App|components|store|p2p|media|engine|editor)/.test(l))).toEqual([])
     expect(imports.some((l) => /react-dom/.test(l))).toBe(false)
     expect(main).toMatch(/installRendererLogging\(\)/)
-    expect(main).toMatch(/requestAnimationFrame\(\(\) => requestAnimationFrame\(loadApp\)\)/)
-    expect(main).toMatch(/markStartup\('splash'\)/)
+    expect(main).toMatch(/markStartup\('bootstrap'\)/)
     expect(main).toMatch(/import\('\.\/bootstrap'\)/)
-  })
-
-  it('main.tsx does not wait forever for animation frames (a window that is not drawn gets none)', () => {
-    expect(read('src/main.tsx')).toMatch(/setTimeout\(loadApp, \d+\)/)
   })
 
   it('main.tsx says so on the splash when the app cannot be loaded', () => {
@@ -35,6 +30,7 @@ describe('start-up measurements', () => {
   it('bootstrap.tsx marks the end of the evaluation and renders the app', () => {
     const bootstrap = read('src/bootstrap.tsx')
     expect(bootstrap).toMatch(/markStartup\('graph'\)/)
+    expect(bootstrap).toMatch(/await initializeCustomAssets\(\)\s*markStartup\('assets'\)/)
     expect(bootstrap).toMatch(/createRoot\(document\.getElementById\('root'\)!\)\.render\(/)
     expect(bootstrap).toMatch(/<ErrorBoundary>\s*<App \/>\s*<\/ErrorBoundary>/)
     expect(bootstrap).toMatch(/import '\.\/index\.css'/)

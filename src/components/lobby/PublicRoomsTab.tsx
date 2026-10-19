@@ -9,7 +9,6 @@ interface Props {
   filteredPublicRooms: PublicRoomInfo[]
   searchQuery: string
   setSearchQuery: (query: string) => void
-  isRefreshing: boolean
   handleManualRefresh: () => void
   copiedRoomCode: string | null
   handleCopyCode: (e: React.MouseEvent, code: string) => void
@@ -26,7 +25,6 @@ export const PublicRoomsTab: React.FC<Props> = ({
   filteredPublicRooms,
   searchQuery,
   setSearchQuery,
-  isRefreshing,
   handleManualRefresh,
   copiedRoomCode,
   handleCopyCode,
@@ -102,12 +100,11 @@ export const PublicRoomsTab: React.FC<Props> = ({
             <button
               type="button"
               onClick={handleManualRefresh}
-              disabled={isRefreshing}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#12151d] hover:bg-slate-800 border border-[#2a3142] text-slate-200 hover:text-white text-xs font-semibold transition-all cursor-pointer"
               title="Atualizar lista de salas públicas"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-indigo-400' : ''}`} />
-              <span>{isRefreshing ? 'Atualizando...' : 'Atualizar'}</span>
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Atualizar</span>
             </button>
           </div>
         </div>
@@ -252,11 +249,10 @@ export const PublicRoomsTab: React.FC<Props> = ({
             <button
               type="button"
               onClick={handleManualRefresh}
-              disabled={isRefreshing}
               className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold inline-flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition-all active:scale-95 cursor-pointer"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-              <span>{isRefreshing ? 'Atualizando Lista...' : 'Atualizar Lista de Salas'}</span>
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Atualizar Lista de Salas</span>
             </button>
           </div>
         ) : (
