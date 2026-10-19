@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { SpotifyPlaybackController, readSpotifyPlaybackRegion } from '../../../electron/spotifyPlayback'
+import { SpotifyPlaybackController, readSpotifyPlaybackRegion, clickSpotifyPlaybackButton } from '../../../electron/spotifyPlayback'
 
 function setup(overrides: any = {}) {
   const region = {
@@ -8,7 +8,8 @@ function setup(overrides: any = {}) {
     buttons: [{ id: 'next', label: 'Próxima', x: 350, y: 610, width: 32, height: 32, disabled: false, active: false }],
     seek: { x: 210, y: 660, width: 580, height: 8, value: 20, position: 48, duration: 240 },
   }
-  const request = vi.fn(async (method: string) => {
+  const request = vi.fn(async (method: string, params?: any) => {
+    if (params?.userGesture) return { result: { value: true } }
     if (method === 'Runtime.evaluate') return { result: { value: region } }
     return {}
   })
@@ -29,7 +30,7 @@ describe('Spotify playback controls', () => {
   it('keeps shuffle available outside the center control rectangle', async () => {
     const { controller, region } = setup()
     region.buttons.push({ id: 'shuffle', label: 'Desativar modo aleatório', x: 100, y: 610, width: 32, height: 32, disabled: false, active: true })
-    expect((await controller.frame()).frame?.buttons).toContainEqual(expect.objectContaining({ id: 'shuffle', active: true }))
+    expect((await controller.frame()).frame?.buttons || []).toContainEqual(expect.objectContaining({ id: 'shuffle', active: true }))
   })
 
   it('reads the enabled shuffle state from the Spotify action label', () => {
@@ -78,12 +79,41 @@ describe('Spotify playback controls', () => {
     expect(close).toHaveBeenCalledOnce()
   })
 
-  it('clicks next on the original page using fresh geometry', async () => {
+  it('clicks the current next button by identity without leaving the mouse over it', async () => {
     const { controller, request, close } = setup()
     expect(await controller.command({ action: 'next' })).toEqual({ ok: true })
-    expect(request).toHaveBeenCalledWith('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, x: 366, y: 626 })
-    expect(request).toHaveBeenCalledWith('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, x: 366, y: 626 })
+    expect(request).toHaveBeenCalledWith('Runtime.evaluate', expect.objectContaining({ userGesture: true, expression: expect.stringContaining('clickSpotifyPlaybackButton') }))
+    expect(request).not.toHaveBeenCalledWith('Input.dispatchMouseEvent', expect.anything())
     expect(close).toHaveBeenCalledOnce()
+  })
+
+  it('reselects the next button after each track and respects a truly disabled button', () => {
+    const first = { disabled: false, getAttribute: () => null, click: vi.fn() }
+    const next = { ...first, click: vi.fn() }
+    let current = first
+    vi.stubGlobal('location', { origin: 'https://open.spotify.com' })
+    vi.stubGlobal('document', { querySelector: (selector: string) => selector.includes('skip-forward') ? current : null })
+    try {
+      expect(clickSpotifyPlaybackButton('next')).toBe(true)
+      current = next
+      expect(clickSpotifyPlaybackButton('next')).toBe(true)
+      expect(first.click).toHaveBeenCalledOnce()
+      expect(next.click).toHaveBeenCalledOnce()
+      next.disabled = true
+      expect(clickSpotifyPlaybackButton('next')).toBe(false)
+      expect(next.click).toHaveBeenCalledOnce()
+      expect(clickSpotifyPlaybackButton('arbitrary')).toBe(false)
+    } finally { vi.unstubAllGlobals() }
+  })
+
+  it('keeps next available across repeated skips when Spotify moves it outside the central region', async () => {
+    const { controller, region } = setup()
+    expect(await controller.command({ action: 'next' })).toEqual({ ok: true })
+    region.buttons.push({ ...region.buttons[0], id: 'playpause', label: 'Pausar', x: 400 })
+    // Spotify can reflow the control row while replacing the current track.
+    region.buttons[0].x = region.x + region.width + 8
+    expect((await controller.frame()).frame?.buttons || []).toContainEqual(expect.objectContaining({ id: 'next', disabled: false }))
+    expect(await controller.command({ action: 'next' })).toEqual({ ok: true })
   })
 
   it('maps a progress selection to the real Spotify timeline', async () => {

@@ -29,6 +29,7 @@ export function useRemotePlayerDetails(onlyCurrentZone = false): PlayerDetails[]
       const byId = new Map(previous.map((peer) => [peer.id, peer]))
       const next: PlayerDetails[] = []
       for (const peer of Object.values(state.remotePlayers)) {
+        if (peer.isDjBot || peer.id.startsWith('dj-')) continue
         if (onlyCurrentZone && peer.currentZoneId !== zoneId) continue
         const details = playerDetails(peer)
         const old = byId.get(peer.id)

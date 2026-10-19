@@ -83,7 +83,7 @@ const OnlineUsersMenuInner: React.FC = () => {
   const [copiedLink, setCopiedLink] = useState(false)
   const [kickConfirmPlayer, setKickConfirmPlayer] = useState<{ id: string; name: string } | null>(null)
 
-  const remoteList = Object.values(remotePlayers)
+  const remoteList = Object.values(remotePlayers).filter(p => !p.isDjBot && !p.id.startsWith('dj-'))
   const allPlayers: { player: Player; isLocal: boolean }[] = [
     { player: localPlayer, isLocal: true },
     ...remoteList.map((p) => ({ player: p, isLocal: false })),

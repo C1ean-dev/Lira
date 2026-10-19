@@ -964,6 +964,12 @@ export class PeerManager {
           })
         })
 
+        for (const [zoneId, djState] of Object.entries(useSpotifyJamStore.getState().djStateByZone)) {
+          if (djState.isDjActive) this.sendToPeer(conn, {
+            type: 'SPOTIFY_DJ_STATUS', senderId: djState.djPeerId,
+            payload: { zoneId, djState }, timestamp: Date.now(),
+          })
+        }
         const jamsByZone = useSpotifyJamStore.getState().jamsByZone
         Object.entries(jamsByZone).forEach(([zoneId, session]) => {
           if (session && session.isActive) {

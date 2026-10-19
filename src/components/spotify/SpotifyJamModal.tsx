@@ -5,6 +5,7 @@ import { useMapStore } from '../../store/useMapStore'
 import { useLocalPlayerDetails } from '../../hooks/usePlayerDetails'
 import { SpotifyIcon } from '../common/SpotifyIcon'
 import { MediaManager } from '../../media/MediaManager'
+import { SpotifyPlaybackCrop } from './SpotifyPlaybackCrop'
 import { SpotifyPlayerFeedback } from './SpotifyPlayerFeedback'
 import { SpotifyLoginControls } from './SpotifyLoginControls'
 import { useSpotifyLogin } from '../../hooks/useSpotifyLogin'
@@ -15,6 +16,7 @@ export const SpotifyJamModal: React.FC = () => {
   const activeZoneIdForModal = useSpotifyJamStore((s) => s.activeZoneIdForModal)
   const isDjModeActive = useSpotifyJamStore((s) => s.isDjModeActive)
   const setDjStateInZone = useSpotifyJamStore((s) => s.setDjStateInZone)
+  const djStateByZone = useSpotifyJamStore(s => s.djStateByZone)
   const volume = useSpotifyJamStore((s) => s.volume)
   const setVolume = useSpotifyJamStore((s) => s.setVolume)
   const isMuted = useSpotifyJamStore((s) => s.isMuted)
@@ -27,12 +29,13 @@ export const SpotifyJamModal: React.FC = () => {
 
   const [djLoading, setDjLoading] = useState(false)
   const [djError, setDjError] = useState<string | null>(null)
-  const login = useSpotifyLogin(isModalOpen && !!currentZone && !isDjModeActive)
+  const isListening = !!targetZoneId && !!djStateByZone[targetZoneId]?.isDjActive && !isDjModeActive
+  const login = useSpotifyLogin(isModalOpen && !!currentZone && !isDjModeActive && !isListening)
 
   if (!isModalOpen) return null
 
   const handleToggleDjMode = async () => {
-    if (!targetZoneId || djLoading || (!isDjModeActive && !login.ready)) return
+    if (isListening || !targetZoneId || djLoading || (!isDjModeActive && !login.ready)) return
     setDjError(null)
     setDjLoading(true)
     try {
@@ -119,9 +122,10 @@ export const SpotifyJamModal: React.FC = () => {
             </div>
           ) : (
             <>
-              {!isDjModeActive && <SpotifyLoginControls login={login} disabled={djLoading} />}
+              {isListening && <SpotifyPlaybackCrop />}
+              {!isDjModeActive && !isListening && <SpotifyLoginControls login={login} disabled={djLoading} />}
               <SpotifyPlayerFeedback opening={djLoading} error={djError} />
-              <button
+              {!isListening && <button
                 type="button"
                 onClick={handleToggleDjMode}
                 disabled={djLoading || (!isDjModeActive && !login.ready)}
@@ -134,7 +138,7 @@ export const SpotifyJamModal: React.FC = () => {
               >
                 <SpotifyIcon size={24} className="w-6 h-6 shrink-0" aria-hidden="true" />
                 <span>{djLoading ? (isDjModeActive ? 'Parando...' : 'Iniciando...') : isDjModeActive ? 'Parar DJ' : 'Transmitir DJ'}</span>
-              </button>
+              </button>}
 
               <div className="flex items-center gap-3 p-3 rounded-xl bg-[#141721] border border-slate-800">
                 <button
@@ -155,7 +159,6 @@ export const SpotifyJamModal: React.FC = () => {
                   onChange={(e) => {
                     const v = Number(e.target.value)
                     setVolume(v)
-                    MediaManager.getInstance().setDjVolume(v)
                   }}
                   className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
                 />

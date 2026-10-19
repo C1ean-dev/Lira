@@ -13,6 +13,7 @@ import { MediaManager } from '../media/MediaManager'
 import { resolveUniquePlayerName } from '../utils/playerName'
 import { sanitizeRoomChannels } from '../utils/roomChannels'
 import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
+import { receiveDjPlaybackMessage } from '../services/spotifyDjPlayback'
 import { DEFAULT_AVATAR } from '../engine/Constants'
 
 const receivedAtlases = new Map<string, AtlasDocument>()
@@ -639,6 +640,12 @@ export function processNetworkMessage(
       if (zoneId) {
         useSpotifyJamStore.getState().syncDjStateFromPeer(zoneId, djState)
       }
+      break
+    }
+
+    case 'SPOTIFY_DJ_COMMAND':
+    case 'SPOTIFY_DJ_COMMAND_RESULT': {
+      receiveDjPlaybackMessage(msg)
       break
     }
 
