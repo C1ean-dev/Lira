@@ -1779,6 +1779,34 @@ export class MediaManager {
     this.rnnoiseEngine.setSuppressionEnabled(enabled)
   }
 
+  private captureProcessingQueue: Promise<void> = Promise.resolve()
+
+  public updateCaptureProcessing(): Promise<void> {
+    const generation = this.mediaGeneration
+    const update = this.captureProcessingQueue.then(async () => {
+      if (generation !== this.mediaGeneration) return
+      const tracks = this.rawUserStream?.getAudioTracks().filter(track => track.readyState !== 'ended') ?? []
+      if (tracks.length === 0) return
+      const state = useMediaStore.getState()
+      try {
+        await Promise.all(tracks.map(track => track.applyConstraints({
+          echoCancellation: state.echoCancellation,
+          autoGainControl: state.autoGainControl,
+          noiseSuppression: false,
+        })))
+      } catch (error) {
+        const currentTracks = this.rawUserStream?.getAudioTracks() ?? []
+        if (generation !== this.mediaGeneration || !tracks.some(track => currentTracks.includes(track))) return
+        diagLog('audio', 'capture-processing-reacquire', { error: errShort(error) })
+        await this.changeAudioInput(useMediaStore.getState().selectedAudioInput)
+      }
+    })
+    this.captureProcessingQueue = update.catch(error => {
+      diagLog('audio', 'capture-processing-failed', { error: errShort(error) })
+    })
+    return this.captureProcessingQueue
+  }
+
   public updateAudioProcessorMode(_mode: AudioProcessorMode) {
   }
 

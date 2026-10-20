@@ -10,6 +10,9 @@ const LATENCY_SAMPLES = 448
 const VAD_REPORT_FRAMES = 5
 const METRICS_REPORT_FRAMES = 500
 const MAX_FAILED_QUANTA = 50
+const RENDER_WARMUP_FRAMES = 20
+const RENDER_WINDOW_FRAMES = 100
+const MAX_SLOW_FRAMES = 20
 
 class RnnoiseWorkletProcessor extends AudioWorkletProcessor {
   constructor(options) {
@@ -39,6 +42,8 @@ class RnnoiseWorkletProcessor extends AudioWorkletProcessor {
     this.inputEnergy = 0
     this.outputEnergy = 0
     this.metricFrames = 0
+    this.renderFrames = 0
+    this.slowFrames = 0
 
     this.port.onmessage = (e) => {
       const data = e.data
@@ -127,7 +132,8 @@ class RnnoiseWorkletProcessor extends AudioWorkletProcessor {
     this.metricFrames = 0
   }
 
-  _processFrame(inputFrame, outputFrame) {
+  _processFrame(inputFrame, outputFrame, quantumMs) {
+    const startedAt = Date.now()
     const heap = this.module.HEAPF32
     for (let i = 0; i < FRAME_SIZE; i++) {
       const pcm = Math.max(PCM_MIN, Math.min(PCM_MAX, inputFrame[i] * PCM_SCALE))
@@ -159,6 +165,25 @@ class RnnoiseWorkletProcessor extends AudioWorkletProcessor {
       })
       this.vadAccum = 0
       this.vadFrames = 0
+    }
+
+    // A slow model need not throw. Repeatedly missing the render deadline can
+    // crackle for the entire call, so let the owner switch to the lighter DSP.
+    if (this.processedFrames > RENDER_WARMUP_FRAMES) {
+      this.renderFrames++
+      if (Date.now() - startedAt > quantumMs * 1.5) this.slowFrames++
+      if (this.renderFrames >= RENDER_WINDOW_FRAMES) {
+        if (this.slowFrames >= MAX_SLOW_FRAMES && !this.failed) {
+          this.failed = true
+          this.port.postMessage({
+            type: 'error',
+            fatal: true,
+            message: 'RNNoise exceeded the real-time audio processing budget',
+          })
+        }
+        this.renderFrames = 0
+        this.slowFrames = 0
+      }
     }
   }
 
@@ -224,7 +249,7 @@ class RnnoiseWorkletProcessor extends AudioWorkletProcessor {
 
       while (this.inLen >= FRAME_SIZE) {
         if (this.outLen + FRAME_SIZE > this.outBuf.length) break
-        this._processFrame(this.frameIn, this.frameTmp)
+        this._processFrame(this.frameIn, this.frameTmp, input.length * 1000 / sampleRate)
         this.outBuf.set(this.frameTmp, this.outLen)
         this.outLen += FRAME_SIZE
         this.inBuf.copyWithin(0, FRAME_SIZE, this.inLen)

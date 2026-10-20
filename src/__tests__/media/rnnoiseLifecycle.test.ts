@@ -76,7 +76,7 @@ class MockAudioContext {
       },
     }
   })
-  constructor() {
+  constructor(public options?: AudioContextOptions) {
     contexts.push(this)
   }
 }
@@ -160,6 +160,20 @@ describe('RNNoise engine lifecycle', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.useRealTimers()
+  })
+
+  it('requests a small device buffer to absorb neural processing spikes', async () => {
+    const rnn = new RnnoiseProcessor()
+    const start = track(rnn.processStream(makeMicStream()))
+    await flush()
+    lastNode().emit({ type: 'ready' })
+    await flush()
+    try {
+      expect(start.settled).toBe(true)
+      expect(contexts[0].options).toMatchObject({ sampleRate: 48000, latencyHint: 0.02 })
+    } finally {
+      rnn.dispose()
+    }
   })
 
   describe('retrying after a failure', () => {
@@ -521,13 +535,16 @@ describe('RNNoise engine lifecycle', () => {
       })
     })
 
-    it.each(['message', 'processorerror'])('swaps to Soft DSP after %s and can be retried', async (failureType) => {
+    it.each(['message', 'processorerror', 'overload'])('swaps to Soft DSP after %s and can be retried', async (failureType) => {
       const mm = MediaManager.getInstance()
       vi.spyOn(mm, 'stopScreenShare').mockImplementation(() => {})
       const replaceAudioTrack = vi
         .spyOn(PeerManager.getInstance(), 'replaceAudioTrack')
         .mockImplementation((() => {}) as any)
-      ;(mm as any).rawUserStream = makeMicStream()
+      const rawTrack = { id: 'mic', kind: 'audio', enabled: true, stop: vi.fn() }
+      ;(mm as any).rawUserStream = {
+        getAudioTracks: () => [rawTrack], getVideoTracks: () => [], getTracks: () => [rawTrack],
+      }
 
       const started = track(mm.reprocessStream())
       await flush()
@@ -537,16 +554,20 @@ describe('RNNoise engine lifecycle', () => {
       expect(useMediaStore.getState().rnnoiseStatus).toBe('ready')
       expect(replaceAudioTrack).toHaveBeenCalledTimes(1)
 
-      if (failureType === 'message') lastNode().emit({ type: 'error', fatal: true, message: 'processing keeps failing: boom' })
-      else lastNode().emitProcessorError('processing keeps failing: boom')
+      const message = failureType === 'overload'
+        ? 'RNNoise exceeded the real-time audio processing budget'
+        : 'processing keeps failing: boom'
+      if (failureType === 'processorerror') lastNode().emitProcessorError(message)
+      else lastNode().emit({ type: 'error', fatal: true, message })
       await flush()
 
       expect(useMediaStore.getState().rnnoiseStatus).toBe('fallback')
-      expect(useMediaStore.getState().rnnoiseError).toBe('processing keeps failing: boom')
+      expect(useMediaStore.getState().rnnoiseError).toBe(message)
       expect((mm as any).activeEngine).toBe((mm as any).softEngine)
       expect((mm as any).softEngine.audioCtx).not.toBeNull()
       expect((mm as any).rnnoiseEngine.audioCtx).toBeNull()
       expect(replaceAudioTrack).toHaveBeenCalledTimes(2)
+      expect(rawTrack.stop).not.toHaveBeenCalled()
 
       const retried = track(mm.reprocessStream())
       await flush()

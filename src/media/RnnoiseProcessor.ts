@@ -186,10 +186,12 @@ export class RnnoiseProcessor {
       const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext
       const outSink = useMediaStore.getState().selectedAudioOutput
       const targetSink = !outSink || outSink === 'default' ? '' : outSink
+      // Keep a little device headroom for the 10 ms neural frames.
+      const contextOptions: AudioContextOptions = { sampleRate: 48000, latencyHint: 0.02 }
       try {
-        this.audioCtx = new AudioContextClass(targetSink ? ({ sampleRate: 48000, sinkId: targetSink } as any) : { sampleRate: 48000 })
+        this.audioCtx = new AudioContextClass(targetSink ? ({ ...contextOptions, sinkId: targetSink } as any) : contextOptions)
       } catch {
-        this.audioCtx = new AudioContextClass({ sampleRate: 48000 })
+        this.audioCtx = new AudioContextClass(contextOptions)
       }
       if (targetSink && typeof (this.audioCtx as any).setSinkId === 'function') {
         ;(this.audioCtx as any).setSinkId(targetSink).catch(() => {})
