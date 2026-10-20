@@ -1,3 +1,4 @@
+import { RasterImage } from '../../components/common/RasterImage'
 import React from 'react'
 import {
   Sparkles,
@@ -72,7 +73,7 @@ export const AnimationTimeline: React.FC<Props> = ({
                   }`}
                 >
                   <div className="w-12 h-12 flex items-center justify-center overflow-hidden rounded bg-[#12151d]">
-                    <img
+                    <RasterImage
                       src={frameDataUrl}
                       alt={`Quadro ${idx + 1}`}
                       className="max-w-full max-h-full object-contain pixelated"

@@ -11,6 +11,7 @@ import { loadBundledLibrary, loadStoredLibrary, saveStoredLibrary } from '../ass
 import { unpackImages } from '../utils/imageTable'
 import { setAvatarAssetCatalog, migrateStoredAvatarReferences } from '../assets/avatarReferences'
 import { bumpAssetRevision, bumpAssetImageRevision } from '../assets/assetRevision'
+import { cropSpriteFrame, readSpriteFrame } from '../assets/spriteFrame'
 
 const ASSETS_STORAGE_KEY = 'lira_custom_user_assets'
 const CATEGORIES_STORAGE_KEY = 'lira_custom_categories'
@@ -31,6 +32,16 @@ export function notifyCustomAssetsChanged(): void {
 export function getCustomAssetImage(src: string): HTMLImageElement | null {
   if (!src || typeof Image === 'undefined') return null
   let image = imageCache.get(src)
+  if (!image) {
+    const frame = readSpriteFrame(src)
+    if (frame) {
+      const sheet = getCustomAssetImage(frame.source)
+      if (!sheet?.complete || !sheet.naturalWidth) return null
+      try { image = cropSpriteFrame(sheet, frame) } catch { return null }
+      imageCache.set(src, image)
+      return image
+    }
+  }
   if (!image) {
     image = new Image()
     image.addEventListener?.('load', () => {
@@ -176,7 +187,10 @@ async function addAssets(incoming: CustomAsset[], broadcast: boolean, categories
     const state = useCustomAssetsStore.getState()
     const cats = [...new Set([...state.customCategories, ...(categories || []), ...incoming.map(a => a.category || 'Geral')])]
     await commit(merge(state.customAssets, incoming), cats)
-    if (broadcast) PeerManager.getInstance().sendCustomAssetsSync(incoming, cats)
+    if (broadcast) {
+      const ids = new Set(incoming.map(asset => asset.id))
+      PeerManager.getInstance().sendCustomAssetsSync(useCustomAssetsStore.getState().customAssets.filter(asset => ids.has(asset.id)), cats)
+    }
   })
 }
 async function deleteAsset(id: string, broadcast: boolean) {
@@ -215,7 +229,7 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
       delete asset.slicerPresets
     }
     await commit(merge(state.customAssets, [asset]), [...new Set([...state.customCategories, asset.category])])
-    PeerManager.getInstance().sendCustomAssetAddOrUpdate(asset)
+    PeerManager.getInstance().sendCustomAssetAddOrUpdate(get().customAssets.find(saved => saved.id === id)!)
   }),
   deleteCustomAsset: id => deleteAsset(id, true),
   syncRemoteAtlas: (_pair, document) => addAssets(document.assets, false, document.categories),

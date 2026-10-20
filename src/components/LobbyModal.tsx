@@ -24,6 +24,7 @@ import { LiraLogo } from './LiraLogo'
 import { useUpdateStore, versionBadgeLabel } from '../store/useUpdateStore'
 import { CURRENT_APP_VERSION } from '../services/updateService'
 import { isSameParticipant } from '../utils/userId'
+import { isAndroid } from '../utils/platform'
 
 interface Props {
   onJoined: () => void
@@ -55,6 +56,9 @@ export const LobbyModal: React.FC<Props> = ({
 }) => {
   const updateInfo = useUpdateStore((s) => s.updateInfo)
   const hasUpdate = hasUpdateProp ?? !!updateInfo?.hasUpdate
+  const readyFromStore = useUpdateStore((s) => s.status === 'ready')
+  const isAndroidPlatform = isAndroid()
+  const showUpdateAction = hasUpdate && (isAndroidPlatform || (isUpdateReady ?? readyFromStore))
   const manualCheck = useUpdateStore((s) => s.manualCheck)
   const checkNow = useUpdateStore((s) => s.checkNow)
   const rawVersion = updateInfo?.currentVersion || CURRENT_APP_VERSION
@@ -574,13 +578,14 @@ export const LobbyModal: React.FC<Props> = ({
       <div className="bg-[#1b202c] border border-[#2a3142] rounded-2xl sm:rounded-3xl w-full max-w-2xl sm:max-w-[740px] overflow-hidden shadow-2xl flex flex-col max-h-[96vh] sm:max-h-[92vh]">
         <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 p-3.5 sm:p-5 text-center relative overflow-hidden shrink-0">
           <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full bg-white/10 blur-2xl" />
-          {hasUpdate && onApplyUpdate ? (
+          {showUpdateAction && onApplyUpdate ? (
             <button
               type="button"
               onClick={onApplyUpdate}
               disabled={isUpdating}
               className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 p-2 sm:p-2.5 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-300 hover:text-white transition-all hover:scale-105 active:scale-95 shadow-lg shadow-emerald-500/20 cursor-pointer disabled:opacity-75 disabled:pointer-events-none"
-              title="Nova versão disponível! Clique para atualizar agora."
+              aria-label={isAndroidPlatform ? 'Atualizar Lira' : 'Instalar atualização'}
+              title={isAndroidPlatform ? 'Nova versão disponível! Clique para atualizar agora.' : 'Atualização pronta. Clique para instalar.'}
             >
               {isUpdating ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />

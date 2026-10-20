@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { buildLibrary, openLibrary } from '../../assets/individualLibrary'
+import { buildLibrary, openLibrary, libraryImagePath } from '../../assets/individualLibrary'
 import type { CustomAsset } from '../../types/customAsset'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -26,7 +26,7 @@ describe('individual image library', () => {
       }
     }
     for (const name of catalog.images) {
-      const bytes = fs.readFileSync(path.join(directory, 'images', name))
+      const bytes = fs.readFileSync(path.join(directory, libraryImagePath(catalog, name)))
       expect(createHash('sha256').update(bytes).digest('hex') + '.png').toBe(name)
     }
   })

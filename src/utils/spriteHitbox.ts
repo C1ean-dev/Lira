@@ -1,3 +1,4 @@
+import { setRasterImageSource } from './rasterImageSource'
 import type { CustomAsset } from '../types/customAsset'
 import type { Direction } from '../types/game'
 import { resolveSpritePlacement } from '../engine/rendering/spritePlacement'
@@ -58,7 +59,7 @@ export function mergeTileGrids(grids: TileGrid[]): TileGrid {
 export async function decodeFrame(dataUrl: string): Promise<DecodedFrame | null> {
   try {
     const image = new Image()
-    image.src = dataUrl
+    setRasterImageSource(image, dataUrl)
     await new Promise<void>((resolve, reject) => {
       image.onload = () => resolve()
       image.onerror = () => reject(new Error('image failed to load'))

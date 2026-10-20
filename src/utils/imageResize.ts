@@ -1,3 +1,4 @@
+import { setRasterImageSource } from './rasterImageSource'
 import { loadRasterImage } from './loadRasterImage'
 import { canvasToPngDataUrl } from './canvasPng'
 import { getTrimmedBounds, cropImage } from './imageTransparency'
@@ -492,7 +493,7 @@ export async function smartRescaleDataUrl(
   if (!dataUrl) return ''
   return new Promise((resolve) => {
     const img = new Image()
-    img.src = dataUrl
+    setRasterImageSource(img, dataUrl)
     img.onload = () => {
       const res = smartRescalePixelArt(img, targetWidth, targetHeight, options)
       resolve(res.toDataURL('image/png'))

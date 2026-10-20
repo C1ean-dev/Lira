@@ -1,3 +1,5 @@
+import { RasterImage } from '../../components/common/RasterImage'
+import { setRasterImageSource } from '../../utils/rasterImageSource'
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import {
   Pencil,
@@ -313,7 +315,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     let cancelled = false
     allUrls.forEach((url) => {
       const img = new Image()
-      img.src = url
+      setRasterImageSource(img, url)
       img.onload = () => {
         if (cancelled) return
         if (img.naturalWidth > 0 && img.naturalHeight > 0) {
@@ -842,7 +844,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 
     if (currentImgUrl) {
       const img = new Image()
-      img.src = currentImgUrl
+      setRasterImageSource(img, currentImgUrl)
       img.onload = () => {
         if (img.naturalWidth > 0 && img.naturalHeight > 0) {
           const targetW = Math.max(canvasPixelWidth, img.naturalWidth)
@@ -1020,7 +1022,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
           const newActiveDataUrl = resizedCanvasFrames[activeDirection]?.[activeFrameIndex] || ''
           if (newActiveDataUrl) {
             const img = new Image()
-            img.src = newActiveDataUrl
+            setRasterImageSource(img, newActiveDataUrl)
             await new Promise<void>((resolve) => {
               img.onload = () => {
                 ctx.drawImage(img, 0, 0)
@@ -1376,7 +1378,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       }
 
       const img = new Image()
-      img.src = frameUrl
+      setRasterImageSource(img, frameUrl)
       img.onload = () => {
         flipCtx.clearRect(0, 0, canvasPixelWidth, canvasPixelHeight)
         flipCtx.imageSmoothingEnabled = false
@@ -1738,7 +1740,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
             return
           }
           const img = new Image()
-          img.src = frameUrl
+          setRasterImageSource(img, frameUrl)
           img.onload = () => {
             flipCtx.clearRect(0, 0, canvasPixelWidth, canvasPixelHeight)
             flipCtx.save()
@@ -1786,7 +1788,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
             return
           }
           const img = new Image()
-          img.src = frameUrl
+          setRasterImageSource(img, frameUrl)
           img.onload = () => {
             flipCtx.clearRect(0, 0, canvasPixelWidth, canvasPixelHeight)
             flipCtx.save()
@@ -2350,7 +2352,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                     style={{ width: Math.min(64, Math.max(16, tamanhoWidth)), height: Math.min(64, Math.max(16, tamanhoHeight)) }}
                   >
                     {displayPreviewUrl && (
-                      <img src={displayPreviewUrl} alt="1x" className="w-full h-full object-contain [image-rendering:pixelated]" />
+                      <RasterImage src={displayPreviewUrl} alt="1x" className="w-full h-full object-contain [image-rendering:pixelated]" />
                     )}
                   </div>
                   <span className="text-[10px] text-slate-400">1x ({tamanhoWidth}×{tamanhoHeight})</span>
@@ -2362,7 +2364,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                     style={{ width: Math.min(96, canvasPixelWidth * 1.5), height: Math.min(96, canvasPixelHeight * 1.5) }}
                   >
                     {displayPreviewUrl && (
-                      <img src={displayPreviewUrl} alt="2x" className="w-full h-full object-contain [image-rendering:pixelated]" />
+                      <RasterImage src={displayPreviewUrl} alt="2x" className="w-full h-full object-contain [image-rendering:pixelated]" />
                     )}
                   </div>
                   <span className="text-[10px] text-slate-400">Preview</span>
@@ -2474,7 +2476,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                         >
                           <div className="w-9 h-9 rounded-lg bg-[#141517] border border-slate-700/60 flex items-center justify-center overflow-hidden pointer-events-none">
                             {frameData ? (
-                              <img
+                              <RasterImage
                                 src={isFrameActive ? previewDataUrl || frameData : frameData}
                                 alt={`Q${idx + 1}`}
                                 draggable={false}
@@ -2631,7 +2633,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                         >
                           <div className="w-8 h-8 rounded bg-[#18191c] border border-slate-700/60 flex items-center justify-center overflow-hidden relative">
                             {thumbUrl ? (
-                              <img
+                              <RasterImage
                                 src={thumbUrl}
                                 alt={dirItem.label}
                                 className="w-7 h-7 [image-rendering:pixelated]"

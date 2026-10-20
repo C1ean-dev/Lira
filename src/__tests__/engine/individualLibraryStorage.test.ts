@@ -9,13 +9,13 @@ describe('individual library renderer storage', () => {
     const packet = await buildLibrary({ assets: [hero], categories: [] })
     vi.stubGlobal('window', { location: { protocol: 'http:', href: 'http://localhost:5173/' }, electronAPI: { loadIndividualLibrary: async () => ({ catalog: packet.catalog, baseUrl: 'file:///project/public/assets/library/' }) } })
     const document = (await loadStoredLibrary())!
-    expect(document.assets[0].frames[0]).toBe(`http://localhost:5173/assets/library/images/${packet.catalog.images[0]}`)
+    expect(document.assets[0].frames[0]).toBe(`http://localhost:5173/assets/library/sprites/Hero--hero/${packet.catalog.images[0]}`)
   })
   it('keeps desktop images usable after saving in the HTTP renderer', async () => {
     const packet = await buildLibrary({ assets: [hero], categories: [] })
     vi.stubGlobal('window', { location: { protocol: 'http:', href: 'http://localhost:5173/' }, electronAPI: { saveIndividualLibrary: async () => ({ catalog: packet.catalog, baseUrl: 'file:///project/public/assets/library/' }) } })
     const document = await saveStoredLibrary({ assets: [hero], categories: [] })
-    expect(document.assets[0].frames[0]).toBe(`http://localhost:5173/assets/library/images/${packet.catalog.images[0]}`)
+    expect(document.assets[0].frames[0]).toBe(`http://localhost:5173/assets/library/sprites/Hero--hero/${packet.catalog.images[0]}`)
   })
   it('loads bundled metadata with no image requests or decoding', async () => {
     const packet = await buildLibrary({ assets: [hero], categories: ['People'] })
@@ -26,7 +26,7 @@ describe('individual library renderer storage', () => {
     const document = await loadBundledLibrary()
     expect(fetch).toHaveBeenCalledOnce()
     expect(String(fetch.mock.calls[0][0])).toBe('file:///app/dist/assets/library/catalog.json')
-    expect(document?.assets[0].frames[0]).toMatch(/^file:\/\/\/app\/dist\/assets\/library\/images\/[a-f0-9]{64}\.png$/)
+    expect(document?.assets[0].frames[0]).toMatch(/^file:\/\/\/app\/dist\/assets\/library\/sprites\/Hero--hero\/[a-f0-9]{64}\.png$/)
     expect(Image).not.toHaveBeenCalled()
   })
   it('uses native file URLs and saves only new bytes through the desktop bridge', async () => {
@@ -35,7 +35,7 @@ describe('individual library renderer storage', () => {
     const save = vi.fn(async (next: typeof packet) => ({ catalog: next.catalog, baseUrl: 'file:///profile/library/' }))
     vi.stubGlobal('window', { electronAPI: { loadIndividualLibrary: load, saveIndividualLibrary: save } })
     const document = (await loadStoredLibrary())!
-    expect(document.assets[0].frames[0]).toContain('file:///profile/library/images/')
+    expect(document.assets[0].frames[0]).toContain('file:///profile/library/sprites/Hero--hero/')
     await saveStoredLibrary({ ...document, assets: [{ ...document.assets[0], name: 'Renamed' }] })
     expect(save.mock.calls[0][0].images).toEqual({})
     expect(load).toHaveBeenCalledOnce()

@@ -1,4 +1,5 @@
 import type { CustomAsset } from '../types/customAsset'
+import { readSpriteFrame, spriteFrame } from './spriteFrame'
 
 export interface AtlasRect { name: string; x: number; y: number; width: number; height: number }
 export interface PersistedAtlas { xml: string; png: string }
@@ -10,6 +11,8 @@ const unescape = (s: string): string => s.replace(/&(amp|lt|gt|quot|apos);/g, (_
 export function encodeValue(value: unknown, images: Map<string, string>): string {
   if (value === null || value === undefined) return '<Null/>'
   if (typeof value === 'string') {
+    const frame = readSpriteFrame(value)
+    if (frame) return `<Sprite image="${xmlEscape(images.get(frame.source) || frame.source)}" x="${frame.x}" y="${frame.y}" width="${frame.width}" height="${frame.height}"/>`
     const image = images.get(value)
     return image ? `<Image>${xmlEscape(image)}</Image>` : `<String>${xmlEscape(value)}</String>`
   }
@@ -26,6 +29,11 @@ export function encodeValue(value: unknown, images: Map<string, string>): string
 export function decodeValue(xml: string, image: (name: string) => string): unknown {
   let at = 0
   const read = (): unknown => {
+    const sprite = /^<Sprite image="([^"<]+)" x="(\d+)" y="(\d+)" width="(\d+)" height="(\d+)"\/>/.exec(xml.slice(at))
+    if (sprite) {
+      at += sprite[0].length
+      return spriteFrame(image(unescape(sprite[1])), Number(sprite[2]), Number(sprite[3]), Number(sprite[4]), Number(sprite[5]))
+    }
     const open = /^<(Null\/|String|Number|Boolean|Image|Array|Object)>/.exec(xml.slice(at))
     if (!open) throw new Error('Metadados XML inválidos')
     at += open[0].length

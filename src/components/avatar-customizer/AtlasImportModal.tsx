@@ -1,3 +1,4 @@
+import { RasterImage } from '../common/RasterImage'
 import React, { useState, useRef } from 'react'
 import { X, Upload, FileCode, Image as ImageIcon, CheckCircle, AlertCircle, ArrowRight, Scissors } from 'lucide-react'
 import { AvatarComponentSlot } from '../../types/game'
@@ -308,7 +309,7 @@ export const AtlasImportModal: React.FC<Props> = ({
                             className="flex flex-col items-center justify-center w-full aspect-square bg-[#141517] rounded-lg overflow-hidden border border-slate-700/50"
                           >
                             {frame ? (
-                              <img
+                              <RasterImage
                                 src={Array.isArray(frame) ? frame[0] : frame}
                                 alt={dir}
                                 className="w-6 h-6 [image-rendering:pixelated]"

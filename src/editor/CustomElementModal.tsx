@@ -1,3 +1,4 @@
+import { setRasterImageSource } from '../utils/rasterImageSource'
 import React, { useState, useRef, useEffect } from 'react'
 import {
   X,
@@ -797,7 +798,7 @@ export const CustomElementModal: React.FC = () => {
 
     compositeLayers.forEach((layer) => {
       const img = new Image()
-      img.src = layer.dataUrl
+      setRasterImageSource(img, layer.dataUrl)
       img.onload = () => {
         loadedCount++
         if (loadedCount === total) {
@@ -946,7 +947,7 @@ export const CustomElementModal: React.FC = () => {
     if (!currentFrameData) return
 
     const img = new Image()
-    img.src = currentFrameData
+    setRasterImageSource(img, currentFrameData)
     img.onload = () => {
       ctx.imageSmoothingEnabled = false
       const maxDim = Math.max(img.width, img.height)
@@ -976,7 +977,7 @@ export const CustomElementModal: React.FC = () => {
     reader.onload = (event) => {
       const dataUrl = event.target?.result as string
       const img = new Image()
-      img.src = dataUrl
+      setRasterImageSource(img, dataUrl)
       img.onload = () => {
         setSourceImage(img)
         setSourceImageSrc(dataUrl)

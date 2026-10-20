@@ -1,13 +1,39 @@
 import { encodeValue, decodeValue, parseAtlasDocument, serializeAtlas, type AtlasDocument } from './atlasFormat'
 import { normalizeAssetActivityAnimations } from '../utils/avatarActivityAnimations'
+import { readSpriteFrame } from './spriteFrame'
 
-export interface LibraryCatalog { version: 2; document: string; images: string[] }
+export interface LibraryCatalog { version: 2 | 3; document: string; images: string[]; imagePaths?: Record<string, string> }
 export interface LibraryPacket { catalog: LibraryCatalog; images: Record<string, string> }
 export interface LibraryLocation { catalog: LibraryCatalog; baseUrl: string }
 export const imageNamePattern = /^[a-f0-9]{64}\.(png|webp|jpg|gif)$/
 const imageNames = new Map<string, string>()
 const imageLocations = new Map<string, string>()
 const mimeExtensions: Record<string, string> = { 'image/png': 'png', 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/gif': 'gif' }
+
+/** Names are readable; the escaped ID keeps similarly named assets distinct. */
+export function libraryAssetFolder(asset: { name: string; id: string }): string {
+  const name = asset.name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64) || 'sprite'
+  const id = encodeURIComponent(asset.id).replace(/[.!'()*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)
+  return `sprites/${name}--${id}`
+}
+export function assetImageNames(value: unknown): string[] {
+  const names = new Set<string>()
+  const visit = (item: unknown): void => {
+    if (typeof item === 'string') {
+      const source = readSpriteFrame(item)?.source || item
+      if (imageNamePattern.test(source)) names.add(source)
+    } else if (Array.isArray(item)) item.forEach(visit)
+    else if (item && typeof item === 'object') Object.values(item).forEach(visit)
+  }
+  visit(value)
+  return [...names]
+}
+export function libraryImagePath(catalog: LibraryCatalog, name: string): string {
+  const location = catalog.imagePaths?.[name] ?? `images/${name}`
+  const parts = typeof location === 'string' ? location.split('/') : []
+  if (!imageNamePattern.test(name) || !(location === `images/${name}` || (parts.length === 3 && parts[0] === 'sprites' && /^[a-zA-Z0-9_%\-]+$/.test(parts[1]) && parts[2] === name))) throw new Error('Caminho da imagem inválido')
+  return location
+}
 
 export function knownLibraryImage(name: string): string | undefined { return imageLocations.get(name) }
 export function isLibraryImageSource(value: string): boolean {
@@ -36,8 +62,16 @@ function validateDocument(doc: AtlasDocument): AtlasDocument {
   return parseAtlasDocument(serializeAtlas(doc, [], new Map(), 'unused.png'), name => name)
 }
 export function openLibrary(catalog: LibraryCatalog, imageUrl: (name: string) => string, register = true): AtlasDocument {
-  if (catalog?.version !== 2 || !Array.isArray(catalog.images) || catalog.images.some(n => typeof n !== 'string' || !imageNamePattern.test(n)) || new Set(catalog.images).size !== catalog.images.length || typeof catalog.document !== 'string') throw new Error('Catálogo de imagens inválido')
+  if (![2, 3].includes(catalog?.version) || !Array.isArray(catalog.images) || catalog.images.some(n => typeof n !== 'string' || !imageNamePattern.test(n)) || new Set(catalog.images).size !== catalog.images.length || typeof catalog.document !== 'string') throw new Error('Catálogo de imagens inválido')
   const allowed = new Set(catalog.images)
+  if (catalog.imagePaths !== undefined) {
+    if (!catalog.imagePaths || typeof catalog.imagePaths !== 'object' || Array.isArray(catalog.imagePaths)) throw new Error('Caminhos de imagens inválidos')
+    for (const [name, location] of Object.entries(catalog.imagePaths)) {
+      if (!allowed.has(name)) throw new Error('Imagem referenciada ausente: ' + name)
+      if (typeof location !== 'string') throw new Error('Caminho da imagem inválido')
+      libraryImagePath(catalog, name)
+    }
+  }
   const locations = new Map<string, string>()
   const document = validateDocument(decodeValue(catalog.document, name => {
     if (!allowed.has(name)) throw new Error('Imagem referenciada ausente: ' + name)
@@ -55,6 +89,8 @@ export async function buildLibrary(document: AtlasDocument): Promise<LibraryPack
   const references = new Map<string, string>()
   const visit = async (value: unknown): Promise<void> => {
     if (typeof value === 'string') {
+      const frame = readSpriteFrame(value)
+      if (frame) { await visit(frame.source); return }
       if (references.has(value)) return
       const known = imageNames.get(value)
       if (known && !value.startsWith('data:')) { references.set(value, known); return }
@@ -67,5 +103,11 @@ export async function buildLibrary(document: AtlasDocument): Promise<LibraryPack
     else if (value && typeof value === 'object') { for (const item of Object.values(value)) await visit(item) }
   }
   await visit(document)
-  return { catalog: { version: 2, document: encodeValue(document, references), images: [...new Set(references.values())].sort() }, images }
+  const encoded = encodeValue(document, references)
+  const stored = decodeValue(encoded, name => name) as AtlasDocument
+  const imagePaths: Record<string, string> = {}
+  for (const asset of stored.assets) {
+    for (const name of assetImageNames(asset)) imagePaths[name] ??= `${libraryAssetFolder(asset)}/${name}`
+  }
+  return { catalog: { version: 3, document: encoded, images: [...new Set(references.values())].sort(), imagePaths }, images }
 }

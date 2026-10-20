@@ -1,3 +1,4 @@
+import { RasterImage } from '../common/RasterImage'
 import React, { useState, useRef, useEffect } from 'react'
 import {
   Check,
@@ -65,7 +66,7 @@ const AutoCroppedThumbnail: React.FC<{ src: string; alt: string }> = ({ src, alt
 
   return (
     <div className="w-12 h-12 rounded-xl mb-1 flex items-center justify-center relative shadow-sm overflow-hidden border border-slate-700/50 bg-[#18191c]">
-      <img
+      <RasterImage
         src={displayUrl}
         alt={alt}
         className="w-full h-full object-contain [image-rendering:pixelated]"
