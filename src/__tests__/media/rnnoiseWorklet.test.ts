@@ -357,6 +357,52 @@ describe('RNNoise worklet', () => {
   })
 
   describe('failing safely', () => {
+    it('reports sustained render overruns so the call can switch to a lighter processor', async () => {
+      let elapsedMs = 0
+      const now = vi.spyOn(Date, 'now').mockImplementation(() => elapsedMs)
+      try {
+        const { factory, calls } = fakeModule((input, output) => {
+          elapsedMs += 6
+          output.set(input)
+          return 0.9
+        })
+        const { proc, ofType } = await createReadyProcessor(factory)
+
+        const output = render(proc, constant(QUANTUM * 1000, 0.1))
+
+        expect(ofType('error')).toEqual([expect.objectContaining({
+          fatal: true,
+          message: expect.stringContaining('real-time'),
+        })])
+        expect(calls.frames).toBeLessThan(200)
+        expect(output[output.length - 1]).toBeCloseTo(0.1)
+      } finally {
+        now.mockRestore()
+      }
+    })
+
+    it('tolerates an isolated slow frame and keeps processing normally', async () => {
+      let elapsedMs = 0
+      const now = vi.spyOn(Date, 'now').mockImplementation(() => elapsedMs)
+      try {
+        const { factory, calls } = fakeModule((input, output, index) => {
+          elapsedMs += index % 50 === 0 ? 20 : 0.5
+          output.set(input)
+          return 0.9
+        })
+        const { proc, ofType } = await createReadyProcessor(factory)
+        const input = pattern(QUANTUM * 1000)
+
+        const output = render(proc, input)
+
+        expect(ofType('error')).toEqual([])
+        expect(calls.frames).toBe(Math.floor(input.length / FRAME))
+        expect(output[output.length - 1]).toBe(input[input.length - 1 - LATENCY])
+      } finally {
+        now.mockRestore()
+      }
+    })
+
     it('passes audio through while the module is still loading', async () => {
       const { proc, messages } = await createProcessor(() => new Promise(() => {}))
       const input = pattern(QUANTUM * 10)

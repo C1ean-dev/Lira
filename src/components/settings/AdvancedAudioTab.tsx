@@ -650,7 +650,10 @@ export const AdvancedAudioTab: React.FC = () => {
             <input
               type="checkbox"
               checked={echoCancellation}
-              onChange={(e) => setEchoCancellation(e.target.checked)}
+              onChange={(e) => {
+                setEchoCancellation(e.target.checked)
+                void MediaManager.getInstance().updateCaptureProcessing()
+              }}
               className="sr-only peer"
             />
             <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
@@ -668,7 +671,10 @@ export const AdvancedAudioTab: React.FC = () => {
             <input
               type="checkbox"
               checked={autoGainControl}
-              onChange={(e) => setAutoGainControl(e.target.checked)}
+              onChange={(e) => {
+                setAutoGainControl(e.target.checked)
+                void MediaManager.getInstance().updateCaptureProcessing()
+              }}
               className="sr-only peer"
             />
             <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
