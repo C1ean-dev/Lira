@@ -82,6 +82,35 @@ export default defineConfig({
     {
       name: 'disk-file-persistence-middleware',
       configureServer(server) {
+        // This directory is excluded from the watcher to avoid reloading the app
+        // on every save. Vite's public-file index therefore misses new PNGs.
+        const libraryDirectory = path.resolve(server.config.publicDir, 'assets/library')
+        server.middlewares.use('/assets/library', async (req, res, next) => {
+          if (req.method !== 'GET' && req.method !== 'HEAD') return next()
+          let pathname: string
+          try { pathname = decodeURIComponent((req.url || '/').split('?')[0]) }
+          catch { res.statusCode = 400; res.end(); return }
+          const file = path.resolve(libraryDirectory, '.' + pathname)
+          const relative = path.relative(libraryDirectory, file)
+          if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) {
+            res.statusCode = 403; res.end(); return
+          }
+          try {
+            const contents = await fs.promises.readFile(file)
+            const contentTypes: Record<string, string> = { '.png': 'image/png', '.json': 'application/json', '.xml': 'application/xml' }
+            res.setHeader('Content-Type', contentTypes[path.extname(file).toLowerCase()] || 'application/octet-stream')
+            res.setHeader('Content-Length', contents.length)
+            res.setHeader('Cache-Control', 'no-cache')
+            res.end(req.method === 'HEAD' ? undefined : contents)
+          } catch (error) {
+            const code = (error as NodeJS.ErrnoException).code
+            if (code === 'ENOENT' || code === 'ENOTDIR' || code === 'EISDIR') {
+              // Missing images must not fall through to the HTML app shell.
+              res.statusCode = 404; res.end(); return
+            }
+            next(error)
+          }
+        })
         server.middlewares.use(async (req, res, next) => {
           if (req.url === '/api/individual-library' && (req.method === 'GET' || req.method === 'PUT')) {
             const directory = path.resolve(process.cwd(), 'public/assets/library')

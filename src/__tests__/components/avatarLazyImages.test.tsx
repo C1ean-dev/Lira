@@ -18,7 +18,8 @@ beforeEach(() => {
   const src = `/assets/library/images/lazy-avatar-${++sequence}.png`
   vi.stubGlobal('Image', class {
     src = ''; complete = false; naturalWidth = 0
-    addEventListener(_event: string, fn: () => void) {
+    addEventListener(event: string, fn: () => void) {
+      if (event !== 'load') return
       finishImage = () => { loaded = true; this.complete = true; this.naturalWidth = 32; fn() }
     }
   })

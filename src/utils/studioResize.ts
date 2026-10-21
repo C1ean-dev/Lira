@@ -1,4 +1,7 @@
 import { setRasterImageSource } from './rasterImageSource'
+import { loadRasterImage } from './loadRasterImage'
+import { cropImage, getTrimmedBounds } from './imageTransparency'
+import type { Direction } from '../types/game'
 
 export const MAX_SIZE = 4096
 
@@ -75,4 +78,49 @@ export async function composeFrameSource(
   context.clearRect(layout.current.x, layout.current.y, currentSize.width, currentSize.height)
   context.drawImage(frameImage, layout.current.x, layout.current.y)
   return composedCanvas
+}
+
+export async function trimStudioFrames(frames: Record<Direction, string[]>): Promise<{
+  frames: Record<Direction, string[]>
+  bounds: { x: number; y: number; w: number; h: number }
+} | null> {
+  const directions: Direction[] = ['down', 'up', 'left', 'right']
+  const images: Record<Direction, (HTMLImageElement | null)[]> = { down: [], up: [], left: [], right: [] }
+  const scratch = document.createElement('canvas')
+  const context = scratch.getContext('2d', { willReadFrequently: true })
+  if (!context) throw new Error('Não foi possível ler os pixels dos quadros.')
+
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -1
+  let maxY = -1
+
+  for (const direction of directions) {
+    for (const frame of frames[direction]) {
+      const image = frame ? await loadRasterImage(frame) : null
+      images[direction].push(image)
+      if (!image) continue
+      scratch.width = image.naturalWidth
+      scratch.height = image.naturalHeight
+      context.drawImage(image, 0, 0)
+      // Only fully transparent pixels may be removed, including around faint artwork.
+      const bounds = getTrimmedBounds(scratch, 0)
+      if (!bounds) continue
+      minX = Math.min(minX, bounds.x)
+      minY = Math.min(minY, bounds.y)
+      maxX = Math.max(maxX, bounds.x + bounds.w)
+      maxY = Math.max(maxY, bounds.y + bounds.h)
+    }
+  }
+
+  if (maxX < 0) return null
+  const bounds = { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
+  const cropped: Record<Direction, string[]> = { down: [], up: [], left: [], right: [] }
+  for (const direction of directions) {
+    // A common crop keeps every animation frame and direction aligned.
+    cropped[direction] = images[direction].map(image => image
+      ? cropImage(image, bounds.x, bounds.y, bounds.w, bounds.h).toDataURL('image/png')
+      : '')
+  }
+  return { frames: cropped, bounds }
 }

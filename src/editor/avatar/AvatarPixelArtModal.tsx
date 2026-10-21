@@ -12,6 +12,7 @@ import {
   ZoomIn,
   ZoomOut,
   Grid,
+  Crop,
   X,
   Check,
   RotateCcw,
@@ -28,7 +29,8 @@ import { AvatarConfig, AvatarComponentSlot, Direction } from '../../types/game'
 import { ColorWheelPicker } from '../../components/common/ColorWheelPicker'
 import { smartRescalePixelArt, smartRescaleDataUrl } from '../../utils/imageResize'
 import { spriteCollisionFromFrames, type SpriteCollision } from '../../utils/spriteHitbox'
-import { centerOffset, clampedSizeText, composeFrameSource, parseSizeInput } from '../../utils/studioResize'
+import { centerOffset, clampedSizeText, composeFrameSource, parseSizeInput, trimStudioFrames } from '../../utils/studioResize'
+import { loadRasterImage } from '../../utils/loadRasterImage'
 
 export type DrawTool = 'pencil' | 'eraser' | 'bucket' | 'picker' | 'move'
 
@@ -227,6 +229,14 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     right: [],
   })
   const isResizingRef = useRef<boolean>(false)
+  const directionCanvasSizesRef = useRef<Record<Direction, { width: number; height: number }>>({
+    down: { width: pixelWidth, height: pixelHeight },
+    up: { width: pixelWidth, height: pixelHeight },
+    left: { width: pixelWidth, height: pixelHeight },
+    right: { width: pixelWidth, height: pixelHeight },
+  })
+  const [isTrimming, setIsTrimming] = useState(false)
+  const [trimFeedback, setTrimFeedback] = useState<string | null>(null)
 
   const [tool, setTool] = useState<DrawTool>('pencil')
   const toolRef = useRef<DrawTool>(tool)
@@ -302,25 +312,26 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 
   useEffect(() => {
     if (!isOpen) return
-    const allUrls = [
-      ...(directionalFrames.down || []),
-      ...(directionalFrames.up || []),
-      ...(directionalFrames.left || []),
-      ...(directionalFrames.right || []),
-      initialDataUrl || '',
-    ].filter(Boolean)
+    const allFrames = DIRECTIONS.flatMap(({ id }) =>
+      (directionalFrames[id] || []).filter(Boolean).map(url => ({ direction: id, url }))
+    )
 
-    if (allUrls.length === 0) return
+    if (allFrames.length === 0) return
 
     let cancelled = false
-    allUrls.forEach((url) => {
+    allFrames.forEach(({ direction, url }) => {
       const img = new Image()
       setRasterImageSource(img, url)
       img.onload = () => {
         if (cancelled) return
         if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-          setPixelWidth((prevW) => Math.max(prevW, img.naturalWidth))
-          setPixelHeight((prevH) => Math.max(prevH, img.naturalHeight))
+          const size = directionCanvasSizesRef.current[direction]
+          size.width = Math.max(size.width, img.naturalWidth)
+          size.height = Math.max(size.height, img.naturalHeight)
+          if (direction === activeDirection) {
+            setPixelWidth((prevW) => Math.max(prevW, img.naturalWidth))
+            setPixelHeight((prevH) => Math.max(prevH, img.naturalHeight))
+          }
           setTamanhoWidth((prevW) => Math.max(prevW, img.naturalWidth))
           setTamanhoHeight((prevH) => Math.max(prevH, img.naturalHeight))
         }
@@ -330,11 +341,12 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     return () => {
       cancelled = true
     }
-  }, [isOpen, directionalFrames, initialDataUrl])
+  }, [isOpen, activeDirection, directionalFrames])
 
   const [isDrawing, setIsDrawing] = useState<boolean>(false)
   const [hoverPixel, setHoverPixel] = useState<{ x: number; y: number } | null>(null)
   const [previewDataUrl, setPreviewDataUrl] = useState<string>('')
+  const [isFrameLoading, setIsFrameLoading] = useState(true)
 
   const [isPlaying, setIsPlaying] = useState<boolean>(true)
   const [animSpeedMs, setAnimSpeedMs] = useState<number>(160)
@@ -841,11 +853,14 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     const currentFrames = directionalFrames[activeDirection] || ['']
     const safeIndex = Math.min(activeFrameIndex, Math.max(0, currentFrames.length - 1))
     const currentImgUrl = currentFrames[safeIndex] || ''
+    let cancelled = false
+    setIsFrameLoading(!!currentImgUrl)
 
     if (currentImgUrl) {
       const img = new Image()
       setRasterImageSource(img, currentImgUrl)
       img.onload = () => {
+        if (cancelled) return
         if (img.naturalWidth > 0 && img.naturalHeight > 0) {
           const targetW = Math.max(canvasPixelWidth, img.naturalWidth)
           const targetH = Math.max(canvasPixelHeight, img.naturalHeight)
@@ -886,14 +901,17 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
         }
 
         setPreviewDataUrl(currentImgUrl)
+        setIsFrameLoading(false)
         historyRef.current = [ctx.getImageData(0, 0, canvasPixelWidth, canvasPixelHeight)]
         historyStepRef.current = 0
         setCanUndo(false)
         setCanRedo(false)
       }
       img.onerror = () => {
+        if (cancelled) return
         ctx.clearRect(0, 0, canvasPixelWidth, canvasPixelHeight)
         setPreviewDataUrl('')
+        setIsFrameLoading(false)
         historyRef.current = [ctx.getImageData(0, 0, canvasPixelWidth, canvasPixelHeight)]
         historyStepRef.current = 0
         setCanUndo(false)
@@ -907,6 +925,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       setCanUndo(false)
       setCanRedo(false)
     }
+    return () => { cancelled = true }
   }, [activeDirection, activeFrameIndex, canvasPixelWidth, canvasPixelHeight, frameEpoch])
 
   const commitCurrentCanvas = () => {
@@ -927,6 +946,97 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     transformScaleRef.current = 1.0
     setTransformScaleState(1.0)
     setScaleDisplay(null)
+  }
+
+  const handleTrimTransparentBorders = async () => {
+    const canvas = drawCanvasRef.current
+    if (!canvas || isFrameLoading || isResizingRef.current) return
+
+    isResizingRef.current = true
+    setIsTrimming(true)
+    setTrimFeedback(null)
+    setRequestedCanvasSize(null)
+    if (transformCommitTimerRef.current) {
+      clearTimeout(transformCommitTimerRef.current)
+      transformCommitTimerRef.current = null
+    }
+
+    try {
+      const snapshot: Record<Direction, string[]> = {
+        down: [], up: [], left: [], right: [],
+        [activeDirection]: [...directionalFrames[activeDirection]],
+      }
+      snapshot[activeDirection][activeFrameIndex] = canvas.toDataURL('image/png')
+      const trimmed = await trimStudioFrames(snapshot)
+      if (!trimmed) {
+        setTrimFeedback('Nenhum pixel desenhado para recortar.')
+        return
+      }
+      const { x, y, w, h } = trimmed.bounds
+      if (x === 0 && y === 0 && w === canvasPixelWidth && h === canvasPixelHeight) {
+        setTrimFeedback('Nenhuma borda vazia para remover.')
+        return
+      }
+
+      const activeUrl = trimmed.frames[activeDirection][activeFrameIndex]
+      const activeImage = await loadRasterImage(activeUrl)
+      const source = document.createElement('canvas')
+      source.width = w
+      source.height = h
+      const sourceContext = source.getContext('2d')
+      const context = canvas.getContext('2d', { willReadFrequently: true })
+      if (!sourceContext || !context) throw new Error('Não foi possível recortar a imagem.')
+      sourceContext.drawImage(activeImage, 0, 0)
+
+      canvas.width = w
+      canvas.height = h
+      context.imageSmoothingEnabled = false
+      context.drawImage(source, 0, 0)
+      masterFramesRef.current[activeDirection] = trimmed.frames[activeDirection]
+      for (const key of unclippedFramesMapRef.current.keys()) {
+        if (key.startsWith(`${activeDirection}_`)) unclippedFramesMapRef.current.delete(key)
+      }
+      unclippedFramesMapRef.current.set(`${activeDirection}_${activeFrameIndex}`, source)
+      transformSourceCanvasRef.current = toolRef.current === 'move' ? source : null
+      transformOffsetRef.current = { x: 0, y: 0 }
+      transformScaleRef.current = 1
+      setTransformScaleState(1)
+      setScaleDisplay(null)
+      historyRef.current = [context.getImageData(0, 0, w, h)]
+      historyStepRef.current = 0
+      setCanUndo(false)
+      setCanRedo(false)
+      initialLoadedRef.current = true
+      setDirectionalFrames(previous => ({ ...previous, [activeDirection]: trimmed.frames[activeDirection] }))
+      setPixelWidth(w)
+      setPixelHeight(h)
+      setInputWidthStr(String(w))
+      setInputHeightStr(String(h))
+      // Other directions keep their own canvas and still contribute to the saved footprint.
+      directionCanvasSizesRef.current[activeDirection] = { width: canvasPixelWidth, height: canvasPixelHeight }
+      const populatedDirections = DIRECTIONS.filter(({ id }) => id === activeDirection || directionalFrames[id].some(Boolean))
+      const previousWidth = Math.max(...populatedDirections.map(({ id }) => directionCanvasSizesRef.current[id].width))
+      const previousHeight = Math.max(...populatedDirections.map(({ id }) => directionCanvasSizesRef.current[id].height))
+      directionCanvasSizesRef.current[activeDirection] = { width: w, height: h }
+      const savedWidth = Math.max(...populatedDirections.map(({ id }) => directionCanvasSizesRef.current[id].width))
+      const savedHeight = Math.max(...populatedDirections.map(({ id }) => directionCanvasSizesRef.current[id].height))
+      setTamanhoWidth(Math.max(savedWidth, Math.round(tamanhoWidth * savedWidth / previousWidth)))
+      setTamanhoHeight(Math.max(savedHeight, Math.round(tamanhoHeight * savedHeight / previousHeight)))
+      setPreviewDataUrl(activeUrl)
+      setHoverPixel(null)
+      const bestZoom = calcBestZoom(w, h)
+      setZoom(bestZoom)
+      setDefaultZoom(bestZoom)
+      setPanOffset({ x: 0, y: 0 })
+      setFrameEpoch(epoch => epoch + 1)
+      setTrimFeedback(`Bordas removidas. ${w} × ${h} px.`)
+    } catch (error) {
+      console.error('[Assets] Could not trim studio frames:', error)
+      setTrimFeedback('Não foi possível aparar as bordas. Tente novamente.')
+    } finally {
+      isResizingRef.current = false
+      setIsTrimming(false)
+    }
   }
 
   const handleResizeDimensions = async (newW: number, newH: number) => {
@@ -1063,6 +1173,9 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
     setPanOffset({ x: 0, y: 0 })
 
     setDirectionalFrames(resizedCanvasFrames)
+    for (const { id } of DIRECTIONS) {
+      directionCanvasSizesRef.current[id] = { width: targetW, height: targetH }
+    }
     setPixelWidth(targetW)
     setPixelHeight(targetH)
     isResizingRef.current = false
@@ -1145,6 +1258,17 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
   const switchDirection = (newDir: Direction) => {
     if (newDir === activeDirection) return
     commitCurrentCanvas()
+    directionCanvasSizesRef.current[activeDirection] = { width: canvasPixelWidth, height: canvasPixelHeight }
+    const targetSize = directionCanvasSizesRef.current[newDir]
+    setPixelWidth(targetSize.width)
+    setPixelHeight(targetSize.height)
+    setInputWidthStr(String(targetSize.width))
+    setInputHeightStr(String(targetSize.height))
+    const bestZoom = calcBestZoom(targetSize.width, targetSize.height)
+    setZoom(bestZoom)
+    setDefaultZoom(bestZoom)
+    setPanOffset({ x: 0, y: 0 })
+    setTrimFeedback(null)
     setActiveDirection(newDir)
     const targetFrames = directionalFrames[newDir] || ['']
     setActiveFrameIndex((prevIdx) => Math.min(prevIdx, Math.max(0, targetFrames.length - 1)))
@@ -1664,6 +1788,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
   }
 
   const handleFinalSave = () => {
+    if (isResizingRef.current) return
     const canvas = drawCanvasRef.current
     const currentData = canvas ? canvas.toDataURL('image/png') : ''
     const currentDirFrames = [...(directionalFrames[activeDirection] || [''])]
@@ -1825,7 +1950,17 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
-      <div className="relative w-full max-w-6xl h-[92vh] max-h-[860px] bg-[#1e1f22] border border-[#383a40] rounded-3xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
+      <div
+        className="relative w-full max-w-6xl h-[92vh] max-h-[860px] bg-[#1e1f22] border border-[#383a40] rounded-3xl shadow-2xl flex flex-col overflow-hidden text-slate-100"
+        aria-busy={isTrimming}
+        onKeyDownCapture={event => {
+          if (isTrimming) {
+            event.preventDefault()
+            event.stopPropagation()
+          }
+        }}
+      >
+        {isTrimming && <div className="absolute inset-0 z-40 cursor-wait" aria-hidden="true" />}
         <div className="flex items-center justify-between px-6 py-2.5 border-b border-[#2b2d31] bg-[#18191c]">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-2xl bg-[#3b82f6]/20 border border-[#3b82f6]/40 flex items-center justify-center text-[#3b82f6]">
@@ -1962,6 +2097,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
             </button>
             <button
               onClick={handleFinalSave}
+              disabled={isTrimming}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#3b82f6] hover:bg-[#2563eb] text-white text-xs font-bold shadow-lg shadow-[#3b82f6]/25 transition-all cursor-pointer"
             >
               <Check className="w-4 h-4" /> Salvar Preset
@@ -2096,67 +2232,86 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               </div>
             )}
 
-            <div className="absolute top-4 left-6 z-10 flex items-center gap-2 bg-[#18191c]/90 border border-[#383a40] backdrop-blur-md px-3 py-1.5 rounded-2xl shadow-lg">
-              <button
-                onClick={() => {
-                  const currentZ = zoom
-                  const step = currentZ <= 0.5 ? 0.05 : currentZ <= 1 ? 0.1 : currentZ <= 4 ? 1 : 2
-                  const nextZoom = Math.max(0.1, Math.round((currentZ - step) * 100) / 100)
-                  if (nextZoom !== currentZ) {
-                    const k = nextZoom / currentZ
-                    setZoom(nextZoom)
-                    setPanOffset((prev) => ({ x: prev.x * k, y: prev.y * k }))
-                  }
-                }}
-                className="p-1.5 rounded-lg hover:bg-[#2b2d31] text-slate-400 hover:text-white transition-colors cursor-pointer"
-                title="Diminuir Zoom (Ctrl + Scroll para baixo)"
-              >
-                <ZoomOut className="w-4 h-4" />
-              </button>
-              <span className="text-xs font-mono font-bold text-slate-300 min-w-[42px] text-center">
-                {zoom < 1 ? zoom.toFixed(2) : zoom}x
-              </span>
-              <button
-                onClick={() => {
-                  const currentZ = zoom
-                  const step = currentZ < 0.5 ? 0.05 : currentZ < 1 ? 0.1 : currentZ < 4 ? 1 : 2
-                  const nextZoom = Math.min(32, Math.round((currentZ + step) * 100) / 100)
-                  if (nextZoom !== currentZ) {
-                    const k = nextZoom / currentZ
-                    setZoom(nextZoom)
-                    setPanOffset((prev) => ({ x: prev.x * k, y: prev.y * k }))
-                  }
-                }}
-                className="p-1.5 rounded-lg hover:bg-[#2b2d31] text-slate-400 hover:text-white transition-colors cursor-pointer"
-                title="Aumentar Zoom (Ctrl + Scroll para cima)"
-              >
-                <ZoomIn className="w-4 h-4" />
-              </button>
-
-              <div className="w-px h-4 bg-[#383a40] mx-1" />
-
-              {(panOffset.x !== 0 || panOffset.y !== 0 || zoom !== defaultZoom) && (
+            <div className="absolute top-4 left-6 z-10 flex flex-col items-start gap-2 max-w-[calc(100%-3rem)]">
+              <div className="flex flex-wrap items-center gap-2 bg-[#18191c]/90 border border-[#383a40] backdrop-blur-md px-3 py-1.5 rounded-2xl shadow-lg">
                 <button
                   onClick={() => {
-                    setPanOffset({ x: 0, y: 0 })
-                    setZoom(defaultZoom)
+                    const currentZ = zoom
+                    const step = currentZ <= 0.5 ? 0.05 : currentZ <= 1 ? 0.1 : currentZ <= 4 ? 1 : 2
+                    const nextZoom = Math.max(0.1, Math.round((currentZ - step) * 100) / 100)
+                    if (nextZoom !== currentZ) {
+                      const k = nextZoom / currentZ
+                      setZoom(nextZoom)
+                      setPanOffset((prev) => ({ x: prev.x * k, y: prev.y * k }))
+                    }
                   }}
-                  className="px-2.5 py-1 rounded-lg bg-[#2b2d31] hover:bg-[#383a40] text-slate-300 text-[11px] font-semibold transition-all cursor-pointer"
-                  title="Centralizar e redefinir zoom original"
+                  className="p-1.5 rounded-lg hover:bg-[#2b2d31] text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  title="Diminuir Zoom (Ctrl + Scroll para baixo)"
                 >
-                  Centralizar
+                  <ZoomOut className="w-4 h-4" />
                 </button>
-              )}
+                <span className="text-xs font-mono font-bold text-slate-300 min-w-[42px] text-center">
+                  {zoom < 1 ? zoom.toFixed(2) : zoom}x
+                </span>
+                <button
+                  onClick={() => {
+                    const currentZ = zoom
+                    const step = currentZ < 0.5 ? 0.05 : currentZ < 1 ? 0.1 : currentZ < 4 ? 1 : 2
+                    const nextZoom = Math.min(32, Math.round((currentZ + step) * 100) / 100)
+                    if (nextZoom !== currentZ) {
+                      const k = nextZoom / currentZ
+                      setZoom(nextZoom)
+                      setPanOffset((prev) => ({ x: prev.x * k, y: prev.y * k }))
+                    }
+                  }}
+                  className="p-1.5 rounded-lg hover:bg-[#2b2d31] text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  title="Aumentar Zoom (Ctrl + Scroll para cima)"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </button>
 
-              <button
-                onClick={() => setShowGrid(!showGrid)}
-                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                  showGrid ? 'bg-[#3b82f6]/20 text-[#3b82f6]' : 'text-slate-400 hover:text-white'
-                }`}
-                title="Alternar Grade de Pixels"
-              >
-                <Grid className="w-4 h-4" />
-              </button>
+                <div className="w-px h-4 bg-[#383a40] mx-1" />
+
+                {(panOffset.x !== 0 || panOffset.y !== 0 || zoom !== defaultZoom) && (
+                  <button
+                    onClick={() => {
+                      setPanOffset({ x: 0, y: 0 })
+                      setZoom(defaultZoom)
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-[#2b2d31] hover:bg-[#383a40] text-slate-300 text-[11px] font-semibold transition-all cursor-pointer"
+                    title="Centralizar e redefinir zoom original"
+                  >
+                    Centralizar
+                  </button>
+                )}
+
+                <button
+                  onClick={() => setShowGrid(!showGrid)}
+                  className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                    showGrid ? 'bg-[#3b82f6]/20 text-[#3b82f6]' : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Alternar Grade de Pixels"
+                >
+                  <Grid className="w-4 h-4" />
+                </button>
+                <div className="w-px h-4 bg-[#383a40] mx-1" />
+                <button
+                  type="button"
+                  onClick={() => void handleTrimTransparentBorders()}
+                  disabled={isTrimming || isFrameLoading}
+                  aria-busy={isTrimming}
+                  title="Remover as bordas transparentes de todos os quadros da direção selecionada, sem cortar pixels desenhados"
+                  className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-[#2b2d31] text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                >
+                  <Crop className="w-4 h-4" aria-hidden="true" />
+                  {isTrimming ? 'Aparando…' : 'Aparar bordas'}
+                </button>
+              </div>
+              {trimFeedback && (
+                <p role="status" className="max-w-full rounded-lg bg-[#18191c]/95 px-3 py-2 text-xs text-slate-300">
+                  {trimFeedback}
+                </p>
+              )}
             </div>
 
             <div

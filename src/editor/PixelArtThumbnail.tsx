@@ -3,6 +3,7 @@ import { PixelArtRenderer } from '../engine/PixelArtRenderer'
 import { FURNITURE_CATALOG, TILE_SIZE } from '../engine/Constants'
 import { FloorType, WallType, PlacedFurniture } from '../types/map'
 import { useCustomAssetsStore, getCustomAssetImage, onCustomAssetsChange } from '../store/useCustomAssetsStore'
+import { readSpriteFrame } from '../assets/spriteFrame'
 
 interface PixelArtThumbnailProps {
   type: 'furniture' | 'floor' | 'wall'
@@ -115,6 +116,12 @@ export const PixelArtThumbnail: React.FC<PixelArtThumbnailProps> = ({
       ...Object.values(customAsset?.directionalFrames || {}).flatMap(frames => typeof frames === 'string' ? [frames] : frames || []),
       customAsset?.thumbnail,
     ])
+    // Cropped frames become available when their shared source sheet finishes loading.
+    for (const source of [...sources]) {
+      if (!source) continue
+      const frame = readSpriteFrame(source)
+      if (frame) sources.add(frame.source)
+    }
     // Render when the requested frame actually arrives, including animated and
     // directional frames. Images belonging to other assets do not redraw this canvas.
     const unsubscribe = onCustomAssetsChange(source => {
