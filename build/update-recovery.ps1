@@ -45,6 +45,16 @@ if (@($managedTrees | ForEach-Object { $_.ToUpperInvariant() } | Select-Object -
   throw 'Invalid update directories.'
 }
 
+# Changes made by this version's startup/data migrations. Library images are content-addressed
+# and retained when catalogs change; external browser profiles and downloaded modules stay live.
+$profileChangeKinds = @{
+  'data\nativeSpaces.json' = 'File'
+  'data\nativeAssets.json' = 'File'
+  'assets\library\catalog.json' = 'File'
+  'Local Storage' = 'Directory'
+}
+$profileChangeParents = @('data', 'assets', 'assets\library')
+
 function Assert-RegularPath([string]$Target) {
   $ancestor = $Target
   while ($ancestor) {
@@ -124,19 +134,7 @@ function Remove-ProfileTree([string]$Name) {
   if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
 }
 
-function Test-DisposableProfileEntry([string]$Relative) {
-  # Match only known Chromium profile locations; never filter custom asset/save folders by name.
-  $caches = '(?:Cache|Code Cache|GPUCache|GPUPersistentCache|DawnGraphiteCache|DawnWebGPUCache|ShaderCache|GrShaderCache|Crashpad|BrowserMetrics|logs)'
-  return $Relative -match "^(?:$caches)(?:\\|$)" -or
-    $Relative -match "^spotify-browser\\(?:(?:Default|Profile [^\\]+)\\)?$caches(?:\\|$)" -or
-    $Relative -match "^Partitions\\[^\\]+\\$caches(?:\\|$)" -or
-    $Relative -match '^(?:spotify-browser\\(?:(?:Default|Profile [^\\]+)\\)?)?Service Worker\\(?:CacheStorage|ScriptCache)(?:\\|$)' -or
-    $Relative -match '^spotify-browser\\optimization_guide_model_store(?:\\|$)' -or
-    $Relative -match '^(?:spotify-browser\\)?BrowserMetrics-spare\.pma$' -or
-    $Relative -match '^(?:DevToolsActivePort|SingletonCookie|SingletonLock|SingletonSocket|lockfile)$'
-}
-
-function Get-TreeSnapshot([string]$Source, [bool]$Profile = $false) {
+function Get-TreeSnapshot([string]$Source) {
   Assert-RegularPath $Source
   $existed = Test-Path -LiteralPath $Source -PathType Container
   $files = [Collections.Generic.List[object]]::new()
@@ -147,7 +145,6 @@ function Get-TreeSnapshot([string]$Source, [bool]$Profile = $false) {
     while ($pendingDirectories.Count) {
       foreach ($item in Get-ChildItem -LiteralPath $pendingDirectories.Pop() -Force) {
         $relative = $item.FullName.Substring($Source.Length + 1)
-        if ($Profile -and (Test-DisposableProfileEntry $relative)) { continue }
         if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Linked path: $($item.FullName)" }
         if ($item.PSIsContainer) {
           $directories.Add($relative)
@@ -159,6 +156,124 @@ function Get-TreeSnapshot([string]$Source, [bool]$Profile = $false) {
     }
   }
   return [pscustomobject]@{ Existed = [bool]$existed; Files = @($files.ToArray()); Directories = @($directories.ToArray()); Storage = $null }
+}
+
+function Get-ProfileChangesSnapshot([string]$ProfileToSnapshot) {
+  $source = Get-ProfilePath $ProfileToSnapshot
+  Assert-RegularPath $source
+  $existed = Test-Path -LiteralPath $source -PathType Container
+  if (-not $existed -and (Test-Path -LiteralPath $source)) { throw 'Invalid profile directory.' }
+  $files = [Collections.Generic.List[object]]::new()
+  $directories = [Collections.Generic.List[string]]::new()
+  $parents = @(foreach ($name in $profileChangeParents) {
+    $target = Get-SnapshotChild $source $name
+    Assert-RegularPath $target
+    if (Test-Path -LiteralPath $target -PathType Leaf) { throw 'Invalid profile parent directory.' }
+    $exists = Test-Path -LiteralPath $target -PathType Container
+    if ($exists) { $directories.Add($name) }
+    [pscustomobject]@{ Name = $name; Existed = [bool]$exists }
+  })
+  $targets = @(foreach ($name in $profileChangeKinds.Keys) {
+    $target = Get-SnapshotChild $source $name
+    Assert-RegularPath $target
+    $kind = $profileChangeKinds[$name]
+    $exists = Test-Path -LiteralPath $target
+    if ($exists) {
+      $item = Get-Item -LiteralPath $target -Force
+      if ($item.PSIsContainer -ne ($kind -eq 'Directory')) { throw 'Invalid mutable profile entry.' }
+      if ($kind -eq 'Directory') {
+        $tree = Get-TreeSnapshot $target
+        $directories.Add($name)
+        foreach ($directory in $tree.Directories) { $directories.Add((Join-Path $name $directory)) }
+        foreach ($file in $tree.Files) {
+          $files.Add([pscustomobject]@{ Name = (Join-Path $name $file.Name); Length = $file.Length; Hash = $null })
+        }
+      } else { $files.Add([pscustomobject]@{ Name = $name; Length = $item.Length; Hash = $null }) }
+    }
+    [pscustomobject]@{ Name = $name; Kind = $kind; Existed = [bool]$exists }
+  })
+  return [pscustomobject]@{
+    Name = $ProfileToSnapshot; Existed = [bool]$existed; Files = @($files.ToArray())
+    Directories = @($directories.ToArray()); Targets = $targets; Parents = $parents
+  }
+}
+
+function Assert-ProfileChanges($Profile) {
+  $seen = @()
+  foreach ($target in $Profile.Targets) {
+    if (-not $profileChangeKinds.ContainsKey($target.Name) -or $target.Kind -ne $profileChangeKinds[$target.Name] -or
+        $target.Existed -isnot [bool] -or $target.Name -in $seen -or ($target.Existed -and -not $Profile.Existed)) {
+      throw 'Invalid mutable profile scope.'
+    }
+    $seen += $target.Name
+    if ($target.Kind -eq 'File') {
+      $count = @($Profile.Files | Where-Object { $_.Name -eq $target.Name }).Count
+      if ($count -ne [int]$target.Existed) { throw 'Incomplete mutable file snapshot.' }
+    }
+  }
+  if ($seen.Count -ne $profileChangeKinds.Count) { throw 'Missing mutable profile scope.' }
+  foreach ($file in $Profile.Files) {
+    $owner = @($Profile.Targets | Where-Object {
+      ($_.Kind -eq 'File' -and $file.Name -eq $_.Name) -or
+      ($_.Kind -eq 'Directory' -and $file.Name.StartsWith($_.Name + '\', [StringComparison]::OrdinalIgnoreCase))
+    })
+    if ($owner.Count -ne 1 -or -not $owner[0].Existed) { throw 'File outside mutable profile scope.' }
+  }
+  $seenParents = @()
+  foreach ($parentState in $Profile.Parents) {
+    if ($parentState.Name -notin $profileChangeParents -or $parentState.Name -in $seenParents -or
+        $parentState.Existed -isnot [bool] -or ($parentState.Existed -and -not $Profile.Existed)) { throw 'Invalid profile parent state.' }
+    $seenParents += $parentState.Name
+  }
+  if ($seenParents.Count -ne $profileChangeParents.Count) { throw 'Missing profile parent state.' }
+  foreach ($directory in $Profile.Directories) {
+    if ($directory -notin $profileChangeParents -and $directory -ne 'Local Storage' -and
+        -not $directory.StartsWith('Local Storage\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Directory outside mutable profile scope.' }
+  }
+}
+
+function Assert-ProfileChangeTargets($Profile) {
+  $live = Get-ProfilePath $Profile.Name
+  foreach ($target in $Profile.Targets) {
+    $destination = Get-SnapshotChild $live $target.Name
+    if ($target.Kind -eq 'Directory') { Assert-RegularTree $destination }
+    else {
+      Assert-RegularPath $destination
+      if (Test-Path -LiteralPath $destination -PathType Container) { throw 'A mutable file was replaced by a directory.' }
+    }
+  }
+}
+
+function Restore-ProfileChanges($Profile, [string]$StagedProfile) {
+  $live = Get-ProfilePath $Profile.Name
+  # Never delete the profile root: images, modules, browser sessions and unknown files were not
+  # copied and must retain their original files, including entries created after the snapshot.
+  foreach ($target in $Profile.Targets) {
+    $destination = Get-SnapshotChild $live $target.Name
+    if ($target.Kind -eq 'Directory') {
+      Assert-RegularTree $destination
+      if (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination -Recurse -Force }
+    } else { Assert-RegularPath $destination }
+    if ($target.Existed) {
+      $source = Get-SnapshotChild $StagedProfile $target.Name
+      Assert-RegularPath $source
+      $null = [IO.Directory]::CreateDirectory([IO.Directory]::GetParent($destination).FullName)
+      if ($target.Kind -eq 'Directory') { [IO.Directory]::Move($source, $destination) }
+      else { [LiraUpdateIO]::PublishFile($source, $destination) }
+    } elseif ($target.Kind -eq 'File' -and (Test-Path -LiteralPath $destination)) {
+      Remove-Item -LiteralPath $destination -Force
+    }
+  }
+  # Remove only empty parent directories which did not exist before the update.
+  foreach ($parentState in $Profile.Parents | Sort-Object { $_.Name.Length } -Descending) {
+    $directory = Get-SnapshotChild $live $parentState.Name
+    Assert-RegularPath $directory
+    if (-not $parentState.Existed -and (Test-Path -LiteralPath $directory -PathType Container) -and
+        @(Get-ChildItem -LiteralPath $directory -Force).Count -eq 0) { [IO.Directory]::Delete($directory, $false) }
+  }
+  Assert-RegularPath $live
+  if (-not $Profile.Existed -and (Test-Path -LiteralPath $live -PathType Container) -and
+      @(Get-ChildItem -LiteralPath $live -Force).Count -eq 0) { [IO.Directory]::Delete($live, $false) }
 }
 
 function Get-RenamedApplicationSnapshot {
@@ -198,8 +313,8 @@ function Assert-TreeSnapshot($Tree, [string]$Directory, [bool]$Moved = $false) {
 function Assert-ManifestIdentity($Snapshot) {
   if ($Snapshot.InstallDir -ne $installPath) { throw 'Invalid backup installation directory.' }
   if ($Snapshot.PSObject.Properties.Name -contains 'FormatVersion') {
-    if ($Snapshot.FormatVersion -notin @(2, 3, 4) -or $Snapshot.UserDataDir -ne $userDataPath) { throw 'Invalid backup profile directory.' }
-    if ($Snapshot.FormatVersion -eq 4) {
+    if ($Snapshot.FormatVersion -notin @(2, 3, 4, 5) -or $Snapshot.UserDataDir -ne $userDataPath) { throw 'Invalid backup profile directory.' }
+    if ($Snapshot.FormatVersion -ge 4) {
       $transaction = [Guid]::Empty
       if (-not [Guid]::TryParse([string]$Snapshot.TransactionId, [ref]$transaction)) { throw 'Invalid recovery transaction.' }
     }
@@ -226,7 +341,7 @@ function Get-RenamedApplicationSource($Snapshot, [string]$Directory) {
 
 function Assert-BackupSnapshot($Snapshot, [string]$Directory) {
   Assert-ManifestIdentity $Snapshot
-  $renamed = $Snapshot.PSObject.Properties.Name -contains 'FormatVersion' -and $Snapshot.FormatVersion -eq 4
+  $renamed = $Snapshot.PSObject.Properties.Name -contains 'FormatVersion' -and $Snapshot.FormatVersion -ge 4
   if ($renamed) { Assert-RegularPath $Directory } else { Assert-RegularTree $Directory }
   if ($Snapshot.PSObject.Properties.Name -notcontains 'FormatVersion') {
     # Pending backups made by the previous release contained only application files.
@@ -244,6 +359,12 @@ function Assert-BackupSnapshot($Snapshot, [string]$Directory) {
     if ($profile.Name -in $names) { throw 'Duplicate backup profile.' }
     $names += $profile.Name
     $profileSource = Join-Path (Join-Path $Directory 'user-data') $profile.Name
+    if ($Snapshot.FormatVersion -eq 5) {
+      Assert-ProfileChanges $profile
+      foreach ($target in $profile.Targets | Where-Object { $_.Kind -eq 'Directory' -and $_.Existed }) {
+        if (-not (Test-Path -LiteralPath (Get-SnapshotChild $profileSource $target.Name) -PathType Container)) { throw 'Missing mutable directory snapshot.' }
+      }
+    }
     Assert-RegularTree $profileSource
     Assert-TreeSnapshot $profile $profileSource
   }
@@ -344,13 +465,10 @@ switch ($Action) {
         if ($entry.Name.StartsWith("$profileName-inst-", [StringComparison]::OrdinalIgnoreCase)) { $profileNames += $entry.Name }
       }
     }
-    $profiles = @(foreach ($name in $profileNames) {
-      $tree = Get-TreeSnapshot (Get-ProfilePath $name) $true
-      [pscustomobject]@{ Name = $name; Existed = $tree.Existed; Files = $tree.Files; Directories = $tree.Directories }
-    })
+    $profiles = @(foreach ($name in $profileNames) { Get-ProfileChangesSnapshot $name })
     if (-not $application.Existed -and @($profiles | Where-Object { $_.Existed }).Count -eq 0) { return }
     $snapshot = [pscustomobject]@{
-      FormatVersion = 4; TransactionId = [Guid]::NewGuid().ToString(); InstallDir = $installPath; UserDataDir = $userDataPath
+      FormatVersion = 5; TransactionId = [Guid]::NewGuid().ToString(); InstallDir = $installPath; UserDataDir = $userDataPath
       Application = $application; Profiles = $profiles
     }
     Remove-UpdateTree $stagingPath
@@ -368,7 +486,7 @@ switch ($Action) {
       $uninstallerBytes = if ($application.Existed -and (Test-Path -LiteralPath $uninstaller)) { [IO.File]::ReadAllBytes($uninstaller) } else { $null }
       Set-Content -LiteralPath (Join-Path $stagingPath 'snapshot.json') -Value ($snapshot | ConvertTo-Json -Depth 8) -Encoding UTF8
       $journal = [pscustomobject]@{
-        FormatVersion = 4; TransactionId = $snapshot.TransactionId; InstallDir = $installPath; UserDataDir = $userDataPath
+        FormatVersion = 5; TransactionId = $snapshot.TransactionId; InstallDir = $installPath; UserDataDir = $userDataPath
         BackupDir = $stagingPath; Phase = 'Preparing'
       }
       Write-Pending $journal
@@ -409,7 +527,8 @@ switch ($Action) {
     Assert-BackupSnapshot $snapshot $snapshotDirectory
     Assert-RegularTree $installPath
     $legacy = $snapshot.PSObject.Properties.Name -notcontains 'FormatVersion'
-    $renamed = -not $legacy -and $snapshot.FormatVersion -eq 4
+    $renamed = -not $legacy -and $snapshot.FormatVersion -ge 4
+    $scoped = -not $legacy -and $snapshot.FormatVersion -eq 5
     $application = if ($legacy) { [pscustomobject]@{ Existed = $true; Files = $snapshot.Files } } else { $snapshot.Application }
     if (-not $renamed) {
       $script:totalFiles = @($application.Files).Count
@@ -437,7 +556,8 @@ switch ($Action) {
     if (-not $legacy) {
       Remove-UpdateTree $profileStagingPath
       foreach ($profile in $snapshot.Profiles) {
-        Assert-RegularTree (Get-ProfilePath $profile.Name)
+        if ($scoped) { Assert-ProfileChangeTargets $profile }
+        else { Assert-RegularTree (Get-ProfilePath $profile.Name) }
         Copy-SnapshotTree $profile (Join-Path (Join-Path $snapshotDirectory 'user-data') $profile.Name) (Join-Path $profileStagingPath $profile.Name) 'Restaurando saves'
       }
     }
@@ -457,6 +577,10 @@ switch ($Action) {
     }
     if (-not $legacy) {
       foreach ($profile in $snapshot.Profiles) {
+        if ($scoped) {
+          Restore-ProfileChanges $profile (Get-SnapshotChild $profileStagingPath $profile.Name)
+          continue
+        }
         Remove-ProfileTree $profile.Name
         if ($profile.Existed) {
           # Staging alongside APPDATA also supports installations on another volume.
