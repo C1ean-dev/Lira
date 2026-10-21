@@ -23,6 +23,7 @@ import { LobbyChatModal } from './lobby/LobbyChatModal'
 import { LiraLogo } from './LiraLogo'
 import { useUpdateStore, versionBadgeLabel } from '../store/useUpdateStore'
 import { CURRENT_APP_VERSION } from '../services/updateService'
+import { isAndroid } from '../utils/platform'
 import { isSameParticipant } from '../utils/userId'
 
 interface Props {
@@ -574,7 +575,7 @@ export const LobbyModal: React.FC<Props> = ({
       <div className="bg-[#1b202c] border border-[#2a3142] rounded-2xl sm:rounded-3xl w-full max-w-2xl sm:max-w-[740px] overflow-hidden shadow-2xl flex flex-col max-h-[96vh] sm:max-h-[92vh]">
         <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 p-3.5 sm:p-5 text-center relative overflow-hidden shrink-0">
           <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full bg-white/10 blur-2xl" />
-          {hasUpdate && onApplyUpdate ? (
+          {hasUpdate && (isUpdateReady || isAndroid()) && onApplyUpdate ? (
             <button
               type="button"
               onClick={onApplyUpdate}

@@ -129,9 +129,6 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
             status: 'ready',
             progress: { percent: 100, downloaded: 1, total: 1 },
           })
-          if (get().isUpdateScreenOpen && get().status !== 'installing') {
-            get().applyUpdate()
-          }
         })
 
         const success = await UpdateService.downloadUpdate(info.downloadUrl, info.latestVersion)
@@ -141,9 +138,6 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
             status: 'ready',
             progress: { percent: 100, downloaded: 1, total: 1 },
           })
-          if (get().isUpdateScreenOpen && get().status !== 'installing') {
-            get().applyUpdate()
-          }
         } else {
           set({
             status: 'error',
@@ -280,27 +274,21 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
   },
 
   startInteractiveUpdate: async () => {
-    set({ isUpdateScreenOpen: true, error: null })
     const currentStatus = get().status
-    const info = get().updateInfo
 
     if (currentStatus === 'installing') {
       return
     }
 
     if (isAndroid()) {
+      set({ isUpdateScreenOpen: true, error: null })
       await get().applyUpdate()
       return
     }
 
     if (currentStatus === 'ready') {
+      set({ isUpdateScreenOpen: true, error: null })
       await get().applyUpdate()
-    } else if (currentStatus === 'downloading') {
-    } else if (info?.hasUpdate) {
-      await get().checkForUpdatesAndDownload()
-      if (get().status === 'ready' && get().status !== 'installing') {
-        await get().applyUpdate()
-      }
     } else {
       await get().checkForUpdatesAndDownload()
     }
