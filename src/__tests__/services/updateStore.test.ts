@@ -51,6 +51,7 @@ describe('useUpdateStore - Silent Background Download & Direct Button Update Flo
       status: 'idle',
       progress: { percent: 0, downloaded: 0, total: 0 },
       error: null,
+      isUpdateScreenOpen: false,
     })
     vi.restoreAllMocks()
   })
@@ -128,7 +129,7 @@ describe('useUpdateStore - Silent Background Download & Direct Button Update Flo
     expect(useUpdateStore.getState().isUpdateScreenOpen).toBe(true)
   })
 
-  it('opens interactive update screen with progress when startInteractiveUpdate is called', async () => {
+  it('keeps downloading in background if an early update action is called', async () => {
     useUpdateStore.setState({
       status: 'downloading',
       isUpdateScreenOpen: false,
@@ -136,7 +137,18 @@ describe('useUpdateStore - Silent Background Download & Direct Button Update Flo
     })
 
     await useUpdateStore.getState().startInteractiveUpdate()
-    expect(useUpdateStore.getState().isUpdateScreenOpen).toBe(true)
+    expect(useUpdateStore.getState().isUpdateScreenOpen).toBe(false)
+  })
+
+  it('does not apply a completed background download just because an error screen was open', async () => {
+    vi.spyOn(UpdateService, 'checkForUpdates').mockResolvedValue({ hasUpdate: true, currentVersion: '1.0', latestVersion: '1.1', releaseName: '', releaseNotes: '', downloadUrl: 'https://example.com/setup.exe', releaseUrl: '' })
+    vi.spyOn(UpdateService, 'isUpdateDownloaded').mockResolvedValue(false)
+    vi.spyOn(UpdateService, 'downloadUpdate').mockResolvedValue(true)
+    const apply = vi.spyOn(UpdateService, 'applyUpdate').mockResolvedValue(true)
+    useUpdateStore.setState({ isUpdateScreenOpen: true })
+    await useUpdateStore.getState().checkForUpdatesAndDownload()
+    expect(useUpdateStore.getState().status).toBe('ready')
+    expect(apply).not.toHaveBeenCalled()
   })
 
   it('automatically triggers download if applyUpdate is called when not downloaded yet', async () => {

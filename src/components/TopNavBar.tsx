@@ -102,6 +102,7 @@ export const TopNavBar: React.FC<Props> = ({
 
   const currentZone = mapZones.find((z) => z.id === localPlayerCurrentZoneId)
   const isAndroidPlatform = isAndroid()
+  const canApplyUpdate = hasUpdate && (isUpdateReady || isAndroidPlatform)
   const displayRoomId = isAndroidPlatform && roomId ? roomId.slice(0, 8) : roomId
 
   const handleCopyCode = async () => {
@@ -284,7 +285,7 @@ export const TopNavBar: React.FC<Props> = ({
           )}
         </button>
 
-        {hasUpdate && onApplyUpdate ? (
+        {canApplyUpdate && onApplyUpdate ? (
           <button
             onClick={onApplyUpdate}
             disabled={isUpdating}
@@ -415,7 +416,7 @@ export const TopNavBar: React.FC<Props> = ({
           title="Mais opções e menus"
         >
           {isMobileMenuOpen ? <X className="w-4 h-4 text-white" /> : <Menu className="w-4 h-4" />}
-          {(hasUpdate || totalUnreadDMs > 0) && !isMobileMenuOpen && (
+          {(canApplyUpdate || totalUnreadDMs > 0) && !isMobileMenuOpen && (
             <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
           )}
         </button>
@@ -513,7 +514,7 @@ export const TopNavBar: React.FC<Props> = ({
               />
             </div>
 
-            {hasUpdate && onApplyUpdate && (
+            {canApplyUpdate && onApplyUpdate && (
               <button
                 onClick={() => {
                   setIsMobileMenuOpen(false)
