@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -8,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 const script = path.resolve('build/update-recovery.ps1')
 const installer = () => readFileSync('build/installer.nsh', 'utf8')
 
-describe.skipIf(process.platform !== 'win32')('installer file recovery', () => {
+// PowerShell startup and its first Add-Type compilation can exceed five seconds on CI.
+describe.skipIf(process.platform !== 'win32')('installer file recovery', { timeout: 30000 }, () => {
   let root: string
   let install: string
   let backup: string
@@ -42,7 +43,9 @@ describe.skipIf(process.platform !== 'win32')('installer file recovery', () => {
   }
 
   beforeEach(() => {
-    root = mkdtempSync(path.join(os.tmpdir(), 'lira-recovery-test-'))
+    // The runner's TEMP can use an 8.3 alias (RUNNER~1). Match .NET's expanded paths
+    // when writing legacy manifests and editing journals in the recovery fixtures.
+    root = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'lira-recovery-test-')))
     install = path.join(root, 'Lira com espaço [teste]')
     backup = path.join(root, 'lira.backup')
     backupApp = path.join(backup, 'app')
@@ -52,6 +55,14 @@ describe.skipIf(process.platform !== 'win32')('installer file recovery', () => {
     put('Uninstall Lira.exe', 'old uninstaller')
   })
   afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  it('uses the same canonical paths in hand-authored fixtures and generated recovery journals', () => {
+    run('Backup')
+    const journal = JSON.parse(readFileSync(path.join(root, 'lira.update-pending.json'), 'utf8'))
+    expect(journal.InstallDir).toBe(install)
+    expect(journal.UserDataDir).toBe(userData)
+    expect(journal.BackupDir).toBe(backup)
+  }, 30000)
 
   it('backs up every installed file outside the directory the uninstaller removes', () => {
     put('data/hidden.config', 'configuration')
