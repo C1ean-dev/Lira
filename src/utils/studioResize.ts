@@ -1,3 +1,4 @@
+import { setRasterImageSource } from './rasterImageSource'
 
 export const MAX_SIZE = 4096
 
@@ -50,7 +51,7 @@ export async function composeFrameSource(
   frameUrl: string
 ): Promise<HTMLCanvasElement | null> {
   const frameImage = new Image()
-  frameImage.src = frameUrl
+  setRasterImageSource(frameImage, frameUrl)
   const loaded = await new Promise<boolean>((resolve) => {
     frameImage.onload = () => resolve(true)
     frameImage.onerror = () => resolve(false)

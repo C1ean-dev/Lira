@@ -2,8 +2,10 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { randomUUID } from 'node:crypto'
-import { imageIdentity, imageNamePattern, openLibrary, type LibraryLocation, type LibraryPacket } from '../src/assets/individualLibrary'
+import { imageIdentity, imageNamePattern, openLibrary, libraryImagePath, libraryAssetFolder, assetImageNames, type LibraryLocation, type LibraryPacket } from '../src/assets/individualLibrary'
 import { createLatestWriter } from './latestWriter'
+import { spriteXml } from '../src/assets/sourceSprites'
+import { readSpriteFrame } from '../src/assets/spriteFrame'
 
 async function publishFile(target: string, bytes: Buffer | string): Promise<void> {
   const temporary = path.join(path.dirname(target), `.image-${randomUUID()}.tmp`)
@@ -37,31 +39,68 @@ export async function readIndividualLibrary(directory: string): Promise<LibraryL
   return { catalog, baseUrl: pathToFileURL(directory + path.sep).href }
 }
 export async function writeIndividualLibrary(directory: string, packet: LibraryPacket): Promise<void> {
-  openLibrary(packet.catalog, name => name)
+  const document = openLibrary(packet.catalog, name => name)
   const pending = Object.entries(packet.images)
   for (const [name, data] of pending) {
     if (!imageNamePattern.test(name) || !packet.catalog.images.includes(name) || await imageIdentity(data) !== name) throw new Error('Assinatura da imagem inválida')
   }
-  await fs.mkdir(path.join(directory, 'images'), { recursive: true })
   // Content-addressed files are never overwritten or reclaimed while a renderer
   // could still reference an earlier catalog. Only metadata is replaced.
   for (const [name, data] of pending) {
-    await writeImage(path.join(directory, 'images', name), Buffer.from(data.split(',')[1], 'base64'))
+    const target = path.join(directory, libraryImagePath(packet.catalog, name))
+    await fs.mkdir(path.dirname(target), { recursive: true })
+    await writeImage(target, Buffer.from(data.split(',')[1], 'base64'))
   }
-  for (const name of packet.catalog.images) await fs.access(path.join(directory, 'images', name))
+  for (const name of packet.catalog.images) {
+    const target = path.join(directory, libraryImagePath(packet.catalog, name))
+    try { await fs.access(target) }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      // Renames and upgrades can still refer to the previous on-disk layout.
+      const previous = await readIndividualLibrary(directory)
+      const oldPath = previous?.catalog.images.includes(name) ? libraryImagePath(previous.catalog, name) : `images/${name}`
+      const bytes = await fs.readFile(path.join(directory, oldPath))
+      const mime = name.endsWith('.jpg') ? 'image/jpeg' : `image/${name.split('.').pop()}`
+      if (await imageIdentity(`data:${mime};base64,${bytes.toString('base64')}`) !== name) throw new Error('Imagem salva corrompida')
+      await fs.mkdir(path.dirname(target), { recursive: true })
+      await writeImage(target, bytes)
+    }
+  }
+  for (const asset of document.assets) {
+    const folder = path.join(directory, libraryAssetFolder(asset))
+    await fs.mkdir(folder, { recursive: true })
+    // Shared sheets remain addressable by hash, with a complete copy in each
+    // asset's folder so its XML never depends on another asset's folder.
+    for (const name of assetImageNames(asset)) {
+      const bytes = await fs.readFile(path.join(directory, libraryImagePath(packet.catalog, name)))
+      await writeImage(path.join(folder, name), bytes)
+    }
+    const source = asset.frames.map(readSpriteFrame).find(Boolean)?.source
+    if (!source || !imageNamePattern.test(source)) continue
+    await publishFile(path.join(folder, 'sprite.xml'), spriteXml(asset, source))
+  }
   await publishFile(path.join(directory, 'catalog.json'), JSON.stringify(packet.catalog))
 }
 export async function stageBundledLibraryImages(directory: string, packet: LibraryPacket, bundledDirectory: string): Promise<void> {
   openLibrary(packet.catalog, name => name, false)
-  await fs.mkdir(path.join(directory, 'images'), { recursive: true })
+  const bundled = await readIndividualLibrary(bundledDirectory)
   for (const name of packet.catalog.images) {
     if (Object.prototype.hasOwnProperty.call(packet.images, name)) continue
-    try { await fs.access(path.join(directory, 'images', name)); continue }
+    const target = path.join(directory, libraryImagePath(packet.catalog, name))
+    try { await fs.access(target); continue }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
-    const bytes = await fs.readFile(path.join(bundledDirectory, 'images', name))
+    const local = await readIndividualLibrary(directory)
+    let bytes: Buffer
+    const previous = local?.catalog.images.includes(name) ? libraryImagePath(local.catalog, name) : `images/${name}`
+    try { bytes = await fs.readFile(path.join(directory, previous)) }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      bytes = await fs.readFile(path.join(bundledDirectory, bundled ? libraryImagePath(bundled.catalog, name) : `images/${name}`))
+    }
     const mime = name.endsWith('.jpg') ? 'image/jpeg' : `image/${name.split('.').pop()}`
     if (await imageIdentity(`data:${mime};base64,${bytes.toString('base64')}`) !== name) throw new Error('Imagem distribuída corrompida')
-    await writeImage(path.join(directory, 'images', name), bytes)
+    await fs.mkdir(path.dirname(target), { recursive: true })
+    await writeImage(target, bytes)
   }
 }
 export const writeIndividualLibraryLatest = createLatestWriter(writeIndividualLibrary)

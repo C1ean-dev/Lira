@@ -18,12 +18,12 @@ describe('update buttons wait for the saved installer', () => {
   ] as const
 
   it.each(components)('hides the %s update action until the download completes', (_name, render) => {
-    expect(renderToStaticMarkup(render(false)).includes('Clique para atualizar agora.')).toBe(false)
-    expect(renderToStaticMarkup(render(true)).includes('Clique para atualizar agora.')).toBe(true)
+    expect(renderToStaticMarkup(render(false))).not.toContain('aria-label="Instalar atualização"')
+    expect(renderToStaticMarkup(render(true))).toContain('aria-label="Instalar atualização"')
   })
 
   it.each(components)('preserves the existing Android %s APK update action', (_name, render) => {
     vi.spyOn(platform, 'isAndroid').mockReturnValue(true)
-    expect(renderToStaticMarkup(render(false)).includes('Clique para atualizar agora.')).toBe(true)
+    expect(renderToStaticMarkup(render(false))).toContain('aria-label="Atualizar Lira"')
   })
 })

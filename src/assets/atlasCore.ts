@@ -8,6 +8,7 @@ import { cropContentDataUrl } from '../engine/avatar/avatarBakeService'
 import { bakeLayersToDataUrl } from '../utils/imageResize'
 import { layoutSprites, parseAtlasDocument, serializeAtlas, type AtlasDocument, type PersistedAtlas } from './atlasFormat'
 import { normalizeAssetActivityAnimations } from '../utils/avatarActivityAnimations'
+import { materializeSpriteDocument } from '../utils/rasterImageSource'
 
 const canvasFor = (w: number, h: number) => {
   const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : document.createElement('canvas')
@@ -21,6 +22,8 @@ const canvasFor = (w: number, h: number) => {
 export const loadAtlasImage = loadRasterImage
 
 export async function buildAtlas(assets: CustomAsset[], categories: string[] = [], deletedAssetIds: string[] = []): Promise<PersistedAtlas> {
+  // Older peers still consume a baked atlas. Materialize only for that wire
+  // format; the current library and renderer retain original-sheet references.
   const images = new Map<string, string>()
   // Transient editor buffers retain their existing shape; only XML references reach storage.
   const clean = (value: unknown): unknown => {
@@ -33,7 +36,7 @@ export async function buildAtlas(assets: CustomAsset[], categories: string[] = [
   }
   const prepared: CustomAsset[] = []
   for (const asset of assets) {
-    const copy = normalizeAssetActivityAnimations(asset)
+    const copy = normalizeAssetActivityAnimations(await materializeSpriteDocument(asset))
     delete copy.thumbnail
     // The original slicer XML is editor metadata, not another image source.
     // Keep it when present so externally authored frame offsets round-trip too.

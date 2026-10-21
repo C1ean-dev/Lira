@@ -102,7 +102,7 @@ export const TopNavBar: React.FC<Props> = ({
 
   const currentZone = mapZones.find((z) => z.id === localPlayerCurrentZoneId)
   const isAndroidPlatform = isAndroid()
-  const canApplyUpdate = hasUpdate && (isUpdateReady || isAndroidPlatform)
+  const showUpdateAction = hasUpdate && (isAndroidPlatform || isUpdateReady)
   const displayRoomId = isAndroidPlatform && roomId ? roomId.slice(0, 8) : roomId
 
   const handleCopyCode = async () => {
@@ -285,12 +285,13 @@ export const TopNavBar: React.FC<Props> = ({
           )}
         </button>
 
-        {canApplyUpdate && onApplyUpdate ? (
+        {showUpdateAction && onApplyUpdate ? (
           <button
             onClick={onApplyUpdate}
             disabled={isUpdating}
             className="p-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 hover:text-emerald-300 transition-all hover:scale-105 shadow-sm shadow-emerald-500/20 disabled:opacity-75 cursor-pointer"
-            title="Nova atualização disponível! Clique para atualizar agora."
+            aria-label={isAndroidPlatform ? 'Atualizar Lira' : 'Instalar atualização'}
+            title={isAndroidPlatform ? 'Nova atualização disponível! Clique para atualizar agora.' : 'Atualização pronta. Clique para instalar.'}
           >
             {isUpdating ? (
               <RefreshCw className="w-4 h-4 animate-spin" />
@@ -416,7 +417,7 @@ export const TopNavBar: React.FC<Props> = ({
           title="Mais opções e menus"
         >
           {isMobileMenuOpen ? <X className="w-4 h-4 text-white" /> : <Menu className="w-4 h-4" />}
-          {(canApplyUpdate || totalUnreadDMs > 0) && !isMobileMenuOpen && (
+          {(showUpdateAction || totalUnreadDMs > 0) && !isMobileMenuOpen && (
             <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
           )}
         </button>
@@ -514,7 +515,7 @@ export const TopNavBar: React.FC<Props> = ({
               />
             </div>
 
-            {canApplyUpdate && onApplyUpdate && (
+            {showUpdateAction && onApplyUpdate && (
               <button
                 onClick={() => {
                   setIsMobileMenuOpen(false)
@@ -525,9 +526,9 @@ export const TopNavBar: React.FC<Props> = ({
               >
                 <span className="flex items-center gap-2">
                   <Download className="w-4 h-4 text-emerald-400" />
-                  <span>Nova Atualização Disponível</span>
+                  <span>{isAndroidPlatform ? 'Nova Atualização Disponível' : 'Atualização pronta para instalar'}</span>
                 </span>
-                <span className="underline">Atualizar</span>
+                <span className="underline">{isAndroidPlatform ? 'Atualizar' : 'Instalar'}</span>
               </button>
             )}
 

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TextureAtlas imagePath="4e149693b46727ed8bb8d2fd07e582b3c9908dc25279fd57a8ce1309a4cec677.png">
+  <SubTexture name="pet_avatar_pet_sliced_gengar_down_0" x="0" y="0" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_down_1" x="280" y="0" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_down_2" x="240" y="0" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_down_3" x="200" y="0" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_down_4" x="240" y="0" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_down_5" x="200" y="0" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_down_6" x="240" y="0" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_down_7" x="280" y="0" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_up_0" x="0" y="40" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_up_1" x="280" y="40" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_up_2" x="240" y="40" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_up_3" x="200" y="40" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_up_4" x="240" y="40" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_up_5" x="200" y="40" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_up_6" x="240" y="40" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_up_7" x="280" y="40" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_left_0" x="0" y="80" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_left_1" x="280" y="80" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_left_2" x="240" y="80" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_left_3" x="200" y="80" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_left_4" x="240" y="80" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_left_5" x="200" y="80" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_left_6" x="240" y="80" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_left_7" x="280" y="80" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_right_0" x="0" y="120" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_right_1" x="280" y="120" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_right_2" x="240" y="120" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_right_3" x="200" y="120" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_right_4" x="240" y="120" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_right_5" x="200" y="120" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_right_6" x="240" y="120" width="40" height="40"/>
+  <SubTexture name="pet_avatar_pet_sliced_gengar_right_7" x="280" y="120" width="40" height="40"/>
+</TextureAtlas>

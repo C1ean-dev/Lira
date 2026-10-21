@@ -1,3 +1,4 @@
+import { setRasterImageSource } from './rasterImageSource'
 import { AvatarConfig, Player } from '../types/game'
 import { DEFAULT_AVATAR } from '../engine/Constants'
 import { AvatarRenderer } from '../engine/AvatarRenderer'
@@ -186,7 +187,7 @@ export function resizeImageFile(file: File, maxDim: number = 256): Promise<strin
         const dataUrl = canvas.toDataURL(mime, quality)
         resolve(dataUrl)
       }
-      img.src = reader.result as string
+      setRasterImageSource(img, reader.result as string)
     }
     reader.readAsDataURL(file)
   })

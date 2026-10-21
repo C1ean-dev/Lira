@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TextureAtlas imagePath="7cffd910455c351002267b6a3571abacf0c9808ac9bd40fcafcdaa2c83385f75.png">
+  <SubTexture name="pet_avatar_pet_sliced_1788474848036_c280_down_0" x="0" y="0" width="80" height="80"/>
+  <SubTexture name="pet_avatar_pet_sliced_1788474848036_c280_down_1" x="80" y="80" width="80" height="80"/>
+  <SubTexture name="pet_avatar_pet_sliced_1788474848036_c280_down_2" x="160" y="80" width="80" height="80"/>
+  <SubTexture name="pet_avatar_pet_sliced_1788474848036_c280_down_3" x="0" y="160" width="80" height="80"/>
+  <SubTexture name="pet_avatar_pet_sliced_1788474848036_c280_up_0" x="80" y="0" width="80" height="80"/>
+  <SubTexture name="pet_avatar_pet_sliced_1788474848036_c280_up_1" x="80" y="160" width="80" height="80"/>
+  <SubTexture name="pet_avatar_pet_sliced_1788474848036_c280_left_0" x="160" y="0" width="80" height="80"/>
+  <SubTexture name="pet_avatar_pet_sliced_1788474848036_c280_right_0" x="0" y="80" width="80" height="80"/>
+</TextureAtlas>

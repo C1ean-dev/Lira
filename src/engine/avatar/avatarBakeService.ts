@@ -1,3 +1,4 @@
+import { setRasterImageSource } from '../../utils/rasterImageSource'
 import {
   Direction,
   AvatarConfig,
@@ -165,7 +166,7 @@ export function cropContentDataUrl(
       resolve(cropContentBoundingBox(canvas, padding))
     }
     img.onerror = () => resolve(dataUrl)
-    img.src = dataUrl
+    setRasterImageSource(img, dataUrl)
   })
 }
 

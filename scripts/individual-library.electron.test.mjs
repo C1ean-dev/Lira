@@ -19,10 +19,10 @@ test('individual sprite images decode in HTTP and packaged-file Electron rendere
   let vite
   try {
     const helperPath = path.join(temporary, 'disk.mjs')
-    await build({ stdin: { contents: `export { buildLibrary } from './src/assets/individualLibrary'; export { readIndividualLibrary, writeIndividualLibrary } from './electron/individualLibraryFile'`, resolveDir: root }, outfile: helperPath, bundle: true, platform: 'node', format: 'esm', logLevel: 'silent' })
-    const { buildLibrary, writeIndividualLibrary } = await import(pathToFileURL(helperPath).href)
+    await build({ stdin: { contents: `export { buildLibrary, libraryImagePath } from './src/assets/individualLibrary'; export { readIndividualLibrary, writeIndividualLibrary } from './electron/individualLibraryFile'`, resolveDir: root }, outfile: helperPath, bundle: true, platform: 'node', format: 'esm', logLevel: 'silent' })
+    const { buildLibrary, libraryImagePath, writeIndividualLibrary } = await import(pathToFileURL(helperPath).href)
     const catalog = JSON.parse(await fs.readFile(path.join(root, 'public/assets/library/catalog.json'), 'utf8'))
-    const bytes = await fs.readFile(path.join(root, 'public/assets/library/images', catalog.images[0]))
+    const bytes = await fs.readFile(path.join(root, 'public/assets/library', libraryImagePath(catalog, catalog.images[0])))
     const asset = { id: 'runtime-sprite', name: 'Sprite fixture', type: 'avatar', category: 'Test', width: 1, height: 1, frames: [`data:image/png;base64,${bytes.toString('base64')}`], createdAt: 1 }
     const packet = await buildLibrary({ assets: [asset], categories: ['Test'] })
     const library = path.join(temporary, 'profile', 'library')
@@ -43,7 +43,7 @@ test('individual sprite images decode in HTTP and packaged-file Electron rendere
         if (request.url === '/__sprite-test.html') {
           response.setHeader('Content-Type', 'text/html')
           response.end('<!doctype html><title>Development sprites test</title><script type="module">import * as library from "/src/assets/individualLibraryStorage.ts"; window.libraryTesting = library</script>')
-        } else if (request.url === `/assets/library/images/${packet.catalog.images[0]}`) {
+        } else if (request.url?.endsWith(`/${packet.catalog.images[0]}`)) {
           response.setHeader('Content-Type', 'image/png'); response.end(bytes)
         } else if (request.url === '/assets/library/catalog.json') {
           response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify(packet.catalog))
@@ -86,7 +86,7 @@ test('individual sprite images decode in HTTP and packaged-file Electron rendere
         const doc = await libraryTesting.loadStoredLibrary()
         const urls = new Set()
         function visit(value) {
-          if (typeof value === 'string' && /\/images\/[a-f0-9]{64}\.(png|webp|jpg|gif)$/.test(value)) urls.add(value)
+          if (typeof value === 'string' && /\/(?:images|sprites\/[^/]+)\/[a-f0-9]{64}\.(png|webp|jpg|gif)$/.test(value)) urls.add(value)
           else if (Array.isArray(value)) value.forEach(visit)
           else if (value && typeof value === 'object') Object.values(value).forEach(visit)
         }

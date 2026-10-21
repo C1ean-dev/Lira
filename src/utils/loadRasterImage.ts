@@ -1,5 +1,18 @@
+import { cropSpriteFrame, readSpriteFrame } from '../assets/spriteFrame'
+const sprites = new Map<string, Promise<HTMLImageElement>>()
 /** Decodable canvas source in both the renderer and an image-processing worker. */
 export async function loadRasterImage(src: string): Promise<HTMLImageElement> {
+  const frame = readSpriteFrame(src)
+  if (frame) {
+    let pending = sprites.get(src)
+    if (!pending) {
+      pending = loadRasterImage(frame.source).then(image => cropSpriteFrame(image, frame))
+      if (sprites.size >= 256) sprites.delete(sprites.keys().next().value!)
+      sprites.set(src, pending)
+      pending.catch(() => sprites.delete(src))
+    }
+    return pending
+  }
   if (typeof Image !== 'undefined') return new Promise((resolve, reject) => {
     const image = new Image()
     image.onload = () => image.naturalWidth > 0 ? resolve(image) : reject(new Error('Imagem vazia'))

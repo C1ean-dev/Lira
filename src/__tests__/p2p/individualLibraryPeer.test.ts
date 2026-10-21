@@ -23,6 +23,7 @@ describe('individual image protocol integration', () => {
     expect(buildAtlas).not.toHaveBeenCalled()
     const offer = connection.send.mock.calls.find(([message]: any[]) => message.payload.kind === 'offer')![0]
     expect(offer.type).toBe('INDIVIDUAL_LIBRARY')
+    expect(offer.payload.catalog.version).toBe(2)
     expect(JSON.stringify(offer)).not.toContain('data:image')
     manager.handleNetworkMessage({ type: 'INDIVIDUAL_LIBRARY', senderId: 'other', payload: { kind: 'request', id: offer.payload.id, names: offer.payload.catalog.images } }, 'other')
     await manager.individualLibrarySession(connection).queue
@@ -34,6 +35,15 @@ describe('individual image protocol integration', () => {
     await manager.assetTransferQueue
     expect(buildAtlas).toHaveBeenCalledOnce()
     expect(connection.send).toHaveBeenCalledWith(expect.objectContaining({ type: 'CUSTOM_ASSET_ADD_OR_UPDATE' }))
+  })
+  it('uses source-sheet catalogs only after the remote participant explicitly announces v3', async () => {
+    const { manager, connection } = setup()
+    manager.handleNetworkMessage({ type: 'INDIVIDUAL_LIBRARY', senderId: 'other', payload: { kind: 'hello', id: 'hello', catalogVersion: 3 } }, 'other')
+    manager.sendCustomAssetAddOrUpdate(asset)
+    await manager.assetTransferQueue
+    const offer = connection.send.mock.calls.find(([message]: any[]) => message.payload.kind === 'offer')![0]
+    expect(offer.payload.catalog.version).toBe(3)
+    expect(buildAtlas).not.toHaveBeenCalled()
   })
   it.each([false, true])('confirms remote support for the initial host sync (remote supports v2: %s)', async supportsV2 => {
     vi.useFakeTimers()

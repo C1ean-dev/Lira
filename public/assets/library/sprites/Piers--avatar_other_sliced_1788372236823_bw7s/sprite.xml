@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TextureAtlas imagePath="d58adb79b920fbca141372e69267eb8d4972bb251aaea79efc2d5dab9137840b.png">
+  <SubTexture name="other_avatar_other_sliced_1788372236823_bw7s_down_0" x="128" y="0" width="64" height="96"/>
+  <SubTexture name="other_avatar_other_sliced_1788372236823_bw7s_down_1" x="64" y="0" width="64" height="96"/>
+  <SubTexture name="other_avatar_other_sliced_1788372236823_bw7s_down_2" x="128" y="0" width="64" height="96"/>
+  <SubTexture name="other_avatar_other_sliced_1788372236823_bw7s_down_3" x="192" y="0" width="64" height="96"/>
+  <SubTexture name="other_avatar_other_sliced_1788372236823_bw7s_up_0" x="128" y="288" width="64" height="96"/>
+  <SubTexture name="other_avatar_other_sliced_1788372236823_bw7s_up_1" x="64" y="288" width="64" height="96"/>
+  <SubTexture name="other_avatar_other_sliced_1788372236823_bw7s_up_2" x="128" y="288" width="64" height="96"/>
+  <SubTexture name="other_avatar_other_sliced_1788372236823_bw7s_up_3" x="192" y="288" width="64" height="96"/>
+  <SubTexture name="other_avatar_other_sliced_1788372236823_bw7s_left_0" x="128" y="96" width="64" height="96"/>
+  <SubTexture name="other_avatar_other_sliced_1788372236823_bw7s_left_1" x="64" y="96" width="64" height="96"/>
+  <SubTexture name="other_avatar_other_sliced_1788372236823_bw7s_left_2" x="128" y="96" width="64" height="96"/>
+  <SubTexture name="other_avatar_other_sliced_1788372236823_bw7s_left_3" x="192" y="96" width="64" height="96"/>
+  <SubTexture name="other_avatar_other_sliced_1788372236823_bw7s_right_0" x="128" y="192" width="64" height="96"/>
+  <SubTexture name="other_avatar_other_sliced_1788372236823_bw7s_right_1" x="64" y="192" width="64" height="96"/>
+  <SubTexture name="other_avatar_other_sliced_1788372236823_bw7s_right_2" x="128" y="192" width="64" height="96"/>
+  <SubTexture name="other_avatar_other_sliced_1788372236823_bw7s_right_3" x="192" y="192" width="64" height="96"/>
+</TextureAtlas>

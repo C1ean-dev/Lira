@@ -1,3 +1,4 @@
+import { RasterImage } from '../../components/common/RasterImage'
 import React from 'react'
 import { Scissors, Plus, Trash2 } from 'lucide-react'
 import { CroppedClip } from './CropStudio'
@@ -43,7 +44,7 @@ export const CroppedClipsList: React.FC<Props> = ({
               title={`Adicionar ${clip.name} (${clip.width}x${clip.height}px) ao quadro de composição`}
             >
               <div className="w-full aspect-square flex items-center justify-center overflow-hidden rounded bg-[#18191c]">
-                <img
+                <RasterImage
                   src={clip.dataUrl}
                   alt={clip.name}
                   className="max-w-full max-h-full object-contain pixelated"

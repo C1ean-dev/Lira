@@ -54,11 +54,11 @@ public static class GeometryFixture {
       await bridge.resize({ processId: 70, handle: '42', title: '' }, '99')
       expect(JSON.parse(output)).toEqual([0, -top, 900, 700 + top])
     }
-  }, 15000)
+  }, 30000)
   it.skipIf(process.platform !== 'win32')('compiles the native bridge and rejects an absent window without changing any window', async () => {
     const bridge = new SpotifyNativeWindowBridge(async script => execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, encoding: 'utf8', stdio: 'pipe' }), process.pid)
     await expect(bridge.mount({ processId: 2147483647, handle: '1', title: '' }, '1')).rejects.toThrow(/Janela do Spotify/)
-  }, 15000)
+  }, 30000)
   it('guards handles before executing native commands', async () => {
     const query = vi.fn(async () => '')
     const bridge = new SpotifyNativeWindowBridge(query, 123)

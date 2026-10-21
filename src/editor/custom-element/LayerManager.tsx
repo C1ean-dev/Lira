@@ -1,3 +1,4 @@
+import { RasterImage } from '../../components/common/RasterImage'
 import {
   Layers,
   FlipHorizontal,
@@ -78,7 +79,7 @@ export const LayerManager: React.FC<Props> = ({
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="w-8 h-8 rounded-lg overflow-hidden bg-[#18191c] border border-white/10 flex items-center justify-center shrink-0">
-                    <img
+                    <RasterImage
                       src={layer.dataUrl}
                       alt={layer.name}
                       className="max-w-full max-h-full object-contain pixelated"

@@ -1,3 +1,5 @@
+import { RasterImage } from '../common/RasterImage'
+import { setRasterImageSource } from '../../utils/rasterImageSource'
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import {
   X,
@@ -547,7 +549,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
       }
     }
     img.onerror = () => { if (!cancelled) setSheetError('Não foi possível abrir este spritesheet.') }
-    img.src = activeSheet.src
+    setRasterImageSource(img, activeSheet.src)
     return () => { cancelled = true }
   }, [activeSheet?.src, activeSheetId])
 
@@ -1032,7 +1034,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
       if (!ctx) return f
 
       const img = new Image()
-      img.src = f.dataUrl
+      setRasterImageSource(img, f.dataUrl)
       ctx.imageSmoothingEnabled = false
       ctx.translate(fw, 0)
       ctx.scale(-1, 1)
@@ -1725,7 +1727,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               <div className="flex items-center gap-3 bg-[#1e1f22] p-2.5 rounded-xl border border-[#383a40]/60">
                 <div className="w-16 h-16 rounded-lg bg-[#141517] border border-[#383a40] flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
                   {selectedRegionDataUrl ? (
-                    <img
+                    <RasterImage
                       src={selectedRegionDataUrl}
                       alt="Selection Preview"
                       style={{
@@ -1905,7 +1907,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                             className="w-12 h-12 rounded-lg bg-[#18191c] hover:ring-2 hover:ring-blue-400 flex items-center justify-center overflow-hidden transition-all cursor-pointer"
                             title="Clique para posicionar a seleção neste frame"
                           >
-                            <img
+                            <RasterImage
                               src={frame.dataUrl}
                               alt={`Frame ${idx}`}
                               className="w-10 h-10 object-contain [image-rendering:pixelated]"
@@ -2052,7 +2054,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               <div className="flex items-center justify-center bg-[#141517] p-3 rounded-xl border border-[#383a40]/60">
                 <div className="w-16 h-16 rounded-xl bg-[#1e1f22] flex items-center justify-center overflow-hidden border border-slate-700/60 shadow-inner">
                   {currentPreviewFrame ? (
-                    <img
+                    <RasterImage
                       src={currentPreviewFrame}
                       alt="Preview"
                       className="w-12 h-12 object-contain [image-rendering:pixelated]"

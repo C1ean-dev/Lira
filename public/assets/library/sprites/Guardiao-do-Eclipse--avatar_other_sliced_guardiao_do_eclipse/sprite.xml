@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TextureAtlas imagePath="54fc46408aa1cba119b4478d8ee7f530378e51b5c599dc0f99ab068113e43a64.png">
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_down_0" x="1554" y="0" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_down_1" x="222" y="0" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_down_2" x="444" y="0" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_down_3" x="666" y="0" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_down_4" x="888" y="0" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_down_5" x="1110" y="0" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_down_6" x="1332" y="0" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_down_7" x="1554" y="0" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_up_0" x="1554" y="222" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_up_1" x="222" y="222" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_up_2" x="444" y="222" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_up_3" x="666" y="222" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_up_4" x="888" y="222" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_up_5" x="1110" y="222" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_up_6" x="1332" y="222" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_up_7" x="1554" y="222" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_left_0" x="1554" y="444" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_left_1" x="222" y="444" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_left_2" x="444" y="444" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_left_3" x="666" y="444" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_left_4" x="888" y="444" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_left_5" x="1110" y="444" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_left_6" x="1332" y="444" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_left_7" x="1554" y="444" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_right_0" x="1554" y="666" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_right_1" x="222" y="666" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_right_2" x="444" y="666" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_right_3" x="666" y="666" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_right_4" x="888" y="666" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_right_5" x="1110" y="666" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_right_6" x="1332" y="666" width="222" height="222"/>
+  <SubTexture name="other_avatar_other_sliced_guardiao_do_eclipse_right_7" x="1554" y="666" width="222" height="222"/>
+</TextureAtlas>

@@ -887,7 +887,7 @@ export class PeerManager {
       this.connections.set(conn.peer, conn)
       this.peerLastSeen.set(conn.peer, Date.now())
       this.sendToPeer(conn, { type: 'INDIVIDUAL_LIBRARY', senderId: this.peer!.id,
-        payload: { kind: 'hello', id: 'individual-images-v2' }, timestamp: Date.now() })
+        payload: { kind: 'hello', id: 'individual-images-v2', catalogVersion: 3 }, timestamp: Date.now() })
 
       const localPlayer = useGameStore.getState().localPlayer
       this.sendToPeer(conn, {
@@ -1360,6 +1360,8 @@ export class PeerManager {
       if (msg.type === 'INDIVIDUAL_LIBRARY') {
         const connection = this.connections.get(peerId)
         if (connection?.open && this.peer) {
+          if (msg.payload?.catalogVersion === 3 || msg.payload?.catalog?.version === 3) this.individualLibraryVersions.set(connection, 3)
+          else if (!this.individualLibraryVersions.has(connection)) this.individualLibraryVersions.set(connection, 2)
           this.individualLibraryPeers.add(connection)
           for (const ready of this.individualLibraryReady.get(connection) || []) ready()
           if (msg.payload?.kind === 'hello') return
@@ -2039,6 +2041,7 @@ export class PeerManager {
   private assetTransferQueue: Promise<void> = Promise.resolve()
   private individualLibrarySessions = new WeakMap<DataConnection, IndividualLibrarySync>()
   private individualLibraryPeers = new WeakSet<DataConnection>()
+  private individualLibraryVersions = new WeakMap<DataConnection, 2 | 3>()
   private individualLibraryReady = new WeakMap<DataConnection, Set<() => void>>()
   private async confirmIndividualLibrary(connection: DataConnection): Promise<boolean> {
     if (this.individualLibraryPeers.has(connection)) return true
@@ -2071,7 +2074,7 @@ export class PeerManager {
     this.sendToPeer(connection, { type: 'INDIVIDUAL_LIBRARY', senderId: owner.id, payload, timestamp: Date.now() })
   }
   private async offerIndividualLibrary(connection: DataConnection, assets: CustomAsset[], categories: string[] = []) {
-    await this.individualLibrarySession(connection).offer({ assets, categories }, payload => this.sendIndividualLibraryMessage(connection, payload))
+    await this.individualLibrarySession(connection).offer({ assets, categories }, payload => this.sendIndividualLibraryMessage(connection, payload), this.individualLibraryVersions.get(connection) || 2)
   }
   private queueAssetTransfer(action: () => Promise<void>) {
     const sender = this.peer

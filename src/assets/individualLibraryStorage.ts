@@ -1,6 +1,7 @@
 import hasBundledLibrary from 'virtual:lira-individual-library'
-import { buildLibrary, openLibrary, imageDataUrl, knownLibraryImage, type LibraryCatalog, type LibraryLocation, type LibraryPacket } from './individualLibrary'
+import { buildLibrary, openLibrary, imageDataUrl, knownLibraryImage, libraryImagePath, type LibraryCatalog, type LibraryLocation, type LibraryPacket } from './individualLibrary'
 import type { AtlasDocument } from './atlasFormat'
+import { compactSourceSprites } from './sourceSprites'
 const indexedImageUrls = new Map<string, string>()
 
 const baseUrl = () => new URL(`${window.location.protocol === 'file:' && import.meta.env.BASE_URL === '/' ? './' : import.meta.env.BASE_URL}assets/library/`, window.location.href).href
@@ -10,7 +11,7 @@ const openLocation = (location: LibraryLocation) => {
   const imageBase = import.meta.env.DEV && /^https?:$/.test(window.location?.protocol) && location.baseUrl.startsWith('file:')
     ? baseUrl()
     : location.baseUrl
-  return openLibrary(location.catalog, name => new URL(`images/${name}`, imageBase).href)
+  return openLibrary(location.catalog, name => new URL(libraryImagePath(location.catalog, name).split('/').map(encodeURIComponent).join('/'), imageBase).href)
 }
 const database = (): Promise<IDBDatabase> => new Promise((resolve, reject) => {
   const request = indexedDB.open('lira-image-library', 1)
@@ -60,7 +61,7 @@ export async function loadStoredLibrary(): Promise<AtlasDocument | null> {
   } finally { db.close() }
 }
 export async function saveStoredLibrary(document: AtlasDocument): Promise<AtlasDocument> {
-  const packet = await buildLibrary(document)
+  const packet = await buildLibrary(await compactSourceSprites(document))
   const api = window.electronAPI
   if (api?.saveIndividualLibrary) return openLocation(await api.saveIndividualLibrary(packet))
   if (import.meta.env.DEV) {

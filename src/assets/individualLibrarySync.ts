@@ -1,8 +1,9 @@
 import { buildLibrary, openLibrary, knownLibraryImage, imageDataUrl, imageIdentity, type LibraryCatalog, type LibraryPacket } from './individualLibrary'
 import type { AtlasDocument } from './atlasFormat'
+import { materializeSpriteDocument } from '../utils/rasterImageSource'
 
 export type LibraryMessage =
-  | { kind: 'hello'; id: string }
+  | { kind: 'hello'; id: string; catalogVersion?: 2 | 3 }
   | { kind: 'offer'; id: string; catalog: LibraryCatalog }
   | { kind: 'request'; id: string; names: string[] }
   | { kind: 'image'; id: string; name: string; index: number; total: number; data: string }
@@ -14,8 +15,10 @@ export class IndividualLibrarySync {
   private pending = new Map<string, Incoming>()
   private queue: Promise<unknown> = Promise.resolve()
   constructor(private known = knownLibraryImage) {}
-  async offer(document: AtlasDocument, send: Send): Promise<void> {
-    const packet = await buildLibrary(document)
+  async offer(document: AtlasDocument, send: Send, catalogVersion: 2 | 3 = 3): Promise<void> {
+    const packet = await buildLibrary(catalogVersion === 2 ? await materializeSpriteDocument(document) : document)
+    packet.catalog.version = catalogVersion
+    if (catalogVersion === 2) delete packet.catalog.imagePaths
     const id = crypto.randomUUID()
     this.offers.set(id, packet)
     if (this.offers.size > 8) this.offers.delete(this.offers.keys().next().value!)

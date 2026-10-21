@@ -1,3 +1,4 @@
+import { RasterImage } from '../common/RasterImage'
 import React, { useState, useEffect, useRef } from 'react'
 import { Check, Pencil, Plus, Trash2, Download, Upload, Scissors, Paintbrush } from 'lucide-react'
 import {
@@ -46,7 +47,7 @@ const AutoCroppedThumbnail: React.FC<{
       className="w-12 h-12 rounded-xl mb-1.5 flex items-center justify-center relative shadow-sm overflow-hidden border border-slate-700/50"
       style={{ backgroundColor: isSkinCategory && skinTone ? skinTone : '#18191c' }}
     >
-      <img
+      <RasterImage
         src={displayUrl}
         alt={alt}
         className="w-full h-full object-contain [image-rendering:pixelated]"

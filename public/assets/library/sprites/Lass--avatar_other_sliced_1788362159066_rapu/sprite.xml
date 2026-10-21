@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TextureAtlas imagePath="b068d47d192fa9646d2a3091ac8d575fe9fbdebbfde4e36a12e522640569b5c0.png">
+  <SubTexture name="other_avatar_other_sliced_1788362159066_rapu_down_0" x="0" y="96" width="32" height="48"/>
+  <SubTexture name="other_avatar_other_sliced_1788362159066_rapu_down_1" x="32" y="0" width="32" height="48"/>
+  <SubTexture name="other_avatar_other_sliced_1788362159066_rapu_down_2" x="0" y="96" width="32" height="48"/>
+  <SubTexture name="other_avatar_other_sliced_1788362159066_rapu_down_3" x="32" y="96" width="32" height="48"/>
+  <SubTexture name="other_avatar_other_sliced_1788362159066_rapu_up_0" x="0" y="144" width="32" height="48"/>
+  <SubTexture name="other_avatar_other_sliced_1788362159066_rapu_up_1" x="96" y="96" width="32" height="48"/>
+  <SubTexture name="other_avatar_other_sliced_1788362159066_rapu_up_2" x="0" y="144" width="32" height="48"/>
+  <SubTexture name="other_avatar_other_sliced_1788362159066_rapu_up_3" x="32" y="144" width="32" height="48"/>
+  <SubTexture name="other_avatar_other_sliced_1788362159066_rapu_left_0" x="64" y="0" width="32" height="48"/>
+  <SubTexture name="other_avatar_other_sliced_1788362159066_rapu_left_1" x="96" y="144" width="32" height="48"/>
+  <SubTexture name="other_avatar_other_sliced_1788362159066_rapu_left_2" x="64" y="0" width="32" height="48"/>
+  <SubTexture name="other_avatar_other_sliced_1788362159066_rapu_left_3" x="96" y="0" width="32" height="48"/>
+  <SubTexture name="other_avatar_other_sliced_1788362159066_rapu_right_0" x="0" y="48" width="32" height="48"/>
+  <SubTexture name="other_avatar_other_sliced_1788362159066_rapu_right_1" x="32" y="48" width="32" height="48"/>
+  <SubTexture name="other_avatar_other_sliced_1788362159066_rapu_right_2" x="64" y="48" width="32" height="48"/>
+  <SubTexture name="other_avatar_other_sliced_1788362159066_rapu_right_3" x="96" y="48" width="32" height="48"/>
+</TextureAtlas>
