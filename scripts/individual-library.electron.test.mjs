@@ -3,11 +3,11 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { pathToFileURL, fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 
 // Explicit opt-in: AGENTS.md requires authorization before starting Electron.
-test('individual sprite images decode in HTTP and packaged-file Electron renderers', {
+test('individual sprite images decode and edited thumbnails refresh in HTTP and packaged-file Electron renderers', {
   skip: process.env.LIRA_RUN_SPRITE_TESTS !== '1', timeout: 180000,
 }, async t => {
   const { build } = await import('esbuild')
@@ -35,6 +35,84 @@ test('individual sprite images decode in HTTP and packaged-file Electron rendere
       builder.onLoad({ filter: /.*/, namespace: 'library-test' }, () => ({ contents: 'export default true' }))
     } }
     await build({ entryPoints: [path.join(root, 'src/assets/individualLibraryStorage.ts')], outfile: path.join(application, 'storage.mjs'), bundle: true, format: 'esm', platform: 'browser', define: { 'import.meta.env.DEV': 'false', 'import.meta.env.BASE_URL': '"/"' }, plugins: [virtualLibrary], logLevel: 'silent' })
+    const previewModule = path.join(application, 'live-preview.mjs')
+    await build({ stdin: { contents: `
+      import React from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { PixelArtThumbnail } from './src/editor/PixelArtThumbnail';
+      import { useCustomAssetsStore, getCustomAssetImage, onCustomAssetsChange } from './src/store/useCustomAssetsStore';
+      import { spriteFrame } from './src/assets/spriteFrame';
+      import { FurnitureRenderer } from './src/engine/rendering/furnitureRenderer';
+      export async function verifyEditedThumbnail() {
+        const wait = () => new Promise(resolve => setTimeout(resolve, 20));
+        const until = async predicate => {
+          for (let attempt = 0; attempt < 100; attempt++) { if (predicate()) return; await wait(); }
+          throw new Error('Edited thumbnail image did not finish loading');
+        };
+        const png = color => {
+          const canvas = document.createElement('canvas'); canvas.width = 4; canvas.height = 8;
+          const context = canvas.getContext('2d'); context.fillStyle = color; context.fillRect(0, 0, 4, 8);
+          return canvas.toDataURL();
+        };
+        const blue = png('#2255cc'), green = png('#22cc55'), unrelated = png('#cccc22');
+        const asset = (source, updatedAt) => ({
+          id: 'edited-thumbnail', name: 'Edited thumbnail', type: 'furniture', category: 'Test',
+          width: 1, height: 1, pixelWidth: 4, pixelHeight: 8, isObstacle: false, createdAt: 1, updatedAt,
+          frames: [spriteFrame(source, 0, 0, 4, 8)],
+          directionalFrames: { down: [spriteFrame(source, 0, 0, 4, 8)] },
+        });
+        const firstImage = getCustomAssetImage(blue);
+        await until(() => firstImage.complete && firstImage.naturalWidth > 0);
+        const previousAssets = useCustomAssetsStore.getState().customAssets;
+        const host = document.createElement('div'); document.body.append(host);
+        const root = createRoot(host);
+        const events = [];
+        const unsubscribe = onCustomAssetsChange(source => events.push(source));
+        try {
+          useCustomAssetsStore.setState({ customAssets: [asset(blue, 1)] });
+          root.render(React.createElement(PixelArtThumbnail, { type: 'furniture', id: 'edited-thumbnail', size: 48 }));
+          await until(() => host.querySelector('canvas'));
+          await wait();
+          const context = host.querySelector('canvas').getContext('2d');
+          const color = () => [...context.getImageData(24, 24, 1, 1).data];
+          const initial = color();
+          let renders = 0;
+          const clearRect = context.clearRect.bind(context);
+          context.clearRect = (...args) => { renders++; clearRect(...args); };
+          useCustomAssetsStore.setState({ customAssets: [asset(green, 2)] });
+          // The real thumbnail requests the cold sheet; do not recreate the component or warm its frame.
+          await until(() => events.includes(green));
+          await wait();
+          const afterEdit = color();
+          const beforeUnrelated = renders;
+          getCustomAssetImage(unrelated);
+          await until(() => events.includes(unrelated));
+          await wait();
+          const afterUnrelated = renders;
+          const delayedFile = await window.electronAPI.delayedImage(png('#eedd22'));
+          const rawSource = window.location.protocol === 'file:' ? delayedFile : '/__delayed-image.png?file=' + encodeURIComponent(delayedFile);
+          useCustomAssetsStore.setState({ customAssets: [{ ...asset(blue, 3), frames: [rawSource], directionalFrames: { down: [rawSource] } }] });
+          await until(() => events.includes(rawSource));
+          await wait();
+          const afterRetry = color();
+          const placed = document.createElement('canvas'); placed.width = 4; placed.height = 8;
+          const placedContext = placed.getContext('2d');
+          FurnitureRenderer.drawFurniture(placedContext, { id: 'placed', defId: 'edited-thumbnail', x: 0, y: 0 });
+          const placedAfterRetry = [...placedContext.getImageData(2, 4, 1, 1).data];
+          return { initial, afterEdit, beforeUnrelated, afterUnrelated, afterRetry, placedAfterRetry };
+        } finally {
+          root.unmount(); host.remove(); unsubscribe();
+          useCustomAssetsStore.setState({ customAssets: previousAssets });
+        }
+      }
+    `, resolveDir: root, loader: 'tsx' }, outfile: previewModule, bundle: true, format: 'esm', platform: 'browser',
+      define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env.DEV': 'false', 'import.meta.env.BASE_URL': '"/"' },
+      plugins: [virtualLibrary, { name: 'preview-test-boundaries', setup(builder) {
+        builder.onResolve({ filter: /PeerManager$/ }, () => ({ path: 'peer', namespace: 'preview-test' }))
+        builder.onResolve({ filter: /^virtual:lira-asset-atlases$/ }, () => ({ path: 'atlases', namespace: 'preview-test' }))
+        builder.onLoad({ filter: /.*/, namespace: 'preview-test' }, args => ({ contents: args.path === 'peer' ? 'export const PeerManager = { getInstance: () => ({}) }' : 'export default []' }))
+      } }], logLevel: 'silent',
+    })
     await fs.writeFile(path.join(application, 'index.html'), '<!doctype html><title>Packaged sprites test</title><script type="module">import * as library from "./storage.mjs"; window.libraryTesting = library</script>')
     process.env.VITEST = '1'
     process.env.LIRA_TARGET = 'web'
@@ -43,6 +121,14 @@ test('individual sprite images decode in HTTP and packaged-file Electron rendere
         if (request.url === '/__sprite-test.html') {
           response.setHeader('Content-Type', 'text/html')
           response.end('<!doctype html><title>Development sprites test</title><script type="module">import * as library from "/src/assets/individualLibraryStorage.ts"; window.libraryTesting = library</script>')
+        } else if (request.url === '/__live-preview.mjs') {
+          response.setHeader('Content-Type', 'text/javascript'); response.end(await fs.readFile(previewModule))
+        } else if (request.url?.startsWith('/__delayed-image.png?')) {
+          const file = fileURLToPath(new URL(request.url, 'http://fixture').searchParams.get('file'))
+          if (path.dirname(file) !== temporary || !/^late-\d+\.png$/.test(path.basename(file))) throw new Error('Unexpected fixture image path')
+          response.setHeader('Cache-Control', 'no-store')
+          try { const bytes = await fs.readFile(file); response.setHeader('Content-Type', 'image/png'); response.end(bytes) }
+          catch (error) { if (error.code !== 'ENOENT') throw error; response.statusCode = 503; response.end('Image publication in progress') }
         } else if (request.url?.endsWith(`/${packet.catalog.images[0]}`)) {
           response.setHeader('Content-Type', 'image/png'); response.end(bytes)
         } else if (request.url === '/assets/library/catalog.json') {
@@ -53,9 +139,31 @@ test('individual sprite images decode in HTTP and packaged-file Electron rendere
     await vite.listen()
     const base = `http://127.0.0.1:${vite.httpServer.address().port}`
     const preload = path.join(temporary, 'preload.cjs')
-    await fs.writeFile(preload, `const { contextBridge, ipcRenderer } = require('electron'); contextBridge.exposeInMainWorld('electronAPI', { loadIndividualLibrary: () => ipcRenderer.invoke('test-load-library'), saveIndividualLibrary: packet => ipcRenderer.invoke('test-save-library', packet) })`)
+    await fs.writeFile(preload, `const { contextBridge, ipcRenderer } = require('electron'); contextBridge.exposeInMainWorld('electronAPI', { loadIndividualLibrary: () => ipcRenderer.invoke('test-load-library'), saveIndividualLibrary: packet => ipcRenderer.invoke('test-save-library', packet), delayedImage: data => ipcRenderer.invoke('test-delayed-image', data) })`)
     const main = path.join(temporary, 'main.cjs')
-    await fs.writeFile(main, `const { app, BrowserWindow, ipcMain } = require('electron'); app.whenReady().then(async () => { const disk = await import(${JSON.stringify(pathToFileURL(helperPath).href)}); ipcMain.handle('test-load-library', () => disk.readIndividualLibrary(global.spriteLibraryDirectory || ${JSON.stringify(library)})); ipcMain.handle('test-save-library', async (_, packet) => { await disk.writeIndividualLibrary(${JSON.stringify(library)}, packet); return disk.readIndividualLibrary(${JSON.stringify(library)}) }); const window = new BrowserWindow({ show: false, webPreferences: { webSecurity: true, contextIsolation: true, nodeIntegration: false, preload: ${JSON.stringify(preload)} } }); await window.loadURL(${JSON.stringify(base + '/__sprite-test.html')}) }); app.on('window-all-closed', () => app.quit())`)
+    await fs.writeFile(main, `
+      const { app, BrowserWindow, ipcMain } = require('electron');
+      const fs = require('node:fs/promises');
+      const { pathToFileURL } = require('node:url');
+      app.setPath('userData', ${JSON.stringify(path.join(temporary, 'electron-profile'))});
+      app.whenReady().then(async () => {
+        const disk = await import(${JSON.stringify(pathToFileURL(helperPath).href)});
+        ipcMain.handle('test-load-library', () => disk.readIndividualLibrary(global.spriteLibraryDirectory || ${JSON.stringify(library)}));
+        ipcMain.handle('test-save-library', async (_, packet) => {
+          await disk.writeIndividualLibrary(${JSON.stringify(library)}, packet);
+          return disk.readIndividualLibrary(${JSON.stringify(library)});
+        });
+        let sequence = 0;
+        ipcMain.handle('test-delayed-image', (_, data) => {
+          const file = ${JSON.stringify(temporary + path.sep)} + 'late-' + (++sequence) + '.png';
+          setTimeout(() => fs.writeFile(file, Buffer.from(data.split(',')[1], 'base64')).catch(console.error), 250);
+          return pathToFileURL(file).href;
+        });
+        const window = new BrowserWindow({ show: false, webPreferences: { webSecurity: true, backgroundThrottling: false, contextIsolation: true, nodeIntegration: false, preload: ${JSON.stringify(preload)} } });
+        await window.loadURL(${JSON.stringify(base + '/__sprite-test.html')});
+      });
+      app.on('window-all-closed', () => app.quit());
+    `)
     const require = createRequire(import.meta.url)
     const environment = { ...process.env }
     delete environment.ELECTRON_RUN_AS_NODE
@@ -109,10 +217,24 @@ test('individual sprite images decode in HTTP and packaged-file Electron rendere
       t.diagnostic(`${origin}: all ${result.total} project sprite images decoded.`)
       await electron.evaluate((_electron, directory) => { global.spriteLibraryDirectory = directory }, library)
     }
+    async function verifyEditedThumbnail(origin) {
+      const result = await page.evaluate(async () => {
+        const url = window.location.protocol === 'file:' ? new URL('./live-preview.mjs', window.location.href).href : '/__live-preview.mjs'
+        return (await import(url)).verifyEditedThumbnail()
+      })
+      assert.deepEqual(result.initial, [34, 85, 204, 255], `${origin}: initial sprite is visible`)
+      assert.deepEqual(result.afterEdit, [34, 204, 85, 255], `${origin}: edited sprite must replace the red fallback without a reload`)
+      assert.equal(result.beforeUnrelated, result.afterUnrelated, `${origin}: unrelated image loads must not redraw this thumbnail`)
+      assert.deepEqual(result.afterRetry, [238, 221, 34, 255], `${origin}: thumbnail must recover a transient PNG load failure without remounting`)
+      assert.deepEqual(result.placedAfterRetry, [238, 221, 34, 255], `${origin}: placed furniture must recover the same PNG without restarting`)
+      t.diagnostic(`${origin}: edited sprite and raw PNG thumbnails refreshed; map and thumbnail recovered a transient image failure.`)
+    }
     await verify('HTTP development renderer')
+    await verifyEditedThumbnail('HTTP development renderer')
     await verifyProjectImages('HTTP development renderer')
     await page.goto(pathToFileURL(path.join(application, 'index.html')).href)
     await verify('Packaged file renderer')
+    await verifyEditedThumbnail('Packaged file renderer')
     await verifyProjectImages('Packaged file renderer')
   } finally {
     await electron?.close()

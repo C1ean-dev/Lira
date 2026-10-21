@@ -8,7 +8,6 @@ import {
   Settings,
   Lock,
   Globe,
-  Download,
   LogOut,
   RefreshCw,
   Menu,
@@ -26,6 +25,7 @@ import { NetworkSignalIcon } from './NetworkSignalIcon'
 import { useNetworkQualityStore } from '../store/useNetworkQualityStore'
 import { STATUS_META } from '../types/game'
 import { PlayerAvatar } from './common/PlayerAvatar'
+import { UpdateDownloadIndicator } from './common/UpdateDownloadIndicator'
 import { isAndroid } from '../utils/platform'
 import { useRoomPublication } from '../hooks/useRoomPublication'
 
@@ -54,6 +54,8 @@ export const TopNavBar: React.FC<Props> = ({
   const localPlayerCurrentZoneId = useGameStore((s) => s.localPlayer.currentZoneId)
   const roomId = useGameStore((s) => s.roomId)
   const updateInfo = useUpdateStore((s) => s.updateInfo)
+  const updateStatus = useUpdateStore((s) => s.status)
+  const updateProgress = useUpdateStore((s) => s.progress)
   const manualCheck = useUpdateStore((s) => s.manualCheck)
   const checkNow = useUpdateStore((s) => s.checkNow)
   const rawVersion = updateInfo?.currentVersion || CURRENT_APP_VERSION
@@ -102,7 +104,15 @@ export const TopNavBar: React.FC<Props> = ({
 
   const currentZone = mapZones.find((z) => z.id === localPlayerCurrentZoneId)
   const isAndroidPlatform = isAndroid()
-  const showUpdateAction = hasUpdate && (isAndroidPlatform || isUpdateReady)
+  const isDownloadingUpdate = updateStatus === 'downloading'
+  const updatePercent = Math.round(Math.max(0, Math.min(100, Number.isFinite(updateProgress.percent) ? updateProgress.percent : 0)))
+  const isReadyToInstall = isUpdateReady ?? updateStatus === 'ready'
+  const showUpdateAction = hasUpdate && (isAndroidPlatform || isDownloadingUpdate || isReadyToInstall)
+  const updateActionLabel = isDownloadingUpdate
+    ? `Baixando atualização: ${updatePercent}%`
+    : isAndroidPlatform
+      ? 'Atualizar Lira'
+      : 'Instalar atualização'
   const displayRoomId = isAndroidPlatform && roomId ? roomId.slice(0, 8) : roomId
 
   const handleCopyCode = async () => {
@@ -288,15 +298,15 @@ export const TopNavBar: React.FC<Props> = ({
         {showUpdateAction && onApplyUpdate ? (
           <button
             onClick={onApplyUpdate}
-            disabled={isUpdating}
-            className="p-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 hover:text-emerald-300 transition-all hover:scale-105 shadow-sm shadow-emerald-500/20 disabled:opacity-75 cursor-pointer"
-            aria-label={isAndroidPlatform ? 'Atualizar Lira' : 'Instalar atualização'}
-            title={isAndroidPlatform ? 'Nova atualização disponível! Clique para atualizar agora.' : 'Atualização pronta. Clique para instalar.'}
+            disabled={isUpdating || isDownloadingUpdate}
+            className="p-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 hover:text-emerald-300 transition-all hover:scale-105 shadow-sm shadow-emerald-500/20 disabled:opacity-75 disabled:cursor-wait cursor-pointer"
+            aria-label={updateActionLabel}
+            title={isDownloadingUpdate ? updateActionLabel : isAndroidPlatform ? 'Nova atualização disponível! Clique para atualizar agora.' : 'Atualização pronta. Clique para instalar.'}
           >
             {isUpdating ? (
               <RefreshCw className="w-4 h-4 animate-spin" />
             ) : (
-              <Download className="w-4 h-4" />
+              <UpdateDownloadIndicator downloading={isDownloadingUpdate} percent={updatePercent} />
             )}
           </button>
         ) : (
@@ -521,14 +531,16 @@ export const TopNavBar: React.FC<Props> = ({
                   setIsMobileMenuOpen(false)
                   onApplyUpdate()
                 }}
-                disabled={isUpdating}
-                className="flex items-center justify-between w-full p-2.5 rounded-xl bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 font-bold text-xs transition-colors"
+                disabled={isUpdating || isDownloadingUpdate}
+                aria-label={updateActionLabel}
+                title={isDownloadingUpdate ? updateActionLabel : undefined}
+                className="flex items-center justify-between w-full p-2.5 rounded-xl bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 font-bold text-xs transition-colors disabled:cursor-wait disabled:opacity-75"
               >
                 <span className="flex items-center gap-2">
-                  <Download className="w-4 h-4 text-emerald-400" />
-                  <span>{isAndroidPlatform ? 'Nova Atualização Disponível' : 'Atualização pronta para instalar'}</span>
+                  <UpdateDownloadIndicator downloading={isDownloadingUpdate} percent={updatePercent} />
+                  <span>{isDownloadingUpdate ? 'Baixando atualização' : isAndroidPlatform ? 'Nova Atualização Disponível' : 'Atualização pronta para instalar'}</span>
                 </span>
-                <span className="underline">{isAndroidPlatform ? 'Atualizar' : 'Instalar'}</span>
+                <span className={isDownloadingUpdate ? 'tabular-nums' : 'underline'}>{isDownloadingUpdate ? `${updatePercent}%` : isAndroidPlatform ? 'Atualizar' : 'Instalar'}</span>
               </button>
             )}
 

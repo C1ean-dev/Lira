@@ -10,7 +10,7 @@ beforeEach(() => {
   vi.stubGlobal('window', { electronAPI: {} })
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn(), removeItem: vi.fn() })
 })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals() })
 describe('individual library store migration and lazy loading', () => {
   it('loads metadata without decoding images or reading the giant legacy atlas', async () => {
     vi.mocked(loadStoredLibrary).mockResolvedValueOnce({ assets: [{ ...hero, name: 'Edited' }], categories: ['Mine'] })
@@ -61,7 +61,7 @@ describe('individual library store migration and lazy loading', () => {
     const callbacks: (() => void)[] = []
     const Image = vi.fn(function(this: any) {
       this.src = ''
-      this.addEventListener = (_event: string, callback: () => void) => { callbacks.push(callback) }
+      this.addEventListener = (event: string, callback: () => void) => { if (event === 'load') callbacks.push(callback) }
     })
     vi.stubGlobal('Image', Image)
     const { getCustomAssetImage, onCustomAssetsChange, useCustomAssetsStore } = await import('../../store/useCustomAssetsStore')
@@ -79,5 +79,58 @@ describe('individual library store migration and lazy loading', () => {
     expect(getCustomAssetImage(hero.frames[0])).toBe(image)
     expect(Image).toHaveBeenCalledOnce()
     unsubscribe()
+  })
+  it('recovers a failed edited image and notifies its existing previews without remounting', async () => {
+    vi.useFakeTimers()
+    const requests: string[] = []
+    const callbacks = new Map<string, () => void>()
+    vi.stubGlobal('Image', class {
+      complete = false
+      naturalWidth = 0
+      addEventListener(event: string, callback: () => void) { callbacks.set(event, callback) }
+      set src(source: string) { requests.push(source) }
+    })
+    const { getCustomAssetImage, onCustomAssetsChange } = await import('../../store/useCustomAssetsStore')
+    const loaded = vi.fn()
+    const unsubscribe = onCustomAssetsChange(loaded)
+    try {
+      const source = '/assets/library/sprites/cristal/edited.png'
+      const image = getCustomAssetImage(source)!
+      Object.assign(image, { complete: true })
+      callbacks.get('error')!()
+      expect(getCustomAssetImage(source)).toBe(image)
+      expect(loaded).not.toHaveBeenCalled()
+      await vi.runOnlyPendingTimersAsync()
+      expect(requests).toEqual([source, source])
+      Object.assign(image, { naturalWidth: 22 })
+      callbacks.get('load')!()
+      expect(getCustomAssetImage(source)?.naturalWidth).toBe(22)
+      expect(loaded).toHaveBeenCalledOnce()
+      expect(loaded).toHaveBeenCalledWith(source)
+    } finally { unsubscribe() }
+  })
+  it('bounds automatic retries and lets a later map request recover a previously missing image', async () => {
+    vi.useFakeTimers()
+    let requests = 0
+    const Image = vi.fn(function(this: any) {
+      this.complete = true
+      this.naturalWidth = 0
+      const callbacks = new Map<string, () => void>()
+      this.addEventListener = (event: string, callback: () => void) => callbacks.set(event, callback)
+      Object.defineProperty(this, 'src', { set: () => { requests++; callbacks.get('error')!() } })
+    })
+    vi.stubGlobal('Image', Image)
+    const { getCustomAssetImage } = await import('../../store/useCustomAssetsStore')
+    const source = '/assets/library/missing-edit.png'
+    const image = getCustomAssetImage(source)
+    await vi.runAllTimersAsync()
+    expect(requests).toBeGreaterThan(1)
+    expect(requests).toBeLessThanOrEqual(4)
+    expect(vi.getTimerCount()).toBe(0)
+    for (let frame = 0; frame < 100; frame++) expect(getCustomAssetImage(source)).toBe(image)
+    expect(Image).toHaveBeenCalledOnce()
+    vi.setSystemTime(Date.now() + 60_000)
+    expect(getCustomAssetImage(source)).not.toBe(image)
+    expect(Image).toHaveBeenCalledTimes(2)
   })
 })

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
-import { DoorOpen, Globe, LayoutGrid, Users, MessageSquare, Download, RefreshCw } from 'lucide-react'
+import { DoorOpen, Globe, LayoutGrid, Users, MessageSquare, RefreshCw } from 'lucide-react'
 import { useGameStore } from '../store/useGameStore'
 import { useChatStore } from '../store/useChatStore'
 import { useMapStore } from '../store/useMapStore'
@@ -21,6 +21,7 @@ import { SavedSpacesTab } from './lobby/SavedSpacesTab'
 import { FriendsTab } from './lobby/FriendsTab'
 import { LobbyChatModal } from './lobby/LobbyChatModal'
 import { LiraLogo } from './LiraLogo'
+import { UpdateDownloadIndicator } from './common/UpdateDownloadIndicator'
 import { useUpdateStore, versionBadgeLabel } from '../store/useUpdateStore'
 import { CURRENT_APP_VERSION } from '../services/updateService'
 import { isAndroid } from '../utils/platform'
@@ -55,10 +56,20 @@ export const LobbyModal: React.FC<Props> = ({
   isUpdating,
 }) => {
   const updateInfo = useUpdateStore((s) => s.updateInfo)
+  const updateStatus = useUpdateStore((s) => s.status)
+  const updateProgress = useUpdateStore((s) => s.progress)
   const hasUpdate = hasUpdateProp ?? !!updateInfo?.hasUpdate
-  const readyFromStore = useUpdateStore((s) => s.status === 'ready')
+  const readyFromStore = updateStatus === 'ready'
   const isAndroidPlatform = isAndroid()
-  const showUpdateAction = hasUpdate && (isAndroidPlatform || (isUpdateReady ?? readyFromStore))
+  const isDownloadingUpdate = updateStatus === 'downloading'
+  const updatePercent = Math.round(Math.max(0, Math.min(100, Number.isFinite(updateProgress.percent) ? updateProgress.percent : 0)))
+  const isReadyToInstall = isUpdateReady ?? readyFromStore
+  const showUpdateAction = hasUpdate && (isAndroidPlatform || isDownloadingUpdate || isReadyToInstall)
+  const updateActionLabel = isDownloadingUpdate
+    ? `Baixando atualização: ${updatePercent}%`
+    : isAndroidPlatform
+      ? 'Atualizar Lira'
+      : 'Instalar atualização'
   const manualCheck = useUpdateStore((s) => s.manualCheck)
   const checkNow = useUpdateStore((s) => s.checkNow)
   const rawVersion = updateInfo?.currentVersion || CURRENT_APP_VERSION
@@ -582,15 +593,15 @@ export const LobbyModal: React.FC<Props> = ({
             <button
               type="button"
               onClick={onApplyUpdate}
-              disabled={isUpdating}
+              disabled={isUpdating || isDownloadingUpdate}
               className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 p-2 sm:p-2.5 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-300 hover:text-white transition-all hover:scale-105 active:scale-95 shadow-lg shadow-emerald-500/20 cursor-pointer disabled:opacity-75 disabled:pointer-events-none"
-              aria-label={isAndroidPlatform ? 'Atualizar Lira' : 'Instalar atualização'}
-              title={isAndroidPlatform ? 'Nova versão disponível! Clique para atualizar agora.' : 'Atualização pronta. Clique para instalar.'}
+              aria-label={updateActionLabel}
+              title={isDownloadingUpdate ? updateActionLabel : isAndroidPlatform ? 'Nova versão disponível! Clique para atualizar agora.' : 'Atualização pronta. Clique para instalar.'}
             >
               {isUpdating ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
               ) : (
-                <Download className="w-4 h-4" />
+                <UpdateDownloadIndicator downloading={isDownloadingUpdate} percent={updatePercent} />
               )}
             </button>
           ) : (

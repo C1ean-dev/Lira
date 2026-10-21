@@ -82,7 +82,8 @@ export function applyBackgroundRemoval(
 }
 
 export function getTrimmedBounds(
-  sourceCanvas: HTMLCanvasElement
+  sourceCanvas: HTMLCanvasElement,
+  alphaThreshold = 10
 ): { x: number; y: number; w: number; h: number } | null {
   const ctx = sourceCanvas.getContext('2d')
   if (!ctx) return null
@@ -102,7 +103,7 @@ export function getTrimmedBounds(
     for (let x = 0; x < w; x++) {
       const idx = (y * w + x) * 4
       const a = data[idx + 3]
-      if (a > 10) {
+      if (a > alphaThreshold) {
         hasPixels = true
         if (x < minX) minX = x
         if (x > maxX) maxX = x

@@ -17,6 +17,9 @@ const ASSETS_STORAGE_KEY = 'lira_custom_user_assets'
 const CATEGORIES_STORAGE_KEY = 'lira_custom_categories'
 const DEFAULT_CATEGORIES = ['Geral', 'pokemon']
 const imageCache = new Map<string, HTMLImageElement>()
+const imageRetryAfter = new Map<string, number>()
+const IMAGE_RETRY_DELAYS_MS = [100, 300, 1000]
+const IMAGE_RETRY_COOLDOWN_MS = 30_000
 const listeners = new Set<(imageSource?: string) => void>()
 export function onCustomAssetsChange(listener: (imageSource?: string) => void): () => void {
   listeners.add(listener)
@@ -32,6 +35,12 @@ export function notifyCustomAssetsChanged(): void {
 export function getCustomAssetImage(src: string): HTMLImageElement | null {
   if (!src || typeof Image === 'undefined') return null
   let image = imageCache.get(src)
+  const retryAfter = imageRetryAfter.get(src)
+  if (image && retryAfter !== undefined && Date.now() >= retryAfter) {
+    imageCache.delete(src)
+    imageRetryAfter.delete(src)
+    image = undefined
+  }
   if (!image) {
     const frame = readSpriteFrame(src)
     if (frame) {
@@ -44,12 +53,30 @@ export function getCustomAssetImage(src: string): HTMLImageElement | null {
   }
   if (!image) {
     image = new Image()
+    const requestedImage = image
+    let retryCount = 0
+    let retryTimer: ReturnType<typeof setTimeout> | undefined
     image.addEventListener?.('load', () => {
+      if (retryTimer !== undefined) clearTimeout(retryTimer)
+      imageRetryAfter.delete(src)
       bumpAssetImageRevision()
       for (const listener of listeners) {
         try { listener(src) } catch (error) { console.error('[Assets] Image listener:', error) }
       }
     }, { once: true })
+    image.addEventListener?.('error', () => {
+      if (retryTimer !== undefined || imageCache.get(src) !== requestedImage) return
+      const delay = IMAGE_RETRY_DELAYS_MS[retryCount++]
+      if (delay === undefined) {
+        // Do not keep a failed Image forever, or flood a missing file with requests every frame.
+        imageRetryAfter.set(src, Date.now() + IMAGE_RETRY_COOLDOWN_MS)
+        return
+      }
+      retryTimer = setTimeout(() => {
+        retryTimer = undefined
+        if (imageCache.get(src) === requestedImage) requestedImage.src = src
+      }, delay)
+    })
     imageCache.set(src, image)
     image.src = src
   }
