@@ -5,6 +5,13 @@ import { AppUpdateScreen } from '../../components/AppUpdateScreen'
 import { UpdateModal } from '../../components/UpdateModal'
 
 describe('Update UI - Error State with Manual Browser Download', () => {
+  it('offers an explicit install action and close after a background retry finishes', () => {
+    const html = renderToStaticMarkup(<AppUpdateScreen status="ready" />)
+    expect(html).toContain('Atualização pronta para instalar')
+    expect(html).toContain('Atualizar agora')
+    expect(html).toContain('Fechar')
+    expect(html).not.toContain('Preparando atualização...')
+  })
   const mockUpdateInfo = {
     hasUpdate: true,
     currentVersion: '1.0.0',

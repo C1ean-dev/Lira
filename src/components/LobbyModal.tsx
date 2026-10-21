@@ -23,8 +23,8 @@ import { LobbyChatModal } from './lobby/LobbyChatModal'
 import { LiraLogo } from './LiraLogo'
 import { useUpdateStore, versionBadgeLabel } from '../store/useUpdateStore'
 import { CURRENT_APP_VERSION } from '../services/updateService'
-import { isSameParticipant } from '../utils/userId'
 import { isAndroid } from '../utils/platform'
+import { isSameParticipant } from '../utils/userId'
 
 interface Props {
   onJoined: () => void
