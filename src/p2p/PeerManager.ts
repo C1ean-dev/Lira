@@ -39,6 +39,9 @@ export type { SignalingTier }
 export const SIGNALING_TIERS: SignalingTier[] = ['render', 'public', 'local']
 export const RENDER_SIGNALING_HOST = 'lira-signaling.onrender.com'
 const HOST_TRANSPORT_TIMEOUT_MS = 30_000
+const HOST_RECONNECT_DELAY_MS = 2500
+const HOST_RECONNECT_ATTEMPTS = 6
+const HOST_REGISTRATION_TIMEOUT_MS = 15_000
 
 let activeSignalingTier: SignalingTier = 'render'
 const tierFailedUntil: Record<SignalingTier, number> = {
@@ -129,6 +132,11 @@ interface HostRecovery {
   hostPeerId: string
   clientPeerId: string
   attempts: number
+  candidateRank: number
+  round: number
+  registrationFailures: number
+  phase: 'waiting' | 'claiming' | 'restoring-client'
+  startedAt: number
   timer: ReturnType<typeof setTimeout> | null
   connection: DataConnection | null
 }
@@ -219,6 +227,15 @@ export class PeerManager {
       reconnectPending: !!this.signalingReconnectTimer,
       leaving: this.isIntentionalDisconnect,
       quietestPeerMs: this.peerLastSeen.size > 0 ? quietestPeerMs : undefined,
+      hostRecovery: this.hostRecovery ? {
+        phase: this.hostRecovery.phase,
+        round: this.hostRecovery.round,
+        attempts: this.hostRecovery.attempts,
+        candidateRank: this.hostRecovery.candidateRank,
+        clientPeerId: this.hostRecovery.clientPeerId,
+        hostPeerId: this.hostRecovery.hostPeerId,
+        elapsedMs: now - this.hostRecovery.startedAt,
+      } : null,
     }
   }
 
@@ -769,6 +786,10 @@ export class PeerManager {
       if (this.isIntentionalDisconnect || !this.roomCode || this.peer !== myPeer) return
 
       useGameStore.getState().setConnectionStatus('reconnecting')
+      if (this.hostRecovery) {
+        this.retryHostRecoveryClient(this.hostRecovery, 'signaling-disconnected')
+        return
+      }
       this.scheduleSignalingReconnect()
     })
 
@@ -776,7 +797,8 @@ export class PeerManager {
       console.log(`[P2P Signaling] Peer connection closed (Peer ID: ${myPeer.id})`)
       diagLog('room', 'peer-closed', { roomCode: this.roomCode, peerId: myPeer.id })
       if (!this.isIntentionalDisconnect && this.roomCode && this.peer === myPeer) {
-        useGameStore.getState().setConnectionStatus('disconnected')
+        if (this.hostRecovery) this.retryHostRecoveryClient(this.hostRecovery, 'signaling-closed')
+        else useGameStore.getState().setConnectionStatus('disconnected')
       }
     })
   }
@@ -1108,13 +1130,15 @@ export class PeerManager {
 
   private handleHostDisconnected(hostPeerId: string) {
     if (!this.roomCode || !this.peer || this.peer.destroyed || this.isHost || this.isIntentionalDisconnect || this.hostRecovery) return
+    useGameStore.getState().setConnectionHostId(null)
+    useGameStore.getState().setConnected(false)
     useGameStore.getState().setConnectionStatus('reconnecting')
     this.stopHeartbeat()
     if (this.signalingReconnectTimer) clearTimeout(this.signalingReconnectTimer)
     this.signalingReconnectTimer = null
 
     // Clients only connect to the host; use their replicated player roster.
-    const myId = this.peer.id
+    const myId = this.peer.id || useGameStore.getState().localPlayer.id
     const candidates = [...new Set([
       myId,
       ...Object.values(useGameStore.getState().remotePlayers)
@@ -1123,8 +1147,14 @@ export class PeerManager {
     const recovery: HostRecovery = {
       roomCode: this.roomCode, hostPeerId, clientPeerId: myId,
       attempts: 0, timer: null, connection: null,
+      candidateRank: Math.max(0, candidates.indexOf(myId)), round: 0,
+      registrationFailures: 0, phase: 'waiting', startedAt: Date.now(),
     }
     this.hostRecovery = recovery
+    diagLog('room', 'host-recovery-start', {
+      roomCode: recovery.roomCode, hostPeerId, clientPeerId: myId,
+      candidate: candidates[0], candidateRank: recovery.candidateRank, candidates: candidates.length,
+    })
     if (candidates[0] === myId) {
       this.promoteToHost(recovery)
     } else {
@@ -1140,6 +1170,10 @@ export class PeerManager {
     const recovery = this.hostRecovery
     this.hostRecovery = null
     if (!recovery) return
+    this.clearHostRecoveryAttempt(recovery)
+  }
+
+  private clearHostRecoveryAttempt(recovery: HostRecovery) {
     if (recovery.timer !== null) clearTimeout(recovery.timer)
     recovery.timer = null
     const connection = recovery.connection
@@ -1147,11 +1181,23 @@ export class PeerManager {
     try { connection?.close() } catch { }
   }
 
-  private failHostRecovery(recovery: HostRecovery) {
+  private retryHostRecoveryClient(recovery: HostRecovery, reason: string) {
     if (!this.isCurrentHostRecovery(recovery)) return
-    this.cancelHostRecovery()
-    useGameStore.getState().setConnected(false)
-    useGameStore.getState().setConnectionStatus('disconnected')
+    const phase = recovery.phase
+    this.clearHostRecoveryAttempt(recovery)
+    this.retireRecoveryPeer()
+    useGameStore.getState().setConnectionStatus('reconnecting')
+    diagLog('room', 'host-recovery-registration-failed', { roomCode: recovery.roomCode, phase, reason, round: recovery.round })
+    if (phase === 'claiming') {
+      this.restoreRecoveryClient(recovery)
+    } else {
+      const delay = Math.min(15_000, HOST_RECONNECT_DELAY_MS * 2 ** Math.min(recovery.registrationFailures++, 3))
+      recovery.phase = 'restoring-client'
+      recovery.timer = setTimeout(() => {
+        recovery.timer = null
+        if (this.isCurrentHostRecovery(recovery)) this.restoreRecoveryClient(recovery)
+      }, delay)
+    }
   }
 
   private setupRecoveredPeerListeners(peer: Peer) {
@@ -1196,18 +1242,27 @@ export class PeerManager {
   }
 
   private promoteToHost(recovery: HostRecovery) {
+    if (!this.isCurrentHostRecovery(recovery)) return
+    this.clearHostRecoveryAttempt(recovery)
     this.retireRecoveryPeer()
-    const claimant = createPeerInstance(recovery.hostPeerId, { tier: this.currentSignalingTier })
+    recovery.phase = 'claiming'
+    diagLog('room', 'host-recovery-claim', {
+      roomCode: recovery.roomCode, clientPeerId: recovery.clientPeerId,
+      hostPeerId: recovery.hostPeerId, round: recovery.round,
+    })
+    let claimant: Peer
+    try { claimant = createPeerInstance(recovery.hostPeerId, { tier: this.currentSignalingTier }) }
+    catch { this.retryHostRecoveryClient(recovery, 'host-peer-creation-failed'); return }
     this.peer = claimant
     const isCurrent = () => this.isCurrentHostRecovery(recovery) && this.peer === claimant
     recovery.timer = setTimeout(() => {
       if (!isCurrent()) return
-      this.retireRecoveryPeer()
-      this.failHostRecovery(recovery)
-    }, 15_000)
+      this.retryHostRecoveryClient(recovery, 'host-registration-timeout')
+    }, HOST_REGISTRATION_TIMEOUT_MS)
 
     claimant.on('open', (id) => {
       if (!isCurrent()) return
+      diagLog('room', 'host-recovery-promoted', { roomCode: recovery.roomCode, hostPeerId: id, round: recovery.round })
       this.cancelHostRecovery()
       this.isHost = true
       useGameStore.getState().setSignalingTier(this.currentSignalingTier)
@@ -1246,56 +1301,73 @@ export class PeerManager {
 
     claimant.on('error', (error) => {
       if (!isCurrent()) return
-      if (recovery.timer !== null) clearTimeout(recovery.timer)
-      recovery.timer = null
-      this.retireRecoveryPeer()
-      if (error.type === 'unavailable-id') this.restoreRecoveryClient(recovery)
-      else this.failHostRecovery(recovery)
+      this.retryHostRecoveryClient(recovery, error.type)
     })
+    claimant.on('disconnected', () => { if (isCurrent()) this.retryHostRecoveryClient(recovery, 'host-signaling-disconnected') })
+    claimant.on('close', () => { if (isCurrent()) this.retryHostRecoveryClient(recovery, 'host-signaling-closed') })
   }
 
   private restoreRecoveryClient(recovery: HostRecovery) {
-    const client = createPeerInstance(recovery.clientPeerId, { tier: this.currentSignalingTier })
+    if (!this.isCurrentHostRecovery(recovery)) return
+    this.clearHostRecoveryAttempt(recovery)
+    recovery.phase = 'restoring-client'
+    let client: Peer
+    try { client = createPeerInstance(recovery.clientPeerId, { tier: this.currentSignalingTier }) }
+    catch { this.retryHostRecoveryClient(recovery, 'client-peer-creation-failed'); return }
     this.peer = client
     let registered = false
     const isCurrent = () => this.isCurrentHostRecovery(recovery) && this.peer === client
     recovery.timer = setTimeout(() => {
       if (!isCurrent()) return
-      this.retireRecoveryPeer()
-      this.failHostRecovery(recovery)
-    }, 15_000)
+      this.retryHostRecoveryClient(recovery, 'client-registration-timeout')
+    }, HOST_REGISTRATION_TIMEOUT_MS)
     client.on('open', (id) => {
       if (!isCurrent() || registered) return
       registered = true
       if (recovery.timer !== null) clearTimeout(recovery.timer)
       recovery.timer = null
+      recovery.registrationFailures = 0
+      recovery.attempts = 0
       useGameStore.getState().setLocalPlayer({ id, isHost: false })
       this.setupRecoveredPeerListeners(client)
       this.scheduleHostReconnect(recovery)
     })
     client.on('error', (error) => {
       if (!isCurrent() || error.type === 'peer-unavailable') return
-      this.retireRecoveryPeer()
-      this.failHostRecovery(recovery)
+      this.retryHostRecoveryClient(recovery, error.type)
     })
+    // Registration can fail before the shared signaling listeners are installed.
+    client.on('disconnected', () => { if (isCurrent() && !registered) this.retryHostRecoveryClient(recovery, 'client-signaling-disconnected') })
+    client.on('close', () => { if (isCurrent() && !registered) this.retryHostRecoveryClient(recovery, 'client-signaling-closed') })
   }
 
   private scheduleHostReconnect(recovery: HostRecovery) {
     if (!this.isCurrentHostRecovery(recovery)) return
+    recovery.phase = 'waiting'
     recovery.timer = setTimeout(() => {
       recovery.timer = null
       if (!this.isCurrentHostRecovery(recovery)) return
       const previous = recovery.connection
       recovery.connection = null
       try { previous?.close() } catch { }
-      if (recovery.attempts >= 6) {
-        this.failHostRecovery(recovery)
+      if (recovery.attempts >= HOST_RECONNECT_ATTEMPTS) {
+        recovery.round++
+        recovery.attempts = 0
+        // Every survivor eventually gets a chance, even if the first candidate
+        // was stale or frozen. The signaling server arbitrates the shared ID.
+        const delay = Math.min(recovery.candidateRank, 20) * 250
+        diagLog('room', 'host-recovery-next-round', { roomCode: recovery.roomCode, round: recovery.round, delay })
+        recovery.timer = setTimeout(() => {
+          recovery.timer = null
+          if (this.isCurrentHostRecovery(recovery)) this.promoteToHost(recovery)
+        }, delay)
+        this.reconnectToHost(recovery)
         return
       }
       recovery.attempts++
       this.reconnectToHost(recovery)
       if (this.isCurrentHostRecovery(recovery)) this.scheduleHostReconnect(recovery)
-    }, 2500)
+    }, HOST_RECONNECT_DELAY_MS)
   }
 
   private reconnectToHost(recovery: HostRecovery) {
@@ -1327,6 +1399,7 @@ export class PeerManager {
         return
       }
       recovery.connection = null
+      diagLog('room', 'host-recovery-connected', { roomCode: recovery.roomCode, hostPeerId: recovery.hostPeerId, round: recovery.round })
       this.cancelHostRecovery()
       useGameStore.getState().setConnectionHostId(recovery.hostPeerId)
       useGameStore.getState().setConnected(true)

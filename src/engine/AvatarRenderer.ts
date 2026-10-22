@@ -7,6 +7,10 @@ import { activitySequence } from '../utils/avatarActivityAnimations'
 export { NameTagRenderer } from './avatar/nameTagRenderer'
 export { AvatarAtlasManager } from './avatar/AvatarAtlasManager'
 
+const isDirectImageSource = (source: string): boolean =>
+  /^(?:data:image\/|blob:|https?:|file:|lira-sprite:)/i.test(source) || /[\\/]/.test(source) ||
+  /\.(?:png|jpe?g|gif|webp|svg|avif|bmp|ico)(?:[?#]|$)/i.test(source)
+
 export class AvatarRenderer {
   private static atlasResolveCache = new Map<string, SubTexture | null>()
 
@@ -188,8 +192,8 @@ export class AvatarRenderer {
       return customById
     }
 
-    const drawCustomComponent = (component?: string | Partial<Record<Direction, string | string[]>>) => {
-      if (!component) return
+    const drawCustomComponent = (component?: string | Partial<Record<Direction, string | string[]>>): boolean => {
+      if (!component) return false
       let resolvedComponent = component
       let activeFrames = false
       let activityFrame = 0
@@ -218,7 +222,13 @@ export class AvatarRenderer {
           )
           if (matchingAsset?.directionalFrames) {
             resolvedComponent = matchingAsset.directionalFrames
+          } else if (!matchingAsset && !isDirectImageSource(component)) {
+            // Keep unresolved IDs in the profile so a later catalog sync can
+            // resolve them, without requesting those IDs as relative files.
+            return false
           }
+        } else {
+          return false
         }
       }
 
@@ -226,7 +236,7 @@ export class AvatarRenderer {
       let shouldFlip = false
 
       if (typeof resolvedComponent === 'string') {
-        if (dir === 'up') return
+        if (dir === 'up') return false
         dataUrl = resolvedComponent
         if (dir === 'left') shouldFlip = true
       } else {
@@ -253,7 +263,7 @@ export class AvatarRenderer {
         if (!dataUrl && activeFrames) dataUrl = pickDirectionFrame(resolvedComponent.down) || Object.values(resolvedComponent).map(pickDirectionFrame).find(Boolean)
       }
 
-      if (!dataUrl) return
+      if (!dataUrl) return false
       const img = getCustomAssetImage(dataUrl)
       if (img && img.complete && img.naturalWidth > 0) {
         ctx.save()
@@ -268,7 +278,9 @@ export class AvatarRenderer {
         ctx.drawImage(img, px, drawY, size, drawHeight)
         if (activeFrames) renderedActivity = true
         ctx.restore()
+        return true
       }
+      return false
     }
 
     const DEFAULT_RETRO_ID = 'avatar_other_sliced_1788355059618_ozg3'
@@ -288,7 +300,11 @@ export class AvatarRenderer {
         : false
 
     if (!renderedAtlas) {
-      drawCustomComponent(otherComp)
+      const renderedCustom = drawCustomComponent(otherComp)
+      if (!renderedCustom && otherComp !== DEFAULT_RETRO_ID) {
+        const renderedDefault = AvatarRenderer.drawAtlasPart(ctx, px, py, bodyBob, size, dir, 'other', DEFAULT_RETRO_ID, walkFrame)
+        if (!renderedDefault) drawCustomComponent(DEFAULT_RETRO_ID)
+      }
     }
 
     if (showNameTag) {
