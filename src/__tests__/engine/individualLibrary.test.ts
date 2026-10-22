@@ -4,7 +4,7 @@ import type { CustomAsset } from '../../types/customAsset'
 import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
-import { parseAtlasDocument } from '../../assets/atlasFormat'
+import { parseAtlasDocument, type AtlasDocument } from '../../assets/atlasFormat'
 
 const png = 'data:image/png;base64,iVBORw0KGgo='
 const asset: CustomAsset = { id: 'hero', name: 'Hero', type: 'avatar', category: 'People', width: 1, height: 1, frames: [png], sourceImageSrc: png, sourceSheets: [{ id: 'primary', name: 'Original', src: png, width: 32, height: 32 }], slicerPresets: [{ directions: { down: [{ x: 0, y: 0, w: 16, h: 16, dataUrl: png }] } }], createdAt: 1 }
@@ -63,5 +63,22 @@ describe('individual image library', () => {
     expect(openLibrary(packet.catalog, name => name).deletedAssetIds).toEqual(['deleted'])
     expect(() => openLibrary({ ...packet.catalog, images: [] }, name => name)).toThrow()
     expect(() => openLibrary({ ...packet.catalog, images: ['../../other.png'] }, name => name)).toThrow()
+  })
+
+  it.each([
+    ['duplicate asset IDs', { assets: [asset, asset], categories: [] }],
+    ['invalid asset type', { assets: [{ ...asset, type: 'other' }], categories: [] }],
+    ['non-finite dimensions', { assets: [{ ...asset, width: Infinity }], categories: [] }],
+    ['invalid frame list', { assets: [{ ...asset, frames: png }], categories: [] }],
+    ['invalid categories', { assets: [asset], categories: [1] }],
+    ['empty deleted IDs', { assets: [asset], categories: [], deletedAssetIds: [''] }],
+    ['duplicate deleted IDs', { assets: [asset], categories: [], deletedAssetIds: ['deleted', 'deleted'] }],
+  ])('rejects %s before fetching any image data', async (_label, document) => {
+    const fetch = vi.fn()
+    vi.stubGlobal('fetch', fetch)
+    try {
+      await expect(buildLibrary(document as AtlasDocument)).rejects.toThrow()
+      expect(fetch).not.toHaveBeenCalled()
+    } finally { vi.unstubAllGlobals() }
   })
 })

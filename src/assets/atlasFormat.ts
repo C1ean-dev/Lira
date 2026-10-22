@@ -89,7 +89,11 @@ export function parseAtlasDocument(xml: string, image: (name: string) => string)
   if (xml.includes('<!') || !/^<\?xml[^>]*\?>\s*<TextureAtlas\b[^>]*\bliraVersion="1"[^>]*>/.test(xml.trim()) || !xml.trim().endsWith('</TextureAtlas>')) throw new Error('Versão ou estrutura do atlas inválida')
   const metadata = /<LiraAssets>([\s\S]*?)<\/LiraAssets>/.exec(xml)
   if (!metadata) throw new Error('Atlas sem metadados')
-  const doc = decodeValue(metadata[1], image) as AtlasDocument
+  return validateAtlasDocument(decodeValue(metadata[1], image) as AtlasDocument)
+}
+
+/** Validate the catalog structure without copying image bytes into XML. */
+export function validateAtlasDocument(doc: AtlasDocument): AtlasDocument {
   if (!doc || !Array.isArray(doc.assets) || !Array.isArray(doc.categories) || doc.categories.some(c => typeof c !== 'string')) throw new Error('Catálogo XML inválido')
   if (doc.deletedAssetIds !== undefined && (!Array.isArray(doc.deletedAssetIds) || doc.deletedAssetIds.some(id => typeof id !== 'string' || !id) || new Set(doc.deletedAssetIds).size !== doc.deletedAssetIds.length)) throw new Error('Exclusões do atlas inválidas')
   const ids = new Set<string>()
