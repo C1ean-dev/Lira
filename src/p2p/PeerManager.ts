@@ -44,6 +44,7 @@ const HOST_RECONNECT_ATTEMPTS = 6
 const HOST_REGISTRATION_TIMEOUT_MS = 15_000
 const HOST_TRANSFER_PREPARE_TIMEOUT_MS = 5000
 const HOST_TRANSFER_CONFIRM_TIMEOUT_MS = 45_000
+const HOST_TRANSFER_CLAIM_RETRY_MS = 500
 
 let activeSignalingTier: SignalingTier = 'render'
 const tierFailedUntil: Record<SignalingTier, number> = {
@@ -135,6 +136,8 @@ interface HostRecovery {
   clientPeerId: string
   attempts: number
   candidateRank: number
+  preferredCandidate: string | null
+  preferenceExpiresAt: number
   round: number
   registrationFailures: number
   phase: 'waiting' | 'claiming' | 'restoring-client'
@@ -253,6 +256,8 @@ export class PeerManager {
         round: this.hostRecovery.round,
         attempts: this.hostRecovery.attempts,
         candidateRank: this.hostRecovery.candidateRank,
+        preferredCandidate: this.hostRecovery.preferredCandidate,
+        preferenceRemainingMs: Math.max(0, this.hostRecovery.preferenceExpiresAt - now),
         clientPeerId: this.hostRecovery.clientPeerId,
         hostPeerId: this.hostRecovery.hostPeerId,
         elapsedMs: now - this.hostRecovery.startedAt,
@@ -1216,6 +1221,13 @@ export class PeerManager {
     else transfer.resolve()
   }
 
+  private confirmHostTransfer(hostIdentity: unknown) {
+    const transfer = this.hostTransfer
+    if (!transfer?.released || transfer.roomCode !== this.roomCode) return
+    this.finishHostTransfer(hostIdentity === transfer.targetGameId ? undefined
+      : new Error('A sala foi recuperada por outro participante; a transferência solicitada não foi confirmada.'))
+  }
+
   private cancelHostTransfer() {
     this.finishHostTransfer(new Error('Transferência cancelada ao sair ou trocar de sala.'))
     this.preparedHostTransfer = null
@@ -1300,6 +1312,7 @@ export class PeerManager {
     const myId = clientPeerId || this.peer.id || useGameStore.getState().localPlayer.id
     const candidates = [...new Set([
       myId,
+      ...(preferredCandidate ? [preferredCandidate] : []),
       ...Object.values(useGameStore.getState().remotePlayers)
         .filter(player => !player.isDjBot).map(player => player.id),
     ])].filter(id => id && id !== hostPeerId && !id.startsWith('dj-')).sort()
@@ -1311,6 +1324,8 @@ export class PeerManager {
       roomCode: this.roomCode, hostPeerId, clientPeerId: myId,
       attempts: 0, timer: null, connection: null,
       candidateRank: Math.max(0, candidates.indexOf(myId)), round: 0,
+      preferredCandidate: preferredCandidate || null,
+      preferenceExpiresAt: preferredCandidate ? Date.now() + HOST_TRANSFER_CONFIRM_TIMEOUT_MS : 0,
       registrationFailures: 0, phase: 'waiting', startedAt: Date.now(),
     }
     this.hostRecovery = recovery
@@ -1352,6 +1367,20 @@ export class PeerManager {
     useGameStore.getState().setConnectionStatus('reconnecting')
     diagLog('room', 'host-recovery-registration-failed', { roomCode: recovery.roomCode, phase, reason, round: recovery.round })
     if (phase === 'claiming') {
+      if (recovery.preferredCandidate === recovery.clientPeerId && Date.now() < recovery.preferenceExpiresAt) {
+        // The signaling server can retain a retired ID briefly. Do not send
+        // the chosen successor back to its equally reserved former client ID.
+        const delay = Math.min(2000, HOST_TRANSFER_CLAIM_RETRY_MS * 2 ** Math.min(recovery.registrationFailures++, 2),
+          recovery.preferenceExpiresAt - Date.now())
+        diagLog('room', 'host-transfer-claim-retry', { roomCode: recovery.roomCode, delay, reason })
+        recovery.timer = setTimeout(() => {
+          recovery.timer = null
+          if (!this.isCurrentHostRecovery(recovery)) return
+          if (Date.now() < recovery.preferenceExpiresAt) this.promoteToHost(recovery)
+          else this.restoreRecoveryClient(recovery)
+        }, delay)
+        return
+      }
       this.restoreRecoveryClient(recovery)
     } else {
       const delay = Math.min(15_000, HOST_RECONNECT_DELAY_MS * 2 ** Math.min(recovery.registrationFailures++, 3))
@@ -1444,6 +1473,7 @@ export class PeerManager {
       useGameStore.getState().setConnectionStatus('connected')
       this.setupRecoveredPeerListeners(claimant)
       this.startHeartbeat()
+      this.confirmHostTransfer(currentLocal.gameId || currentLocal.id)
 
       if (useGameStore.getState().isRoomPublic) {
         PublicRoomsService.getInstance().startHosting({
@@ -1491,12 +1521,18 @@ export class PeerManager {
       recovery.timer = null
       recovery.registrationFailures = 0
       recovery.attempts = 0
-      useGameStore.getState().setLocalPlayer({ id, isHost: false })
+      const currentLocal = useGameStore.getState().localPlayer
+      useGameStore.getState().setLocalPlayer({ id, gameId: currentLocal.gameId || currentLocal.id, isHost: false })
       this.setupRecoveredPeerListeners(client)
       this.scheduleHostReconnect(recovery)
     })
     client.on('error', (error) => {
       if (!isCurrent() || error.type === 'peer-unavailable') return
+      if (error.type === 'unavailable-id') {
+        // A fresh transport ID avoids waiting on the server's old reservation;
+        // gameId continues to identify the same participant in the room.
+        recovery.clientPeerId = `lira-${recovery.roomCode}-peer-${crypto.randomUUID()}`
+      }
       this.retryHostRecoveryClient(recovery, error.type)
     })
     // Registration can fail before the shared signaling listeners are installed.
@@ -1513,7 +1549,8 @@ export class PeerManager {
       const previous = recovery.connection
       recovery.connection = null
       try { previous?.close() } catch { }
-      if (recovery.attempts >= HOST_RECONNECT_ATTEMPTS) {
+      const waitingForPreferred = recovery.preferredCandidate && Date.now() < recovery.preferenceExpiresAt
+      if (recovery.attempts >= HOST_RECONNECT_ATTEMPTS && !waitingForPreferred) {
         recovery.round++
         recovery.attempts = 0
         // Every survivor eventually gets a chance, even if the first candidate
@@ -1630,7 +1667,7 @@ export class PeerManager {
       if (transfer?.released && transfer.roomCode === this.roomCode && msg.type === 'PLAYER_JOIN' &&
         peerId === transfer.hostPeerId && msg.senderId === peerId) {
         const hostIdentity = msg.payload?.player?.gameId || msg.payload?.player?.id
-        this.finishHostTransfer(hostIdentity === transfer.targetGameId ? undefined : new Error('A sala foi recuperada por outro participante; a transferência solicitada não foi confirmada.'))
+        this.confirmHostTransfer(hostIdentity)
       }
 
       if (msg.type === 'LIVE_VIEW') this.handleLiveView(msg)

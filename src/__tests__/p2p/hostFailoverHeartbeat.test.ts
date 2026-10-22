@@ -283,6 +283,24 @@ describe('host recovery in a room whose clients only have a data connection to t
     expect(manager.isHost).toBe(false)
   })
 
+  it('uses a fresh transport ID when the signaling server still reserves the retired client ID', () => {
+    client(A, [B])
+    manager.handleHostDisconnected(HOST)
+    FakePeer.instances.at(-1)!.emit('error', { type: 'unavailable-id' })
+    const restored = FakePeer.instances.at(-1)!
+    expect(restored.id).toBe(A)
+    restored.emit('error', { type: 'unavailable-id' })
+    vi.advanceTimersByTime(5000)
+    const retry = FakePeer.instances.at(-1)!
+    expect(retry.id).not.toBe(A)
+    expect(retry.id).not.toBe(HOST)
+    retry.emit('open', retry.id)
+    expect(useGameStore.getState().localPlayer.gameId).toBe(`game-${A}`)
+    vi.advanceTimersByTime(2500)
+    FakeConn.instances.at(-1)!.emit('open')
+    expect(useGameStore.getState().connectionStatus).toBe('connected')
+  })
+
   it('keeps the local candidate eligible when PeerJS clears its public ID during a signaling outage', () => {
     const peer = client(A, [B])
     ;(peer as any).id = null
@@ -516,6 +534,91 @@ describe('manual connection host transfer', () => {
     FakeConn.instances.at(-1)!.emit('open')
     expect(manager.isHost).toBe(false)
     expect(useGameStore.getState().connectionHostId).toBe(HOST)
+  })
+
+  it.each(['unavailable-id', 'network', 'registration-timeout'])('retries the selected host claim after %s without registering its still-reserved former client ID', reason => {
+    client(B, [A, C])
+    connection(HOST).emit('data', plan('prepare'))
+    manager.removePeer(HOST)
+    const first = FakePeer.instances.at(-1)!
+    if (reason === 'registration-timeout') vi.advanceTimersByTime(15_000)
+    else first.emit('error', { type: reason })
+    vi.advanceTimersByTime(2500)
+    const retry = FakePeer.instances.at(-1)!
+    expect(retry).not.toBe(first)
+    expect(retry.id).toBe(HOST)
+    expect(FakePeer.instances.filter(peer => peer.id === B)).toHaveLength(1)
+    expect(manager.isHost).toBe(false)
+    retry.emit('open', HOST)
+    expect(manager.isHost).toBe(true)
+    first.emit('open', HOST)
+    expect(manager.peer).toBe(retry)
+  })
+
+  it('keeps followers from reclaiming the host during the selected recipient registration window', () => {
+    const original = client(A, [B])
+    connection(HOST).emit('data', plan('prepare'))
+    manager.removePeer(HOST)
+    vi.advanceTimersByTime(40_000)
+    expect(FakePeer.instances.map(peer => peer.id)).toEqual([A])
+    expect(manager.peer).toBe(original)
+    vi.advanceTimersByTime(10_000)
+    expect(FakePeer.instances.at(-1)!.id).toBe(HOST)
+  })
+
+  it('reserves the preferred candidate even when its player join has not reached a follower yet', () => {
+    const original = client(A, [])
+    connection(HOST).emit('data', plan('prepare'))
+    manager.removePeer(HOST)
+    expect(manager.peer).toBe(original)
+    expect(manager.isHost).toBe(false)
+  })
+
+  it('cancels a selected recipient claim retry on exit and ignores late registration events', () => {
+    client(B, [A])
+    connection(HOST).emit('data', plan('prepare'))
+    manager.removePeer(HOST)
+    const claimant = FakePeer.instances.at(-1)!
+    claimant.emit('error', { type: 'unavailable-id' })
+    manager.disconnect()
+    const count = FakePeer.instances.length
+    vi.advanceTimersByTime(60_000)
+    claimant.emit('open', HOST)
+    expect(FakePeer.instances).toHaveLength(count)
+    expect(manager.isHost).toBe(false)
+    expect(useGameStore.getState().isConnected).toBe(false)
+  })
+
+  it('reports a failed handoff immediately when the original host must recover the room itself', async () => {
+    host()
+    const target = connection(B)
+    let outcome = 'pending'
+    const pending = manager.transferConnectionHost(B).then(() => { outcome = 'confirmed' }, () => { outcome = 'failed' })
+    const prepare = target.sent.find(message => message.type === 'HOST_TRANSFER')
+    target.emit('data', { ...plan('ready', { id: prepare.payload.id }), senderId: B })
+    const restored = FakePeer.instances.at(-1)!
+    restored.emit('open', restored.id)
+    // Exercise a recovery that has already exhausted the successor's priority,
+    // while the caller is still waiting for an identity confirmation.
+    manager.hostRecovery.preferenceExpiresAt = Date.now()
+    vi.advanceTimersByTime(20_000)
+    const claimant = FakePeer.instances.at(-1)!
+    expect(claimant.id).toBe(HOST)
+    claimant.emit('open', HOST)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(outcome).toBe('failed')
+    await pending
+    expect(manager.isHost).toBe(true)
+  })
+
+  it('falls back to normal recovery once the selected recipient priority expires', () => {
+    client(B, [A])
+    connection(HOST).emit('data', plan('prepare'))
+    manager.removePeer(HOST)
+    manager.hostRecovery.preferenceExpiresAt = Date.now()
+    FakePeer.instances.at(-1)!.emit('error', { type: 'unavailable-id' })
+    expect(FakePeer.instances.at(-1)!.id).toBe(B)
+    expect(manager.isHost).toBe(false)
   })
 
   it('ignores a forged transfer plan sent by an ordinary participant', () => {
