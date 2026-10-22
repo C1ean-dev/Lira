@@ -42,6 +42,8 @@ const HOST_TRANSPORT_TIMEOUT_MS = 30_000
 const HOST_RECONNECT_DELAY_MS = 2500
 const HOST_RECONNECT_ATTEMPTS = 6
 const HOST_REGISTRATION_TIMEOUT_MS = 15_000
+const HOST_TRANSFER_PREPARE_TIMEOUT_MS = 5000
+const HOST_TRANSFER_CONFIRM_TIMEOUT_MS = 45_000
 
 let activeSignalingTier: SignalingTier = 'render'
 const tierFailedUntil: Record<SignalingTier, number> = {
@@ -141,6 +143,23 @@ interface HostRecovery {
   connection: DataConnection | null
 }
 
+interface HostTransferPlan {
+  id: string
+  roomCode: string
+  hostPeerId: string
+  targetPeerId: string
+  targetGameId: string
+  expiresAt: number
+}
+
+interface HostTransfer extends HostTransferPlan {
+  coordinator: boolean
+  released: boolean
+  timer: ReturnType<typeof setTimeout> | null
+  resolve: () => void
+  reject: (error: Error) => void
+}
+
 export class PeerManager {
   private static instance: PeerManager
   private peer: Peer | null = null
@@ -154,6 +173,8 @@ export class PeerManager {
   private peerLastSeen: Map<string, number> = new Map()
   private pendingHeartbeats = new Map<string, { connection: DataConnection; timestamp: number }>
   private hostRecovery: HostRecovery | null = null
+  private hostTransfer: HostTransfer | null = null
+  private preparedHostTransfer: HostTransferPlan | null = null
   private pendingZoneCalls = new Map<string, Peer>()
   private zoneCallTimer: ReturnType<typeof setTimeout> | null = null
   private heartbeatInterval: any = null
@@ -252,6 +273,7 @@ export class PeerManager {
     tierIndex: number = 0,
     retryCount: number = 0
   ): Promise<string> {
+    this.cancelHostTransfer()
     this.cancelHostRecovery()
     this.stopHeartbeat()
     this.clearPendingZoneCalls()
@@ -459,6 +481,7 @@ export class PeerManager {
     tierIndex: number = 0,
     retryCount: number = 0
   ): Promise<void> {
+    this.cancelHostTransfer()
     this.cancelHostRecovery()
     this.stopHeartbeat()
     this.clearPendingZoneCalls()
@@ -1128,8 +1151,144 @@ export class PeerManager {
     }
   }
 
-  private handleHostDisconnected(hostPeerId: string) {
+  public async transferConnectionHost(targetPeerId: string): Promise<void> {
+    if (!this.isHost && !useGameStore.getState().isOwner) throw new Error('Apenas o dono ou o host atual pode transferir a conexão.')
+    await this.startHostTransfer(targetPeerId)
+  }
+
+  private startHostTransfer(targetPeerId: string, id = crypto.randomUUID()): Promise<void> {
+    const state = useGameStore.getState()
+    const target = targetPeerId === state.localPlayer.id ? state.localPlayer : state.remotePlayers[targetPeerId]
+    const hostPeerId = `lira-${this.roomCode}-host`
+    const connection = this.connections.get(this.isHost ? targetPeerId : hostPeerId)
+    if (!this.roomCode || !this.peer || this.peer.destroyed || this.isIntentionalDisconnect || this.hostRecovery || this.hostTransfer) {
+      return Promise.reject(new Error('Aguarde a conexão da sala antes de transferir o host.'))
+    }
+    if (!target || target.isDjBot || targetPeerId.startsWith('dj-') || targetPeerId === hostPeerId || !connection?.open) {
+      return Promise.reject(new Error('O participante selecionado não está disponível para receber o host.'))
+    }
+    return new Promise<void>((resolve, reject) => {
+      const transfer: HostTransfer = {
+        id, roomCode: this.roomCode!, hostPeerId, targetPeerId, targetGameId: target.gameId || target.id,
+        expiresAt: Date.now() + HOST_TRANSFER_CONFIRM_TIMEOUT_MS,
+        coordinator: this.isHost, released: false, timer: null, resolve, reject,
+      }
+      this.hostTransfer = transfer
+      this.armHostTransferTimeout(transfer, HOST_TRANSFER_PREPARE_TIMEOUT_MS)
+      diagLog('room', 'host-transfer-request', { roomCode: transfer.roomCode, targetPeerId, id })
+      if (this.isHost) {
+        this.broadcast({
+          type: 'HOST_TRANSFER', senderId: this.peer!.id, timestamp: Date.now(),
+          payload: { kind: 'prepare', id, targetPeerId, targetGameId: transfer.targetGameId,
+            room: { roomName: state.roomName, roomDescription: state.roomDescription,
+              isPublic: state.isRoomPublic, maxPlayers: state.maxPlayers, color: state.roomColor } },
+        })
+      } else {
+        this.sendToPeer(connection, { type: 'HOST_TRANSFER', senderId: this.peer!.id, timestamp: Date.now(),
+          payload: { kind: 'request', id, targetPeerId } })
+      }
+    })
+  }
+
+  private armHostTransferTimeout(transfer: HostTransfer, delay: number) {
+    if (transfer.timer !== null) clearTimeout(transfer.timer)
+    transfer.timer = setTimeout(() => {
+      if (this.hostTransfer === transfer) this.finishHostTransfer(new Error(transfer.released
+        ? 'Não foi possível confirmar a transferência para o participante escolhido. A sala continuará tentando se reconectar.'
+        : 'O participante não confirmou a transferência. O host atual foi mantido.'))
+    }, delay)
+  }
+
+  private finishHostTransfer(error?: Error) {
+    const transfer = this.hostTransfer
+    this.hostTransfer = null
+    if (!transfer) return
+    if (transfer.timer !== null) clearTimeout(transfer.timer)
+    if (this.preparedHostTransfer?.id === transfer.id) this.preparedHostTransfer = null
+    diagLog('room', error ? 'host-transfer-failed' : 'host-transfer-confirmed', {
+      roomCode: transfer.roomCode, targetPeerId: transfer.targetPeerId, message: error?.message,
+    })
+    if (error && transfer.coordinator && !transfer.released && this.isHost) {
+      this.broadcast({ type: 'HOST_TRANSFER', senderId: this.peer!.id, timestamp: Date.now(),
+        payload: { kind: 'cancel', id: transfer.id, message: error.message } })
+    }
+    if (error) transfer.reject(error)
+    else transfer.resolve()
+  }
+
+  private cancelHostTransfer() {
+    this.finishHostTransfer(new Error('Transferência cancelada ao sair ou trocar de sala.'))
+    this.preparedHostTransfer = null
+  }
+
+  private handleHostTransfer(msg: NetworkMessage, peerId: string) {
+    const payload = msg.payload
+    if (!this.peer || !this.roomCode || typeof payload?.id !== 'string' || !payload.id || payload.id.length > 128 || msg.senderId !== peerId) return
+    const connection = this.connections.get(peerId)
+    if (!connection?.open) return
+    const hostPeerId = `lira-${this.roomCode}-host`
+    if (payload.kind === 'request') {
+      const requester = useGameStore.getState().remotePlayers[peerId]
+      if (!this.isHost || !(requester?.isOwner || requester?.role === 'owner') || typeof payload.targetPeerId !== 'string') return
+      void this.startHostTransfer(payload.targetPeerId, payload.id).catch(error => {
+        this.sendToPeer(connection, { type: 'HOST_TRANSFER', senderId: hostPeerId, timestamp: Date.now(),
+          payload: { kind: 'rejected', id: payload.id, message: String(error.message || error) } })
+      })
+      return
+    }
+    if (payload.kind === 'ready') {
+      const transfer = this.hostTransfer
+      if (!this.isHost || !transfer?.coordinator || transfer.released || transfer.id !== payload.id || transfer.targetPeerId !== peerId) return
+      transfer.released = true
+      this.armHostTransferTimeout(transfer, HOST_TRANSFER_CONFIRM_TIMEOUT_MS)
+      diagLog('room', 'host-transfer-release', { roomCode: this.roomCode, targetPeerId: peerId, id: transfer.id })
+      PublicRoomsService.getInstance().stopHosting()
+      this.isHost = false
+      const state = useGameStore.getState()
+      useGameStore.getState().setLocalPlayer({ isHost: false, role: state.isOwner ? 'owner' : 'member' })
+      const clientPeerId = `lira-${this.roomCode}-peer-${crypto.randomUUID()}`
+      this.handleHostDisconnected(hostPeerId, clientPeerId, transfer.targetPeerId)
+      const recovery = this.hostRecovery
+      if (recovery) {
+        this.retireRecoveryPeer()
+        this.restoreRecoveryClient(recovery)
+      }
+      return
+    }
+    if (this.isHost || peerId !== hostPeerId) return
+    if (payload.kind === 'prepare') {
+      if (typeof payload.targetPeerId !== 'string' || !payload.targetPeerId || payload.targetPeerId.length > 200 ||
+        typeof payload.targetGameId !== 'string' || !payload.targetGameId || payload.targetGameId.length > 200) return
+      const local = useGameStore.getState().localPlayer
+      if (payload.targetPeerId === local.id && payload.targetGameId !== (local.gameId || local.id)) return
+      this.preparedHostTransfer = { id: payload.id, roomCode: this.roomCode, hostPeerId,
+        targetPeerId: payload.targetPeerId, targetGameId: payload.targetGameId, expiresAt: Date.now() + 15_000 }
+      const room = payload.room
+      if (room && typeof room.roomName === 'string' && typeof room.roomDescription === 'string' && typeof room.isPublic === 'boolean' &&
+        Number.isInteger(room.maxPlayers) && room.maxPlayers > 0 && room.maxPlayers <= 1000 && typeof room.color === 'string') {
+        useGameStore.setState({ roomName: room.roomName.slice(0, 256), roomDescription: room.roomDescription.slice(0, 2000),
+          isRoomPublic: room.isPublic, maxPlayers: room.maxPlayers, roomColor: room.color.slice(0, 32) })
+      }
+      const pending = this.hostTransfer
+      if (pending && pending.id === payload.id) this.armHostTransferTimeout(pending, HOST_TRANSFER_CONFIRM_TIMEOUT_MS)
+      if (payload.targetPeerId === local.id) this.sendToPeer(connection, {
+        type: 'HOST_TRANSFER', senderId: this.peer.id, timestamp: Date.now(), payload: { kind: 'ready', id: payload.id },
+      })
+    } else if (payload.kind === 'cancel' || payload.kind === 'rejected') {
+      if (this.preparedHostTransfer?.id === payload.id) this.preparedHostTransfer = null
+      if (this.hostTransfer?.id === payload.id) this.finishHostTransfer(new Error(typeof payload.message === 'string' ? payload.message : 'Transferência recusada pelo host atual.'))
+    }
+  }
+
+  private handleHostDisconnected(hostPeerId: string, clientPeerId?: string, preferredCandidate?: string) {
     if (!this.roomCode || !this.peer || this.peer.destroyed || this.isHost || this.isIntentionalDisconnect || this.hostRecovery) return
+    const plan = this.preparedHostTransfer
+    if (!preferredCandidate && plan?.roomCode === this.roomCode && plan.hostPeerId === hostPeerId && plan.expiresAt > Date.now()) preferredCandidate = plan.targetPeerId
+    this.preparedHostTransfer = null
+    if (this.hostTransfer?.roomCode === this.roomCode) {
+      this.hostTransfer.released = true
+      this.armHostTransferTimeout(this.hostTransfer, HOST_TRANSFER_CONFIRM_TIMEOUT_MS)
+    }
     useGameStore.getState().setConnectionHostId(null)
     useGameStore.getState().setConnected(false)
     useGameStore.getState().setConnectionStatus('reconnecting')
@@ -1138,12 +1297,16 @@ export class PeerManager {
     this.signalingReconnectTimer = null
 
     // Clients only connect to the host; use their replicated player roster.
-    const myId = this.peer.id || useGameStore.getState().localPlayer.id
+    const myId = clientPeerId || this.peer.id || useGameStore.getState().localPlayer.id
     const candidates = [...new Set([
       myId,
       ...Object.values(useGameStore.getState().remotePlayers)
         .filter(player => !player.isDjBot).map(player => player.id),
     ])].filter(id => id && id !== hostPeerId && !id.startsWith('dj-')).sort()
+    if (preferredCandidate && candidates.includes(preferredCandidate)) {
+      candidates.splice(candidates.indexOf(preferredCandidate), 1)
+      candidates.unshift(preferredCandidate)
+    }
     const recovery: HostRecovery = {
       roomCode: this.roomCode, hostPeerId, clientPeerId: myId,
       attempts: 0, timer: null, connection: null,
@@ -1412,6 +1575,10 @@ export class PeerManager {
   private handleNetworkMessage(msg: NetworkMessage, peerId: string) {
     this.peerLastSeen.set(peerId, Date.now())
     try {
+      if (msg.type === 'HOST_TRANSFER') {
+        this.handleHostTransfer(msg, peerId)
+        return
+      }
       if (msg.type === 'HEARTBEAT' || msg.type === 'HEARTBEAT_ACK') {
         const connection = this.connections.get(peerId)
         if (!connection?.open || !this.peer) return
@@ -1459,6 +1626,12 @@ export class PeerManager {
         this.peer ? this.peer.id : null,
         (listenerId) => this.redialDjToPeer(listenerId)
       )
+      const transfer = this.hostTransfer
+      if (transfer?.released && transfer.roomCode === this.roomCode && msg.type === 'PLAYER_JOIN' &&
+        peerId === transfer.hostPeerId && msg.senderId === peerId) {
+        const hostIdentity = msg.payload?.player?.gameId || msg.payload?.player?.id
+        this.finishHostTransfer(hostIdentity === transfer.targetGameId ? undefined : new Error('A sala foi recuperada por outro participante; a transferência solicitada não foi confirmada.'))
+      }
 
       if (msg.type === 'LIVE_VIEW') this.handleLiveView(msg)
       if (msg.type === 'DJ_CALL_REQUEST') {
@@ -2399,6 +2572,7 @@ export class PeerManager {
   }
 
   public disconnect() {
+    this.cancelHostTransfer()
     this.isIntentionalDisconnect = true
     this.cancelHostRecovery()
     if (this.isDjBotRunning()) {

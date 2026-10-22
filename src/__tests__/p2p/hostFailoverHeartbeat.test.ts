@@ -95,6 +95,7 @@ beforeEach(() => {
     pendingHeartbeats: new Map(), pendingZoneCalls: new Map(), zoneCallTimer: null,
     heartbeatInterval: null, staleCheckInterval: null,
     hostRecovery: null, signalingReconnectTimer: null, signalingReconnectAttempts: 0,
+    hostTransfer: null, preparedHostTransfer: null,
     currentSignalingTier: 'render', djPeer: null, djMediaCalls: new Map(),
   })
   vi.spyOn(manager, 'endMediaCallWithPeer').mockImplementation(() => {})
@@ -430,6 +431,206 @@ describe('host recovery in a room whose clients only have a data connection to t
   })
 })
 
+describe('manual connection host transfer', () => {
+  const plan = (kind: string, extra: Record<string, unknown> = {}) => ({
+    type: 'HOST_TRANSFER', senderId: HOST, timestamp: Date.now(),
+    payload: { kind, id: 'handoff-1', targetPeerId: B, targetGameId: `game-${B}`,
+      room: { roomName: 'Shared room', roomDescription: 'Kept description', isPublic: true, maxPlayers: 12, color: '#112233' }, ...extra },
+  })
+  const host = () => {
+    const peer = client(HOST, [A, B, C])
+    manager.isHost = true
+    useGameStore.setState(state => ({ isHost: true, isOwner: true, localPlayer: { ...state.localPlayer, isHost: true, isOwner: true, role: 'owner' } }))
+    return peer
+  }
+
+  it('moves the actual host peer and waits for the chosen user to register and reconnect before confirming success', async () => {
+    const original = host()
+    const target = connection(B)
+    const map = useMapStore.getState().mapData
+    const channels = useChatStore.getState().channels
+    let completed = false
+    const pending = manager.transferConnectionHost(B).then(() => { completed = true })
+    void pending.catch(() => {})
+    const prepare = target.sent.find(message => message.type === 'HOST_TRANSFER' && message.payload.kind === 'prepare')
+    expect(prepare).toBeDefined()
+    expect(manager.isHost).toBe(true)
+    expect(original.destroyed).toBe(false)
+    expect(useGameStore.getState().connectionHostId).toBe(HOST)
+    target.emit('data', { ...plan('ready', { id: prepare.payload.id }), senderId: B })
+    expect(original.destroyed).toBe(true)
+    expect(manager.isHost).toBe(false)
+    const restored = FakePeer.instances.at(-1)!
+    expect(restored.id).not.toBe(HOST)
+    restored.emit('open', restored.id)
+    vi.advanceTimersByTime(2500)
+    const newHost = FakeConn.instances.at(-1)!
+    newHost.emit('open')
+    await Promise.resolve()
+    expect(completed).toBe(false)
+    newHost.emit('data', { type: 'PLAYER_JOIN', senderId: HOST, timestamp: Date.now(), payload: { player: { ...player(B), id: HOST, isHost: true } } })
+    await pending
+    expect(completed).toBe(true)
+    expect(useGameStore.getState().isOwner).toBe(true)
+    expect(useGameStore.getState().localPlayer.isOwner).toBe(true)
+    expect(useGameStore.getState().remotePlayers[HOST].gameId).toBe(`game-${B}`)
+    expect(useMapStore.getState().mapData).toBe(map)
+    expect(useChatStore.getState().channels).toBe(channels)
+  })
+
+  it('keeps the original host when the selected client never acknowledges the request', async () => {
+    const original = host()
+    connection(B)
+    const pending = manager.transferConnectionHost(B)
+    const rejected = expect(pending).rejects.toThrow()
+    vi.advanceTimersByTime(5000)
+    await rejected
+    expect(manager.isHost).toBe(true)
+    expect(manager.peer).toBe(original)
+    expect(original.destroyed).toBe(false)
+    expect(useGameStore.getState().connectionHostId).toBe(HOST)
+  })
+
+  it('promotes the chosen recipient instead of the first alphabetical candidate after the old host releases its ID', () => {
+    const original = client(B, [A, C])
+    const conn = connection(HOST)
+    conn.emit('data', plan('prepare'))
+    expect(conn.sent).toContainEqual(expect.objectContaining({ type: 'HOST_TRANSFER', payload: expect.objectContaining({ kind: 'ready', id: 'handoff-1' }) }))
+    expect(manager.peer).toBe(original)
+    expect(manager.isHost).toBe(false)
+    manager.removePeer(HOST)
+    const elected = FakePeer.instances.at(-1)!
+    expect(elected.id).toBe(HOST)
+    elected.emit('open', HOST)
+    expect(manager.isHost).toBe(true)
+    expect(useGameStore.getState()).toMatchObject({ isOwner: false, isRoomPublic: true, roomName: 'Shared room', roomDescription: 'Kept description', maxPlayers: 12, roomColor: '#112233' })
+  })
+
+  it('makes earlier candidates wait for the selected successor', () => {
+    const original = client(A, [B, C])
+    connection(HOST).emit('data', plan('prepare'))
+    manager.removePeer(HOST)
+    expect(manager.peer).toBe(original)
+    expect(original.destroyed).toBe(false)
+    vi.advanceTimersByTime(2500)
+    FakeConn.instances.at(-1)!.emit('open')
+    expect(manager.isHost).toBe(false)
+    expect(useGameStore.getState().connectionHostId).toBe(HOST)
+  })
+
+  it('ignores a forged transfer plan sent by an ordinary participant', () => {
+    client(B, [A, C])
+    const forged = connection(A)
+    forged.emit('data', plan('prepare'))
+    expect(manager.preparedHostTransfer).toBeFalsy()
+    expect(forged.sent).not.toContainEqual(expect.objectContaining({ type: 'HOST_TRANSFER' }))
+  })
+
+  it('lets the room owner request a transfer through the current host without changing its local host indicator', async () => {
+    client(A, [B])
+    useGameStore.setState(state => ({ isOwner: true, localPlayer: { ...state.localPlayer, isOwner: true } }))
+    const currentHost = connection(HOST)
+    const pending = manager.transferConnectionHost(B)
+    const rejected = expect(pending).rejects.toThrow('unavailable')
+    const request = currentHost.sent.find(message => message.type === 'HOST_TRANSFER')
+    expect(request.payload).toMatchObject({ kind: 'request', targetPeerId: B })
+    expect(useGameStore.getState().connectionHostId).toBe(HOST)
+    currentHost.emit('data', plan('rejected', { id: request.payload.id, message: 'unavailable' }))
+    await rejected
+  })
+
+  it('rejects transfer requests from a member who is neither host nor room owner', async () => {
+    client(A, [B])
+    useGameStore.setState({ isOwner: false })
+    connection(HOST)
+    await expect(manager.transferConnectionHost(B)).rejects.toThrow()
+    expect(useGameStore.getState().connectionHostId).toBe(HOST)
+  })
+
+  it('coordinates a request from the room owner through a different connection host', async () => {
+    host()
+    useGameStore.setState(state => ({ isOwner: false, localPlayer: { ...state.localPlayer, isOwner: false },
+      remotePlayers: { ...state.remotePlayers, [A]: { ...state.remotePlayers[A], isOwner: true } } }))
+    const owner = connection(A)
+    const target = connection(B)
+    owner.emit('data', { ...plan('request'), senderId: A })
+    expect(target.sent).toContainEqual(expect.objectContaining({ type: 'HOST_TRANSFER', payload: expect.objectContaining({ kind: 'prepare', id: 'handoff-1' }) }))
+    target.emit('data', { ...plan('ready'), senderId: B })
+    expect(manager.isHost).toBe(false)
+    manager.disconnect()
+    await Promise.resolve()
+  })
+
+  it('ignores an ordinary member requesting transfer over the wire', () => {
+    const original = host()
+    const member = connection(A)
+    const target = connection(B)
+    member.emit('data', { ...plan('request'), senderId: A })
+    expect(manager.hostTransfer).toBeNull()
+    expect(target.sent).not.toContainEqual(expect.objectContaining({ type: 'HOST_TRANSFER' }))
+    expect(original.destroyed).toBe(false)
+  })
+
+  it('ignores acknowledgements from another participant and from an older transfer', async () => {
+    const original = host()
+    const other = connection(A)
+    const target = connection(B)
+    const pending = manager.transferConnectionHost(B)
+    const rejected = expect(pending).rejects.toThrow()
+    const prepare = target.sent.find(message => message.type === 'HOST_TRANSFER')
+    other.emit('data', { ...plan('ready', { id: prepare.payload.id }), senderId: A })
+    target.emit('data', { ...plan('ready', { id: 'previous-transfer' }), senderId: B })
+    expect(manager.isHost).toBe(true)
+    expect(original.destroyed).toBe(false)
+    manager.disconnect()
+    await rejected
+  })
+
+  it('does not claim that transfer succeeded if another survivor becomes host', async () => {
+    host()
+    const target = connection(B)
+    const pending = manager.transferConnectionHost(B)
+    const rejected = expect(pending).rejects.toThrow('outro participante')
+    const prepare = target.sent.find(message => message.type === 'HOST_TRANSFER')
+    target.emit('data', { ...plan('ready', { id: prepare.payload.id }), senderId: B })
+    const restored = FakePeer.instances.at(-1)!
+    restored.emit('open', restored.id)
+    vi.advanceTimersByTime(2500)
+    const fallbackHost = FakeConn.instances.at(-1)!
+    fallbackHost.emit('open')
+    fallbackHost.emit('data', { type: 'PLAYER_JOIN', senderId: HOST, timestamp: Date.now(),
+      payload: { player: { ...player(C), id: HOST, isHost: true } } })
+    await rejected
+    expect(useGameStore.getState().isConnected).toBe(true)
+    expect(useGameStore.getState().remotePlayers[HOST].gameId).toBe(`game-${C}`)
+  })
+
+  it.each(['cancelled', 'expired'])('uses normal recovery after a transfer plan is %s', reason => {
+    client(A, [B, C])
+    const hostConnection = connection(HOST)
+    hostConnection.emit('data', plan('prepare'))
+    if (reason === 'cancelled') hostConnection.emit('data', plan('cancel'))
+    else vi.advanceTimersByTime(15_001)
+    manager.removePeer(HOST)
+    expect(FakePeer.instances.at(-1)!.id).toBe(HOST)
+  })
+
+  it('cancels a pending transfer when leaving and ignores a late acknowledgement', async () => {
+    host()
+    const target = connection(B)
+    const pending = manager.transferConnectionHost(B)
+    const rejected = expect(pending).rejects.toThrow()
+    const prepare = target.sent.find(message => message.type === 'HOST_TRANSFER')
+    manager.disconnect()
+    await rejected
+    const count = FakePeer.instances.length
+    target.emit('data', { ...plan('ready', { id: prepare.payload.id }), senderId: B })
+    vi.advanceTimersByTime(60_000)
+    expect(FakePeer.instances).toHaveLength(count)
+    expect(manager.hostTransfer).toBeNull()
+  })
+})
+
 describe('connection-local heartbeats', () => {
   it('replies only on the requesting connection even if senderId names somebody else', () => {
     client(HOST, [A, B])
@@ -464,7 +665,7 @@ describe('connection-local heartbeats', () => {
   it('does not forward control messages through the generic message handler', () => {
     client(HOST)
     const broadcast = vi.fn()
-    for (const type of ['HEARTBEAT', 'HEARTBEAT_ACK'] as const) {
+    for (const type of ['HEARTBEAT', 'HEARTBEAT_ACK', 'HOST_TRANSFER'] as const) {
       processNetworkMessage({ type, senderId: A, timestamp: Date.now(), payload: { clientTimestamp: Date.now() } }, A, true, broadcast, vi.fn(), vi.fn(), HOST)
     }
     expect(broadcast).not.toHaveBeenCalled()
