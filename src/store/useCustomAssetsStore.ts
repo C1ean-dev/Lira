@@ -335,8 +335,14 @@ export function initializeCustomAssets(): Promise<void> {
       if (!Array.isArray(local)) throw new Error('Catálogo local antigo inválido; não foi removido')
       assets = merge(assets, local)
     }
+    const storedIds = new Set(storedLibrary?.assets.map(asset => asset.id))
+    const storedCategories = new Set(storedLibrary?.categories)
+    const hasBundledAdditions = storedLibrary && bundledLibrary && (
+      assets.some(asset => !storedIds.has(asset.id)) ||
+      bundledLibrary.categories.some(category => !storedCategories.has(category))
+    )
     await repairMissingDirectionalFrames(assets)
-    if (raw || legacy?.assets?.length || stored || bundled.length) {
+    if (raw || legacy?.assets?.length || stored || bundled.length || hasBundledAdditions) {
       await commit(assets, categories, deletedAssetIds)
       localStorage.removeItem(ASSETS_STORAGE_KEY)
       if (legacy?.assets?.length && api?.completeAssetAtlasMigration) await api.completeAssetAtlasMigration()
