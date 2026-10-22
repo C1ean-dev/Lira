@@ -26,6 +26,7 @@ describe('individual library renderer storage', () => {
     const document = await loadBundledLibrary()
     expect(fetch).toHaveBeenCalledOnce()
     expect(String(fetch.mock.calls[0][0])).toBe('file:///app/dist/assets/library/catalog.json')
+    expect(fetch).toHaveBeenCalledWith(expect.any(URL), { cache: 'no-store' })
     expect(document?.assets[0].frames[0]).toMatch(/^file:\/\/\/app\/dist\/assets\/library\/sprites\/Hero--hero\/[a-f0-9]{64}\.png$/)
     expect(Image).not.toHaveBeenCalled()
   })

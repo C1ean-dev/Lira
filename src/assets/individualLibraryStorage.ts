@@ -21,7 +21,7 @@ const database = (): Promise<IDBDatabase> => new Promise((resolve, reject) => {
 })
 export async function loadBundledLibrary(): Promise<AtlasDocument | null> {
   if (!hasBundledLibrary) return null
-  const response = await fetch(new URL('catalog.json', baseUrl()))
+  const response = await fetch(new URL('catalog.json', baseUrl()), { cache: 'no-store' })
   if (!response.ok) throw new Error('Catálogo distribuído ausente')
   return openLocation({ catalog: await response.json(), baseUrl: baseUrl() })
 }

@@ -3,6 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { loadStoredLibrary, loadBundledLibrary, saveStoredLibrary } from '../../assets/individualLibraryStorage'
 import { buildAtlas, readAtlas } from '../../assets/atlasService'
 import { loadStoredAtlas, loadBundledAtlases } from '../../assets/atlasStorage'
+import { openLibrary } from '../../assets/individualLibrary'
+import type { CustomAsset } from '../../types/customAsset'
+import type { AtlasDocument } from '../../assets/atlasFormat'
+import fs from 'node:fs'
 vi.mock('../../p2p/PeerManager', () => ({ PeerManager: { getInstance: () => ({ sendCustomAssetAddOrUpdate: vi.fn() }) } }))
 const hero = { id: 'hero', name: 'Hero', type: 'avatar' as const, category: 'People', width: 1, height: 1, frames: ['/images/hero.png'], createdAt: 1 }
 beforeEach(() => {
@@ -44,6 +48,92 @@ describe('individual library store migration and lazy loading', () => {
     await initializeCustomAssets()
     expect(useCustomAssetsStore.getState().getAssetById('hero')).toBeUndefined()
     expect(useCustomAssetsStore.getState().getAssetById('new')).toBeDefined()
+  })
+  it('persists newly shipped furniture alongside local creations, edits, categories and deletions across restarts', async () => {
+    const chair: CustomAsset = { ...hero, id: 'chair', name: 'Chair', type: 'furniture', isObstacle: true }
+    const edited = { ...chair, name: 'Minha cadeira', frames: ['/local/edited-chair.png'], updatedAt: 10 }
+    const personal = { ...chair, id: 'personal', name: 'Meu móvel' }
+    const added = { ...chair, id: 'new-table', name: 'Nova mesa', category: 'Novidades' }
+    const deleted = { ...chair, id: 'deleted' }
+    const bundled: AtlasDocument = { assets: [chair, added, deleted], categories: ['People', 'Novidades'] }
+    vi.mocked(loadStoredLibrary).mockResolvedValueOnce({ assets: [edited, personal], categories: ['People', 'Pessoal'], deletedAssetIds: [deleted.id] })
+    vi.mocked(loadBundledLibrary).mockResolvedValueOnce(bundled)
+    const first = await import('../../store/useCustomAssetsStore')
+    await first.initializeCustomAssets()
+
+    expect(first.useCustomAssetsStore.getState().getFurnitureCatalog([]).map(item => item.id)).toEqual(expect.arrayContaining([chair.id, personal.id, added.id]))
+    expect(saveStoredLibrary).toHaveBeenCalledOnce()
+    const saved = vi.mocked(saveStoredLibrary).mock.calls[0][0]
+    expect(saved.assets).toEqual(expect.arrayContaining([edited, personal, added]))
+    expect(saved.assets).toHaveLength(3)
+    expect(saved.categories).toEqual(expect.arrayContaining(['People', 'Pessoal', 'Novidades']))
+    expect(saved.deletedAssetIds).toEqual([deleted.id])
+
+    vi.resetModules()
+    vi.mocked(saveStoredLibrary).mockClear()
+    vi.mocked(loadStoredLibrary).mockResolvedValueOnce(saved)
+    vi.mocked(loadBundledLibrary).mockResolvedValueOnce(bundled)
+    const restarted = await import('../../store/useCustomAssetsStore')
+    await restarted.initializeCustomAssets()
+    expect(restarted.useCustomAssetsStore.getState().customAssets).toEqual(saved.assets)
+    expect(restarted.useCustomAssetsStore.getState().getAssetById(deleted.id)).toBeUndefined()
+    expect(saveStoredLibrary).not.toHaveBeenCalled()
+  })
+  it('saves newly distributed categories even when all furniture already exists locally', async () => {
+    vi.mocked(loadStoredLibrary).mockResolvedValueOnce({ assets: [hero], categories: ['People'] })
+    vi.mocked(loadBundledLibrary).mockResolvedValueOnce({ assets: [hero], categories: ['People', 'Novidades'] })
+    const { initializeCustomAssets } = await import('../../store/useCustomAssetsStore')
+    await initializeCustomAssets()
+    expect(saveStoredLibrary).toHaveBeenCalledWith(expect.objectContaining({ assets: [hero], categories: expect.arrayContaining(['People', 'Novidades']) }))
+  })
+  it('keeps the previous library intact and permits retrying when an update cannot be saved', async () => {
+    const stored: AtlasDocument = { assets: [{ ...hero, name: 'Minha edição' }], categories: ['Pessoal'], deletedAssetIds: ['removed'] }
+    const bundled: AtlasDocument = { assets: [hero, { ...hero, id: 'new-furniture' }], categories: ['People'] }
+    vi.mocked(loadStoredLibrary).mockResolvedValue(stored)
+    vi.mocked(loadBundledLibrary).mockResolvedValue(bundled)
+    vi.mocked(saveStoredLibrary).mockRejectedValueOnce(new Error('disk full'))
+    try {
+      const { initializeCustomAssets, useCustomAssetsStore } = await import('../../store/useCustomAssetsStore')
+      const previous = useCustomAssetsStore.getState().customAssets
+      await expect(initializeCustomAssets()).rejects.toThrow('disk full')
+      expect(useCustomAssetsStore.getState().customAssets).toBe(previous)
+      expect(stored).toEqual({ assets: [{ ...hero, name: 'Minha edição' }], categories: ['Pessoal'], deletedAssetIds: ['removed'] })
+      expect(localStorage.removeItem).not.toHaveBeenCalled()
+      await initializeCustomAssets()
+      expect(useCustomAssetsStore.getState().getAssetById('hero')?.name).toBe('Minha edição')
+      expect(useCustomAssetsStore.getState().getAssetById('new-furniture')).toBeDefined()
+    } finally {
+      vi.mocked(loadStoredLibrary).mockResolvedValue(null)
+      vi.mocked(loadBundledLibrary).mockResolvedValue(null)
+      vi.mocked(saveStoredLibrary).mockReset().mockImplementation(async document => document)
+    }
+  })
+  it('does not rewrite a local library when all bundled additions were already received or deliberately deleted', async () => {
+    vi.mocked(loadStoredLibrary).mockResolvedValueOnce({ assets: [], categories: ['People'], deletedAssetIds: ['hero'] })
+    vi.mocked(loadBundledLibrary).mockResolvedValueOnce({ assets: [hero], categories: ['People'] })
+    const { initializeCustomAssets, useCustomAssetsStore } = await import('../../store/useCustomAssetsStore')
+    await initializeCustomAssets()
+    expect(useCustomAssetsStore.getState().customAssets).toEqual([])
+    expect(saveStoredLibrary).not.toHaveBeenCalled()
+  })
+  it('delivers the furniture in the shipped catalog to an older player library without replacing personal assets', async () => {
+    const bundled = openLibrary(JSON.parse(fs.readFileSync('public/assets/library/catalog.json', 'utf8')), name => `/bundle/${name}`, false)
+    const furniture = bundled.assets.filter(asset => asset.type === 'furniture')
+    expect(furniture.length).toBeGreaterThan(2)
+    const edited = { ...furniture[0], name: 'Meu móvel editado', frames: ['/local/edited.png'], updatedAt: Date.now() }
+    const personal = { ...edited, id: 'player-only-furniture', name: 'Criação pessoal' }
+    const removed = furniture[1].id
+    vi.mocked(loadStoredLibrary).mockResolvedValueOnce({ assets: [edited, personal], categories: ['Pessoal'], deletedAssetIds: [removed] })
+    vi.mocked(loadBundledLibrary).mockResolvedValueOnce(bundled)
+
+    const { initializeCustomAssets, useCustomAssetsStore } = await import('../../store/useCustomAssetsStore')
+    await initializeCustomAssets()
+    const state = useCustomAssetsStore.getState()
+    expect(state.getAssetById(edited.id)).toEqual(edited)
+    expect(state.getAssetById(personal.id)).toEqual(personal)
+    expect(state.getAssetById(removed)).toBeUndefined()
+    expect(state.getFurnitureCatalog([]).map(asset => asset.id)).toEqual(expect.arrayContaining(furniture.filter(asset => asset.id !== removed).map(asset => asset.id)))
+    expect(saveStoredLibrary).toHaveBeenCalledWith(expect.objectContaining({ assets: state.customAssets, deletedAssetIds: [removed] }))
   })
   it('does not re-import old migration backups over edits in an already saved individual library', async () => {
     const loadNativeAssets = vi.fn(async () => ({ assets: [{ ...hero, name: 'Old backup' }], categories: [] }))
