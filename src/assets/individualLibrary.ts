@@ -1,4 +1,4 @@
-import { encodeValue, decodeValue, parseAtlasDocument, serializeAtlas, type AtlasDocument } from './atlasFormat'
+import { encodeValue, decodeValue, validateAtlasDocument, type AtlasDocument } from './atlasFormat'
 import { normalizeAssetActivityAnimations } from '../utils/avatarActivityAnimations'
 import { readSpriteFrame } from './spriteFrame'
 
@@ -57,10 +57,6 @@ export async function imageDataUrl(src: string): Promise<string> {
   for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192))
   return `data:${mime};base64,${btoa(binary)}`
 }
-function validateDocument(doc: AtlasDocument): AtlasDocument {
-  // Reuse the existing catalog validation; no raster decoding or canvas work.
-  return parseAtlasDocument(serializeAtlas(doc, [], new Map(), 'unused.png'), name => name)
-}
 export function openLibrary(catalog: LibraryCatalog, imageUrl: (name: string) => string, register = true): AtlasDocument {
   if (![2, 3].includes(catalog?.version) || !Array.isArray(catalog.images) || catalog.images.some(n => typeof n !== 'string' || !imageNamePattern.test(n)) || new Set(catalog.images).size !== catalog.images.length || typeof catalog.document !== 'string') throw new Error('Catálogo de imagens inválido')
   const allowed = new Set(catalog.images)
@@ -73,7 +69,7 @@ export function openLibrary(catalog: LibraryCatalog, imageUrl: (name: string) =>
     }
   }
   const locations = new Map<string, string>()
-  const document = validateDocument(decodeValue(catalog.document, name => {
+  const document = validateAtlasDocument(decodeValue(catalog.document, name => {
     if (!allowed.has(name)) throw new Error('Imagem referenciada ausente: ' + name)
     const url = imageUrl(name)
     locations.set(name, url)
@@ -84,7 +80,7 @@ export function openLibrary(catalog: LibraryCatalog, imageUrl: (name: string) =>
   return document
 }
 export async function buildLibrary(document: AtlasDocument): Promise<LibraryPacket> {
-  validateDocument(document)
+  validateAtlasDocument(document)
   const images: Record<string, string> = {}
   const references = new Map<string, string>()
   const visit = async (value: unknown): Promise<void> => {
