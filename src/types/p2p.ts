@@ -22,6 +22,7 @@ export type NetworkMessageType =
   | 'REQUEST_MAP'
   | 'HEARTBEAT'
   | 'HEARTBEAT_ACK'
+  | 'HOST_TRANSFER'
   | 'ROOM_LOCK_TOGGLE'
   | 'ROOM_KNOCK_REQUEST'
   | 'ROOM_KNOCK_RESPONSE'

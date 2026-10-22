@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useRef } from 'react'
 import {
   X,
   Users,
@@ -38,6 +38,7 @@ import { goToPlayer } from '../utils/goToPlayer'
 import { PlayerAvatar } from './common/PlayerAvatar'
 import { SpotifyIcon } from './common/SpotifyIcon'
 import { getPlayerUserId, findFriendKey } from '../utils/userId'
+import { PeerManager } from '../p2p/PeerManager'
 
 export const OnlineUsersMenu: React.FC = () => {
   const isOnlineUsersOpen = useGameStore((s) => s.isOnlineUsersOpen)
@@ -56,7 +57,6 @@ const OnlineUsersMenuInner: React.FC = () => {
     isOwner,
     isHost,
     connectionHostId,
-    setConnectionHostId,
     friends,
     friendProfiles,
     removeFriend,
@@ -82,6 +82,9 @@ const OnlineUsersMenuInner: React.FC = () => {
   const [selectedUserMenuId, setSelectedUserMenuId] = useState<string | null>(null)
   const [copiedLink, setCopiedLink] = useState(false)
   const [kickConfirmPlayer, setKickConfirmPlayer] = useState<{ id: string; name: string } | null>(null)
+  const [transferTargetId, setTransferTargetId] = useState<string | null>(null)
+  const [transferError, setTransferError] = useState<string | null>(null)
+  const transferInProgress = useRef(false)
 
   const remoteList = Object.values(remotePlayers).filter(p => !p.isDjBot && !p.id.startsWith('dj-'))
   const allPlayers: { player: Player; isLocal: boolean }[] = [
@@ -239,6 +242,8 @@ const OnlineUsersMenuInner: React.FC = () => {
         </div>
       </div>
 
+      {transferError && <div role="alert" className="mx-3 mt-3 p-2.5 rounded-xl border border-rose-500/30 bg-rose-500/10 text-xs text-rose-200">{transferError}</div>}
+
       <div className="p-3 overflow-y-auto flex-1 space-y-2">
         {filteredPlayers.length === 0 ? (
           <div className="text-center py-8 text-xs text-slate-500 space-y-1">
@@ -247,7 +252,7 @@ const OnlineUsersMenuInner: React.FC = () => {
           </div>
         ) : (
           filteredPlayers.map(({ player, isLocal }) => {
-            const isPlayerOwner = isLocal ? isOwner : (player.id.endsWith('-host') || player.isOwner || player.role === 'owner')
+            const isPlayerOwner = isLocal ? isOwner : (player.isOwner || player.role === 'owner')
             const isPlayerConnectionHost = connectionHostId ? player.id === connectionHostId : (isLocal ? isHost : (player.isHost ?? false))
             const roleBadge = getRoleBadge(player.role, isPlayerOwner, isPlayerConnectionHost && !isPlayerOwner)
             const playerUserId = getPlayerUserId(player)
@@ -515,31 +520,44 @@ const OnlineUsersMenuInner: React.FC = () => {
                       )}
                     </div>
 
-                    {isOwner && (
+                    {(isOwner || isHost) && (
                       <div className="pt-2 border-t border-slate-800 space-y-2">
                         <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                          Gerenciar Participante (Dono da Sala)
+                          {isOwner ? 'Gerenciar Participante (Dono da Sala)' : 'Host de Conexão'}
                         </div>
 
                         <button
-                          onClick={() => {
-                            setConnectionHostId(player.id)
-                            setSelectedUserMenuId(null)
+                          disabled={isPlayerConnectionHost || transferTargetId !== null}
+                          onClick={async () => {
+                            if (transferInProgress.current || isPlayerConnectionHost) return
+                            transferInProgress.current = true
+                            setTransferTargetId(player.id)
+                            setTransferError(null)
+                            try {
+                              await PeerManager.getInstance().transferConnectionHost(player.id)
+                              setSelectedUserMenuId(null)
+                            } catch (error) {
+                              setTransferError(error instanceof Error ? error.message : 'Não foi possível transferir o host.')
+                            } finally {
+                              transferInProgress.current = false
+                              setTransferTargetId(null)
+                            }
                           }}
-                          className={`w-full py-1.5 px-2.5 rounded-lg text-xs font-bold border flex items-center justify-between transition-colors ${
+                          className={`w-full py-1.5 px-2.5 rounded-lg text-xs font-bold border flex items-center justify-between transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                             isPlayerConnectionHost
                               ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
                               : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-slate-700'
                           }`}
-                          title="Define este participante como o nó de melhor conexão para retransmitir dados do espaço"
+                          title="Transfere a conexão da sala para este participante após a confirmação dele"
                         >
                           <div className="flex items-center gap-1.5">
                             <Zap className="w-3.5 h-3.5 text-cyan-400" />
-                            <span>{isPlayerConnectionHost ? 'Host de Conexão Ativo' : 'Tornar Host de Conexão'}</span>
+                            <span>{transferTargetId === player.id ? 'Transferindo…' : isPlayerConnectionHost ? 'Host de Conexão Ativo' : 'Tornar Host de Conexão'}</span>
                           </div>
                           <span className="text-[10px] font-mono text-emerald-400">{pingMs}ms</span>
                         </button>
 
+                        {isOwner && <>
                         <div className="flex items-center justify-between gap-1 text-xs">
                           <span className="text-slate-300">Cargo:</span>
                           <div className="flex gap-1">
@@ -591,6 +609,7 @@ const OnlineUsersMenuInner: React.FC = () => {
                             Expulsar
                           </button>
                         </div>
+                        </>}
                       </div>
                     )}
                   </div>

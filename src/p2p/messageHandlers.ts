@@ -32,6 +32,17 @@ function receiveAtlas(pair: PersistedAtlas, digest: string) {
   }).catch(error => console.error('[Assets] Invalid incoming atlas:', error))
 }
 
+function isLocalPlayerMessage(senderId: string, player?: Partial<Player>, myPeerId?: string | null) {
+  const state = useGameStore.getState()
+  const local = state.localPlayer
+  if (senderId === local.id || (myPeerId && senderId === myPeerId)) return true
+  if (!player?.gameId && (player?.id === local.id || (!!myPeerId && player?.id === myPeerId))) return true
+  // The canonical host ID can change hands while the former host keeps it as
+  // its stable game identity. Prefer the sender's actual game identity then.
+  const identity = player?.gameId || state.remotePlayers[senderId]?.gameId || player?.id || senderId
+  return identity === (local.gameId || local.id)
+}
+
 export function processNetworkMessage(
   msg: NetworkMessage,
   peerId: string,
@@ -46,6 +57,7 @@ export function processNetworkMessage(
     // PeerManager handles these on the originating data connection.
     case 'HEARTBEAT':
     case 'HEARTBEAT_ACK':
+    case 'HOST_TRANSFER':
       return
 
     case 'PLAYER_JOIN': {
@@ -55,14 +67,7 @@ export function processNetworkMessage(
         msg.payload.player?.gameId ?? msg.payload.player?.id
       const localPlayer = useGameStore.getState().localPlayer
       const localId = localPlayer.id
-      const localGameId = localPlayer.gameId
-
-      if (
-        remotePeerId === localId ||
-        (localGameId && remotePeerId === localGameId) ||
-        (incomingGameId && (incomingGameId === localId || (localGameId && incomingGameId === localGameId))) ||
-        (myPeerId && (remotePeerId === myPeerId || incomingGameId === myPeerId))
-      ) {
+      if (isLocalPlayerMessage(remotePeerId, msg.payload.player, myPeerId)) {
         break
       }
 
@@ -145,14 +150,7 @@ export function processNetworkMessage(
 
     case 'PLAYER_MOVE': {
       const sender = msg.senderId || peerId
-      const localPlayer = useGameStore.getState().localPlayer
-      const localId = localPlayer.id
-      const localGameId = localPlayer.gameId
-      if (
-        sender === localId ||
-        (localGameId && sender === localGameId) ||
-        (myPeerId && sender === myPeerId)
-      ) {
+      if (isLocalPlayerMessage(sender, undefined, myPeerId)) {
         break
       }
       const payload: PlayerMovePayload = msg.payload
@@ -184,12 +182,7 @@ export function processNetworkMessage(
         break
       }
 
-      if (
-        peerId === localId ||
-        msg.senderId === localId ||
-        (localGameId && (peerId === localGameId || msg.senderId === localGameId)) ||
-        (myPeerId && (peerId === myPeerId || msg.senderId === myPeerId))
-      ) {
+      if (isLocalPlayerMessage(msg.senderId || targetPayloadPlayer?.id || peerId, targetPayloadPlayer, myPeerId)) {
         break
       }
       const updated = msg.payload.player

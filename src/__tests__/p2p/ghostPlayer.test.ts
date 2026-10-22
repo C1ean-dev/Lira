@@ -120,4 +120,59 @@ describe('Ghost avatar regression (frozen self-clone)', () => {
     )
     expect(Object.keys(useGameStore.getState().remotePlayers)).toHaveLength(0)
   })
+
+  describe('when the original owner keeps the former host ID as its stable identity', () => {
+    const hostId = 'lira-TEST-host'
+    const successor = makePlayer({ id: hostId, gameId: 'successor-game', name: 'Successor' })
+
+    beforeEach(() => {
+      useGameStore.setState(state => ({ localPlayer: { ...state.localPlayer, gameId: hostId } }))
+    })
+
+    it('accepts the new host with a different stable identity instead of treating it as a self echo', () => {
+      processNetworkMessage(makeJoinMsg(successor, hostId), hostId, false, noopBroadcast, noopRemovePeer, noopEligibility, LOCAL_ID)
+      expect(useGameStore.getState().remotePlayers[hostId]).toMatchObject({ gameId: 'successor-game', isHost: true })
+    })
+
+    it('continues receiving the successor movements after the host ID changes hands', () => {
+      useGameStore.setState({ remotePlayers: { [hostId]: successor } })
+      processNetworkMessage({ type: 'PLAYER_MOVE', senderId: hostId,
+        payload: { x: 8, y: 9, direction: 'up', isMoving: true }, timestamp: Date.now() },
+      hostId, false, noopBroadcast, noopRemovePeer, noopEligibility, LOCAL_ID)
+      expect(useGameStore.getState().remotePlayers[hostId]).toMatchObject({ x: 8, y: 9, isMoving: true })
+    })
+
+    it.each([hostId, 'another-member'])('accepts player updates from %s forwarded by the successor', sender => {
+      const remote = sender === hostId ? successor : makePlayer({ id: sender, gameId: 'other-game' })
+      useGameStore.setState({ remotePlayers: { [sender]: remote } })
+      processNetworkMessage({ type: 'PLAYER_UPDATE', senderId: sender,
+        payload: { player: { statusText: 'After transfer' } }, timestamp: Date.now() },
+      hostId, false, noopBroadcast, noopRemovePeer, noopEligibility, LOCAL_ID)
+      expect(useGameStore.getState().remotePlayers[sender].statusText).toBe('After transfer')
+    })
+  })
+
+  describe('on the elected host receiving the original owner again', () => {
+    const hostId = 'lira-TEST-host'
+    const ownerId = 'lira-TEST-peer-returning-owner'
+    const owner = makePlayer({ id: ownerId, gameId: hostId, name: 'Owner', isOwner: true })
+
+    beforeEach(() => {
+      useGameStore.setState(state => ({ localPlayer: { ...state.localPlayer, id: hostId, gameId: 'successor-game' } }))
+    })
+
+    it('accepts the owner whose stable identity equals our newly acquired transport ID', () => {
+      processNetworkMessage(makeJoinMsg(owner, ownerId), ownerId, true, noopBroadcast, noopRemovePeer, noopEligibility, hostId)
+      expect(useGameStore.getState().remotePlayers[ownerId]).toMatchObject({ gameId: hostId, isOwner: true })
+    })
+
+    it.each(['PLAYER_MOVE', 'PLAYER_UPDATE'] as const)('applies %s for the returning owner', type => {
+      useGameStore.setState({ remotePlayers: { [ownerId]: owner } })
+      const payload = type === 'PLAYER_MOVE' ? { x: 8, y: 9, direction: 'up', isMoving: true }
+        : { player: { gameId: hostId, x: 8, y: 9 } }
+      processNetworkMessage({ type, senderId: ownerId, payload, timestamp: Date.now() }, ownerId, true,
+        noopBroadcast, noopRemovePeer, noopEligibility, hostId)
+      expect(useGameStore.getState().remotePlayers[ownerId]).toMatchObject({ x: 8, y: 9 })
+    })
+  })
 })

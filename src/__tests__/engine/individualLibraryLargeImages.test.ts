@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { encodeValue } from '../../assets/atlasFormat'
 import { buildLibrary, imageIdentity, openLibrary, type LibraryCatalog, type LibraryPacket } from '../../assets/individualLibrary'
 import type { CustomAsset } from '../../types/customAsset'
+import { IndividualLibrarySync, type LibraryMessage } from '../../assets/individualLibrarySync'
 
 const peer = vi.hoisted(() => ({ sendCustomAssetDelete: vi.fn() }))
 vi.mock('../../p2p/PeerManager', () => ({ PeerManager: { getInstance: () => peer } }))
@@ -60,6 +61,33 @@ describe('libraries with repeated large images', () => {
     expect(useCustomAssetsStore.getState().deletedAssetIds).toEqual(['removed'])
     expect(useCustomAssetsStore.getState().customAssets[0].frames[0]).toMatch(/^file:\/\/\/profile\/library\/sprites\//)
     expect(peer.sendCustomAssetDelete).toHaveBeenCalledWith('removed')
+    expect(alert).not.toHaveBeenCalled()
+  })
+
+  it('receives large shared images from another participant and saves them without expanding the catalog', async () => {
+    const save = vi.fn(async (packet: LibraryPacket) => ({ catalog: packet.catalog, baseUrl: 'file:///profile/library/' }))
+    const alert = vi.fn()
+    vi.stubGlobal('window', { location: { protocol: 'file:', href: 'file:///app/index.html' }, alert, electronAPI: { saveIndividualLibrary: save } })
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn() })
+    const { useCustomAssetsStore } = await import('../../store/useCustomAssetsStore')
+    useCustomAssetsStore.setState({ customAssets: [], customCategories: ['Geral'], deletedAssetIds: [] })
+    const sender = new IndividualLibrarySync()
+    const receiver = new IndividualLibrarySync(() => undefined)
+    const outgoing: LibraryMessage[] = []
+    const requests: LibraryMessage[] = []
+    const commit = async (document: { assets: CustomAsset[]; categories: string[] }) => {
+      await useCustomAssetsStore.getState().syncRemoteCustomAssets(document.assets, document.categories)
+    }
+
+    await sender.offer({ assets: [asset], categories: ['Geral'] }, message => { outgoing.push(message) })
+    await receiver.receive(outgoing.shift()!, message => { requests.push(message) }, commit)
+    await sender.receive(requests.shift()!, message => { outgoing.push(message) }, commit)
+    for (const message of outgoing) await receiver.receive(message, () => {}, commit)
+
+    expect(save).toHaveBeenCalledOnce()
+    expect(save.mock.calls[0][0].catalog.document.length).toBeLessThan(100_000)
+    expect(useCustomAssetsStore.getState().customAssets[0].frames).toHaveLength(600)
+    expect(useCustomAssetsStore.getState().customAssets[0].frames[0]).toMatch(/^file:\/\/\/profile\/library\/sprites\//)
     expect(alert).not.toHaveBeenCalled()
   })
 })
