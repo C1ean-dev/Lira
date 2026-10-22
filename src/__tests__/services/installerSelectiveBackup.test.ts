@@ -4,7 +4,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-describe.skipIf(process.platform !== 'win32')('selective update data backup', () => {
+// PowerShell startup and Add-Type compilation can exceed five seconds on CI.
+describe.skipIf(process.platform !== 'win32')('selective update data backup', { timeout: 30000 }, () => {
   let root: string
   let app: string
   let profile: string
