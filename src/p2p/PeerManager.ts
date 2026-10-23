@@ -2089,26 +2089,29 @@ export class PeerManager {
 
     try {
       console.log('[PeerManager DJ] Calling peer:', remotePeerId)
+      diagLog('p2p', 'dj-call.dial', { toPeer: remotePeerId, botId: this.djBotId })
       const call = this.djPeer.call(remotePeerId, this.djAudioStream, { sdpTransform: djMusicSdp })
       if (call) {
         this.djMediaCalls.set(remotePeerId, call)
         call.on('close', () => {
+          diagLog('p2p', 'dj-call.closed', { withPeer: remotePeerId })
           this.djMediaCalls.delete(remotePeerId)
         })
         call.on('error', (err) => {
           console.warn('[PeerManager DJ] Call error with:', remotePeerId, err)
+          diagLog('p2p', 'dj-call.error', { withPeer: remotePeerId, error: String((err as any)?.message || err) })
           this.djMediaCalls.delete(remotePeerId)
         })
 
         const pc = (call as any).peerConnection as RTCPeerConnection | undefined
         if (pc && pc.addEventListener) {
           pc.addEventListener('connectionstatechange', () => {
-            if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+            if (pc.connectionState === 'failed' || pc.connectionState === 'closed' || pc.connectionState === 'disconnected') {
               this.djMediaCalls.delete(remotePeerId)
             }
           })
           pc.addEventListener('iceconnectionstatechange', () => {
-            if (pc.iceConnectionState === 'failed') {
+            if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'closed' || pc.iceConnectionState === 'disconnected') {
               this.djMediaCalls.delete(remotePeerId)
             }
           })
@@ -2159,7 +2162,18 @@ export class PeerManager {
       if (inSameZone) {
         const existingCall = this.djMediaCalls.get(p.id)
         const existingPc = existingCall ? ((existingCall as any).peerConnection as RTCPeerConnection | undefined) : null
-        if (existingCall && existingPc && (existingPc.iceConnectionState === 'failed' || existingPc.connectionState === 'failed')) {
+        const isDead = existingCall && (
+          (existingCall as any).open === false ||
+          (existingPc && (
+            existingPc.iceConnectionState === 'failed' ||
+            existingPc.iceConnectionState === 'closed' ||
+            existingPc.iceConnectionState === 'disconnected' ||
+            existingPc.connectionState === 'failed' ||
+            existingPc.connectionState === 'closed' ||
+            existingPc.connectionState === 'disconnected'
+          ))
+        )
+        if (isDead) {
           try { existingCall.close() } catch { }
           this.djMediaCalls.delete(p.id)
         }

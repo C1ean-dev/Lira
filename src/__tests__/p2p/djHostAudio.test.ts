@@ -114,4 +114,35 @@ describe('DJ host audio', () => {
     expect(attempts).toBe(2)
     expect(triedIds[0]).not.toEqual(triedIds[1])
   })
+
+  it('re-dials listener if existing DJ call iceConnectionState becomes disconnected or closed', () => {
+    const manager = Object.create(PeerManager.prototype) as any
+    manager.djPeer = { call: vi.fn(() => ({ on: vi.fn() })) }
+    manager.djAudioStream = {}
+    manager.djBotId = 'dj-room-host-abc'
+    manager.djMediaCalls = new Map()
+    manager.callPeerFromDj = vi.fn()
+
+    const listener = { id: 'listener-1', currentZoneId: 'zone-1' }
+    useGameStore.setState({
+      localPlayer: { ...useGameStore.getState().localPlayer, currentZoneId: 'zone-1' },
+      remotePlayers: {
+        'listener-1': listener as any,
+        'dj-room-host-abc': { id: 'dj-room-host-abc', currentZoneId: 'zone-1', isDjBot: true } as any,
+      },
+    })
+
+    const staleCall = {
+      open: true,
+      close: vi.fn(),
+      peerConnection: { iceConnectionState: 'disconnected', connectionState: 'connected' },
+    }
+    manager.djMediaCalls.set('listener-1', staleCall)
+
+    manager.recheckDjCalls()
+
+    expect(staleCall.close).toHaveBeenCalled()
+    expect(manager.djMediaCalls.has('listener-1')).toBe(false)
+    expect(manager.callPeerFromDj).toHaveBeenCalledWith('listener-1')
+  })
 })
