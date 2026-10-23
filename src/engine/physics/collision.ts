@@ -9,6 +9,7 @@ import { useMediaStore } from '../../store/useMediaStore'
 import { MediaManager } from '../../media/MediaManager'
 import { PeerManager } from '../../p2p/PeerManager'
 import { resolveSeatGrid, seatCellBounds } from './seating'
+import type { CustomAsset } from '../../types/customAsset'
 
 let neighborCacheMap: MapData | null = null
 let neighborCacheZones: PrivateZone[] | null = null
@@ -18,6 +19,63 @@ const topNeighborCache = new Map<string, PrivateZone | undefined>()
 const bottomNeighborCache = new Map<string, PrivateZone | undefined>()
 
 interface Bounds { minX: number; maxX: number; minY: number; maxY: number }
+interface FurnitureObstacle { bounds: Bounds; seats: Bounds[] }
+const COLLISION_BUCKET_SIZE = 4
+let furnitureIndex: {
+  furniture: MapData['furniture']; assets: CustomAsset[]; width: number; height: number
+  buckets: Map<string, FurnitureObstacle[]>
+} | undefined
+
+// Map edits and asset transactions replace these arrays. Pixel loading and
+// player movement leave them intact, so geometry is prepared only after edits.
+function getFurnitureIndex(map: MapData): Map<string, FurnitureObstacle[]> {
+  const assets = useCustomAssetsStore.getState()
+  if (furnitureIndex?.furniture === map.furniture && furnitureIndex.assets === assets.customAssets &&
+      furnitureIndex.width === map.width && furnitureIndex.height === map.height) return furnitureIndex.buckets
+  const buckets = new Map<string, FurnitureObstacle[]>()
+  const add = (bounds: Bounds, seats: Bounds[]) => {
+    if (bounds.minX >= bounds.maxX || bounds.minY >= bounds.maxY) return
+    const obstacle = { bounds, seats }
+    const minX = Math.floor(Math.max(0, bounds.minX) / COLLISION_BUCKET_SIZE)
+    const maxX = Math.floor(Math.min(map.width, bounds.maxX) / COLLISION_BUCKET_SIZE)
+    const minY = Math.floor(Math.max(0, bounds.minY) / COLLISION_BUCKET_SIZE)
+    const maxY = Math.floor(Math.min(map.height, bounds.maxY) / COLLISION_BUCKET_SIZE)
+    for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) {
+      const key = `${x},${y}`
+      const bucket = buckets.get(key)
+      if (bucket) bucket.push(obstacle)
+      else buckets.set(key, [obstacle])
+    }
+  }
+  for (const furn of map.furniture || []) {
+    const custom = assets.getAssetById(furn.defId)
+    const def = custom || FURNITURE_CATALOG.find(item => item.id === furn.defId)
+    const dir = resolveFurnitureDirection(furn)
+    const { tileW, tileH } = resolveFurnitureDimensions(furn, custom, def)
+    const grid = custom ? (custom.directionalCollisionGrids?.[dir] ||
+      (dir === 'right' ? custom.directionalCollisionGrids?.left : undefined) ||
+      (dir === 'left' ? custom.directionalCollisionGrids?.right : undefined) || custom.collisionGrid) : undefined
+    const seats = custom ? resolveSeatGrid(furn, custom) : undefined
+    const seatBounds: Bounds[] = []
+    seats?.grid.forEach((row, r) => row?.forEach((isSeat, c) => {
+      if (isSeat && r < tileH && c < tileW) seatBounds.push(seatCellBounds(furn, tileW, tileH, r, c, seats.mirrorH))
+    }))
+    if (grid?.some(row => row?.some(cell => cell === true))) {
+      for (let r = 0; r < Math.min(Math.ceil(tileH), grid.length); r++) {
+        for (let c = 0; c < Math.min(Math.ceil(tileW), grid[r]?.length || 0); c++) {
+          if (grid[r][c]) add({ minX: furn.x + c + 0.05, maxX: Math.min(furn.x + c + 1, furn.x + tileW) - 0.05,
+            minY: furn.y + r + 0.05, maxY: Math.min(furn.y + r + 1, furn.y + tileH) - 0.05 }, seatBounds)
+        }
+      }
+    } else if (def?.isObstacle) {
+      const marginX = Math.min(0.05, tileW * 0.2), marginY = Math.min(0.05, tileH * 0.2)
+      add({ minX: furn.x + marginX, maxX: furn.x + tileW - marginX,
+        minY: furn.y + marginY, maxY: furn.y + tileH - marginY }, seatBounds)
+    }
+  }
+  furnitureIndex = { furniture: map.furniture, assets: assets.customAssets, width: map.width, height: map.height, buckets }
+  return buckets
+}
 
 function collidesOutsideSeats(player: Bounds, obstacle: Bounds, seats: Bounds[]): boolean {
   const overlap = {
@@ -325,59 +383,12 @@ export function checkCollision(x: number, y: number, map: MapData): boolean {
     return true
   }
 
-  for (const furn of map.furniture || []) {
-    const customAsset = useCustomAssetsStore.getState().getAssetById(furn.defId)
-    const def = customAsset || FURNITURE_CATALOG.find((f) => f.id === furn.defId)
-    const dir = resolveFurnitureDirection(furn)
-    const { tileW, tileH } = resolveFurnitureDimensions(furn, customAsset, def)
-
-    const activeCollisionGrid = customAsset
-      ? (customAsset.directionalCollisionGrids?.[dir] ||
-         (dir === 'right' && customAsset.directionalCollisionGrids?.left ? customAsset.directionalCollisionGrids.left : undefined) ||
-         (dir === 'left' && customAsset.directionalCollisionGrids?.right ? customAsset.directionalCollisionGrids.right : undefined) ||
-         customAsset.collisionGrid)
-      : undefined
-
-    const hasActiveGridCollisions = activeCollisionGrid?.some((row) => row?.some((cell) => cell === true))
-    const seats = customAsset ? resolveSeatGrid(furn, customAsset) : undefined
-    const seatBounds: Bounds[] = []
-    seats?.grid.forEach((row, r) => row?.forEach((isSeat, c) => {
-      if (isSeat && r < tileH && c < tileW) seatBounds.push(seatCellBounds(furn, tileW, tileH, r, c, seats.mirrorH))
-    }))
-    const playerBounds = { minX: pMinX, maxX: pMaxX, minY: pMinY, maxY: pMaxY }
-
-    if (customAsset && hasActiveGridCollisions && activeCollisionGrid && activeCollisionGrid.length > 0) {
-      const maxR = Math.min(Math.ceil(tileH), activeCollisionGrid.length)
-      for (let r = 0; r < maxR; r++) {
-        const maxC = Math.min(Math.ceil(tileW), activeCollisionGrid[r]?.length || 0)
-        for (let c = 0; c < maxC; c++) {
-          if (activeCollisionGrid[r]?.[c]) {
-            const tileMinX = furn.x + c + 0.05
-            const tileMaxX = Math.min(furn.x + c + 1, furn.x + tileW) - 0.05
-            const tileMinY = furn.y + r + 0.05
-            const tileMaxY = Math.min(furn.y + r + 1, furn.y + tileH) - 0.05
-
-            if (tileMaxX > tileMinX && tileMaxY > tileMinY) {
-              if (collidesOutsideSeats(playerBounds, { minX: tileMinX, maxX: tileMaxX, minY: tileMinY, maxY: tileMaxY }, seatBounds)) {
-                return true
-              }
-            }
-          }
-        }
-      }
-    } else if (def && def.isObstacle) {
-      const marginX = Math.min(0.05, tileW * 0.2)
-      const marginY = Math.min(0.05, tileH * 0.2)
-      const furnMinX = furn.x + marginX
-      const furnMaxX = furn.x + tileW - marginX
-      const furnMinY = furn.y + marginY
-      const furnMaxY = furn.y + tileH - marginY
-
-      if (furnMaxX > furnMinX && furnMaxY > furnMinY) {
-        if (collidesOutsideSeats(playerBounds, { minX: furnMinX, maxX: furnMaxX, minY: furnMinY, maxY: furnMaxY }, seatBounds)) {
-          return true
-        }
-      }
+  const furnitureBuckets = getFurnitureIndex(map)
+  const playerBounds = { minX: pMinX, maxX: pMaxX, minY: pMinY, maxY: pMaxY }
+  for (let by = Math.floor(pMinY / COLLISION_BUCKET_SIZE); by <= Math.floor(pMaxY / COLLISION_BUCKET_SIZE); by++) {
+    for (let bx = Math.floor(pMinX / COLLISION_BUCKET_SIZE); bx <= Math.floor(pMaxX / COLLISION_BUCKET_SIZE); bx++) {
+      const nearby = furnitureBuckets.get(`${bx},${by}`)
+      if (nearby?.some(obstacle => collidesOutsideSeats(playerBounds, obstacle.bounds, obstacle.seats))) return true
     }
   }
 
