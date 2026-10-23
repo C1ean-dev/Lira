@@ -448,7 +448,7 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
   }, [rawVolume, outputVolume, selectedAudioOutput, isLocal, liveGate.needsClick])
 
   return (
-    <div className="mb-2 w-72 sm:w-80 bg-[#12151d] rounded-2xl overflow-hidden border-2 border-indigo-500/80 shadow-2xl animate-in slide-in-from-bottom-2 duration-200">
+    <div className="w-72 sm:w-80 bg-[#12151d] rounded-2xl overflow-hidden border-2 border-indigo-500/80 shadow-2xl animate-in slide-in-from-bottom-2 duration-200">
       <div className="flex items-center justify-between px-3 py-1.5 bg-[#1b202c]/90 border-b border-[#2a3142]">
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
@@ -794,17 +794,19 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
         } ${isDragging ? 'cursor-grabbing' : ''}`}
       >
         {hasActiveScreenShare && activeScreenStream && isFloatingPreviewVisible && (
-          <FloatingScreenPreview
-            stream={activeScreenStream}
-            presenterId={presenterId}
-            presenterName={presenterName}
-            isLocal={isPresenterLocal}
-            suppressAudio={suppressAudio}
-            asksFirst={!isPresenterLocal && !!remotePresenter?.liveOptIn}
-            watching={!isPresenterLocal && !!remotePresenter && !!watchingLives[remotePresenter.id]}
-            onExpand={() => setGridCallOpen(true)}
-            onClose={() => setIsFloatingPreviewVisible(false)}
-          />
+          <div className="absolute bottom-full left-0 pb-2">
+            <FloatingScreenPreview
+              stream={activeScreenStream}
+              presenterId={presenterId}
+              presenterName={presenterName}
+              isLocal={isPresenterLocal}
+              suppressAudio={suppressAudio}
+              asksFirst={!isPresenterLocal && !!remotePresenter?.liveOptIn}
+              watching={!isPresenterLocal && !!remotePresenter && !!watchingLives[remotePresenter.id]}
+              onExpand={() => setGridCallOpen(true)}
+              onClose={() => setIsFloatingPreviewVisible(false)}
+            />
+          </div>
         )}
 
         <div className="bg-[#1b202c]/95 backdrop-blur-xl border border-[#2a3142] rounded-3xl p-2.5 sm:p-3 shadow-2xl animate-in slide-in-from-bottom-4 duration-200 max-w-[calc(100vw-24px)] sm:max-w-md">

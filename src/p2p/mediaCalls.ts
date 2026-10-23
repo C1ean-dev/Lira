@@ -127,17 +127,20 @@ export class MediaCallHandler {
       })
     }
 
-    if (isSharing && screenStream && screenStream.getVideoTracks()[0]) {
+    if (isSharing) {
       const combined = new MediaStream()
-      const liveAudioTrack = screenStream.getAudioTracks().find(
-        (track) => (track as any).__screenShareLiveAudio === true
+      const liveAudioTrack = screenStream?.getAudioTracks().find(
+        (track) => (track as any).__screenShareLiveAudio === true && track.readyState !== 'ended'
       )
       if (liveAudioTrack) {
-        combined.addTrack(MediaCallHandler.audioTrackFor(peerId, liveAudioTrack))
-      } else if (localStream) {
-        localStream.getAudioTracks().forEach((t) => combined.addTrack(t))
+        const audio = MediaCallHandler.audioTrackFor(peerId, liveAudioTrack)
+        if (audio) combined.addTrack(audio)
+      } else {
+        const silent = MediaCallHandler.quietAudioTrack()
+        if (silent) combined.addTrack(silent)
       }
-      screenStream.getVideoTracks().forEach((t) => combined.addTrack(t))
+      const videoTracks = screenStream?.getVideoTracks() || localStream?.getVideoTracks() || []
+      videoTracks.forEach((t) => combined.addTrack(t))
       return combined
     }
     return localStream || new MediaStream()
@@ -147,22 +150,26 @@ export class MediaCallHandler {
     const media = useMediaStore.getState()
     if (!media.isScreenSharing) return null
     return (
-      media.localScreenStream?.getAudioTracks?.().find((track) => (track as any).__screenShareLiveAudio === true) ??
+      media.localScreenStream?.getAudioTracks?.().find((track) => (track as any).__screenShareLiveAudio === true && track.readyState !== 'ended') ??
       null
     )
   }
 
   private static quietAudioTrack(): MediaStreamTrack | null {
-    const microphone = useMediaStore
-      .getState()
-      .localStream?.getAudioTracks?.()
-      .find((track) => track.readyState !== 'ended')
-    return microphone ?? silentAudioTrack()
+    // The microphone already travels over the auxiliary live-voice call.
+    // Reusing it here plays the presenter twice when this stream is rendered.
+    return silentAudioTrack()
   }
 
-  private static audioTrackFor(peerId: string | undefined, track: MediaStreamTrack): MediaStreamTrack {
-    if ((track as any).__screenShareLiveAudio !== true || watchesLive(peerId)) return track
-    return MediaCallHandler.quietAudioTrack() ?? track
+  private static audioTrackFor(peerId: string | undefined, track: MediaStreamTrack): MediaStreamTrack | null {
+    let source = track
+    if ((source as any).__screenShareLiveAudio !== true && useMediaStore.getState().isScreenSharing) {
+      const liveAudio = MediaCallHandler.liveAudioTrack()
+      if (!liveAudio) return MediaCallHandler.quietAudioTrack()
+      source = liveAudio
+    }
+    if ((source as any).__screenShareLiveAudio !== true || watchesLive(peerId)) return source
+    return MediaCallHandler.quietAudioTrack()
   }
 
   static applyEncoderCaps(pc: RTCPeerConnection, maxBitrate?: number, maxFramerate?: number, peerId?: string) {
@@ -536,8 +543,10 @@ export class MediaCallHandler {
         }
         const mediaState = useMediaStore.getState()
         const screenAudioTrack = MediaCallHandler.liveAudioTrack()
-        const localAudioTrack = screenAudioTrack || mediaState.localStream?.getAudioTracks?.()[0] || null
-        if (localAudioTrack && !isDjBot) {
+        const localAudioTrack = screenAudioTrack || (mediaState.isScreenSharing
+          ? MediaCallHandler.quietAudioTrack()
+          : mediaState.localStream?.getAudioTracks?.()[0]) || null
+        if (!isDjBot) {
           MediaCallHandler.replaceAudioTrack(mediaCalls, localAudioTrack, 'connected-reconcile')
         }
         applyBuffer()
@@ -851,18 +860,8 @@ export class MediaCallHandler {
     if (isDjBot) {
       const silent = silentAudioTrack()
       streamToAnswer = silent ? new MediaStream([silent]) : new MediaStream()
-    } else if (isSharing && screenStream && screenStream.getVideoTracks()[0]) {
-      const combined = new MediaStream()
-      const liveAudioTrack = screenStream.getAudioTracks().find(
-        (track) => (track as any).__screenShareLiveAudio === true
-      )
-      if (liveAudioTrack) {
-        combined.addTrack(MediaCallHandler.audioTrackFor(call.peer, liveAudioTrack))
-      } else if (localStream) {
-        localStream.getAudioTracks().forEach((t) => combined.addTrack(t))
-      }
-      screenStream.getVideoTracks().forEach((t) => combined.addTrack(t))
-      streamToAnswer = combined
+    } else if (isSharing) {
+      streamToAnswer = MediaCallHandler.buildOutboundStream(call.peer)
     } else if (localStream) {
       streamToAnswer = localStream
     } else {
@@ -1206,14 +1205,14 @@ export class MediaCallHandler {
 
   private static syncViewerAudio(mediaCalls: Map<string, MediaConnection>, peerId: string) {
     const liveAudio = MediaCallHandler.liveAudioTrack()
-    if (!liveAudio) return
+    if (!useMediaStore.getState().isScreenSharing) return
     const call = mediaCalls.get(peerId)
     if (!call) return
     MediaCallHandler.putAudioTrack(
       mediaCalls,
       call,
       peerId,
-      MediaCallHandler.audioTrackFor(peerId, liveAudio),
+      liveAudio ? MediaCallHandler.audioTrackFor(peerId, liveAudio) : MediaCallHandler.quietAudioTrack(),
       'viewer',
       true
     )

@@ -57,6 +57,7 @@ export class MediaManager {
   private rawUserStream: MediaStream | null = null
   private rawScreenStream: MediaStream | null = null
   private screenAudioContext: AudioContext | null = null
+  private screenSourceAudioTrack: MediaStreamTrack | null = null
   private screenGainNode: GainNode | null = null
   private screenDuckInterval: number | null = null
   private callAudioIsolator: CallAudioIsolator | null = null
@@ -1138,8 +1139,17 @@ export class MediaManager {
       this.activeScreenConfig = { ...config }
       if (sourceName) useMediaStore.getState().setScreenShareTargetTitle(sourceName)
       this.rawScreenStream = screenStream
-      let applicationAudioTrack = screenStream.getAudioTracks()[0] || null
       const localStream = useMediaStore.getState().localStream
+      const capturedAudio = screenStream.getAudioTracks()
+      const microphoneTracks = localStream?.getAudioTracks() || []
+      const isMicrophone = (track: MediaStreamTrack) => microphoneTracks.some((mic) => mic === track || mic.id === track.id)
+      // Desktop capture in Electron is video-only. Only the native process
+      // capture is trusted for app audio; never fall back to system loopback.
+      let applicationAudioTrack = isElectronCapture ? null : capturedAudio.find((track) => !isMicrophone(track)) || null
+      for (const track of capturedAudio) {
+        screenStream.removeTrack(track)
+        if (track !== applicationAudioTrack && !isMicrophone(track)) track.stop()
+      }
       diagLog('screenshare-audio', 'display-capture-ready', {
         sourceId: sourceId || null,
         isElectron: isElectronCapture,
@@ -1183,6 +1193,7 @@ export class MediaManager {
       }
 
       if (applicationAudioTrack) {
+        this.screenSourceAudioTrack = applicationAudioTrack
         applicationAudioTrack.enabled = true
         try {
           const liveAudioTrack = await this.createLiveAudioTrack(applicationAudioTrack, undefined, generation)
@@ -1200,6 +1211,7 @@ export class MediaManager {
           PeerManager.getInstance().replaceAudioTrack(liveAudioTrack)
         } catch (audioErr) {
           if (!isCurrent()) throw audioErr
+          this.disposeScreenShareAudioPipeline()
           PeerManager.getInstance().replaceAudioTrack(null)
           console.warn('Could not build the isolated live audio track:', audioErr)
           diagLog('screenshare', 'audio-track-failed', { error: errShort(audioErr) })
@@ -1340,6 +1352,9 @@ export class MediaManager {
   }
 
   private disposeScreenShareAudioPipeline() {
+    const sourceTrack = this.screenSourceAudioTrack
+    this.screenSourceAudioTrack = null
+    if (sourceTrack && sourceTrack.readyState !== 'ended') sourceTrack.stop()
     this.screenGainNode = null
     const audioContext = this.screenAudioContext
     this.screenAudioContext = null

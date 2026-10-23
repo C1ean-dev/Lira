@@ -53,6 +53,24 @@ const stream = (...tracks: MediaStreamTrack[]) => ({
 }) as MediaStream
 
 describe('live audio and participant voice in the mini call', () => {
+  it.each(['local', 'remote'])('keeps the call panel anchored when a %s live preview opens', (presenter) => {
+    const local = { ...originalGame.localPlayer, id: 'viewer', name: 'Viewer', currentZoneId: 'zone' }
+    const remote = { ...local, id: 'presenter', name: 'Presenter', isScreenSharing: presenter === 'remote' }
+    const live = stream(track('screen', 'video'))
+    useGameStore.setState({ localPlayer: local, remotePlayers: { presenter: remote }, friendProfiles: {}, callStates: {} })
+    useMediaStore.setState({ isGridCallOpen: false, isScreenSharing: false, localScreenStream: null, peerStreams: {}, peerVoiceStreams: {} })
+    const before = renderToStaticMarkup(<MiniCallOverlay />)
+    useMediaStore.setState(presenter === 'local'
+      ? { isScreenSharing: true, localScreenStream: live }
+      : { peerStreams: { presenter: live } })
+    const after = renderToStaticMarkup(<MiniCallOverlay />)
+    const anchor = (html: string) => html.match(/<div[^>]*class="fixed z-40[^\"]*"[^>]*>/)?.[0]
+    expect(anchor(after)).toBe(anchor(before))
+    // The preview must sit above the call outside its layout flow, including
+    // after dragging changes the anchor from bottom positioning to top positioning.
+    expect(after).toMatch(/<div class="[^"]*absolute[^"]*bottom-full[^"]*">\s*<div[^>]*>[\s\S]*?(Sua Tela|Tela de Presenter)/)
+  })
+
   it('keeps the presenter in their participant tile while only the floating preview shows the live', () => {
     const local = { ...originalGame.localPlayer, id: 'viewer', name: 'Player #2', currentZoneId: 'zone' }
     const presenter = { ...local, id: 'presenter', name: 'Player', isScreenSharing: true }

@@ -60,6 +60,7 @@ import { getRoomInviteState, readRoomInvite } from '../utils/roomInvite'
 import { goToPlayer } from '../utils/goToPlayer'
 import { createRoomChannel, deleteRoomChannel, renameRoomChannel } from '../services/roomChannelsService'
 import { useRoomJoinStore } from '../store/useRoomJoinStore'
+import { useChatPagination } from '../hooks/useChatPagination'
 
 const MENU_ICON = 'w-4 h-4 shrink-0'
 
@@ -341,7 +342,6 @@ const ChatDrawerInner: React.FC = () => {
   }, [])
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  const messagesEndRef = useRef<HTMLDivElement | null>(null)
 
   const activeChannel = channels.find((c) => c.id === activeChannelId) || channels[0]
   const filteredMessages = messages.filter((m) => {
@@ -357,6 +357,7 @@ const ChatDrawerInner: React.FC = () => {
     }
     return false
   })
+  const pagination = useChatPagination(filteredMessages, `${roomId}:${activeChannelId}`)
   const people = buildChatPeople({
     remotePlayers: Object.values(remotePlayers),
     friends,
@@ -439,10 +440,6 @@ const ChatDrawerInner: React.FC = () => {
       setChannelError(result.error)
     }
   }
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [filteredMessages.length])
 
   const isDmOpen = activeChannel?.type === 'dm'
   useEffect(() => {
@@ -914,7 +911,7 @@ const ChatDrawerInner: React.FC = () => {
             </span>
           </div>
 
-          <div className="flex-1 p-3 overflow-y-auto space-y-3">
+          <div ref={pagination.messagesRef} onScroll={pagination.onScroll} onWheel={pagination.onWheel} onTouchStart={pagination.onTouchStart} onTouchMove={pagination.onTouchMove} className="flex-1 p-3 overflow-y-auto space-y-3">
             {filteredMessages.length === 0 ? (
               <div className="text-center text-xs text-slate-400 py-8 space-y-1">
                 <div className="font-semibold text-slate-300">
@@ -931,7 +928,7 @@ const ChatDrawerInner: React.FC = () => {
             ) : (() => {
               const seenRequestIds = new Set<string>()
 
-              return filteredMessages.map((msg) => {
+              return pagination.page.messages.map((msg) => {
                 const isMine =
                   msg.senderId === localPlayer.id ||
                   (localPlayer.gameId && msg.senderId === localPlayer.gameId)
@@ -1150,7 +1147,6 @@ const ChatDrawerInner: React.FC = () => {
                 )
               })
             })()}
-            <div ref={messagesEndRef} />
           </div>
 
           <form onSubmit={handleSendMessage} className="p-3 border-t border-[#2a3142] bg-[#161a24] shrink-0">

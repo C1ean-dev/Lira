@@ -1748,9 +1748,8 @@ export class PeerManager {
     if (!owner || owner.destroyed || this.isIntentionalDisconnect || !useMediaStore.getState().isScreenSharing ||
         this.liveVoiceCalls.has(peerId) || !mainCall || this.liveVoiceRetryTimers.has(peerId) ||
         (this.liveVoiceRetryCounts.get(peerId) || 0) > 3) return
-    if (!useMediaStore.getState().localScreenStream?.getAudioTracks().some((track) => (track as any).__screenShareLiveAudio)) {
-      MediaCallHandler.replaceAudioTrack(new Map([[peerId, mainCall]]), null)
-    }
+    const liveAudio = useMediaStore.getState().localScreenStream?.getAudioTracks().find((track) => (track as any).__screenShareLiveAudio)
+    MediaCallHandler.replaceAudioTrack(new Map([[peerId, mainCall]]), liveAudio || silentAudioTrack())
     const microphone = useMediaStore.getState().localStream?.getAudioTracks()[0]
     if (!microphone) return
     const eligible = () => this.peer === owner && !owner.destroyed && !this.isIntentionalDisconnect &&
