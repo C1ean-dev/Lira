@@ -12,6 +12,7 @@ import { unpackImages } from '../utils/imageTable'
 import { setAvatarAssetCatalog, migrateStoredAvatarReferences } from '../assets/avatarReferences'
 import { bumpAssetRevision, bumpAssetImageRevision } from '../assets/assetRevision'
 import { cropSpriteFrame, readSpriteFrame } from '../assets/spriteFrame'
+import { applyBundledFurnitureUpdates } from '../assets/bundledFurnitureUpdates'
 
 const ASSETS_STORAGE_KEY = 'lira_custom_user_assets'
 const CATEGORIES_STORAGE_KEY = 'lira_custom_categories'
@@ -335,6 +336,9 @@ export function initializeCustomAssets(): Promise<void> {
       if (!Array.isArray(local)) throw new Error('Catálogo local antigo inválido; não foi removido')
       assets = merge(assets, local)
     }
+    const updatedAssets = applyBundledFurnitureUpdates(assets, bundledLibrary?.assets || [])
+    const hasBundledReplacements = updatedAssets !== assets
+    assets = updatedAssets
     const storedIds = new Set(storedLibrary?.assets.map(asset => asset.id))
     const storedCategories = new Set(storedLibrary?.categories)
     const hasBundledAdditions = storedLibrary && bundledLibrary && (
@@ -342,7 +346,7 @@ export function initializeCustomAssets(): Promise<void> {
       bundledLibrary.categories.some(category => !storedCategories.has(category))
     )
     await repairMissingDirectionalFrames(assets)
-    if (raw || legacy?.assets?.length || stored || bundled.length || hasBundledAdditions) {
+    if (raw || legacy?.assets?.length || stored || bundled.length || hasBundledAdditions || hasBundledReplacements) {
       await commit(assets, categories, deletedAssetIds)
       localStorage.removeItem(ASSETS_STORAGE_KEY)
       if (legacy?.assets?.length && api?.completeAssetAtlasMigration) await api.completeAssetAtlasMigration()
