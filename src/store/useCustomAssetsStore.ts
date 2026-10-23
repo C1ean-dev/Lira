@@ -82,8 +82,16 @@ export function getCustomAssetImage(src: string): HTMLImageElement | null {
   }
   return image
 }
+let indexedAssets: CustomAsset[] | undefined
+let assetsById = new Map<string, CustomAsset>()
 export function getCachedAssetById(id: string): CustomAsset | undefined {
-  return useCustomAssetsStore.getState().customAssets.find(a => a.id === id)
+  const assets = useCustomAssetsStore.getState().customAssets
+  if (indexedAssets !== assets) {
+    indexedAssets = assets
+    assetsById = new Map()
+    for (const asset of assets) if (!assetsById.has(asset.id)) assetsById.set(asset.id, asset)
+  }
+  return assetsById.get(id)
 }
 function loadSavedCategories(): string[] {
   try {
@@ -271,7 +279,7 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
     if (name === 'Geral') return
     await commit(get().customAssets.map(a => a.category === name ? { ...a, category: 'Geral' } : a), get().customCategories.filter(c => c !== name))
   }),
-  getAssetById: id => get().customAssets.find(a => a.id === id),
+  getAssetById: getCachedAssetById,
   getAllCategories: () => get().customCategories,
   getFurnitureCatalog: (baseCatalog) => {
     const customFurns: FurnitureDefinition[] = get()
