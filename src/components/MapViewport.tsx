@@ -3,6 +3,7 @@ import { Sparkles, RotateCw, LocateFixed } from 'lucide-react'
 import { CanvasEngine } from '../engine/CanvasEngine'
 import { getNextAvailableZoneColor, FURNITURE_CATALOG } from '../engine/Constants'
 import { resolveFurnitureDimensions } from '../engine/rendering/furnitureRenderer'
+import { pickEditorFurniture } from '../engine/rendering/furnitureLayers'
 import { useMapStore } from '../store/useMapStore'
 import { useGameStore } from '../store/useGameStore'
 import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
@@ -289,23 +290,19 @@ export const MapViewport: React.FC = () => {
 
     if (isEditorOpen) {
       const customAssets = useCustomAssetsStore.getState().customAssets
-      const clickedFurn = mapData.furniture.find((f) => {
-        const custom = customAssets.find((a) => a.id === f.defId)
-        const def = custom || FURNITURE_CATALOG.find((cat) => cat.id === f.defId)
-        const { tileW: w, tileH: h } = resolveFurnitureDimensions(f, custom, def)
-        return (
-          exactTile.x >= f.x - 0.05 &&
-          exactTile.x < f.x + w + 0.05 &&
-          exactTile.y >= f.y - 0.05 &&
-          exactTile.y < f.y + h + 0.05
-        )
-      })
+      const placing = activeTool === 'place_furniture' ? customAssets.find(asset => asset.id === selectedFurnitureDefId) : undefined
+      const clickedFurn = pickEditorFurniture(mapData.furniture, customAssets, exactTile.x, exactTile.y, placing)
 
       if (clickedFurn && activeTool !== 'paint_floor' && activeTool !== 'paint_wall' && activeTool !== 'draw_zone') {
         if (activeTool === 'eraser') {
           if (eraserTarget === 'furniture') {
-            removeFurnitureAt(tile.x, tile.y)
-            PeerManager.getInstance().sendMapEdit('remove_furniture', { x: tile.x, y: tile.y })
+            if (customAssets.find(asset => asset.id === clickedFurn.defId)?.isTabletopDecoration) {
+              useMapStore.getState().removeFurnitureById(clickedFurn.id)
+              PeerManager.getInstance().sendMapEdit('remove_furniture', { id: clickedFurn.id, x: tile.x, y: tile.y })
+            } else {
+              removeFurnitureAt(tile.x, tile.y)
+              PeerManager.getInstance().sendMapEdit('remove_furniture', { x: tile.x, y: tile.y })
+            }
             return
           }
         } else {
@@ -433,17 +430,8 @@ export const MapViewport: React.FC = () => {
 
     if (isEditorOpen) {
       const customAssets = useCustomAssetsStore.getState().customAssets
-      const hovered = mapData.furniture.find((f) => {
-        const custom = customAssets.find((a) => a.id === f.defId)
-        const def = custom || FURNITURE_CATALOG.find((cat) => cat.id === f.defId)
-        const { tileW: w, tileH: h } = resolveFurnitureDimensions(f, custom, def)
-        return (
-          exactTile.x >= f.x - 0.05 &&
-          exactTile.x < f.x + w + 0.05 &&
-          exactTile.y >= f.y - 0.05 &&
-          exactTile.y < f.y + h + 0.05
-        )
-      })
+      const placing = activeTool === 'place_furniture' ? customAssets.find(asset => asset.id === selectedFurnitureDefId) : undefined
+      const hovered = pickEditorFurniture(mapData.furniture, customAssets, exactTile.x, exactTile.y, placing)
       setHoveredFurnitureId(hovered ? hovered.id : null)
     }
 

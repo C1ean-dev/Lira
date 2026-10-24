@@ -26,7 +26,7 @@ export async function loadBundledLibrary(): Promise<AtlasDocument | null> {
   if (!response.ok) throw new Error('Catálogo distribuído ausente')
   const document = openLocation({ catalog: await response.json(), baseUrl: baseUrl() })
   document.assets = addBuiltInFurniture(document.assets, document.deletedAssetIds)
-  document.categories = [...new Set([...document.categories, ...document.assets.filter(asset => asset.bedAnimation).map(asset => asset.category)])]
+  document.categories = [...new Set([...document.categories, ...document.assets.filter(asset => asset.type === 'furniture').map(asset => asset.category)])]
   return document
 }
 export async function loadStoredLibrary(): Promise<AtlasDocument | null> {

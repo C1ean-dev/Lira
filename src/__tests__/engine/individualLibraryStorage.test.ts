@@ -31,6 +31,8 @@ describe('individual library renderer storage', () => {
     expect(Image).not.toHaveBeenCalled()
     expect(document?.assets.find(asset => asset.id === 'lira_romantic_bed_v1')).toMatchObject({ name: 'Cama do Amor', bedAnimation: { frameRateMs: 180 } })
     expect(document?.categories).toContain('Quarto')
+    expect(document?.categories).toContain('Comidas')
+    expect(document?.assets.filter(asset => asset.isTabletopDecoration)).toHaveLength(8)
   })
   it('uses native file URLs and saves only new bytes through the desktop bridge', async () => {
     const packet = await buildLibrary({ assets: [hero], categories: [] })

@@ -3,6 +3,7 @@ import type { MapData, PlacedFurniture, PrivateZone } from '../../types/map'
 import { FloorRenderer } from './floorRenderer'
 import { WallRenderer } from './wallRenderer'
 import { FurnitureRenderer } from './furnitureRenderer'
+import { furnitureDrawOrder } from './furnitureLayers'
 import { useCustomAssetsStore, getCustomAssetImage, onCustomAssetsChange } from '../../store/useCustomAssetsStore'
 
 interface StaticLayer {
@@ -120,7 +121,7 @@ export function getStaticLayer(map: MapData): StaticLayer | null {
     WallRenderer.drawLiraRoom(ctx, zone, zones)
   }
 
-  for (const item of map.furniture || []) {
+  for (const item of furnitureDrawOrder(map.furniture || [], customAssets)) {
     const custom = assetById.get(item.defId)
     if (custom || isAnimatedAsset(custom)) {
       animatedFurniture.push(item)
