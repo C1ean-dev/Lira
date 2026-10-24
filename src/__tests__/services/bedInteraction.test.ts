@@ -89,16 +89,32 @@ it('rejects strangers, old invites, other spaces and stale or replayed acceptanc
   expect(receiveBedInteraction(message('accept', 'b'))).toBe(false)
   expect(session()?.acceptedAt).toBe(started)
 })
-it.each(['leave-seat', 'disconnect', 'remove-bed', 'leave-space', 'timeout'])('cleans up an active scene automatically: %s', change => {
+it.each(['leave-seat', 'disconnect', 'remove-bed', 'leave-space'])('cleans up an active scene automatically: %s', change => {
   receiveBedInteraction(message('invite')); receiveBedInteraction(message('accept', 'b'))
   if (change === 'leave-seat') useGameStore.getState().setLocalPlayer({ seatedOn: null })
   if (change === 'disconnect') useGameStore.setState({ remotePlayers: {} })
   if (change === 'remove-bed') useMapStore.setState({ mapData: { ...useMapStore.getState().mapData, furniture: [] } })
   if (change === 'leave-space') useGameStore.setState({ roomId: 'other' })
-  if (change === 'timeout') vi.advanceTimersByTime(21000)
   expect(getBedScene('bed')).toBeNull()
   reconcileBedInteractions()
   expect(session()).toBeUndefined()
+})
+it('keeps active scene running continuously beyond timer until a player presses E to exit', () => {
+  receiveBedInteraction(message('invite'))
+  receiveBedInteraction(message('accept', 'b'))
+  expect(session()?.stage).toBe('active')
+  expect(getBedScene('bed')).not.toBeNull()
+
+  // Advance time well past previous 12s scene limit (e.g. 60 seconds)
+  vi.advanceTimersByTime(60000)
+  reconcileBedInteractions()
+  expect(session()?.stage).toBe('active')
+  expect(getBedScene('bed')).not.toBeNull()
+
+  // Pressing E cancels and exits the active scene
+  expect(handleBedInteractionKey()).toBe(true)
+  expect(session()).toBeUndefined()
+  expect(getBedScene('bed')).toBeNull()
 })
 it('expires unanswered invitations and observes movements without needing another key press', () => {
   const stop = startBedInteractionLifecycle()

@@ -47,9 +47,10 @@ function validPair(session: Pick<BedSession, 'roomId' | 'furnitureId' | 'initiat
 
 function isCurrent(session: BedSession, now = Date.now()) {
   const since = session.stage === 'active' ? (session.acceptedAt || session.createdAt) : session.createdAt
-  const maxDuration = session.stage === 'active' ? BED_SCENE_MS : BED_INVITE_MS
   const elapsed = now - since
-  return Number.isFinite(since) && elapsed >= -60000 && elapsed < maxDuration && validPair(session)
+  if (!Number.isFinite(since) || elapsed < -60000) return false
+  if (session.stage === 'invited' && elapsed >= BED_INVITE_MS) return false
+  return validPair(session)
 }
 
 function putSession(furnitureId: string, session?: BedSession) {
