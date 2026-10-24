@@ -44,6 +44,9 @@ it('starts the animation only after the invited player explicitly accepts, using
   expect(getBedScene('bed')).toMatchObject({ participantIds: ['a', 'b'], frame: 'covered1' })
   vi.advanceTimersByTime(320)
   expect(getBedScene('bed')?.frame).toBe('covered2')
+  expect(getBedScene('bed')?.elapsedMs).toBe(320)
+  vi.advanceTimersByTime(100)
+  expect(getBedScene('bed')?.elapsedMs).toBe(420)
 })
 it('lets the recipient accept with E and either participant cancel the scene', () => {
   receiveBedInteraction(message('invite'))

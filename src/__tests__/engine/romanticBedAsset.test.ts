@@ -22,6 +22,7 @@ it('ships a transparent sheet with an idle pose, covered animation and two usabl
     expect(frame.y + frame.height).toBeLessThanOrEqual(height)
   }
   expect(new Set(frames.map(f => `${f.x}:${f.y}`)).size).toBe(4)
+  expect(bed.bedAnimation!.frameRateMs).toBeLessThanOrEqual(200)
 })
 it('adds the bed without overwriting local edits or restoring a deleted asset, preserving animation metadata through XML', () => {
   const bed = createRomanticBedAsset()

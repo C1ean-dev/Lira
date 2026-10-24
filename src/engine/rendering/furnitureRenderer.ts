@@ -5,6 +5,7 @@ import { FURNITURE_CATALOG, TILE_SIZE } from '../Constants'
 import { useCustomAssetsStore, getCustomAssetImage } from '../../store/useCustomAssetsStore'
 import { resolveSpritePlacement } from './spritePlacement'
 import { getBedScene } from '../../services/bedInteraction'
+import { drawBedClothMotion } from './bedClothMotion'
 
 export type FurnitureDef = FurnitureDefinition
 
@@ -140,6 +141,7 @@ export class FurnitureRenderer {
 
         const { offsetX, offsetY, drawWidth, drawHeight } = resolveSpritePlacement(imgW, imgH, targetW, targetH)
         ctx.drawImage(img, px + offsetX, py + offsetY, drawWidth, drawHeight)
+        if (scene) drawBedClothMotion(ctx, img, { x: px + offsetX, y: py + offsetY, width: drawWidth, height: drawHeight }, scene.elapsedMs)
       } else {
         ctx.fillStyle = customAsset.iconColor || '#e03131'
         ctx.fillRect(px + 1, py + 1, Math.max(2, targetW - 2), Math.max(2, targetH - 2))

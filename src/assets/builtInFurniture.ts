@@ -10,7 +10,7 @@ export function createRomanticBedAsset(base = import.meta.env.BASE_URL): CustomA
     collisionGrid: [[true, true, true], [true, true, true], [true, true, true]],
     seatGrid: [[false, false, false], [true, false, true], [false, false, false]],
     frames: [frame(0, 0)], thumbnail: frame(0, 0),
-    bedAnimation: { frames: [frame(1, 0), frame(0, 1), frame(1, 1)], frameRateMs: 380 },
+    bedAnimation: { frames: [frame(1, 0), frame(0, 1), frame(1, 1)], frameRateMs: 180 },
     createdAt: 1792796400000,
   }
 }

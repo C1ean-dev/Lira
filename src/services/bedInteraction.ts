@@ -150,7 +150,7 @@ export function getBedScene(furnitureId: string, now = Date.now()) {
   if (!animation?.frames.length) return null
   const elapsed = Math.max(0, now - session.acceptedAt!)
   const index = Math.floor(elapsed / Math.max(100, animation.frameRateMs || 320)) % animation.frames.length
-  return { participantIds: [session.initiatorId, session.targetId], frame: animation.frames[index], coverProgress: Math.min(1, elapsed / 450) }
+  return { participantIds: [session.initiatorId, session.targetId], frame: animation.frames[index], elapsedMs: elapsed, coverProgress: Math.min(1, elapsed / 450) }
 }
 
 export function startBedInteractionLifecycle() {
