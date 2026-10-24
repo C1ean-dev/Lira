@@ -35,27 +35,16 @@ export const SpotifyJamModal: React.FC = () => {
 
   if (!isModalOpen) return null
 
-  const handleCloseDj = async () => {
-    if (djLoading) return
-    setDjLoading(true)
-    setDjError(null)
-    try {
-      if (isDjModeActive) await MediaManager.getInstance().stopDjAudio()
-      else if (typeof window !== 'undefined' && window.electronAPI?.closeSpotifyPlayer) {
-        const result = await window.electronAPI.closeSpotifyPlayer()
-        if (!result.ok) throw new Error(result.error)
-      }
-      setModalOpen(false)
-    } catch { setDjError('Não foi possível fechar o Spotify. Tente novamente.') }
-    finally { setDjLoading(false) }
-  }
+  const handleCloseDj = () => setModalOpen(false)
 
   const handleToggleDjMode = async () => {
-    if (isListening || !targetZoneId || djLoading || (!isDjModeActive && !login.ready)) return
+    if (!targetZoneId || djLoading || (!isDjModeActive && !isListening && !login.ready)) return
     setDjError(null)
     setDjLoading(true)
     try {
-      if (isDjModeActive) {
+      if (isListening) {
+        stopDjForEveryone(targetZoneId)
+      } else if (isDjModeActive) {
         await MediaManager.getInstance().stopDjAudio()
         setDjStateInZone(targetZoneId, null, true)
       } else {
@@ -143,29 +132,20 @@ export const SpotifyJamModal: React.FC = () => {
               {isListening && <SpotifyPlaybackCrop />}
               {!isDjModeActive && !isListening && <SpotifyLoginControls login={login} disabled={djLoading} />}
               <SpotifyPlayerFeedback opening={djLoading} error={djError} />
-              {!isListening && <button
+              <button
                 type="button"
                 onClick={handleToggleDjMode}
-                disabled={djLoading || (!isDjModeActive && !login.ready)}
+                disabled={djLoading || (!isDjModeActive && !isListening && !login.ready)}
                 aria-busy={djLoading}
                 className={`w-full py-4 px-5 rounded-2xl text-base font-bold flex items-center justify-center gap-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                  isDjModeActive
+                  isDjModeActive || isListening
                     ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30'
                     : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-950/40'
                 }`}
               >
                 <SpotifyIcon size={24} className="w-6 h-6 shrink-0" aria-hidden="true" />
-                <span>{djLoading ? (isDjModeActive ? 'Parando...' : 'Iniciando...') : isDjModeActive ? 'Parar DJ' : 'Transmitir DJ'}</span>
-              </button>}
-
-              {isListening && <button type="button" aria-label="Encerrar DJ para todos"
-                onClick={() => {
-                  try { stopDjForEveryone(targetZoneId!) }
-                  catch { setDjError('Não foi possível encerrar o DJ. Tente novamente.') }
-                }}
-                className="w-full py-3 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30 font-semibold">
-                Encerrar DJ para todos
-              </button>}
+                <span>{djLoading ? (isDjModeActive || isListening ? 'Parando...' : 'Iniciando...') : isDjModeActive || isListening ? 'Parar DJ' : 'Transmitir DJ'}</span>
+              </button>
               <div className="flex items-center gap-3 p-3 rounded-xl bg-[#141721] border border-slate-800">
                 <button
                   type="button"

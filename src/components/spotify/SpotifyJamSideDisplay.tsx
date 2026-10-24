@@ -189,7 +189,7 @@ export const SpotifyJamSideDisplay: React.FC = () => {
           className="w-full py-4 px-5 rounded-2xl text-base font-bold flex items-center justify-center gap-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30"
         >
           <SpotifyIcon size={24} className="w-6 h-6 shrink-0" aria-hidden="true" />
-          <span>{djLoading ? 'Parando...' : isDjModeActive ? 'Parar DJ' : 'Encerrar DJ para todos'}</span>
+          <span>{djLoading ? 'Parando...' : 'Parar DJ'}</span>
         </button>
 
         <div className="flex items-center gap-3 p-3 rounded-xl bg-[#141721] border border-slate-800">
