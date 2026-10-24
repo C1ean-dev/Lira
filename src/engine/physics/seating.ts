@@ -59,3 +59,30 @@ export function findFurnitureSeatAt(worldX: number, worldY: number, map: MapData
   }
   return null
 }
+
+export function findFurnitureSeatById(seatId: string, map: MapData): FurnitureSeat | null {
+  const assets = useCustomAssetsStore.getState()
+  for (const furniture of map.furniture || []) {
+    if (!seatId.startsWith(furniture.id + ':')) continue
+    const asset = assets.getAssetById(furniture.defId)
+    if (!asset || asset.type !== 'furniture') continue
+    const { tileW, tileH } = resolveFurnitureDimensions(furniture, asset)
+    const { grid, mirrorH } = resolveSeatGrid(furniture, asset)
+    for (let row = 0; row < Math.min(grid.length, Math.ceil(tileH)); row++) {
+      for (let col = 0; col < Math.min(grid[row]?.length || 0, Math.ceil(tileW)); col++) {
+        if (!grid[row][col]) continue
+        if (`${furniture.id}:${row}:${col}` === seatId) {
+          const bounds = seatCellBounds(furniture, tileW, tileH, row, col, mirrorH)
+          return {
+            id: seatId,
+            furnitureId: furniture.id,
+            x: (bounds.minX + bounds.maxX) / 2 - 0.5,
+            y: (bounds.minY + bounds.maxY) / 2 - 0.5,
+            direction: resolveFurnitureDirection(furniture),
+          }
+        }
+      }
+    }
+  }
+  return null
+}
