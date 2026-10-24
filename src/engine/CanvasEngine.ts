@@ -11,6 +11,8 @@ import { PeerManager } from '../p2p/PeerManager'
 import { getZoneDoorTarget } from '../utils/doorKnockHelper'
 import { findFurnitureSeatAt } from './physics/seating'
 import type { MapData } from '../types/map'
+import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
+import { findSafePlayerPosition } from './physics/safePlayerPosition'
 
 export class CanvasEngine {
   private canvas: HTMLCanvasElement
@@ -18,6 +20,9 @@ export class CanvasEngine {
   private isRunning: boolean = false
   private animationFrameId: number | null = null
   private unsubscribeViewMode: (() => void) | null = null
+  private unsubscribeMap: (() => void) | null = null
+  private unsubscribeAssets: (() => void) | null = null
+  private repairingPosition = false
 
   public camera: CameraManager
   public input: InputHandler
@@ -126,17 +131,53 @@ export class CanvasEngine {
       if (state.mapViewMode === 'simplified') this.suspend()
       else this.resume()
     })
+    this.unsubscribeMap = useMapStore.subscribe((state, previous) => {
+      const map = state.mapData, before = previous.mapData
+      if (map.furniture !== before.furniture || map.walls !== before.walls ||
+          map.zones !== before.zones || map.width !== before.width || map.height !== before.height ||
+          (previous.isEditorOpen && !state.isEditorOpen)) this.repairPlayerPosition()
+    })
+    this.unsubscribeAssets = useCustomAssetsStore.subscribe((state, previous) => {
+      if (state.customAssets !== previous.customAssets) this.repairPlayerPosition()
+    })
+    this.repairPlayerPosition()
     if (useGameStore.getState().mapViewMode === 'simplified') this.suspend()
     else this.resume()
   }
 
   private resume() {
+    this.repairPlayerPosition()
     this.setupInputs()
     this.lastTime = performance.now()
     this.lastRenderTime = performance.now()
     this.lastFpsUpdate = performance.now()
     this.frameCount = 0
     this.loop(performance.now())
+  }
+
+  private repairPlayerPosition() {
+    const { mapData: map, isEditorOpen } = useMapStore.getState()
+    const local = useGameStore.getState().localPlayer
+    if (this.repairingPosition || isEditorOpen || !checkCollision(local.x, local.y, map)) return
+    this.repairingPosition = true
+    try {
+      const destination = (local.currentZoneId
+        ? findSafePlayerPosition(local.x, local.y, map, local.currentZoneId) : null) ||
+        findSafePlayerPosition(local.x, local.y, map)
+      if (!destination) return
+      this.input.clearPath()
+      this.stuckCounter = 0
+      useGameStore.getState().setLocalPlayer({ x: destination.x, y: destination.y, isMoving: false, seatedOn: null })
+      checkZonePresence(destination.x, destination.y, map)
+      PeerManager.getInstance().sendPlayerUpdate({
+        ...destination,
+        currentZoneId: useGameStore.getState().localPlayer.currentZoneId,
+        isMoving: false,
+        seatedOn: null,
+      })
+    } finally {
+      this.repairingPosition = false
+    }
   }
 
   private suspend() {
@@ -162,6 +203,10 @@ export class CanvasEngine {
     this.isRunning = false
     this.unsubscribeViewMode?.()
     this.unsubscribeViewMode = null
+    this.unsubscribeMap?.()
+    this.unsubscribeMap = null
+    this.unsubscribeAssets?.()
+    this.unsubscribeAssets = null
     this.suspend()
   }
 
