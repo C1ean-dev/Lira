@@ -13,6 +13,38 @@ Ambiente virtual para coworking, reuniões e interação em tempo real, integran
 
 ---
 
+## Testes locais
+
+Os testes são executados localmente para economizar a cota do GitHub Actions.
+O CI/CD mantém os builds e a publicação de Windows e Android, sem executar testes.
+Preparação inicial (Node 22.12+, Python 3 e Pillow):
+
+```bash
+npm ci
+python -m pip install Pillow
+npx playwright install chromium
+```
+
+Antes de publicar, execute todas as suítes com:
+
+```bash
+npm run teste:all
+```
+
+`npm run test:all` é um alias equivalente. O comando executa, em sequência,
+os testes unitários, a migração da biblioteca (Python), chamadas e compartilhamento
+de tela (Chromium), sprites (Electron) e transcrição (Electron). A execução para
+na primeira falha. Os testes de Chromium e Electron abrem sessões automatizadas;
+o teste de transcrição baixa o runtime e o modelo Whisper em um perfil temporário
+e exige acesso à internet. Não é necessário gerar um build antes dos testes.
+
+No comando completo, a saída mostra apenas alertas, erros e testes acima de
+5000 ms (marcados com `[LENTO]`). Testes rápidos aprovados e resumos são ocultados.
+Mensagens de console de testes unitários aprovados também são ocultadas, incluindo
+erros simulados e falhas esperadas. Testes reprovados mantêm seus diagnósticos.
+
+Para executar apenas a suíte unitária, use `npm test`.
+
 ## Recursos e Funcionalidades
 
 ### 1. Sistema de Áudio e Processamento Digital de Sinais (DSP)
@@ -254,7 +286,7 @@ O projeto é estruturado segundo princípios de modularidade e separação de re
 ## Execução e Desenvolvimento
 
 ### Pré-requisitos
-- Node.js versão 18 ou superior.
+- Node.js versão 22.12 ou superior.
 - Git instalado.
 - Visual Studio C++ Build Tools (necessário apenas para compilar o módulo nativo de captura de áudio em ambiente Windows).
 

@@ -56,9 +56,13 @@ export function processNetworkMessage(
   onDjCallRequest?: (listenerId: string) => void
 ) {
   switch (msg.type) {
-    case 'BED_INTERACTION':
-      if ((isHost && msg.senderId !== peerId) || !receiveBedInteraction(msg)) return
+    case 'BED_INTERACTION': {
+      const remote = useGameStore.getState().remotePlayers[peerId]
+      const isAllowedSender = !isHost || msg.senderId === peerId ||
+        remote?.gameId === msg.senderId || remote?.id === msg.senderId
+      if (!isAllowedSender || !receiveBedInteraction(msg)) return
       break
+    }
     // PeerManager handles these on the originating data connection.
     case 'HEARTBEAT':
     case 'HEARTBEAT_ACK':

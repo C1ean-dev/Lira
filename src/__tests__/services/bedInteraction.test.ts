@@ -89,16 +89,32 @@ it('rejects strangers, old invites, other spaces and stale or replayed acceptanc
   expect(receiveBedInteraction(message('accept', 'b'))).toBe(false)
   expect(session()?.acceptedAt).toBe(started)
 })
-it.each(['leave-seat', 'disconnect', 'remove-bed', 'leave-space', 'timeout'])('cleans up an active scene automatically: %s', change => {
+it.each(['leave-seat', 'disconnect', 'remove-bed', 'leave-space'])('cleans up an active scene automatically: %s', change => {
   receiveBedInteraction(message('invite')); receiveBedInteraction(message('accept', 'b'))
   if (change === 'leave-seat') useGameStore.getState().setLocalPlayer({ seatedOn: null })
   if (change === 'disconnect') useGameStore.setState({ remotePlayers: {} })
   if (change === 'remove-bed') useMapStore.setState({ mapData: { ...useMapStore.getState().mapData, furniture: [] } })
   if (change === 'leave-space') useGameStore.setState({ roomId: 'other' })
-  if (change === 'timeout') vi.advanceTimersByTime(21000)
   expect(getBedScene('bed')).toBeNull()
   reconcileBedInteractions()
   expect(session()).toBeUndefined()
+})
+it('keeps active scene running continuously beyond timer until a player presses E to exit', () => {
+  receiveBedInteraction(message('invite'))
+  receiveBedInteraction(message('accept', 'b'))
+  expect(session()?.stage).toBe('active')
+  expect(getBedScene('bed')).not.toBeNull()
+
+  // Advance time well past previous 12s scene limit (e.g. 60 seconds)
+  vi.advanceTimersByTime(60000)
+  reconcileBedInteractions()
+  expect(session()?.stage).toBe('active')
+  expect(getBedScene('bed')).not.toBeNull()
+
+  // Pressing E cancels and exits the active scene
+  expect(handleBedInteractionKey()).toBe(true)
+  expect(session()).toBeUndefined()
+  expect(getBedScene('bed')).toBeNull()
 })
 it('expires unanswered invitations and observes movements without needing another key press', () => {
   const stop = startBedInteractionLifecycle()
@@ -159,4 +175,49 @@ it('ignores typing, modifiers and repeated E presses while routing a fresh bed s
   expect(handleBedInteractionShortcut(key)).toBe(true)
   expect(key.preventDefault).toHaveBeenCalled()
   expect(network.broadcast).toHaveBeenCalledTimes(1)
+})
+it('accepts response and plays animation when peers have skewed system clocks', () => {
+  receiveBedInteraction(message('invite'))
+  // Guest clock is 12 seconds ahead
+  const acceptFromFuture = {
+    ...message('accept', 'b'),
+    timestamp: Date.now() + 12000,
+  }
+  expect(receiveBedInteraction(acceptFromFuture)).toBe(true)
+  expect(session()?.stage).toBe('active')
+  expect(getBedScene('bed')).not.toBeNull()
+})
+it('tolerates zone mismatch when zone is null vs undefined (outside private zones)', () => {
+  // Remote player has currentZoneId undefined while local player has null
+  useGameStore.setState({
+    localPlayer: { ...player('a', 0), currentZoneId: null },
+    remotePlayers: { b: { ...player('b', 1), currentZoneId: undefined } },
+  })
+  expect(handleBedInteractionKey()).toBe(true)
+  expect(session()).toMatchObject({ stage: 'invited', initiatorId: 'a', targetId: 'b' })
+  expect(receiveBedInteraction({ ...message('accept', 'b'), payload: { action: 'accept', furnitureId: 'bed', sessionId: session()!.id } })).toBe(true)
+  expect(session()?.stage).toBe('active')
+  expect(getBedScene('bed')).not.toBeNull()
+})
+it('authenticates network message when peerId or gameId is used as senderId', () => {
+  useGameStore.setState({
+    remotePlayers: {
+      'peer-b': { ...player('peer-b', 1), gameId: 'user-b' },
+    },
+  })
+  useBedStore.setState({
+    sessions: {
+      bed: { id: 'invitation', roomId: 'space', furnitureId: 'bed', initiatorId: 'a', targetId: 'peer-b', createdAt: Date.now(), stage: 'invited' },
+    },
+  })
+  const relay = vi.fn()
+  const acceptMsg: NetworkMessage = {
+    type: 'BED_INTERACTION',
+    senderId: 'user-b',
+    timestamp: Date.now(),
+    payload: { action: 'accept', furnitureId: 'bed', sessionId: 'invitation' },
+  }
+  processNetworkMessage(acceptMsg, 'peer-b', true, relay, vi.fn(), vi.fn(), 'host')
+  // Should not be rejected by host verification check
+  expect(relay).toHaveBeenCalledWith(acceptMsg, 'peer-b')
 })

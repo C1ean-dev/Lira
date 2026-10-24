@@ -1,8 +1,9 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SpotifyJamModal } from '../../components/spotify/SpotifyJamModal'
 import { MediaManager } from '../../media/MediaManager'
+import { stopDjForEveryone } from '../../services/stopDjForEveryone'
 
 const state = vi.hoisted(() => ({
   login: { ready: false, state: { pending: false, confirmed: false, browserOpen: false }, busy: null, error: null, act: vi.fn() },
@@ -30,7 +31,10 @@ vi.mock('../../hooks/useSpotifyLogin', () => ({ useSpotifyLogin: () => state.log
 vi.mock('../../services/stopDjForEveryone', () => ({ stopDjForEveryone: vi.fn() }))
 
 describe('Spotify DJ modal', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
   beforeEach(() => {
+    vi.clearAllMocks()
     state.spotify.isModalOpen = true
     state.spotify.isDjModeActive = false
     state.spotify.djStateByZone = {}
@@ -70,9 +74,16 @@ describe('Spotify DJ modal', () => {
     expect(html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g)?.find(button => button.includes('Parar DJ'))).not.toContain('disabled=""')
   })
 
-  it('stops the owner DJ before closing its dialog through X', async () => {
-    state.spotify.isDjModeActive = true
+  it.each([
+    ['owner', 'X'], ['owner', 'Fechar'],
+    ['listener', 'X'], ['listener', 'Fechar'],
+    ['inactive', 'X'], ['inactive', 'Fechar'],
+  ])('only hides the %s dialog through %s, preserving audio and Spotify', async (mode, control) => {
+    state.spotify.isDjModeActive = mode === 'owner'
+    state.spotify.djStateByZone = mode === 'listener' ? { room: { isDjActive: true } } : {}
     const stopDjAudio = vi.fn(async () => {})
+    const closeSpotifyPlayer = vi.fn(async () => ({ ok: true }))
+    vi.stubGlobal('window', { electronAPI: { closeSpotifyPlayer } })
     vi.mocked(MediaManager.getInstance).mockReturnValue({ stopDjAudio } as any)
     state.spotify.setModalOpen.mockClear()
     let tree: React.ReactNode
@@ -83,15 +94,68 @@ describe('Spotify DJ modal', () => {
       React.Children.forEach(node, child => {
         if (!React.isValidElement(child)) return
         const props = child.props as any
-        if (props['aria-label'] === 'Fechar DJ') close = child
+        if (child.type === 'button' && (control === 'X'
+          ? props['aria-label'] === 'Fechar DJ'
+          : props.children === 'Fechar')) close = child
         visit(props.children)
       })
     }
     visit(tree!)
     await close!.props.onClick()
+    expect(state.spotify.setModalOpen).toHaveBeenCalledExactlyOnceWith(false)
+    expect(stopDjAudio).not.toHaveBeenCalled()
+    expect(closeSpotifyPlayer).not.toHaveBeenCalled()
+    expect(state.spotify.setDjStateInZone).not.toHaveBeenCalled()
+    expect(state.spotify.isDjModeActive).toBe(mode === 'owner')
+  })
+
+  it('still stops broadcasting through the explicit Parar DJ action', async () => {
+    state.spotify.isDjModeActive = true
+    const stopDjAudio = vi.fn(async () => {})
+    vi.mocked(MediaManager.getInstance).mockReturnValue({ stopDjAudio } as any)
+    let tree: React.ReactNode
+    function Probe() { tree = SpotifyJamModal({}); return null }
+    renderToStaticMarkup(<Probe />)
+    let stop: React.ReactElement<any> | undefined
+    function visit(node: React.ReactNode) {
+      React.Children.forEach(node, child => {
+        if (!React.isValidElement(child)) return
+        const props = child.props as any
+        if (child.type === 'button' && 'aria-busy' in props) stop = child
+        visit(props.children)
+      })
+    }
+    visit(tree!)
+    await stop!.props.onClick()
     expect(stopDjAudio).toHaveBeenCalledOnce()
-    expect(state.spotify.setModalOpen).toHaveBeenCalledWith(false)
-    expect(stopDjAudio.mock.invocationCallOrder[0]).toBeLessThan(state.spotify.setModalOpen.mock.invocationCallOrder[0])
+    expect(state.spotify.setDjStateInZone).toHaveBeenCalledExactlyOnceWith('room', null, true)
+    expect(state.spotify.setModalOpen).not.toHaveBeenCalled()
+  })
+
+  it('lets a listener stop the active room DJ through the same Parar DJ button without login', async () => {
+    state.spotify.djStateByZone = { room: { isDjActive: true } }
+    const html = renderToStaticMarkup(<SpotifyJamModal />)
+    expect(html).toContain('Parar DJ')
+    expect(html).not.toContain('Transmitir DJ')
+    let tree: React.ReactNode
+    function Probe() { tree = SpotifyJamModal({}); return null }
+    renderToStaticMarkup(<Probe />)
+    let stop: React.ReactElement<any> | undefined
+    function visit(node: React.ReactNode) {
+      React.Children.forEach(node, child => {
+        if (!React.isValidElement(child)) return
+        const props = child.props as any
+        if (child.type === 'button' && 'aria-busy' in props) stop = child
+        visit(props.children)
+      })
+    }
+    visit(tree!)
+    expect(stop).toBeDefined()
+    expect(stop!.props.disabled).toBe(false)
+    await stop!.props.onClick()
+    expect(stopDjForEveryone).toHaveBeenCalledExactlyOnceWith('room')
+    expect(MediaManager.getInstance).not.toHaveBeenCalled()
+    expect(state.spotify.setModalOpen).not.toHaveBeenCalled()
   })
 
   it('enables broadcasting only after login confirmation', () => {

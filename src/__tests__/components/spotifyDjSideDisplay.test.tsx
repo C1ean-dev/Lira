@@ -117,7 +117,7 @@ describe('Spotify DJ side display', () => {
     const html = renderToStaticMarkup(<SpotifyJamSideDisplay />)
     expect(html).not.toContain('Transmitir DJ')
     expect(html).not.toContain('Entrar pelo navegador')
-    expect(html).not.toContain('Parar DJ')
+    expect(html).toContain('Parar DJ')
     expect(html).toContain('aria-label="Reprodução do Spotify"')
     expect(html).toContain('aria-label="Volume do DJ"')
     expect(html).toContain('Música compartilhada')
