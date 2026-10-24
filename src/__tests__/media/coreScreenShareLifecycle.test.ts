@@ -3,6 +3,7 @@ import { MediaManager } from '../../media/MediaManager'
 import { PeerManager } from '../../p2p/PeerManager'
 import { useGameStore } from '../../store/useGameStore'
 import { useMediaStore } from '../../store/useMediaStore'
+import { ProcessAudioCapture } from '../../media/ProcessAudioCapture'
 
 vi.mock('../../data/nativeAssets.json', () => ({ default: { assets: [], categories: [] } }))
 class Track {
@@ -43,6 +44,36 @@ afterEach(() => {
   useGameStore.setState(originalGame); useMediaStore.setState(originalMedia)
 })
 describe('core screen capture lifetime', () => {
+  it('publishes only one processed application audio track, never the raw capture alongside it', async () => {
+    const raw = new Track('audio', 'browser-app-audio')
+    const output = new Track('audio', 'processed-app-audio')
+    capture.mockResolvedValue(new Stream([new Track('video'), raw]))
+    vi.spyOn(manager as any, 'createLiveAudioTrack').mockResolvedValue(output)
+    const live = await manager.startScreenShare()
+    expect(live!.getAudioTracks()).toEqual([output])
+    expect(peer.replaceAudioTrack).toHaveBeenCalledWith(output)
+    manager.stopScreenShare()
+    expect(raw.stop).toHaveBeenCalled()
+  })
+
+  it.each(['unsupported', 'failure', 'success'])('never falls back to desktop audio for an app window when native capture is %s', async (mode) => {
+    vi.stubGlobal('window', { electronAPI: { setScreenSource: vi.fn(async () => {}) } })
+    vi.spyOn(ProcessAudioCapture, 'isSupported').mockReturnValue(mode !== 'unsupported')
+    const raw = new Track('audio', 'unexpected-desktop-audio')
+    const isolated = new Track('audio', 'native-app-audio')
+    vi.spyOn(ProcessAudioCapture.prototype, 'start').mockImplementation(async () => {
+      if (mode === 'failure') throw new Error('Native capture failed')
+      return isolated as any
+    })
+    vi.spyOn(ProcessAudioCapture.prototype, 'stop').mockImplementation(() => {})
+    vi.spyOn(manager as any, 'createLiveAudioTrack').mockImplementation(async (source) => source)
+    capture.mockResolvedValue(new Stream([new Track('video'), raw]))
+    const live = await manager.startScreenShare({ sourceId: 'window:123:0' })
+    expect(live!.getAudioTracks()).toEqual(mode === 'success' ? [isolated] : [])
+    expect(raw.stop).toHaveBeenCalled()
+    expect(useMediaStore.getState().localStream!.getAudioTracks()[0].readyState).toBe('live')
+  })
+
   it('never reactivates a capture resolved after the user stopped sharing', async () => {
     const pending = deferred<Stream>()
     capture.mockReturnValue(pending.promise)

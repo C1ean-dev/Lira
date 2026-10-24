@@ -37,6 +37,7 @@ class MockMediaStream {
   }
 }
 
+const quietTrack = { kind: 'audio', id: 'silent-live', enabled: true, readyState: 'live' }
 const micTrack = () => ({ kind: 'audio', id: 'mic', enabled: true, readyState: 'live' }) as any
 const liveAudioTrack = () =>
   ({ kind: 'audio', id: 'live-audio', enabled: true, readyState: 'live', __screenShareLiveAudio: true }) as any
@@ -122,6 +123,7 @@ const startLive = (calls: Map<string, any>, media: ReturnType<typeof goLive>, bi
 const captureDiag = (event: string) => {
   const entries: any[] = []
   ;(globalThis as any).window = {
+    ...(globalThis as any).window,
     electronAPI: {
       diagnosticLogBatch: vi.fn(async (batch: any[]) => {
         entries.push(...batch)
@@ -141,6 +143,7 @@ describe('who a live is sent to', () => {
     ;(globalThis as any).MediaStream = MockMediaStream
     __resetVideoSendPolicyForTests()
     __resetSilentAudioForTests()
+    ;(globalThis as any).window = { AudioContext: function (this: any) { this.createMediaStreamDestination = () => ({ stream: new MockMediaStream([quietTrack]) }) } }
     __resetDiagForTests()
     useGameStore.setState({ remotePlayers: {}, callStates: {} })
   })
@@ -168,14 +171,14 @@ describe('who a live is sent to', () => {
       expect(viewerMode('viewer')).toBe('off')
     })
 
-    it('keeps hearing the microphone, not the sound of the live', async () => {
+    it('keeps the live connection silent while the voice uses its separate call', async () => {
       room({ viewer: { liveOptIn: true } })
       const media = goLive()
       const viewer = fakeCall(cameraTrack(), media.mic)
       startLive(callsOf(['viewer', viewer]), media)
       await vi.advanceTimersByTimeAsync(0)
 
-      expect(viewer.audio.track).toBe(media.mic)
+      expect(viewer.audio.track).toBe(quietTrack)
       expect(viewer.audio.replaceTrack).not.toHaveBeenCalledWith(media.liveAudio)
     })
 
@@ -275,7 +278,7 @@ describe('who a live is sent to', () => {
       const { media, viewer, other } = await watching(180)
 
       expect(viewer.audio.track).toBe(media.liveAudio)
-      expect(other.audio.track).toBe(media.mic)
+      expect(other.audio.track).toBe(quietTrack)
       expect(other.last().active).toBe(false)
     })
 
@@ -402,14 +405,14 @@ describe('who a live is sent to', () => {
       expect(viewer.audio.track).toBe(media.liveAudio)
     })
 
-    it('switches the video off and goes back to the microphone when the viewer stops', async () => {
+    it('switches the video off and silences the live connection when the viewer stops', async () => {
       const { viewer, calls, media } = await watching(180)
       MediaCallHandler.applyViewerRequest(calls, 'viewer', false, 0)
       await vi.advanceTimersByTimeAsync(0)
 
       expect(viewerMode('viewer')).toBe('off')
       expect(viewer.last().active).toBe(false)
-      expect(viewer.audio.track).toBe(media.mic)
+      expect(viewer.audio.track).toBe(quietTrack)
       expect(viewer.sender.track).toBe(media.screen)
       expect(viewer.ops.filter((op) => op === 'replaceTrack')).toHaveLength(1)
     })
@@ -635,7 +638,7 @@ describe('who a live is sent to', () => {
       await vi.advanceTimersByTimeAsync(VIEW_REQUEST_TTL_MS * 4)
 
       expect(viewer.applied.every((p) => p.active === false)).toBe(true)
-      expect(viewer.audio.track).toBe(media.mic)
+      expect(viewer.audio.track).toBe(quietTrack)
     })
   })
 
@@ -655,7 +658,7 @@ describe('who a live is sent to', () => {
 
       expect(viewerMode('late')).toBe('off')
       expect(late.last().active).toBe(false)
-      expect(late.audio.track).toBe(media.mic)
+      expect(late.audio.track).toBe(quietTrack)
     })
 
     it('is still known as such in the next live', async () => {
@@ -685,6 +688,7 @@ describe('who a live is sent to', () => {
 
       const camera = cameraTrack()
       MediaCallHandler.replaceVideoTrack(calls, camera, false)
+      useMediaStore.setState({ isScreenSharing: false, localScreenStream: null })
       MediaCallHandler.replaceAudioTrack(calls, media.mic)
       await vi.advanceTimersByTimeAsync(0)
 
@@ -824,11 +828,11 @@ describe('who a live is sent to', () => {
       return { media, placed, dialed, calls }
     }
 
-    it('is dialed with the microphone and with the video switched off, for a viewer that waits for a click', async () => {
+    it('is dialed with silence and with the video switched off, for a viewer that waits for a click', async () => {
       const { media, placed, dialed } = dial('viewer', true)
       await vi.advanceTimersByTimeAsync(0)
 
-      expect(dialed.getAudioTracks()).toEqual([media.mic])
+      expect(dialed.getAudioTracks()).toEqual([quietTrack])
       expect(dialed.getVideoTracks()).toEqual([media.screen])
       expect(placed.last().active).toBe(false)
     })
@@ -864,11 +868,11 @@ describe('who a live is sent to', () => {
       return { media, placed, answered }
     }
 
-    it('is answered with the microphone and with the video switched off, for a viewer that waits for a click', async () => {
+    it('is answered with silence and with the video switched off, for a viewer that waits for a click', async () => {
       const { media, placed, answered } = answer('viewer', true)
       await vi.advanceTimersByTimeAsync(0)
 
-      expect(answered.getAudioTracks()).toEqual([media.mic])
+      expect(answered.getAudioTracks()).toEqual([quietTrack])
       expect(answered.getVideoTracks()).toEqual([media.screen])
       expect(placed.last().active).toBe(false)
     })
@@ -896,7 +900,7 @@ describe('who a live is sent to', () => {
 
       const { media, placed, answered } = answer('viewer', true)
       await vi.advanceTimersByTimeAsync(0)
-      expect(answered.getAudioTracks()).toEqual([media.mic])
+      expect(answered.getAudioTracks()).toEqual([quietTrack])
       expect(placed.last().active).toBe(false)
     })
 
@@ -937,7 +941,7 @@ describe('who a live is sent to', () => {
       return onCallConnected
     }
 
-    it('stays without video and with the microphone once it is connected', async () => {
+    it('stays without video and with silence once it is connected', async () => {
       room({ viewer: { liveOptIn: true } })
       const media = goLive()
       MediaCallHandler.replaceVideoTrack(new Map(), media.screen, true, 5_500_000, 60)
@@ -950,7 +954,7 @@ describe('who a live is sent to', () => {
       expect(onCallConnected).toHaveBeenCalledWith('viewer')
       expect(viewer.applied).toHaveLength(1)
       expect(viewer.applied[0].active).toBe(false)
-      expect(viewer.audio.track).toBe(media.mic)
+      expect(viewer.audio.track).toBe(quietTrack)
     })
 
     it('does not take the sound of the live from those who are watching', async () => {
@@ -968,7 +972,7 @@ describe('who a live is sent to', () => {
       await vi.advanceTimersByTimeAsync(0)
 
       expect(watcher.audio.track).toBe(media.liveAudio)
-      expect(viewer.audio.track).toBe(media.mic)
+      expect(viewer.audio.track).toBe(quietTrack)
     })
 
     it('also lets go of a size that stops being confirmed', async () => {
@@ -1062,7 +1066,7 @@ describe('who a live is sent to', () => {
       expect(viewer.audio.track).toBe(silent)
     })
 
-    it('falls back to the sound of the live when silence cannot be made: a call with no audio never connects', async () => {
+    it('keeps the live audio detached when silence cannot be made', async () => {
       ;(globalThis as any).window = {}
       room({ viewer: { liveOptIn: true } })
       const media = goLive({ mic: null })
@@ -1070,7 +1074,7 @@ describe('who a live is sent to', () => {
       startLive(callsOf(['viewer', viewer]), media)
       await vi.advanceTimersByTimeAsync(0)
 
-      expect(viewer.audio.track).toBe(media.liveAudio)
+      expect(viewer.audio.track).toBeNull()
     })
   })
 
@@ -1088,9 +1092,9 @@ describe('who a live is sent to', () => {
       return { media, viewer, old, calls }
     }
 
-    it('keeps the microphone alone for who waits for a click, and the camera on', async () => {
+    it('keeps the live audio silent for who waits for a click, and the camera on', async () => {
       const { media, viewer, old } = await soundOnly()
-      expect(viewer.audio.track).toBe(media.mic)
+      expect(viewer.audio.track).toBe(quietTrack)
       expect(old.audio.track).toBe(media.liveAudio)
       expect(viewer.applied.some((p) => p.active === false)).toBe(false)
       expect(viewer.last()).toMatchObject({ ...CAMERA_CAPS, active: true })
@@ -1133,14 +1137,14 @@ describe('who a live is sent to', () => {
       await vi.advanceTimersByTimeAsync(0)
 
       expect(useGameStore.getState().callStates['late']).toBe('connected')
-      expect(viewer.audio.track).toBe(media.mic)
-      expect(late.audio.track).toBe(media.mic)
+      expect(viewer.audio.track).toBe(quietTrack)
+      expect(late.audio.track).toBe(quietTrack)
       expect(old.audio.track).toBe(media.liveAudio)
     })
   })
 
   describe('a live with no sound of its own', () => {
-    it('leaves the microphone on every call, watching or not', async () => {
+    it('leaves the live connection silent, watching or not', async () => {
       room({ viewer: { liveOptIn: true } })
       const media = goLive({ liveAudio: null })
       const viewer = fakeCall(cameraTrack(), media.mic)
@@ -1149,14 +1153,14 @@ describe('who a live is sent to', () => {
       MediaCallHandler.applyViewerRequest(calls, 'viewer', true, 180)
       await vi.advanceTimersByTimeAsync(0)
 
-      expect(viewer.audio.track).toBe(media.mic)
-      expect(viewer.audio.replaceTrack).not.toHaveBeenCalled()
+      expect(viewer.audio.track).toBe(quietTrack)
+      expect(viewer.audio.replaceTrack).toHaveBeenCalledWith(quietTrack)
       expect(viewer.last().active).toBe(true)
     })
   })
 
   describe('replacing the microphone during a live', () => {
-    it('still reaches every call', async () => {
+    it('preserves the live audio without inserting the replacement microphone', async () => {
       room({ viewer: { liveOptIn: true }, old: {} })
       const media = goLive()
       const viewer = fakeCall(cameraTrack(), media.mic)
@@ -1169,8 +1173,8 @@ describe('who a live is sent to', () => {
       MediaCallHandler.replaceAudioTrack(calls, newMic)
       await vi.advanceTimersByTimeAsync(0)
 
-      expect(viewer.audio.track).toBe(newMic)
-      expect(old.audio.track).toBe(newMic)
+      expect(viewer.audio.track).toBe(quietTrack)
+      expect(old.audio.track).toBe(media.liveAudio)
     })
   })
 })

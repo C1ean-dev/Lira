@@ -10,6 +10,7 @@
 #include <roapi.h>
 #include <dwmapi.h>
 #include <timeapi.h>
+#include <tlhelp32.h>
 
 #pragma comment(lib, "winmm.lib")
 
@@ -246,7 +247,42 @@ struct WindowScanContext {
   DWORD selfPid;
   RECT targetBounds;
   std::set<DWORD> pidsOnScreen;
+  DWORD excludedProcessId;
+  std::map<DWORD, DWORD> processParents;
 };
+
+bool ReadProcessParents(std::map<DWORD, DWORD>* parents) {
+  parents->clear();
+  HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snapshot == INVALID_HANDLE_VALUE) return false;
+  PROCESSENTRY32W entry = {};
+  entry.dwSize = sizeof(entry);
+  const bool readable = Process32FirstW(snapshot, &entry) != FALSE;
+  if (readable) {
+    do {
+      (*parents)[entry.th32ProcessID] = entry.th32ParentProcessID;
+    } while (Process32NextW(snapshot, &entry));
+  }
+  CloseHandle(snapshot);
+  return readable;
+}
+
+bool ShouldExcludeProcessAudio(DWORD processId, DWORD excludedProcessId, const std::map<DWORD, DWORD>& parents) {
+  if (!excludedProcessId) return false;
+  const auto descendsFrom = [&](DWORD child, DWORD ancestor) {
+    std::set<DWORD> visited;
+    while (child && visited.insert(child).second) {
+      if (child == ancestor) return true;
+      const auto parent = parents.find(child);
+      if (parent == parents.end()) break;
+      child = parent->second;
+    }
+    return false;
+  };
+  // Process loopback includes descendants. Capturing either Lira, one of its
+  // audio processes, or an ancestor would put call playback back into the live.
+  return descendsFrom(processId, excludedProcessId) || descendsFrom(excludedProcessId, processId);
+}
 
 std::wstring GetProcessDisplayName(DWORD processId) {
   HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId);
@@ -283,21 +319,22 @@ BOOL CALLBACK ScanWindowsProc(HWND hwnd, LPARAM lParam) {
   if (intersectsMonitor) {
     DWORD pid = 0;
     GetWindowThreadProcessId(hwnd, &pid);
-    if (pid != 0 && pid != ctx->selfPid) {
+    if (pid != 0 && pid != ctx->selfPid && !ShouldExcludeProcessAudio(pid, ctx->excludedProcessId, ctx->processParents)) {
       ctx->pidsOnScreen.insert(pid);
     }
   }
   return TRUE;
 }
 
-std::set<DWORD> ScanProcessesOnMonitor(HMONITOR targetMonitor, DWORD selfPid) {
+std::set<DWORD> ScanProcessesOnMonitor(HMONITOR targetMonitor, DWORD selfPid, DWORD excludedProcessId) {
   MONITORINFO monitorInfo = {sizeof(monitorInfo)};
   if (!targetMonitor || !GetMonitorInfoW(targetMonitor, &monitorInfo)) {
     std::wcerr << L"[process-audio-capture] Could not resolve selected monitor bounds.\n";
     return {};
   }
 
-  WindowScanContext ctx{targetMonitor, selfPid, monitorInfo.rcMonitor, {}};
+  WindowScanContext ctx{targetMonitor, selfPid, monitorInfo.rcMonitor, {}, excludedProcessId, {}};
+  if (!ReadProcessParents(&ctx.processParents)) return {};
   HDESK desk = OpenInputDesktop(0, FALSE, GENERIC_ALL);
   if (desk) {
     EnumDesktopWindows(desk, ScanWindowsProc, reinterpret_cast<LPARAM>(&ctx));
@@ -308,11 +345,16 @@ std::set<DWORD> ScanProcessesOnMonitor(HMONITOR targetMonitor, DWORD selfPid) {
   return ctx.pidsOnScreen;
 }
 
-int RunWindowCapture(HWND targetWindow) {
+int RunWindowCapture(HWND targetWindow, DWORD excludedProcessId) {
   DWORD processId = 0;
   if (GetWindowThreadProcessId(targetWindow, &processId) == 0 || processId == 0) {
     std::wcerr << L"[process-audio-capture] Could not resolve the selected window process.\n";
     return 4;
+  }
+  std::map<DWORD, DWORD> parents;
+  if (!ReadProcessParents(&parents) || ShouldExcludeProcessAudio(processId, excludedProcessId, parents)) {
+    std::wcerr << L"[process-audio-capture] Call playback cannot be included in application capture.\n";
+    return 7;
   }
 
   WAVEFORMATEX format = {};
@@ -379,7 +421,7 @@ int RunWindowCapture(HWND targetWindow) {
   return 0;
 }
 
-int RunScreenCapture(int left, int top, int width, int height) {
+int RunScreenCapture(int left, int top, int width, int height, DWORD excludedProcessId) {
   POINT centerPt = { left + width / 2, top + height / 2 };
   HMONITOR targetMonitor = MonitorFromPoint(centerPt, MONITOR_DEFAULTTONEAREST);
   if (!targetMonitor) {
@@ -434,7 +476,7 @@ int RunScreenCapture(int left, int top, int width, int height) {
     auto now = std::chrono::steady_clock::now();
     if (now - lastScanTime >= std::chrono::milliseconds(300)) {
       lastScanTime = now;
-      std::set<DWORD> desiredPids = ScanProcessesOnMonitor(targetMonitor, selfPid);
+      std::set<DWORD> desiredPids = ScanProcessesOnMonitor(targetMonitor, selfPid, excludedProcessId);
       scanCount++;
       if (desiredPids != lastDesiredPids) {
         std::wcerr << L"[process-audio-capture] MONITOR_SCAN count=" << scanCount
@@ -611,6 +653,19 @@ int wmain(int argc, wchar_t* argv[]) {
 
   const wchar_t* sourceId = argv[2];
   const bool isScreen = (wcsncmp(sourceId, L"screen:", 7) == 0);
+  DWORD excludedProcessId = 0;
+  for (int i = 3; i + 1 < argc; ++i) {
+    if (wcscmp(argv[i], L"--exclude-process-tree") == 0) {
+      excludedProcessId = wcstoul(argv[i + 1], nullptr, 10);
+      break;
+    }
+  }
+  if (!excludedProcessId) {
+    // Older launchers did not supply the owning Electron process explicitly.
+    std::map<DWORD, DWORD> parents;
+    if (ReadProcessParents(&parents)) excludedProcessId = parents[GetCurrentProcessId()];
+    if (!excludedProcessId) return 7;
+  }
 
   HRESULT ro = RoInitialize(RO_INIT_MULTITHREADED);
   bool roInitialized = SUCCEEDED(ro);
@@ -636,7 +691,7 @@ int wmain(int argc, wchar_t* argv[]) {
         break;
       }
     }
-    exitCode = RunScreenCapture(left, top, width, height);
+    exitCode = RunScreenCapture(left, top, width, height, excludedProcessId);
   } else {
     HWND targetWindow = nullptr;
     if (!ParseWindowHandle(sourceId, &targetWindow)) {
@@ -645,7 +700,7 @@ int wmain(int argc, wchar_t* argv[]) {
       if (coInitialized) CoUninitialize();
       return 3;
     }
-    exitCode = RunWindowCapture(targetWindow);
+    exitCode = RunWindowCapture(targetWindow, excludedProcessId);
   }
 
   if (roInitialized) RoUninitialize();

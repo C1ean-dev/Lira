@@ -294,7 +294,7 @@ async function startProcessAudioCapture(sourceId: string): Promise<ProcessAudioC
   }
   stopProcessAudioCapture()
 
-  const spawnArgs = ['--source-id', sourceId]
+  const spawnArgs = ['--source-id', sourceId, '--exclude-process-tree', String(process.pid)]
   if (isScreen) {
     const bounds = await resolveScreenBounds(sourceId)
     if (bounds) {

@@ -116,7 +116,7 @@ test('individual sprite images decode and edited thumbnails refresh in HTTP and 
     await fs.writeFile(path.join(application, 'index.html'), '<!doctype html><title>Packaged sprites test</title><script type="module">import * as library from "./storage.mjs"; window.libraryTesting = library</script>')
     process.env.VITEST = '1'
     process.env.LIRA_TARGET = 'web'
-    vite = await createServer({ root, logLevel: 'error', optimizeDeps: { noDiscovery: true, entries: [] }, server: { host: '127.0.0.1', port: 0, hmr: false, open: false }, plugins: [{ name: 'sprite-runtime-page', configureServer(server) {
+    vite = await createServer({ root, logLevel: 'error', optimizeDeps: { noDiscovery: true, entries: [] }, server: { host: '127.0.0.1', port: 0, hmr: false, open: false }, plugins: [{ name: 'sprite-runtime-page', enforce: 'pre', configureServer(server) {
       server.middlewares.use(async (request, response, next) => {
         if (request.url === '/__sprite-test.html') {
           response.setHeader('Content-Type', 'text/html')
