@@ -71,6 +71,7 @@ export class MediaManager {
   private deviceChangeTimeout: ReturnType<typeof setTimeout> | null = null
   private currentTestAudio: { ctx?: AudioContext; el?: HTMLAudioElement; timeout?: any } | null = null
   private djProcessAudioCapture: ProcessAudioCapture | null = null
+  private djCaptureIsSpotifyTab = false
   private djAudioContext: AudioContext | null = null
   private djGainNode: GainNode | null = null
   private isDjStreaming: boolean = false
@@ -1407,7 +1408,10 @@ export class MediaManager {
       }
 
       if (!customSourceId && !electronAPI?.startSpotifyTabAudioCapture) return { ok: false, error: 'Reabra o Lira para ativar a captura silenciosa do Spotify.' }
-      this.djProcessAudioCapture = new ProcessAudioCapture(() => { void this.stopDjAudio() })
+      this.djCaptureIsSpotifyTab = !customSourceId
+      this.djProcessAudioCapture = new ProcessAudioCapture(() => {
+        void this.stopDjAudio().catch(error => console.warn('[DJ] Error closing Spotify:', error))
+      })
       this.djPlayerClosedUnsubscribe = electronAPI?.onSpotifyPlayerClosed?.(() => {
         this.stopDjAudio().catch(() => {})
       }) || null
@@ -1441,6 +1445,8 @@ export class MediaManager {
 
   public async stopDjAudio(): Promise<void> {
     this.djStartGeneration = (this.djStartGeneration || 0) + 1
+    const api = typeof window !== 'undefined' ? window.electronAPI : undefined
+    let failure: unknown
     try {
       this.djPlayerClosedUnsubscribe?.()
       this.djPlayerClosedUnsubscribe = null
@@ -1452,20 +1458,29 @@ export class MediaManager {
         if (dj?.djPeerId === ownerId) jams.setDjStateInZone(zoneId, null, true)
       }
       PeerManager.getInstance().stopDjBot()
-
+      if (api?.closeSpotifyPlayer) {
+        const result = await api.closeSpotifyPlayer()
+        if (!result.ok) throw new Error(result.error || 'Não foi possível fechar o Spotify.')
+      }
+    } catch (e) {
+      failure = e
+      console.warn('[MediaManager] Error stopping DJ audio:', e)
+    } finally {
       if (this.djProcessAudioCapture) {
-        this.djProcessAudioCapture.stop()
+        // Main closes the browser before releasing tab capture; do not send
+        // another stop that could unmute a player whose close is still pending.
+        this.djProcessAudioCapture.stop(!(this.djCaptureIsSpotifyTab && api?.closeSpotifyPlayer))
         this.djProcessAudioCapture = null
       }
+      this.djCaptureIsSpotifyTab = false
 
       if (this.djAudioContext && this.djAudioContext.state !== 'closed') {
         this.djAudioContext.close().catch(() => {})
         this.djAudioContext = null
       }
       this.djGainNode = null
-    } catch (e) {
-      console.warn('[MediaManager] Error stopping DJ audio:', e)
     }
+    if (failure) throw failure
   }
 
   public isDjAudioActive(): boolean {

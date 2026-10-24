@@ -17,6 +17,32 @@ function setup() {
 }
 
 describe('Spotify browser close to tray', () => {
+  it('cancels opening and closes an unmounted browser if Lira closes during Spotify startup', async () => {
+    const s = setup()
+    const closeUnattachedBrowser = vi.fn(async () => {})
+    ;(s.deps as any).closeUnattachedBrowser = closeUnattachedBrowser
+    const owner = new EventEmitter()
+    const cancel = vi.fn()
+    s.host.bindOwner(owner, cancel)
+    owner.emit('close', { preventDefault: vi.fn() })
+    await vi.waitFor(() => expect(closeUnattachedBrowser).toHaveBeenCalledOnce())
+    expect(cancel).toHaveBeenCalledOnce()
+    expect(cancel.mock.invocationCallOrder[0]).toBeLessThan(closeUnattachedBrowser.mock.invocationCallOrder[0])
+  })
+  it('closes the dedicated browser when the Lira owner window closes even if another listener sends Lira to the tray', async () => {
+    const s = setup()
+    await s.host.attach({ processId: 70, handle: '42', title: 'Spotify' })
+    const owner = new EventEmitter()
+    s.host.bindOwner(owner)
+    owner.on('close', event => event.preventDefault())
+    const event = { preventDefault: vi.fn() }
+    owner.emit('close', event)
+    expect(event.preventDefault).toHaveBeenCalledOnce()
+    await vi.waitFor(() => expect(s.deps.closeBrowser).toHaveBeenCalledOnce())
+    await s.host.close()
+    expect(s.host.browser).toBeNull()
+    expect(s.window.destroy).toHaveBeenCalledOnce()
+  })
   it('coalesces resizing while a native update is running and applies the final size', async () => {
     vi.useFakeTimers()
     const s = setup()

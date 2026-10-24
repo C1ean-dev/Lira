@@ -1,15 +1,22 @@
-import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { createUpdateIoHarness } from '../helpers/updateIoHarness'
 
 describe.skipIf(process.platform !== 'win32')('installer batch file IO', () => {
   let root: string
   let source: string
   let destination: string
   const helper = path.resolve('build/update-io.ps1')
+  let compiledRoot: string
+  let ioHarness: ReturnType<typeof createUpdateIoHarness>
+  beforeAll(() => {
+    compiledRoot = mkdtempSync(path.join(os.tmpdir(), 'lira-compiled-io-'))
+    ioHarness = createUpdateIoHarness(compiledRoot)
+  })
+  afterAll(() => rmSync(compiledRoot, { recursive: true, force: true }))
   const digest = (data: string | Buffer) => createHash('sha256').update(data).digest('hex').toUpperCase()
   const execute = (body: string, files: { Name: string; Length: number; Hash?: string }[], directories: string[] = []) => {
     const harness = path.join(root, 'batch-test.ps1')
@@ -23,7 +30,7 @@ $request = Get-Content -LiteralPath (Join-Path $Root 'request.json') -Raw -Encod
 $entries = [LiraUpdateFile[]]@($request.Files)
 ${body}
 `)
-    return execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', harness, '-Helper', helper, '-Root', root], { windowsHide: true, encoding: 'utf8', stdio: 'pipe' })
+    return ioHarness.run(harness, { Helper: helper, Root: root })
   }
   const copy = '[LiraUpdateIO]::CopyTree($source, $destination, $entries, [string[]]@($request.Directories), $null)'
   const verify = '[LiraUpdateIO]::VerifyTree($destination, $entries, $false, $null)'
@@ -35,6 +42,27 @@ ${body}
     mkdirSync(source)
   })
   afterEach(() => rmSync(root, { recursive: true, force: true }))
+
+  it('snapshots nested files and empty directories without following linked paths', () => {
+    mkdirSync(path.join(source, 'nested', 'empty'), { recursive: true })
+    writeFileSync(path.join(source, 'nested', 'save.json'), 'save')
+    const result = JSON.parse(execute('[LiraUpdateIO]::SnapshotTree($source) | ConvertTo-Json -Depth 5 -Compress', []))
+    expect(result.Existed).toBe(true)
+    expect(result.Files).toEqual([{ Name: 'nested\\save.json', Length: 4, Hash: null }])
+    expect(result.Directories.sort()).toEqual(['nested', 'nested\\empty'])
+    const outside = path.join(root, 'outside')
+    mkdirSync(outside)
+    symlinkSync(outside, path.join(source, 'linked'), 'junction')
+    expect(() => execute('[LiraUpdateIO]::SnapshotTree($source)', [])).toThrow()
+  })
+
+  it('snapshots missing trees without treating a file as a directory', () => {
+    rmSync(source, { recursive: true })
+    const result = JSON.parse(execute('[LiraUpdateIO]::SnapshotTree($source) | ConvertTo-Json -Depth 5 -Compress', []))
+    expect(result).toEqual({ Existed: false, Files: [], Directories: [] })
+    writeFileSync(source, 'file')
+    expect(() => execute('[LiraUpdateIO]::SnapshotTree($source)', [])).toThrow()
+  })
 
   it('copies and verifies many independent saves without a PowerShell callback for each file', () => {
     const bytes = Buffer.alloc(4096, 173)

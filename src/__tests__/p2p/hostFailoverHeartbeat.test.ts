@@ -206,6 +206,33 @@ describe('host recovery in a room whose clients only have a data connection to t
     expect(manager.signalingReconnectTimer).toBeNull()
   })
 
+  it('does not mark a recovered follower connected when signaling opens without a host data connection', () => {
+    client(A, [B])
+    manager.handleHostDisconnected(HOST)
+    FakePeer.instances.at(-1)!.emit('error', { type: 'unavailable-id' })
+    const follower = FakePeer.instances.at(-1)!
+    follower.emit('open', A)
+    vi.advanceTimersByTime(2500)
+    FakeConn.instances.at(-1)!.emit('open')
+    expect(manager.hostRecovery).toBeNull()
+    manager.connections.clear()
+    useGameStore.getState().setConnected(false)
+    useGameStore.getState().setConnectionStatus('reconnecting')
+    follower.emit('open', A)
+    expect(useGameStore.getState().isConnected).toBe(false)
+    expect(useGameStore.getState().connectionStatus).toBe('reconnecting')
+    expect(manager.hostRecovery).not.toBeNull()
+    // The existing host still owns its ID, so reconnect as a follower again.
+    FakePeer.instances.at(-1)!.emit('error', { type: 'unavailable-id' })
+    FakePeer.instances.at(-1)!.emit('open', A)
+    vi.advanceTimersByTime(2500)
+    FakeConn.instances.at(-1)!.emit('open')
+    expect(manager.hostRecovery).toBeNull()
+    expect(useGameStore.getState().connectionStatus).toBe('connected')
+    expect(useGameStore.getState().isConnected).toBe(true)
+    expect(useGameStore.getState().connectionHostId).toBe(HOST)
+  })
+
   it('handles signaling network errors after a successful promotion', () => {
     client(A, [B])
     manager.handleHostDisconnected(HOST)

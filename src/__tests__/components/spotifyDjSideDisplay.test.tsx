@@ -1,7 +1,8 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SpotifyJamSideDisplay } from '../../components/spotify/SpotifyJamSideDisplay'
+import { stopDjForEveryone } from '../../services/stopDjForEveryone'
 
 const state = vi.hoisted(() => ({
   login: { ready: false, state: { pending: false, confirmed: false, browserOpen: false }, busy: null, error: null, act: vi.fn() },
@@ -25,14 +26,66 @@ vi.mock('../../store/useMapStore', () => ({ useMapStore: (select: any) => select
 vi.mock('../../services/spotifyDjPlayback', () => ({ commandDjPlayback: vi.fn() }))
 vi.mock('../../media/MediaManager', () => ({ MediaManager: { getInstance: vi.fn() } }))
 vi.mock('../../hooks/useSpotifyLogin', () => ({ useSpotifyLogin: () => state.login }))
+vi.mock('../../services/stopDjForEveryone', () => ({ stopDjForEveryone: vi.fn() }))
+
+function spotifyButton(label = 'Abrir Spotify') {
+  let tree: React.ReactNode
+  function Probe() { tree = SpotifyJamSideDisplay({}); return null }
+  renderToStaticMarkup(<Probe />)
+  const buttons: React.ReactElement[] = []
+  function visit(node: React.ReactNode) {
+    React.Children.forEach(node, (child) => {
+      if (!React.isValidElement(child)) return
+      if (child.type === 'button') buttons.push(child)
+      visit((child.props as any).children)
+    })
+  }
+  visit(tree!)
+  return buttons.find(button => (button.props as any)['aria-label'] === label)
+}
 
 describe('Spotify DJ side display', () => {
+  it.each([false, true])('offers listeners a global stop action when minimized=%s', async minimized => {
+    state.spotify.isDjModeActive = false
+    state.spotify.isSideDisplayMinimized = minimized
+    expect(renderToStaticMarkup(<SpotifyJamSideDisplay />)).toContain('aria-label="Encerrar DJ para todos"')
+    await (spotifyButton('Encerrar DJ para todos')!.props as any).onClick()
+    expect(stopDjForEveryone).toHaveBeenCalledExactlyOnceWith('room')
+  })
   beforeEach(() => {
+    vi.clearAllMocks()
     state.spotify.isDjModeActive = true
     state.spotify.djStateByZone.room.isDjActive = true
     state.spotify.isSideDisplayMinimized = false
     state.player.currentZoneId = 'room'
     state.login.ready = false
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it.each([false, true])('offers the owner one Spotify restore button when the panel is minimized=%s', (minimized) => {
+    state.spotify.isSideDisplayMinimized = minimized
+    const html = renderToStaticMarkup(<SpotifyJamSideDisplay />)
+    expect(html.match(/aria-label="Abrir Spotify"/g)).toHaveLength(1)
+    expect(spotifyButton()).toBeDefined()
+  })
+
+  it.each([false, true])('does not offer listeners the owner Spotify window when minimized=%s', (minimized) => {
+    state.spotify.isDjModeActive = false
+    state.spotify.isSideDisplayMinimized = minimized
+    expect(renderToStaticMarkup(<SpotifyJamSideDisplay />)).not.toContain('aria-label="Abrir Spotify"')
+  })
+
+  it.each([false, true])('restores the existing Spotify player without changing the song or expanding the DJ panel when minimized=%s', async (minimized) => {
+    state.spotify.isSideDisplayMinimized = minimized
+    const openSpotifyPlayer = vi.fn(async () => ({ ok: true }))
+    vi.stubGlobal('window', { electronAPI: { openSpotifyPlayer } })
+    const button = spotifyButton()
+    expect(button).toBeDefined()
+    await (button!.props as any).onClick()
+    expect(openSpotifyPlayer).toHaveBeenCalledExactlyOnceWith(undefined)
+    expect(state.spotify.toggleSideDisplayMinimized).not.toHaveBeenCalled()
+    expect(state.spotify.setModalOpen).not.toHaveBeenCalled()
+    expect(state.spotify.setDjStateInZone).not.toHaveBeenCalled()
   })
 
   it('shows DJ controls without old Jam, player shortcuts or recommendation options', () => {

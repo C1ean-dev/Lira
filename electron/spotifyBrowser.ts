@@ -98,14 +98,15 @@ export async function closeSpotifyPlayerBrowser(browser: { processId: number }, 
   if (dedicated && (dedicated.processId !== browser.processId || !dedicated.remoteDebugging)) throw failure()
   // Cancel pending openings/lookups before closing; they must not revive the player.
   deps.stopMonitoring()
-  await deps.stopCapture()
-  deps.notifyClosed()
-  if (!dedicated) return
+  const finish = async () => { await deps.stopCapture(); deps.notifyClosed() }
+  if (!dedicated) return finish()
+  // Releasing tab capture restores the page audio. Close and confirm process
+  // exit first, otherwise stopping the DJ makes Spotify play through speakers.
   await deps.closeBrowser()
   const deadline = Date.now() + 15_000
   for (let attempt = 0; attempt < (deps.attempts ?? 20) && Date.now() < deadline; attempt++) {
     const remaining = await deps.getProcess()
-    if (!remaining) return
+    if (!remaining) return finish()
     if (remaining.processId !== browser.processId || !remaining.remoteDebugging) throw failure()
     await (deps.delay || (ms => new Promise(resolve => setTimeout(resolve, ms))))(250)
   }
@@ -166,6 +167,7 @@ export class SpotifyBrowserController {
   constructor(private deps: BrowserDeps) {}
 
   get isOpen(): boolean { return this.window !== null }
+  get isOpening(): boolean { return this.opening !== null }
 
   open(input?: string): Promise<Result> {
     if (this.opening) return this.opening

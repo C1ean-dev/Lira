@@ -31,21 +31,33 @@ describe('core signaling recovery contract', () => {
     expect(manager.peer).toBe(peer)
     expect(call.close).not.toHaveBeenCalled()
   })
-  it('times out a silent reconnect and stops after six attempts', async () => {
+  it('keeps retrying a prolonged outage and recovers without losing established calls', async () => {
+    const call = { close: vi.fn() }
+    manager.mediaCalls.set('remote', call)
     manager.scheduleSignalingReconnect()
     await vi.advanceTimersByTimeAsync(120000)
-    expect(peer.reconnect).toHaveBeenCalledTimes(6)
-    expect(useGameStore.getState().connectionStatus).toBe('disconnected')
+    expect(peer.reconnect.mock.calls.length).toBeGreaterThan(6)
+    expect(useGameStore.getState().connectionStatus).toBe('reconnecting')
+    expect(manager.signalingReconnectTimer).not.toBeNull()
+    const attempts = peer.reconnect.mock.calls.length
+    peer.open = true
+    peer.disconnected = false
+    events.open('local')
+    await vi.advanceTimersByTimeAsync(120000)
+    expect(peer.reconnect).toHaveBeenCalledTimes(attempts)
+    expect(manager.mediaCalls.get('remote')).toBe(call)
+    expect(call.close).not.toHaveBeenCalled()
+    expect(useGameStore.getState().connectionStatus).toBe('connected')
     expect(manager.signalingReconnectTimer).toBeNull()
   })
   it('also times out PeerJS while connecting, when disconnected is already false', async () => {
     peer.reconnect.mockImplementation(() => { peer.id = 'local'; peer.disconnected = false })
     manager.scheduleSignalingReconnect()
     await vi.advanceTimersByTimeAsync(120000)
-    expect(peer.reconnect).toHaveBeenCalledTimes(6)
-    expect(peer.disconnect).toHaveBeenCalledTimes(6)
-    expect(useGameStore.getState().connectionStatus).toBe('disconnected')
-    expect(manager.signalingReconnectTimer).toBeNull()
+    expect(peer.reconnect.mock.calls.length).toBeGreaterThan(6)
+    expect(peer.disconnect.mock.calls.length).toBeGreaterThanOrEqual(6)
+    expect(useGameStore.getState().connectionStatus).toBe('reconnecting')
+    expect(manager.signalingReconnectTimer).not.toBeNull()
   })
   it('cancels watchdogs on recovery and preserves already established calls', async () => {
     const call = { close: vi.fn() }

@@ -15,6 +15,7 @@ type Deps = {
   createWindow(): HostWindow
   createTray(restore: () => void, close: () => void): HostTray
   closeBrowser(browser: SpotifyNativeWindow): Promise<void>
+  closeUnattachedBrowser?(): Promise<void>
   bridge: {
     mount(browser: SpotifyNativeWindow, parent: string): Promise<void>
     resize(browser: SpotifyNativeWindow, parent: string): Promise<void>
@@ -25,6 +26,12 @@ type Deps = {
 }
 
 export class SpotifyWindowHost {
+  bindOwner(owner: Pick<HostWindow, 'on'>, cancelOpening?: () => void): void {
+    owner.on('close', () => {
+      cancelOpening?.()
+      void this.close().catch(error => this.deps.reportError(error))
+    })
+  }
   browser: SpotifyNativeWindow | null = null
   private window: HostWindow | null = null
   private tray: HostTray | null = null
@@ -121,9 +128,9 @@ export class SpotifyWindowHost {
   close(): Promise<void> {
     if (this.closing) return this.closing
     const browser = this.browser
-    if (!browser) return Promise.resolve()
     const pending = (async () => {
-      await this.deps.closeBrowser(browser)
+      if (browser) await this.deps.closeBrowser(browser)
+      else await this.deps.closeUnattachedBrowser?.()
       await this.dispose()
     })()
     this.closing = pending

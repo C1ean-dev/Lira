@@ -836,13 +836,10 @@ export class PeerManager {
     const owner = this.peer
 
     this.signalingReconnectAttempts++
-    if (this.signalingReconnectAttempts > 6) {
-      console.warn('[P2P Signaling] Maximum reconnect attempts reached (6).')
-      useGameStore.getState().setConnectionStatus('disconnected')
-      return
-    }
-
-    const delay = Math.min(8000, 1000 * Math.pow(1.5, Math.min(5, this.signalingReconnectAttempts - 1)))
+    // A prolonged outage must not permanently disable recovery. Keep one
+    // bounded retry pending until the session recovers or the user leaves.
+    useGameStore.getState().setConnectionStatus('reconnecting')
+    const delay = Math.min(8000, 1000 * Math.pow(1.5, Math.min(6, this.signalingReconnectAttempts - 1)))
     console.log(`[P2P Signaling] Scheduling reconnect attempt #${this.signalingReconnectAttempts} in ${delay}ms...`)
 
     this.signalingReconnectTimer = setTimeout(() => {
@@ -1121,6 +1118,7 @@ export class PeerManager {
   }
 
   private removePeer(peerId: string) {
+    const departingPlayer = useGameStore.getState().remotePlayers[peerId]
     this.peerLastSeen.delete(peerId)
     this.pendingHeartbeats.delete(peerId)
     const conn = this.connections.get(peerId)
@@ -1135,6 +1133,7 @@ export class PeerManager {
 
     useGameStore.getState().removeRemotePlayer(peerId)
     this.endMediaCallWithPeer(peerId)
+    this.removeDepartedDj(peerId, departingPlayer)
     useMapStore.getState().checkAndUnlockEmptyZones()
 
     if (this.isHost) {
@@ -1154,6 +1153,28 @@ export class PeerManager {
     } else if (wasHost && this.roomCode && !this.isIntentionalDisconnect) {
       this.handleHostDisconnected(peerId)
     }
+  }
+
+  private removeDepartedDj(peerId: string, departingPlayer?: Player) {
+    const bots = Object.values(useGameStore.getState().remotePlayers)
+      .filter(player => player.isDjBot && player.djOwnerId === peerId)
+    const departedIds = new Set([peerId, ...bots.map(bot => bot.id)])
+    // A normal DJ stop can announce the bot leaving before its final status.
+    if (departingPlayer?.isDjBot && departingPlayer.djOwnerId) departedIds.add(departingPlayer.djOwnerId)
+
+    for (const [zoneId, djState] of Object.entries(useSpotifyJamStore.getState().djStateByZone)) {
+      if (!departedIds.has(djState.djPeerId)) continue
+      useSpotifyJamStore.getState().syncDjStateFromPeer(zoneId, null)
+      if (this.isHost) this.broadcast({
+        type: 'SPOTIFY_DJ_STATUS',
+        senderId: this.peer?.id || 'system',
+        payload: { zoneId, djState: null },
+        timestamp: Date.now(),
+      })
+    }
+    // Use the ordinary removal path to close audio, cancel retries and relay
+    // the bot departure. The owner has already been removed before recursing.
+    for (const bot of bots) this.removePeer(bot.id)
   }
 
   public async transferConnectionHost(targetPeerId: string): Promise<void> {
@@ -1398,6 +1419,12 @@ export class PeerManager {
     const isCurrent = () => this.peer === peer && !this.isIntentionalDisconnect && !this.hostRecovery
     peer.on('open', () => {
       if (!isCurrent()) return
+      if (!this.isHost && !this.connections.get(`lira-${this.roomCode}-host`)?.open) {
+        // Signaling registration alone does not restore a follower's room.
+        // Resume the existing failover/rejoin policy if its host link was lost.
+        this.handleHostDisconnected(`lira-${this.roomCode}-host`, peer.id || useGameStore.getState().localPlayer.id)
+        return
+      }
       if (this.signalingReconnectTimer) clearTimeout(this.signalingReconnectTimer)
       this.signalingReconnectTimer = null
       this.signalingReconnectAttempts = 0

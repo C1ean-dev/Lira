@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
+import { findSourceMentions } from '../../../scripts/sourceAudit'
 
 const OLD_NAME = ['gat', 'her'].join('')
 const OLD_NAME_PATTERN = new RegExp(`${OLD_NAME}(?!ing|ed)`, 'i')
@@ -40,15 +41,7 @@ describe('old app name', () => {
     expect(files.filter((file) => OLD_NAME_PATTERN.test(file))).toEqual([])
   })
 
-  it('is in no source, config or doc file', () => {
-    const mentions: string[] = []
-    for (const file of files) {
-      if (!SCANNED_EXTENSIONS.has(path.extname(file).toLowerCase())) continue
-      const lines = fs.readFileSync(path.join(ROOT, file), 'utf8').split(/\r?\n/)
-      lines.forEach((line, index) => {
-        if (OLD_NAME_PATTERN.test(line)) mentions.push(`${file}:${index + 1}`)
-      })
-    }
-    expect(mentions).toEqual([])
+  it('is in no source, config or doc file', async () => {
+    expect(await findSourceMentions(ROOT, files, OLD_NAME_PATTERN, SCANNED_EXTENSIONS)).toEqual([])
   })
 })

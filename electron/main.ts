@@ -95,16 +95,23 @@ const spotifyWindowHost = new SpotifyWindowHost({
     tray.on('double-click', restore)
     return tray
   },
-  closeBrowser: browser => closeSpotifyPlayerBrowser(browser, {
+  closeBrowser: closeDedicatedSpotifyBrowser,
+  closeUnattachedBrowser: async () => {
+    const browser = await querySpotifyBrowserProcess(path.join(app.getPath('userData'), 'spotify-browser'))
+    if (browser?.remoteDebugging) await closeDedicatedSpotifyBrowser(browser)
+  },
+  bridge: new SpotifyNativeWindowBridge(queryBrowserWindows, process.pid),
+  reportError: error => console.error('[Spotify window]', error),
+})
+function closeDedicatedSpotifyBrowser(browser: { processId: number }) {
+  return closeSpotifyPlayerBrowser(browser, {
     getProcess: () => querySpotifyBrowserProcess(path.join(app.getPath('userData'), 'spotify-browser')),
     closeBrowser: closeSpotifyControlledBrowser,
     stopCapture: () => spotifyTabAudio.stop(),
     stopMonitoring: () => spotifyPlayer.close(),
     notifyClosed: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('spotify:player-closed') },
-  }),
-  bridge: new SpotifyNativeWindowBridge(queryBrowserWindows, process.pid),
-  reportError: error => console.error('[Spotify window]', error),
-})
+  })
+}
 function closeSpotifyControlledBrowser() {
   return closeSpotifyDebugBrowser({
     readPortFile: () => fs.promises.readFile(path.join(app.getPath('userData'), 'spotify-browser', 'DevToolsActivePort'), 'utf8'),
@@ -571,6 +578,7 @@ function createWindow() {
 
   trayManager = new TrayManager(instanceId, isMultiInstance)
   trayManager.init(mainWindow)
+  spotifyWindowHost.bindOwner(mainWindow, () => { spotifyLogin.cancel(); spotifyPlayer.close() })
   watchWindow(mainWindow)
 
   session.defaultSession.setPermissionCheckHandler(() => {
@@ -1296,6 +1304,12 @@ ipcMain.handle('start-spotify-tab-audio', () => spotifyWindowHost.isClosing ? sp
 ipcMain.handle('stop-spotify-tab-audio', async () => { await spotifyTabAudio.stop(); return true })
 ipcMain.handle('spotify-playback-command', (_event, command: SpotifyPlaybackCommand) => spotifyPlayback.command(command))
 ipcMain.handle('open-spotify-player', (_event, url?: string) => spotifyWindowHost.isClosing ? spotifyClosingResult() : spotifyLogin.openPlayer(url))
+ipcMain.handle('close-spotify-player', async () => {
+  spotifyLogin.cancel()
+  spotifyPlayer.close()
+  try { await spotifyWindowHost.close(); return { ok: true } }
+  catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'Não foi possível fechar o Spotify.' } }
+})
 
 export interface SpotifyCurrentTrack {
   isRunning: boolean
@@ -1990,10 +2004,10 @@ let spotifyQuitCleanup: Promise<void> | null = null
 let spotifyQuitReady = false
 app.on('before-quit', event => {
   spotifyLogin.cancel()
-  if (!spotifyQuitReady && spotifyWindowHost.browser) {
+  if (!spotifyQuitReady && (spotifyWindowHost.browser || spotifyPlayer.isOpen || spotifyPlayer.isOpening)) {
     event.preventDefault()
     if (!spotifyQuitCleanup) {
-      spotifyQuitCleanup = spotifyWindowHost.dispose().then(() => {
+      spotifyQuitCleanup = spotifyWindowHost.close().then(() => {
         spotifyQuitReady = true
         app.quit()
       }).catch(error => {
@@ -2004,7 +2018,7 @@ app.on('before-quit', event => {
       })
     }
   }
-  void spotifyTabAudio.stop()
+  if (!spotifyQuitCleanup) void spotifyTabAudio.stop()
   spotifyPlayer.close()
   if (trayManager) {
     trayManager.setQuitting(true)

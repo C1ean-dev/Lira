@@ -14,6 +14,7 @@ import { resolveUniquePlayerName } from '../utils/playerName'
 import { sanitizeRoomChannels } from '../utils/roomChannels'
 import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
 import { receiveDjPlaybackMessage } from '../services/spotifyDjPlayback'
+import { isStoppedDjSession, receiveDjStopMessage } from '../services/stopDjForEveryone'
 import { DEFAULT_AVATAR } from '../engine/Constants'
 
 const receivedAtlases = new Map<string, AtlasDocument>()
@@ -628,8 +629,14 @@ export function processNetworkMessage(
       break
     }
 
+    case 'SPOTIFY_DJ_STOP': {
+      if ((isHost && msg.senderId !== peerId) || !receiveDjStopMessage(msg)) return
+      break
+    }
+
     case 'SPOTIFY_DJ_STATUS': {
       const { zoneId, djState } = msg.payload || {}
+      if (zoneId && djState?.isDjActive && isStoppedDjSession(zoneId, djState)) return
       if (zoneId) {
         useSpotifyJamStore.getState().syncDjStateFromPeer(zoneId, djState)
       }

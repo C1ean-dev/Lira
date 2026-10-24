@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { createUpdateIoHarness } from '../helpers/updateIoHarness'
 
 const script = path.resolve('build/update-recovery.ps1')
 const installer = () => readFileSync('build/installer.nsh', 'utf8')
@@ -15,16 +16,22 @@ describe.skipIf(process.platform !== 'win32')('installer file recovery', { timeo
   let backup: string
   let backupApp: string
   let userData: string
+  let compiledRoot: string
+  let ioHarness: ReturnType<typeof createUpdateIoHarness>
+  beforeAll(() => {
+    compiledRoot = mkdtempSync(path.join(os.tmpdir(), 'lira-recovery-io-'))
+    ioHarness = createUpdateIoHarness(compiledRoot)
+  })
+  afterAll(() => rmSync(compiledRoot, { recursive: true, force: true }))
   const putAt = (directory: string, relative: string, value: string | Buffer) => {
     const file = path.join(directory, relative)
     mkdirSync(path.dirname(file), { recursive: true })
     writeFileSync(file, value)
   }
   const put = (relative: string, value: string) => putAt(install, relative, value)
-  const run = (action: string, directory = install, profile = userData) => execFileSync('powershell.exe', [
-    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script,
-    '-Action', action, '-InstallDir', directory, '-UserDataDir', profile,
-  ], { encoding: 'utf8', windowsHide: true, stdio: 'pipe' })
+  const run = (action: string, directory = install, profile = userData) => ioHarness.run(script, {
+    Action: action, InstallDir: directory, UserDataDir: profile,
+  })
   const progress = () => readFileSync(path.join(root, 'lira.update-progress.jsonl'), 'utf8').trim().split(/\r?\n/).map(line => JSON.parse(line))
   const withLockedFile = async (file: string, work: () => void) => {
     const helper = path.join(root, 'hold-file.ps1')
