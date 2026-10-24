@@ -32,6 +32,9 @@ test('individual sprite images decode and edited thumbnails refresh in HTTP and 
     await writeIndividualLibrary(path.join(application, 'assets/library'), packet)
     await fs.mkdir(path.join(application, 'assets/furniture'), { recursive: true })
     await fs.copyFile(path.join(root, 'public/assets/furniture/tabletop-foods.png'), path.join(application, 'assets/furniture/tabletop-foods.png'))
+    await fs.copyFile(path.join(root, 'public/assets/furniture/tabletop-foods-2.png'), path.join(application, 'assets/furniture/tabletop-foods-2.png'))
+    await fs.copyFile(path.join(root, 'public/assets/furniture/tabletop-drinks.png'), path.join(application, 'assets/furniture/tabletop-drinks.png'))
+    await fs.copyFile(path.join(root, 'public/assets/furniture/tabletop-drinks-alcoholic.png'), path.join(application, 'assets/furniture/tabletop-drinks-alcoholic.png'))
     const virtualLibrary = { name: 'test-library-presence', setup(builder) {
       builder.onResolve({ filter: /^virtual:lira-individual-library$/ }, () => ({ path: 'catalog', namespace: 'library-test' }))
       builder.onLoad({ filter: /.*/, namespace: 'library-test' }, () => ({ contents: 'export default true' }))
@@ -219,10 +222,10 @@ test('individual sprite images decode and edited thumbnails refresh in HTTP and 
         const moduleUrl = window.location.protocol === 'file:' ? new URL('./live-preview.mjs', window.location.href).href : '/__live-preview.mjs'
         return (await import(moduleUrl)).verifyBuiltInFoods()
       })
-      assert.equal(foods.length, 8, `${origin}: all approved tabletop foods are bundled`)
+      assert.equal(foods.length, 28, `${origin}: all approved tabletop foods are bundled`)
       assert.ok(foods.every(food => food.count > 20 && food.width <= 26 && food.height <= 22), `${origin}: tabletop foods stay small and render with transparency: ${JSON.stringify(foods)}`)
       t.diagnostic(`${origin}: stored, saved and bundled sprite images decoded.`)
-      t.diagnostic(`${origin}: all eight tabletop foods decoded and rendered smaller than one map tile.`)
+      t.diagnostic(`${origin}: all twenty-eight tabletop foods and drinks decoded and rendered smaller than one map tile.`)
     }
     async function verifyProjectImages(origin) {
       await electron.evaluate((_electron, directory) => { global.spriteLibraryDirectory = directory }, path.join(root, 'public/assets/library'))
