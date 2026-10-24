@@ -266,6 +266,7 @@ const FullScreenGridInner: React.FC = () => {
                 isFocused={true}
                 isSidebar={false}
                 onOpenLiveFullscreen={(u) => setLiveTheaterUser(u)}
+                onOpenScreenShareSettings={() => setIsScreenModalOpen(true)}
                 onContextMenu={handleParticipantContextMenu}
               />
             ) : (
