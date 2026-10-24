@@ -9,6 +9,7 @@ import { SpotifyPlaybackCrop } from './SpotifyPlaybackCrop'
 import { SpotifyPlayerFeedback } from './SpotifyPlayerFeedback'
 import { SpotifyLoginControls } from './SpotifyLoginControls'
 import { useSpotifyLogin } from '../../hooks/useSpotifyLogin'
+import { stopDjForEveryone } from '../../services/stopDjForEveryone'
 
 export const SpotifyJamModal: React.FC = () => {
   const isModalOpen = useSpotifyJamStore((s) => s.isModalOpen)
@@ -33,6 +34,21 @@ export const SpotifyJamModal: React.FC = () => {
   const login = useSpotifyLogin(isModalOpen && !!currentZone && !isDjModeActive && !isListening)
 
   if (!isModalOpen) return null
+
+  const handleCloseDj = async () => {
+    if (djLoading) return
+    setDjLoading(true)
+    setDjError(null)
+    try {
+      if (isDjModeActive) await MediaManager.getInstance().stopDjAudio()
+      else if (typeof window !== 'undefined' && window.electronAPI?.closeSpotifyPlayer) {
+        const result = await window.electronAPI.closeSpotifyPlayer()
+        if (!result.ok) throw new Error(result.error)
+      }
+      setModalOpen(false)
+    } catch { setDjError('Não foi possível fechar o Spotify. Tente novamente.') }
+    finally { setDjLoading(false) }
+  }
 
   const handleToggleDjMode = async () => {
     if (isListening || !targetZoneId || djLoading || (!isDjModeActive && !login.ready)) return
@@ -60,7 +76,8 @@ export const SpotifyJamModal: React.FC = () => {
           setDjError(res.error || 'Erro ao iniciar transmissão de áudio.')
         }
       }
-    } finally {
+    } catch { setDjError('Não foi possível alterar a transmissão. Tente novamente.') }
+    finally {
       setDjLoading(false)
     }
   }
@@ -93,7 +110,8 @@ export const SpotifyJamModal: React.FC = () => {
           <button
             type="button"
             aria-label="Fechar DJ"
-            onClick={() => setModalOpen(false)}
+            onClick={handleCloseDj}
+            disabled={djLoading}
             className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
           >
             <X className="w-5 h-5" />
@@ -140,6 +158,14 @@ export const SpotifyJamModal: React.FC = () => {
                 <span>{djLoading ? (isDjModeActive ? 'Parando...' : 'Iniciando...') : isDjModeActive ? 'Parar DJ' : 'Transmitir DJ'}</span>
               </button>}
 
+              {isListening && <button type="button" aria-label="Encerrar DJ para todos"
+                onClick={() => {
+                  try { stopDjForEveryone(targetZoneId!) }
+                  catch { setDjError('Não foi possível encerrar o DJ. Tente novamente.') }
+                }}
+                className="w-full py-3 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30 font-semibold">
+                Encerrar DJ para todos
+              </button>}
               <div className="flex items-center gap-3 p-3 rounded-xl bg-[#141721] border border-slate-800">
                 <button
                   type="button"
@@ -173,7 +199,8 @@ export const SpotifyJamModal: React.FC = () => {
         <div className="px-5 py-3 border-t border-[#222736] bg-[#0e1118] flex justify-end">
           <button
             type="button"
-            onClick={() => setModalOpen(false)}
+            onClick={handleCloseDj}
+            disabled={djLoading}
             className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl font-medium transition-colors"
           >
             Fechar

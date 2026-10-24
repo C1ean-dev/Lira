@@ -37,7 +37,7 @@ describe('closing Spotify from its tray', () => {
     expect(deps.notifyClosed).toHaveBeenCalledOnce()
     expect(deps.closeBrowser).toHaveBeenCalledOnce()
     expect(deps.getProcess).toHaveBeenCalledTimes(3)
-    expect(deps.stopCapture.mock.invocationCallOrder[0]).toBeLessThan(deps.closeBrowser.mock.invocationCallOrder[0])
+    expect(deps.closeBrowser.mock.invocationCallOrder[0]).toBeLessThan(deps.stopCapture.mock.invocationCallOrder[0])
   })
   it.each([{ processId: 71, remoteDebugging: true }, { processId: 70, remoteDebugging: false }])('preserves a different browser process or normal login window: %j', async remaining => {
     const deps = closing()
@@ -50,6 +50,8 @@ describe('closing Spotify from its tray', () => {
     const deps = closing()
     await expect(closeSpotifyPlayerBrowser({ processId: 70 }, deps)).rejects.toThrow(/Fechar Spotify novamente/)
     expect(deps.closeBrowser).toHaveBeenCalledOnce()
+    expect(deps.stopCapture).not.toHaveBeenCalled()
+    expect(deps.notifyClosed).not.toHaveBeenCalled()
   })
   it('cleans up an already closed player without sending a browser close to a stale endpoint', async () => {
     const deps = closing()

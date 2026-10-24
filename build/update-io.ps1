@@ -1,6 +1,9 @@
 # One streaming read both copies and hashes a file. Counters also feed installation progress.
+# Reuse the helper when a host already loaded the assembly.
+if ('LiraUpdateIO' -as [type]) { return }
 Add-Type -TypeDefinition @'
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -14,7 +17,40 @@ public sealed class LiraUpdateFile {
   public string Hash { get; set; }
 }
 
+public sealed class LiraUpdateTree {
+  public bool Existed { get; set; }
+  public LiraUpdateFile[] Files { get; set; }
+  public string[] Directories { get; set; }
+}
+
 public static class LiraUpdateIO {
+  public static LiraUpdateTree SnapshotTree(string source) {
+    source = Path.GetFullPath(source).TrimEnd(Path.DirectorySeparatorChar);
+    RequireRegularPath(source, null);
+    if (File.Exists(source)) throw new IOException("Invalid source directory: " + source);
+    var files = new List<LiraUpdateFile>();
+    var directories = new List<string>();
+    bool existed = Directory.Exists(source);
+    if (existed) {
+      var pending = new Stack<DirectoryInfo>();
+      pending.Push(new DirectoryInfo(source));
+      while (pending.Count > 0) {
+        foreach (FileSystemInfo item in pending.Pop().EnumerateFileSystemInfos()) {
+          if ((item.Attributes & FileAttributes.ReparsePoint) != 0)
+            throw new IOException("Linked path: " + item.FullName);
+          string relative = item.FullName.Substring(source.Length + 1);
+          var directory = item as DirectoryInfo;
+          if (directory != null) {
+            directories.Add(relative);
+            pending.Push(directory);
+          } else {
+            files.Add(new LiraUpdateFile { Name = relative, Length = ((FileInfo)item).Length });
+          }
+        }
+      }
+    }
+    return new LiraUpdateTree { Existed = existed, Files = files.ToArray(), Directories = directories.ToArray() };
+  }
   public static long SourceReadBytes, VerificationReadBytes, FilesCopied;
   private static readonly Stopwatch progressClock = Stopwatch.StartNew();
   private static long lastProgress = -250;

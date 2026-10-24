@@ -2,6 +2,7 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SpotifyJamModal } from '../../components/spotify/SpotifyJamModal'
+import { MediaManager } from '../../media/MediaManager'
 
 const state = vi.hoisted(() => ({
   login: { ready: false, state: { pending: false, confirmed: false, browserOpen: false }, busy: null, error: null, act: vi.fn() },
@@ -26,11 +27,13 @@ vi.mock('../../store/useMapStore', () => ({ useMapStore: (select: any) => select
 vi.mock('../../services/spotifyDjPlayback', () => ({ commandDjPlayback: vi.fn() }))
 vi.mock('../../media/MediaManager', () => ({ MediaManager: { getInstance: vi.fn() } }))
 vi.mock('../../hooks/useSpotifyLogin', () => ({ useSpotifyLogin: () => state.login }))
+vi.mock('../../services/stopDjForEveryone', () => ({ stopDjForEveryone: vi.fn() }))
 
 describe('Spotify DJ modal', () => {
   beforeEach(() => {
     state.spotify.isModalOpen = true
     state.spotify.isDjModeActive = false
+    state.spotify.djStateByZone = {}
     state.spotify.activeZoneIdForModal = 'room'
     state.player.currentZoneId = 'room'
     state.login.ready = false
@@ -65,6 +68,30 @@ describe('Spotify DJ modal', () => {
     expect(html).not.toContain('Transmitir DJ')
     expect(html).not.toContain('Entrar pelo navegador')
     expect(html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g)?.find(button => button.includes('Parar DJ'))).not.toContain('disabled=""')
+  })
+
+  it('stops the owner DJ before closing its dialog through X', async () => {
+    state.spotify.isDjModeActive = true
+    const stopDjAudio = vi.fn(async () => {})
+    vi.mocked(MediaManager.getInstance).mockReturnValue({ stopDjAudio } as any)
+    state.spotify.setModalOpen.mockClear()
+    let tree: React.ReactNode
+    function Probe() { tree = SpotifyJamModal({}); return null }
+    renderToStaticMarkup(<Probe />)
+    let close: React.ReactElement<any> | undefined
+    function visit(node: React.ReactNode) {
+      React.Children.forEach(node, child => {
+        if (!React.isValidElement(child)) return
+        const props = child.props as any
+        if (props['aria-label'] === 'Fechar DJ') close = child
+        visit(props.children)
+      })
+    }
+    visit(tree!)
+    await close!.props.onClick()
+    expect(stopDjAudio).toHaveBeenCalledOnce()
+    expect(state.spotify.setModalOpen).toHaveBeenCalledWith(false)
+    expect(stopDjAudio.mock.invocationCallOrder[0]).toBeLessThan(state.spotify.setModalOpen.mock.invocationCallOrder[0])
   })
 
   it('enables broadcasting only after login confirmation', () => {

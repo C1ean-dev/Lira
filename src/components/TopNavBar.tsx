@@ -60,7 +60,7 @@ export const TopNavBar: React.FC<Props> = ({
   const checkNow = useUpdateStore((s) => s.checkNow)
   const rawVersion = updateInfo?.currentVersion || CURRENT_APP_VERSION
   const currentVersion = rawVersion.startsWith('v') ? rawVersion : `v${rawVersion}`
-  const isOwner = useGameStore((s) => s.isOwner)
+  const isHost = useGameStore((s) => s.isHost)
   const isRoomPublic = useGameStore((s) => s.isRoomPublic)
   const toggleRoomPrivacy = useGameStore((s) => s.toggleRoomPrivacy)
   const publicationServers = useRoomPublication(isRoomPublic ? roomId : null)
@@ -155,17 +155,17 @@ export const TopNavBar: React.FC<Props> = ({
 
         {roomId && (
           <button
-            onClick={isOwner ? toggleRoomPrivacy : undefined}
-            disabled={!isOwner}
+            onClick={isHost ? toggleRoomPrivacy : undefined}
+            disabled={!isHost}
             className={`flex items-center justify-center ${
               isAndroidPlatform ? 'p-2' : 'hidden sm:flex items-center gap-1.5 px-3 py-1.5'
             } rounded-xl border text-xs font-semibold transition-all ${
               isRoomPublic
                 ? 'bg-blue-500/15 border-blue-500/40 text-blue-300 hover:bg-blue-500/25'
                 : 'bg-[#1b202c] border-[#2a3142] text-slate-300 hover:bg-slate-800'
-            } ${!isOwner ? 'cursor-default opacity-80' : 'cursor-pointer hover:scale-105 active:scale-95'}`}
+            } ${!isHost ? 'cursor-default opacity-80' : 'cursor-pointer hover:scale-105 active:scale-95'}`}
             title={
-              isOwner
+              isHost
                 ? isRoomPublic
                   ? 'Esta sala está Pública (visível na lista de Salas Disponíveis). Clique para torná-la Privada.'
                   : 'Esta sala está Privada (somente via código). Clique para torná-la Pública na lista de Salas Disponíveis.'
@@ -499,7 +499,7 @@ export const TopNavBar: React.FC<Props> = ({
               <span>{isEditorOpen ? 'Fechar Editor do Espaço' : 'Editar Mobílias e Salas'}</span>
             </button>
 
-            {roomId && isOwner && (
+            {roomId && isHost && (
               <button
                 onClick={() => {
                   toggleRoomPrivacy()

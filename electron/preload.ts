@@ -74,6 +74,7 @@ export interface IElectronAPI {
   onUpdateProgress: (callback: (progress: UpdateProgress) => void) => () => void
   openExternal: (url: string) => Promise<void>
   openSpotifyPlayer: (url?: string) => Promise<{ ok: boolean; error?: string }>
+  closeSpotifyPlayer: () => Promise<{ ok: boolean; error?: string }>
   openSpotifyLogin: () => Promise<{ ok: boolean; error?: string }>
   completeSpotifyLogin: () => Promise<{ ok: boolean; error?: string }>
   getSpotifyLoginState: () => Promise<import('../src/types/spotifyLogin').SpotifyLoginState>
@@ -179,6 +180,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   openSpotifyPlayer: (url?: string) => ipcRenderer.invoke('open-spotify-player', url),
+  closeSpotifyPlayer: () => ipcRenderer.invoke('close-spotify-player'),
   openSpotifyLogin: () => ipcRenderer.invoke('open-spotify-login'),
   completeSpotifyLogin: () => ipcRenderer.invoke('complete-spotify-login'),
   getSpotifyLoginState: () => ipcRenderer.invoke('get-spotify-login-state'),

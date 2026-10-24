@@ -96,4 +96,28 @@ describe('Spotify DJ audio startup', () => {
     expect(mocks.stop).toHaveBeenCalledOnce()
     expect(unsubscribe).toHaveBeenCalledOnce()
   })
+
+  it('closes the Spotify browser before releasing capture so music cannot resume locally', async () => {
+    api.closeSpotifyPlayer = vi.fn(async () => ({ ok: true }))
+    await manager.startDjAudio()
+    await manager.stopDjAudio()
+    expect(api.closeSpotifyPlayer).toHaveBeenCalledOnce()
+    expect(api.closeSpotifyPlayer.mock.invocationCallOrder[0]).toBeLessThan(mocks.stop.mock.invocationCallOrder[0])
+    expect(mocks.stop).toHaveBeenCalledWith(false)
+  })
+
+  it('reports browser close failure without asking main to unmute the page', async () => {
+    api.closeSpotifyPlayer = vi.fn(async () => ({ ok: false, error: 'Close failed' }))
+    await manager.startDjAudio()
+    await expect(manager.stopDjAudio()).rejects.toThrow('Close failed')
+    expect(mocks.stop).toHaveBeenCalledWith(false)
+    expect(manager.isDjAudioActive()).toBe(false)
+  })
+
+  it('still stops the native helper when the DJ uses an explicit application source', async () => {
+    api.closeSpotifyPlayer = vi.fn(async () => ({ ok: true }))
+    expect(await manager.startDjAudio('window:42:0')).toEqual({ ok: true })
+    await manager.stopDjAudio()
+    expect(mocks.stop).toHaveBeenCalledWith(true)
+  })
 })

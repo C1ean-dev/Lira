@@ -136,26 +136,8 @@ function Remove-ProfileTree([string]$Name) {
 
 function Get-TreeSnapshot([string]$Source) {
   Assert-RegularPath $Source
-  $existed = Test-Path -LiteralPath $Source -PathType Container
-  $files = [Collections.Generic.List[object]]::new()
-  $directories = [Collections.Generic.List[string]]::new()
-  if ($existed) {
-    $pendingDirectories = [Collections.Generic.Stack[string]]::new()
-    $pendingDirectories.Push($Source)
-    while ($pendingDirectories.Count) {
-      foreach ($item in Get-ChildItem -LiteralPath $pendingDirectories.Pop() -Force) {
-        $relative = $item.FullName.Substring($Source.Length + 1)
-        if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Linked path: $($item.FullName)" }
-        if ($item.PSIsContainer) {
-          $directories.Add($relative)
-          $pendingDirectories.Push($item.FullName)
-        } else {
-          $files.Add([pscustomobject]@{ Name = $relative; Length = $item.Length; Hash = $null })
-        }
-      }
-    }
-  }
-  return [pscustomobject]@{ Existed = [bool]$existed; Files = @($files.ToArray()); Directories = @($directories.ToArray()); Storage = $null }
+  $tree = [LiraUpdateIO]::SnapshotTree($Source)
+  return [pscustomobject]@{ Existed = $tree.Existed; Files = @($tree.Files); Directories = @($tree.Directories); Storage = $null }
 }
 
 function Get-ProfileChangesSnapshot([string]$ProfileToSnapshot) {
