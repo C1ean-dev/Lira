@@ -172,6 +172,49 @@ test('two real browser sessions exchange media and recover calls', {
     await host.evaluate(() => core.media.syncMuteState(false))
     await guest.waitForFunction(() => core.receivedAudio.voice() > 0.005, null, { timeout: 15000 })
     t.diagnostic('Screen video replacement, separate voice call and independent microphone mute passed.')
+    // Exercise the real receiver UI and WebRTC encoder as its visible size changes.
+    await host.evaluate(() => {
+      const full = core.source(1920, 1080, 880)
+      const screen = core.store.getState().localScreenStream
+      screen.removeTrack(screen.getVideoTracks()[0])
+      screen.addTrack(full.getVideoTracks()[0])
+      core.peer.replaceVideoTrack(full.getVideoTracks()[0], true, 5_500_000, 30)
+      core.peer.updateScreenShareOptimizationMode('quality')
+    })
+    await guest.evaluate(async () => {
+      core.liveViewReporter.clearBox('core-stage')
+      core.display = await import('/scripts/live-display-test-harness.tsx')
+      const player = Object.values(core.game.getState().remotePlayers).find(player => player.isScreenSharing)
+      core.displayUser = { ...player, stream: core.store.getState().peerStreams[player.id], liveWatching: true }
+      core.display.showLive('presentation', core.displayUser)
+    })
+    async function receivesSize(width, height) {
+      await guest.waitForFunction(({ width, height }) => core.receivedVideo.videoWidth === width && core.receivedVideo.videoHeight === height,
+        { width, height }, { timeout: 20000 })
+    }
+    await receivesSize(1280, 720)
+    await guest.evaluate(() => core.display.showLive('full', core.displayUser))
+    await receivesSize(1920, 1080)
+    const theater = guest.getByRole('dialog', { name: 'Transmissão em tela cheia' })
+    await theater.getByRole('button', { name: 'Informações da transmissão', exact: true }).click()
+    const panel = theater.getByRole('region', { name: 'Estatísticas da transmissão' })
+    await guest.waitForFunction(() => [...document.querySelectorAll('[aria-label="Estatísticas da transmissão"]')].some(panel => panel.textContent.includes('1920 × 1080')))
+    await guest.mouse.move(600, 400)
+    await new Promise(resolve => setTimeout(resolve, 4000))
+    assert.equal(await panel.isVisible(), true, 'statistics stay visible while fullscreen controls auto-hide')
+    await guest.keyboard.press('Escape')
+    assert.equal(await theater.isVisible(), true, 'first Escape only closes statistics')
+    assert.equal(await panel.count(), 0)
+    await guest.keyboard.press('Escape')
+    await receivesSize(1280, 720)
+    assert.equal(await theater.count(), 0)
+    await guest.evaluate(() => core.display.showLive('mini', core.displayUser))
+    await receivesSize(320, 180)
+    await guest.evaluate(() => {
+      core.display.dispose()
+      core.liveViewReporter.setBox('core-stage', core.displayUser.id, 1080)
+    })
+    t.diagnostic('Real received video: presentation 1280x720, fullscreen 1920x1080, mini 320x180; live statistics and Escape handling passed.')
     await host.evaluate(() => { core.previousCall = [...core.peer.mediaCalls.values()][0]; core.peer.peer.disconnect() })
     await host.waitForFunction(() => !core.peer.peer.disconnected && core.game.getState().connectionStatus === 'connected', null, { timeout: 20000 })
     assert.equal(await host.evaluate(() => [...core.peer.mediaCalls.values()][0] === core.previousCall), true)

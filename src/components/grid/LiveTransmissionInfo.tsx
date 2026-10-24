@@ -8,18 +8,20 @@ interface Props {
   local: boolean
   peerName: string
   onOpenSettings?: () => void
+  onOpenChange?: (open: boolean) => void
 }
 
 const measure = (value: number | null, unit: string, decimals = 1) =>
   value === null ? '—' : `${Number(value.toFixed(decimals))} ${unit}`
 const limits: Record<string, string> = { none: 'Nenhuma', cpu: 'Processamento', bandwidth: 'Rede', other: 'Outro' }
 
-export function LiveTransmissionInfo({ stream, local, peerName, onOpenSettings }: Props) {
+export function LiveTransmissionInfo({ stream, local, peerName, onOpenSettings, onOpenChange }: Props) {
   const [open, setOpen] = useState(false)
   const id = useId()
   const root = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const stats = useLiveTransmissionStats(open, stream, local)
+  useEffect(() => { onOpenChange?.(open) }, [open, onOpenChange])
   useEffect(() => {
     if (!open) return
     const outside = (event: PointerEvent) => {
