@@ -49,6 +49,7 @@ export interface CustomAsset {
   directionalSeatGrids?: Partial<Record<Direction, boolean[][]>>
   collisionFromSprite?: boolean
   frames: string[]
+  bedAnimation?: { frames: string[]; frameRateMs?: number }
   directionalFrames?: Partial<Record<Direction, string | string[]>>
   activityAnimations?: ActivityAnimationFrames
   directionalFrameLayers?: Partial<Record<Direction, CustomAssetLayer[][]>>

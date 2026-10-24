@@ -16,6 +16,7 @@ import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
 import { receiveDjPlaybackMessage } from '../services/spotifyDjPlayback'
 import { isStoppedDjSession, receiveDjStopMessage } from '../services/stopDjForEveryone'
 import { DEFAULT_AVATAR } from '../engine/Constants'
+import { receiveBedInteraction } from '../services/bedInteraction'
 
 const receivedAtlases = new Map<string, AtlasDocument>()
 const atlasChunks = new AtlasChunkReceiver()
@@ -55,6 +56,9 @@ export function processNetworkMessage(
   onDjCallRequest?: (listenerId: string) => void
 ) {
   switch (msg.type) {
+    case 'BED_INTERACTION':
+      if ((isHost && msg.senderId !== peerId) || !receiveBedInteraction(msg)) return
+      break
     // PeerManager handles these on the originating data connection.
     case 'HEARTBEAT':
     case 'HEARTBEAT_ACK':

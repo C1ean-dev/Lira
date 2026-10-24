@@ -13,7 +13,7 @@ import { materializeSpriteDocument } from '../utils/rasterImageSource'
 const canvasFor = (w: number, h: number) => {
   const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : document.createElement('canvas')
   canvas.width = w; canvas.height = h
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  const ctx = canvas.getContext('2d', { willReadFrequently: true }) as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null
   if (!ctx) throw new Error('Não foi possível preparar o atlas')
   ctx.imageSmoothingEnabled = false
   return { canvas, ctx }

@@ -29,6 +29,8 @@ describe('individual library renderer storage', () => {
     expect(fetch).toHaveBeenCalledWith(expect.any(URL), { cache: 'no-store' })
     expect(document?.assets[0].frames[0]).toMatch(/^file:\/\/\/app\/dist\/assets\/library\/sprites\/Hero--hero\/[a-f0-9]{64}\.png$/)
     expect(Image).not.toHaveBeenCalled()
+    expect(document?.assets.find(asset => asset.id === 'lira_romantic_bed_v1')).toMatchObject({ name: 'Cama do Amor', bedAnimation: { frameRateMs: 180 } })
+    expect(document?.categories).toContain('Quarto')
   })
   it('uses native file URLs and saves only new bytes through the desktop bridge', async () => {
     const packet = await buildLibrary({ assets: [hero], categories: [] })
