@@ -358,7 +358,8 @@ export function processNetworkMessage(
       } else if (action === 'add_furniture') {
         useMapStore.getState().addFurniture(data.furniture)
       } else if (action === 'remove_furniture') {
-        useMapStore.getState().removeFurnitureAt(data.x, data.y)
+        if (typeof data.id === 'string') useMapStore.getState().removeFurnitureById(data.id)
+        else useMapStore.getState().removeFurnitureAt(data.x, data.y)
       } else if (action === 'add_zone') {
         useMapStore.getState().addOrUpdateZone(data.zone)
       } else if (action === 'remove_zone') {

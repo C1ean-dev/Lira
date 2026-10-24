@@ -44,6 +44,7 @@ export interface CustomAsset {
   pixelWidth?: number
   pixelHeight?: number
   isObstacle: boolean
+  isTabletopDecoration?: boolean
   collisionGrid?: boolean[][]
   seatGrid?: boolean[][]
   directionalSeatGrids?: Partial<Record<Direction, boolean[][]>>

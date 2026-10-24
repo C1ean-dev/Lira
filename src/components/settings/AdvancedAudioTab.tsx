@@ -6,12 +6,14 @@ import { AudioProcessorMode } from '../../types/audio'
 import { AudioSamplePlayer } from './AudioSamplePlayer'
 import { MultiEngineAudioPlayer } from './MultiEngineAudioPlayer'
 import { ProcessedSampleInfo } from '../../media/MicCalibrator'
+import { resolveNoiseProcessorPreference } from '../../media/noiseSuppressionStatus'
 
 export const AdvancedAudioTab: React.FC = () => {
   const echoCancellation = useMediaStore((s) => s.echoCancellation)
   const autoGainControl = useMediaStore((s) => s.autoGainControl)
   const isNoiseSuppressionEnabled = useMediaStore((s) => s.isNoiseSuppressionEnabled)
   const audioProcessorMode = useMediaStore((s) => s.audioProcessorMode)
+  const processingMode = useMediaStore(resolveNoiseProcessorPreference)
   const selectedAudioInput = useMediaStore((s) => s.selectedAudioInput)
   const micCalibrations = useMediaStore((s) => s.micCalibrations)
   const isCalibrating = useMediaStore((s) => s.isCalibrating)
@@ -487,7 +489,7 @@ export const AdvancedAudioTab: React.FC = () => {
                 Escolha entre DSP clássico, DSP suave (sem cortes duros) e
                 rede neural RNNoise
               </div>
-              {audioProcessorMode === 'rnnoise' && (
+              {processingMode === 'rnnoise' && (
                 <div className="mt-1.5 space-y-1">
                   <div
                     className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-semibold border ${
