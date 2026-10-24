@@ -160,3 +160,48 @@ it('ignores typing, modifiers and repeated E presses while routing a fresh bed s
   expect(key.preventDefault).toHaveBeenCalled()
   expect(network.broadcast).toHaveBeenCalledTimes(1)
 })
+it('accepts response and plays animation when peers have skewed system clocks', () => {
+  receiveBedInteraction(message('invite'))
+  // Guest clock is 12 seconds ahead
+  const acceptFromFuture = {
+    ...message('accept', 'b'),
+    timestamp: Date.now() + 12000,
+  }
+  expect(receiveBedInteraction(acceptFromFuture)).toBe(true)
+  expect(session()?.stage).toBe('active')
+  expect(getBedScene('bed')).not.toBeNull()
+})
+it('tolerates zone mismatch when zone is null vs undefined (outside private zones)', () => {
+  // Remote player has currentZoneId undefined while local player has null
+  useGameStore.setState({
+    localPlayer: { ...player('a', 0), currentZoneId: null },
+    remotePlayers: { b: { ...player('b', 1), currentZoneId: undefined } },
+  })
+  expect(handleBedInteractionKey()).toBe(true)
+  expect(session()).toMatchObject({ stage: 'invited', initiatorId: 'a', targetId: 'b' })
+  expect(receiveBedInteraction({ ...message('accept', 'b'), payload: { action: 'accept', furnitureId: 'bed', sessionId: session()!.id } })).toBe(true)
+  expect(session()?.stage).toBe('active')
+  expect(getBedScene('bed')).not.toBeNull()
+})
+it('authenticates network message when peerId or gameId is used as senderId', () => {
+  useGameStore.setState({
+    remotePlayers: {
+      'peer-b': { ...player('peer-b', 1), gameId: 'user-b' },
+    },
+  })
+  useBedStore.setState({
+    sessions: {
+      bed: { id: 'invitation', roomId: 'space', furnitureId: 'bed', initiatorId: 'a', targetId: 'peer-b', createdAt: Date.now(), stage: 'invited' },
+    },
+  })
+  const relay = vi.fn()
+  const acceptMsg: NetworkMessage = {
+    type: 'BED_INTERACTION',
+    senderId: 'user-b',
+    timestamp: Date.now(),
+    payload: { action: 'accept', furnitureId: 'bed', sessionId: 'invitation' },
+  }
+  processNetworkMessage(acceptMsg, 'peer-b', true, relay, vi.fn(), vi.fn(), 'host')
+  // Should not be rejected by host verification check
+  expect(relay).toHaveBeenCalledWith(acceptMsg, 'peer-b')
+})
