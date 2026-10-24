@@ -51,6 +51,8 @@ import { useMapStore } from '../../store/useMapStore'
 import { MediaManager } from '../../media/MediaManager'
 import { useChatStore } from '../../store/useChatStore'
 import { RoomSettingsModal } from '../RoomSettingsModal'
+import { noiseSuppressionDisplay, resolveNoiseProcessorPreference } from '../../media/noiseSuppressionStatus'
+import { NoiseSuppressionNotice } from '../common/NoiseSuppressionNotice'
 
 interface Props {
   onToggleScreenShare: () => void
@@ -67,6 +69,9 @@ export const CallControlsBar: React.FC<Props> = ({
   const isScreenSharing = useMediaStore((s) => s.isScreenSharing)
   const isNoiseSuppressionEnabled = useMediaStore((s) => s.isNoiseSuppressionEnabled)
   const audioProcessorMode = useMediaStore((s) => s.audioProcessorMode)
+  const rnnoiseStatus = useMediaStore((s) => s.rnnoiseStatus)
+  const processingMode = useMediaStore(resolveNoiseProcessorPreference)
+  const noiseDisplay = noiseSuppressionDisplay(isNoiseSuppressionEnabled, processingMode, rnnoiseStatus)
   const toggleMute = useMediaStore((s) => s.toggleMute)
   const toggleDeafen = useMediaStore((s) => s.toggleDeafen)
   const toggleCamera = useMediaStore((s) => s.toggleCamera)
@@ -192,23 +197,15 @@ export const CallControlsBar: React.FC<Props> = ({
           <button
             onClick={() => setIsNoiseMenuOpen((prev) => !prev)}
             className={`p-3 rounded-xl flex items-center justify-center transition-all ${
-              isNoiseSuppressionEnabled
+              noiseDisplay.canRetry
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30'
+                : isNoiseSuppressionEnabled
                 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30 shadow-lg shadow-emerald-500/10'
                 : 'bg-[#1b202c] text-slate-400 border border-[#2a3142] hover:bg-slate-700 hover:text-slate-200'
             }`}
-            title={
-              isNoiseSuppressionEnabled
-                ? `Supressor de Ruído Ativo (${
-                    audioProcessorMode === 'rnnoise'
-                      ? 'RNNoise Neural'
-                      : audioProcessorMode === 'soft'
-                      ? 'DSP Suave'
-                      : 'DSP Clássico'
-                  }) - Clique para alternar motor`
-                : 'Ativar / Configurar Supressor de Ruído'
-            }
+            title={noiseDisplay.title}
           >
-            <AudioLines className={`w-4 h-4 ${isNoiseSuppressionEnabled ? 'text-emerald-400' : ''}`} />
+            <AudioLines className={`w-4 h-4 ${noiseDisplay.canRetry ? 'text-amber-300' : isNoiseSuppressionEnabled ? 'text-emerald-400' : ''}`} />
           </button>
 
           {isNoiseMenuOpen && (
@@ -221,37 +218,42 @@ export const CallControlsBar: React.FC<Props> = ({
                 <div className="flex items-center gap-1.5">
                   <span
                     className={`w-1.5 h-1.5 rounded-full ${
-                      isNoiseSuppressionEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-500'
+                      noiseDisplay.canRetry ? 'bg-amber-400' : isNoiseSuppressionEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-500'
                     }`}
                   />
                   <span>Supressor de Ruído</span>
                 </div>
                 <span
                   className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold uppercase ${
-                    isNoiseSuppressionEnabled
+                    noiseDisplay.canRetry
+                      ? 'bg-amber-500/20 text-amber-300'
+                      : isNoiseSuppressionEnabled
                       ? 'bg-emerald-500/20 text-emerald-300'
                       : 'bg-slate-700/60 text-slate-400'
                   }`}
                 >
-                  {isNoiseSuppressionEnabled ? 'Ativo' : 'Desligado'}
+                  {noiseDisplay.badge}
                 </span>
               </div>
 
+              <NoiseSuppressionNotice message={noiseDisplay.notice} warning={noiseDisplay.canRetry} />
               <div className="space-y-0.5">
                 {NOISE_ENGINES.map((engine) => {
-                  const isSelected = isNoiseSuppressionEnabled && audioProcessorMode === engine.id
+                  const isSelected = noiseDisplay.activeMode === engine.id
                   const Icon = engine.icon
                   return (
                     <button
                       key={engine.id}
                       type="button"
+                      aria-pressed={isSelected}
+                      title={engine.id === 'rnnoise' && noiseDisplay.canRetry ? 'Tentar RNNoise novamente' : undefined}
                       onClick={async () => {
                         setIsNoiseMenuOpen(false)
                         if (!isNoiseSuppressionEnabled) {
                           toggleNoiseSuppression()
                           MediaManager.getInstance().updateNoiseSuppression(true)
                         }
-                        if (audioProcessorMode !== engine.id) {
+                        if (audioProcessorMode !== engine.id || processingMode !== engine.id || (engine.id === 'rnnoise' && noiseDisplay.canRetry)) {
                           setAudioProcessorMode(engine.id)
                           await MediaManager.getInstance().reprocessStream()
                         }
@@ -278,7 +280,7 @@ export const CallControlsBar: React.FC<Props> = ({
                             )}
                           </div>
                           <span className="text-[9px] text-slate-400 font-normal truncate">
-                            {engine.desc}
+                            {engine.id === 'rnnoise' && noiseDisplay.canRetry ? 'Indisponível · clique para tentar novamente' : engine.desc}
                           </span>
                         </div>
                       </div>

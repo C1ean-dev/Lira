@@ -1,6 +1,7 @@
 import { NoiseSuppressor } from './NoiseSuppressor'
 import { SoftDspProcessor } from './SoftDspProcessor'
 import { RnnoiseProcessor } from './RnnoiseProcessor'
+import { resolveNoiseProcessorPreference } from './noiseSuppressionStatus'
 import { MicCalibrator, ProcessedSampleInfo } from './MicCalibrator'
 import { CallAudioIsolator } from './CallAudioIsolator'
 import { ProcessAudioCapture } from './ProcessAudioCapture'
@@ -210,11 +211,7 @@ export class MediaManager {
 
   private selectEngine(): AudioEngine {
     const state = useMediaStore.getState()
-    const manual = state.hasUserChosenProcessorMode
-    const cal = state.micCalibrations[state.selectedAudioInput]
-    const mode: AudioProcessorMode = manual
-      ? state.audioProcessorMode
-      : cal?.recommendedMode ?? state.audioProcessorMode ?? 'rnnoise'
+    const mode = resolveNoiseProcessorPreference(state)
     this.currentProcessorMode = mode
     if (mode === 'rnnoise') return this.rnnoiseEngine
     if (mode === 'soft') return this.softEngine
