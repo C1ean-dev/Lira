@@ -41,8 +41,10 @@ test('individual sprite images decode and edited thumbnails refresh in HTTP and 
       import { createRoot } from 'react-dom/client';
       import { PixelArtThumbnail } from './src/editor/PixelArtThumbnail';
       import { useCustomAssetsStore, getCustomAssetImage, onCustomAssetsChange } from './src/store/useCustomAssetsStore';
-      import { spriteFrame } from './src/assets/spriteFrame';
+      import { spriteFrame, readSpriteFrame } from './src/assets/spriteFrame';
+      import { collectProjectImageUrls } from './scripts/sprite-test-images.mjs';
       import { FurnitureRenderer } from './src/engine/rendering/furnitureRenderer';
+      export const projectImageUrls = document => collectProjectImageUrls(document, readSpriteFrame);
       export async function verifyEditedThumbnail() {
         const wait = () => new Promise(resolve => setTimeout(resolve, 20));
         const until = async predicate => {
@@ -192,15 +194,10 @@ test('individual sprite images decode and edited thumbnails refresh in HTTP and 
       await electron.evaluate((_electron, directory) => { global.spriteLibraryDirectory = directory }, path.join(root, 'public/assets/library'))
       const result = await page.evaluate(async () => {
         const doc = await libraryTesting.loadStoredLibrary()
-        const urls = new Set()
-        function visit(value) {
-          if (typeof value === 'string' && /\/(?:images|sprites\/[^/]+)\/[a-f0-9]{64}\.(png|webp|jpg|gif)$/.test(value)) urls.add(value)
-          else if (Array.isArray(value)) value.forEach(visit)
-          else if (value && typeof value === 'object') Object.values(value).forEach(visit)
-        }
-        visit(doc)
+        const moduleUrl = window.location.protocol === 'file:' ? new URL('./live-preview.mjs', window.location.href).href : '/__live-preview.mjs'
+        const { projectImageUrls } = await import(moduleUrl)
         const failed = []
-        const list = [...urls]
+        const list = projectImageUrls(doc)
         for (let index = 0; index < list.length; index += 8) {
           await Promise.all(list.slice(index, index + 8).map(url => new Promise(resolve => {
             const image = new Image()
@@ -210,9 +207,10 @@ test('individual sprite images decode and edited thumbnails refresh in HTTP and 
             image.src = url
           })))
         }
-        return { total: urls.size, failed }
+        return { total: list.length, images: list.map(url => url.slice(url.lastIndexOf('/') + 1)).sort(), failed }
       })
       assert.equal(result.total, catalog.images.length, `${origin}: every catalog image is exercised`)
+      assert.deepEqual(result.images, [...catalog.images].sort(), `${origin}: exercised images match the catalog`)
       assert.deepEqual(result.failed, [], `${origin}: every project image decodes`)
       t.diagnostic(`${origin}: all ${result.total} project sprite images decoded.`)
       await electron.evaluate((_electron, directory) => { global.spriteLibraryDirectory = directory }, library)

@@ -9,6 +9,7 @@ import { PrivateZone } from '../types/map'
 import { Player } from '../types/game'
 import { knockOnLockedDoor } from '../utils/doorKnockHelper'
 import { useSimplifiedMapSnapshot } from '../hooks/useSimplifiedMapSnapshot'
+import { findSafePlayerPosition } from '../engine/physics/safePlayerPosition'
 
 export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
   const { localPlayer, remotePlayers, width, height, zones } = useSimplifiedMapSnapshot()
@@ -42,8 +43,12 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
       return
     }
 
-    const targetX = Math.floor(zone.x + zone.width / 2)
-    const targetY = Math.floor(zone.y + zone.height / 2)
+    const destination = findSafePlayerPosition(
+      Math.floor(zone.x + zone.width / 2), Math.floor(zone.y + zone.height / 2),
+      useMapStore.getState().mapData, zone.id
+    )
+    if (!destination) return
+    const { x: targetX, y: targetY } = destination
 
     const prevZoneId = localPlayer.currentZoneId
     if (prevZoneId && prevZoneId !== zone.id) {
@@ -58,12 +63,16 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
       x: targetX,
       y: targetY,
       currentZoneId: zone.id,
+      isMoving: false,
+      seatedOn: null,
     })
 
     PeerManager.getInstance().sendPlayerUpdate({
       x: targetX,
       y: targetY,
       currentZoneId: zone.id,
+      isMoving: false,
+      seatedOn: null,
     })
 
     useMapStore.getState().checkAndUnlockEmptyZones()
@@ -94,7 +103,9 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
       return
     }
 
-    const newZoneId = targetZone ? targetZone.id : null
+    const destination = findSafePlayerPosition(targetX, targetY, mapData, targetZone?.id ?? null)
+    if (!destination) return
+    const newZoneId = destination.currentZoneId
     const prevZoneId = localPlayer.currentZoneId
 
     if (prevZoneId && prevZoneId !== newZoneId) {
@@ -106,15 +117,19 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
     }
 
     setLocalPlayer({
-      x: targetX,
-      y: targetY,
+      x: destination.x,
+      y: destination.y,
       currentZoneId: newZoneId,
+      isMoving: false,
+      seatedOn: null,
     })
 
     PeerManager.getInstance().sendPlayerUpdate({
-      x: targetX,
-      y: targetY,
+      x: destination.x,
+      y: destination.y,
       currentZoneId: newZoneId,
+      isMoving: false,
+      seatedOn: null,
     })
 
     useMapStore.getState().checkAndUnlockEmptyZones()
