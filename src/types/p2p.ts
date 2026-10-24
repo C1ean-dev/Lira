@@ -9,6 +9,7 @@ export type NetworkMessageType =
   | 'PLAYER_LEAVE'
   | 'PLAYER_MOVE'
   | 'PLAYER_UPDATE'
+  | 'BED_INTERACTION'
   | 'MAP_SYNC'
   | 'MAP_EDIT'
   | 'CUSTOM_ASSETS_SYNC'

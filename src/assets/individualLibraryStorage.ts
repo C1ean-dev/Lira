@@ -2,6 +2,7 @@ import hasBundledLibrary from 'virtual:lira-individual-library'
 import { buildLibrary, openLibrary, imageDataUrl, knownLibraryImage, libraryImagePath, type LibraryCatalog, type LibraryLocation, type LibraryPacket } from './individualLibrary'
 import type { AtlasDocument } from './atlasFormat'
 import { compactSourceSprites } from './sourceSprites'
+import { addBuiltInFurniture } from './builtInFurniture'
 const indexedImageUrls = new Map<string, string>()
 
 const baseUrl = () => new URL(`${window.location.protocol === 'file:' && import.meta.env.BASE_URL === '/' ? './' : import.meta.env.BASE_URL}assets/library/`, window.location.href).href
@@ -23,7 +24,10 @@ export async function loadBundledLibrary(): Promise<AtlasDocument | null> {
   if (!hasBundledLibrary) return null
   const response = await fetch(new URL('catalog.json', baseUrl()), { cache: 'no-store' })
   if (!response.ok) throw new Error('Catálogo distribuído ausente')
-  return openLocation({ catalog: await response.json(), baseUrl: baseUrl() })
+  const document = openLocation({ catalog: await response.json(), baseUrl: baseUrl() })
+  document.assets = addBuiltInFurniture(document.assets, document.deletedAssetIds)
+  document.categories = [...new Set([...document.categories, ...document.assets.filter(asset => asset.bedAnimation).map(asset => asset.category)])]
+  return document
 }
 export async function loadStoredLibrary(): Promise<AtlasDocument | null> {
   const api = window.electronAPI

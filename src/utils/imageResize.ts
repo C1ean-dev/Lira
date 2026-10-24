@@ -258,7 +258,7 @@ export function bakeLayersToDataUrlSync(
   const offscreen = document.createElement('canvas')
   offscreen.width = bakeWidth
   offscreen.height = bakeHeight
-  const ctx = offscreen.getContext('2d')
+  const ctx = offscreen.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null
   if (!ctx) return null
 
   ctx.imageSmoothingEnabled = useSmoothing

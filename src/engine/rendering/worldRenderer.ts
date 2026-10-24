@@ -12,6 +12,7 @@ import { useSettingsStore } from '../../store/useSettingsStore'
 import { CameraManager } from '../camera/CameraManager'
 import { getStaticLayer } from './staticLayerCache'
 import { FurnitureRenderer, resolveFurnitureDimensions } from './furnitureRenderer'
+import { renderBedParticipant } from './bedRenderer'
 
 export class WorldRenderer {
   static render(
@@ -242,7 +243,7 @@ export class WorldRenderer {
 
       for (const entity of allEntities) {
         if (entity.kind === 'player') {
-          AvatarRenderer.drawPlayer(ctx, entity.player, entity.isLocal, currentTime, TILE_SIZE, showNameTags)
+          renderBedParticipant(ctx, entity.player.id, () => AvatarRenderer.drawPlayer(ctx, entity.player, entity.isLocal, currentTime, TILE_SIZE, showNameTags))
         } else {
           PetRenderer.drawPet(ctx, entity.pet, entity.petConfig, currentTime, showNameTags)
         }

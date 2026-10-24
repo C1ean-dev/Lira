@@ -12,6 +12,7 @@ function frameSources(asset: CustomAsset): string[] {
   return [...new Set([
     ...asset.frames, ...Object.values(asset.directionalFrames || {}).flatMap(sequence),
     ...Object.values(asset.activityAnimations || {}).flatMap(sequence), asset.thumbnail || '',
+    ...(asset.bedAnimation?.frames || []),
   ].filter(Boolean))]
 }
 
@@ -31,6 +32,7 @@ export function spriteXml(asset: CustomAsset, imagePath = `${asset.name}.png`): 
   for (const dir of directions) sequence(asset.directionalFrames?.[dir]).forEach((src, i) => add(`${asset.avatarSlot || asset.type}_${asset.id}_${dir}_${i}`, src))
   for (const [activity, frames] of Object.entries(asset.activityAnimations || {})) frames?.forEach((src, i) => add(`${asset.avatarSlot || asset.type}_${asset.id}_${activity}_down_${i}`, src))
   if (!entries.length) asset.frames.forEach((src, i) => add(`${asset.id}_down_${i}`, src))
+  asset.bedAnimation?.frames.forEach((src, i) => add(`${asset.id}_bed_${i}`, src))
   return `<?xml version="1.0" encoding="UTF-8"?>\n<TextureAtlas imagePath="${xmlEscape(imagePath)}">\n${entries.join('\n')}\n</TextureAtlas>`
 }
 

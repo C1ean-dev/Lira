@@ -15,6 +15,7 @@ import { useSpotifyPresence } from '../hooks/useSpotifyPresence'
 import { SpotifyDjAudio } from './spotify/SpotifyDjAudio'
 import { useSpotifyDjPlaybackSync } from '../hooks/useSpotifyDjPlaybackSync'
 import { useAvatarInactivity } from '../hooks/useAvatarInactivity'
+import { BedInteractionPrompt } from './BedInteractionPrompt'
 
 interface Props {
   onOpenAvatarModal: () => void
@@ -59,6 +60,7 @@ export const SpaceShell: React.FC<Props> = ({
 
     <DoorKnockNotification />
     <DoorKnockPrompt />
+    <BedInteractionPrompt />
 
     <CustomElementModal />
 

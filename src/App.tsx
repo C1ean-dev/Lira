@@ -17,6 +17,7 @@ import { MediaManager } from './media/MediaManager'
 import { useMountOnFirstOpen } from './hooks/useMountOnFirstOpen'
 import { markStartup, reportStartupAfterPaint } from './utils/startupTrace'
 import { callNotificationService } from './services/callNotificationService'
+import { handleBedInteractionShortcut } from './services/bedInteraction'
 
 const loadSpaceShell = () => import('./components/SpaceShell').then((m) => ({ default: m.SpaceShell }))
 const loadAvatarCustomizerModal = () =>
@@ -74,7 +75,7 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     const handleGlobalShortcuts = (e: KeyboardEvent) => {
-      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) {
+      if ((e.target as HTMLElement)?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes((e.target as HTMLElement)?.tagName)) {
         return
       }
 
@@ -85,7 +86,7 @@ export const App: React.FC = () => {
       } else if (e.key.toLowerCase() === 'c') {
         toggleChat()
       } else if (e.key.toLowerCase() === 'e') {
-        toggleEditor()
+        if (!e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !handleBedInteractionShortcut(e)) toggleEditor()
       }
     }
 

@@ -4,6 +4,7 @@ import { CustomAsset } from '../../types/customAsset'
 import { FURNITURE_CATALOG, TILE_SIZE } from '../Constants'
 import { useCustomAssetsStore, getCustomAssetImage } from '../../store/useCustomAssetsStore'
 import { resolveSpritePlacement } from './spritePlacement'
+import { getBedScene } from '../../services/bedInteraction'
 
 export type FurnitureDef = FurnitureDefinition
 
@@ -121,7 +122,8 @@ export class FurnitureRenderer {
       }
 
       const frameIdx = Math.floor((Date.now() / (customAsset.frameRateMs || 160)) % (frameList.length || 1))
-      const frameUrl = frameList[frameIdx]
+      const scene = customAsset.bedAnimation ? getBedScene(furn.id) : null
+      const frameUrl = scene?.frame || frameList[frameIdx]
       const img = frameUrl ? getCustomAssetImage(frameUrl) : null
 
       if (img && img.complete && img.naturalWidth > 0) {
