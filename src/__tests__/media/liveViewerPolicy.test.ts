@@ -10,6 +10,7 @@ import {
   __resetVideoSendPolicyForTests,
 } from '../../p2p/videoSendPolicy'
 import { LIVE_QUALITY_INTERVAL_MS } from '../../p2p/liveQualityLog'
+import { MAX_VIEW_HEIGHT } from '../../p2p/liveLayers'
 import { __resetSilentAudioForTests } from '../../media/silentAudioTrack'
 import { useGameStore } from '../../store/useGameStore'
 import { useMediaStore } from '../../store/useMediaStore'
@@ -248,6 +249,16 @@ describe('who a live is sent to', () => {
       await vi.advanceTimersByTimeAsync(0)
       return { media, viewer, other, calls }
     }
+
+    it.each(['maintain-resolution', 'maintain-framerate'] as const)('adapts presentation and mini views, delivers the full source in fullscreen and scales back on exit (%s)', async mode => {
+      const { viewer, calls } = await watching(420)
+      MediaCallHandler.updateScreenDegradationPreference(calls, mode)
+      expect(viewer.last()).toMatchObject({ scaleResolutionDownBy: 2, maxBitrate: 1_945_000 })
+      MediaCallHandler.applyViewerRequest(calls, 'viewer', true, MAX_VIEW_HEIGHT)
+      expect(viewer.last()).toMatchObject({ scaleResolutionDownBy: 1, maxBitrate: 5_500_000 })
+      MediaCallHandler.applyViewerRequest(calls, 'viewer', true, 90)
+      expect(viewer.last()).toMatchObject({ scaleResolutionDownBy: 6, maxBitrate: 374_000 })
+    })
 
     it('switches the video on at the size the viewer shows it', async () => {
       const { viewer } = await watching(180)
