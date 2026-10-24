@@ -9,15 +9,22 @@ import { parseAtlasDocument, type AtlasDocument } from '../../assets/atlasFormat
 const png = 'data:image/png;base64,iVBORw0KGgo='
 const asset: CustomAsset = { id: 'hero', name: 'Hero', type: 'avatar', category: 'People', width: 1, height: 1, frames: [png], sourceImageSrc: png, sourceSheets: [{ id: 'primary', name: 'Original', src: png, width: 32, height: 32 }], slicerPresets: [{ directions: { down: [{ x: 0, y: 0, w: 16, h: 16, dataUrl: png }] } }], createdAt: 1 }
 
+function expectLegacyAssetsPreserved(current: AtlasDocument, legacy: AtlasDocument) {
+  const deleted = new Set(current.deletedAssetIds || [])
+  const retained = legacy.assets.filter(asset => !deleted.has(asset.id))
+  expect(current.assets.map(asset => asset.id)).toEqual(expect.arrayContaining(retained.map(asset => asset.id)))
+}
+
 describe('individual image library', () => {
-  it('preserves legacy characters while allowing added sprites, with complete, matching image files', () => {
+  it('preserves undeleted legacy assets while allowing added sprites, with complete, matching image files', () => {
     const directory = path.resolve('public/assets/library')
     const catalog = JSON.parse(fs.readFileSync(path.join(directory, 'catalog.json'), 'utf8'))
     const current = openLibrary(catalog, name => name, false)
     const legacy = parseAtlasDocument(fs.readFileSync(path.join(directory, 'library.xml'), 'utf8'), name => name)
     // The editor can add characters/categories after the initial migration.
-    // Every legacy entry must still be present; all current images are checked below.
-    expect(current.assets.map(a => a.id)).toEqual(expect.arrayContaining(legacy.assets.map(a => a.id)))
+    // Explicit editor deletions are preserved; unexplained losses must still fail.
+    // All current images are checked below.
+    expectLegacyAssetsPreserved(current, legacy)
     expect(current.categories).toEqual(expect.arrayContaining(legacy.categories))
     for (const asset of current.assets) {
       expect(asset.frames.every(frame => !frame.startsWith('composition:'))).toBe(true)
@@ -30,6 +37,21 @@ describe('individual image library', () => {
       expect(createHash('sha256').update(bytes).digest('hex') + '.png').toBe(name)
     }
   })
+  it('allows a legacy asset removed by an explicit saved deletion', async () => {
+    const packet = await buildLibrary({ assets: [], categories: ['People'], deletedAssetIds: [asset.id] })
+    const current = openLibrary(packet.catalog, name => name, false)
+    expectLegacyAssetsPreserved(current, { assets: [asset], categories: ['People'] })
+    expect(current.assets).toHaveLength(0)
+    expect(current.deletedAssetIds).toContain(asset.id)
+  })
+
+  it('still detects missing legacy assets without a matching saved deletion', () => {
+    const legacy = { assets: [asset], categories: ['People'] }
+    for (const deletedAssetIds of [undefined, [], ['another-asset']]) {
+      expect(() => expectLegacyAssetsPreserved({ assets: [], categories: ['People'], deletedAssetIds }, legacy)).toThrow()
+    }
+  })
+
   it('preserves original sheets and frame coordinates without decoding or repacking images', async () => {
     const Image = vi.fn(() => { throw new Error('Unexpected decode') })
     vi.stubGlobal('Image', Image)
