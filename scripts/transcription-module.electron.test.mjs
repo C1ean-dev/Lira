@@ -43,8 +43,8 @@ test('optional transcription installs from file origin and starts again offline'
       }
       createRoot(document.getElementById('root')).render(<Harness />);
     ` }, outfile: path.join(temporary, 'panel.js'), bundle: true, platform: 'browser', format: 'esm', logLevel: 'silent' })
-    const css = (await fs.readdir(path.join(root, 'dist/assets'))).find(name => /^bootstrap-.*\.css$/.test(name))
-    await fs.copyFile(path.join(root, 'dist/assets', css), path.join(temporary, 'panel.css'))
+    const { buildTestPanelCss } = await import('./build-test-panel-css.mjs')
+    await buildTestPanelCss(path.join(temporary, 'panel.css'))
     await fs.writeFile(path.join(temporary, 'index.html'), '<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="./panel.css"><div id="root"></div><script type="module" src="./panel.js"></script>')
     const main = path.join(temporary, 'main.cjs')
     await fs.writeFile(main, `const {app,BrowserWindow}=require('electron');app.setPath('userData',${JSON.stringify(path.join(temporary, 'profile'))});app.whenReady().then(()=>{const window=new BrowserWindow({show:false,width:1280,height:800,webPreferences:{webSecurity:true,contextIsolation:true,nodeIntegration:false,backgroundThrottling:false}});window.loadFile(${JSON.stringify(path.join(temporary, 'index.html'))})});app.on('window-all-closed',()=>app.quit());`)
