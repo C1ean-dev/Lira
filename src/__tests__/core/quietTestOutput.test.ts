@@ -44,13 +44,35 @@ describe('quiet test:all output', () => {
     expect(reporter.onTestRunEnd).toBe(DefaultReporter.prototype.onTestRunEnd)
   })
 
-  it('keeps warnings and errors from passing Vitest tests but hides normal logs', () => {
+  it('keeps warnings outside test cases but hides normal logs', () => {
     const reporter = new QuietVitestReporter()
     const output = vi.spyOn(reporter, 'error').mockImplementation(() => {})
     reporter.onUserConsoleLog({ type: 'stdout', content: 'normal progress\n' })
     reporter.onUserConsoleLog({ type: 'stderr', content: 'warning from a passing test\n' })
     reporter.onUserConsoleLog({ type: 'stdout', content: '[Warning] check this\n' })
     expect(output.mock.calls.map(([message]) => message)).toEqual(['[AVISO] warning from a passing test', '[AVISO] [Warning] check this'])
+  })
+
+  it('discards simulated failures and warnings once a Vitest test passes, including late logs', () => {
+    const reporter = new QuietVitestReporter()
+    const output = vi.spyOn(reporter, 'error').mockImplementation(() => {})
+    reporter.onUserConsoleLog({ taskId: 'expected-failure', type: 'stderr', content: 'Error: simulated microphone failure' })
+    reporter.onUserConsoleLog({ taskId: 'expected-failure', type: 'stderr', content: 'Warning: expected fallback' })
+    expect(output).not.toHaveBeenCalled()
+    reporter.onTestCaseResult({ id: 'expected-failure', result: () => ({ state: 'passed' }), diagnostic: () => ({ duration: 10 }) })
+    reporter.onUserConsoleLog({ taskId: 'expected-failure', type: 'stderr', content: 'Error: late simulated failure' })
+    expect(output).not.toHaveBeenCalled()
+  })
+
+  it('keeps diagnostic notices for failed Vitest tests, including late logs', () => {
+    const reporter = new QuietVitestReporter()
+    const output = vi.spyOn(reporter, 'error').mockImplementation(() => {})
+    reporter.onUserConsoleLog({ taskId: 'broken', type: 'stderr', content: 'Error: useful failure context' })
+    reporter.onTestCaseResult({ id: 'broken', result: () => ({ state: 'failed' }), diagnostic: () => ({ duration: 10 }) })
+    reporter.onUserConsoleLog({ taskId: 'broken', type: 'stderr', content: 'Warning: late failure context' })
+    expect(output.mock.calls).toEqual([
+      ['[ERRO] Error: useful failure context'], ['[AVISO] Warning: late failure context'],
+    ])
   })
 
   it('compacts repeated console warnings and excludes stacks and batched diagnostic progress', () => {
@@ -102,8 +124,9 @@ describe('quiet test:all output', () => {
 
   it('preserves real Vitest assertion and collection errors without passing-test output', () => {
     const file = fixture('example.test.mjs', `import { it, expect } from ${JSON.stringify(pathToFileURL(path.resolve('node_modules/vitest/dist/index.js')).href)};
-      it('quick success', () => { console.log('hidden progress'); console.warn('keep Vitest warning'); });
-      it('quick failure', () => expect(1, 'Vitest failure context').toBe(2));`)
+      it('quick success', () => { console.log('hidden progress'); console.error('simulated passing error'); console.warn('simulated passing warning'); expect(() => { throw Error('expected'); }).toThrow('expected'); });
+      it.fails('expected failing test', () => { console.error('expected fails output'); expect(1).toBe(2); });
+      it('quick failure', () => { console.warn('keep Vitest warning'); expect(1, 'Vitest failure context').toBe(2); });`)
     const config = path.join(path.dirname(file), 'vitest.config.mjs')
     writeFileSync(config, `export default { test: { include: ['*.test.mjs'], maxWorkers: 1, reporters: [${JSON.stringify(path.resolve('scripts/quiet-vitest-reporter.mjs'))}] } }`)
     writeFileSync(path.join(path.dirname(file), 'collection.test.mjs'), "throw new Error('collection failure context')")
@@ -112,6 +135,7 @@ describe('quiet test:all output', () => {
     const output = result.stdout + result.stderr
     expect(output).not.toMatch(/[✓✔].*quick success/)
     expect(result.stdout).not.toContain('hidden progress')
+    expect(output).not.toMatch(/\[(?:ERRO|AVISO)\].*(?:simulated passing|expected fails output)/)
     expect(output).not.toContain('Test Files')
     expect(output).not.toContain(' RUN ')
     expect(output).toContain('keep Vitest warning')

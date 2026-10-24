@@ -40,6 +40,8 @@ e exige acesso à internet. Não é necessário gerar um build antes dos testes.
 
 No comando completo, a saída mostra apenas alertas, erros e testes acima de
 5000 ms (marcados com `[LENTO]`). Testes rápidos aprovados e resumos são ocultados.
+Mensagens de console de testes unitários aprovados também são ocultadas, incluindo
+erros simulados e falhas esperadas. Testes reprovados mantêm seus diagnósticos.
 
 Para executar apenas a suíte unitária, use `npm test`.
 
