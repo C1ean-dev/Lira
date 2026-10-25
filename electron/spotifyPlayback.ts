@@ -1,4 +1,9 @@
 import { toggleSpotifyShuffle } from './spotifyShuffle'
+import { searchSpotifyInPage, collectSpotifySearchSuggestions, readSpotifySearchResults } from './spotifySearch'
+import { normalizeDjSongQuery } from '../src/types/spotifyDjRequests'
+import { parseSpotifySearchResult, validSpotifySearchTrack, type SpotifySearchResult, type SpotifySearchTrack } from '../src/types/spotifySearch'
+import type { SpotifyDjRequestResult } from '../src/types/spotifyDjRequests'
+import { enqueueSpotifyTrackInPage } from './spotifyQueue'
 import type { PlaybackRect, SpotifyPlaybackCommand, SpotifyPlaybackResult, SpotifyPlaybackFrameData } from '../src/types/spotifyPlayback'
 
 // This function is evaluated inside the dedicated Spotify tab. It reads only the playback bar.
@@ -70,6 +75,7 @@ type Region = PlaybackRect & {
 export type PlaybackConnection = { request(method: string, params: Record<string, unknown>, timeoutMs?: number): Promise<any>; close(): void }
 type Deps = {
   active(): boolean
+  canQueue?(): boolean
   readPortFile(): Promise<string>
   json(url: string): Promise<any>
   connect(url: string): Promise<PlaybackConnection>
@@ -83,11 +89,19 @@ function contained(rect: PlaybackRect, parent: PlaybackRect): boolean {
 }
 
 export class SpotifyPlaybackController {
+  private searchTarget: { browser: string; socket: string; owner: PlaybackConnection; query: string } | null = null
+  private automationSockets = new Set<string>()
+  private suggestionsRunning = false
+  private suggestionQueue = new Map<string, { query: string; finish(result: SpotifySearchResult): void }>()
+  private suggestionCache = new Map<string, { until: number; result: SpotifySearchResult }>()
+  private queueGeneration = 0
+  private queueJobs: Array<{ track: SpotifySearchTrack; generation: number; finish(result: SpotifyDjRequestResult): void }> = []
+  private queueOperations = new Map<string, { trackId: string; result: Promise<SpotifyDjRequestResult>; completed: boolean }>()
   constructor(private deps: Deps) {}
 
   connectTab(): Promise<PlaybackConnection> { return this.target().then(url => this.deps.connect(url)) }
 
-  private async target(): Promise<string> {
+  private async browserContext() {
     if (!this.deps.active()) throw new Error('Abra o Spotify pelo botão Transmitir DJ.')
     let file: string
     try { file = await this.deps.readPortFile() } catch { throw new Error('Feche a janela do Spotify e abra novamente pelo Lira para ativar os controles.') }
@@ -100,13 +114,163 @@ export class SpotifyPlaybackController {
       return raw
     }
     const version = await this.deps.json(`http://127.0.0.1:${port}/json/version`)
-    localWs(version.webSocketDebuggerUrl, browserPath)
+    const browser = localWs(version.webSocketDebuggerUrl, browserPath)
     const tabs = await this.deps.json(`http://127.0.0.1:${port}/json/list`)
-    const page = Array.isArray(tabs) && tabs.find(tab => {
+    return { browser, tabs: Array.isArray(tabs) ? tabs : [], pageSocket: (raw: string) => localWs(raw) }
+  }
+
+  private async target(): Promise<string> {
+    const context = await this.browserContext()
+    const page = context.tabs.find(tab => {
+      if (this.automationSockets.has(`${context.browser}|${tab.webSocketDebuggerUrl}`)) return false
       try { return tab.type === 'page' && new URL(tab.url).origin === 'https://open.spotify.com' } catch { return false }
     })
     if (!page) throw new Error('Faça login e escolha uma música na janela do Spotify.')
-    return localWs(page.webSocketDebuggerUrl)
+    return context.pageSocket(page.webSocketDebuggerUrl)
+  }
+
+  suggestions(text: string, requesterId = 'local'): Promise<SpotifySearchResult> {
+    const query = normalizeDjSongQuery(text)
+    if (!query || query.length < 2) return Promise.resolve({ ok: true, tracks: [] })
+    if (typeof requesterId !== 'string' || !requesterId || requesterId.length > 256) return Promise.resolve({ ok: false, error: 'Pesquisa inválida.' })
+    return new Promise(finish => {
+      this.suggestionQueue.get(requesterId)?.finish({ ok: false, error: 'Pesquisa substituída por uma consulta mais recente.' })
+      if (!this.suggestionQueue.has(requesterId) && this.suggestionQueue.size >= 16) {
+        finish({ ok: false, error: 'O DJ está recebendo muitas buscas. Tente novamente em instantes.' }); return
+      }
+      this.suggestionQueue.set(requesterId, { query, finish })
+      void this.drainSuggestions()
+    })
+  }
+
+  private async drainSuggestions() {
+    if (this.suggestionsRunning) return
+    this.suggestionsRunning = true
+    try {
+      while (this.suggestionQueue.size || this.queueJobs.length) {
+        const queueJob = this.queueJobs.shift()
+        if (queueJob) {
+          try { queueJob.finish(await this.pageQueue(queueJob.track, queueJob.generation)) }
+          catch (error) { queueJob.finish({ ok: false, error: (error instanceof Error ? error.message : 'Fila do Spotify indisponível.').slice(0, 300) }) }
+          continue
+        }
+        const [requester, job] = this.suggestionQueue.entries().next().value!
+        this.suggestionQueue.delete(requester)
+        try { job.finish(await this.pageSuggestions(job.query)) }
+        catch (error) { job.finish({ ok: false, error: (error instanceof Error ? error.message : 'Busca do Spotify indisponível.').slice(0, 300) }) }
+      }
+    } finally { this.suggestionsRunning = false }
+  }
+
+  enqueue(track: SpotifySearchTrack, operationId: string): Promise<SpotifyDjRequestResult> {
+    if (!validSpotifySearchTrack(track) || typeof operationId !== 'string' || !operationId || operationId.length > 256) return Promise.resolve({ ok: false, error: 'Pedido de música inválido.' })
+    const previous = this.queueOperations.get(operationId)
+    if (previous) return previous.trackId === track.id ? previous.result : Promise.resolve({ ok: false, error: 'Este pedido já está vinculado a outra faixa.' })
+    if (!this.deps.active() || this.deps.canQueue?.() === false) return Promise.resolve({ ok: false, error: 'O DJ não está mais transmitindo.' })
+    if (this.queueJobs.length >= 16) return Promise.resolve({ ok: false, error: 'O DJ está atendendo muitos pedidos. Tente novamente em instantes.' })
+    const result = new Promise<SpotifyDjRequestResult>(finish => { this.queueJobs.push({ track, generation: this.queueGeneration, finish }) })
+    const operation = { trackId: track.id, result, completed: false }
+    this.queueOperations.set(operationId, operation)
+    void result.then(() => {
+      operation.completed = true
+      for (const [id, entry] of this.queueOperations) {
+        if (this.queueOperations.size <= 512) break
+        if (entry.completed) this.queueOperations.delete(id)
+      }
+    })
+    void this.drainSuggestions()
+    return result
+  }
+
+  cancelQueuedTracks(): void {
+    this.queueGeneration++
+    for (const job of this.queueJobs.splice(0)) job.finish({ ok: false, error: 'A transmissão do DJ foi encerrada.' })
+    for (const job of this.suggestionQueue.values()) job.finish({ ok: false, error: 'A transmissão do DJ foi encerrada.' })
+    this.suggestionQueue.clear()
+    this.suggestionCache.clear()
+    const target = this.searchTarget
+    this.searchTarget = null
+    target?.owner.close()
+  }
+
+  private async pageQueue(track: SpotifySearchTrack, generation: number): Promise<SpotifyDjRequestResult> {
+    const active = () => generation === this.queueGeneration && this.deps.active() && this.deps.canQueue?.() !== false
+    if (!active()) return { ok: false, error: 'A transmissão do DJ foi encerrada.' }
+    const query = track.searchQuery || [track.title, track.artist].filter(Boolean).join(' ').slice(0, 120)
+    const results = await this.pageSuggestions(query, true)
+    if (!results.ok) return results
+    if (!results.tracks.some(result => result.id === track.id)) return { ok: false, error: 'O Spotify não retornou a versão da música selecionada. Pesquise novamente.' }
+    if (!active() || !this.searchTarget) return { ok: false, error: 'A transmissão do DJ foi encerrada.' }
+    const connection = await this.deps.connect(this.searchTarget.socket)
+    let dispatched = false
+    try {
+      if (!active()) return { ok: false, error: 'A transmissão do DJ foi encerrada.' }
+      dispatched = true
+      const reply = await connection.request('Runtime.evaluate', {
+        expression: `(${enqueueSpotifyTrackInPage.toString()})(${JSON.stringify(track.id)})`, returnByValue: true, awaitPromise: true, userGesture: false,
+      }, 10000)
+      const result = reply?.result?.value
+      if (typeof result?.ok !== 'boolean') return { ok: false, uncertain: true, error: 'O Spotify não confirmou a inclusão. Confira a fila antes de repetir o pedido.' }
+      return { ok: result.ok, ...(typeof result.error === 'string' ? { error: result.error.slice(0, 300) } : {}), ...(result.uncertain === true ? { uncertain: true } : {}) }
+    } catch {
+      return { ok: false, ...(dispatched ? { uncertain: true } : {}), error: 'A conexão com o Spotify foi interrompida. Confira a fila antes de repetir o pedido.' }
+    } finally { connection.close() }
+  }
+
+  private async pageSuggestions(query: string, fresh = false): Promise<SpotifySearchResult> {
+    const generation = this.queueGeneration
+    const context = await this.browserContext()
+    if (generation !== this.queueGeneration) return { ok: false, error: 'A transmissão do DJ foi encerrada.' }
+    const key = JSON.stringify([context.browser, query.toLocaleLowerCase()])
+    const cached = this.suggestionCache.get(key)
+    if (!fresh && cached && cached.until > Date.now()) return cached.result
+    if (this.searchTarget?.browser !== context.browser || !context.tabs.some(tab => tab.webSocketDebuggerUrl === this.searchTarget?.socket)) {
+      this.searchTarget?.owner.close()
+      this.searchTarget = null
+      const browser = await this.deps.connect(context.browser)
+      let retained = false
+      try {
+        // Chromium rejects newWindow on hidden targets even when its value is false.
+        const target = await browser.request('Target.createTarget', { url: `https://open.spotify.com/search/${encodeURIComponent(query)}`, background: true, hidden: true })
+        if (typeof target?.targetId !== 'string' || !/^[\w-]{1,128}$/.test(target.targetId)) throw new Error('Não foi possível preparar a busca do Spotify.')
+        if (generation !== this.queueGeneration) return { ok: false, error: 'A transmissão do DJ foi encerrada.' }
+        const socket = new URL(context.browser)
+        socket.pathname = `/devtools/page/${target.targetId}`
+        // Hidden targets live only while their creating CDP session remains open.
+        this.searchTarget = { browser: context.browser, socket: context.pageSocket(socket.href), owner: browser, query }
+        retained = true
+        this.automationSockets.add(`${context.browser}|${this.searchTarget.socket}`)
+        if (this.automationSockets.size > 128) this.automationSockets.delete(this.automationSockets.values().next().value!)
+      } finally { if (!retained) browser.close() }
+    }
+    if (generation !== this.queueGeneration || !this.searchTarget) return { ok: false, error: 'A transmissão do DJ foi encerrada.' }
+    let result: SpotifySearchResult = { ok: false, error: 'Não foi possível carregar a busca do Spotify.' }
+    const target = this.searchTarget
+    const connection = await this.deps.connect(target.socket)
+    try {
+      // Navigate only the private helper; Spotify ignores untrusted input changes here.
+      if (target.query !== query) {
+        const navigation = await connection.request('Page.navigate', { url: `https://open.spotify.com/search/${encodeURIComponent(query)}` }, 5000)
+        if (navigation?.errorText) throw new Error('O Spotify não conseguiu carregar esta pesquisa.')
+        target.query = query
+      }
+      // Initial target navigation can replace its execution context once.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const reply = await connection.request('Runtime.evaluate', {
+            expression: `(${collectSpotifySearchSuggestions.toString()})(${JSON.stringify(query)}, ${searchSpotifyInPage.toString()}, ${readSpotifySearchResults.toString()})`,
+            returnByValue: true, awaitPromise: true, userGesture: false,
+          }, 13000)
+          result = parseSpotifySearchResult(reply?.result?.value)
+          break
+        } catch (error) { if (attempt) throw error }
+      }
+    } finally { connection.close() }
+    if (result.ok && generation === this.queueGeneration) {
+      this.suggestionCache.set(key, { until: Date.now() + 30000, result })
+      if (this.suggestionCache.size > 32) this.suggestionCache.delete(this.suggestionCache.keys().next().value!)
+    }
+    return result
   }
 
   private async region(connection: PlaybackConnection): Promise<Region> {
@@ -140,6 +304,19 @@ export class SpotifyPlaybackController {
         ...(region.track !== undefined ? { track: region.track } : {}),
 
       } }
+    })
+  }
+
+  search(text: string): Promise<SpotifyPlaybackResult> {
+    const query = normalizeDjSongQuery(text)
+    if (!query) return Promise.resolve({ ok: false, error: 'Digite uma música ou artista com até 120 caracteres.' })
+    return this.run(async connection => {
+      const result = await connection.request('Runtime.evaluate', {
+        expression: `(${searchSpotifyInPage.toString()})(${JSON.stringify(query)})`,
+        returnByValue: true, awaitPromise: true, userGesture: true,
+      }, 4000)
+      if (result?.result?.value !== true) throw new Error('Não foi possível abrir a busca no Spotify. Abra a busca no player e tente novamente.')
+      return { ok: true }
     })
   }
 

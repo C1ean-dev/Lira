@@ -7,6 +7,7 @@ import { SpotifyIcon } from '../common/SpotifyIcon'
 import { MediaManager } from '../../media/MediaManager'
 import { SpotifyPlayerFeedback } from './SpotifyPlayerFeedback'
 import { SpotifyPlaybackCrop } from './SpotifyPlaybackCrop'
+import { SpotifyDjRequests } from './SpotifyDjRequests'
 import { openSpotifyBrowserPlayer } from '../../services/openSpotifyPlayer'
 import { stopDjForEveryone } from '../../services/stopDjForEveryone'
 
@@ -179,6 +180,10 @@ export const SpotifyJamSideDisplay: React.FC = () => {
 
       <div className="p-3 bg-[#0a0c12]/70 space-y-3 overflow-y-auto">
         <SpotifyPlaybackCrop />
+        {zoneDjState?.isDjActive && (
+          <SpotifyDjRequests zoneId={localZoneId}
+            key={`${localZoneId}:${zoneDjState.djPeerId}:${zoneDjState.startedAt}`} />
+        )}
         <SpotifyPlayerFeedback opening={djLoading} error={djError} />
         <button
           type="button"

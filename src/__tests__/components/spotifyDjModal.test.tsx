@@ -74,6 +74,14 @@ describe('Spotify DJ modal', () => {
     expect(html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g)?.find(button => button.includes('Parar DJ'))).not.toContain('disabled=""')
   })
 
+  it('keeps song requests in the side panel while the DJ modal shows transmission controls', () => {
+    state.spotify.djStateByZone = { room: { isDjActive: true } }
+    const html = renderToStaticMarkup(<SpotifyJamModal />)
+    expect(html).toContain('Parar DJ')
+    expect(html.includes('aria-label="Pedidos de música"')).toBe(false)
+    expect(html.includes('Pedir música')).toBe(false)
+  })
+
   it.each([
     ['owner', 'X'], ['owner', 'Fechar'],
     ['listener', 'X'], ['listener', 'Fechar'],

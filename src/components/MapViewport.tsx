@@ -1,3 +1,4 @@
+import { consumableAt } from '../services/tabletopConsumption'
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { Sparkles, RotateCw, LocateFixed } from 'lucide-react'
 import { CanvasEngine } from '../engine/CanvasEngine'
@@ -271,6 +272,7 @@ export const MapViewport: React.FC = () => {
 
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!engineRef.current || !canvasRef.current) return
+    if (e.button !== undefined && e.button !== 0) return
     const rect = canvasRef.current.getBoundingClientRect()
     const scaleX = canvasRef.current.width / (rect.width || 1)
     const scaleY = canvasRef.current.height / (rect.height || 1)
@@ -427,6 +429,9 @@ export const MapViewport: React.FC = () => {
     const exactTile = engineRef.current.screenToTile(mouseX, mouseY, 0)
     engineRef.current.hoverTile = tile
     engineRef.current.isShiftPressed = e.shiftKey
+    const consumable = !isEditorOpen ? consumableAt(exactTile.x, exactTile.y) : undefined
+    canvasRef.current.title = consumable?.title || ''
+    canvasRef.current.style.cursor = consumable?.nearby ? 'pointer' : ''
 
     if (isEditorOpen) {
       const customAssets = useCustomAssetsStore.getState().customAssets
@@ -739,7 +744,8 @@ export const MapViewport: React.FC = () => {
 
     touchPinchDistRef.current = null
 
-    if (!touchMovedRef.current && touchStartPosRef.current) {
+    if (!touchMovedRef.current && touchStartPosRef.current && e.type !== 'touchcancel') {
+      e.preventDefault() // One tap must not also synthesize a second mouse consumption.
       const touch = touchStartPosRef.current
       const rect = canvasRef.current.getBoundingClientRect()
       const scaleX = canvasRef.current.width / (rect.width || 1)

@@ -37,6 +37,10 @@ export type NetworkMessageType =
   | 'SPOTIFY_DJ_STOP'
   | 'SPOTIFY_DJ_COMMAND'
   | 'SPOTIFY_DJ_COMMAND_RESULT'
+  | 'SPOTIFY_DJ_REQUEST'
+  | 'SPOTIFY_DJ_REQUEST_RESULT'
+  | 'SPOTIFY_DJ_SEARCH'
+  | 'SPOTIFY_DJ_SEARCH_RESULT'
   | 'DJ_CALL_REQUEST'
 
 export interface NetworkMessage {
@@ -58,7 +62,7 @@ export interface PlayerUpdatePayload {
 }
 
 export interface MapEditPayload {
-  action: 'set_floor' | 'set_wall' | 'add_furniture' | 'remove_furniture' | 'add_zone' | 'remove_zone' | 'update_zone'
+  action: 'consume_furniture' | 'set_floor' | 'set_wall' | 'add_furniture' | 'remove_furniture' | 'add_zone' | 'remove_zone' | 'update_zone'
   data: any
 }
 

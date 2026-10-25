@@ -1258,11 +1258,19 @@ ipcMain.handle('open-external', async (event, url: string) => {
 
 const spotifyPlayback: SpotifyPlaybackController = new SpotifyPlaybackController({
   active: () => spotifyPlayer.isOpen && !spotifyLogin.isAuthenticating && !spotifyWindowHost.isClosing,
+  canQueue: () => spotifyTabAudio.isActive,
   readPortFile: () => fs.promises.readFile(path.join(app.getPath('userData'), 'spotify-browser', 'DevToolsActivePort'), 'utf8'),
   json: playbackJson,
   connect: connectPlayback,
 })
 ipcMain.handle('get-spotify-playback-frame', () => spotifyPlayback.frame())
+ipcMain.handle('queue-spotify-track', (_event, track, operationId: string) => spotifyPlayback.enqueue(track, operationId))
+ipcMain.handle('get-spotify-search-suggestions', (_event, query: string, requesterId?: string) => spotifyPlayback.suggestions(query, requesterId))
+ipcMain.handle('search-spotify-music', async (_event, query: string) => {
+  const result = await spotifyPlayback.search(query)
+  if (result.ok) spotifyWindowHost.show()
+  return result
+})
 const spotifyTabAudio: SpotifyTabAudioController = new SpotifyTabAudioController({
   connect: () => spotifyPlayback.connectTab(),
   data: chunk => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('spotify-tab-audio-data', chunk) },
@@ -1301,10 +1309,11 @@ ipcMain.handle('get-spotify-login-state', () => spotifyLogin.state())
 ipcMain.handle('start-spotify-tab-audio', () => spotifyWindowHost.isClosing ? spotifyClosingResult() : spotifyLogin.isAuthenticating
   ? { ok: false, error: 'Conclua o login no Spotify antes de transmitir como DJ.' }
   : spotifyTabAudio.start())
-ipcMain.handle('stop-spotify-tab-audio', async () => { await spotifyTabAudio.stop(); return true })
+ipcMain.handle('stop-spotify-tab-audio', async () => { spotifyPlayback.cancelQueuedTracks(); await spotifyTabAudio.stop(); return true })
 ipcMain.handle('spotify-playback-command', (_event, command: SpotifyPlaybackCommand) => spotifyPlayback.command(command))
 ipcMain.handle('open-spotify-player', (_event, url?: string) => spotifyWindowHost.isClosing ? spotifyClosingResult() : spotifyLogin.openPlayer(url))
 ipcMain.handle('close-spotify-player', async () => {
+  spotifyPlayback.cancelQueuedTracks()
   spotifyLogin.cancel()
   spotifyPlayer.close()
   try { await spotifyWindowHost.close(); return { ok: true } }

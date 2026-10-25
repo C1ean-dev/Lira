@@ -1,5 +1,6 @@
 import type { CustomAsset } from '../types/customAsset'
 import { spriteFrame } from './spriteFrame'
+import { builtInConsumptionFrames } from './tabletopConsumptionFrames'
 
 // Crops reference the approved artwork unchanged. Display size is deliberately
 // smaller than one 32px map tile; the editor already snaps small props to 1/4 tile.
@@ -51,8 +52,10 @@ export function createTabletopFoodAssets(base = import.meta.env.BASE_URL): Custo
     ...alcoholicDrinks.map(drink => [drink, 'tabletop-drinks-alcoholic.png'] as const),
   ].map(([[id, name, x, y, width, height, pixels, color], sheet]) => {
     const frame = spriteFrame(`${assetBase}assets/furniture/${sheet}`, x, y, width, height)
+    const assetId = `lira_${sheet.startsWith('tabletop-drinks') ? 'drink' : 'food'}_${id}_v1`
     return {
-      id: `lira_${sheet.startsWith('tabletop-drinks') ? 'drink' : 'food'}_${id}_v1`, name, type: 'furniture', category: sheet.startsWith('tabletop-drinks') ? 'Bebidas' : 'Comidas',
+      consumptionFrames: builtInConsumptionFrames(assetId, assetBase),
+      id: assetId, name, type: 'furniture', category: sheet.startsWith('tabletop-drinks') ? 'Bebidas' : 'Comidas',
       width: 1, height: 1, pixelWidth: pixels, pixelHeight: Math.round(pixels * height / width),
       isObstacle: false, isTabletopDecoration: true,
       frames: [frame], thumbnail: frame, iconColor: color, createdAt: 1792857600000,

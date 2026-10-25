@@ -35,6 +35,7 @@ test('individual sprite images decode and edited thumbnails refresh in HTTP and 
     await fs.copyFile(path.join(root, 'public/assets/furniture/tabletop-foods-2.png'), path.join(application, 'assets/furniture/tabletop-foods-2.png'))
     await fs.copyFile(path.join(root, 'public/assets/furniture/tabletop-drinks.png'), path.join(application, 'assets/furniture/tabletop-drinks.png'))
     await fs.copyFile(path.join(root, 'public/assets/furniture/tabletop-drinks-alcoholic.png'), path.join(application, 'assets/furniture/tabletop-drinks-alcoholic.png'))
+    for (const sheet of ['consumption-drinks.png', 'consumption-alcohol.png', 'consumption-foods.png', 'consumption-foods-2.png', 'consumption-corrections.png']) await fs.copyFile(path.join(root, 'public/assets/furniture', sheet), path.join(application, 'assets/furniture', sheet))
     const virtualLibrary = { name: 'test-library-presence', setup(builder) {
       builder.onResolve({ filter: /^virtual:lira-individual-library$/ }, () => ({ path: 'catalog', namespace: 'library-test' }))
       builder.onLoad({ filter: /.*/, namespace: 'library-test' }, () => ({ contents: 'export default true' }))
@@ -49,29 +50,51 @@ test('individual sprite images decode and edited thumbnails refresh in HTTP and 
       import { spriteFrame, readSpriteFrame } from './src/assets/spriteFrame';
       import { collectProjectImageUrls } from './scripts/sprite-test-images.mjs';
       import { FurnitureRenderer } from './src/engine/rendering/furnitureRenderer';
+      import { consumptionFrames } from './src/assets/tabletopConsumptionFrames';
       export const projectImageUrls = document => collectProjectImageUrls(document, readSpriteFrame);
+      export async function verifyColdConsumptionThumbnail() {
+        const bundled = await window.libraryTesting.loadBundledLibrary();
+        const soda = bundled.assets.find(asset => asset.id === 'lira_drink_soda_v1');
+        useCustomAssetsStore.setState({ customAssets: [soda] });
+        const host = document.createElement('div'); document.body.append(host);
+        const root = createRoot(host);
+        try {
+          root.render(React.createElement(PixelArtThumbnail, { type: 'furniture', id: soda.id, size: 48 }));
+          for (let attempt = 0; attempt < 150; attempt++) {
+            const canvas = host.querySelector('canvas');
+            if (canvas) {
+              const data = canvas.getContext('2d').getImageData(0,0,48,48).data;
+              const colors = new Set();
+              for (let i = 0; i < data.length; i += 4) if (data[i+3] > 32) colors.add(data[i]+','+data[i+1]+','+data[i+2]);
+              if (colors.size > 10) return true;
+            }
+            await new Promise(resolve => setTimeout(resolve, 20));
+          }
+          throw new Error('Cold consumption thumbnail did not refresh after the new artwork loaded');
+        } finally { root.unmount(); host.remove(); }
+      }
       export async function verifyBuiltInFoods() {
         const bundled = await window.libraryTesting.loadBundledLibrary();
         const foods = bundled.assets.filter(asset => asset.isTabletopDecoration);
         useCustomAssetsStore.setState({ customAssets: foods });
         const results = [];
-        for (const food of foods) {
+        for (const food of foods) for (let stage = 0; stage < 4; stage++) {
           let image;
           for (let attempt = 0; attempt < 150; attempt++) {
-            image = getCustomAssetImage(food.frames[0]);
+            image = getCustomAssetImage(consumptionFrames(food)[stage]);
             if (image?.complete && image.naturalWidth > 0) break;
             await new Promise(resolve => setTimeout(resolve, 20));
           }
           if (!image?.complete || !image.naturalWidth) throw new Error('Food image did not decode: ' + food.id);
           const canvas = document.createElement('canvas'); canvas.width = 32; canvas.height = 32;
           const ctx = canvas.getContext('2d');
-          FurnitureRenderer.drawFurniture(ctx, { id: food.id, defId: food.id, x: 0, y: 0 });
+          FurnitureRenderer.drawFurniture(ctx, { id: food.id, defId: food.id, x: 0, y: 0, consumptionStage: stage });
           const pixels = ctx.getImageData(0, 0, 32, 32).data;
           let count = 0, maxX = 0, maxY = 0;
           for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
             if (pixels[(y * 32 + x) * 4 + 3] > 32) { count++; maxX = Math.max(maxX, x + 1); maxY = Math.max(maxY, y + 1); }
           }
-          results.push({ id: food.id, count, width: maxX, height: maxY });
+          results.push({ id: food.id, stage, signature: pixels.reduce((hash, byte) => Math.imul(hash ^ byte, 16777619) >>> 0, 2166136261), count, width: maxX, height: maxY });
         }
         return results;
       }
@@ -218,14 +241,19 @@ test('individual sprite images decode and edited thumbnails refresh in HTTP and 
         })))
       })
       assert.ok(result.every(image => image.width > 0 && image.height > 0), `${origin}: ${JSON.stringify(result)}\n${errors.join('\n')}`)
+      assert.equal(await page.evaluate(async () => {
+        const url = window.location.protocol === 'file:' ? new URL('./live-preview.mjs', window.location.href).href : '/__live-preview.mjs';
+        return (await import(url)).verifyColdConsumptionThumbnail();
+      }), true, `${origin}: corrected consumption thumbnail appears on first load`)
       const foods = await page.evaluate(async () => {
         const moduleUrl = window.location.protocol === 'file:' ? new URL('./live-preview.mjs', window.location.href).href : '/__live-preview.mjs'
         return (await import(moduleUrl)).verifyBuiltInFoods()
       })
-      assert.equal(foods.length, 28, `${origin}: all approved tabletop foods are bundled`)
-      assert.ok(foods.every(food => food.count > 20 && food.width <= 26 && food.height <= 22), `${origin}: tabletop foods stay small and render with transparency: ${JSON.stringify(foods)}`)
+      assert.equal(foods.length, 112, `${origin}: all approved tabletop foods are bundled`)
+      assert.ok(foods.every(food => food.count > 8 && food.width <= 26 && food.height <= 22), `${origin}: tabletop foods stay small and render with transparency: ${JSON.stringify(foods.filter(food => food.count <= 8 || food.width > 26 || food.height > 22))}`)
       t.diagnostic(`${origin}: stored, saved and bundled sprite images decoded.`)
-      t.diagnostic(`${origin}: all twenty-eight tabletop foods and drinks decoded and rendered smaller than one map tile.`)
+      for (const id of new Set(foods.filter(food => food.id.startsWith('lira_drink_')).map(food => food.id))) assert.equal(new Set(foods.filter(food => food.id === id).map(food => food.signature)).size, 4, `${origin}: four visually distinct stages for ${id}`)
+      t.diagnostic(`${origin}: all 112 consumption frames decoded and rendered smaller than one map tile.`)
     }
     async function verifyProjectImages(origin) {
       await electron.evaluate((_electron, directory) => { global.spriteLibraryDirectory = directory }, path.join(root, 'public/assets/library'))
