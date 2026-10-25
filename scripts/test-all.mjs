@@ -17,6 +17,7 @@ export function testSuites() {
     { name: 'unit', command: process.execPath, args: [path.join(path.dirname(require.resolve('vitest/package.json')), 'vitest.mjs'), 'run', 'src/__tests__', '--maxWorkers=2', '--reporter', path.join(root, 'scripts/quiet-vitest-reporter.mjs')] },
     { name: 'migration', command: process.env.LIRA_PYTHON || 'python', args: [path.join(root, 'scripts/quiet-unittest.py'), path.join(root, 'scripts/test_migrate_individual_library.py')] },
     nodeTest('core:browser', 'LIRA_RUN_BROWSER_TESTS', 'scripts/core-realtime.browser.test.mjs', ['--test-force-exit']),
+    nodeTest('navigation:browser', 'LIRA_RUN_NAVIGATION_TESTS', 'scripts/navigation-responsive.browser.test.mjs'),
     nodeTest('sprites:electron', 'LIRA_RUN_SPRITE_TESTS', 'scripts/individual-library.electron.test.mjs'),
     nodeTest('transcription:electron', 'LIRA_RUN_TRANSCRIPTION_TESTS', 'scripts/transcription-module.electron.test.mjs'),
   ]
