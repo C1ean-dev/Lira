@@ -14,6 +14,7 @@ describe('complete local test command', () => {
   it('enables the opt-in runtime suites instead of silently skipping them', () => {
     for (const [name, flag, file] of [
       ['test:core:browser', 'LIRA_RUN_BROWSER_TESTS', 'scripts/core-realtime.browser.test.mjs'],
+      ['test:navigation:browser', 'LIRA_RUN_NAVIGATION_TESTS', 'scripts/navigation-responsive.browser.test.mjs'],
       ['test:sprites:electron', 'LIRA_RUN_SPRITE_TESTS', 'scripts/individual-library.electron.test.mjs'],
       ['test:transcription:electron', 'LIRA_RUN_TRANSCRIPTION_TESTS', 'scripts/transcription-module.electron.test.mjs'],
     ]) {

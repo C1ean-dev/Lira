@@ -181,14 +181,14 @@ if __name__ == '__main__':
     expect(execute).toHaveBeenCalledTimes(2)
   })
 
-  it('keeps all five suites, opt-in flags, aliases and the individual verbose commands', () => {
+  it('keeps all suites, opt-in flags, aliases and the individual verbose commands', () => {
     const { scripts } = JSON.parse(readFileSync('package.json', 'utf8'))
     expect(scripts['test:all']).toBe('node scripts/test-all.mjs')
     expect(scripts['teste:all']).toBe('npm run test:all')
     expect(scripts.test).not.toContain('quiet')
     const suites = testSuites()
-    expect(suites.map(suite => suite.name)).toEqual(['unit', 'migration', 'core:browser', 'sprites:electron', 'transcription:electron'])
-    for (const [name, flag] of [['core:browser', 'LIRA_RUN_BROWSER_TESTS'], ['sprites:electron', 'LIRA_RUN_SPRITE_TESTS'], ['transcription:electron', 'LIRA_RUN_TRANSCRIPTION_TESTS']]) {
+    expect(suites.map(suite => suite.name)).toEqual(['unit', 'migration', 'core:browser', 'navigation:browser', 'sprites:electron', 'transcription:electron'])
+    for (const [name, flag] of [['core:browser', 'LIRA_RUN_BROWSER_TESTS'], ['navigation:browser', 'LIRA_RUN_NAVIGATION_TESTS'], ['sprites:electron', 'LIRA_RUN_SPRITE_TESTS'], ['transcription:electron', 'LIRA_RUN_TRANSCRIPTION_TESTS']]) {
       const suite = suites.find(suite => suite.name === name)!
       expect(suite.env[flag]).toBe('1')
       expect(suite.args).toContain('--test-reporter')

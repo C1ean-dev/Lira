@@ -687,7 +687,7 @@ const ChatDrawerInner: React.FC = () => {
       } bg-[#12151d] border-r border-[#2a3142] flex flex-col shadow-2xl animate-in slide-in-from-left duration-200 ${
         isResizingDrawer ? '' : 'transition-[width] duration-150 ease-out'
       } ${
-        isGridCallOpen ? 'top-0 z-[60]' : 'top-14 z-50'
+        isGridCallOpen ? 'top-0 z-[70]' : 'top-14 z-[70]'
       }`}
     >
       {!isMobile && (isResizingDrawer || isResizingChannels) && (
