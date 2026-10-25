@@ -74,6 +74,8 @@ vi.mock('peerjs', () => ({ default: FakePeer }))
 import { PeerManager } from '../../p2p/PeerManager'
 import { diagStats, __resetDiagForTests } from '../../utils/diagnosticLogger'
 import { useGameStore } from '../../store/useGameStore'
+import { useSpotifyJamStore } from '../../store/useSpotifyJamStore'
+import { searchDjSongs } from '../../services/spotifyDjSearch'
 
 const player = () => ({
   ...useGameStore.getState().localPlayer,
@@ -174,6 +176,76 @@ describe('room entry (joinRoom)', () => {
     FakeConn.instances[0].emit('open')
     await expect(pending).resolves.toBeUndefined()
     expect(diagStats().buffered).toBeGreaterThanOrEqual(3)
+  })
+
+  it.each(['open', 'data'])('accepts DJ messages relayed by the joined host when %s arrives first', async first => {
+    const initialGame = useGameStore.getState()
+    const initialSpotify = useSpotifyJamStore.getState()
+    const browserSearch = vi.fn(async () => ({ ok: true, tracks: [] }))
+    const browserQueue = vi.fn(async () => ({ ok: true }))
+    vi.stubGlobal('window', { electronAPI: { getSpotifySearchSuggestions: browserSearch, queueSpotifyTrack: browserQueue } })
+    try {
+      const pm = PeerManager.getInstance()
+      const joined = pm.joinRoom('code-aaa', player() as any)
+      FakePeer.instances[0].emit('open', 'listener-client')
+      const host = FakeConn.instances[0]
+      useGameStore.getState().setLocalPlayer({ currentZoneId: 'dj-room' })
+      useGameStore.setState({ remotePlayers: { owner: { ...player(), id: 'owner', currentZoneId: 'dj-room' } } })
+      useSpotifyJamStore.setState({ isDjModeActive: false, djStateByZone: {} })
+      const dj = { zoneId: 'dj-room', djPeerId: 'owner', djName: 'Aravon', startedAt: 123,
+        isDjActive: true, requests: [], requestsRevision: 0 }
+      const status = { type: 'SPOTIFY_DJ_STATUS', senderId: 'owner', timestamp: Date.now(), payload: { zoneId: dj.zoneId, djState: dj } }
+      // The host is a third participant. Do not seed connectionHostId by hand.
+      if (first === 'open') host.emit('open')
+      else host.open = true
+      host.emit('data', status)
+      expect(useSpotifyJamStore.getState().djStateByZone[dj.zoneId]).toEqual(dj)
+      expect(useGameStore.getState().connectionHostId).toBe(host.peer)
+      if (first === 'data') host.emit('open')
+      await joined
+
+      const finished = vi.fn()
+      const search = searchDjSongs(dj.zoneId, 'verso').then(result => { finished(result); return result })
+      const sent: any = host.sent.find((msg: any) => msg.type === 'SPOTIFY_DJ_SEARCH')
+      expect(sent).toBeDefined()
+      const reply = { senderId: 'owner', timestamp: Date.now(), payload: { ...sent.payload, recipientId: 'listener-client' } }
+      host.emit('data', { ...reply, type: 'SPOTIFY_DJ_SEARCH_ACK' })
+      await vi.advanceTimersByTimeAsync(15000)
+      expect(finished).not.toHaveBeenCalled()
+      host.emit('data', { ...reply, type: 'SPOTIFY_DJ_SEARCH_RESULT', payload: { ...reply.payload, result: { ok: true, tracks: [] } } })
+      expect(await search).toEqual({ ok: true, tracks: [] })
+
+      // The same joined client can also be the DJ receiving another listener's request.
+      const localDj = { ...dj, djPeerId: 'listener-client', startedAt: 456 }
+      useSpotifyJamStore.setState({ isDjModeActive: true, djStateByZone: { [dj.zoneId]: localDj } })
+      host.sent.length = 0
+      host.emit('data', { type: 'SPOTIFY_DJ_SEARCH', senderId: 'owner', timestamp: Date.now(), payload: {
+        zoneId: dj.zoneId, ownerId: localDj.djPeerId, startedAt: localDj.startedAt, requestId: `relay-${first}`, query: 'verso',
+      } })
+      expect(browserSearch).toHaveBeenCalledExactlyOnceWith('verso', 'owner')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(host.sent).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'SPOTIFY_DJ_SEARCH_ACK', payload: expect.objectContaining({ recipientId: 'owner' }) }),
+        expect.objectContaining({ type: 'SPOTIFY_DJ_SEARCH_RESULT', payload: expect.objectContaining({ recipientId: 'owner', result: { ok: true, tracks: [] } }) }),
+      ]))
+
+      const track = { id: '4uLU6hMCjMI75M1A2tKUQC', title: 'Never Gonna Give You Up', artist: 'Rick Astley', url: 'https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC' }
+      host.emit('data', { type: 'SPOTIFY_DJ_REQUEST', senderId: 'owner', timestamp: Date.now(), payload: {
+        zoneId: dj.zoneId, ownerId: localDj.djPeerId, startedAt: localDj.startedAt, requestId: `queue-${first}`, query: track.title, track,
+      } })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(browserQueue).toHaveBeenCalledExactlyOnceWith(track, `${localDj.startedAt}:queue-${first}`)
+      expect(useSpotifyJamStore.getState().djStateByZone[dj.zoneId].requests).toEqual([
+        expect.objectContaining({ track, status: 'queued', requestedById: 'owner' }),
+      ])
+      expect(host.sent).toContainEqual(expect.objectContaining({ type: 'SPOTIFY_DJ_REQUEST_RESULT',
+        payload: expect.objectContaining({ requestId: `queue-${first}`, result: { ok: true } }),
+      }))
+    } finally {
+      useGameStore.setState(initialGame)
+      useSpotifyJamStore.setState(initialSpotify)
+      vi.unstubAllGlobals()
+    }
   })
 
   it('auto-hosts when the host is unreachable and logs every step', async () => {
@@ -322,10 +394,12 @@ describe('room entry (joinRoom)', () => {
     oldConnection.emit('open')
 
     expect(useGameStore.getState().connectionStatus).not.toBe('connected')
+    expect(useGameStore.getState().connectionHostId).not.toBe(oldConnection.peer)
     expect((pm as any).connections.size).toBe(0)
     newPeer.emit('open', newPeer.id)
     await expect(newerRoom).resolves.toBe('CODE-BBB')
     expect(useGameStore.getState().roomId).toBe('CODE-BBB')
+    expect(useGameStore.getState().connectionHostId).toBe(newPeer.id)
     expect(newPeer.destroyed).toBe(false)
   })
 

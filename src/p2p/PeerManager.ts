@@ -928,6 +928,11 @@ export class PeerManager {
       if (openHandled) return
       openHandled = true
       if (!isCurrentSession()) { conn.close(); return }
+      // Record the actual host transport before processing its first relayed message.
+      // A data event can arrive before PeerJS emits the connection's open event.
+      if (!this.isHost && conn.peer === `lira-${roomCode}-host`) {
+        useGameStore.getState().setConnectionHostId(conn.peer)
+      }
       this.pendingHeartbeats.delete(conn.peer)
       console.log('[P2P Data] Connected to peer:', conn.peer)
       useGameStore.getState().setConnectionStatus('connected')
