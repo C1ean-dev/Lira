@@ -66,7 +66,7 @@ export async function enqueueSpotifyTrackInPage(trackId: string): Promise<Spotif
         const fresh = !previous.has(node) || previous.get(node) !== message
           || Array.from(changes).some(changed => node === changed || node.contains(changed))
         if (!fresh) continue
-        if (/^(added to (?:your )?queue|adicionad[oa] (?:a )?(?:sua )?fila(?: de reproducao)?)[.!]?$/.test(message)) return { ok: true }
+        if (/^(added to (?:your )?queue|na fila|adicionad[oa] (?:a )?(?:sua )?fila(?: de reproducao)?)[.!]?$/.test(message)) return { ok: true }
         if (/couldn.t add|unable to add|something went wrong|nao foi possivel adicionar|ocorreu um erro/.test(message)) {
           return { ok: false, error: 'O Spotify recusou a inclusão na fila. Tente novamente pelo player.' }
         }

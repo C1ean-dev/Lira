@@ -3,11 +3,11 @@ import { enqueueSpotifyTrackInPage } from '../../../electron/spotifyQueue'
 
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 const id = '4uLU6hMCjMI75M1A2tKUQC'
-function page({ confirmed = true, existingToast = false, disabled = false, visible = false, focused = undefined as boolean | undefined, foregroundAfterMenu = false } = {}) {
+function page({ confirmed = true, existingToast = false, toastText = 'Adicionada à fila', previousToastText = 'Added to queue', disabled = false, visible = false, focused = undefined as boolean | undefined, foregroundAfterMenu = false } = {}) {
   let open = false
   let added = false
-  const oldToast = { textContent: 'Added to queue' }
-  const newToast = { textContent: 'Adicionada à fila' }
+  const oldToast = { textContent: previousToastText }
+  const newToast = { textContent: toastText }
   const menuItem = { textContent: 'Adicionar à fila', disabled, getAttribute: () => null, click: vi.fn(() => { added = true }) }
   const menu = { querySelectorAll: () => [menuItem], getAttribute: () => null }
   const more = { disabled: false, getAttribute: () => null, click: vi.fn(() => { open = true; if (foregroundAfterMenu) visible = true }) }
@@ -22,6 +22,26 @@ function page({ confirmed = true, existingToast = false, disabled = false, visib
   return { menuItem, more }
 }
 describe('Spotify queue robot in the page', () => {
+  it('recognizes the real Portuguese Spotify confirmation: Na fila', async () => {
+    vi.useFakeTimers()
+    const { menuItem } = page({ toastText: 'Na fila' })
+    const operation = enqueueSpotifyTrackInPage(id)
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(await operation).toEqual({ ok: true })
+    expect(menuItem.click).toHaveBeenCalledOnce()
+  })
+  it('does not confuse an old Na fila notification with confirmation of the new request', async () => {
+    vi.useFakeTimers()
+    const { menuItem } = page({ confirmed: false, existingToast: true, previousToastText: 'Na fila' })
+    const operation = enqueueSpotifyTrackInPage(id)
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(await operation).toMatchObject({ ok: false, uncertain: true })
+    expect(menuItem.click).toHaveBeenCalledOnce()
+  })
+  it('keeps a real refusal as an error even when it mentions the queue', async () => {
+    page({ toastText: 'Não foi possível adicionar à fila' })
+    expect(await enqueueSpotifyTrackInPage(id)).toEqual({ ok: false, error: 'O Spotify recusou a inclusão na fila. Tente novamente pelo player.' })
+  })
   it('allows a native hidden target that reports visible document state while retaining no user focus', async () => {
     page({ visible: true, focused: false })
     expect(await enqueueSpotifyTrackInPage(id)).toEqual({ ok: true })
