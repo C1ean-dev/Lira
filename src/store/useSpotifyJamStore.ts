@@ -11,6 +11,32 @@ import { useGameStore } from './useGameStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { setDjListeningVolume } from '../media/djListeningVolume'
 
+const closedDjRequestSessions = new Set<string>()
+const djRequestSessionKey = (zoneId: string, dj: SpotifyDjState) =>
+  JSON.stringify([useGameStore.getState().roomId, zoneId, dj.djPeerId, dj.startedAt])
+
+function latestDjRequests(previous: SpotifyDjState | undefined, next: SpotifyDjState): SpotifyDjState {
+  if (previous?.djPeerId === next.djPeerId && previous.startedAt === next.startedAt
+    && previous.requestsRevision !== undefined && previous.requestsRevision >= (next.requestsRevision ?? -1)) {
+    return { ...next, requests: previous.requests, requestsRevision: previous.requestsRevision }
+  }
+  return next
+}
+
+function updateDjZone(states: Record<string, SpotifyDjState>, zoneId: string, dj: SpotifyDjState | null) {
+  if (dj?.isDjActive && closedDjRequestSessions.has(djRequestSessionKey(zoneId, dj))) return states
+  const previous = states[zoneId]
+  if (previous?.requestsRevision !== undefined && (!dj?.isDjActive
+    || previous.djPeerId !== dj.djPeerId || previous.startedAt !== dj.startedAt)) {
+    closedDjRequestSessions.add(djRequestSessionKey(zoneId, previous))
+    if (closedDjRequestSessions.size > 128) closedDjRequestSessions.delete(closedDjRequestSessions.values().next().value!)
+  }
+  const updated = { ...states }
+  if (dj?.isDjActive) updated[zoneId] = latestDjRequests(previous, dj)
+  else delete updated[zoneId]
+  return updated
+}
+
 interface SpotifyJamStore {
   jamsByZone: Record<string, ZoneJamSession>
   djStateByZone: Record<string, SpotifyDjState>
@@ -239,15 +265,7 @@ export const useSpotifyJamStore = create<SpotifyJamStore>((set, get) => ({
   setDjStateInZone: (zoneId, djState, broadcast = true) => {
     if (!zoneId) return
 
-    set((state) => {
-      const updated = { ...state.djStateByZone }
-      if (djState && djState.isDjActive) {
-        updated[zoneId] = djState
-      } else {
-        delete updated[zoneId]
-      }
-      return { djStateByZone: updated }
-    })
+    set(state => ({ djStateByZone: updateDjZone(state.djStateByZone, zoneId, djState) }))
 
     if (broadcast) {
       try {
@@ -257,7 +275,7 @@ export const useSpotifyJamStore = create<SpotifyJamStore>((set, get) => ({
         pm.broadcast({
           type: 'SPOTIFY_DJ_STATUS',
           senderId,
-          payload: { zoneId, djState },
+          payload: { zoneId, djState: get().djStateByZone[zoneId] || null },
           timestamp: Date.now(),
         })
       } catch (e) {
@@ -268,15 +286,7 @@ export const useSpotifyJamStore = create<SpotifyJamStore>((set, get) => ({
 
   syncDjStateFromPeer: (zoneId, djState) => {
     if (!zoneId) return
-    set((state) => {
-      const updated = { ...state.djStateByZone }
-      if (djState && djState.isDjActive) {
-        updated[zoneId] = djState
-      } else {
-        delete updated[zoneId]
-      }
-      return { djStateByZone: updated }
-    })
+    set(state => ({ djStateByZone: updateDjZone(state.djStateByZone, zoneId, djState) }))
   },
 
   setIsDjModeActive: (active) => {

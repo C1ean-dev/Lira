@@ -1,4 +1,5 @@
 import type { SpotifyPlaybackFrameData } from './spotifyPlayback'
+import type { SpotifyDjSongRequest } from './spotifyDjRequests'
 export interface ZoneJamSession {
   zoneId: string
   zoneName: string
@@ -119,6 +120,8 @@ export interface SpotifyDjState {
   trackTitle?: string
   trackArtist?: string
   startedAt?: number
+  requests?: SpotifyDjSongRequest[]
+  requestsRevision?: number
 }
 
 export function toSpotifyDeepLink(urlOrQuery: string): string {

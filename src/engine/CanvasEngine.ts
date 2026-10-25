@@ -1,3 +1,4 @@
+import { consumeTabletopAt } from '../services/tabletopConsumption'
 import { CameraManager } from './camera/CameraManager'
 import { InputHandler } from './input/InputHandler'
 import { checkCollision, checkZonePresence } from './physics/collision'
@@ -67,6 +68,7 @@ export class CanvasEngine {
   }
 
   public setClickTarget(tileX: number, tileY: number) {
+    if (consumeTabletopAt(tileX, tileY)) { this.input.clearPath(); return }
     const local = useGameStore.getState().localPlayer
     const mapStore = useMapStore.getState()
     const map = mapStore.mapData
