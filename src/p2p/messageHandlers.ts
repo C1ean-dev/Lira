@@ -679,6 +679,7 @@ export function processNetworkMessage(
     }
 
     case 'SPOTIFY_DJ_SEARCH':
+    case 'SPOTIFY_DJ_SEARCH_ACK':
     case 'SPOTIFY_DJ_SEARCH_RESULT': {
       if (!isDjMessageSource(msg, peerId, isHost) || !receiveDjSearchMessage(msg)) return
       break
