@@ -6,7 +6,7 @@ import { parseSpotifySearchResult, type SpotifySearchResult } from '../types/spo
 import type { NetworkMessage } from '../types/p2p'
 
 type Envelope = { zoneId: string; ownerId: string; startedAt: number; requestId: string; query: string }
-const pending = new Map<string, Envelope & { roomId: string | null; finish(result: SpotifySearchResult): void }>()
+const pending = new Map<string, Envelope & { roomId: string | null; accept(): void; finish(result: SpotifySearchResult): void }>()
 const received = new Set<string>()
 const unavailable = (): SpotifySearchResult => ({ ok: false, error: 'O DJ não está disponível para pesquisar nesta sala.' })
 function context(payload: Partial<Envelope>) {
@@ -41,9 +41,19 @@ export function searchDjSongs(zoneId: string, text: string): Promise<SpotifySear
   const requestId = crypto.randomUUID()
   const envelope: Envelope = { zoneId, ownerId: current.dj.djPeerId, startedAt: current.dj.startedAt!, requestId, query }
   return new Promise(resolve => {
-    const timer = setTimeout(() => { pending.delete(requestId); resolve({ ok: false, error: 'O DJ demorou para retornar a busca. Tente novamente.' }) }, 15000)
+    const expire = (error: string) => { pending.delete(requestId); resolve({ ok: false, error }) }
+    let timer = setTimeout(() => expire('O DJ não confirmou o recebimento da busca. Verifique a conexão com o DJ e tente novamente.'), 15000)
+    let accepted = false
+    const accept = () => {
+      if (accepted) return
+      accepted = true
+      clearTimeout(timer)
+      // A cold Spotify page and a preceding query can exceed the delivery deadline.
+      // Repeated acknowledgements must not keep an unavailable search alive forever.
+      timer = setTimeout(() => expire('O Spotify no computador do DJ demorou para concluir a busca. Tente novamente.'), 60000)
+    }
     const finish = (result: SpotifySearchResult) => { clearTimeout(timer); pending.delete(requestId); resolve(result) }
-    pending.set(requestId, { ...envelope, roomId: current.game.roomId, finish })
+    pending.set(requestId, { ...envelope, roomId: current.game.roomId, accept, finish })
     try {
       PeerManager.getInstance().broadcast({ type: 'SPOTIFY_DJ_SEARCH', senderId: current.game.localPlayer.id, timestamp: Date.now(), payload: envelope })
     } catch { finish({ ok: false, error: 'Não foi possível enviar a pesquisa ao DJ.' }) }
@@ -57,18 +67,22 @@ export function receiveDjSearchMessage(msg: NetworkMessage): boolean {
     || !normalizeDjSongQuery(payload.query) || payload.query.length < 2) return false
   const current = context(payload)
   if (!current) return false
-  if (msg.type === 'SPOTIFY_DJ_SEARCH_RESULT') {
+  if (msg.type === 'SPOTIFY_DJ_SEARCH_ACK' || msg.type === 'SPOTIFY_DJ_SEARCH_RESULT') {
     if (msg.senderId !== current.dj.djPeerId || typeof payload.recipientId !== 'string') return false
     const waiting = pending.get(payload.requestId)
     if (waiting && waiting.ownerId === msg.senderId && waiting.query === payload.query && waiting.zoneId === payload.zoneId
       && waiting.startedAt === payload.startedAt && waiting.roomId === current.game.roomId
       && payload.recipientId === current.game.localPlayer.id && inRoom(payload.recipientId, payload.zoneId)) {
-      waiting.finish(parseSpotifySearchResult(payload.result))
+      if (msg.type === 'SPOTIFY_DJ_SEARCH_ACK') waiting.accept()
+      else waiting.finish(parseSpotifySearchResult(payload.result))
     }
     return true
   }
   if (msg.type !== 'SPOTIFY_DJ_SEARCH' || !inRoom(msg.senderId, payload.zoneId)) return false
   if (current.owner) {
+    PeerManager.getInstance().broadcast({ type: 'SPOTIFY_DJ_SEARCH_ACK', senderId: current.dj.djPeerId, timestamp: Date.now(),
+      payload: { zoneId: payload.zoneId, ownerId: payload.ownerId, startedAt: payload.startedAt,
+        requestId: payload.requestId, query: payload.query, recipientId: msg.senderId } })
     const key = JSON.stringify([current.game.roomId, payload.ownerId, payload.startedAt, msg.senderId, payload.requestId])
     if (received.has(key)) return true
     received.add(key)
