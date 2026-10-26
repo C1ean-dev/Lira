@@ -22,6 +22,10 @@ for row in report['results']:
         failures.append(f'{row["id"]}/{row["engine"]}: amplifies noise by {-row["noiseReductionDb"]:.2f} dB')
     if row['noise'] is None and (row['stoi'] < 0.9 or row['speechGainDb'] < -9 or row['dropoutPercent'] > 10):
         failures.append(f'{row["id"]}/{row["engine"]}: loses clean speech (STOI {row["stoi"]:.3f}, gain {row["speechGainDb"]:.1f} dB, dropout {row["dropoutPercent"]:.1f}%)')
+    # A clean-only check cannot catch denoisers that mute speech in mixtures.
+    # These are catastrophic-loss floors; paired checks remain stricter.
+    if row['noise'] is not None and (row['stoi'] < 0.5 or row['speechGainDb'] < -18):
+        failures.append(f'{row["id"]}/{row["engine"]}: loses mixed speech (STOI {row["stoi"]:.3f}, gain {row["speechGainDb"]:.1f} dB)')
 if arguments.compare:
     previous = json.loads(arguments.compare.read_text())
     if report['datasetRevision'] != previous['datasetRevision']:
@@ -42,6 +46,8 @@ if arguments.compare:
             checked_inputs.add(row['id'])
         if old and row['stoi'] < old['stoi'] - 0.03:
             failures.append(f'{row["id"]}/{row["engine"]}: STOI regressed {old["stoi"]:.3f} -> {row["stoi"]:.3f}')
+        if row['speechGainDb'] < old['speechGainDb'] - 3:
+            failures.append(f'{row["id"]}/{row["engine"]}: speech gain regressed {old["speechGainDb"]:.1f} -> {row["speechGainDb"]:.1f} dB')
     for engine in set(row['engine'] for row in report['results']):
         for clean in [True, False]:
             paired = [row for row in report['results'] if row['engine'] == engine and (row['noise'] is None) == clean and (row['id'], engine) in before]

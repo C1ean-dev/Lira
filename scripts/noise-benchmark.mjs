@@ -22,7 +22,7 @@ const python = process.env.LIRA_PYTHON || 'python'
 async function runPython(action) {
   await new Promise((resolve, reject) => {
     const compare = option('compare', '')
-    const args = action === 'check'
+    const args = action === 'test' ? ['-m', 'unittest', 'discover', '-s', 'scripts/noise-benchmark', '-p', 'test_*.py'] : action === 'check'
       ? ['scripts/noise-benchmark/check_report.py', path.join(output, 'report.json'), ...(compare ? ['--compare', path.resolve(compare)] : [])]
       : ['scripts/noise-benchmark/dataset.py', action, output, '--profile', profile]
     const child = spawn(python, ['-B', ...args], { cwd: root, stdio: 'inherit', windowsHide: true,
@@ -33,7 +33,10 @@ async function runPython(action) {
   })
 }
 
-if (!dynamicsOnly) await runPython('prepare')
+if (!dynamicsOnly) {
+  await runPython('test')
+  await runPython('prepare')
+}
 await fs.mkdir(output, { recursive: true })
 const runtime = await fs.mkdtemp(path.join(output, 'runtime-'))
 let electron

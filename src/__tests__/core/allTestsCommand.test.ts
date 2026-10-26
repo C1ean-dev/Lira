@@ -24,6 +24,7 @@ describe('complete local test command', () => {
       expect(existsSync(file)).toBe(true)
     }
     expect(scripts['test:migration']).toBe('python scripts/test_migrate_individual_library.py')
+    expect(scripts['test:core:browser']).toContain('scripts/chat-scroll.browser.test.mjs')
   })
 
   it('keeps transcription tests independent of previous application builds', () => {

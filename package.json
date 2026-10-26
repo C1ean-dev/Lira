@@ -23,7 +23,7 @@
     "teste:all": "npm run test:all",
     "test:migration": "python scripts/test_migrate_individual_library.py",
     "test:core": "vitest run src/__tests__/p2p src/__tests__/media",
-    "test:core:browser": "cross-env LIRA_RUN_BROWSER_TESTS=1 node --test --test-force-exit scripts/core-realtime.browser.test.mjs",
+    "test:core:browser": "cross-env LIRA_RUN_BROWSER_TESTS=1 node --test --test-force-exit scripts/core-realtime.browser.test.mjs scripts/chat-scroll.browser.test.mjs",
     "test:navigation:browser": "cross-env LIRA_RUN_NAVIGATION_TESTS=1 node --test scripts/navigation-responsive.browser.test.mjs",
     "test:sprites:electron": "cross-env LIRA_RUN_SPRITE_TESTS=1 node --test scripts/individual-library.electron.test.mjs",
     "test:transcription:electron": "cross-env LIRA_RUN_TRANSCRIPTION_TESTS=1 node --test scripts/transcription-module.electron.test.mjs",

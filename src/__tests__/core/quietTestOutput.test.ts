@@ -187,7 +187,7 @@ if __name__ == '__main__':
     expect(scripts['teste:all']).toBe('npm run test:all')
     expect(scripts.test).not.toContain('quiet')
     const suites = testSuites()
-    expect(suites.map(suite => suite.name)).toEqual(['unit', 'migration', 'core:browser', 'navigation:browser', 'sprites:electron', 'noise:dynamics', 'transcription:electron'])
+    expect(suites.map(suite => suite.name)).toEqual(['unit', 'migration', 'noise:guards', 'core:browser', 'navigation:browser', 'sprites:electron', 'noise:dynamics', 'transcription:electron'])
     for (const [name, flag] of [['core:browser', 'LIRA_RUN_BROWSER_TESTS'], ['navigation:browser', 'LIRA_RUN_NAVIGATION_TESTS'], ['sprites:electron', 'LIRA_RUN_SPRITE_TESTS'], ['transcription:electron', 'LIRA_RUN_TRANSCRIPTION_TESTS']]) {
       const suite = suites.find(suite => suite.name === name)!
       expect(suite.env[flag]).toBe('1')

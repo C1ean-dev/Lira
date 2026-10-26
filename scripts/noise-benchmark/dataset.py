@@ -33,6 +33,12 @@ def read_wav(path):
     return signal.resample_poly(values, RATE // divisor, rate // divisor)
 
 
+def mix_at_snr(clean, background, snr_db, speech_start, speech_end):
+    interval = slice(speech_start, speech_end)
+    scale = rms(clean[interval]) / (max(rms(background[interval]), 1e-12) * 10 ** (snr_db / 20))
+    return clean + background * scale
+
+
 def prepare(output, profile):
     manifest = json.loads(Path(__file__).with_name('manifest.json').read_text())
     cache = ROOT / 'node_modules/.cache/ms-snsd' / manifest['revision']
@@ -82,15 +88,17 @@ def prepare(output, profile):
         if noise:
             background = read_wav(cache / f'noise_test/{noise}_1.wav')
             background = np.resize(background, len(clean))
-            background *= level / (max(rms(background), 1e-12) * 10 ** (snr / 20))
-            noisy += background
+            noisy = mix_at_snr(clean, background, snr, RATE * 3, RATE * 8)
         headroom = max(1.0, float(np.max(np.abs(noisy))) / 0.95)
         clean, noisy = clean / headroom, noisy / headroom
+        measured_snr = (10 * np.log10(np.mean(clean[RATE * 3:RATE * 8] ** 2) /
+                                    np.mean((noisy - clean)[RATE * 3:RATE * 8] ** 2))) if noise else None
         clean.astype('<f4').tofile(directory / 'clean.f32')
         noisy.astype('<f4').tofile(directory / 'input.f32')
         write_wav(directory / 'clean.wav', clean)
         write_wav(directory / 'input.wav', noisy)
-        cases.append(dict(id=name, speaker=speaker, noise=noise, snrDb=snr, speechRms=level,
+        cases.append(dict(id=name, speaker=speaker, noise=noise, snrDb=snr,
+                          measuredSnrDb=float(measured_snr) if measured_snr is not None else None, speechRms=level,
                           samples=len(clean), speechStart=RATE * 3, speechEnd=RATE * 8))
     (output / 'cases.json').write_text(json.dumps(dict(dataset=manifest, profile=profile, cases=cases), indent=2))
     print(f'Prepared {len(cases)} cases at {RATE} Hz', flush=True)

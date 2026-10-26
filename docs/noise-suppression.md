@@ -10,6 +10,8 @@ Use Node dependencies from `npm ci`, Python (validated with 3.14) and the pinned
 ```powershell
 python -m pip install --target node_modules/.cache/noise-metrics -r scripts/noise-benchmark/requirements.txt
 python -B scripts/noise-benchmark/test_metrics.py
+python -B scripts/noise-benchmark/test_report.py
+python -B scripts/noise-benchmark/test_dataset.py
 npm run test:noise -- --dynamics-only --output=.scratch/noise-benchmark/dynamics
 npm run test:noise -- --profile=smoke --output=.scratch/noise-benchmark/smoke
 npm run test:noise -- --profile=full --output=.scratch/noise-benchmark/full
@@ -32,6 +34,13 @@ second of background. Quiet clean speech is RMS 0.0045; normal clean speech is
 RMS 0.04. Regular mixtures use speech RMS 0.03; quiet validation mixtures use
 0.0045, before a shared headroom adjustment. The mixture is identical for every
 engine; no output loudness normalization is applied.
+Noise is scaled using the same five-second speech interval as the clean signal,
+including for nonstationary sounds such as typing. `snrDb` is the target and
+`measuredSnrDb` records the resulting input SNR. A shared headroom adjustment
+preserves this ratio. Earlier artifacts normalized noise over all nine seconds;
+their typing mixtures were about 1.28 dB noisier during speech than their labels.
+Regenerate both comparison inputs with the current preparer (a saved renderer
+bundle can still be replayed); the byte-identity check rejects old/new mixtures.
 
 ## Actual processing and artifacts
 
@@ -60,6 +69,13 @@ The checker verifies identical reference/mixture bytes, rejects noise-only
 amplification above 1 dB, paired STOI losses above 0.03 and average losses above
 0.005. Clean inputs must keep STOI >= 0.9, coherent speech gain >= -9 dB and
 dropout <= 10%, so muting or uniformly attenuating everything cannot pass.
+Mixtures must also retain STOI >= 0.5 and coherent speech gain >= -18 dB to
+reject catastrophic voice loss without a baseline. Paired comparisons reject
+speech-gain losses above 3 dB on any input, including mixtures: STOI alone cannot
+detect uniform attenuation. Mixture dropout is not a pass/fail criterion because
+noise can hide missing speech. The standard-library checker regressions run in
+`test:all`; the dataset benchmark also runs the metric, checker and mixture tests
+before preparing inputs.
 These are regression budgets, not published perceptual-quality standards.
 The checker supplements comparison of the complete metrics; passing it is not
 a universal audio-quality guarantee.
@@ -100,6 +116,10 @@ presets. Gate thresholds and the RNNoise model remain independent of this stage.
 Reference: [Web Audio makeup gain](https://www.w3.org/TR/webaudio-1.0/#computing-the-makeup-gain).
 
 ## Recorded results (2026-10-26, Windows Electron)
+
+The historical matrices below used the original nine-second noise scaling.
+Their paired before/after comparisons remain valid for those identical inputs;
+new runs use speech-window SNR and must generate fresh comparison inputs.
 
 The 20-case calibration matrix had mean noisy-input STOI 0.840. Means below
 include four clean and sixteen mixed inputs per engine:
@@ -163,6 +183,12 @@ AGC, room reverberation and physical microphones require separate validation.
 
 Dataset: [Microsoft MS-SNSD](https://github.com/microsoft/MS-SNSD).
 Metric implementation: [pystoi](https://github.com/mpariente/pystoi).
+The corrected speech-window SNR preparer was checked with four smoke and eight
+validation scenarios (36 real captures across three engines). All passed the
+stronger voice-preservation and noise-amplification budgets; validation mixed
+STOI means were 0.880 (Clássico), 0.892 (Suave), 0.923 (RNNoise), versus 0.895
+for the input. These are fresh inputs and are not paired improvements over the
+historical matrices above. The RNNoise model and gate settings are unchanged.
 The dataset retains its original speech/noise licenses described in the
 [MS-SNSD README](https://github.com/microsoft/MS-SNSD#dataset-licenses); the repo's
 MIT code license does not replace those data licenses.
