@@ -18,6 +18,22 @@ principal, precisa existir em `node_modules` no aplicativo instalado.
 se entrar um arquivo fora desse limite, um runtime ONNX nativo, uma dependência
 de IA ou um WASM de transcrição. A verificação executa antes de gerar o instalador.
 
+## Redução de tamanho
+
+Quando existe `assets/library/catalog.json`, o build valida o catálogo e o SHA-256
+de todas as imagens distribuídas antes de omitir `library.xml` e os PNGs de atlas
+legados de `dist`. Os originais em `public` permanecem disponíveis para desenvolvimento.
+Sem catálogo, o pacote conserva os atlas e o carregamento legado. Migração de dados
+locais e conversões para participantes antigos continuam disponíveis em execução.
+O mesmo frontend reduzido é usado no Windows e no Android.
+
+O Windows distribui os idiomas `pt-BR` e `en-US` do Electron. O Android release
+ativa R8 e remoção de recursos não usados com `proguard-android-optimize.txt`.
+As regras fornecidas pelo Capacitor preservam os plugins, métodos JavaScript e
+callbacks de permissões/atividades. Os mapas de diagnóstico JavaScript continuam
+no pacote; `android/app/build/outputs/mapping/release/mapping.txt` permite interpretar
+nomes Java encurtados pelo R8 e deve ser guardado junto ao APK de cada versão.
+
 ## Transcrição opcional
 
 Abrir o painel não baixa arquivos. No primeiro uso, **Baixar e iniciar

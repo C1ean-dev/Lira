@@ -91,6 +91,10 @@
       }
     ],
     "win": {
+      "electronLanguages": [
+        "pt-BR",
+        "en-US"
+      ],
       "target": [
         {
           "target": "nsis",
