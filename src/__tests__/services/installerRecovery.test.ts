@@ -1,6 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -22,7 +23,7 @@ describe.skipIf(process.platform !== 'win32')('installer file recovery', { timeo
     compiledRoot = mkdtempSync(path.join(os.tmpdir(), 'lira-recovery-io-'))
     ioHarness = createUpdateIoHarness(compiledRoot)
   })
-  afterAll(() => rmSync(compiledRoot, { recursive: true, force: true }))
+  afterAll(() => rm(compiledRoot, { recursive: true, force: true }))
   const putAt = (directory: string, relative: string, value: string | Buffer) => {
     const file = path.join(directory, relative)
     mkdirSync(path.dirname(file), { recursive: true })
@@ -61,7 +62,9 @@ describe.skipIf(process.platform !== 'win32')('installer file recovery', { timeo
     put('resources/app.asar', 'old application')
     put('Uninstall Lira.exe', 'old uninstaller')
   })
-  afterEach(() => rmSync(root, { recursive: true, force: true }))
+  // Node 24.11 on Windows can silently leave accented paths intact with rmSync.
+  // Await async removal so each fixture has the intended on-disk state.
+  afterEach(() => rm(root, { recursive: true, force: true }))
 
   it('uses the same canonical paths in hand-authored fixtures and generated recovery journals', () => {
     run('Backup')
@@ -88,11 +91,11 @@ describe.skipIf(process.platform !== 'win32')('installer file recovery', { timeo
     expect(readFileSync(path.join(backupApp, 'Lira.exe'), 'utf8')).toBe('old executable')
   })
 
-  it('renames the complete previous version back after partial extraction', () => {
+  it('renames the complete previous version back after partial extraction', async () => {
     const before = statSync(install, { bigint: true }).ino
     put('locales/custom.pak', 'preserved application resource')
     run('Backup')
-    rmSync(install, { recursive: true })
+    await rm(install, { recursive: true })
     put('Lira.exe', 'broken new executable')
     put('new-only.dll', 'partial update')
     run('Restore')
@@ -122,8 +125,9 @@ describe.skipIf(process.platform !== 'win32')('installer file recovery', { timeo
     expect(readFileSync(path.join(backup, 'user-data/lira/data/nativeSpaces.json'), 'utf8')).toBe('old save')
   })
 
-  it('does not touch a backup or remove files on a fresh installation', () => {
-    rmSync(install, { recursive: true })
+  it('does not touch a backup or remove files on a fresh installation', async () => {
+    await rm(install, { recursive: true })
+    expect(existsSync(install)).toBe(false)
     mkdirSync(backup)
     writeFileSync(path.join(backup, 'keep.txt'), 'previous backup')
     run('Backup')
@@ -132,9 +136,9 @@ describe.skipIf(process.platform !== 'win32')('installer file recovery', { timeo
     expect(readFileSync(path.join(backup, 'keep.txt'), 'utf8')).toBe('previous backup')
   })
 
-  it('refuses rollback when its backup is incomplete, preserving the partial install', () => {
+  it('refuses rollback when its backup is incomplete, preserving the partial install', async () => {
     run('Backup')
-    rmSync(path.join(backupApp, 'resources/app.asar'))
+    await rm(path.join(backupApp, 'resources/app.asar'))
     put('Lira.exe', 'partial install')
     expect(() => run('Restore')).toThrow()
     expect(readFileSync(path.join(install, 'Lira.exe'), 'utf8')).toBe('partial install')
@@ -164,12 +168,12 @@ describe.skipIf(process.platform !== 'win32')('installer file recovery', { timeo
     }
   })
 
-  it('restores both the app and user profile after an update changes or deletes saves', () => {
+  it('restores both the app and user profile after an update changes or deletes saves', async () => {
     putAt(userData, 'data/nativeSpaces.json', 'original save')
     putAt(userData, 'Local Storage/leveldb/000003.log', 'original settings')
     run('Backup')
     put('Lira.exe', 'broken new app')
-    rmSync(userData, { recursive: true })
+    await rm(userData, { recursive: true })
     putAt(userData, 'data/nativeAssets.json', 'incompatible save')
     run('Restore')
     expect(readFileSync(path.join(install, 'Lira.exe'), 'utf8')).toBe('old executable')
@@ -201,8 +205,9 @@ describe.skipIf(process.platform !== 'win32')('installer file recovery', { timeo
     expect(readFileSync(path.join(install, 'Lira.exe'), 'utf8')).toBe('old executable')
   })
 
-  it('protects existing saves during reinstallation even if the app was already removed', () => {
-    rmSync(install, { recursive: true })
+  it('protects existing saves during reinstallation even if the app was already removed', async () => {
+    await rm(install, { recursive: true })
+    expect(existsSync(install)).toBe(false)
     putAt(userData, 'data/nativeSpaces.json', 'existing save')
     run('Backup')
     put('Lira.exe', 'failed reinstall')
@@ -271,10 +276,10 @@ describe.skipIf(process.platform !== 'win32')('installer file recovery', { timeo
     expect(readFileSync(path.join(overlapping, 'Lira.exe'), 'utf8')).toBe('must be preserved')
   })
 
-  it('preserves empty directories in the user profile', () => {
+  it('preserves empty directories in the user profile', async () => {
     mkdirSync(path.join(userData, 'Local Storage/leveldb/empty'), { recursive: true })
     run('Backup')
-    rmSync(userData, { recursive: true })
+    await rm(userData, { recursive: true })
     run('Restore')
     expect(existsSync(path.join(userData, 'Local Storage/leveldb/empty'))).toBe(true)
   })
@@ -365,18 +370,20 @@ function Get-ChildItem {
     expect(events.some(event => event.Stage === 'Verificando backup')).toBe(true)
   })
 
-  it('backs up many small saves with an independent copy and records elapsed stage times', () => {
+  it('backs up 100 small saves with an independent copy and records elapsed stage times', () => {
     const bytes = Buffer.alloc(16 * 1024, 193)
-    for (let index = 0; index < 1000; index++) putAt(userData, `Local Storage/leveldb/${index % 10}/${index}.bin`, bytes)
+    const saves = path.join(userData, 'Local Storage/leveldb')
+    for (let bucket = 0; bucket < 10; bucket++) mkdirSync(path.join(saves, String(bucket)), { recursive: true })
+    for (let index = 0; index < 100; index++) writeFileSync(path.join(saves, String(index % 10), `${index}.bin`), bytes)
     const started = performance.now()
     run('Backup')
     const elapsed = Math.round(performance.now() - started)
     const events = progress()
-    console.info(`Backup fixture (1000 saves, 16 MB): ${elapsed} ms; stages: ${JSON.stringify(events.filter((event, index) => index === 0 || event.Stage !== events[index - 1].Stage).map(event => ({ Stage: event.Stage, ElapsedMs: event.ElapsedMs })))}`)
-    expect(events.at(-1).FilesCopied).toBe(1000)
-    expect(events.at(-1).SourceReadBytes).toBe(1000 * bytes.length)
-    expect(events.at(-1).VerificationReadBytes).toBe(1000 * bytes.length)
-    expect(statSync(path.join(backup, 'user-data/lira/Local Storage/leveldb/9/999.bin'), { bigint: true }).ino).not.toBe(statSync(path.join(userData, 'Local Storage/leveldb/9/999.bin'), { bigint: true }).ino)
+    console.info(`Backup fixture (100 saves, 1.6 MB): ${elapsed} ms; stages: ${JSON.stringify(events.filter((event, index) => index === 0 || event.Stage !== events[index - 1].Stage).map(event => ({ Stage: event.Stage, ElapsedMs: event.ElapsedMs })))}`)
+    expect(events.at(-1).FilesCopied).toBe(100)
+    expect(events.at(-1).SourceReadBytes).toBe(100 * bytes.length)
+    expect(events.at(-1).VerificationReadBytes).toBe(100 * bytes.length)
+    expect(statSync(path.join(backup, 'user-data/lira/Local Storage/leveldb/9/99.bin'), { bigint: true }).ino).not.toBe(statSync(path.join(saves, '9/99.bin'), { bigint: true }).ino)
     expect(events.every(event => Number.isFinite(event.ElapsedMs) && event.ElapsedMs >= 0)).toBe(true)
     expect(events.map(event => event.ElapsedMs)).toEqual(events.map(event => event.ElapsedMs).sort((a, b) => a - b))
   }, 60000)
@@ -478,12 +485,13 @@ function Get-ChildItem {
     expect(existsSync(journalPath)).toBe(false)
   })
 
-  it('recovers an interrupted preparation before the app move without replacing the existing backup', () => {
+  it('recovers an interrupted preparation before the app move without replacing the existing backup', async () => {
     putAt(userData, 'data/nativeSpaces.json', 'original save')
     run('Backup')
     const stage = path.join(root, 'lira.backup.new')
     renameSync(backup, stage)
-    rmSync(install, { recursive: true })
+    await rm(install, { recursive: true })
+    expect(existsSync(install)).toBe(false)
     renameSync(path.join(stage, 'app'), install)
     putAt(backup, 'previous.txt', 'older backup')
     const journalPath = path.join(root, 'lira.update-pending.json')

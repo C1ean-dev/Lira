@@ -1,6 +1,7 @@
 import { SensitivityMode } from '../types/audio'
 import { AutoGate } from './autoGate'
 import { useMediaStore } from '../store/useMediaStore'
+import { createVoiceDynamics } from './voiceDynamics'
 
 export class SoftDspProcessor {
   private audioCtx: AudioContext | null = null
@@ -9,6 +10,7 @@ export class SoftDspProcessor {
   private highpassFilter: BiquadFilterNode | null = null
   private highShelfFilter: BiquadFilterNode | null = null
   private compressor: DynamicsCompressorNode | null = null
+  private outputGain: GainNode | null = null
   private expanderGain: GainNode | null = null
   private analyser: AnalyserNode | null = null
   private destination: MediaStreamAudioDestinationNode | null = null
@@ -94,12 +96,9 @@ export class SoftDspProcessor {
       this.expanderGain.gain.setValueAtTime(initialGain, this.audioCtx.currentTime)
       this.isExpanderActive = initialGain > 0
 
-      this.compressor = this.audioCtx.createDynamicsCompressor()
-      this.compressor.threshold.setValueAtTime(-22, this.audioCtx.currentTime)
-      this.compressor.knee.setValueAtTime(18, this.audioCtx.currentTime)
-      this.compressor.ratio.setValueAtTime(3, this.audioCtx.currentTime)
-      this.compressor.attack.setValueAtTime(0.008, this.audioCtx.currentTime)
-      this.compressor.release.setValueAtTime(0.22, this.audioCtx.currentTime)
+      const dynamics = createVoiceDynamics(this.audioCtx, 'soft')
+      this.compressor = dynamics.compressor
+      this.outputGain = dynamics.output
 
       this.analyser = this.audioCtx.createAnalyser()
       this.analyser.fftSize = 512
@@ -113,11 +112,11 @@ export class SoftDspProcessor {
       this.highpassFilter.connect(this.highShelfFilter)
       this.highShelfFilter.connect(this.expanderGain)
       this.expanderGain.connect(this.compressor)
-      this.compressor.connect(this.destination)
+      this.outputGain.connect(this.destination)
 
       this.highShelfFilter.connect(this.analyser)
 
-      this.compressor.connect(this.testGainNode)
+      this.outputGain.connect(this.testGainNode)
       this.testGainNode.connect(this.audioCtx.destination)
 
       this.updateCalculatedThreshold()
@@ -299,6 +298,7 @@ export class SoftDspProcessor {
     this.highpassFilter = null
     this.highShelfFilter = null
     this.compressor = null
+    this.outputGain = null
     this.expanderGain = null
     this.analyser = null
     this.destination = null

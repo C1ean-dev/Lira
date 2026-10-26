@@ -1,5 +1,6 @@
 import { RNNOISE_PRE_EQ } from './RnnoiseProcessor'
 import { denoiseSamples, gateDenoisedSamples } from './rnnoiseOffline'
+import { createVoiceDynamics } from './voiceDynamics'
 
 function writeString(view: DataView, offset: number, str: string) {
   for (let i = 0; i < str.length; i++) {
@@ -237,32 +238,13 @@ export async function processAudioBufferOffline(
     gateGain.gain.setValueAtTime(targetGain, time)
   }
 
-  const comp = offlineCtx.createDynamicsCompressor()
-  if (recommendedMode === 'classic') {
-    comp.threshold.setValueAtTime(-22, 0)
-    comp.knee.setValueAtTime(14, 0)
-    comp.ratio.setValueAtTime(3.5, 0)
-    comp.attack.setValueAtTime(0.006, 0)
-    comp.release.setValueAtTime(0.18, 0)
-  } else if (recommendedMode === 'soft') {
-    comp.threshold.setValueAtTime(-24, 0)
-    comp.knee.setValueAtTime(18, 0)
-    comp.ratio.setValueAtTime(2.6, 0)
-    comp.attack.setValueAtTime(0.01, 0)
-    comp.release.setValueAtTime(0.25, 0)
-  } else {
-    comp.threshold.setValueAtTime(-20, 0)
-    comp.knee.setValueAtTime(10, 0)
-    comp.ratio.setValueAtTime(4.0, 0)
-    comp.attack.setValueAtTime(0.004, 0)
-    comp.release.setValueAtTime(0.15, 0)
-  }
+  const dynamics = createVoiceDynamics(offlineCtx, recommendedMode === 'soft' ? 'soft' : 'classic')
 
   source.connect(hp)
   hp.connect(shelf)
   shelf.connect(gateGain)
-  gateGain.connect(comp)
-  comp.connect(offlineCtx.destination)
+  gateGain.connect(dynamics.compressor)
+  dynamics.output.connect(offlineCtx.destination)
 
   source.start(0)
   return await offlineCtx.startRendering()
