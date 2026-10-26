@@ -3,13 +3,17 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { createServer } from 'node:http'
 
 test('navigation fits the viewport and its compact menu stays legible above the DJ', {
   skip: process.env.LIRA_RUN_NAVIGATION_TESTS !== '1', timeout: 180000,
 }, async t => {
-  const { createServer } = await import('vite')
-  const { default: react } = await import('@vitejs/plugin-react')
+  const started = performance.now()
+  const { build } = await import('esbuild')
+  const { buildTestPanelCss } = await import('./build-test-panel-css.mjs')
   const { chromium } = await import('playwright')
+  const root = process.cwd()
+  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'lira-navigation-'))
   const mocks = {
     PeerManager: `export const PeerManager = { getInstance: () => ({ broadcast(){}, getPeerId: () => "local", scheduleSignalingReconnect(){}, sendMessageStatus(){} }) };
       export const createPeerInstance = () => ({ on(){return this}, destroy(){} });
@@ -19,34 +23,56 @@ test('navigation fits the viewport and its compact menu stays legible above the 
     MediaManager: 'export const MediaManager = { getInstance: () => ({}) }',
     useRoomPublication: 'export const useRoomPublication = room => room ? [{host:"primary.test",name:"Servidor principal de publicação"},{host:"secondary.test",name:"Servidor secundário"}] : []',
   }
-  const server = await createServer({ configFile: false, root: process.cwd(), logLevel: 'error',
-    define: { __APP_VERSION__: '"1.1.160"' }, plugins: [react(), {
-      name: 'navigation-test-boundaries', enforce: 'pre',
-      resolveId(source) {
-        const name = source.split('/').at(-1)
-        if (name in mocks) return '\0navigation-test:' + name
-        if (source === 'virtual:lira-asset-atlases' || source === 'virtual:lira-individual-library') return '\0navigation-test:empty'
-      },
-      load(id) { if (id.startsWith('\0navigation-test:')) return mocks[id.split(':').at(-1)] || 'export default []' },
-      configureServer(server) {
-        server.middlewares.use((request, response, next) => {
-          if (request.url !== '/__navigation-test.html') return next()
-          response.setHeader('Content-Type', 'text/html')
-          response.end('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Navigation layout test</title></head><body><div id="root" class="h-screen flex flex-col"></div><script type="module" src="/scripts/navigation-responsive-test-harness.tsx"></script></body></html>')
-        })
-      },
-    }], server: { host: '127.0.0.1', port: 0, open: false, hmr: false } })
   let browser
+  let server
   const errors = []
   try {
-    await server.listen()
+    await Promise.all([
+      build({ entryPoints: ['scripts/navigation-responsive-test-harness.tsx'], outfile: path.join(temporary, 'navigation.js'),
+        bundle: true, format: 'esm', platform: 'browser', logLevel: 'silent',
+        define: { __APP_VERSION__: '"1.1.160"', 'process.env.NODE_ENV': '"production"',
+          'import.meta.env': '{"DEV":false,"PROD":true,"BASE_URL":"/","MODE":"test"}' },
+        plugins: [{ name: 'navigation-test-boundaries', setup(builder) {
+          builder.onResolve({ filter: /.*/ }, ({ path: source }) => {
+            const name = source.split('/').at(-1)
+            if (name in mocks) return { path: name, namespace: 'navigation-test' }
+            if (source === 'virtual:lira-asset-atlases' || source === 'virtual:lira-individual-library') return { path: 'empty', namespace: 'navigation-test' }
+            if (source.endsWith('/index.css')) return { path: 'css', namespace: 'navigation-test' }
+          })
+          builder.onLoad({ filter: /.*/, namespace: 'navigation-test' }, ({ path: name }) => ({
+            contents: name === 'css' ? '' : mocks[name] || 'export default []', loader: 'js',
+          }))
+        } }],
+      }),
+      buildTestPanelCss(path.join(temporary, 'navigation.css'), ['./src/**/*.{js,ts,jsx,tsx}', './scripts/navigation-responsive-test-harness.tsx']),
+    ])
+    const preparedMs = Math.round(performance.now() - started)
+    const publicRoot = path.resolve(root, 'public')
+    const mime = { '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json', '.webp': 'image/webp', '.woff2': 'font/woff2' }
+    server = createServer(async (request, response) => {
+      try {
+        const pathname = decodeURIComponent(new URL(request.url, 'http://fixture').pathname)
+        if (pathname === '/__navigation-test.html') {
+          response.setHeader('Content-Type', 'text/html')
+          response.end('<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Navigation layout test</title><link rel="stylesheet" href="/navigation.css"></head><body><div id="root" class="h-screen flex flex-col"></div><script type="module" src="/navigation.js"></script></body></html>')
+          return
+        }
+        const generated = pathname === '/navigation.js' || pathname === '/navigation.css'
+        const file = generated ? path.join(temporary, pathname.slice(1)) : path.resolve(publicRoot, '.' + pathname)
+        if (!generated && !file.startsWith(publicRoot + path.sep)) { response.writeHead(404).end(); return }
+        response.setHeader('Content-Type', mime[path.extname(file)] || 'application/octet-stream')
+        response.end(await fs.readFile(file))
+      } catch (error) { response.writeHead(error.code === 'ENOENT' ? 404 : 500).end() }
+    })
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
     browser = await chromium.launch({ headless: true })
     const page = await browser.newPage({ viewport: { width: 1366, height: 768 }, reducedMotion: 'reduce' })
     page.setDefaultTimeout(5000)
     page.on('pageerror', error => errors.push(error.message))
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text().slice(0, 1000)) })
-    await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/__navigation-test.html`, { waitUntil: 'domcontentloaded', timeout: 30000 })
+    await page.goto(`http://127.0.0.1:${server.address().port}/__navigation-test.html`, { waitUntil: 'domcontentloaded', timeout: 30000 })
     await page.waitForSelector('header', { timeout: 20000 })
+    t.diagnostic(`Navigation preparation: ${preparedMs} ms; browser ready: ${Math.round(performance.now() - started)} ms`)
     await page.addStyleTag({ content: '*,*::before,*::after{animation:none!important;transition:none!important}' })
     const reset = options => page.evaluate(options => window.navigationTesting.configure(options), options)
     const openMenu = async () => {
@@ -164,5 +190,10 @@ test('navigation fits the viewport and its compact menu stays legible above the 
   } catch (error) {
     for (const message of errors.slice(0, 8)) t.diagnostic(message)
     throw error
-  } finally { await browser?.close(); await server.close() }
+  } finally {
+    await browser?.close()
+    if (server) await new Promise(resolve => server.close(resolve))
+    assert(path.resolve(temporary).startsWith(path.resolve(os.tmpdir()) + path.sep))
+    await fs.rm(temporary, { recursive: true, force: true })
+  }
 })

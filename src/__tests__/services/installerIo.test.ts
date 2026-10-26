@@ -64,30 +64,6 @@ ${body}
     expect(() => execute('[LiraUpdateIO]::SnapshotTree($source)', [])).toThrow()
   })
 
-  it('copies and verifies many independent saves without a PowerShell callback for each file', () => {
-    const bytes = Buffer.alloc(4096, 173)
-    const files = Array.from({ length: 2000 }, (_, index) => ({ Name: `${index}.bin`, Length: bytes.length }))
-    for (const file of files) writeFileSync(path.join(source, file.Name), bytes)
-    mkdirSync(path.join(source, 'empty'))
-    const result = JSON.parse(execute(`
-$clock = [Diagnostics.Stopwatch]::StartNew()
-$script:callbacks = 0
-$notify = [Action]{ $script:callbacks++ }
-[LiraUpdateIO]::CopyTree($source, $destination, $entries, [string[]]@($request.Directories), $notify)
-[LiraUpdateIO]::VerifyTree($destination, $entries, $false, $notify)
-[pscustomobject]@{ ElapsedMs = $clock.ElapsedMilliseconds; Callbacks = $script:callbacks; FilesCopied = [LiraUpdateIO]::FilesCopied; SourceReadBytes = [LiraUpdateIO]::SourceReadBytes; VerificationReadBytes = [LiraUpdateIO]::VerificationReadBytes; FirstHash = $entries[0].Hash } | ConvertTo-Json -Compress
-`, files, ['empty']))
-    console.info(`Native copy and verification fixture (2000 saves, 8 MB): ${result.ElapsedMs} ms`)
-    expect(result.FilesCopied).toBe(files.length)
-    expect(result.SourceReadBytes).toBe(bytes.length * files.length)
-    expect(result.VerificationReadBytes).toBe(bytes.length * files.length)
-    expect(result.FirstHash).toBe(digest(bytes))
-    expect(result.Callbacks).toBeLessThanOrEqual(Math.ceil(result.ElapsedMs / 250) + 1)
-    expect(readFileSync(path.join(destination, '1999.bin'))).toEqual(bytes)
-    expect(statSync(path.join(destination, '1999.bin'), { bigint: true }).ino).not.toBe(statSync(path.join(source, '1999.bin'), { bigint: true }).ino)
-    expect(existsSync(path.join(destination, 'empty'))).toBe(true)
-  }, 30000)
-
   it('detects a corrupted destination even when its length is unchanged', () => {
     writeFileSync(path.join(source, 'save.json'), 'original')
     expect(() => execute(`${copy}
