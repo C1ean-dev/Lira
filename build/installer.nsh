@@ -15,7 +15,7 @@
 !macro LiraStage MSG
   DetailPrint "${MSG}"
   ${If} $liraProgressLabel != 0
-    SendMessage $liraProgressLabel ${WM_SETTEXT} 0 "STR:${MSG}"
+    SendMessage $liraProgressLabel ${WM_SETTEXT} 0 "STR:${MSG}" /TIMEOUT=1000
   ${EndIf}
 !macroend
 
@@ -86,12 +86,18 @@
     # Release NSIS's working-directory handle so INSTDIR can be renamed on the same volume.
     SetOutPath "$TEMP"
     # Match electron-builder's one-click SpiderBanner label; fall back to the regular page status.
-    FindWindow $R1 "#32770" "" $HWNDPARENT
-    FindWindow $R1 "#32770" "" $HWNDPARENT $R1
-    GetDlgItem $liraProgressLabel $R1 1000
-    ${If} $liraProgressLabel == 0
+    StrCpy $liraProgressLabel 0
+    # Silent installers have no parent window. Searching with a null parent
+    # would find an unrelated application's dialog on the user's desktop.
+    ${IfNot} ${Silent}
+    ${AndIf} $HWNDPARENT != 0
       FindWindow $R1 "#32770" "" $HWNDPARENT
-      GetDlgItem $liraProgressLabel $R1 1006
+      FindWindow $R1 "#32770" "" $HWNDPARENT $R1
+      GetDlgItem $liraProgressLabel $R1 1000
+      ${If} $liraProgressLabel == 0
+        FindWindow $R1 "#32770" "" $HWNDPARENT
+        GetDlgItem $liraProgressLabel $R1 1006
+      ${EndIf}
     ${EndIf}
     # Recover an interrupted transaction before choosing a full/differential path.
     ${If} ${FileExists} "$INSTDIR\..\lira.update-pending.json"
