@@ -59,6 +59,16 @@ Esses números excluem a extração temporária e distinguem o backup do aplicat
 da proteção dos dados do usuário. Comparação e verificação por hash ainda leem os
 arquivos: menor escrita/backup não implica um ganho universal de tempo.
 
+Quando uma preparação falha, o log `lira.update-errors.jsonl`, ao lado da pasta
+instalada, registra a ação, a etapa original e a causa do erro. A devolução dos
+arquivos não substitui esse diagnóstico pela última mensagem de progresso.
+
+Após recuperar os arquivos, o instalador fecha a tela de progresso e apresenta
+o resultado. Em modo silencioso, o aviso tem uma resposta padrão e não bloqueia
+o processo. A tentativa termina com código de erro; a versão preservada só é
+reaberta depois do aviso, sem aguardar sua inicialização. Se a restauração falhar,
+o backup fica preservado e o aplicativo não é iniciado sobre arquivos incompletos.
+
 ## Transição e testes
 
 Instalações sem manifesto usam uma atualização completa, preservando o fluxo de
@@ -73,3 +83,7 @@ atualizações sucessivas e preservação da identidade/data de arquivos inalter
 O teste de empacotamento compila um instalador e desinstalador com payload inerte,
 usando ferramentas em cache; nunca executa os binários resultantes. Executar um
 instalador real continua dependendo de autorização prévia.
+O teste `installerRollbackExit.test.ts` executa também uma reprodução isolada da
+finalização NSIS, usando um worker de recuperação simulado e um aplicativo de
+teste inofensivo. Ele verifica os callbacks de encerramento, o aviso em modo
+silencioso e a saída do instalador enquanto o aplicativo restaurado segue aberto.

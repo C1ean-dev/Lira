@@ -397,6 +397,10 @@ function Get-ChildItem {
       expect(() => run('Backup')).toThrow()
       expect(statSync(path.join(install, 'Lira.exe'), { bigint: true }).ino).toBe(before)
       expect(readFileSync(path.join(backup, 'previous.txt'), 'utf8')).toBe('previous backup')
+      const failure = JSON.parse(readFileSync(path.join(root, 'lira.update-errors.jsonl'), 'utf8').trim())
+      expect(failure.Action).toBe('Backup')
+      expect(failure.Message).toBeTruthy()
+      expect(failure.ErrorType).toBeTruthy()
     })
   }, 15000)
 
@@ -409,6 +413,11 @@ function Get-ChildItem {
       expect(statSync(path.join(install, 'Lira.exe'), { bigint: true }).ino).toBe(before)
       expect(readFileSync(path.join(userData, 'data/nativeSpaces.json'), 'utf8')).toBe('original save')
       expect(progress().some(event => event.Stage === 'Movendo aplicativo')).toBe(true)
+      expect(progress().at(-1).Stage).toBe('Aplicativo preservado; atualizacao cancelada')
+      const failure = JSON.parse(readFileSync(path.join(root, 'lira.update-errors.jsonl'), 'utf8').trim())
+      expect(failure.Action).toBe('Backup')
+      expect(failure.Stage).toBe('Removendo backup anterior')
+      expect(failure.Message).toBeTruthy()
       expect(existsSync(path.join(root, 'lira.update-pending.json'))).toBe(false)
     })
     expect(readFileSync(backup, 'utf8')).toBe('locked previous backup')
@@ -545,7 +554,7 @@ describe('installer recovery lifecycle', () => {
     expect(source).toMatch(/Function \.onGUIEnd[\s\S]*?Call LiraRollback/)
     expect(source).toContain('-Action Restore')
     expect(source).toContain('Tente novamente mais tarde.')
-    expect(source).toMatch(/Function LiraRollback[\s\S]*?ExecShell/)
+    expect(source).toMatch(/Function LiraRollback[\s\S]*?Call LiraFinishFailedUpdate/)
   })
 
   it('commits only after launching the new app and recovers a launch error', () => {

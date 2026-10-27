@@ -6,12 +6,16 @@
   Var liraProgressLabel
   Var liraDeltaUpdate
   Var liraPayloadDir
+  Var liraFailureHandled
+  Var liraFailureMessage
+  Var liraRestartAfterFailure
+  Var liraGuiEnding
 !endif
 
 !macro LiraStage MSG
   DetailPrint "${MSG}"
   ${If} $liraProgressLabel != 0
-    SendMessage $liraProgressLabel ${WM_SETTEXT} 0 "STR:${MSG}"
+    SendMessage $liraProgressLabel ${WM_SETTEXT} 0 "STR:${MSG}" /TIMEOUT=1000
   ${EndIf}
 !macroend
 
@@ -45,6 +49,9 @@
   StrCpy $liraUpdatePending "false"
   StrCpy $liraProgressLabel 0
   StrCpy $liraDeltaUpdate "false"
+  StrCpy $liraFailureHandled "false"
+  StrCpy $liraRestartAfterFailure "false"
+  StrCpy $liraGuiEnding "false"
   nsExec::Exec `"$SYSDIR\cmd.exe" /c echo ======================================== >> "$TEMP\lira_install.log"`
   nsExec::Exec `"$SYSDIR\cmd.exe" /c echo [TIMESTAMP] %DATE% %TIME% >> "$TEMP\lira_install.log"`
   !insertmacro LogToInstallFile "=== INICIO DO INSTALADOR LIRA ==="
@@ -79,19 +86,29 @@
     # Release NSIS's working-directory handle so INSTDIR can be renamed on the same volume.
     SetOutPath "$TEMP"
     # Match electron-builder's one-click SpiderBanner label; fall back to the regular page status.
-    FindWindow $R1 "#32770" "" $HWNDPARENT
-    FindWindow $R1 "#32770" "" $HWNDPARENT $R1
-    GetDlgItem $liraProgressLabel $R1 1000
-    ${If} $liraProgressLabel == 0
+    StrCpy $liraProgressLabel 0
+    # Silent installers have no parent window. Searching with a null parent
+    # would find an unrelated application's dialog on the user's desktop.
+    ${IfNot} ${Silent}
+    ${AndIf} $HWNDPARENT != 0
       FindWindow $R1 "#32770" "" $HWNDPARENT
-      GetDlgItem $liraProgressLabel $R1 1006
+      FindWindow $R1 "#32770" "" $HWNDPARENT $R1
+      GetDlgItem $liraProgressLabel $R1 1000
+      ${If} $liraProgressLabel == 0
+        FindWindow $R1 "#32770" "" $HWNDPARENT
+        GetDlgItem $liraProgressLabel $R1 1006
+      ${EndIf}
     ${EndIf}
     # Recover an interrupted transaction before choosing a full/differential path.
     ${If} ${FileExists} "$INSTDIR\..\lira.update-pending.json"
       nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\update-recovery.ps1" -Action Restore -InstallDir "$INSTDIR" -UserDataDir "$APPDATA\${APP_PACKAGE_NAME}" -ProgressWindow "$liraProgressLabel"`
       Pop $0
       ${If} $0 != 0
-        Abort "Nao foi possivel recuperar a atualizacao anterior. O backup foi preservado."
+        !insertmacro LiraStage "Falha na restauracao; backup preservado"
+        !insertmacro LogToInstallFile "[Rollback] Falha ao recuperar a transacao anterior; backup preservado."
+        StrCpy $liraRestartAfterFailure "false"
+        StrCpy $liraFailureMessage "Nao foi possivel recuperar a atualizacao anterior. O backup foi preservado. Tente novamente mais tarde."
+        Call LiraFinishFailedUpdate
       ${EndIf}
     ${EndIf}
     ${If} ${FileExists} "$INSTDIR\resources\update-manifest.json"
@@ -106,8 +123,10 @@
         StrCpy $liraUpdatePending "true"
         Call LiraRollback
       ${Else}
-        ExecShell "" "$appExe"
-        MessageBox MB_OK|MB_ICONEXCLAMATION "Nao foi possivel salvar o backup do Lira. A atualizacao foi cancelada. Tente novamente mais tarde."
+        !insertmacro LiraStage "Atualizacao cancelada; aplicativo preservado"
+        StrCpy $liraRestartAfterFailure "true"
+        StrCpy $liraFailureMessage "Nao foi possivel salvar o backup do Lira. A atualizacao foi cancelada e seus arquivos foram preservados. Tente novamente mais tarde."
+        Call LiraFinishFailedUpdate
       ${EndIf}
       Abort
     ${EndIf}
@@ -185,6 +204,61 @@
 !macroend
 
 !ifndef BUILD_UNINSTALLER
+# A recovered installation is a terminal outcome, not an installation page still
+# waiting for work. Close the one-click banner before showing the result. Silent
+# installers must not wait forever for an invisible acknowledgement.
+Function LiraFinishFailedUpdate
+  ${If} $liraFailureHandled == "true"
+    Return
+  ${EndIf}
+  StrCpy $liraFailureHandled "true"
+  !insertmacro LogToInstallFile "[Rollback] Finalizando instalador com erro; aguardando apenas o aviso quando interativo."
+  !ifdef ONE_CLICK
+    ${IfNot} ${Silent}
+      # The custom include is parsed before electron-builder registers its
+      # SpiderBanner plugin. Hide the progress control's owner using Win32;
+      # Quit below releases the plugin and destroys the installer normally.
+      ${If} $liraProgressLabel != 0
+        Push $0
+        System::Call 'user32::GetAncestor(p $liraProgressLabel, i 2) p.r0'
+        ${If} $0 != 0
+          ShowWindow $0 ${SW_HIDE}
+        ${EndIf}
+        Pop $0
+        StrCpy $liraProgressLabel 0
+      ${EndIf}
+    ${EndIf}
+  !endif
+  MessageBox MB_OK|MB_ICONEXCLAMATION|MB_SETFOREGROUND|MB_TOPMOST "$liraFailureMessage" /SD IDOK
+  !insertmacro LogToInstallFile "[Rollback] Aviso concluido; encerrando instalador."
+  SetErrorLevel 1
+  ${If} $liraGuiEnding == "true"
+    Return
+  ${EndIf}
+  # Silent runs have no GUI-end callback. Their result needs no acknowledgement.
+  ${If} ${Silent}
+    Call LiraRestartPreservedApp
+  ${EndIf}
+  Quit
+FunctionEnd
+
+Function LiraRestartPreservedApp
+  ${If} $liraRestartAfterFailure == "true"
+    StrCpy $liraRestartAfterFailure "false"
+    ${If} ${FileExists} "$INSTDIR\Lira.exe"
+      SetOutPath "$INSTDIR"
+      !insertmacro LogToInstallFile "[Rollback] Reabrindo versao preservada apos concluir o aviso."
+      ClearErrors
+      Exec '"$INSTDIR\Lira.exe"'
+      ${If} ${Errors}
+        !insertmacro LogToInstallFile "[Rollback] Nao foi possivel reabrir o Lira; arquivos preservados."
+      ${Else}
+        !insertmacro LogToInstallFile "[Rollback] Reinicio disparado sem aguardar o aplicativo."
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
+
 Function LiraRollback
   ${If} $liraUpdatePending != "true"
     Return
@@ -198,14 +272,16 @@ Function LiraRollback
   Pop $0
   ${If} $0 == 0
     !insertmacro LogToInstallFile "[Rollback] Aplicativo e dados do usuario restaurados de lira.backup."
-    ${If} ${FileExists} "$INSTDIR\Lira.exe"
-      ExecShell "" "$INSTDIR\Lira.exe"
-    ${EndIf}
-    MessageBox MB_OK|MB_ICONEXCLAMATION "A atualização não foi bem-sucedida. A versão anterior do Lira e os dados do usuário foram restaurados. Tente novamente mais tarde."
+    !insertmacro LiraStage "Restauracao concluida; atualizacao cancelada"
+    StrCpy $liraRestartAfterFailure "true"
+    StrCpy $liraFailureMessage "A atualização não foi bem-sucedida. A versão anterior do Lira e os dados do usuário foram restaurados. Tente novamente mais tarde."
   ${Else}
     !insertmacro LogToInstallFile "[Rollback] Falha ao restaurar; lira.backup preservado."
-    MessageBox MB_OK|MB_ICONSTOP "A atualização não foi bem-sucedida e não foi possível restaurar os arquivos automaticamente. O lira.backup foi preservado. Tente novamente mais tarde."
+    !insertmacro LiraStage "Falha na restauracao; backup preservado"
+    StrCpy $liraRestartAfterFailure "false"
+    StrCpy $liraFailureMessage "A atualização não foi bem-sucedida e não foi possível restaurar os arquivos automaticamente. O lira.backup foi preservado. Tente novamente mais tarde."
   ${EndIf}
+  Call LiraFinishFailedUpdate
 FunctionEnd
 
 Function .onInstFailed
@@ -216,7 +292,12 @@ FunctionEnd
 
 Function .onGUIEnd
   # electron-builder also uses Quit on extraction/uninstall errors.
+  StrCpy $liraGuiEnding "true"
   Call LiraRollback
+  # Launch only once, after the result was acknowledged and the installation UI
+  # has ended. Exec uses CreateProcess and never waits for the app's message loop
+  # or a ShellExecute/DDE handshake. Startup must not hold recovery open.
+  Call LiraRestartPreservedApp
 FunctionEnd
 
 Function .onInstSuccess

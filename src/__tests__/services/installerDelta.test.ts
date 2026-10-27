@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { cp, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
@@ -299,7 +299,9 @@ function Get-PSDrive { param($Name,$PSProvider,$ErrorAction) return @{Free=0} }
   it('enables differential updates after the one-time full transition', async () => {
     await rm(path.join(app, manifestName))
     prepare()
-    cpSync(payload, app, { recursive: true }) // The full NSIS extraction, without executing an installer.
+    // Node 24 on Windows can silently miss accented paths in synchronous copies.
+    // Await the complete extraction fixture before asking the installer to verify it.
+    await cp(payload, app, { recursive: true })
     run('Verify'); run('Commit')
     prepare()
     expect(snapshot().FormatVersion).toBe(6)
@@ -313,7 +315,7 @@ function Get-PSDrive { param($Name,$PSProvider,$ErrorAction) return @{Free=0} }
     prepare()
     expect(snapshot().FormatVersion).toBe(5)
     expect(snapshot().Application.Existed).toBe(false)
-    cpSync(payload, app, { recursive: true })
+    await cp(payload, app, { recursive: true })
     run('Verify')
     put(profile, 'data/nativeSpaces.json', 'changed by startup')
     run('Restore')
