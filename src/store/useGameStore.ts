@@ -55,7 +55,8 @@ const saveProfile = (data: Partial<SavedProfile>) => {
     const storage = getStorage()
     if (storage) {
       const current = loadSavedProfile() || {}
-      storage.setItem(PROFILE_STORAGE_KEY, JSON.stringify({ ...current, ...data }))
+      const updates = Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined))
+      storage.setItem(PROFILE_STORAGE_KEY, JSON.stringify({ ...current, ...updates }))
     }
   } catch (e) {
     reportStorageFailure('write', PROFILE_STORAGE_KEY, e)
