@@ -33,6 +33,7 @@ $stagingPath = Join-Path $parent.FullName 'lira.backup.new'
 $pendingPath = Join-Path $parent.FullName 'lira.update-pending.json'
 $pendingTempPath = "$pendingPath.tmp"
 $progressPath = Join-Path $parent.FullName 'lira.update-progress.jsonl'
+$errorPath = Join-Path $parent.FullName 'lira.update-errors.jsonl'
 $profileStagingPath = "$userDataPath.update-restore"
 $managedTrees = @($installPath, $backupPath, $stagingPath, $userDataPath, $profileStagingPath)
 foreach ($left in $managedTrees) {
@@ -94,6 +95,7 @@ $script:verificationBase = 0L
 $script:progressClock = [Diagnostics.Stopwatch]::StartNew()
 $script:lastProgress = -1000L
 $script:deltaStats = $null
+$script:failureStage = $null
 
 function Report-Progress([string]$Stage = $script:stage, [bool]$Force = $false) {
   if ($Stage -ne $script:stage) { $script:stage = $Stage; $Force = $true }
@@ -440,9 +442,28 @@ function Undo-Preparation($Recovery) {
   }
   Remove-UpdateTree $Recovery.Directory
   Remove-Item -LiteralPath $pendingPath -Force
+  Report-Progress 'Aplicativo preservado; atualizacao cancelada' $true
 }
 
 . "$PSScriptRoot\update-delta.ps1"
+
+# Preserve the original error even if undoing a failed preparation updates the
+# progress label. Diagnostics must never replace the actual failure or its exit code.
+trap {
+  $failure = $_
+  try {
+    Assert-RegularPath $errorPath
+    $event = [pscustomobject]@{
+      Time = [DateTime]::UtcNow.ToString('o'); Action = $Action
+      Stage = $(if ($script:failureStage) { $script:failureStage } else { $script:stage })
+      ErrorType = $failure.Exception.GetBaseException().GetType().FullName
+      Message = $failure.Exception.GetBaseException().Message
+      ScriptLine = $failure.InvocationInfo.ScriptLineNumber
+    }
+    [IO.File]::AppendAllText($errorPath, ($event | ConvertTo-Json -Compress) + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+  } catch {}
+  break
+}
 
 switch ($Action) {
   'Backup' {
@@ -513,6 +534,7 @@ switch ($Action) {
       Report-Progress 'Backup pronto' $true
     } catch {
       $backupFailure = $_
+      $script:failureStage = $script:stage
       try {
         if (Test-Path -LiteralPath $pendingPath) { Undo-Preparation (Read-Recovery) }
         else { Remove-UpdateTree $stagingPath }
