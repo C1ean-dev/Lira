@@ -4,6 +4,8 @@
 !ifndef BUILD_UNINSTALLER
   Var liraUpdatePending
   Var liraProgressLabel
+  Var liraDeltaUpdate
+  Var liraPayloadDir
 !endif
 
 !macro LiraStage MSG
@@ -42,6 +44,7 @@
 !macro customInit
   StrCpy $liraUpdatePending "false"
   StrCpy $liraProgressLabel 0
+  StrCpy $liraDeltaUpdate "false"
   nsExec::Exec `"$SYSDIR\cmd.exe" /c echo ======================================== >> "$TEMP\lira_install.log"`
   nsExec::Exec `"$SYSDIR\cmd.exe" /c echo [TIMESTAMP] %DATE% %TIME% >> "$TEMP\lira_install.log"`
   !insertmacro LogToInstallFile "=== INICIO DO INSTALADOR LIRA ==="
@@ -52,8 +55,10 @@
 
   # Garante que o diretorio temporario de plugins exista
   InitPluginsDir
+  StrCpy $liraPayloadDir "$PLUGINSDIR\lira-payload"
   File /oname=$PLUGINSDIR\update-recovery.ps1 "${BUILD_RESOURCES_DIR}\update-recovery.ps1"
   File /oname=$PLUGINSDIR\update-io.ps1 "${BUILD_RESOURCES_DIR}\update-io.ps1"
+  File /oname=$PLUGINSDIR\update-delta.ps1 "${BUILD_RESOURCES_DIR}\update-delta.ps1"
   !insertmacro LogToInstallFile `[customInit] PLUGINSDIR inicializado: $PLUGINSDIR`
 
   # Em SSDs ou particoes NTFS com compactacao ativa ("Compactar este disco para economizar espaco"),
@@ -81,6 +86,17 @@
       FindWindow $R1 "#32770" "" $HWNDPARENT
       GetDlgItem $liraProgressLabel $R1 1006
     ${EndIf}
+    # Recover an interrupted transaction before choosing a full/differential path.
+    ${If} ${FileExists} "$INSTDIR\..\lira.update-pending.json"
+      nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\update-recovery.ps1" -Action Restore -InstallDir "$INSTDIR" -UserDataDir "$APPDATA\${APP_PACKAGE_NAME}" -ProgressWindow "$liraProgressLabel"`
+      Pop $0
+      ${If} $0 != 0
+        Abort "Nao foi possivel recuperar a atualizacao anterior. O backup foi preservado."
+      ${EndIf}
+    ${EndIf}
+    ${If} ${FileExists} "$INSTDIR\resources\update-manifest.json"
+      StrCpy $liraDeltaUpdate "true"
+    ${Else}
     !insertmacro LiraStage "Preparando backup"
     nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\update-recovery.ps1" -Action Backup -InstallDir "$INSTDIR" -UserDataDir "$APPDATA\${APP_PACKAGE_NAME}" -ProgressWindow "$liraProgressLabel"`
     Pop $0
@@ -100,6 +116,7 @@
       !insertmacro LogToInstallFile `[Backup] Aplicativo e dados do usuario salvos em $INSTDIR\..\lira.backup`
     ${EndIf}
     !insertmacro LiraStage "Instalando Lira"
+    ${EndIf}
   !endif
 !macroend
 
@@ -107,13 +124,20 @@
   !insertmacro LiraStage "Finalizando instalacao"
   !insertmacro LogToInstallFile `[customInstall] Arquivos extraidos para INSTDIR: $INSTDIR`
   !insertmacro LogToInstallFile "[customInstall] Descompactando INSTDIR via compact.exe (caso esteja em particao compactada)..."
-  nsExec::Exec `"$SYSDIR\compact.exe" /U /I /Q /S:"$INSTDIR"`
-  Pop $0
+  ${If} $liraDeltaUpdate != "true"
+    nsExec::Exec `"$SYSDIR\compact.exe" /U /I /Q /S:"$INSTDIR"`
+    Pop $0
+  ${EndIf}
   !insertmacro LogToInstallFile `[customInstall] compact.exe INSTDIR retorno: $0`
 
   ${IfNot} ${FileExists} "$appExe"
   ${OrIfNot} ${FileExists} "$INSTDIR\resources\app.asar"
     Abort "Os arquivos da nova versao estao incompletos."
+  ${EndIf}
+  nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\update-recovery.ps1" -Action Verify -InstallDir "$INSTDIR" -UserDataDir "$APPDATA\${APP_PACKAGE_NAME}"`
+  Pop $0
+  ${If} $0 != 0
+    Abort "A verificacao dos arquivos instalados falhou."
   ${EndIf}
   # Inicia o aplicativo atualizado imediatamente apos a conclusao da instalacao
   !insertmacro LogToInstallFile `[customInstall] Iniciando app atualizado: $appExe`
@@ -137,6 +161,7 @@
   InitPluginsDir
   File /oname=$PLUGINSDIR\update-recovery.ps1 "${BUILD_RESOURCES_DIR}\update-recovery.ps1"
   File /oname=$PLUGINSDIR\update-io.ps1 "${BUILD_RESOURCES_DIR}\update-io.ps1"
+  File /oname=$PLUGINSDIR\update-delta.ps1 "${BUILD_RESOURCES_DIR}\update-delta.ps1"
   nsExec::Exec `"$SYSDIR\cmd.exe" /c echo ======================================== >> "$TEMP\lira_install.log"`
   nsExec::Exec `"$SYSDIR\cmd.exe" /c echo [TIMESTAMP] %DATE% %TIME% >> "$TEMP\lira_install.log"`
   !insertmacro LogToInstallFile "=== INICIO DO DESINSTALADOR LIRA ==="

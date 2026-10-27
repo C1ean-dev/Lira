@@ -520,6 +520,16 @@ function Get-ChildItem {
 })
 
 describe('installer recovery lifecycle', () => {
+    it('refuses extraction or application after destination/uninstaller write errors', () => {
+      const source = readFileSync('build/selective-install-section.nsh', 'utf8')
+      const beforeExtraction = source.slice(0, source.indexOf('Nsis7z::Extract'))
+      expect(beforeExtraction).toMatch(/ClearErrors\s+SetOutPath "\$INSTDIR"/)
+      expect(beforeExtraction).toMatch(/ClearErrors\s+SetOutPath "\$liraPayloadDir"/)
+      expect(beforeExtraction.slice(beforeExtraction.indexOf('SetOutPath "$liraPayloadDir"'))).toMatch(/\$\{If\} \$\{Errors\}[\s\S]*?Abort/)
+      const beforeBackup = source.slice(source.indexOf('WriteUninstaller'), source.indexOf('-Action Backup'))
+      expect(beforeBackup).toMatch(/WriteUninstaller[^\n]*\n\$\{If\} \$\{Errors\}[\s\S]*?Abort/)
+    })
+
   it('backs up after closing the app and before electron-builder removes the old version', () => {
     const source = installer()
     const hook = source.match(/!macro customCheckAppRunning([\s\S]*?)!macroend/)![1]
