@@ -98,6 +98,18 @@ test('navigation fits the viewport and its compact menu stays legible above the 
         }
       }
     })
+    await t.test('the space ID button fits its contents without reserving empty width', async () => {
+      for (const width of [375, 900, 1240, 1536, 1920]) {
+        await page.setViewportSize({ width, height: 768 }); await reset({})
+        const spacing = await page.locator('header button[title^="ID do Espaço:"]').evaluate(button => {
+          const box = button.getBoundingClientRect()
+          const last = button.lastElementChild.getBoundingClientRect()
+          const style = getComputedStyle(button)
+          return { empty: box.right - last.right, padding: parseFloat(style.paddingRight) + parseFloat(style.borderRightWidth) }
+        })
+        assert.ok(spacing.empty <= spacing.padding + 1, `${width}px: the space ID reserves unused width: ${JSON.stringify(spacing)}`)
+      }
+    })
     await t.test('the current room indicator stays round and contained with long names', async () => {
       await page.setViewportSize({ width: 1536, height: 768 }); await reset({})
       const marker = page.locator('header [style*="background-color"]').first()

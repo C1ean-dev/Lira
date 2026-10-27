@@ -156,7 +156,7 @@ export const TopNavBar: React.FC<Props> = ({
         {roomId && (
           <button
             onClick={handleCopyCode}
-            className="flex flex-1 min-w-0 max-w-[360px] items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] rounded-xl text-xs font-semibold text-slate-200 transition-all group cursor-pointer"
+            className="flex min-w-0 max-w-[360px] items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] rounded-xl text-xs font-semibold text-slate-200 transition-all group cursor-pointer"
             title={`ID do Espaço: ${roomId}\n(Clique para copiar tudo)`}
           >
             {!isAndroidPlatform && <span className="text-slate-400 font-normal whitespace-nowrap shrink-0 hidden xl:inline 2xl:hidden min-[1800px]:inline">ID do Espaço:</span>}

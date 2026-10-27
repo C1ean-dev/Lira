@@ -10,6 +10,7 @@ import {
 import { useGameStore } from './useGameStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { setDjListeningVolume } from '../media/djListeningVolume'
+import { loadDjListeningPreferences, saveDjListeningPreferences } from '../media/djListeningPreferences'
 
 const closedDjRequestSessions = new Set<string>()
 const djRequestSessionKey = (zoneId: string, dj: SpotifyDjState) =>
@@ -72,8 +73,7 @@ export const useSpotifyJamStore = create<SpotifyJamStore>((set, get) => ({
   isModalOpen: false,
   activeZoneIdForModal: null,
   isSideDisplayMinimized: false,
-  volume: 80,
-  isMuted: false,
+  ...loadDjListeningPreferences(),
   isDjModeActive: false,
 
   setModalOpen: (open, zoneId = null) => {
@@ -97,11 +97,13 @@ export const useSpotifyJamStore = create<SpotifyJamStore>((set, get) => ({
 
   setVolume: (volume: number) => {
     set({ volume: Math.max(0, Math.min(200, volume)), isMuted: false })
+    saveDjListeningPreferences(get())
     setDjListeningVolume(get().volume)
   },
 
   toggleMute: () => {
     set((state) => ({ isMuted: !state.isMuted }))
+    saveDjListeningPreferences(get())
     setDjListeningVolume(get().isMuted ? 0 : get().volume)
   },
 
