@@ -52,9 +52,14 @@ ${If} $liraDeltaUpdate != "true"
     !insertmacro uninstallOldVersion HKEY_CURRENT_USER
     !insertmacro handleUninstallResult HKEY_CURRENT_USER
   ${EndIf}
+  ClearErrors
   SetOutPath "$INSTDIR"
 ${Else}
+  ClearErrors
   SetOutPath "$liraPayloadDir"
+${EndIf}
+${If} ${Errors}
+  Abort "Nao foi possivel preparar o diretorio de instalacao."
 ${EndIf}
 
 !ifdef UNINSTALLER_ICON
@@ -76,7 +81,11 @@ Var /GLOBAL packageArch
   SetCompress "${COMPRESS}"
 !endif
 Nsis7z::Extract "$PLUGINSDIR\app-$packageArch.7z"
+ClearErrors
 WriteUninstaller "$OUTDIR\${UNINSTALL_FILENAME}"
+${If} ${Errors}
+  Abort "Nao foi possivel gravar o desinstalador."
+${EndIf}
 !insertmacro custom_files_post_decompression
 
 ${If} $liraDeltaUpdate == "true"

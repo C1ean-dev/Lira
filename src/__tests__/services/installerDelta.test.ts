@@ -226,6 +226,26 @@ function Get-PSDrive { param($Name,$PSProvider,$ErrorAction) return @{Free=0} }
     expect(readFileSync(path.join(app, 'Lira.exe'), 'utf8')).toBe('old exe')
   })
 
+  it('preserves an externally replaced addition when restoring the previous version', () => {
+    prepare(); apply()
+    put(app, 'resources/new.bin', 'external replacement after installation')
+    run('Restore')
+    expect(readFileSync(path.join(app, 'resources/new.bin'), 'utf8')).toBe('external replacement after installation')
+    expect(readFileSync(path.join(app, 'Lira.exe'), 'utf8')).toBe('old exe')
+  })
+
+  it('does not delete external replacements created between restoration attempts', async () => {
+    prepare(); apply()
+    await withLockedFile(path.join(app, 'resources/app.asar'), () => {
+      expect(() => run('Restore')).toThrow()
+      expect(existsSync(path.join(app, 'resources/new.bin'))).toBe(false)
+      put(app, 'resources/new.bin', 'external replacement during recovery')
+    })
+    run('Restore')
+    expect(readFileSync(path.join(app, 'resources/new.bin'), 'utf8')).toBe('external replacement during recovery')
+    expect(readFileSync(path.join(app, 'resources/app.asar'), 'utf8')).toBe('old asar')
+  })
+
   it('rejects a conflicting unmanaged destination before modifying the application', () => {
     put(app, 'resources/new.bin', 'external file before preparation')
     expect(prepare).toThrow()

@@ -302,9 +302,10 @@ function Restore-Delta($Recovery) {
     if ($op.Kind -eq 'Add' -and (Test-Path -LiteralPath $target)) {
       $expected = @($snapshot.NewFiles | Where-Object { $_.Name -eq $op.Name })[0]
       $actual = Get-DeltaDescriptor $installPath $op.Name
-      # Completed is durable after publication. Hash matching also recognizes a
-      # crash after atomic replacement but before the journal was advanced.
-      if ($Recovery.Journal.Completed -contains $op.Name -or ($actual.Hash -eq $expected.Hash -and $actual.Length -eq $expected.Length)) {
+      # A durable receipt describes a past write, not the file currently at this
+      # path. Preserve external replacements, including between rollback retries.
+      # Hash matching also recognizes publication before its journal receipt.
+      if ($actual.Hash -eq $expected.Hash -and $actual.Length -eq $expected.Length) {
         Remove-Item -LiteralPath $target -Force
       }
     }

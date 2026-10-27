@@ -46,8 +46,10 @@ do desinstalador precisará de uma etapa própria de empacotamento/assinatura.
    registradas e restaura os dados mutáveis protegidos. Os arquivos do backup
    diferencial não são consumidos, permitindo repetir uma restauração interrompida.
 
-Uma adição não concluída só é removida se os bytes corresponderem à versão recebida;
-arquivos externos criados nesse intervalo são preservados. Pastas novas só são
+Uma adição só é removida se os bytes corresponderem à versão recebida; substituições
+externas são preservadas mesmo depois da aplicação ou entre tentativas de rollback.
+O instalador interrompe o fluxo se não conseguir preparar o destino ou gravar o
+desinstalador, antes de aplicar arquivos. Pastas novas só são
 removidas quando vazias. Caminhos gerenciados que troquem de arquivo para diretório,
 ou vice-versa, são recusados sem seguir links ou apagar dados desconhecidos.
 
