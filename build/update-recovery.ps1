@@ -1,17 +1,18 @@
 param(
   [Parameter(Mandatory = $true)]
-  [ValidateSet('Backup', 'Restore', 'Commit', 'Cleanup')]
+  [ValidateSet('Backup', 'Apply', 'Verify', 'Restore', 'Commit', 'Cleanup')]
   [string]$Action,
   [Parameter(Mandatory = $true)]
   [string]$InstallDir,
   [Parameter(Mandatory = $true)]
   [string]$UserDataDir,
-  [long]$ProgressWindow = 0
+  [long]$ProgressWindow = 0,
+  [string]$PayloadDir = ''
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-if ($Action -in @('Backup', 'Restore')) { . "$PSScriptRoot\update-io.ps1" }
+if ($Action -in @('Backup', 'Apply', 'Verify', 'Restore', 'Commit')) { . "$PSScriptRoot\update-io.ps1" }
 
 function Get-ManagedPath([string]$Target) {
   $absolute = [IO.Path]::GetFullPath($Target).TrimEnd('\')
@@ -92,6 +93,7 @@ $script:movedAppBytes = 0L
 $script:verificationBase = 0L
 $script:progressClock = [Diagnostics.Stopwatch]::StartNew()
 $script:lastProgress = -1000L
+$script:deltaStats = $null
 
 function Report-Progress([string]$Stage = $script:stage, [bool]$Force = $false) {
   if ($Stage -ne $script:stage) { $script:stage = $Stage; $Force = $true }
@@ -105,6 +107,11 @@ function Report-Progress([string]$Stage = $script:stage, [bool]$Force = $false) 
     SourceReadBytes = [LiraUpdateIO]::SourceReadBytes; VerificationReadBytes = [LiraUpdateIO]::VerificationReadBytes
     TotalBytes = $script:totalBytes; MovedAppBytes = $script:movedAppBytes
     ElapsedMs = $script:progressClock.ElapsedMilliseconds
+  }
+  if ($null -ne $script:deltaStats) {
+    foreach ($name in @('FilesKept', 'FilesChanged', 'BackupBytes', 'ApplyBytes', 'WrittenBytes')) {
+      $event | Add-Member -NotePropertyName $name -NotePropertyValue $script:deltaStats.$name
+    }
   }
   # Progress diagnostics must never interrupt a completed transaction (e.g. on a full disk).
   try {
@@ -295,7 +302,7 @@ function Assert-TreeSnapshot($Tree, [string]$Directory, [bool]$Moved = $false) {
 function Assert-ManifestIdentity($Snapshot) {
   if ($Snapshot.InstallDir -ne $installPath) { throw 'Invalid backup installation directory.' }
   if ($Snapshot.PSObject.Properties.Name -contains 'FormatVersion') {
-    if ($Snapshot.FormatVersion -notin @(2, 3, 4, 5) -or $Snapshot.UserDataDir -ne $userDataPath) { throw 'Invalid backup profile directory.' }
+    if ($Snapshot.FormatVersion -notin @(2, 3, 4, 5, 6) -or $Snapshot.UserDataDir -ne $userDataPath) { throw 'Invalid backup profile directory.' }
     if ($Snapshot.FormatVersion -ge 4) {
       $transaction = [Guid]::Empty
       if (-not [Guid]::TryParse([string]$Snapshot.TransactionId, [ref]$transaction)) { throw 'Invalid recovery transaction.' }
@@ -323,6 +330,10 @@ function Get-RenamedApplicationSource($Snapshot, [string]$Directory) {
 
 function Assert-BackupSnapshot($Snapshot, [string]$Directory) {
   Assert-ManifestIdentity $Snapshot
+  if ($Snapshot.PSObject.Properties.Name -contains 'FormatVersion' -and $Snapshot.FormatVersion -eq 6) {
+    Assert-DeltaSnapshot $Snapshot $Directory
+    return
+  }
   $renamed = $Snapshot.PSObject.Properties.Name -contains 'FormatVersion' -and $Snapshot.FormatVersion -ge 4
   if ($renamed) { Assert-RegularPath $Directory } else { Assert-RegularTree $Directory }
   if ($Snapshot.PSObject.Properties.Name -notcontains 'FormatVersion') {
@@ -390,7 +401,7 @@ function Move-UpdateTree([string]$Source, [string]$Destination) {
 function Write-Pending($Journal) {
   Assert-RegularTree $pendingPath
   Assert-RegularTree $pendingTempPath
-  [IO.File]::WriteAllText($pendingTempPath, ($Journal | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
+  [LiraUpdateIO]::WriteDurableText($pendingTempPath, ($Journal | ConvertTo-Json -Depth 5))
   [LiraUpdateIO]::PublishFile($pendingTempPath, $pendingPath)
 }
 
@@ -431,8 +442,19 @@ function Undo-Preparation($Recovery) {
   Remove-Item -LiteralPath $pendingPath -Force
 }
 
+. "$PSScriptRoot\update-delta.ps1"
+
 switch ($Action) {
   'Backup' {
+    if ($PayloadDir) {
+      # Validate the incoming payload even when this installation needs its one
+      # full transition. Future updates can then use the installed manifest.
+      if (Test-Path -LiteralPath (Join-Path $installPath $deltaManifestName)) {
+        Backup-Delta $PayloadDir
+        return
+      }
+      $null = Get-DeltaPayload $PayloadDir
+    }
     Assert-RegularTree $pendingPath
     if (Test-Path -LiteralPath $pendingPath) { throw 'An unfinished update must be recovered first.' }
     Assert-RegularPath $backupPath
@@ -498,10 +520,23 @@ switch ($Action) {
       throw $backupFailure
     }
   }
+  'Apply' {
+    if (-not $PayloadDir) { throw 'Missing incoming application directory.' }
+    Apply-Delta $PayloadDir
+  }
+  'Verify' {
+    $manifest = Read-DeltaManifest $installPath
+    foreach ($file in $manifest.Files) { Assert-DeltaFile $installPath $file }
+    $null = Get-DeltaDescriptor $installPath 'Uninstall Lira.exe'
+  }
   'Restore' {
     Assert-RegularTree $pendingPath
     if (-not (Test-Path -LiteralPath $pendingPath)) { return }
     $recovery = Read-Recovery
+    if ($recovery.Snapshot.PSObject.Properties.Name -contains 'FormatVersion' -and $recovery.Snapshot.FormatVersion -eq 6) {
+      Restore-Delta $recovery
+      return
+    }
     if ($recovery.Preparing) { Undo-Preparation $recovery; return }
     $snapshot = $recovery.Snapshot
     $snapshotDirectory = $recovery.Directory
@@ -588,6 +623,11 @@ switch ($Action) {
     if (Test-Path -LiteralPath $pendingPath) {
       $snapshot = Get-Content -LiteralPath $pendingPath -Raw -Encoding UTF8 | ConvertFrom-Json
       Assert-ManifestIdentity $snapshot
+      if ($snapshot.PSObject.Properties.Name -contains 'FormatVersion' -and $snapshot.FormatVersion -eq 6) {
+        if ($snapshot.Phase -ne 'Applied') { throw 'The differential update has not finished.' }
+        $recovery = Read-Recovery
+        foreach ($file in $recovery.Snapshot.NewFiles) { Assert-DeltaFile $installPath $file }
+      }
       Remove-Item -LiteralPath $pendingPath -Force
     }
   }

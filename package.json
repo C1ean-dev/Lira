@@ -114,9 +114,11 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "runAfterFinish": false,
-      "include": "build/installer.nsh"
+      "include": "build/installer.nsh",
+      "script": ".scratch/windows-installer/installer.nsi"
     },
     "publish": null,
-    "afterPack": "scripts/verify-production-package.cjs"
+    "afterPack": "scripts/verify-production-package.cjs",
+    "artifactBuildStarted": "scripts/windows-update-package.cjs"
   }
 }
