@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TextureAtlas imagePath="7cad2d0040ac2d6ac2cf01a052ab5f079616345069cde87b291c5d50a1f36108.png">
+  <SubTexture name="lira_food_pancakes_v1_down_0" x="22" y="471" width="411" height="348"/>
+</TextureAtlas>
