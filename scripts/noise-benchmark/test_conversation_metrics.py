@@ -23,6 +23,7 @@ class ConversationMeasurementTest(unittest.TestCase):
         self.assertAlmostEqual(result['decodedDelayMs'], 110)
         self.assertAlmostEqual(result['localDelayMs'], 50)
         self.assertAlmostEqual(result['inputBridgeDelayMs'], 10)
+        self.assertAlmostEqual(result['engineDelayMs'], 40)
         self.assertAlmostEqual(result['receiverGraphDelayMs'], 10)
         self.assertAlmostEqual(result['playbackCaptureDelayMs'], 20)
         self.assertAlmostEqual(result['stoi'], 1)

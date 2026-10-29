@@ -6,11 +6,12 @@ import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { createServer } from 'node:http'
 import { createHash } from 'node:crypto'
+import { conversationPlan } from './conversation-plan.mjs'
 
 // Explicitly authorized, isolated conversation measurement. Two independent
 // Lira realms use real MediaManager, PeerManager, Opus/RTP and remote playback.
 test('measure both directions of a real Lira conversation using Microsoft speech', {
-  skip: process.env.LIRA_RUN_CONVERSATION_BENCHMARK !== '1', timeout: 900000,
+  skip: process.env.LIRA_RUN_CONVERSATION_BENCHMARK !== '1', timeout: 1800000,
 }, async t => {
   const root = process.cwd()
   const require = createRequire(import.meta.url)
@@ -22,6 +23,9 @@ test('measure both directions of a real Lira conversation using Microsoft speech
   const variant = process.env.LIRA_CONVERSATION_VARIANT || 'normal'
   assert.ok(['normal', 'audio-only', 'replay-filtered', 'defer-resume', 'settled', 'prewarm-model', 'settled-open-gate'].includes(variant))
   const encodedProbe = process.env.LIRA_CONVERSATION_ENCODED_PROBE === '1'
+  const repetitions = Number(process.env.LIRA_CONVERSATION_REPETITIONS || '1')
+  const warmupMs = Number(process.env.LIRA_CONVERSATION_WARMUP_MS || '0')
+  assert.ok(Number.isFinite(warmupMs) && warmupMs >= 0 && warmupMs <= 30000)
   const requestedPairs = process.env.LIRA_CONVERSATION_PAIRS?.split(',').map(Number) || (smoke ? [0] : [0, 1, 2, 3])
   assert.ok(requestedPairs.length && requestedPairs.every(index => Number.isInteger(index) && index >= 0 && index < 4))
   function selectPairs(cases) {
@@ -45,7 +49,8 @@ test('measure both directions of a real Lira conversation using Microsoft speech
     const cases = JSON.parse(await fs.readFile(path.join(output, 'cases.json'), 'utf8')).cases
     const expectedCases = selectPairs(cases).flat().map(row => row.id).sort()
     assert.equal(report.results.length, report.run.captures.length * 2)
-    assert.equal(report.results.length, expectedCases.length * engines.length)
+    const measuredRepetitions = report.run.repetitions || 1
+    assert.equal(report.results.length, expectedCases.length * engines.length * measuredRepetitions)
     assert.deepEqual([...new Set(report.results.map(row => row.engine))].sort(), [...engines].sort())
     for (const [file, hash] of Object.entries(report.run.bundleSha256)) {
       assert.equal(createHash('sha256').update(await fs.readFile(path.join(output, file))).digest('hex'), hash)
@@ -60,6 +65,10 @@ test('measure both directions of a real Lira conversation using Microsoft speech
         assert.ok(participant.after.totalSamplesReceived > participant.before.totalSamplesReceived, 'RTP audio must actually be decoded')
         assert.equal(participant.after.codec?.toLowerCase(), 'audio/opus')
         assert.ok(participant.playbackTracks > 0, 'Capture must traverse the actual remote audio element')
+        if (report.run.topology === 'audio+disabled-video') {
+          assert.deepEqual(participant.localTracks.map(track => track.kind).sort(), ['audio', 'video'])
+          assert.equal(participant.localTracks.find(track => track.kind === 'video').enabled, false)
+        }
         if (report.run.encodedProbe) {
           assert.ok(participant.frames.sent.length > 100 && participant.frames.received.length > 100)
           assert.deepEqual(participant.frames.errors, [], 'Encoded probe must forward every frame without errors')
@@ -67,13 +76,23 @@ test('measure both directions of a real Lira conversation using Microsoft speech
       }
     }
     for (const row of report.results) {
+      if (row.engineDelayMs !== null && row.engineDelayMs !== undefined) {
+        assert.ok(Number.isFinite(row.engineDelayMs) && row.engineDelayMs >= 0, 'Engine processing cannot have negative latency')
+      }
+      if (row.engine === 'bypass' && report.run.topology) {
+        assert.ok(Math.abs(row.engineDelayMs) < 0.001, 'Unprocessed local path must add zero engine delay')
+      }
       assert.ok(Number.isFinite(row.stoi) && row.stoi >= -1 && row.stoi <= 1)
       if (row.totalDelayMs === null) assert.ok(row.delayUnavailableReason)
       else assert.ok(row.totalDelayMs > 0 && row.totalDelayMs < 3000)
     }
     for (const engine of engines) {
-      assert.deepEqual(report.results.filter(row => row.engine === engine).map(row => row.id).sort(), expectedCases)
-      assert.ok(report.results.some(row => row.engine === engine && row.totalDelayMs !== null))
+      for (let repetition = 0; repetition < measuredRepetitions; repetition++) {
+        assert.deepEqual(report.results.filter(row => row.engine === engine && (row.repetition || 0) === repetition).map(row => row.id).sort(), expectedCases)
+      }
+      // A broken suppressor may erase all speech. Preserve its zero STOI and
+      // missing latency in analytics; only the unfiltered control must be measurable.
+      if (engine === 'bypass') assert.ok(report.results.some(row => row.engine === engine && row.totalDelayMs !== null))
     }
     t.diagnostic('Conversation report: ' + path.join(output, 'conversation-report.json'))
   }
@@ -201,30 +220,30 @@ test('measure both directions of a real Lira conversation using Microsoft speech
     const cases = JSON.parse(await fs.readFile(path.join(output, 'cases.json'), 'utf8')).cases
     const pairs = selectPairs(cases)
     const run = {
-      startedAt: new Date().toISOString(), engines, variant, encodedProbe, versions: await electron.evaluate(() => process.versions),
+      startedAt: new Date().toISOString(), engines, variant, encodedProbe, repetitions, warmupMs,
+      topology: variant === 'audio-only' ? 'audio-only' : 'audio+disabled-video', versions: await electron.evaluate(() => process.versions),
       sampleRate: 48000, sensitivity: variant === 'settled-open-gate' ? 'manual-always-open' : 'auto', inputVolume: 100, network: 'real WebRTC on loopback, local PeerJS signaling, no external STUN/TURN',
       method: 'Two isolated Lira realms. Shared instrumentation AudioContext schedules both Microsoft speech inputs and records raw input, mic bridge, local MediaManager output, remote decoded RTP, remote gain stream and HTMLAudioElement.captureStream. One sample clock, no cross-machine clock assumption. Full software delay includes instrumentation MediaStream bridges; excludes physical devices and external internet.',
       bundleSha256: {}, captures: [],
     }
     for (const name of ['conversation.js', 'conversation-peer.js']) run.bundleSha256[name] = createHash('sha256').update(await fs.readFile(path.join(output, name))).digest('hex')
-    for (const [pairIndex, pair] of pairs.entries()) {
-      for (const engine of engines) {
-        const id = `${engine}-${pairIndex}`
+    const plan = conversationPlan(engines, pairs.length, repetitions)
+    for (const { engine, pairIndex, repetition, id } of plan) {
+        const pair = pairs[pairIndex]
         const result = await page.evaluate(config => Promise.race([
           window.conversationBenchmark.run(config),
           new Promise((_, reject) => setTimeout(() => reject(new Error('Conversation scenario exceeded 100 seconds')), 100000)),
         ]), {
-          urls: pair.map(row => `${url}/${row.id}/input.f32`), engine, variant, encodedProbe,
+          urls: pair.map(row => `${url}/${row.id}/input.f32`), engine, variant, encodedProbe, warmupMs,
           signalingPort, room: `AUDIO-${Date.now()}-${id}`,
         })
         assert.equal(result.channels.length, 12)
         for (const [index, channel] of result.channels.entries()) await fs.writeFile(path.join(output, `${id}.${index}.f32`), Buffer.from(channel, 'base64'))
-        run.captures.push({ id, engine, cases: pair.map(row => row.id), participants: result.participants, context: result.context,
+        run.captures.push({ id, engine, repetition, cases: pair.map(row => row.id), participants: result.participants, context: result.context,
           measurementStartMs: result.measurementStartMs, measurementEndMs: result.measurementEndMs })
         await fs.writeFile(path.join(output, 'conversation-run.json'), JSON.stringify(run, null, 2) + '\n')
-        console.log(`[conversation] ${run.captures.length}/${pairs.length * engines.length}: ${id}, bidirectional RTP captured`)
+        console.log(`[conversation] ${run.captures.length}/${plan.length}: ${id}, bidirectional RTP captured`)
         if (engine === 'bypass') await checkControlCaptures()
-      }
     }
     if (process.env.LIRA_CONVERSATION_TRACE === '1') {
       let timer

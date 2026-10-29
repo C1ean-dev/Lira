@@ -271,11 +271,12 @@ export class DynamicBufferManager {
   ) {
     const buf = this.buffers[kind]
 
-    const SAFETY = 2.5
+    const isAudio = kind === 'audio'
+    const SAFETY = isAudio ? 1.5 : 2.5
     const jitterTarget = jitterMs * SAFETY
     const frameTarget = frameMs > 0 ? frameMs * 1.5 : 0
-    const lossPenalty = Math.min(500, Math.round(lossRatio * 100 * 30))
-    const startupHeadroom = buf.cleanSamples === 0 ? 5 : 0
+    const lossPenalty = Math.min(500, Math.round(lossRatio * 100 * (isAudio ? 15 : 30)))
+    const startupHeadroom = buf.cleanSamples === 0 ? (isAudio ? 2 : 5) : 0
     const target = Math.round(
       Math.max(jitterTarget + frameTarget, buf.floorMs) + lossPenalty + startupHeadroom
     )
@@ -290,12 +291,15 @@ export class DynamicBufferManager {
       }
       buf.cleanSamples = 0
     } else if (clampedTarget < buf.currentMs) {
-      const relaxThreshold = kind === 'audio' ? 8 : 6
+      const relaxThreshold = kind === 'audio' ? 4 : 6
       buf.cleanSamples++
       if (buf.cleanSamples >= relaxThreshold) {
-        const next = Math.max(clampedTarget, buf.currentMs - 5)
+        const step = kind === 'audio' ? 10 : 5
+        const next = Math.max(clampedTarget, buf.currentMs - step)
         buf.currentMs = Math.max(next, Math.min(buf.currentMs, buf.lastTargetMs))
         if (buf.currentMs === clampedTarget) buf.lastTargetMs = clampedTarget
+        // Require another four clean polls before the next audio reduction.
+        if (isAudio) buf.cleanSamples = 0
       }
     } else {
       buf.cleanSamples++
