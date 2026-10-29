@@ -535,7 +535,7 @@ describe('RNNoise engine lifecycle', () => {
       })
     })
 
-    it.each(['message', 'processorerror', 'overload'])('swaps to Soft DSP after %s and can be retried', async (failureType) => {
+    it.each(['message', 'processorerror', 'overload'])('swaps to classic DSP after %s and can be retried', async (failureType) => {
       const mm = MediaManager.getInstance()
       vi.spyOn(mm, 'stopScreenShare').mockImplementation(() => {})
       const replaceAudioTrack = vi
@@ -563,8 +563,8 @@ describe('RNNoise engine lifecycle', () => {
 
       expect(useMediaStore.getState().rnnoiseStatus).toBe('fallback')
       expect(useMediaStore.getState().rnnoiseError).toBe(message)
-      expect((mm as any).activeEngine).toBe((mm as any).softEngine)
-      expect((mm as any).softEngine.audioCtx).not.toBeNull()
+      expect((mm as any).activeEngine).toBe((mm as any).classicEngine)
+      expect((mm as any).classicEngine.audioCtx).not.toBeNull()
       expect((mm as any).rnnoiseEngine.audioCtx).toBeNull()
       expect(replaceAudioTrack).toHaveBeenCalledTimes(2)
       expect(rawTrack.stop).not.toHaveBeenCalled()
@@ -576,7 +576,7 @@ describe('RNNoise engine lifecycle', () => {
       expect(retried.value).toBe(true)
       expect(useMediaStore.getState().rnnoiseStatus).toBe('ready')
       expect((mm as any).activeEngine).toBe((mm as any).rnnoiseEngine)
-      expect((mm as any).softEngine.audioCtx).toBeNull()
+      expect((mm as any).classicEngine.audioCtx).toBeNull()
 
       mm.stopAllMedia()
       expect(contexts.every(ctx => ctx.state === 'closed')).toBe(true)
@@ -615,7 +615,7 @@ describe('RNNoise engine lifecycle', () => {
       expect(first.settled).toBe(true)
       if (reason === 'timeout') {
         expect(useMediaStore.getState().rnnoiseStatus).toBe('fallback')
-        expect((mm as any).activeEngine).toBe((mm as any).softEngine)
+        expect((mm as any).activeEngine).toBe((mm as any).classicEngine)
       }
       addModuleImpl = async () => {}
       const next = run(mm, mic)
@@ -669,7 +669,7 @@ describe('RNNoise engine lifecycle', () => {
       expect(vi.getTimerCount()).toBe(0)
     })
 
-    it('does not bring up Soft DSP for a start that was cancelled by stopping media', async () => {
+    it('does not bring up classic DSP for a start that was cancelled by stopping media', async () => {
       const mm = MediaManager.getInstance()
       vi.spyOn(mm, 'stopScreenShare').mockImplementation(() => {})
       const mic = makeMicStream()
@@ -683,7 +683,7 @@ describe('RNNoise engine lifecycle', () => {
 
       expect(start.settled).toBe(true)
       expect(useMediaStore.getState().rnnoiseStatus).not.toBe('fallback')
-      expect((mm as any).softEngine.audioCtx).toBeNull()
+      expect((mm as any).classicEngine.audioCtx).toBeNull()
       expect(contexts.every((ctx) => ctx.state === 'closed')).toBe(true)
       expect(vi.getTimerCount()).toBe(0)
     })
@@ -711,7 +711,7 @@ describe('RNNoise engine lifecycle', () => {
       mm.stopAllMedia()
     })
 
-    it('still falls back to Soft DSP when RNNoise really fails to start', async () => {
+    it('still falls back to classic DSP when RNNoise really fails to start', async () => {
       const mm = MediaManager.getInstance()
       vi.spyOn(mm, 'stopScreenShare').mockImplementation(() => {})
       const mic = makeMicStream()
@@ -725,9 +725,10 @@ describe('RNNoise engine lifecycle', () => {
       expect(start.value).not.toBe(mic)
       expect(useMediaStore.getState().rnnoiseStatus).toBe('fallback')
       expect(useMediaStore.getState().rnnoiseError).toBe('wasm instantiate failed')
-      expect((mm as any).softEngine.audioCtx).not.toBeNull()
+      expect((mm as any).classicEngine.audioCtx).not.toBeNull()
 
       mm.stopAllMedia()
     })
   })
 })
+

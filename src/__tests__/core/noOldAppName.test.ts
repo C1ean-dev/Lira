@@ -7,7 +7,7 @@ const OLD_NAME = ['gat', 'her'].join('')
 const OLD_NAME_PATTERN = new RegExp(`${OLD_NAME}(?!ing|ed)`, 'i')
 
 const ROOT = process.cwd()
-const SKIPPED_DIRS = new Set(['node_modules', '.git', '.claude', '.mut', 'dist', 'dist-electron', 'out', 'release', 'logs', 'bin', 'obj'])
+const SKIPPED_DIRS = new Set(['node_modules', '.git', '.claude', '.mut', 'dist', 'dist-electron', 'out', 'release', 'logs', 'bin', 'obj', '.scratch', '.worktrees'])
 const SKIPPED_PATHS = new Set(['src/data', 'package-lock.json'])
 const SCANNED_EXTENSIONS = new Set([
   '.ts', '.tsx', '.js', '.mjs', '.cjs', '.json', '.css', '.html', '.md',

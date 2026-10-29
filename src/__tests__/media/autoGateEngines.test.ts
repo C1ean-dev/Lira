@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { SoftDspProcessor } from '../../media/SoftDspProcessor'
+import { DeepFilterProcessor } from '../../media/DeepFilterProcessor'
 import { NoiseSuppressor } from '../../media/NoiseSuppressor'
 import { RnnoiseProcessor } from '../../media/RnnoiseProcessor'
 
@@ -95,13 +95,15 @@ if (typeof (globalThis as any).requestAnimationFrame === 'undefined') {
   ;(globalThis as any).cancelAnimationFrame = (id: any) => clearTimeout(id)
 }
 
-type Engine = SoftDspProcessor | NoiseSuppressor | RnnoiseProcessor
+type Engine = DeepFilterProcessor | NoiseSuppressor | RnnoiseProcessor
 
 const engines: { name: string; create: () => Engine; minOpenRms: number }[] = [
-  { name: 'SoftDspProcessor', create: () => new SoftDspProcessor(), minOpenRms: 0.0035 },
+  { name: 'DeepFilterProcessor', create: () => new DeepFilterProcessor(), minOpenRms: 0.025 / 6 },
   { name: 'NoiseSuppressor', create: () => new NoiseSuppressor(), minOpenRms: 0.0045 },
   { name: 'RnnoiseProcessor', create: () => new RnnoiseProcessor(), minOpenRms: 0.025 / 6 },
 ]
+
+vi.mock('../../media/deepFilterAssets', () => ({ buildDeepFilterModule: async (procName: string) => ({ blobUrl: 'blob:test', procName, debug: 'test', processorOptions: {} }) }))
 
 const mockStream = {
   getAudioTracks: () => [{ id: 'mic', kind: 'audio', enabled: true }],
@@ -125,7 +127,7 @@ async function start(
       seen.thresholdPercent = thresholdPercent
     }
   )
-  const analyser = (engine as any).analyser as MockAnalyserNode
+  const analyser = ((engine as any).engine ?? engine).analyser as MockAnalyserNode
   expect(analyser).toBeDefined()
   return { seen, analyser }
 }
@@ -298,3 +300,4 @@ describe('Automatic gate learns the room - RnnoiseProcessor voice detector', () 
     expect(seen.gateOpen).toBe(true)
   })
 })
+

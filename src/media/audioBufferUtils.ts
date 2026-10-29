@@ -1,5 +1,7 @@
 import { RNNOISE_PRE_EQ } from './RnnoiseProcessor'
 import { denoiseSamples, gateDenoisedSamples } from './rnnoiseOffline'
+import { denoiseDeepFilterSamples } from './deepFilterOffline'
+import type { AudioProcessorMode } from '../types/audio'
 
 function writeString(view: DataView, offset: number, str: string) {
   for (let i = 0; i < str.length; i++) {
@@ -102,7 +104,8 @@ type OfflineAudioContextClass = new (
 async function renderRnnoisePreview(
   rawBuffer: AudioBuffer,
   sensitivityPercent: number,
-  OfflineContextClass: OfflineAudioContextClass
+  OfflineContextClass: OfflineAudioContextClass,
+  mode: 'rnnoise' | 'deepfilter' = 'rnnoise',
 ): Promise<AudioBuffer> {
   const offlineCtx = new OfflineContextClass(1, rawBuffer.length, rawBuffer.sampleRate)
   const source = offlineCtx.createBufferSource()
@@ -125,14 +128,14 @@ async function renderRnnoisePreview(
 
   const rendered = await offlineCtx.startRendering()
   const channel = rendered.getChannelData(0)
-  const denoised = await denoiseSamples(channel)
+  const denoised = await (mode === 'deepfilter' ? denoiseDeepFilterSamples(channel) : denoiseSamples(channel))
   channel.set(gateDenoisedSamples(denoised, rendered.sampleRate, sensitivityPercent))
   return rendered
 }
 
 export async function processAudioBufferOffline(
   rawBuffer: AudioBuffer,
-  recommendedMode: 'classic' | 'soft' | 'rnnoise' = 'soft',
+  recommendedMode: AudioProcessorMode = 'deepfilter',
   sensitivityPercent: number = 20
 ): Promise<AudioBuffer> {
   const OfflineContextClass =
@@ -147,12 +150,13 @@ export async function processAudioBufferOffline(
   const sampleRate = rawBuffer.sampleRate
   const length = rawBuffer.length
 
-  if (recommendedMode === 'rnnoise') {
+  if (recommendedMode !== 'classic') {
     try {
       if (sampleRate !== 48000) throw new Error(`recording is at ${sampleRate} Hz`)
-      return await renderRnnoisePreview(rawBuffer, sensitivityPercent, OfflineContextClass)
+      return await renderRnnoisePreview(rawBuffer, sensitivityPercent, OfflineContextClass, recommendedMode)
     } catch (err) {
-      console.warn('[audio] RNNoise preview unavailable, using the approximation:', err)
+      console.warn(`[audio] ${recommendedMode} preview unavailable, using fallback:`, err)
+      if (recommendedMode === 'deepfilter') return processAudioBufferOffline(rawBuffer, 'rnnoise', sensitivityPercent)
     }
   }
 
@@ -170,43 +174,17 @@ export async function processAudioBufferOffline(
   const gateGain = offlineCtx.createGain()
   const rawData = rawBuffer.getChannelData(0)
 
-  if (recommendedMode === 'classic') {
-    hp.frequency.setValueAtTime(80, 0)
-    hp.Q.setValueAtTime(0.7, 0)
-    shelf.frequency.setValueAtTime(6500, 0)
-    shelf.gain.setValueAtTime(-3, 0)
-  } else if (recommendedMode === 'soft') {
-    hp.frequency.setValueAtTime(70, 0)
-    hp.Q.setValueAtTime(0.6, 0)
-    shelf.frequency.setValueAtTime(7200, 0)
-    shelf.gain.setValueAtTime(-1.5, 0)
-  } else {
-    hp.frequency.setValueAtTime(85, 0)
-    hp.Q.setValueAtTime(0.8, 0)
-    shelf.frequency.setValueAtTime(7000, 0)
-    shelf.gain.setValueAtTime(-4, 0)
-  }
+  hp.frequency.setValueAtTime(80, 0)
+  hp.Q.setValueAtTime(0.7, 0)
+  shelf.frequency.setValueAtTime(6500, 0)
+  shelf.gain.setValueAtTime(-3, 0)
 
   const targetLevel = sensitivityPercent / 100
   const openLevel = Math.max(0.002, targetLevel / 6)
 
-  let closeRatio = 0.72
-  let floorGain = 0.0
-  let windowDuration = 0.02
-
-  if (recommendedMode === 'classic') {
-    closeRatio = 0.75
-    floorGain = 0.005
-    windowDuration = 0.015
-  } else if (recommendedMode === 'soft') {
-    closeRatio = 0.55
-    floorGain = 0.04
-    windowDuration = 0.025
-  } else {
-    closeRatio = 0.7
-    floorGain = 0.0005
-    windowDuration = 0.02
-  }
+  const closeRatio = 0.75
+  const floorGain = 0.005
+  const windowDuration = 0.015
 
   const closeLevel = openLevel * closeRatio
   const timeStep = 0.01
@@ -238,25 +216,12 @@ export async function processAudioBufferOffline(
   }
 
   const comp = offlineCtx.createDynamicsCompressor()
-  if (recommendedMode === 'classic') {
-    comp.threshold.setValueAtTime(-22, 0)
-    comp.knee.setValueAtTime(14, 0)
-    comp.ratio.setValueAtTime(3.5, 0)
-    comp.attack.setValueAtTime(0.006, 0)
-    comp.release.setValueAtTime(0.18, 0)
-  } else if (recommendedMode === 'soft') {
-    comp.threshold.setValueAtTime(-24, 0)
-    comp.knee.setValueAtTime(18, 0)
-    comp.ratio.setValueAtTime(2.6, 0)
-    comp.attack.setValueAtTime(0.01, 0)
-    comp.release.setValueAtTime(0.25, 0)
-  } else {
-    comp.threshold.setValueAtTime(-20, 0)
-    comp.knee.setValueAtTime(10, 0)
-    comp.ratio.setValueAtTime(4.0, 0)
-    comp.attack.setValueAtTime(0.004, 0)
-    comp.release.setValueAtTime(0.15, 0)
-  }
+
+  comp.threshold.setValueAtTime(-22, 0)
+  comp.knee.setValueAtTime(14, 0)
+  comp.ratio.setValueAtTime(3.5, 0)
+  comp.attack.setValueAtTime(0.006, 0)
+  comp.release.setValueAtTime(0.18, 0)
 
   source.connect(hp)
   hp.connect(shelf)
@@ -267,3 +232,5 @@ export async function processAudioBufferOffline(
   source.start(0)
   return await offlineCtx.startRendering()
 }
+
+

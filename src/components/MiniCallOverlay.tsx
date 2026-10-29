@@ -24,7 +24,6 @@ import {
   Sliders,
   StopCircle,
   Cpu,
-  Feather,
   Check,
   Power,
   AudioLines,
@@ -34,18 +33,18 @@ import {
 
 const NOISE_ENGINES = [
   {
+    id: 'deepfilter' as const,
+    name: 'DeepFilterNet',
+    badge: 'IA',
+    desc: 'O melhor, porém mais lento, com fallback para RNNoise',
+    icon: Sparkles,
+  },
+  {
     id: 'rnnoise' as const,
     name: 'RNNoise Neural',
     badge: 'IA',
-    desc: 'Rede neural treinada (Xiph)',
+    desc: 'Rápido e eficiente',
     icon: Cpu,
-  },
-  {
-    id: 'soft' as const,
-    name: 'DSP Suave',
-    badge: 'Natural',
-    desc: 'Preserva voz suave e consoantes',
-    icon: Feather,
   },
   {
     id: 'classic' as const,
@@ -78,6 +77,8 @@ import { SpotifyIcon } from './common/SpotifyIcon'
 import { LiveWatchPrompt } from './LiveWatchPrompt'
 import { useLiveGate } from '../hooks/useLiveGate'
 import { useLiveViewBox } from '../hooks/useLiveViewBox'
+import { noiseSuppressionDisplay, resolveNoiseProcessorPreference } from '../media/noiseSuppressionStatus'
+import { NoiseSuppressionNotice } from './common/NoiseSuppressionNotice'
 import { useLiveWatchStore } from '../store/useLiveWatchStore'
 
 interface VideoTileProps {
@@ -592,6 +593,10 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
   const toggleCamera = useMediaStore((s) => s.toggleCamera)
   const isNoiseSuppressionEnabled = useMediaStore((s) => s.isNoiseSuppressionEnabled)
   const audioProcessorMode = useMediaStore((s) => s.audioProcessorMode)
+  const rnnoiseStatus = useMediaStore((s) => s.rnnoiseStatus)
+  const processingMode = useMediaStore(resolveNoiseProcessorPreference)
+  const deepFilterStatus = useMediaStore((s) => s.deepFilterStatus)
+  const noiseDisplay = noiseSuppressionDisplay(isNoiseSuppressionEnabled, processingMode, rnnoiseStatus, deepFilterStatus)
   const toggleNoiseSuppression = useMediaStore((s) => s.toggleNoiseSuppression)
   const setAudioProcessorMode = useMediaStore((s) => s.setAudioProcessorMode)
 
@@ -1113,23 +1118,15 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               <button
                 onClick={() => setIsNoiseMenuOpen((prev) => !prev)}
                 className={`p-2 rounded-xl text-xs font-medium transition-all ${
-                  isNoiseSuppressionEnabled
+                  noiseDisplay.canRetry
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30'
+                    : isNoiseSuppressionEnabled
                     ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30 shadow-md shadow-emerald-500/10'
                     : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
                 }`}
-                title={
-                  isNoiseSuppressionEnabled
-                    ? `Supressor de Ruído Ativo (${
-                        audioProcessorMode === 'rnnoise'
-                          ? 'RNNoise Neural'
-                          : audioProcessorMode === 'soft'
-                          ? 'DSP Suave'
-                          : 'DSP Clássico'
-                      }) - Clique para alternar motor`
-                    : 'Ativar / Configurar Supressor de Ruído'
-                }
+                title={noiseDisplay.title}
               >
-                <AudioLines className={`w-4 h-4 ${isNoiseSuppressionEnabled ? 'text-emerald-400' : ''}`} />
+                <AudioLines className={`w-4 h-4 ${noiseDisplay.canRetry ? 'text-amber-300' : isNoiseSuppressionEnabled ? 'text-emerald-400' : ''}`} />
               </button>
 
               {isNoiseMenuOpen && (
@@ -1142,37 +1139,42 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                     <div className="flex items-center gap-1.5">
                       <span
                         className={`w-1.5 h-1.5 rounded-full ${
-                          isNoiseSuppressionEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-500'
+                          noiseDisplay.canRetry ? 'bg-amber-400' : isNoiseSuppressionEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-500'
                         }`}
                       />
                       <span>Supressor de Ruído</span>
                     </div>
                     <span
                       className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold uppercase ${
-                        isNoiseSuppressionEnabled
+                        noiseDisplay.canRetry
+                          ? 'bg-amber-500/20 text-amber-300'
+                          : isNoiseSuppressionEnabled
                           ? 'bg-emerald-500/20 text-emerald-300'
                           : 'bg-slate-700/60 text-slate-400'
                       }`}
                     >
-                      {isNoiseSuppressionEnabled ? 'Ativo' : 'Desligado'}
+                      {noiseDisplay.badge}
                     </span>
                   </div>
 
+                  <NoiseSuppressionNotice message={noiseDisplay.notice} warning={noiseDisplay.canRetry} />
                   <div className="space-y-0.5">
                     {NOISE_ENGINES.map((engine) => {
-                      const isSelected = isNoiseSuppressionEnabled && audioProcessorMode === engine.id
+                      const isSelected = noiseDisplay.activeMode === engine.id
                       const Icon = engine.icon
                       return (
                         <button
                           key={engine.id}
                           type="button"
+                          aria-pressed={isSelected}
+                          title={engine.id === processingMode && noiseDisplay.canRetry ? processingMode === 'deepfilter' ? 'Tentar DeepFilterNet novamente' : 'Tentar RNNoise novamente' : undefined}
                           onClick={async () => {
                             setIsNoiseMenuOpen(false)
                             if (!isNoiseSuppressionEnabled) {
                               toggleNoiseSuppression()
                               MediaManager.getInstance().updateNoiseSuppression(true)
                             }
-                            if (audioProcessorMode !== engine.id) {
+                            if (audioProcessorMode !== engine.id || processingMode !== engine.id || (engine.id === processingMode && noiseDisplay.canRetry)) {
                               setAudioProcessorMode(engine.id)
                               await MediaManager.getInstance().reprocessStream()
                             }
@@ -1198,8 +1200,8 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                                   </span>
                                 )}
                               </div>
-                              <span className="text-[9px] text-slate-400 font-normal truncate">
-                                {engine.desc}
+                              <span className="text-[9px] text-slate-400 font-normal whitespace-normal leading-snug">
+                                {engine.id === processingMode && noiseDisplay.canRetry ? 'Indisponível · clique para tentar novamente' : engine.desc}
                               </span>
                             </div>
                           </div>
@@ -1289,3 +1291,4 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
     </>
   )
 }
+

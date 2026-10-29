@@ -232,7 +232,7 @@ describe('RNNoise offline (calibration preview)', () => {
       const recording = fanNoise(SAMPLE_RATE, 0.1)
       const raw = fakeBuffer(recording, SAMPLE_RATE) as unknown as AudioBuffer
 
-      await processAudioBufferOffline(raw, 'soft', 0)
+      await processAudioBufferOffline(raw, 'classic', 0)
 
       expect(compressorsCreated).toBe(1)
     })
@@ -250,3 +250,4 @@ describe('RNNoise offline (calibration preview)', () => {
     })
   })
 })
+

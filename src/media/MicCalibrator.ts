@@ -6,7 +6,7 @@ import {
 } from './audioBufferUtils'
 
 export interface ProcessedSampleInfo {
-  mode: 'classic' | 'soft' | 'rnnoise'
+  mode: 'classic' | 'deepfilter' | 'rnnoise'
   audioUrl: string
   waveform: number[]
 }
@@ -15,7 +15,7 @@ export interface CalibrationResult {
   noiseFloorDb: number
   peakRmsDb: number
   snrDb: number
-  recommendedMode: 'classic' | 'soft' | 'rnnoise'
+  recommendedMode: 'classic' | 'deepfilter' | 'rnnoise'
   recommendedSensitivity: number
   durationMs: number
   rawAudioUrl?: string
@@ -24,7 +24,7 @@ export interface CalibrationResult {
   processedWaveform?: number[]
   processedSamples?: {
     classic: ProcessedSampleInfo
-    soft: ProcessedSampleInfo
+    deepfilter: ProcessedSampleInfo
     rnnoise: ProcessedSampleInfo
   }
 }
@@ -241,9 +241,9 @@ export class MicCalibrator {
       result.rawAudioUrl = URL.createObjectURL(rawBlob)
       this.activeUrls.push(result.rawAudioUrl)
 
-      const [classicBuffer, softBuffer, rnnoiseBuffer] = await Promise.all([
+      const [classicBuffer, deepFilterBuffer, rnnoiseBuffer] = await Promise.all([
         processAudioBufferOffline(rawBuffer, 'classic', result.recommendedSensitivity),
-        processAudioBufferOffline(rawBuffer, 'soft', result.recommendedSensitivity),
+        processAudioBufferOffline(rawBuffer, 'deepfilter', result.recommendedSensitivity),
         processAudioBufferOffline(rawBuffer, 'rnnoise', result.recommendedSensitivity),
       ])
 
@@ -251,9 +251,9 @@ export class MicCalibrator {
       const classicUrl = URL.createObjectURL(classicBlob)
       this.activeUrls.push(classicUrl)
 
-      const softBlob = audioBufferToWav(softBuffer)
-      const softUrl = URL.createObjectURL(softBlob)
-      this.activeUrls.push(softUrl)
+      const deepFilterBlob = audioBufferToWav(deepFilterBuffer)
+      const deepFilterUrl = URL.createObjectURL(deepFilterBlob)
+      this.activeUrls.push(deepFilterUrl)
 
       const rnnoiseBlob = audioBufferToWav(rnnoiseBuffer)
       const rnnoiseUrl = URL.createObjectURL(rnnoiseBlob)
@@ -265,10 +265,10 @@ export class MicCalibrator {
           audioUrl: classicUrl,
           waveform: extractWaveformData(classicBuffer, 75),
         },
-        soft: {
-          mode: 'soft',
-          audioUrl: softUrl,
-          waveform: extractWaveformData(softBuffer, 75),
+        deepfilter: {
+          mode: 'deepfilter',
+          audioUrl: deepFilterUrl,
+          waveform: extractWaveformData(deepFilterBuffer, 75),
         },
         rnnoise: {
           mode: 'rnnoise',
@@ -312,11 +312,11 @@ export class MicCalibrator {
     const peakRmsDb = peakRms > 0 ? 20 * Math.log10(peakRms) : -120
     const snrDb = Math.max(0, peakRmsDb - noiseFloorDb)
 
-    let recommendedMode: 'classic' | 'soft' | 'rnnoise'
+    let recommendedMode: 'classic' | 'deepfilter' | 'rnnoise'
     if (noiseFloorDb > -45) {
-      recommendedMode = 'rnnoise'
+      recommendedMode = 'deepfilter'
     } else if (noiseFloorDb > -60) {
-      recommendedMode = 'soft'
+      recommendedMode = 'rnnoise'
     } else {
       recommendedMode = 'classic'
     }
