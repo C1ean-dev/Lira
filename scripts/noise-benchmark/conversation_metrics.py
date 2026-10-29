@@ -13,6 +13,35 @@ def median_or_none(values):
     return float(np.median(measured)) if measured else None
 
 
+def comparison_summary(results, engine):
+    """Pair by source case AND direction; absent speech is never zero latency."""
+    rows = [row for row in results if row['engine'] == engine]
+    baseline = {(row['id'], row['direction']): row for row in results if row['engine'] == 'bypass'}
+    pairs = [(row, baseline[(row['id'], row['direction'])]) for row in rows
+             if (row['id'], row['direction']) in baseline]
+    if len(pairs) != len(rows):
+        raise ValueError('Missing paired bypass reference: ' + engine)
+    def mean(values):
+        valid = [value for value in values if value is not None]
+        return float(np.mean(valid)) if valid else None
+    latency_pairs = [(row, reference) for row, reference in pairs
+                     if row['totalDelayMs'] is not None and reference['totalDelayMs'] is not None]
+    result = dict(engine=engine, captures=len(rows),
+                  delayMeanMs=mean([row['totalDelayMs'] for row in rows]),
+                  measurableDelayCaptures=sum(row['totalDelayMs'] is not None for row in rows),
+                  unavailableDelayCaptures=sum(row['totalDelayMs'] is None for row in rows),
+                  pairedLatencyCaptures=len(latency_pairs),
+                  pairedReferenceDelayMeanMs=mean([reference['totalDelayMs'] for _, reference in latency_pairs]),
+                  pairedDelayDeltaMeanMs=mean([row['totalDelayMs'] - reference['totalDelayMs'] for row, reference in latency_pairs]))
+    for label, clean in [('clean', True), ('mixed', False)]:
+        group = [(row, reference) for row, reference in pairs if (row['noise'] is None) == clean]
+        result[label + 'Stoi'] = mean([row['stoi'] for row, _ in group])
+        result[label + 'ReferenceStoi'] = mean([reference['stoi'] for _, reference in group])
+        result[label + 'StoiDelta'] = mean([row['stoi'] - reference['stoi'] for row, reference in group])
+        result[label + 'InputStoi'] = mean([row['inputStoi'] for row, _ in group])
+    return result
+
+
 def speech_correlation(clean, enhanced, start, end):
     a, b = clean[start:end], enhanced[start:end]
     return float(abs(np.dot(a, b)) / max(np.linalg.norm(a) * np.linalg.norm(b), 1e-20))
@@ -109,7 +138,11 @@ def score(output):
                        speechGainDb=mean(rows, 'speechGainDb'), dropoutPercent=mean(rows, 'dropoutPercent'))
         summaries.append(summary)
         print(json.dumps(summary, allow_nan=False), flush=True)
-    report = dict(datasetRevision=document['dataset']['revision'], run=run, results=results, summary=summaries)
+    # Partial diagnostic runs without bypass remain valid, but cannot claim a
+    # paired comparison. The test:all runner requires all four engines.
+    comparisons = [comparison_summary(results, engine) for engine in run['engines']] if 'bypass' in run['engines'] else []
+    report = dict(datasetRevision=document['dataset']['revision'], run=run, results=results, summary=summaries,
+                  comparisons=comparisons)
     (output / 'conversation-report.json').write_text(json.dumps(report, indent=2, allow_nan=False) + '\n', encoding='utf8')
 
 

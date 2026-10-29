@@ -73,7 +73,9 @@ test('measure both directions of a real Lira conversation using Microsoft speech
     }
     for (const engine of engines) {
       assert.deepEqual(report.results.filter(row => row.engine === engine).map(row => row.id).sort(), expectedCases)
-      assert.ok(report.results.some(row => row.engine === engine && row.totalDelayMs !== null))
+      // A broken suppressor may erase all speech. Preserve its zero STOI and
+      // missing latency in analytics; only the unfiltered control must be measurable.
+      if (engine === 'bypass') assert.ok(report.results.some(row => row.engine === engine && row.totalDelayMs !== null))
     }
     t.diagnostic('Conversation report: ' + path.join(output, 'conversation-report.json'))
   }

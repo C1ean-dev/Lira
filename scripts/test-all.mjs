@@ -22,6 +22,7 @@ export function testSuites() {
     nodeTest('sprites:electron', 'LIRA_RUN_SPRITE_TESTS', 'scripts/individual-library.electron.test.mjs'),
     { name: 'noise:dynamics', command: process.execPath, args: [path.join(root, 'scripts/noise-benchmark.mjs'), '--dynamics-only', '--quiet', '--output=node_modules/.cache/noise-dynamics-check'] },
     nodeTest('transcription:electron', 'LIRA_RUN_TRANSCRIPTION_TESTS', 'scripts/transcription-module.electron.test.mjs'),
+    { name: 'audio:analytics', command: process.execPath, args: [path.join(root, 'scripts/audio-analytics.mjs')] },
   ]
 }
 
