@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { createServer } from 'node:http'
 import { createHash } from 'node:crypto'
+import { pathToFileURL } from 'node:url'
 
 // Explicit opt-in: starts an isolated, invisible Electron renderer and replays
 // fixed dataset files through the real Lira engines. No physical mic is used.
@@ -13,6 +14,7 @@ test('measure real Lira engine delay and intelligibility in Electron', {
   skip: process.env.LIRA_RUN_AUDIO_BENCHMARK !== '1', timeout: 900000,
 }, async t => {
   const root = process.cwd()
+  const fileOrigin = process.env.LIRA_AUDIO_FILE_ORIGIN === '1'
   const require = createRequire(import.meta.url)
   const { build } = await import('esbuild')
   const { _electron } = await import('playwright')
@@ -20,7 +22,8 @@ test('measure real Lira engine delay and intelligibility in Electron', {
   assert.ok(['smoke', 'validation', 'full'].includes(profile))
   const output = path.resolve(process.env.LIRA_AUDIO_OUTPUT || `.scratch/noise-benchmark/delay-${Date.now()}`)
   await fs.mkdir(output, { recursive: true })
-  const engines = ['deepfilter', 'rnnoise', 'classic']
+  const engines = process.env.LIRA_AUDIO_ENGINES?.split(',') || ['deepfilter', 'rnnoise', 'classic']
+  assert.ok(engines.every(engine => ['deepfilter', 'deepfilter-open', 'rnnoise', 'rnnoise-interactive', 'classic'].includes(engine)))
   async function python(action) {
     const args = action === 'test' ? ['-m', 'unittest', 'discover', '-s', 'scripts/noise-benchmark', '-p', 'test_*.py']
       : ['scripts/noise-benchmark/dataset.py', action, output, '--profile', profile]
@@ -40,6 +43,7 @@ test('measure real Lira engine delay and intelligibility in Electron', {
     assert.equal(report.run.sourceSha256, createHash('sha256').update(await fs.readFile(path.join(output, 'renderer.js'))).digest('hex'))
     for (const capture of report.run.captures) {
       if (capture.engine !== 'classic') assert.equal(capture.neuralReady, true, 'No neural fallback may be scored')
+      if (process.env.LIRA_EXPECT_WORKER === '1' && capture.engine.startsWith('deepfilter')) assert.equal(capture.executionMode, 'worker')
     }
     for (const result of report.results) {
       if (result.processingDelayMs === null) {
@@ -70,7 +74,7 @@ test('measure real Lira engine delay and intelligibility in Electron', {
     await build({
       entryPoints: ['scripts/noise-benchmark/renderer.ts'], outfile: path.join(output, 'renderer.js'),
       bundle: true, format: 'esm', platform: 'browser', logLevel: 'silent',
-      assetNames: 'assets/[name]-[hash]', publicPath: '/',
+      assetNames: 'assets/[name]-[hash]', publicPath: fileOrigin ? pathToFileURL(output + path.sep).href : '/',
       define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env': '{"DEV":false,"PROD":true,"BASE_URL":"/","MODE":"test"}' },
       plugins: [{ name: 'actual-audio-assets', setup(builder) {
         builder.onResolve({ filter: /^virtual:lira-(asset-atlases|individual-library)$/ }, args => ({ path: args.path, namespace: 'benchmark-assets' }))
@@ -81,7 +85,16 @@ test('measure real Lira engine delay and intelligibility in Electron', {
           assert.ok(resolved.path, args.path)
           return { path: resolved.path, namespace: `audio-${kind}` }
         })
-        builder.onLoad({ filter: /.*/, namespace: 'audio-raw' }, async args => ({ contents: `export default ${JSON.stringify(await fs.readFile(args.path, 'utf8'))}`, loader: 'js' }))
+        builder.onLoad({ filter: /.*/, namespace: 'audio-raw' }, async args => {
+          let source = await fs.readFile(args.path, 'utf8')
+          if (process.env.LIRA_AUDIO_PROFILE_TIMING === '1' && args.path.endsWith('deepFilterWorkletSrc.js')) {
+            source = source.replace('this.slowFrames = 0', 'this.slowFrames = 0; this.histogram = new Uint32Array(101); this.timingFrames = 0; this.timingMax = 0')
+              .replace('const elapsed = now() - start', `const elapsed = now() - start;
+              this.histogram[Math.min(100, Math.ceil(elapsed))]++; this.timingFrames++; this.timingMax = Math.max(this.timingMax, elapsed);
+              if (this.timingFrames % 100 === 0) this.port.postMessage({type:'benchmark-timing', frames:this.timingFrames, histogram:Array.from(this.histogram), maxMs:this.timingMax, clock:typeof performance !== 'undefined' ? 'performance' : 'Date.now (integer ms)'})`)
+          }
+          return { contents: `export default ${JSON.stringify(source)}`, loader: 'js' }
+        })
         builder.onLoad({ filter: /.*/, namespace: 'audio-url' }, async args => ({ contents: await fs.readFile(args.path), loader: 'file' }))
       } }],
     })
@@ -97,7 +110,8 @@ test('measure real Lira engine delay and intelligibility in Electron', {
       } catch { response.writeHead(404).end() }
     })
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
-    const url = `http://127.0.0.1:${server.address().port}`
+    if (fileOrigin) await fs.writeFile(path.join(output, 'index.html'), '<!doctype html><script type="module" src="./renderer.js"></script>')
+    const url = fileOrigin ? pathToFileURL(path.join(output, 'index.html')).href : `http://127.0.0.1:${server.address().port}`
     const main = path.join(runtime, 'main.cjs')
     await fs.writeFile(main, `const {app,BrowserWindow}=require('electron');app.setPath('userData',${JSON.stringify(path.join(runtime, 'profile'))});app.commandLine.appendSwitch('autoplay-policy','no-user-gesture-required');app.commandLine.appendSwitch('disable-background-timer-throttling');app.whenReady().then(()=>{const w=new BrowserWindow({show:false,webPreferences:{backgroundThrottling:false,contextIsolation:true,nodeIntegration:false}});w.loadURL(${JSON.stringify(url)})});app.on('window-all-closed',()=>app.quit());`)
     const environment = { ...process.env }
@@ -119,7 +133,8 @@ test('measure real Lira engine delay and intelligibility in Electron', {
     for (const fixture of cases) {
       for (const engine of engines) {
         const target = path.join(output, fixture.id, engine)
-        const result = await page.evaluate(({ url, engine }) => window.noiseBenchmark.run(url, engine), { url: `${url}/${fixture.id}/input.f32`, engine })
+        const inputUrl = fileOrigin ? pathToFileURL(path.join(output, fixture.id, 'input.f32')).href : `${url}/${fixture.id}/input.f32`
+        const result = await page.evaluate(({ url, engine }) => window.noiseBenchmark.run(url, engine), { url: inputUrl, engine })
         await fs.writeFile(target + '.raw.f32', Buffer.from(result.raw, 'base64'))
         await fs.writeFile(target + '.processed.f32', Buffer.from(result.processed, 'base64'))
         if (engine !== 'classic') assert.equal(result.graph.neuralReady, true, `${engine} must process without fallback`)

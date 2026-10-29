@@ -17,7 +17,7 @@ def comparison_summary(results, engine):
     """Pair by source case AND direction; absent speech is never zero latency."""
     rows = [row for row in results if row['engine'] == engine]
     def key(row):
-        return row['id'], row['direction'], row.get('repetition', 0)
+        return row['id'], row['direction'], row.get('repetition', 0), row.get('condition', 'current')
     baseline = {key(row): row for row in results if row['engine'] == 'bypass'}
     pairs = [(row, baseline[key(row)]) for row in rows if key(row) in baseline]
     if len(pairs) != len(rows):
@@ -137,10 +137,11 @@ def score(output):
             receiver = capture['participants'][1 - direction]
             metrics['receiverBufferMs'] = stats_stages(receiver['before'], receiver['after'])['bufferMeanMs']
             row = dict(**case, **metrics, engine=capture['engine'], capture=capture['id'],
+                       condition=capture.get('condition', 'current'),
                        repetition=capture.get('repetition', 0), direction='A→B' if direction == 0 else 'B→A')
             results.append(row)
             aligned, _ = align(clean, channels[-1], max_delay=supported_speech_lag(channels[-1], case['speechEnd'])) if rms(channels[-1]) > 1e-10 else (np.zeros(len(clean)), None)
-            write_wav(output / case_id / f'conversation-{capture["engine"]}-r{capture.get("repetition", 0)}.wav', aligned)
+            write_wav(output / case_id / f'conversation-{capture["engine"]}-r{capture.get("repetition", 0)}-{capture.get("condition", "current")}.wav', aligned)
     summaries = []
     for engine in run['engines']:
         rows = [row for row in results if row['engine'] == engine]

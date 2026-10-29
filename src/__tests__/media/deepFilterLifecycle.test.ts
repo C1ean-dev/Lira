@@ -153,6 +153,34 @@ vi.mock('../../media/deepFilterAssets', async () => {
 describe('DeepFilterNet lifecycle on the shared Web Audio pipeline', () => {
   beforeEach(() => { vi.useFakeTimers(); addModuleImpl = async () => {}; workletNodes.length = 0; contexts.length = 0; useMediaStore.getState().setDeepFilterStatus('idle') })
   afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers() })
+  it('connects a backend transport once and disposes it with the audio graph', async () => {
+    const connect = vi.fn(), dispose = vi.fn()
+    vi.mocked(buildDeepFilterModule).mockResolvedValueOnce({ blobUrl: 'blob:worker-test', procName: 'worker-test', debug: 'worker-test', processorOptions: {}, executionMode: 'worker', connect, dispose })
+    const processor = new DeepFilterProcessor()
+    const start = processor.processStream(makeMicStream())
+    await flush()
+    expect(connect).toHaveBeenCalledWith(lastNode())
+    lastNode().emit({ type: 'ready' }); await start
+    expect(processor.getExecutionMode()).toBe('worker')
+    processor.dispose(); processor.dispose()
+    expect(dispose).toHaveBeenCalledOnce()
+  })
+  it('preserves quiet denoised speech in auto mode and still respects a manual closed gate', async () => {
+    const processor = new DeepFilterProcessor()
+    try {
+      const activity = vi.fn()
+      const start = processor.processStream(makeMicStream(), true, 100, 'auto', 20, activity)
+      await flush(); lastNode().emit({ type: 'ready' }); await start
+      const analyser = contexts[0].createAnalyser.mock.results[0].value
+      analyser.mockValue = 0.0005
+      await vi.advanceTimersByTimeAsync(350)
+      expect(processor['engine']['gateGainNode']!.gain.value).toBe(1)
+      expect(activity.mock.lastCall?.[1]).toBe(false)
+      processor.setSensitivity('manual', 100)
+      await vi.advanceTimersByTimeAsync(60)
+      expect(processor['engine']['gateGainNode']!.gain.value).toBe(0)
+    } finally { processor.dispose() }
+  })
   it('waits for model readiness and preserves video tracks', async () => {
     const engine = new DeepFilterProcessor()
     const mic = makeMicStream()

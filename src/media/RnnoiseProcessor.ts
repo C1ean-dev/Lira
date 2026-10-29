@@ -95,9 +95,20 @@ function buildWorkletModule(procName: string): {
     `registered=${namespacedSrc.includes(`registerProcessor('${procName}'`) ? 'yes' : 'NO'}`
   return { blobUrl: URL.createObjectURL(blob), procName, debug }
 }
+export interface NeuralWorkletModule {
+  blobUrl: string
+  procName: string
+  debug: string
+  processorOptions: Record<string, unknown>
+  executionMode?: 'worker' | 'worklet'
+  connect?(node: AudioWorkletNode): void
+  dispose?(): void
+}
+
 export interface NeuralAudioBackend {
   name: string
-  buildModule(name: string): Promise<{ blobUrl: string; procName: string; debug: string; processorOptions: Record<string, unknown> }>
+  autoGate?: boolean
+  buildModule(name: string): Promise<NeuralWorkletModule>
   setStatus(status: NoiseEngineStatus, error?: string | null): void
   setStage(stage: string): void
 }
@@ -121,6 +132,9 @@ export class RnnoiseProcessor {
     | null = null
   private isSuppressionActive = true
   private isGateOpen = true
+  private gateOutputOpen = true
+  private releaseBackend: (() => void) | null = null
+  private executionMode: 'worker' | 'worklet' = 'worklet'
   private sensitivityMode: 'auto' | 'manual' = 'auto'
   private manualThresholdPercent = 20
   private autoGate = new AutoGate({
@@ -157,14 +171,16 @@ export class RnnoiseProcessor {
     else useMediaStore.getState().setRnnoiseStage(stage)
   }
 
-  private async createWorkletModule(name: string) {
+  private async createWorkletModule(name: string): Promise<NeuralWorkletModule> {
     const generation = this.generation
-    const module = this.backend ? await this.backend.buildModule(name)
+    const module: NeuralWorkletModule = this.backend ? await this.backend.buildModule(name)
       : { ...buildWorkletModule(name), processorOptions: { wasmBytes: getWasmBytes() } }
     if (generation !== this.generation) {
+      module.dispose?.()
       URL.revokeObjectURL(module.blobUrl)
       throw new Error('start cancelled')
     }
+    this.releaseBackend = module.dispose ? () => module.dispose!() : null
     return module
   }
 
@@ -239,10 +255,11 @@ export class RnnoiseProcessor {
         URL.revokeObjectURL(this.workletBlobUrl)
         this.workletBlobUrl = null
       }
-      const module = await waitForStart(this.createWorkletModule(procName))
+      let module = await waitForStart(this.createWorkletModule(procName))
       if (cancelled()) { URL.revokeObjectURL(module.blobUrl); return inputStream }
-      const { blobUrl, debug, processorOptions } = module
+      let { blobUrl, debug, processorOptions } = module
       this.workletBlobUrl = blobUrl
+      this.executionMode = module.executionMode ?? 'worklet'
       this.setStage(`blob ${debug}`)
       try {
         await waitForStart(this.audioCtx.audioWorklet.addModule(blobUrl))
@@ -281,6 +298,7 @@ export class RnnoiseProcessor {
         sensitivityMode === 'manual' && manualThresholdPercent >= 100 ? 0.0 : 1.0
       this.gateGainNode.gain.setValueAtTime(initialGateGain, this.audioCtx.currentTime)
       this.isGateOpen = initialGateGain > 0
+      this.gateOutputOpen = this.isGateOpen
 
       this.analyser = this.audioCtx.createAnalyser()
       this.analyser.fftSize = 512
@@ -304,7 +322,12 @@ export class RnnoiseProcessor {
         if (/not defined in AudioWorkletGlobalScope/i.test(msg)) {
           console.warn(`[${this.backend?.name ?? 'RNNoise'}] node name missing after addModule, reloading once:`, msg)
           const retryName = `${this.backend ? 'deepfilter' : 'rnnoise'}-worklet-v${++workletProcVersion}-retry`
+          this.releaseBackend?.()
+          this.releaseBackend = null
           const retry = await waitForStart(this.createWorkletModule(retryName))
+          module = retry
+          this.executionMode = retry.executionMode ?? 'worklet'
+          processorOptions = retry.processorOptions
           if (this.workletBlobUrl) URL.revokeObjectURL(this.workletBlobUrl)
           this.workletBlobUrl = retry.blobUrl
           this.setStage(`blob retry ${retry.debug}`)
@@ -381,6 +404,7 @@ export class RnnoiseProcessor {
         type: 'bypass',
         enabled: !enableSuppression,
       })
+      module.connect?.(this.workletNode)
 
       this.sourceNode.connect(this.inputGainNode)
       if (this.backend) {
@@ -513,17 +537,21 @@ export class RnnoiseProcessor {
       const isWithinHold = (now - this.lastSpeechTime) < (this.holdTimeMs / 1000)
       const isMutedManual = this.sensitivityMode === 'manual' && this.manualThresholdPercent >= 100
       const effectiveOpen = (shouldOpen || isWithinHold) && !isMutedManual
+      // Preserve the activity indicator/ducking signal independently of the
+      // audio gate. DeepFilter's model handles automatic suppression itself.
+      const outputOpen = this.backend?.autoGate === false && this.sensitivityMode === 'auto' ? true : effectiveOpen
 
       if (this.gateGainNode && this.isSuppressionActive) {
-        if (!this.isGateOpen && effectiveOpen) {
+        if (!this.gateOutputOpen && outputOpen) {
           this.gateGainNode.gain.cancelScheduledValues(now)
           this.gateGainNode.gain.setTargetAtTime(1.0, now, RNNOISE_GATE.attackTimeConstant)
-          this.isGateOpen = true
-        } else if (this.isGateOpen && !effectiveOpen) {
+          this.gateOutputOpen = true
+        } else if (this.gateOutputOpen && !outputOpen) {
           this.gateGainNode.gain.cancelScheduledValues(now)
           this.gateGainNode.gain.setTargetAtTime(0.0, now, RNNOISE_GATE.releaseTimeConstant)
-          this.isGateOpen = false
+          this.gateOutputOpen = false
         }
+        this.isGateOpen = effectiveOpen
       } else {
         this.isGateOpen = true
       }
@@ -560,6 +588,7 @@ export class RnnoiseProcessor {
       this.gateGainNode.gain.cancelScheduledValues(now)
       this.gateGainNode.gain.setTargetAtTime(0.0, now, 0.02)
       this.isGateOpen = false
+      this.gateOutputOpen = false
     }
   }
 
@@ -574,6 +603,7 @@ export class RnnoiseProcessor {
         this.gateGainNode.gain.cancelScheduledValues(now)
         this.gateGainNode.gain.setValueAtTime(1.0, now)
         this.isGateOpen = true
+        this.gateOutputOpen = true
       }
     }
   }
@@ -602,6 +632,8 @@ export class RnnoiseProcessor {
     return this.lastVad
   }
 
+  public getExecutionMode(): 'worker' | 'worklet' { return this.executionMode }
+
   public isReady(): boolean {
     return this.workletReady
   }
@@ -611,6 +643,10 @@ export class RnnoiseProcessor {
   }
 
   public dispose() {
+    const releaseBackend = this.releaseBackend
+    this.releaseBackend = null
+    try { releaseBackend?.() } catch { /* Continue releasing the audio graph. */ }
+    this.executionMode = 'worklet'
     if (this.animationFrameId) {
       cancelAnimationFrame(this.animationFrameId)
       this.animationFrameId = null

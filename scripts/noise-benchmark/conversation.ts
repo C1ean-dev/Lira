@@ -35,7 +35,7 @@ async function until(check: () => boolean | Promise<boolean>, label: string, tim
 }
 
 Object.assign(window, { conversationBenchmark: {
-  async run(config: { urls: string[]; engine: string; signalingPort: number; room: string; variant?: string; encodedProbe?: boolean; warmupMs?: number }) {
+  async run(config: { urls: string[]; engine: string; signalingPort: number; room: string; variant?: string; encodedProbe?: boolean; warmupMs?: number; condition?: string }) {
     const context = new AudioContext({ sampleRate: 48000 })
     const frames: HTMLIFrameElement[] = []
     const participants: ConversationPeer[] = []
@@ -69,7 +69,7 @@ Object.assign(window, { conversationBenchmark: {
         const frame = document.createElement('iframe')
         frame.allow = 'autoplay'
         frames.push(frame)
-        frame.src = '/participant.html'
+        frame.src = '/participant.html?condition=' + encodeURIComponent(config.condition || 'current')
         document.body.append(frame)
         await until(() => Boolean((frame.contentWindow as any)?.conversationPeer), 'participant script')
         const participant = (frame.contentWindow as any).conversationPeer as ConversationPeer
@@ -88,6 +88,7 @@ Object.assign(window, { conversationBenchmark: {
       await until(async () => (await Promise.all(participants.map(participant => participant.connected()))).every(Boolean), 'bidirectional Lira call')
       console.log('[conversation-stage] connected, opening remote playback')
       const playback = await Promise.all(participants.map(participant => participant.playback()))
+      if (config.variant === 'buffer-recovery') participants.forEach(participant => participant.seedRecoveryBuffer())
       if (config.warmupMs) {
         // Warm the SAME microphone/processor/RTP graphs with actual fixture
         // audio, not silence, before starting the scored source and recorder.
