@@ -3,11 +3,17 @@ import { CanvasEngine } from '../../engine/CanvasEngine'
 import { useGameStore } from '../../store/useGameStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { PeerManager } from '../../p2p/PeerManager'
+import { useMapStore } from '../../store/useMapStore'
+import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
+import { checkCollision } from '../../engine/physics/collision'
+import type { CustomAsset } from '../../types/customAsset'
 
 vi.mock('../../engine/rendering/worldRenderer', () => ({ WorldRenderer: { render: vi.fn() } }))
 
 const originalGame = useGameStore.getState()
 const originalSettings = useSettingsStore.getState()
+const originalMap = useMapStore.getState()
+const originalAssets = useCustomAssetsStore.getState()
 let engine: CanvasEngine
 let events: EventTarget
 let frames: Map<number, FrameRequestCallback>
@@ -15,6 +21,7 @@ let nextFrameId: number
 let update: ReturnType<typeof vi.spyOn>
 let render: ReturnType<typeof vi.spyOn>
 let sendMovement: ReturnType<typeof vi.fn>
+let sendPlayerUpdate: ReturnType<typeof vi.fn>
 
 function runFrame() {
   const [id, callback] = frames.entries().next().value!
@@ -37,7 +44,9 @@ beforeEach(() => {
   useGameStore.setState({ mapViewMode: 'immersive', localPlayer: { ...originalGame.localPlayer, isMoving: false } })
   useSettingsStore.setState({ targetFps: 0 })
   sendMovement = vi.fn()
-  vi.spyOn(PeerManager, 'getInstance').mockReturnValue({ sendMovement } as unknown as PeerManager)
+  sendPlayerUpdate = vi.fn()
+  vi.spyOn(PeerManager, 'getInstance').mockReturnValue({ sendMovement, sendPlayerUpdate, endAllZoneMediaCalls: vi.fn() } as unknown as PeerManager)
+  useMapStore.setState({ mapData: { ...originalMap.mapData, width: 40, height: 30, furniture: [], walls: [], zones: [] } })
   engine = new CanvasEngine({ getContext: () => ({ imageSmoothingEnabled: false }) } as unknown as HTMLCanvasElement)
   update = vi.spyOn(engine as any, 'update').mockImplementation(() => {})
   render = vi.spyOn(engine as any, 'render').mockImplementation(() => {})
@@ -50,9 +59,69 @@ afterEach(() => {
   vi.useRealTimers()
   useGameStore.setState(originalGame)
   useSettingsStore.setState(originalSettings)
+  useMapStore.setState(originalMap)
+  useCustomAssetsStore.setState(originalAssets)
 })
 
 describe('simplified mode engine lifecycle', () => {
+  function blockSpawn() {
+    const asset: CustomAsset = { id: 'spawn-block', name: 'Block', type: 'furniture', category: 'Geral', width: 4, height: 4, isObstacle: true, frames: [], createdAt: 1 }
+    useCustomAssetsStore.setState({ customAssets: [asset] })
+    const local = useGameStore.getState().localPlayer
+    useMapStore.setState({ mapData: { ...useMapStore.getState().mapData, furniture: [{ id: 'f', defId: asset.id, x: local.x - 1, y: local.y - 1 }] } })
+  }
+
+  function expectSafe() {
+    const player = useGameStore.getState().localPlayer
+    expect(checkCollision(player.x, player.y, useMapStore.getState().mapData)).toBe(false)
+    expect(sendPlayerUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ x: player.x, y: player.y, isMoving: false, seatedOn: null }))
+  }
+
+  it('moves an obstructed entry spawn to free floor even when starting simplified', () => {
+    useGameStore.setState({ mapViewMode: 'simplified' })
+    blockSpawn()
+    engine.start()
+    expectSafe()
+    expect(frames.size).toBe(0)
+  })
+
+  it('repairs a spawn after map synchronization while the engine is suspended', () => {
+    useGameStore.setState({ mapViewMode: 'simplified' })
+    engine.start()
+    blockSpawn()
+    expectSafe()
+    expect(frames.size).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('rechecks delayed furniture hitboxes when their assets arrive', () => {
+    useGameStore.setState({ mapViewMode: 'simplified' })
+    blockSpawn()
+    const assets = useCustomAssetsStore.getState().customAssets
+    useCustomAssetsStore.setState({ customAssets: [] })
+    engine.start()
+    expect(sendPlayerUpdate).not.toHaveBeenCalled()
+    useCustomAssetsStore.setState({ customAssets: assets })
+    expectSafe()
+  })
+
+  it('repairs an old simplified teleport when returning to immersive mode', () => {
+    blockSpawn()
+    useGameStore.setState({ mapViewMode: 'simplified' })
+    engine.start()
+    const furniture = useMapStore.getState().mapData.furniture[0]
+    useGameStore.getState().setLocalPlayer({ x: furniture.x + 1, y: furniture.y + 1 })
+    useGameStore.setState({ mapViewMode: 'immersive' })
+    expectSafe()
+  })
+
+  it('removes geometry subscriptions when stopped', () => {
+    engine.start()
+    engine.stop()
+    blockSpawn()
+    expect(sendPlayerUpdate).not.toHaveBeenCalled()
+  })
+
   it('starts in simplified mode without drawing or scheduling animation frames', () => {
     useGameStore.setState({ mapViewMode: 'simplified' })
     engine.start()

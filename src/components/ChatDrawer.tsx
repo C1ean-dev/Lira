@@ -687,7 +687,7 @@ const ChatDrawerInner: React.FC = () => {
       } bg-[#12151d] border-r border-[#2a3142] flex flex-col shadow-2xl animate-in slide-in-from-left duration-200 ${
         isResizingDrawer ? '' : 'transition-[width] duration-150 ease-out'
       } ${
-        isGridCallOpen ? 'top-0 z-[60]' : 'top-14 z-50'
+        isGridCallOpen ? 'top-0 z-[70]' : 'top-14 z-[70]'
       }`}
     >
       {!isMobile && (isResizingDrawer || isResizingChannels) && (
@@ -911,7 +911,8 @@ const ChatDrawerInner: React.FC = () => {
             </span>
           </div>
 
-          <div ref={pagination.messagesRef} onScroll={pagination.onScroll} onWheel={pagination.onWheel} onTouchStart={pagination.onTouchStart} onTouchMove={pagination.onTouchMove} className="flex-1 p-3 overflow-y-auto space-y-3">
+          <div ref={pagination.messagesRef} onScroll={pagination.onScroll} onWheel={pagination.onWheel} onTouchStart={pagination.onTouchStart} onTouchMove={pagination.onTouchMove} className="flex-1 min-h-0 p-3 overflow-y-auto">
+            <div ref={pagination.contentRef} className="space-y-3">
             {filteredMessages.length === 0 ? (
               <div className="text-center text-xs text-slate-400 py-8 space-y-1">
                 <div className="font-semibold text-slate-300">
@@ -1147,6 +1148,7 @@ const ChatDrawerInner: React.FC = () => {
                 )
               })
             })()}
+            </div>
           </div>
 
           <form onSubmit={handleSendMessage} className="p-3 border-t border-[#2a3142] bg-[#161a24] shrink-0">

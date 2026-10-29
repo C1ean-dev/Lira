@@ -1,6 +1,7 @@
 import { NoiseSuppressor } from '../../src/media/NoiseSuppressor'
 import { RnnoiseProcessor } from '../../src/media/RnnoiseProcessor'
 import { DeepFilterProcessor } from '../../src/media/DeepFilterProcessor'
+import { processAudioBufferOffline } from '../../src/media/audioBufferUtils'
 
 const recorderSource = `class Capture extends AudioWorkletProcessor {
   constructor(options) {
@@ -27,9 +28,28 @@ function base64(buffer: ArrayBuffer) {
 }
 
 Object.assign(window, { noiseBenchmark: {
+  async checkDynamics() {
+    const results = []
+    const context = new OfflineAudioContext(1, 48000, 48000)
+    for (const mode of ['classic'] as const) {
+      for (const amplitude of [0.01, 0.99]) {
+        const raw = context.createBuffer(1, 48000, 48000)
+        const input = raw.getChannelData(0)
+        for (let index = 0; index < input.length; index++) input[index] = amplitude * Math.sin(2 * Math.PI * 440 * index / 48000)
+        const rendered = (await processAudioBufferOffline(raw, mode, 0)).getChannelData(0).subarray(24000)
+        const rms = samples => Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length)
+        const gainDb = 20 * Math.log10(rms(rendered) / rms(input.subarray(24000)))
+        const peak = rendered.reduce((maximum, value) => Math.max(maximum, Math.abs(value)), 0)
+        if (amplitude === 0.01 && Math.abs(gainDb) > 1) throw new Error(`${mode} changes quiet voice/noise gain by ${gainDb.toFixed(2)} dB`)
+        if (amplitude === 0.99 && !(peak < 0.95 && peak > 0.1)) throw new Error(`${mode} peak protection has invalid output: ${peak}`)
+        results.push({ mode, amplitude, gainDb, peak })
+      }
+    }
+    return results
+  },
   async run(url: string, mode: string) {
     const context = new AudioContext({ sampleRate: 48000 })
-    const processor = mode === 'deepfilter' ? new DeepFilterProcessor() : mode === 'rnnoise' ? new RnnoiseProcessor() : new NoiseSuppressor()
+    const processor = mode === 'deepfilter' ? new DeepFilterProcessor() : mode.startsWith('rnnoise') ? new RnnoiseProcessor() : new NoiseSuppressor()
     let recorder: AudioWorkletNode | undefined
     let moduleUrl: string | undefined
     let captureTimer: ReturnType<typeof setTimeout> | undefined
@@ -47,7 +67,7 @@ Object.assign(window, { noiseBenchmark: {
       source.buffer = buffer
       const input = context.createMediaStreamDestination()
       source.connect(input)
-      const processed = await processor.processStream(input.stream, true, 100, 'auto', 20)
+      const processed = await processor.processStream(input.stream, true, 100, mode.endsWith('-open') ? 'manual' : 'auto', 0)
       if (processed === input.stream) throw new Error(mode + ' did not install its processing graph')
       assertReady()
       const output = context.createMediaStreamSource(processed)
@@ -71,7 +91,7 @@ Object.assign(window, { noiseBenchmark: {
       return { raw: base64(result.raw), processed: base64(result.processed),
         graph: { sampleRate: context.sampleRate, sourceBaseLatency: context.baseLatency,
           engineBaseLatency: engineContext?.baseLatency, engineOutputLatency: engineContext?.outputLatency,
-          sensitivity: 'auto', threshold: 20, suppression: true, neuralReady: 'isReady' in processor ? processor.isReady() : null } }
+          sensitivity: mode.endsWith('-open') ? 'manual' : 'auto', threshold: 0, suppression: true, neuralReady: 'isReady' in processor ? processor.isReady() : null } }
     } finally {
       clearTimeout(captureTimer)
       recorder?.port.close()

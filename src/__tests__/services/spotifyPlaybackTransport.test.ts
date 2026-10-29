@@ -14,6 +14,17 @@ vi.mock('ws', () => ({ default: class extends EventEmitter {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 
 describe('local Spotify playback transport', () => {
+  it('preserves the rejected command and protocol reason without exposing protocol data', async () => {
+    const opening = connectPlayback('ws://127.0.0.1:9222/devtools/browser/spotify')
+    state.socket.emit('open')
+    const connection = await opening
+    const response = expect(connection.request('Target.createTarget', { hidden: true })).rejects.toMatchObject({
+      method: 'Target.createTarget', protocolCode: -32602, protocolMessage: 'Invalid parameters',
+    })
+    state.socket.emit('message', Buffer.from(JSON.stringify({ id: 1, error: { code: -32602, message: 'Invalid parameters', data: 'private diagnostic data' } })))
+    await response
+    connection.close()
+  })
   it('matches responses to commands and ignores unrelated notifications', async () => {
     const opening = connectPlayback('ws://127.0.0.1:9222/devtools/page/spotify')
     state.socket.emit('open')

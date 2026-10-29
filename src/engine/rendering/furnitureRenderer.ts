@@ -6,6 +6,7 @@ import { useCustomAssetsStore, getCustomAssetImage } from '../../store/useCustom
 import { resolveSpritePlacement } from './spritePlacement'
 import { getBedScene } from '../../services/bedInteraction'
 import { drawBedClothMotion } from './bedClothMotion'
+import { consumptionFrames, consumptionStage } from '../../assets/tabletopConsumptionFrames'
 
 export type FurnitureDef = FurnitureDefinition
 
@@ -124,7 +125,7 @@ export class FurnitureRenderer {
 
       const frameIdx = Math.floor((Date.now() / (customAsset.frameRateMs || 160)) % (frameList.length || 1))
       const scene = customAsset.bedAnimation ? getBedScene(furn.id) : null
-      const frameUrl = scene?.frame || frameList[frameIdx]
+      const frameUrl = consumptionFrames(customAsset)?.[consumptionStage(furn.consumptionStage)] || scene?.frame || frameList[frameIdx]
       const img = frameUrl ? getCustomAssetImage(frameUrl) : null
 
       if (img && img.complete && img.naturalWidth > 0) {

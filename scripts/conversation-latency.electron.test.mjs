@@ -176,7 +176,10 @@ test('measure both directions of a real Lira conversation using Microsoft speech
     await fs.writeFile(main, `const {app,BrowserWindow}=require('electron');app.setPath('userData',${JSON.stringify(path.join(runtime, 'profile'))});app.commandLine.appendSwitch('autoplay-policy','no-user-gesture-required');app.commandLine.appendSwitch('disable-background-timer-throttling');app.whenReady().then(()=>{const w=new BrowserWindow({show:false,webPreferences:{backgroundThrottling:false,contextIsolation:true,nodeIntegration:false}});w.loadURL(${JSON.stringify(url)})});app.on('window-all-closed',()=>app.quit());`)
     const environment = { ...process.env }
     delete environment.ELECTRON_RUN_AS_NODE
-    electron = await _electron.launch({ executablePath: require('electron'), args: [main], env: environment })
+    // Mute the device output only. Keep remote elements at volume 1 so their
+    // captureStream and real WebRTC playback path remain measurable.
+    electron = await _electron.launch({ executablePath: require('electron'), args: ['--mute-audio', main], env: environment })
+    assert.equal(await electron.evaluate(({ app }) => app.commandLine.hasSwitch('mute-audio')), true)
     console.log('[conversation-stage] Electron launched')
     const page = await electron.firstWindow()
     page.on('console', message => {

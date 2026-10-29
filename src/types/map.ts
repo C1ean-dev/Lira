@@ -43,6 +43,7 @@ export interface PlacedFurniture {
   rotation?: 0 | 90 | 180 | 270
   direction?: 'down' | 'left' | 'up' | 'right'
   tintColor?: string
+  consumptionStage?: 0 | 1 | 2 | 3
 }
 
 export interface PrivateZone {

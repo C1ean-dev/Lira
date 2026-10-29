@@ -22,6 +22,14 @@ describe('production package boundaries', () => {
     expect(() => verifyProductionFiles(required.filter(file => file !== 'out/preload.js'))).toThrow()
   })
 
+  it('rejects redundant legacy atlases alongside the individual library, but allows legacy-only packages', () => {
+    const legacy = ['dist/assets/library/library.xml', `dist/assets/library/library-${'a'.repeat(64)}.png`, 'dist/assets/library/library.png']
+    expect(() => verifyProductionFiles([...required, ...legacy])).not.toThrow()
+    for (const file of legacy) {
+      expect(() => verifyProductionFiles([...required, 'dist/assets/library/catalog.json', file])).toThrow(/Atlas legado/)
+    }
+  })
+
   it('uses the copied production assets for windows, notifications and tray', () => {
     expect(runtimeAssetPath('/application', true, 'tray-icon.png').replaceAll('\\', '/')).toBe('/application/dist/tray-icon.png')
     expect(runtimeAssetPath('/application', false, 'tray-icon.png').replaceAll('\\', '/')).toBe('/application/public/tray-icon.png')

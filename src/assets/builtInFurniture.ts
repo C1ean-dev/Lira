@@ -1,5 +1,6 @@
 import type { CustomAsset } from '../types/customAsset'
 import { spriteFrame } from './spriteFrame'
+import { createTabletopFoodAssets } from './tabletopFoodAssets'
 
 export function createRomanticBedAsset(base = import.meta.env.BASE_URL): CustomAsset {
   const sheet = `${base}assets/furniture/romantic-bed.png`
@@ -16,6 +17,7 @@ export function createRomanticBedAsset(base = import.meta.env.BASE_URL): CustomA
 }
 
 export function addBuiltInFurniture(assets: CustomAsset[], deletedAssetIds: string[] = []): CustomAsset[] {
-  const bed = createRomanticBedAsset()
-  return assets.some(asset => asset.id === bed.id) || deletedAssetIds.includes(bed.id) ? assets : [...assets, bed]
+  const known = new Set([...assets.map(asset => asset.id), ...deletedAssetIds])
+  const additions = [createRomanticBedAsset(), ...createTabletopFoodAssets()].filter(asset => !known.has(asset.id))
+  return additions.length ? [...assets, ...additions] : assets
 }

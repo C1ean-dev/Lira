@@ -92,6 +92,7 @@ export const TopNavBar: React.FC<Props> = ({
   const [autoSavedNotice, setAutoSavedNotice] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const prevEditorOpenRef = useRef(isEditorOpen)
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (prevEditorOpenRef.current && !isEditorOpen) {
@@ -101,6 +102,24 @@ export const TopNavBar: React.FC<Props> = ({
     }
     prevEditorOpenRef.current = isEditorOpen
   }, [isEditorOpen])
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) return
+    const desktop = window.matchMedia('(min-width: 1536px)')
+    const closeOnDesktop = () => { if (desktop.matches) setIsMobileMenuOpen(false) }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setIsMobileMenuOpen(false)
+      menuButtonRef.current?.focus()
+    }
+    closeOnDesktop()
+    desktop.addEventListener('change', closeOnDesktop)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      desktop.removeEventListener('change', closeOnDesktop)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [isMobileMenuOpen])
 
   const currentZone = mapZones.find((z) => z.id === localPlayerCurrentZoneId)
   const isAndroidPlatform = isAndroid()
@@ -127,9 +146,9 @@ export const TopNavBar: React.FC<Props> = ({
   }
 
   return (
-    <header className="h-14 bg-[#12151d]/90 backdrop-blur-md border-b border-[#2a3142] px-3 sm:px-4 flex items-center justify-between z-30 select-none relative">
-      <div className="flex items-center gap-2 sm:gap-3">
-        <div className="flex items-center">
+    <header className={`h-14 shrink-0 bg-[#12151d]/90 backdrop-blur-md border-b border-[#2a3142] px-3 sm:px-4 flex items-center justify-between gap-2 select-none relative ${isMobileMenuOpen ? 'z-[80]' : 'z-30'}`}>
+      <div className="flex flex-1 min-w-0 items-center gap-1.5 sm:gap-3">
+        <div className="flex shrink-0 items-center">
           <LiraLogo size={32} showText={true} className="hidden sm:inline-flex" />
           <LiraLogo size={28} showText={false} className="sm:hidden" />
         </div>
@@ -137,13 +156,13 @@ export const TopNavBar: React.FC<Props> = ({
         {roomId && (
           <button
             onClick={handleCopyCode}
-            className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] rounded-xl text-xs font-semibold text-slate-200 transition-all group cursor-pointer"
+            className="flex min-w-0 max-w-[360px] items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] rounded-xl text-xs font-semibold text-slate-200 transition-all group cursor-pointer"
             title={`ID do Espaço: ${roomId}\n(Clique para copiar tudo)`}
           >
-            {!isAndroidPlatform && <span className="text-slate-400 font-normal hidden sm:inline">ID do Espaço:</span>}
-            <span className="font-mono text-indigo-400 font-bold max-w-[85px] sm:max-w-[220px] truncate">{displayRoomId}</span>
+            {!isAndroidPlatform && <span className="text-slate-400 font-normal whitespace-nowrap shrink-0 hidden xl:inline 2xl:hidden min-[1800px]:inline">ID do Espaço:</span>}
+            <span className="font-mono text-indigo-300 font-bold min-w-0 truncate">{displayRoomId}</span>
             {copied ? (
-              <span className="flex items-center gap-1 text-emerald-400 font-bold text-[11px] animate-in fade-in">
+              <span className="flex shrink-0 items-center gap-1 text-emerald-400 font-bold text-[11px] animate-in fade-in">
                 <Check className="w-3.5 h-3.5 shrink-0" />
                 {!isAndroidPlatform && <span className="hidden sm:inline">Copiado!</span>}
               </span>
@@ -157,8 +176,8 @@ export const TopNavBar: React.FC<Props> = ({
           <button
             onClick={isHost ? toggleRoomPrivacy : undefined}
             disabled={!isHost}
-            className={`flex items-center justify-center ${
-              isAndroidPlatform ? 'p-2' : 'hidden sm:flex items-center gap-1.5 px-3 py-1.5'
+            className={`flex shrink-0 min-w-0 max-w-[260px] whitespace-nowrap items-center justify-center gap-1.5 ${
+              isAndroidPlatform ? 'p-2' : 'p-2 sm:px-3 sm:py-1.5'
             } rounded-xl border text-xs font-semibold transition-all ${
               isRoomPublic
                 ? 'bg-blue-500/15 border-blue-500/40 text-blue-300 hover:bg-blue-500/25'
@@ -181,11 +200,11 @@ export const TopNavBar: React.FC<Props> = ({
             )}
             {!isAndroidPlatform && (
               <>
-                <span>{isRoomPublic ? 'Pública' : 'Privada'}</span>
+                <span className="hidden sm:inline">{isRoomPublic ? 'Pública' : 'Privada'}</span>
                 {isRoomPublic && publicationServers.map(server => (
                   <span
                     key={server.host}
-                    className="text-[9px] border px-1.5 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                    className="hidden min-[1800px]:inline-block min-w-0 max-w-24 truncate text-[9px] border px-1.5 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
                     aria-label={`Sala publicada em ${server.name}`}
                     title={server.host}
                   >
@@ -193,7 +212,7 @@ export const TopNavBar: React.FC<Props> = ({
                   </span>
                 ))}
                 {isRoomPublic && publicationServers.length === 0 && (
-                  <span className="text-[9px] text-amber-300">Aguardando publicação</span>
+                  <span className="hidden min-[1800px]:inline text-[9px] text-amber-300">Aguardando publicação</span>
                 )}
               </>
             )}
@@ -202,44 +221,44 @@ export const TopNavBar: React.FC<Props> = ({
 
         {connectionStatus === 'reconnecting' && (
           <div
-            className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/15 border border-amber-500/40 rounded-xl text-xs font-semibold text-amber-300 animate-pulse"
+            className="flex shrink-0 items-center gap-1.5 px-2 sm:px-3 py-2 sm:py-1 bg-amber-500/15 border border-amber-500/40 rounded-xl text-xs font-semibold text-amber-300 animate-pulse"
             title="Conexão com a rede P2P instável. Tentando reconectar automaticamente..."
           >
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-            <span className="hidden sm:inline">Reconectando...</span>
+            <span className="w-2 h-2 shrink-0 rounded-full bg-amber-400 animate-ping" />
+            <span className="hidden md:inline whitespace-nowrap">Reconectando...</span>
           </div>
         )}
 
         {connectionStatus === 'disconnected' && roomId && (
           <button
             onClick={() => PeerManager.getInstance().scheduleSignalingReconnect()}
-            className="flex items-center gap-1.5 px-3 py-1 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 rounded-xl text-xs font-semibold text-rose-300 transition-all cursor-pointer shadow-sm active:scale-95"
+            className="flex shrink-0 items-center gap-1.5 px-2 sm:px-3 py-2 sm:py-1 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 rounded-xl text-xs font-semibold text-rose-300 transition-all cursor-pointer shadow-sm active:scale-95"
             title="Conexão com o servidor perdida. Clique para tentar reconectar agora."
           >
-            <span className="w-2 h-2 rounded-full bg-rose-500" />
-            <span className="hidden sm:inline">Desconectado</span>
-            <span className="underline ml-1 font-bold">Reconectar</span>
+            <span className="w-2 h-2 shrink-0 rounded-full bg-rose-500" />
+            <span className="hidden md:inline whitespace-nowrap">Desconectado</span>
+            <span className="hidden md:inline underline ml-1 font-bold">Reconectar</span>
           </button>
         )}
       </div>
 
-      <div className="hidden lg:flex items-center gap-2">
-        <div className="flex items-center gap-2 px-4 py-1.5 bg-[#1b202c]/60 border border-[#2a3142] rounded-full">
+      <div className="hidden 2xl:flex shrink-0 min-w-0 max-w-[190px] items-center gap-2">
+        <div className="flex min-w-0 max-w-full items-center gap-2 px-3 py-1.5 bg-[#1b202c]/60 border border-[#2a3142] rounded-full" title={currentZone ? currentZone.name : 'Corredor Geral'}>
           <div
-            className="w-2.5 h-2.5 rounded-full"
+            className="w-2.5 h-2.5 shrink-0 rounded-full"
             style={{ backgroundColor: currentZone ? currentZone.color : '#6b7280' }}
           />
-          <span className="text-xs font-semibold text-slate-200">
+          <span className="min-w-0 truncate whitespace-nowrap text-xs font-semibold text-slate-200">
             {currentZone ? currentZone.name : 'Corredor Geral'}
           </span>
         </div>
       </div>
 
-      <div className="hidden lg:flex items-center gap-2.5">
+      <div className="hidden 2xl:flex shrink-0 items-center gap-2.5 whitespace-nowrap">
         {autoSavedNotice && (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-xs font-semibold text-emerald-300 animate-in fade-in duration-200">
-            <Check className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Espaço Salvo!</span>
+          <div className="flex shrink-0 items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-xs font-semibold text-emerald-300 animate-in fade-in duration-200" role="status" title="Espaço Salvo!">
+            <Check className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+            <span className="hidden min-[1800px]:inline">Espaço Salvo!</span>
           </div>
         )}
 
@@ -252,8 +271,8 @@ export const TopNavBar: React.FC<Props> = ({
           }`}
           title="Editar Mobília, Pisos e Zonas do Espaço"
         >
-          <Edit3 className="w-3.5 h-3.5" />
-          <span>{isEditorOpen ? 'Fechar Editor' : 'Editar Espaço'}</span>
+          <Edit3 className="w-3.5 h-3.5 shrink-0" />
+          <span className="hidden min-[1800px]:inline">{isEditorOpen ? 'Fechar Editor' : 'Editar Espaço'}</span>
         </button>
 
         <button
@@ -349,7 +368,8 @@ export const TopNavBar: React.FC<Props> = ({
 
         <button
           onClick={onOpenAvatarModal}
-          className="flex items-center gap-2 pl-2 pr-3 py-1 bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] rounded-xl transition-all group"
+          title={`Editar perfil: ${localPlayerName}`}
+          className="flex shrink-0 items-center gap-2 px-2 min-[1800px]:pr-3 py-1 bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] rounded-xl transition-all group"
         >
           <PlayerAvatar
             name={localPlayerName}
@@ -359,8 +379,8 @@ export const TopNavBar: React.FC<Props> = ({
             showStatus={true}
             size="sm"
           />
-          <div className="text-left">
-            <div className="text-xs font-bold text-slate-200 group-hover:text-white leading-tight">
+          <div className="hidden min-[1800px]:block min-w-0 max-w-[80px] text-left">
+            <div className="truncate text-xs font-bold text-slate-200 group-hover:text-white leading-tight">
               {localPlayerName}
             </div>
             <div className="text-[10px] text-slate-400 leading-tight truncate max-w-[80px]">
@@ -376,14 +396,14 @@ export const TopNavBar: React.FC<Props> = ({
             title="Sair / Desconectar deste espaço"
           >
             <LogOut className="w-3.5 h-3.5 text-rose-400 group-hover:text-rose-200 transition-colors" />
-            <span className="hidden sm:inline">Sair</span>
+            <span className="hidden min-[1800px]:inline">Sair</span>
           </button>
         )}
       </div>
 
-      <div className="flex lg:hidden items-center gap-1.5">
+      <div className="flex 2xl:hidden shrink-0 items-center gap-1.5">
         <button
-          onClick={toggleChat}
+          onClick={() => { setIsMobileMenuOpen(false); toggleChat() }}
           className={`relative p-2 rounded-xl border transition-all ${
             isChatOpen
               ? 'bg-indigo-600 text-white border-indigo-500 shadow-md'
@@ -400,7 +420,7 @@ export const TopNavBar: React.FC<Props> = ({
         </button>
 
         <button
-          onClick={toggleOnlineUsers}
+          onClick={() => { setIsMobileMenuOpen(false); toggleOnlineUsers() }}
           className={`flex items-center gap-1 p-2 rounded-xl border text-xs font-semibold transition-all relative ${
             isOnlineUsersOpen
               ? 'bg-indigo-600 text-white border-indigo-500 shadow-md'
@@ -418,7 +438,10 @@ export const TopNavBar: React.FC<Props> = ({
         </button>
 
         <button
+          ref={menuButtonRef}
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          aria-expanded={isMobileMenuOpen}
+          aria-controls="space-navigation-menu"
           className={`p-2 rounded-xl border transition-all relative ${
             isMobileMenuOpen
               ? 'bg-indigo-600 text-white border-indigo-500 shadow-md'
@@ -434,15 +457,17 @@ export const TopNavBar: React.FC<Props> = ({
       </div>
 
       {isMobileMenuOpen && (
-        <div className="absolute inset-x-0 top-14 bg-[#12151d]/98 backdrop-blur-2xl border-b border-[#2a3142] p-4 z-50 shadow-2xl flex flex-col gap-3 animate-in slide-in-from-top-2 duration-150 max-h-[calc(100vh-60px)] overflow-y-auto select-none lg:hidden">
-          <div
+        <>
+        <div className="absolute inset-x-0 top-14 h-[calc(100dvh-3.5rem)] bg-black/50 z-40 2xl:hidden" aria-hidden="true" onClick={() => setIsMobileMenuOpen(false)} />
+        <div id="space-navigation-menu" role="region" aria-label="Menu do espaço" className="absolute inset-x-0 top-14 bg-[#12151d] border-b border-[#394359] p-3 sm:p-4 z-50 shadow-2xl flex flex-col gap-3 max-h-[calc(100dvh-3.5rem)] overflow-y-auto overscroll-contain select-none 2xl:hidden">
+          <button type="button"
             onClick={() => {
               setIsMobileMenuOpen(false)
               onOpenAvatarModal()
             }}
-            className="flex items-center justify-between p-3 rounded-2xl bg-[#1b202c] border border-[#2a3142] cursor-pointer hover:border-indigo-500/50 transition-colors"
+            className="flex shrink-0 w-full items-center justify-between gap-3 p-3 rounded-2xl bg-[#1b202c] border border-[#475569] text-left cursor-pointer hover:border-indigo-400 transition-colors"
           >
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-3">
               <PlayerAvatar
                 name={localPlayerName}
                 profilePicture={localPlayerProfilePicture}
@@ -451,36 +476,36 @@ export const TopNavBar: React.FC<Props> = ({
                 showStatus={true}
                 size="md"
               />
-              <div>
-                <div className="text-sm font-bold text-slate-100">{localPlayerName}</div>
-                <div className="text-xs text-slate-400">{localPlayerStatusText}</div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-bold text-slate-100" title={localPlayerName}>{localPlayerName}</div>
+                <div className="truncate text-xs text-slate-300">{localPlayerStatusText}</div>
               </div>
             </div>
-            <span className="text-xs text-indigo-400 font-semibold px-2 py-1 rounded-lg bg-indigo-600/10 border border-indigo-500/20">
+            <span className="shrink-0 whitespace-nowrap text-xs text-indigo-200 font-semibold px-2 py-1 rounded-lg bg-indigo-950 border border-indigo-700">
               Editar Perfil
             </span>
-          </div>
+          </button>
 
-          <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#181d28] border border-[#242b3d] text-xs">
-            <span className="text-slate-400">Local Atual:</span>
-            <span className="font-bold text-slate-200 flex items-center gap-1.5">
+          <div className="flex shrink-0 items-center justify-between gap-3 px-3 py-2 rounded-xl bg-[#181d28] border border-[#394359] text-xs">
+            <span className="shrink-0 text-slate-300">Local Atual:</span>
+            <span className="min-w-0 font-bold text-slate-100 flex items-center justify-end gap-1.5" title={currentZone ? currentZone.name : 'Corredor Geral'}>
               <div
-                className="w-2.5 h-2.5 rounded-full"
+                className="w-2.5 h-2.5 shrink-0 rounded-full"
                 style={{ backgroundColor: currentZone ? currentZone.color : '#6b7280' }}
               />
-              {currentZone ? currentZone.name : 'Corredor Geral'}
+              <span className="min-w-0 truncate">{currentZone ? currentZone.name : 'Corredor Geral'}</span>
             </span>
           </div>
 
-          <div className="flex flex-col gap-1.5 pt-1">
+          <div className="flex shrink-0 flex-col gap-2 pt-1">
             <button
               onClick={() => {
                 setIsMobileMenuOpen(false)
                 useMediaStore.getState().setSettingsModalOpen(true)
               }}
-              className="flex items-center gap-2.5 w-full p-2.5 rounded-xl bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] text-xs font-semibold text-slate-200 transition-colors text-left"
+              className="flex items-center gap-2.5 w-full p-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-semibold text-slate-100 transition-colors text-left"
             >
-              <Settings className="w-4 h-4 text-indigo-400" />
+              <Settings className="w-4 h-4 shrink-0 text-indigo-300" />
               <span>Configurações de Áudio e Chamada</span>
             </button>
 
@@ -489,13 +514,13 @@ export const TopNavBar: React.FC<Props> = ({
                 setIsMobileMenuOpen(false)
                 toggleEditor()
               }}
-              className={`flex items-center gap-2.5 w-full p-2.5 rounded-xl text-xs font-semibold border transition-colors text-left ${
+              className={`flex items-center gap-2.5 w-full p-3 rounded-xl text-xs font-semibold border transition-colors text-left ${
                 isEditorOpen
                   ? 'bg-indigo-600 text-white border-indigo-500'
-                  : 'bg-[#1b202c] text-slate-200 border-[#2a3142] hover:bg-slate-800'
+                  : 'bg-slate-800 text-slate-100 border-slate-600 hover:bg-slate-700'
               }`}
             >
-              <Edit3 className="w-4 h-4 text-indigo-400" />
+              <Edit3 className={`w-4 h-4 shrink-0 ${isEditorOpen ? 'text-white' : 'text-indigo-300'}`} />
               <span>{isEditorOpen ? 'Fechar Editor do Espaço' : 'Editar Mobílias e Salas'}</span>
             </button>
 
@@ -504,26 +529,38 @@ export const TopNavBar: React.FC<Props> = ({
                 onClick={() => {
                   toggleRoomPrivacy()
                 }}
-                className="flex items-center justify-between w-full p-2.5 rounded-xl bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] text-xs font-semibold text-slate-200 transition-colors text-left"
+                className="flex items-center justify-between gap-2 w-full p-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-semibold text-slate-100 transition-colors text-left"
               >
                 <span className="flex items-center gap-2.5">
-                  {isRoomPublic ? <Globe className="w-4 h-4 text-blue-400" /> : <Lock className="w-4 h-4 text-slate-400" />}
+                  {isRoomPublic ? <Globe className="w-4 h-4 shrink-0 text-blue-300" /> : <Lock className="w-4 h-4 shrink-0 text-slate-300" />}
                   <span>Privacidade da Sala: {isRoomPublic ? 'Pública' : 'Privada'}</span>
                 </span>
-                <span className="text-[10px] text-indigo-400 underline font-bold">Alternar</span>
+                <span className="shrink-0 text-[10px] text-indigo-200 underline font-bold">Alternar</span>
               </button>
             )}
 
-            <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#181d28] border border-[#242b3d] text-xs">
-              <span className="text-slate-400">Qualidade da Conexão:</span>
+            <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-[#181d28] border border-[#394359] text-xs">
+              <span className="text-slate-300">Qualidade da Conexão:</span>
               <NetworkSignalIcon
                 rating={localQuality.rating}
                 pingMs={localQuality.pingMs}
                 lossPct={localQuality.lossPct}
                 showPingText={true}
                 size="sm"
+                className="shrink-0"
               />
             </div>
+
+            {!(showUpdateAction && onApplyUpdate) && (
+              <button type="button" onClick={() => checkNow()} disabled={manualCheck === 'checking'}
+                className="flex items-center justify-between gap-3 w-full p-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-semibold text-slate-100 text-left disabled:cursor-wait">
+                <span className="flex items-center gap-2.5">
+                  <RefreshCw className={`w-4 h-4 shrink-0 text-indigo-300 ${manualCheck === 'checking' ? 'animate-spin' : ''}`} />
+                  <span>Verificar atualizações</span>
+                </span>
+                <span className="shrink-0 text-[11px] font-mono text-slate-200">{versionBadgeLabel(manualCheck, currentVersion)}</span>
+              </button>
+            )}
 
             {showUpdateAction && onApplyUpdate && (
               <button
@@ -534,7 +571,7 @@ export const TopNavBar: React.FC<Props> = ({
                 disabled={isUpdating || isDownloadingUpdate}
                 aria-label={updateActionLabel}
                 title={isDownloadingUpdate ? updateActionLabel : undefined}
-                className="flex items-center justify-between w-full p-2.5 rounded-xl bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 font-bold text-xs transition-colors disabled:cursor-wait disabled:opacity-75"
+                className="flex items-center justify-between gap-3 w-full p-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 border border-emerald-500 text-white font-bold text-xs transition-colors disabled:cursor-wait disabled:opacity-75"
               >
                 <span className="flex items-center gap-2">
                   <UpdateDownloadIndicator downloading={isDownloadingUpdate} percent={updatePercent} />
@@ -550,14 +587,15 @@ export const TopNavBar: React.FC<Props> = ({
                   setIsMobileMenuOpen(false)
                   onDisconnect()
                 }}
-                className="flex items-center justify-center gap-2 w-full p-3 mt-1 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-300 font-bold text-xs transition-colors cursor-pointer"
+                className="flex items-center justify-center gap-2 w-full p-3 mt-1 rounded-xl bg-rose-950 hover:bg-rose-900 border border-rose-500 text-rose-100 font-bold text-xs transition-colors cursor-pointer"
               >
-                <LogOut className="w-4 h-4 text-rose-400" />
+                <LogOut className="w-4 h-4 shrink-0 text-rose-200" />
                 <span>Sair / Desconectar do Espaço</span>
               </button>
             )}
           </div>
         </div>
+        </>
       )}
     </header>
   )
