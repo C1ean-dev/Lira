@@ -12,12 +12,12 @@ const require = createRequire(import.meta.url)
 const option = (name, fallback) => process.argv.find(value => value.startsWith(`--${name}=`))?.slice(name.length + 3) || fallback
 const profile = option('profile', 'full')
 const output = path.resolve(option('output', '.scratch/noise-benchmark/current'))
-const engines = option('engines', 'classic,soft,rnnoise').split(',')
+const engines = option('engines', 'classic,deepfilter,rnnoise').split(',')
 const existingBundle = option('bundle', '')
 const dynamicsOnly = process.argv.includes('--dynamics-only')
 const reference = process.argv.includes('--reference')
 if (reference && !existingBundle) throw new Error('Reference recording requires --bundle')
-if (!['smoke', 'full', 'validation'].includes(profile) || engines.some(engine => !['classic', 'soft', 'rnnoise', 'rnnoise-open'].includes(engine))) throw new Error('Invalid profile/engine')
+if (!['smoke', 'full', 'validation'].includes(profile) || engines.some(engine => !['classic', 'deepfilter', 'rnnoise', 'rnnoise-open'].includes(engine))) throw new Error('Invalid profile/engine')
 const python = process.env.LIRA_PYTHON || 'python'
 async function runPython(action) {
   await new Promise((resolve, reject) => {
@@ -44,14 +44,17 @@ let server
 try {
   if (existingBundle) await fs.copyFile(path.resolve(existingBundle), path.join(runtime, 'renderer.js'))
   else await build({ entryPoints: ['scripts/noise-benchmark/renderer.ts'], outfile: path.join(runtime, 'renderer.js'), bundle: true, format: 'esm', platform: 'browser', logLevel: 'silent',
+    assetNames: 'assets/[name]-[hash]', publicPath: '/',
     define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env': '{"DEV":false,"PROD":true,"BASE_URL":"/","MODE":"test"}' },
     plugins: [{ name: 'raw-audio-sources', setup(builder) {
       builder.onResolve({ filter: /^virtual:lira-(asset-atlases|individual-library)$/ }, args => ({ path: args.path, namespace: 'benchmark-assets' }))
       builder.onLoad({ filter: /.*/, namespace: 'benchmark-assets' }, () => ({ contents: 'export default []', loader: 'js' }))
-      builder.onResolve({ filter: /\?raw$/ }, async args => {
-        const resolved = await builder.resolve(args.path.slice(0, -4), { resolveDir: args.resolveDir, kind: args.kind })
-        return { path: resolved.path, namespace: 'raw-audio-source' }
+      builder.onResolve({ filter: /\?(raw|url)$/ }, async args => {
+        const kind = args.path.endsWith('?raw') ? 'raw' : 'url'
+        const resolved = await builder.resolve(args.path.replace(/\?(raw|url)$/, ''), { resolveDir: args.resolveDir, kind: args.kind })
+        return { path: resolved.path, namespace: kind === 'raw' ? 'raw-audio-source' : 'audio-asset' }
       })
+      builder.onLoad({ filter: /.*/, namespace: 'audio-asset' }, async args => ({ contents: await fs.readFile(args.path), loader: 'file' }))
       builder.onLoad({ filter: /.*/, namespace: 'raw-audio-source' }, async args => ({ contents: `export default ${JSON.stringify(await fs.readFile(args.path, 'utf8'))}`, loader: 'js' }))
     } }],
   })
@@ -60,7 +63,7 @@ try {
     try {
       const pathname = decodeURIComponent(new URL(request.url, 'http://fixture').pathname)
       if (pathname === '/') { response.setHeader('Content-Type', 'text/html'); response.end('<!doctype html><script type="module" src="/renderer.js"></script>'); return }
-      const file = pathname === '/renderer.js' ? path.join(runtime, 'renderer.js') : path.resolve(output, '.' + pathname)
+      const file = pathname === '/renderer.js' || pathname.startsWith('/assets/') ? path.resolve(runtime, '.' + pathname) : path.resolve(output, '.' + pathname)
       if (!file.startsWith(output + path.sep)) { response.writeHead(404).end(); return }
       response.setHeader('Content-Type', pathname.endsWith('.js') ? 'text/javascript' : 'application/octet-stream')
       response.end(await fs.readFile(file))
@@ -72,7 +75,7 @@ try {
   await fs.writeFile(main, `const {app,BrowserWindow}=require('electron');app.setPath('userData',${JSON.stringify(path.join(runtime, 'profile'))});app.commandLine.appendSwitch('autoplay-policy','no-user-gesture-required');app.commandLine.appendSwitch('disable-background-timer-throttling');app.whenReady().then(()=>{const w=new BrowserWindow({show:false,webPreferences:{backgroundThrottling:false,contextIsolation:true,nodeIntegration:false}});w.loadURL(${JSON.stringify(url)})});app.on('window-all-closed',()=>app.quit());`)
   const environment = { ...process.env }
   delete environment.ELECTRON_RUN_AS_NODE
-  electron = await _electron.launch({ executablePath: require('electron'), args: [main], env: environment })
+  electron = await _electron.launch({ executablePath: require('electron'), args: ['--mute-audio', main], env: environment })
   const page = await electron.firstWindow()
   page.on('pageerror', error => console.error(error.message))
   await page.waitForFunction(() => Boolean(window.noiseBenchmark))

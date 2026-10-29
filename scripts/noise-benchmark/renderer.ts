@@ -1,6 +1,6 @@
 import { NoiseSuppressor } from '../../src/media/NoiseSuppressor'
-import { SoftDspProcessor } from '../../src/media/SoftDspProcessor'
 import { RnnoiseProcessor } from '../../src/media/RnnoiseProcessor'
+import { DeepFilterProcessor } from '../../src/media/DeepFilterProcessor'
 import { processAudioBufferOffline } from '../../src/media/audioBufferUtils'
 
 const recorderSource = `class Capture extends AudioWorkletProcessor {
@@ -31,7 +31,7 @@ Object.assign(window, { noiseBenchmark: {
   async checkDynamics() {
     const results = []
     const context = new OfflineAudioContext(1, 48000, 48000)
-    for (const mode of ['classic', 'soft'] as const) {
+    for (const mode of ['classic'] as const) {
       for (const amplitude of [0.01, 0.99]) {
         const raw = context.createBuffer(1, 48000, 48000)
         const input = raw.getChannelData(0)
@@ -49,12 +49,18 @@ Object.assign(window, { noiseBenchmark: {
   },
   async run(url: string, mode: string) {
     const context = new AudioContext({ sampleRate: 48000 })
-    const processor = mode.startsWith('rnnoise') ? new RnnoiseProcessor() : mode === 'soft' ? new SoftDspProcessor() : new NoiseSuppressor()
+    const processor = mode === 'deepfilter' ? new DeepFilterProcessor() : mode.startsWith('rnnoise') ? new RnnoiseProcessor() : new NoiseSuppressor()
     let recorder: AudioWorkletNode | undefined
     let moduleUrl: string | undefined
+    let captureTimer: ReturnType<typeof setTimeout> | undefined
+    const assertReady = () => {
+      if ('isReady' in processor && !processor.isReady()) throw new Error(mode + ' unavailable: ' + processor.getLastError())
+    }
     try {
       await context.resume()
-      const samples = new Float32Array(await (await fetch(url)).arrayBuffer())
+      const response = await fetch(url)
+      if (!response.ok) throw new Error('Input unavailable: ' + url)
+      const samples = new Float32Array(await response.arrayBuffer())
       const buffer = context.createBuffer(1, samples.length, 48000)
       buffer.copyToChannel(samples, 0)
       const source = context.createBufferSource()
@@ -63,7 +69,7 @@ Object.assign(window, { noiseBenchmark: {
       source.connect(input)
       const processed = await processor.processStream(input.stream, true, 100, mode.endsWith('-open') ? 'manual' : 'auto', 0)
       if (processed === input.stream) throw new Error(mode + ' did not install its processing graph')
-      if (processor instanceof RnnoiseProcessor && !processor.isReady()) throw new Error('RNNoise unavailable: ' + processor.getLastError())
+      assertReady()
       const output = context.createMediaStreamSource(processed)
       const merger = context.createChannelMerger(2)
       source.connect(merger, 0, 0)
@@ -72,16 +78,22 @@ Object.assign(window, { noiseBenchmark: {
       await context.audioWorklet.addModule(moduleUrl)
       recorder = new AudioWorkletNode(context, 'noise-benchmark-capture', { channelCount: 2, channelCountMode: 'explicit', outputChannelCount: [1], processorOptions: { samples: samples.length + 48000 } })
       merger.connect(recorder)
+      // Capture outputs silence, keeping measurement inaudible.
       recorder.connect(context.destination)
       const captured = new Promise<{raw: ArrayBuffer; processed: ArrayBuffer}>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Audio capture timeout')), buffer.duration * 1000 + 10000)
-        recorder!.port.onmessage = event => { clearTimeout(timeout); resolve(event.data) }
+        captureTimer = setTimeout(() => reject(new Error('Audio capture timeout')), buffer.duration * 1000 + 10000)
+        recorder!.port.onmessage = event => { clearTimeout(captureTimer); resolve(event.data) }
       })
       source.start(context.currentTime + 0.25)
       const result = await captured
-      if (processor instanceof RnnoiseProcessor && !processor.isReady()) throw new Error('RNNoise failed while capturing: ' + processor.getLastError())
-      return { raw: base64(result.raw), processed: base64(result.processed) }
+      assertReady()
+      const engineContext = ((processor as any).engine ?? processor).audioCtx as AudioContext
+      return { raw: base64(result.raw), processed: base64(result.processed),
+        graph: { sampleRate: context.sampleRate, sourceBaseLatency: context.baseLatency,
+          engineBaseLatency: engineContext?.baseLatency, engineOutputLatency: engineContext?.outputLatency,
+          sensitivity: mode.endsWith('-open') ? 'manual' : 'auto', threshold: 0, suppression: true, neuralReady: 'isReady' in processor ? processor.isReady() : null } }
     } finally {
+      clearTimeout(captureTimer)
       recorder?.port.close()
       recorder?.disconnect()
       processor.dispose()

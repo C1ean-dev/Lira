@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { NoiseSuppressor } from '../../media/NoiseSuppressor'
-import { SoftDspProcessor } from '../../media/SoftDspProcessor'
+import { DeepFilterProcessor } from '../../media/DeepFilterProcessor'
 import { RnnoiseProcessor } from '../../media/RnnoiseProcessor'
 import { AUTO_GATE } from '../../media/autoGate'
 import { useMediaStore } from '../../store/useMediaStore'
@@ -12,8 +12,8 @@ describe('Noise Gate Hold Time (Hangover) & Adaptive Threshold Features', () => 
     expect(ns.getDynamicNoiseFloor()).toBe(AUTO_GATE.INITIAL_FLOOR_RMS)
   })
 
-  it('SoftDspProcessor exposes a standard 220ms hold time for natural human speech', () => {
-    const soft = new SoftDspProcessor()
+  it('DeepFilterProcessor exposes a standard 220ms hold time for natural human speech', () => {
+    const soft = new DeepFilterProcessor()
     expect(soft.getHoldTimeMs()).toBe(220)
   })
 
@@ -42,3 +42,4 @@ describe('Noise Gate Hold Time (Hangover) & Adaptive Threshold Features', () => 
     expect(useMediaStore.getState().isGateOpen).toBe(true)
   })
 })
+

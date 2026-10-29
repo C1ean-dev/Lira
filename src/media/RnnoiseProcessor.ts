@@ -1,5 +1,6 @@
 import { useMediaStore } from '../store/useMediaStore'
 import { diagLog } from '../utils/diagnosticLogger'
+import type { NoiseEngineStatus } from '../types/audio'
 import { AutoGate } from './autoGate'
 import rnnoiseSyncSrc from '@jitsi/rnnoise-wasm/dist/rnnoise-sync.js?raw'
 import workletSrc from './rnnoiseWorkletSrc.js?raw'
@@ -94,6 +95,13 @@ function buildWorkletModule(procName: string): {
     `registered=${namespacedSrc.includes(`registerProcessor('${procName}'`) ? 'yes' : 'NO'}`
   return { blobUrl: URL.createObjectURL(blob), procName, debug }
 }
+export interface NeuralAudioBackend {
+  name: string
+  buildModule(name: string): Promise<{ blobUrl: string; procName: string; debug: string; processorOptions: Record<string, unknown> }>
+  setStatus(status: NoiseEngineStatus, error?: string | null): void
+  setStage(stage: string): void
+}
+
 export class RnnoiseProcessor {
   private audioCtx: AudioContext | null = null
   private sourceNode: MediaStreamAudioSourceNode | null = null
@@ -137,7 +145,28 @@ export class RnnoiseProcessor {
 
   private onRuntimeFailure: ((message: string) => void) | null = null
 
-  constructor() {}
+  constructor(private readonly backend?: NeuralAudioBackend) {}
+
+  private setStatus(status: NoiseEngineStatus, error: string | null = null) {
+    if (this.backend) this.backend.setStatus(status, error)
+    else useMediaStore.getState().setRnnoiseStatus(status, error)
+  }
+
+  private setStage(stage: string) {
+    if (this.backend) this.backend.setStage(stage)
+    else useMediaStore.getState().setRnnoiseStage(stage)
+  }
+
+  private async createWorkletModule(name: string) {
+    const generation = this.generation
+    const module = this.backend ? await this.backend.buildModule(name)
+      : { ...buildWorkletModule(name), processorOptions: { wasmBytes: getWasmBytes() } }
+    if (generation !== this.generation) {
+      URL.revokeObjectURL(module.blobUrl)
+      throw new Error('start cancelled')
+    }
+    return module
+  }
 
   public setRuntimeFailureHandler(handler: ((message: string) => void) | null) {
     this.onRuntimeFailure = handler
@@ -160,7 +189,7 @@ export class RnnoiseProcessor {
       const audioTrack = inputStream.getAudioTracks()[0]
       if (!audioTrack) {
         this.starting = false
-        useMediaStore.getState().setRnnoiseStatus('error', 'no audio track in input stream')
+        this.setStatus('error', 'no audio track in input stream')
         return inputStream
       }
 
@@ -168,9 +197,8 @@ export class RnnoiseProcessor {
       this.isSuppressionActive = enableSuppression
       this.sensitivityMode = sensitivityMode
       this.manualThresholdPercent = manualThresholdPercent
-      const store = useMediaStore.getState()
-      store.setRnnoiseStatus('loading', null)
-      store.setRnnoiseStage('start')
+      this.setStatus('loading', null)
+      this.setStage('start')
 
       // Every asynchronous startup step shares this deadline and cancellation.
       let interrupt!: (error: Error) => void
@@ -201,18 +229,20 @@ export class RnnoiseProcessor {
         if (cancelled()) return inputStream
       }
       if (this.audioCtx.sampleRate !== 48000) {
-        throw new Error(`RNNoise requires 48kHz AudioContext (got ${this.audioCtx.sampleRate}Hz)`)
+        throw new Error(`${this.backend?.name ?? 'RNNoise'} requires 48kHz AudioContext (got ${this.audioCtx.sampleRate}Hz)`)
       }
-      store.setRnnoiseStage('audioctx')
+      this.setStage('audioctx')
 
-      const procName = `rnnoise-worklet-v${++workletProcVersion}`
+      const procName = `${this.backend ? 'deepfilter' : 'rnnoise'}-worklet-v${++workletProcVersion}`
       if (this.workletBlobUrl) {
         URL.revokeObjectURL(this.workletBlobUrl)
         this.workletBlobUrl = null
       }
-      const { blobUrl, debug } = buildWorkletModule(procName)
+      const module = await waitForStart(this.createWorkletModule(procName))
+      if (cancelled()) { URL.revokeObjectURL(module.blobUrl); return inputStream }
+      const { blobUrl, debug, processorOptions } = module
       this.workletBlobUrl = blobUrl
-      store.setRnnoiseStage(`blob ${debug}`)
+      this.setStage(`blob ${debug}`)
       try {
         await waitForStart(this.audioCtx.audioWorklet.addModule(blobUrl))
       } catch (err) {
@@ -221,7 +251,7 @@ export class RnnoiseProcessor {
         )
       }
       if (cancelled()) return inputStream
-      store.setRnnoiseStage('addModule ok')
+      this.setStage('addModule ok')
 
       this.sourceNode = this.audioCtx.createMediaStreamSource(inputStream)
       this.destination = this.audioCtx.createMediaStreamDestination()
@@ -266,20 +296,20 @@ export class RnnoiseProcessor {
           outputChannelCount: [1],
           channelCount: 1,
           channelCountMode: 'explicit',
-          processorOptions: { wasmBytes: getWasmBytes() },
+          processorOptions,
         })
       } catch (err) {
         const msg = (err as Error)?.message ?? String(err)
         if (/not defined in AudioWorkletGlobalScope/i.test(msg)) {
-          console.warn('[rnnoise] node name missing after addModule, reloading once:', msg)
-          const retryName = `rnnoise-worklet-v${++workletProcVersion}-retry`
-          const retry = buildWorkletModule(retryName)
+          console.warn(`[${this.backend?.name ?? 'RNNoise'}] node name missing after addModule, reloading once:`, msg)
+          const retryName = `${this.backend ? 'deepfilter' : 'rnnoise'}-worklet-v${++workletProcVersion}-retry`
+          const retry = await waitForStart(this.createWorkletModule(retryName))
           if (this.workletBlobUrl) URL.revokeObjectURL(this.workletBlobUrl)
           this.workletBlobUrl = retry.blobUrl
-          useMediaStore.getState().setRnnoiseStage(`blob retry ${retry.debug}`)
+          this.setStage(`blob retry ${retry.debug}`)
           await waitForStart(this.audioCtx.audioWorklet.addModule(retry.blobUrl))
           if (cancelled()) return inputStream
-          useMediaStore.getState().setRnnoiseStage('addModule retry ok')
+          this.setStage('addModule retry ok')
           try {
             workletNode = new AudioWorkletNode(this.audioCtx, retry.procName, {
               numberOfInputs: 1,
@@ -287,7 +317,7 @@ export class RnnoiseProcessor {
               outputChannelCount: [1],
               channelCount: 1,
               channelCountMode: 'explicit',
-              processorOptions: { wasmBytes: getWasmBytes() },
+              processorOptions,
             })
           } catch (retryErr) {
             throw new Error(
@@ -299,18 +329,18 @@ export class RnnoiseProcessor {
         }
       }
       this.workletNode = workletNode
-      useMediaStore.getState().setRnnoiseStage('node ok, waiting ready')
+      this.setStage('node ok, waiting ready')
       const handleFailure = (message: string) => {
         if (cancelled() || this.workletError !== null) return
         const wasRunning = this.workletReady && !this.starting
         this.workletReady = false
         this.workletError = message
-        console.warn('[rnnoise] worklet reported error:', message)
+        console.warn(`[${this.backend?.name ?? 'RNNoise'}] worklet reported error:`, message)
         this.readySettler?.resolve(false)
         this.readySettler = null
         if (wasRunning) {
-          useMediaStore.getState().setRnnoiseStatus('error', message)
-          diagLog('audio', 'rnnoise.runtime-failure', { message })
+          this.setStatus('error', message)
+          diagLog('audio', `${this.backend ? 'deepfilter' : 'rnnoise'}.runtime-failure`, { message })
           this.onRuntimeFailure?.(message)
         }
       }
@@ -375,11 +405,11 @@ export class RnnoiseProcessor {
       if (!ready || this.workletError !== null) {
         const cause = this.workletError || 'init timeout'
         this.dispose()
-        useMediaStore.getState().setRnnoiseStatus('error', cause)
+        this.setStatus('error', cause)
         return inputStream
       }
-      useMediaStore.getState().setRnnoiseStatus('ready', null)
-      diagLog('audio', 'rnnoise.ready', {
+      this.setStatus('ready', null)
+      diagLog('audio', `${this.backend ? 'deepfilter' : 'rnnoise'}.ready`, {
         sampleRate: this.audioCtx.sampleRate,
         suppression: enableSuppression,
       })
@@ -389,12 +419,10 @@ export class RnnoiseProcessor {
       return outputStream
     } catch (err) {
       if (cancelled()) return inputStream
-      console.warn('[rnnoise] processStream failed:', err)
+      console.warn(`[${this.backend?.name ?? 'RNNoise'}] processStream failed:`, err)
       this.starting = false
       this.dispose()
-      useMediaStore
-        .getState()
-        .setRnnoiseStatus('error', (err as Error)?.message ?? String(err))
+      this.setStatus('error', (err as Error)?.message ?? String(err))
       return inputStream
     } finally {
       // A cancelled generation must not clear a newer generation's deadline.
@@ -598,7 +626,7 @@ export class RnnoiseProcessor {
     settler?.resolve(false)
     if (this.starting) {
       this.starting = false
-      useMediaStore.getState().setRnnoiseStatus('idle')
+      this.setStatus('idle')
     }
     if (this.workletBlobUrl) {
       try {
@@ -648,3 +676,5 @@ export class RnnoiseProcessor {
     return this.holdTimeMs
   }
 }
+
+

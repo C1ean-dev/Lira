@@ -9,7 +9,7 @@
 [![WebRTC](https://img.shields.io/badge/WebRTC-P2P_Mesh-333333?style=flat-square)](https://webrtc.org/)
 [![License](https://img.shields.io/badge/License-MIT-gray?style=flat-square)](LICENSE)
 
-Ambiente virtual para coworking, reuniões e interação em tempo real, integrando interface gráfica em pixel art 2D a chamadas de voz e vídeo descentralizadas via WebRTC. O sistema conta com processamento avançado de áudio em tempo real (DSP clássico, DSP suave e rede neural RNNoise), isolamento acústico por zonas, compartilhamento de tela em alta definição, editor interativo de espaços com drag-and-drop livre, chat com gaveta redimensionável, sistema de presença e notificações nativas.
+Ambiente virtual para coworking, reuniões e interação em tempo real, integrando interface gráfica em pixel art 2D a chamadas de voz e vídeo descentralizadas via WebRTC. O sistema conta com processamento avançado de áudio em tempo real (DeepFilterNet, RNNoise e DSP clássico), isolamento acústico por zonas, compartilhamento de tela em alta definição, editor interativo de espaços com drag-and-drop livre, chat com gaveta redimensionável, sistema de presença e notificações nativas.
 
 ---
 
@@ -51,8 +51,10 @@ Para executar apenas a suíte unitária, use `npm test`.
 
 - **Três Motores de Processamento Selecionáveis**:
   - **DSP Clássico**: Filtro passa-altas (80 Hz contra impactos na mesa), filtro high-shelf (6.500 Hz) e Noise Gate rápido com corte imediato de silêncio e compressor de pico.
-  - **DSP Suave**: Expansor dinâmico descendente com transição suave (histerese ampla e release de 250 ms) que atenua o ruído contínuo preservando respirações, sussurros e consoantes finais.
-  - **RNNoise Neural**: Redução de ruído por inteligência artificial executada localmente via WebAssembly e AudioWorklet, isolando os harmônicos da voz humana e eliminando ruídos complexos de fundo.
+  - **DeepFilterNet**: DeepFilterNet3/libDF em WebAssembly SIMD, com modelo incluído no pacote e processamento local a 48 kHz. Usa o mesmo AudioWorklet no desktop (Electron), Android (Capacitor/WebView) e web. Oferece a melhor qualidade, com maior custo de processamento e fallback para RNNoise; escolhas manuais são preservadas.
+  - **RNNoise Neural**: Rápido e eficiente; é o padrão para quem ainda não escolheu um motor. A preferência manual por DeepFilterNet ou DSP clássico permanece salva, inclusive após fallback e reinício. Executa localmente via WebAssembly e AudioWorklet.
+- **Fallback automático**: DeepFilterNet → RNNoise → DSP clássico em falha de carregamento, incompatibilidade de WASM/SIMD, erro de inferência ou sobrecarga persistente. O motor em uso aparece nos menus; a preferência continua salva e pode ser tentada novamente sem sair da chamada. Preferências e calibrações antigas de DSP suave migram para DeepFilterNet.
+- **Modelo e licença**: utiliza `@lofcz/deepfilternet-web` 0.1.0, [port WASM de libDF](https://github.com/lofcz/DeepFilterNet/tree/main/packages/web) baseado em [Rikorose/DeepFilterNet](https://github.com/Rikorose/DeepFilterNet), sob MIT ou Apache-2.0. O Vite inclui o WASM e os pesos nos assets da distribuição; não há download de modelo de CDN em produção.
 - **Noise Gate Automático (nos três motores)**:
   - Aprende o ruído de fundo da sala em tempo real e abre o gate 6 dB acima dele (fecha em 3 dB), então um ventilador ou ar-condicionado ligado no meio da chamada passa a ser filtrado em poucos segundos.
   - A fala não é confundida com ruído: sons acima do nível de fechamento são ignorados, a menos que durem vários segundos sem nenhuma pausa (aí é a sala, não uma voz), e o aprendizado fica congelado enquanto o detector de voz do RNNoise ouve fala. Numa sala silenciosa o limiar nunca fica abaixo do mínimo de cada motor, para não cortar voz baixa.
@@ -63,7 +65,7 @@ Para executar apenas a suíte unitária, use `npm test`.
 - **Visualizador de Formas de Onda (Waveform)**:
   - Renderização vetorial SVG de alta resolução (64 a 75 barras simétricas) com gradiente contínuo e oscilação orgânica, reagindo em tempo real ao espectro vocal e aos picos de pressão sonora.
 - **Comparação A/B/C Sincronizada**:
-  - Exibição paralela das três faixas tratadas (DSP Clássico, DSP Suave e RNNoise) no mesmo espaço da interface.
+  - Exibição paralela das três faixas tratadas (DSP Clássico, DeepFilterNet e RNNoise) no mesmo espaço da interface.
   - Sincronização automática do indicador de tempo de reprodução entre as trilhas, permitindo alternar entre os motores instantaneamente na mesma sílaba.
 - **Isolamento de Áudio de Compartilhamento de Tela & Ducking Inteligente**:
   - Módulo nativo em C++ (WASAPI Loopback) para captura direta de áudio de janelas e processos de software.
@@ -248,7 +250,7 @@ O projeto é estruturado segundo princípios de modularidade e separação de re
   - `staticLayerCache.ts`: Cache de camadas estáticas para renderização de alta performance a 60 FPS.
 - **Áudio e Processamento de Sinais (`src/media/`)**:
   - `NoiseSuppressor.ts`: Implementação do motor DSP Clássico e cadeia de filtros Web Audio.
-  - `SoftDspProcessor.ts`: Implementação do motor DSP Suave com expansor descendente.
+  - `DeepFilterProcessor.ts`, `deepFilterAssets.ts` e `deepFilterWorkletSrc.js`: DeepFilterNet3 com carregamento local do WASM e proteção contra falhas/sobrecarga.
   - `RnnoiseProcessor.ts`: Gerenciamento do ciclo de vida do worklet neural em WebAssembly.
   - `MicCalibrator.ts`: Medição acústica, cálculo de mediana de ruído e geração de amostras offline.
   - `audioBufferUtils.ts`: Codificação WAV PCM 16-bit, renderização offline e extração de waveforms.
@@ -383,3 +385,4 @@ As amostras seguem as [licenças dos datasets de origem descritas pelo MS-SNSD](
 ## Licença
 
 Este projeto é distribuído sob os termos da licença **MIT**. Consulte o arquivo [LICENSE](LICENSE) para mais informações.
+

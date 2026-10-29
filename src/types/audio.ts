@@ -6,7 +6,14 @@ export interface AudioDeviceInfo {
 
 export type SensitivityMode = 'auto' | 'manual'
 
-export type AudioProcessorMode = 'classic' | 'soft' | 'rnnoise'
+export type AudioProcessorMode = 'classic' | 'deepfilter' | 'rnnoise'
+
+export type NoiseEngineStatus = 'idle' | 'loading' | 'ready' | 'fallback' | 'error'
+
+export function normalizeAudioProcessorMode(mode: unknown): AudioProcessorMode {
+  if (mode === 'classic' || mode === 'deepfilter' || mode === 'rnnoise') return mode
+  return mode === 'soft' ? 'deepfilter' : 'rnnoise'
+}
 
 export type SoundTheme = 'auto' | 'default' | 'halloween' | 'christmas'
 

@@ -1,5 +1,5 @@
 import { NoiseSuppressor } from './NoiseSuppressor'
-import { SoftDspProcessor } from './SoftDspProcessor'
+import { DeepFilterProcessor } from './DeepFilterProcessor'
 import { RnnoiseProcessor } from './RnnoiseProcessor'
 import { resolveNoiseProcessorPreference } from './noiseSuppressionStatus'
 import { MicCalibrator, ProcessedSampleInfo } from './MicCalibrator'
@@ -50,7 +50,7 @@ function errShort(err: unknown): string {
 export class MediaManager {
   private static instance: MediaManager
   private classicEngine: NoiseSuppressor
-  private softEngine: SoftDspProcessor
+  private deepFilterEngine: DeepFilterProcessor
   private rnnoiseEngine: RnnoiseProcessor
   private activeEngine: AudioEngine | null = null
   private mediaGeneration = 0
@@ -105,15 +105,26 @@ export class MediaManager {
 
   private constructor() {
     this.classicEngine = new NoiseSuppressor()
-    this.softEngine = new SoftDspProcessor()
+    this.deepFilterEngine = new DeepFilterProcessor()
     this.rnnoiseEngine = new RnnoiseProcessor()
     this.rnnoiseEngine.setRuntimeFailureHandler((cause) => {
       void this.handleRnnoiseRuntimeFailure(cause)
+    })
+    this.deepFilterEngine.setRuntimeFailureHandler((cause) => {
+      void this.handleDeepFilterRuntimeFailure(cause)
     })
     this.initDeviceWatcher()
   }
 
   private rnnoiseRuntimeFailure: string | null = null
+  private deepFilterRuntimeFailure: string | null = null
+  private deepFilterFallback = false
+
+  private async handleDeepFilterRuntimeFailure(cause: string) {
+    if (this.activeEngine !== this.deepFilterEngine) return
+    this.deepFilterRuntimeFailure = cause
+    await this.reprocessStream()
+  }
 
   private async handleRnnoiseRuntimeFailure(cause: string) {
     if (this.activeEngine !== this.rnnoiseEngine) return
@@ -214,7 +225,7 @@ export class MediaManager {
     const mode = resolveNoiseProcessorPreference(state)
     this.currentProcessorMode = mode
     if (mode === 'rnnoise') return this.rnnoiseEngine
-    if (mode === 'soft') return this.softEngine
+    if (mode === 'deepfilter') return this.deepFilterEngine
     return this.classicEngine
   }
 
@@ -234,7 +245,7 @@ export class MediaManager {
       processedWaveform?: number[]
       processedSamples?: {
         classic: ProcessedSampleInfo
-        soft: ProcessedSampleInfo
+        deepfilter: ProcessedSampleInfo
         rnnoise: ProcessedSampleInfo
       }
     }> {
@@ -302,70 +313,51 @@ export class MediaManager {
   ): Promise<MediaStream> {
     const generation = this.mediaGeneration
     const state = useMediaStore.getState()
-    let nextEngine = this.selectEngine()
-    const runtimeFailure = this.rnnoiseRuntimeFailure
+    const nextEngine = this.selectEngine()
+    const deepFailure = this.deepFilterRuntimeFailure
+    const rnFailure = this.rnnoiseRuntimeFailure
+    this.deepFilterRuntimeFailure = null
     this.rnnoiseRuntimeFailure = null
-    if (runtimeFailure && nextEngine === this.rnnoiseEngine) {
-      console.warn('[MediaManager] RNNoise stopped processing, falling back to soft DSP')
-      nextEngine = this.softEngine
+    // Keep a failed preferred model out of the path when its fallback later fails.
+    if (deepFailure || (rnFailure && this.deepFilterFallback)) {
+      this.deepFilterFallback = this.currentProcessorMode === 'deepfilter'
+    } else {
+      this.deepFilterFallback = false
     }
+    const candidates = this.currentProcessorMode === 'deepfilter'
+      ? this.deepFilterFallback ? [this.rnnoiseEngine, this.classicEngine] : [this.deepFilterEngine, this.rnnoiseEngine, this.classicEngine]
+      : [nextEngine, ...(nextEngine === this.rnnoiseEngine ? [this.classicEngine] : [])]
+    if (rnFailure && candidates[0] === this.rnnoiseEngine) candidates.shift()
+    if (deepFailure) state.setDeepFilterStatus('fallback', deepFailure)
+    if (rnFailure) state.setRnnoiseStatus('fallback', rnFailure)
+    if (this.currentProcessorMode !== 'deepfilter') { state.setDeepFilterStatus('idle'); state.setDeepFilterStage('') }
+    if (!candidates.includes(this.rnnoiseEngine) && !rnFailure) state.setRnnoiseStatus('idle')
 
-    if (this.activeEngine && this.activeEngine !== nextEngine) {
+    let processed = inputStream
+    for (const candidate of candidates) {
+      if (this.activeEngine && this.activeEngine !== candidate) this.activeEngine.dispose()
+      this.activeEngine = candidate
+      this.levelForwardLastSent = 0
+      let failure: string | null = null
       try {
-        this.activeEngine.dispose()
-      } catch (err) {
-        console.warn('[MediaManager] failed to dispose previous engine:', err)
+        processed = await candidate.processStream(
+          inputStream, state.isNoiseSuppressionEnabled, state.inputVolume,
+          state.sensitivityMode, state.manualSensitivityThreshold, levelCallback,
+        )
+      } catch (error) {
+        processed = inputStream
+        failure = errShort(error)
+      }
+      if (generation !== this.mediaGeneration) return inputStream
+      if (processed !== inputStream || candidate === this.classicEngine) break
+      candidate.dispose()
+      if (candidate === this.deepFilterEngine) {
+        this.deepFilterFallback = true
+        state.setDeepFilterStatus('fallback', failure || useMediaStore.getState().deepFilterError || 'DeepFilterNet failed to initialise')
+      } else {
+        state.setRnnoiseStatus('fallback', failure || useMediaStore.getState().rnnoiseError || 'RNNoise failed to initialise')
       }
     }
-    this.activeEngine = nextEngine
-    this.levelForwardLastSent = 0
-    if (nextEngine !== this.rnnoiseEngine) {
-      useMediaStore
-        .getState()
-        .setRnnoiseStatus(runtimeFailure ? 'fallback' : 'idle', runtimeFailure)
-    }
-
-    const result = nextEngine.processStream(
-      inputStream,
-      state.isNoiseSuppressionEnabled,
-      state.inputVolume,
-      state.sensitivityMode,
-      state.manualSensitivityThreshold,
-      (level, gateOpen, rawRms, dynamicThresholdPercent) =>
-        levelCallback(level, gateOpen, rawRms, dynamicThresholdPercent)
-    )
-
-    const processed = result instanceof Promise ? await result : result
-    if (generation !== this.mediaGeneration) return inputStream
-
-    if (
-      processed === inputStream &&
-      this.currentProcessorMode === 'rnnoise' &&
-      useMediaStore.getState().rnnoiseStatus === 'error'
-    ) {
-      console.warn(
-        '[MediaManager] RNNoise failed to initialise, falling back to soft DSP'
-      )
-      const st = useMediaStore.getState()
-      const cause = st.rnnoiseError
-        ? st.rnnoiseError
-        : 'init failed — using Soft DSP'
-      st.setRnnoiseStatus('fallback', cause)
-      try {
-        this.activeEngine.dispose()
-      } catch {}
-      this.activeEngine = this.softEngine
-      return this.softEngine.processStream(
-        inputStream,
-        state.isNoiseSuppressionEnabled,
-        state.inputVolume,
-        state.sensitivityMode,
-        state.manualSensitivityThreshold,
-        (level, gateOpen, rawRms, dynamicThresholdPercent) =>
-          levelCallback(level, gateOpen, rawRms, dynamicThresholdPercent)
-      )
-    }
-
     if (useMediaStore.getState().isTestingMic) {
       if (this.activeEngine) {
         this.activeEngine.setTestLoopback(true)
@@ -551,6 +543,9 @@ export class MediaManager {
       PeerManager.getInstance().recheckZoneCalls()
     } catch (e) {}
 
+    this.deepFilterEngine.setRuntimeFailureHandler((cause) => {
+      void this.handleDeepFilterRuntimeFailure(cause)
+    })
     this.initDeviceWatcher()
 
     return processedStream
@@ -896,7 +891,7 @@ export class MediaManager {
 
       if (useMediaStore.getState().isTestingMic) {
         this.classicEngine.setTestLoopback(true)
-        this.softEngine.setTestLoopback(true)
+        this.deepFilterEngine.setTestLoopback(true)
         this.rnnoiseEngine.setTestLoopback(true)
       }
 
@@ -943,8 +938,8 @@ export class MediaManager {
       if (typeof (this.classicEngine as any).updateAudioOutput === 'function') {
         ;(this.classicEngine as any).updateAudioOutput(deviceId)
       }
-      if (typeof (this.softEngine as any).updateAudioOutput === 'function') {
-        ;(this.softEngine as any).updateAudioOutput(deviceId)
+      if (typeof (this.deepFilterEngine as any).updateAudioOutput === 'function') {
+        ;(this.deepFilterEngine as any).updateAudioOutput(deviceId)
       }
       if (typeof (this.rnnoiseEngine as any).updateAudioOutput === 'function') {
         ;(this.rnnoiseEngine as any).updateAudioOutput(deviceId)
@@ -1762,12 +1757,17 @@ export class MediaManager {
     }
     try {
       this.classicEngine.dispose()
-      this.softEngine.dispose()
+      this.deepFilterEngine.dispose()
       this.rnnoiseEngine.dispose()
       this.activeEngine = null
     } catch (e) {}
     useMediaStore.getState().setRnnoiseStatus('idle')
     useMediaStore.getState().setRnnoiseStage('')
+    useMediaStore.getState().setDeepFilterStatus('idle')
+    useMediaStore.getState().setDeepFilterStage('')
+    this.deepFilterFallback = false
+    this.deepFilterRuntimeFailure = null
+    this.rnnoiseRuntimeFailure = null
   }
 
   public updateScreenShareAudioVolume(percent: number) {
@@ -1790,19 +1790,19 @@ export class MediaManager {
 
   public updateInputVolume(vol: number) {
     this.classicEngine.setInputVolume(vol)
-    this.softEngine.setInputVolume(vol)
+    this.deepFilterEngine.setInputVolume(vol)
     this.rnnoiseEngine.setInputVolume(vol)
   }
 
   public updateSensitivity(mode: SensitivityMode, thresholdPercent: number) {
     this.classicEngine.setSensitivity(mode, thresholdPercent)
-    this.softEngine.setSensitivity(mode, thresholdPercent)
+    this.deepFilterEngine.setSensitivity(mode, thresholdPercent)
     this.rnnoiseEngine.setSensitivity(mode, thresholdPercent)
   }
 
   public updateNoiseSuppression(enabled: boolean) {
     this.classicEngine.setSuppressionEnabled(enabled)
-    this.softEngine.setSuppressionEnabled(enabled)
+    this.deepFilterEngine.setSuppressionEnabled(enabled)
     this.rnnoiseEngine.setSuppressionEnabled(enabled)
   }
 
@@ -1879,11 +1879,11 @@ export class MediaManager {
       }
 
       this.classicEngine.setTestLoopback(true)
-      this.softEngine.setTestLoopback(true)
+      this.deepFilterEngine.setTestLoopback(true)
       this.rnnoiseEngine.setTestLoopback(true)
     } else {
       this.classicEngine.setTestLoopback(false)
-      this.softEngine.setTestLoopback(false)
+      this.deepFilterEngine.setTestLoopback(false)
       this.rnnoiseEngine.setTestLoopback(false)
     }
   }
@@ -2023,3 +2023,4 @@ export class MediaManager {
     this.stopAllMedia()
   }
 }
+

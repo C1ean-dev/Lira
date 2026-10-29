@@ -16,6 +16,8 @@ def db(ratio):
 
 def align(reference, recorded, max_delay=RATE):
     # The audio crosses two real AudioContexts; compensate delay, never time-warp.
+    if rms(reference) < 1e-10 or rms(recorded) < 1e-10:
+        raise ValueError('Cannot measure latency of a silent signal')
     correlations = signal.correlate(recorded, reference, mode='full', method='fft')
     zero = len(reference) - 1
     delay = int(np.argmax(correlations[zero:zero + max_delay + 1]))
@@ -24,6 +26,29 @@ def align(reference, recorded, max_delay=RATE):
     if available > 0:
         aligned[:available] = recorded[delay:delay + available]
     return aligned, delay
+
+
+def measure_capture(clean, noisy, raw, captured, speech_start, speech_end, max_delay=RATE):
+    raw_aligned, raw_delay = align(noisy, raw)
+    if rms(raw_aligned - noisy) / max(rms(noisy), 1e-12) > 0.03:
+        raise ValueError('Capture dropped/drifted samples')
+    if rms(captured) < 1e-10:
+        enhanced, delay = np.zeros(len(clean)), None
+    else:
+        enhanced, delay = align(clean, captured, max_delay=max_delay)
+    metrics = measure(clean, noisy, enhanced, speech_start, speech_end)
+    if delay is not None and delay + len(clean) > len(captured):
+        # A long call delay can leave trailing background outside the recording.
+        # Padding this missing tail with zeros must not imply noise reduction.
+        metrics['noiseReductionDb'] = None
+    if rms(enhanced[speech_start:speech_end]) < 1e-10:
+        return dict(delayMs=None, rawDelayMs=1000 * raw_delay / RATE,
+                    processingDelayMs=None, delayUnavailableReason='speech erased', **metrics)
+    if delay < raw_delay:
+        raise ValueError('Invalid negative processing delay')
+    return dict(delayMs=1000 * delay / RATE, rawDelayMs=1000 * raw_delay / RATE,
+                processingDelayMs=1000 * (delay - raw_delay) / RATE,
+                delayUnavailableReason=None, **metrics)
 
 
 def measure(clean, noisy, output, speech_start, speech_end):

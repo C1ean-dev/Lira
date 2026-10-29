@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MediaManager } from '../../media/MediaManager'
 import { useMediaStore } from '../../store/useMediaStore'
 import { NoiseSuppressor } from '../../media/NoiseSuppressor'
-import { SoftDspProcessor } from '../../media/SoftDspProcessor'
+import { DeepFilterProcessor } from '../../media/DeepFilterProcessor'
 import { RnnoiseProcessor } from '../../media/RnnoiseProcessor'
 
 const original = useMediaStore.getState()
@@ -28,8 +28,9 @@ describe('microphone while collapsing the call panel', () => {
     expect(manager.activeEngine.resumeContext).toHaveBeenCalledOnce()
     expect(track.enabled).toBe(false)
   })
-  it.each([['classic', NoiseSuppressor], ['soft', SoftDspProcessor], ['rnnoise', RnnoiseProcessor]] as const)('recovers an interrupted audio context in %s', async (_name, Engine) => {
-    const engine = new Engine() as any
+  it.each([['classic', NoiseSuppressor], ['deepfilter', DeepFilterProcessor], ['rnnoise', RnnoiseProcessor]] as const)('recovers an interrupted audio context in %s', async (_name, Engine) => {
+    const instance = new Engine() as any
+    const engine = instance.engine ?? instance
     engine.audioCtx = { state: 'interrupted', resume: vi.fn(async () => {}) }
     await engine.resumeContext()
     expect(engine.audioCtx.resume).toHaveBeenCalledOnce()
@@ -38,3 +39,4 @@ describe('microphone while collapsing the call panel', () => {
     expect(engine.audioCtx.resume).toHaveBeenCalledOnce()
   })
 })
+

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { SensitivityMode, AudioProcessorMode, SoundTheme } from '../types/audio'
+import { SensitivityMode, AudioProcessorMode, SoundTheme, NoiseEngineStatus, normalizeAudioProcessorMode } from '../types/audio'
 import { useGameStore } from './useGameStore'
 import { diagLog, shortId, summarizeStream } from '../utils/diagnosticLogger'
 import { registerReportContext } from '../utils/reportContext'
@@ -104,6 +104,11 @@ interface MediaStore {
   setHardwareAccelerationEnabled: (enabled: boolean) => void
   toggleHardwareAcceleration: () => void
 
+  deepFilterStatus: NoiseEngineStatus
+  deepFilterError: string | null
+  deepFilterStage: string
+  setDeepFilterStatus: (status: NoiseEngineStatus, error?: string | null) => void
+  setDeepFilterStage: (stage: string) => void
   rnnoiseStatus: 'idle' | 'loading' | 'ready' | 'fallback' | 'error'
   rnnoiseError: string | null
   setRnnoiseStatus: (status: 'idle' | 'loading' | 'ready' | 'fallback' | 'error', error?: string | null) => void
@@ -204,9 +209,6 @@ const saveAudioSettingsDebounced = (settings: Record<string, any>, delayMs: numb
   }, delayMs)
 }
 
-const isValidMode = (m: any): m is AudioProcessorMode =>
-  m === 'classic' || m === 'soft' || m === 'rnnoise'
-
 const hasMediaHardware = () =>
   typeof window !== 'undefined' && typeof navigator !== 'undefined' && !!navigator.mediaDevices
 
@@ -232,7 +234,7 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   manualSensitivityThreshold: saved.manualSensitivityThreshold !== undefined ? saved.manualSensitivityThreshold : 20,
   echoCancellation: saved.echoCancellation !== undefined ? saved.echoCancellation : true,
   autoGainControl: saved.autoGainControl !== undefined ? saved.autoGainControl : true,
-  audioProcessorMode: isValidMode(saved.audioProcessorMode) ? saved.audioProcessorMode : 'rnnoise',
+  audioProcessorMode: saved.hasUserChosenProcessorMode === true ? normalizeAudioProcessorMode(saved.audioProcessorMode) : 'rnnoise',
   hasUserChosenProcessorMode: saved.hasUserChosenProcessorMode === true,
   screenShareAudioVolume: saved.screenShareAudioVolume !== undefined ? saved.screenShareAudioVolume : 100,
   duckingEnabled: saved.duckingEnabled !== undefined ? saved.duckingEnabled : true,
@@ -250,9 +252,21 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
       ? Boolean(saved.isHardwareAccelerationEnabled)
       : getHwCodecEnabled(),
 
-  micCalibrations: (saved.micCalibrations as Record<string, MicCalibration>) || {},
+  micCalibrations: Object.fromEntries(Object.entries(saved.micCalibrations || {}).map(([id, value]) => {
+    const calibration = value as MicCalibration
+    return [id, { ...calibration, recommendedMode: normalizeAudioProcessorMode(calibration.recommendedMode) }]
+  })),
   isCalibrating: false,
 
+  deepFilterStatus: 'idle',
+  deepFilterError: null,
+  deepFilterStage: '',
+  setDeepFilterStatus: (deepFilterStatus, deepFilterError = null) => {
+    if (get().deepFilterStatus !== deepFilterStatus || get().deepFilterError !== deepFilterError) set({ deepFilterStatus, deepFilterError })
+  },
+  setDeepFilterStage: (deepFilterStage) => {
+    if (get().deepFilterStage !== deepFilterStage) set({ deepFilterStage })
+  },
   rnnoiseStatus: 'idle',
   rnnoiseError: null,
   setRnnoiseStatus: (rnnoiseStatus, rnnoiseError = null) => {
@@ -761,6 +775,7 @@ registerReportContext('media', () => {
     processorMode: state.audioProcessorMode,
     userChosenMode: state.hasUserChosenProcessorMode,
     rnnoise: { status: state.rnnoiseStatus, stage: state.rnnoiseStage, error: state.rnnoiseError },
+    deepfilter: { status: state.deepFilterStatus, stage: state.deepFilterStage, error: state.deepFilterError },
     noiseSuppression: state.isNoiseSuppressionEnabled,
     sensitivityMode: state.sensitivityMode,
     threshold: state.manualSensitivityThreshold,

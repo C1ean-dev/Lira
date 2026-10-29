@@ -6,7 +6,7 @@ import { AudioProcessorMode } from '../../types/audio'
 import { AudioSamplePlayer } from './AudioSamplePlayer'
 import { MultiEngineAudioPlayer } from './MultiEngineAudioPlayer'
 import { ProcessedSampleInfo } from '../../media/MicCalibrator'
-import { resolveNoiseProcessorPreference } from '../../media/noiseSuppressionStatus'
+import { resolveNoiseProcessorPreference, noiseSuppressionDisplay } from '../../media/noiseSuppressionStatus'
 
 export const AdvancedAudioTab: React.FC = () => {
   const echoCancellation = useMediaStore((s) => s.echoCancellation)
@@ -29,8 +29,9 @@ export const AdvancedAudioTab: React.FC = () => {
   const setIsCalibrating = useMediaStore((s) => s.setIsCalibrating)
   const clearMicCalibration = useMediaStore((s) => s.clearMicCalibration)
   const rnnoiseStatus = useMediaStore((s) => s.rnnoiseStatus)
+  const deepFilterStatus = useMediaStore((s) => s.deepFilterStatus)
+  const deepFilterError = useMediaStore((s) => s.deepFilterError)
   const rnnoiseError = useMediaStore((s) => s.rnnoiseError)
-  const rnnoiseStage = useMediaStore((s) => s.rnnoiseStage)
 
   const INITIAL_LIVE_BARS = 64
   const [calProgress, setCalProgress] = useState(0)
@@ -55,7 +56,7 @@ export const AdvancedAudioTab: React.FC = () => {
     processedWaveform?: number[]
     processedSamples?: {
       classic: ProcessedSampleInfo
-      soft: ProcessedSampleInfo
+      deepfilter: ProcessedSampleInfo
       rnnoise: ProcessedSampleInfo
     }
   } | null>(null)
@@ -70,7 +71,7 @@ export const AdvancedAudioTab: React.FC = () => {
     }
     if (cal.processedSamples) {
       try { URL.revokeObjectURL(cal.processedSamples.classic.audioUrl) } catch {}
-      try { URL.revokeObjectURL(cal.processedSamples.soft.audioUrl) } catch {}
+      try { URL.revokeObjectURL(cal.processedSamples.deepfilter.audioUrl) } catch {}
       try { URL.revokeObjectURL(cal.processedSamples.rnnoise.audioUrl) } catch {}
     }
   }
@@ -160,13 +161,11 @@ export const AdvancedAudioTab: React.FC = () => {
 
   const engineLabel = hasUserChosenProcessorMode
     ? 'Escolha manual'
-    : currentCalibration
-      ? 'Calibrado automaticamente'
-      : 'Padrão'
+    : 'Padrão'
 
   const engineModeLabel = (mode: AudioProcessorMode): string => {
     if (mode === 'rnnoise') return 'RNNoise Neural'
-    if (mode === 'soft') return 'DSP Suave'
+    if (mode === 'deepfilter') return 'DeepFilterNet'
     return 'DSP Clássico'
   }
 
@@ -222,8 +221,8 @@ export const AdvancedAudioTab: React.FC = () => {
           </div>
           <div className="text-[10px] text-slate-400 leading-snug">
             Fique em silêncio por 3 segundos. Medimos o ruído ambiente e
-            escolhemos o melhor motor automaticamente. Você pode sobrescrever
-            manualmente abaixo a qualquer momento.
+            sugerimos o motor e a sensibilidade. O RNNoise é o padrão até você
+            escolher outro motor abaixo.
           </div>
 
           <div className="flex items-center gap-2">
@@ -486,65 +485,24 @@ export const AdvancedAudioTab: React.FC = () => {
                 <span>Motor de Supressão de Ruído</span>
               </div>
               <div className="text-[10px] text-slate-400">
-                Escolha entre DSP clássico, DSP suave (sem cortes duros) e
-                rede neural RNNoise
+                Escolha entre DeepFilterNet, RNNoise e DSP clássico
               </div>
-              {processingMode === 'rnnoise' && (
-                <div className="mt-1.5 space-y-1">
-                  <div
-                    className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-semibold border ${
-                      !isNoiseSuppressionEnabled
-                        ? 'bg-slate-500/10 border-slate-500/40 text-slate-300'
-                        : rnnoiseStatus === 'ready'
-                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
-                        : rnnoiseStatus === 'loading'
-                          ? 'bg-amber-500/10 border-amber-500/40 text-amber-300 animate-pulse'
-                          : rnnoiseStatus === 'fallback' || rnnoiseStatus === 'error'
-                            ? 'bg-rose-500/10 border-rose-500/40 text-rose-300'
-                            : 'bg-slate-500/10 border-slate-500/40 text-slate-300'
-                    }`}
-                  >
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                        !isNoiseSuppressionEnabled
-                          ? 'bg-slate-400'
-                          : rnnoiseStatus === 'ready'
-                          ? 'bg-emerald-400'
-                          : rnnoiseStatus === 'loading'
-                            ? 'bg-amber-400 animate-ping'
-                            : rnnoiseStatus === 'fallback' || rnnoiseStatus === 'error'
-                              ? 'bg-rose-400'
-                              : 'bg-slate-400'
-                      }`}
-                    />
-                    {!isNoiseSuppressionEnabled && 'Supressão desativada'}
-                    {isNoiseSuppressionEnabled && rnnoiseStatus === 'ready' && 'Rede neural ativa'}
-                    {isNoiseSuppressionEnabled && rnnoiseStatus === 'loading' && 'Carregando rede neural…'}
-                    {isNoiseSuppressionEnabled && rnnoiseStatus === 'idle' && 'Aguardando microfone…'}
-                    {isNoiseSuppressionEnabled && rnnoiseStatus === 'fallback' && 'RNNoise indisponível — usando DSP Suave'}
-                    {isNoiseSuppressionEnabled && rnnoiseStatus === 'error' && 'Falha no RNNoise'}
-                    {(rnnoiseStatus === 'fallback' || rnnoiseStatus === 'error') && (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          await MediaManager.getInstance().reprocessStream()
-                        }}
-                        className="ml-1 px-1.5 py-0.5 rounded-md bg-rose-500/20 hover:bg-rose-500/35 text-rose-200 text-[9px] font-bold uppercase tracking-wide transition-colors active:scale-95"
-                        title="Reinicializa o motor RNNoise sem sair da chamada"
-                      >
-                        Tentar de novo
-                      </button>
-                    )}
-                  </div>
-                  {(rnnoiseStatus === 'fallback' || rnnoiseStatus === 'error') && (
-                    <div className="text-[9.5px] font-mono break-all leading-tight space-y-0.5">
-                      {rnnoiseError && (
-                        <div className="text-rose-300/80">Motivo: {rnnoiseError}</div>
-                      )}
-                      {rnnoiseStage && (
-                        <div className="text-slate-400">Estágio: {rnnoiseStage}</div>
-                      )}
-                    </div>
+              {processingMode !== 'classic' && (
+                <div className="mt-1.5 space-y-1" role="status" aria-live="polite">
+                  <span className="text-[10px] text-slate-300">
+                    {!isNoiseSuppressionEnabled ? 'Supressão desativada'
+                      : noiseSuppressionDisplay(true, processingMode, rnnoiseStatus, deepFilterStatus).notice
+                        || 'Rede neural ativa'}
+                  </span>
+                  {isNoiseSuppressionEnabled && noiseSuppressionDisplay(true, processingMode, rnnoiseStatus, deepFilterStatus).canRetry && (
+                    <button type="button" onClick={() => MediaManager.getInstance().reprocessStream()}
+                      className="ml-2 text-[10px] text-indigo-300"
+                      title={`Reinicializa o motor ${processingMode === 'deepfilter' ? 'DeepFilterNet' : 'RNNoise'} sem sair da chamada`}>
+                      Tentar de novo
+                    </button>
+                  )}
+                  {(processingMode === 'deepfilter' ? deepFilterError : rnnoiseError) && (
+                    <div className="text-[9.5px] text-rose-300/80">Motivo: {processingMode === 'deepfilter' ? deepFilterError : rnnoiseError}</div>
                   )}
                 </div>
               )}
@@ -554,27 +512,26 @@ export const AdvancedAudioTab: React.FC = () => {
             {(
               [
                 {
-                  id: 'classic',
-                  title: 'DSP Clássico',
-                  desc: 'Corte agressivo. Baixo CPU.',
-                },
-                {
-                  id: 'soft',
-                  title: 'DSP Suave',
-                  desc: 'Preserva consoantes e sílabas.',
+                  id: 'deepfilter',
+                  title: 'DeepFilterNet',
+                  desc: 'O melhor, porém mais lento, com fallback para RNNoise',
                 },
                 {
                   id: 'rnnoise',
                   title: 'RNNoise Neural',
-                  desc: 'IA treinada (Xiph). Melhor qualidade.',
+                  desc: 'Rápido e eficiente',
+                },
+                {
+                  id: 'classic',
+                  title: 'DSP Clássico',
+                  desc: 'Corte agressivo. Baixo CPU.',
                 },
               ] as Array<{ id: AudioProcessorMode; title: string; desc: string }>
             ).map((opt) => {
-              const selected = audioProcessorMode === opt.id
-              const isAutoSuggested =
+              const selected = processingMode === opt.id
+              const isRecommended =
                 selected &&
-                !hasUserChosenProcessorMode &&
-                !!currentCalibration
+                currentCalibration?.recommendedMode === opt.id
               return (
                 <button
                   key={opt.id}
@@ -586,7 +543,7 @@ export const AdvancedAudioTab: React.FC = () => {
                   }}
                   className={`text-left p-2 rounded-xl border transition-colors ${
                     selected
-                      ? isAutoSuggested
+                      ? isRecommended
                         ? 'border-emerald-500/70 bg-emerald-500/10'
                         : 'border-indigo-500 bg-indigo-500/15'
                       : 'border-[#2a3142] bg-[#1b202c] hover:border-indigo-400/60'
@@ -594,7 +551,7 @@ export const AdvancedAudioTab: React.FC = () => {
                 >
                   <div
                     className={`text-[11px] font-bold flex items-center gap-1 ${
-                      isAutoSuggested
+                      isRecommended
                         ? 'text-emerald-200'
                         : selected
                           ? 'text-indigo-200'
@@ -602,12 +559,12 @@ export const AdvancedAudioTab: React.FC = () => {
                     }`}
                   >
                     {opt.title}
-                    {isAutoSuggested && (
+                    {isRecommended && (
                       <span
                         className="text-[8px] font-bold uppercase tracking-wide px-1 py-0.5 rounded bg-emerald-500/30 text-emerald-200"
-                        title="Escolhido pela calibração"
+                        title="Recomendação da calibração"
                       >
-                        Auto
+                        Recomendado
                       </span>
                     )}
                   </div>
@@ -686,3 +643,5 @@ export const AdvancedAudioTab: React.FC = () => {
     </div>
   )
 }
+
+

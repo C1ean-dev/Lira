@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useId } from 'react'
-import { Play, Pause, RotateCcw, Sparkles, Sliders, Cpu, Check, Feather } from 'lucide-react'
+import { Play, Pause, RotateCcw, Sparkles, Sliders, Cpu, Check } from 'lucide-react'
 import { AudioProcessorMode } from '../../types/audio'
 
 export interface EngineSampleData {
@@ -13,7 +13,7 @@ interface Props {
   activeMode: AudioProcessorMode
   samples: {
     classic: EngineSampleData
-    soft: EngineSampleData
+    deepfilter: EngineSampleData
     rnnoise: EngineSampleData
   }
   onApplyEngine: (mode: AudioProcessorMode) => void
@@ -33,22 +33,22 @@ const ENGINES: {
   icon: React.ComponentType<{ className?: string }>
 }[] = [
   {
-    id: 'classic',
-    name: 'DSP Clássico',
-    desc: 'Filtro Passa-Altas + Hard Gate',
-    icon: Sliders,
-  },
-  {
-    id: 'soft',
-    name: 'DSP Suave',
-    desc: 'Expansor Dinâmico Natural',
-    icon: Feather,
+    id: 'deepfilter',
+    name: 'DeepFilterNet',
+    desc: 'O melhor, porém mais lento, com fallback para RNNoise',
+    icon: Sparkles,
   },
   {
     id: 'rnnoise',
     name: 'RNNoise Neural',
-    desc: 'IA WebAssembly (Anti-Ruído)',
+    desc: 'Rápido e eficiente',
     icon: Cpu,
+  },
+  {
+    id: 'classic',
+    name: 'DSP Clássico',
+    desc: 'Filtro Passa-Altas + Hard Gate',
+    icon: Sliders,
   },
 ]
 
@@ -63,7 +63,7 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
   const [currentPlayTime, setCurrentPlayTime] = useState(0)
   const [durations, setDurations] = useState<Record<AudioProcessorMode, number>>({
     classic: 5,
-    soft: 5,
+    deepfilter: 5,
     rnnoise: 5,
   })
   const [hoverScrubber, setHoverScrubber] = useState<{
@@ -72,21 +72,21 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
   } | null>(null)
 
   const classicRef = useRef<HTMLAudioElement | null>(null)
-  const softRef = useRef<HTMLAudioElement | null>(null)
+  const deepFilterRef = useRef<HTMLAudioElement | null>(null)
   const rnnoiseRef = useRef<HTMLAudioElement | null>(null)
 
   const baseId = useId().replace(/:/g, '')
 
   const getAudioRef = (id: AudioProcessorMode) => {
     if (id === 'classic') return classicRef
-    if (id === 'soft') return softRef
+    if (id === 'deepfilter') return deepFilterRef
     return rnnoiseRef
   }
 
   useEffect(() => {
     return () => {
       classicRef.current?.pause()
-      softRef.current?.pause()
+      deepFilterRef.current?.pause()
       rnnoiseRef.current?.pause()
     }
   }, [])
@@ -198,22 +198,22 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
         }}
       />
       <audio
-        ref={softRef}
-        src={samples.soft.audioUrl}
+        ref={deepFilterRef}
+        src={samples.deepfilter.audioUrl}
         preload="metadata"
         onTimeUpdate={() => {
-          if (playingEngine === 'soft' && softRef.current) {
-            setCurrentPlayTime(softRef.current.currentTime)
+          if (playingEngine === 'deepfilter' && deepFilterRef.current) {
+            setCurrentPlayTime(deepFilterRef.current.currentTime)
           }
         }}
         onLoadedMetadata={() => {
-          const d = softRef.current?.duration
+          const d = deepFilterRef.current?.duration
           if (typeof d === 'number' && Number.isFinite(d) && d > 0) {
-            setDurations((prev) => ({ ...prev, soft: d }))
+            setDurations((prev) => ({ ...prev, deepfilter: d }))
           }
         }}
         onEnded={() => {
-          if (playingEngine === 'soft') {
+          if (playingEngine === 'deepfilter') {
             setPlayingEngine(null)
             setCurrentPlayTime(0)
           }
@@ -452,3 +452,4 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
     </div>
   )
 }
+

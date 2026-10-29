@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'node_modules/.cache/noise-metrics'))
 import numpy as np
 from scipy import signal
-from metrics import RATE, align, measure, rms
+from metrics import RATE, measure_capture, rms
 
 
 def write_wav(path, samples):
@@ -119,16 +119,16 @@ def score(output):
             if engine not in run['engines']:
                 continue
             captured = np.fromfile(processed, dtype='<f4').astype(np.float64)
-            enhanced, delay = align(clean, captured)
             raw = np.fromfile(directory / f'{engine}.raw.f32', dtype='<f4').astype(np.float64)
-            raw_aligned, raw_delay = align(noisy, raw)
-            if rms(raw_aligned - noisy) / max(rms(noisy), 1e-12) > 0.03:
-                raise ValueError('Capture dropped/drifted samples: ' + case['id'] + '/' + engine)
-            metrics = measure(clean, noisy, enhanced, case['speechStart'], case['speechEnd'])
-            results.append(dict(**case, engine=engine, delayMs=1000 * delay / RATE,
-                                processingDelayMs=1000 * (delay - raw_delay) / RATE, **metrics))
+            metrics = measure_capture(clean, noisy, raw, captured, case['speechStart'], case['speechEnd'])
+            results.append(dict(**case, engine=engine, **metrics))
+            offset = round((metrics['delayMs'] if metrics['delayMs'] is not None else metrics['rawDelayMs']) * RATE / 1000)
+            enhanced = np.zeros(len(clean))
+            available = min(len(clean), len(captured) - offset)
+            enhanced[:available] = captured[offset:offset + available]
             write_wav(directory / f'{engine}.wav', enhanced)
     report = dict(datasetRevision=document['dataset']['revision'], run=run, profile=document['profile'], results=results)
+    summaries = []
     (output / 'report.json').write_text(json.dumps(report, indent=2, allow_nan=False) + '\n')
     for engine in sorted(set(row['engine'] for row in results)):
         rows = [row for row in results if row['engine'] == engine]
@@ -137,10 +137,18 @@ def score(output):
         def average(rows, key):
             values = [row[key] for row in rows if row[key] is not None]
             return round(float(np.mean(values)), 3) if values else None
-        print(json.dumps(dict(engine=engine, cleanStoi=average(clean_rows, 'stoi'),
+        delays = [row['processingDelayMs'] for row in rows if row['processingDelayMs'] is not None]
+        summary = dict(engine=engine, captures=len(rows), cleanStoi=average(clean_rows, 'stoi'),
                               cleanSpeechGainDb=average(clean_rows, 'speechGainDb'), cleanDropoutPercent=average(clean_rows, 'dropoutPercent'),
                               noisyStoi=average(noisy_rows, 'stoi'), inputStoi=average(noisy_rows, 'inputStoi'),
-                              siSdrImprovementDb=average(noisy_rows, 'siSdrImprovementDb'), noiseReductionDb=average(noisy_rows, 'noiseReductionDb'))), flush=True)
+                              delayMedianMs=float(np.median(delays)) if delays else None,
+                              delayMinMs=min(delays) if delays else None, delayMaxMs=max(delays) if delays else None,
+                              measurableDelayCaptures=len(delays), unmeasurableDelayCaptures=len(rows) - len(delays),
+                              siSdrImprovementDb=average(noisy_rows, 'siSdrImprovementDb'), noiseReductionDb=average(noisy_rows, 'noiseReductionDb'))
+        summaries.append(summary)
+        print(json.dumps(summary), flush=True)
+    report['summary'] = summaries
+    (output / 'report.json').write_text(json.dumps(report, indent=2, allow_nan=False) + '\n')
 
 
 if __name__ == '__main__':

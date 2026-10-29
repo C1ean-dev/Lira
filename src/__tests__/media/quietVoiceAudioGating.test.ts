@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { SoftDspProcessor } from '../../media/SoftDspProcessor'
 import { NoiseSuppressor } from '../../media/NoiseSuppressor'
 import { RnnoiseProcessor } from '../../media/RnnoiseProcessor'
 import { MediaManager } from '../../media/MediaManager'
@@ -113,50 +112,6 @@ describe('Quiet Voice Gating & Background Processing Regression Tests', () => {
   })
 
   describe('1. Audio Engine Gating Thresholds for Quiet Microphones (RMS 0.003 - 0.008)', () => {
-    it('SoftDspProcessor uses a responsive baseline threshold (0.0035) so soft voices (RMS 0.005) are never gated', () => {
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance', 'Date'] })
-      const processor = new SoftDspProcessor()
-      processor.setSensitivity('auto', 20)
-
-      expect(processor.getCurrentThreshold()).toBeLessThanOrEqual(0.0080)
-
-      const mockTrack = { id: 'track-1', kind: 'audio', enabled: true }
-      const mockStream = {
-        getAudioTracks: () => [mockTrack],
-        getVideoTracks: () => [],
-      } as any
-
-      let lastReportedGate = false
-      let lastReportedRms = 0
-      processor.processStream(
-        mockStream,
-        true,
-        100,
-        'auto',
-        20,
-        (_level, gateOpen, rawRms) => {
-          lastReportedGate = gateOpen
-          lastReportedRms = rawRms
-        }
-      )
-
-      const analyser = (processor as any).analyser as MockAnalyserNode
-      expect(analyser).toBeDefined()
-
-      analyser.mockValue = 0.0005
-      vi.advanceTimersByTime(3000)
-      expect(processor.getCurrentThreshold()).toBeCloseTo(0.0035, 4)
-
-      analyser.mockValue = 0.0055
-
-      vi.advanceTimersByTime(300)
-
-      expect(lastReportedRms).toBeCloseTo(0.0055, 3)
-      expect(lastReportedGate).toBe(true)
-
-      processor.dispose()
-      vi.useRealTimers()
-    })
 
     it('NoiseSuppressor uses responsive baseline threshold (0.0045) allowing whisper/quiet voices (RMS 0.006)', () => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance', 'Date'] })
@@ -266,31 +221,6 @@ describe('Quiet Voice Gating & Background Processing Regression Tests', () => {
       vi.useRealTimers()
     })
 
-    it('SoftDspProcessor maintains active timer interval even when requestAnimationFrame is inactive', () => {
-      vi.useFakeTimers()
-      const soft = new SoftDspProcessor()
-      const mockTrack = { id: 'track-soft-bg', kind: 'audio', enabled: true }
-      const mockStream = {
-        getAudioTracks: () => [mockTrack],
-        getVideoTracks: () => [],
-      } as any
-
-      let callbackCalls = 0
-      soft.processStream(mockStream, true, 100, 'auto', 20, () => {
-        callbackCalls++
-      })
-
-      const initialCalls = callbackCalls
-      vi.advanceTimersByTime(120)
-      expect(callbackCalls).toBeGreaterThan(initialCalls)
-
-      soft.dispose()
-      const callsAfterDispose = callbackCalls
-      vi.advanceTimersByTime(120)
-      expect(callbackCalls).toBe(callsAfterDispose)
-
-      vi.useRealTimers()
-    })
   })
 
   describe('3. WebRTC Senders Mute & Unmute Synchronization', () => {
@@ -365,3 +295,4 @@ describe('Quiet Voice Gating & Background Processing Regression Tests', () => {
     })
   })
 })
+

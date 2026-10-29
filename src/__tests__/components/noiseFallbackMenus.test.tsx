@@ -44,10 +44,38 @@ const bars = [
 const row = (html: string, text: string) => html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g)?.find(button => button.includes(`>${text}</span>`)) || ''
 
 describe.each(bars)('noise suppression feedback in %s', (_, render) => {
+  it('orders engines by quality while describing their speed and fallback', () => {
+    useMediaStore.setState({ rnnoiseStatus: 'ready' })
+    const html = renderToStaticMarkup(render())
+    const deepfilter = row(html, 'DeepFilterNet')
+    const rnnoise = row(html, 'RNNoise Neural')
+    const classic = row(html, 'DSP Clássico')
+    expect(deepfilter).toContain('O melhor, porém mais lento, com fallback para RNNoise')
+    expect(rnnoise).toContain('Rápido e eficiente')
+    expect(classic).toContain('Corte agressivo, menor uso de CPU')
+    expect(html.indexOf(deepfilter)).toBeLessThan(html.indexOf(rnnoise))
+    expect(html.indexOf(rnnoise)).toBeLessThan(html.indexOf(classic))
+    expect(rnnoise).toContain('aria-pressed="true"')
+  })
+  it('offers DeepFilterNet, RNNoise and classic DSP with no Soft DSP', () => {
+    const html = renderToStaticMarkup(render())
+    expect(row(html, 'DeepFilterNet')).not.toBe('')
+    expect(row(html, 'RNNoise Neural')).not.toBe('')
+    expect(row(html, 'DSP Clássico')).not.toBe('')
+    expect(html).not.toContain('DSP Suave')
+  })
+  it('marks RNNoise active during DeepFilterNet fallback while preserving the preference', () => {
+    useMediaStore.setState({ audioProcessorMode: 'deepfilter', deepFilterStatus: 'fallback', rnnoiseStatus: 'ready' })
+    const html = renderToStaticMarkup(render())
+    expect(html).toContain('RNNoise Neural ativo — fallback do DeepFilterNet')
+    expect(row(html, 'RNNoise Neural')).toContain('aria-pressed="true"')
+    expect(row(html, 'DeepFilterNet')).toContain('aria-pressed="false"')
+    expect(useMediaStore.getState().audioProcessorMode).toBe('deepfilter')
+  })
   it('announces RNNoise fallback and marks Soft DSP as active instead of RNNoise', () => {
     const html = renderToStaticMarkup(render())
-    expect(html).toContain('DSP Suave ativo — fallback do RNNoise')
-    expect(row(html, 'DSP Suave')).toContain('aria-pressed="true"')
+    expect(html).toContain('DSP Clássico ativo — fallback do RNNoise')
+    expect(row(html, 'DSP Clássico')).toContain('aria-pressed="true"')
     expect(row(html, 'RNNoise Neural')).toContain('aria-pressed="false"')
     expect(html).not.toContain('Supressor de Ruído Ativo (RNNoise Neural)')
     expect(useMediaStore.getState().audioProcessorMode).toBe('rnnoise')
@@ -62,22 +90,22 @@ describe.each(bars)('noise suppression feedback in %s', (_, render) => {
     useMediaStore.setState({ audioProcessorMode: 'classic', hasUserChosenProcessorMode: false,
       selectedAudioInput: 'auto-mic', micCalibrations: { 'auto-mic': { noiseFloorDb: -60, peakRmsDb: -10, snrDb: 50, recommendedMode: 'rnnoise', recommendedSensitivity: 20, calibratedAt: 1 } } })
     const html = renderToStaticMarkup(render())
-    expect(html).toContain('DSP Suave ativo — fallback do RNNoise')
-    expect(row(html, 'DSP Suave')).toContain('aria-pressed="true"')
+    expect(html).toContain('DSP Clássico ativo — fallback do RNNoise')
+    expect(row(html, 'DSP Clássico')).toContain('aria-pressed="true"')
   })
   it('does not advertise fallback or an active processor when suppression is disabled', () => {
     useMediaStore.setState({ isNoiseSuppressionEnabled: false })
     const html = renderToStaticMarkup(render())
     expect(html).not.toContain('fallback do RNNoise')
-    expect(row(html, 'DSP Suave')).not.toContain('aria-pressed="true"')
+    expect(row(html, 'DSP Clássico')).not.toContain('aria-pressed="true"')
     expect(html).toContain('Desligado')
   })
   it.each(['loading', 'idle', 'error'] as const)('does not mark the neural processor active while its status is %s', status => {
     useMediaStore.setState({ rnnoiseStatus: status })
     const html = renderToStaticMarkup(render())
     expect(row(html, 'RNNoise Neural')).toContain('aria-pressed="false"')
-    expect(row(html, 'DSP Suave')).toContain('aria-pressed="false"')
-    expect(html).not.toContain('DSP Suave ativo — fallback do RNNoise')
+    expect(row(html, 'DSP Clássico')).toContain('aria-pressed="false"')
+    expect(html).not.toContain('DSP Clássico ativo — fallback do RNNoise')
     expect(html).not.toContain('Supressor de Ruído Ativo (RNNoise Neural)')
   })
 })
@@ -102,3 +130,4 @@ it.each(['fallback', 'error'] as const)('can retry the preferred RNNoise process
   expect(ui.reprocess).toHaveBeenCalledOnce()
   expect(useMediaStore.getState().audioProcessorMode).toBe('rnnoise')
 })
+

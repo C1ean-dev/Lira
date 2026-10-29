@@ -14,7 +14,6 @@ import {
   StopCircle,
   Sparkles,
   Cpu,
-  Feather,
   Check,
   Power,
   AudioLines,
@@ -24,18 +23,18 @@ import {
 
 const NOISE_ENGINES = [
   {
+    id: 'deepfilter' as const,
+    name: 'DeepFilterNet',
+    badge: 'IA',
+    desc: 'O melhor, porém mais lento, com fallback para RNNoise',
+    icon: Sparkles,
+  },
+  {
     id: 'rnnoise' as const,
     name: 'RNNoise Neural',
     badge: 'IA',
-    desc: 'Rede neural treinada (Xiph)',
+    desc: 'Rápido e eficiente',
     icon: Cpu,
-  },
-  {
-    id: 'soft' as const,
-    name: 'DSP Suave',
-    badge: 'Natural',
-    desc: 'Preserva voz suave e consoantes',
-    icon: Feather,
   },
   {
     id: 'classic' as const,
@@ -71,7 +70,8 @@ export const CallControlsBar: React.FC<Props> = ({
   const audioProcessorMode = useMediaStore((s) => s.audioProcessorMode)
   const rnnoiseStatus = useMediaStore((s) => s.rnnoiseStatus)
   const processingMode = useMediaStore(resolveNoiseProcessorPreference)
-  const noiseDisplay = noiseSuppressionDisplay(isNoiseSuppressionEnabled, processingMode, rnnoiseStatus)
+  const deepFilterStatus = useMediaStore((s) => s.deepFilterStatus)
+  const noiseDisplay = noiseSuppressionDisplay(isNoiseSuppressionEnabled, processingMode, rnnoiseStatus, deepFilterStatus)
   const toggleMute = useMediaStore((s) => s.toggleMute)
   const toggleDeafen = useMediaStore((s) => s.toggleDeafen)
   const toggleCamera = useMediaStore((s) => s.toggleCamera)
@@ -246,14 +246,14 @@ export const CallControlsBar: React.FC<Props> = ({
                       key={engine.id}
                       type="button"
                       aria-pressed={isSelected}
-                      title={engine.id === 'rnnoise' && noiseDisplay.canRetry ? 'Tentar RNNoise novamente' : undefined}
+                      title={engine.id === processingMode && noiseDisplay.canRetry ? processingMode === 'deepfilter' ? 'Tentar DeepFilterNet novamente' : 'Tentar RNNoise novamente' : undefined}
                       onClick={async () => {
                         setIsNoiseMenuOpen(false)
                         if (!isNoiseSuppressionEnabled) {
                           toggleNoiseSuppression()
                           MediaManager.getInstance().updateNoiseSuppression(true)
                         }
-                        if (audioProcessorMode !== engine.id || processingMode !== engine.id || (engine.id === 'rnnoise' && noiseDisplay.canRetry)) {
+                        if (audioProcessorMode !== engine.id || processingMode !== engine.id || (engine.id === processingMode && noiseDisplay.canRetry)) {
                           setAudioProcessorMode(engine.id)
                           await MediaManager.getInstance().reprocessStream()
                         }
@@ -279,8 +279,8 @@ export const CallControlsBar: React.FC<Props> = ({
                               </span>
                             )}
                           </div>
-                          <span className="text-[9px] text-slate-400 font-normal truncate">
-                            {engine.id === 'rnnoise' && noiseDisplay.canRetry ? 'Indisponível · clique para tentar novamente' : engine.desc}
+                          <span className="text-[9px] text-slate-400 font-normal whitespace-normal leading-snug">
+                            {engine.id === processingMode && noiseDisplay.canRetry ? 'Indisponível · clique para tentar novamente' : engine.desc}
                           </span>
                         </div>
                       </div>
@@ -474,3 +474,4 @@ export const CallControlsBar: React.FC<Props> = ({
   </>
 )
 }
+
