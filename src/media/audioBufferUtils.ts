@@ -2,6 +2,7 @@ import { RNNOISE_PRE_EQ } from './RnnoiseProcessor'
 import { denoiseSamples, gateDenoisedSamples } from './rnnoiseOffline'
 import { denoiseDeepFilterSamples } from './deepFilterOffline'
 import type { AudioProcessorMode } from '../types/audio'
+import { createVoiceDynamics } from './voiceDynamics'
 
 function writeString(view: DataView, offset: number, str: string) {
   for (let i = 0; i < str.length; i++) {
@@ -215,19 +216,13 @@ export async function processAudioBufferOffline(
     gateGain.gain.setValueAtTime(targetGain, time)
   }
 
-  const comp = offlineCtx.createDynamicsCompressor()
-
-  comp.threshold.setValueAtTime(-22, 0)
-  comp.knee.setValueAtTime(14, 0)
-  comp.ratio.setValueAtTime(3.5, 0)
-  comp.attack.setValueAtTime(0.006, 0)
-  comp.release.setValueAtTime(0.18, 0)
+  const dynamics = createVoiceDynamics(offlineCtx, 'classic')
 
   source.connect(hp)
   hp.connect(shelf)
   shelf.connect(gateGain)
-  gateGain.connect(comp)
-  comp.connect(offlineCtx.destination)
+  gateGain.connect(dynamics.compressor)
+  dynamics.output.connect(offlineCtx.destination)
 
   source.start(0)
   return await offlineCtx.startRendering()

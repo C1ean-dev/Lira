@@ -1,12 +1,14 @@
 import { RefObject, useEffect } from 'react'
 import { liveViewReporter } from '../media/liveView'
-import { PictureFit, pictureHeight, viewHeightStep } from '../p2p/liveLayers'
+import { MAX_VIEW_HEIGHT, PictureFit, pictureHeight, viewHeightStep } from '../p2p/liveLayers'
 
 export function viewHeightFor(
   box: { width: number; height: number },
   video: { videoWidth?: number; videoHeight?: number } | null | undefined,
-  fit: PictureFit
+  fit: PictureFit,
+  quality: 'adaptive' | 'full' = 'adaptive'
 ): number {
+  if (quality === 'full') return box.width > 0 && box.height > 0 ? MAX_VIEW_HEIGHT : 0
   const width = video?.videoWidth ?? 0
   const height = video?.videoHeight ?? 0
   return viewHeightStep(pictureHeight(box, width > 0 && height > 0 ? width / height : null, fit))
@@ -18,7 +20,8 @@ export function useLiveViewBox(
   sharerId: string | undefined,
   videoRef: RefObject<HTMLVideoElement | null>,
   fit: PictureFit,
-  active: boolean
+  active: boolean,
+  quality: 'adaptive' | 'full' = 'adaptive'
 ): void {
   useEffect(() => {
     const video = videoRef.current
@@ -29,7 +32,7 @@ export function useLiveViewBox(
     const report = () => {
       const scale = window.devicePixelRatio || 1
       const box = exact ?? { width: video.clientWidth * scale, height: video.clientHeight * scale }
-      liveViewReporter.setBox(key, sharerId, viewHeightFor(box, video, fit))
+      liveViewReporter.setBox(key, sharerId, viewHeightFor(box, video, fit, quality))
     }
 
     report()
@@ -55,5 +58,5 @@ export function useLiveViewBox(
       video.removeEventListener('loadedmetadata', report)
       liveViewReporter.clearBox(key)
     }
-  }, [sharerId, videoRef, fit, active])
+  }, [sharerId, videoRef, fit, active, quality])
 }

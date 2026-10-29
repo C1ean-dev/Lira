@@ -26,10 +26,10 @@ it('ships a transparent sheet with an idle pose, covered animation and two usabl
 })
 it('adds the bed without overwriting local edits or restoring a deleted asset, preserving animation metadata through XML', () => {
   const bed = createRomanticBedAsset()
-  expect(addBuiltInFurniture([])).toEqual([bed])
+  expect(addBuiltInFurniture([])).toContainEqual(bed)
   const edited = { ...bed, name: 'Minha cama' }
-  expect(addBuiltInFurniture([edited])).toEqual([edited])
-  expect(addBuiltInFurniture([], [bed.id])).toEqual([])
+  expect(addBuiltInFurniture([edited]).find(asset => asset.id === bed.id)).toBe(edited)
+  expect(addBuiltInFurniture([], [bed.id]).some(asset => asset.id === bed.id)).toBe(false)
   expect(decodeValue(encodeValue(bed, new Map()), name => name)).toEqual(bed)
   const xml = spriteXml(bed, 'romantic-bed.png')
   expect(xml).toContain(`${bed.id}_down_0`)

@@ -102,7 +102,7 @@ test('measure real Lira engine delay and intelligibility in Electron', {
     await fs.writeFile(main, `const {app,BrowserWindow}=require('electron');app.setPath('userData',${JSON.stringify(path.join(runtime, 'profile'))});app.commandLine.appendSwitch('autoplay-policy','no-user-gesture-required');app.commandLine.appendSwitch('disable-background-timer-throttling');app.whenReady().then(()=>{const w=new BrowserWindow({show:false,webPreferences:{backgroundThrottling:false,contextIsolation:true,nodeIntegration:false}});w.loadURL(${JSON.stringify(url)})});app.on('window-all-closed',()=>app.quit());`)
     const environment = { ...process.env }
     delete environment.ELECTRON_RUN_AS_NODE
-    electron = await _electron.launch({ executablePath: require('electron'), args: [main], env: environment })
+    electron = await _electron.launch({ executablePath: require('electron'), args: ['--mute-audio', main], env: environment })
     const page = await electron.firstWindow()
     page.on('pageerror', error => console.error(error.stack))
     await page.waitForFunction(() => Boolean(window.noiseBenchmark))

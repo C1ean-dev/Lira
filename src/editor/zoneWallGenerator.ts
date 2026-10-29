@@ -1,4 +1,5 @@
-import { MapData, PrivateZone, WallType } from '../types/map'
+import { PrivateZone, WallType } from '../types/map'
+import { getZoneGeometry } from '../engine/zoneGeometry'
 
 export function snapAndAlignZone(
   zone: PrivateZone,
@@ -111,122 +112,33 @@ export function generateWallsAndDoorsForZones(
 
   if (!zones || zones.length === 0) return walls
 
-  for (const zone of zones) {
-    const minX = Math.max(1, zone.x)
-    const maxX = Math.min(width - 2, zone.x + zone.width - 1)
-    const minY = Math.max(1, zone.y)
-    const maxY = Math.min(height - 2, zone.y + zone.height - 1)
-
+  const walledZones = zones.filter(zone => zone.hasWalls !== false)
+  for (const zone of walledZones) {
+    const minX = Math.max(1, Math.floor(zone.x))
+    const maxX = Math.min(width - 2, Math.ceil(zone.x + zone.width) - 1)
+    const minY = Math.max(1, Math.floor(zone.y))
+    const maxY = Math.min(height - 2, Math.ceil(zone.y + zone.height) - 1)
     for (let x = minX; x <= maxX; x++) {
       walls[minY][x] = wallType
       walls[maxY][x] = wallType
     }
-
     for (let y = minY; y <= maxY; y++) {
       walls[y][minX] = wallType
       walls[y][maxX] = wallType
     }
   }
-
-  for (let i = 0; i < zones.length; i++) {
-    for (let j = i + 1; j < zones.length; j++) {
-      const zA = zones[i]
-      const zB = zones[j]
-
-      const zAMinX = zA.x
-      const zAMaxX = zA.x + zA.width - 1
-      const zAMinY = zA.y
-      const zAMaxY = zA.y + zA.height - 1
-
-      const zBMinX = zB.x
-      const zBMaxX = zB.x + zB.width - 1
-      const zBMinY = zB.y
-      const zBMaxY = zB.y + zB.height - 1
-
-      const sharedXCols: number[] = []
-      if (zAMaxX === zBMinX) {
-        sharedXCols.push(zBMinX)
-      } else if (zAMaxX + 1 === zBMinX) {
-        sharedXCols.push(zAMaxX, zBMinX)
-      } else if (zBMaxX === zAMinX) {
-        sharedXCols.push(zAMinX)
-      } else if (zBMaxX + 1 === zAMinX) {
-        sharedXCols.push(zBMaxX, zAMinX)
-      }
-
-      if (sharedXCols.length > 0) {
-        const overlapMinY = Math.max(zAMinY, zBMinY)
-        const overlapMaxY = Math.min(zAMaxY, zBMaxY)
-
-        if (overlapMaxY - overlapMinY >= 2) {
-          const doorY = Math.floor((overlapMinY + overlapMaxY) / 2)
-          for (const sX of sharedXCols) {
-            if (sX > 0 && sX < width - 1) {
-              walls[doorY][sX] = null
-              if (overlapMaxY - overlapMinY >= 5 && doorY + 1 < overlapMaxY) {
-                walls[doorY + 1][sX] = null
-              }
-            }
-          }
-        }
-      }
-
-      const sharedYRows: number[] = []
-      if (zAMaxY === zBMinY) {
-        sharedYRows.push(zBMinY)
-      } else if (zAMaxY + 1 === zBMinY) {
-        sharedYRows.push(zAMaxY, zBMinY)
-      } else if (zBMaxY === zAMinY) {
-        sharedYRows.push(zAMinY)
-      } else if (zBMaxY + 1 === zAMinY) {
-        sharedYRows.push(zBMaxY, zAMinY)
-      }
-
-      if (sharedYRows.length > 0) {
-        const overlapMinX = Math.max(zAMinX, zBMinX)
-        const overlapMaxX = Math.min(zAMaxX, zBMaxX)
-
-        if (overlapMaxX - overlapMinX >= 2) {
-          const doorX = Math.floor((overlapMinX + overlapMaxX) / 2)
-          for (const sY of sharedYRows) {
-            if (sY > 0 && sY < height - 1) {
-              walls[sY][doorX] = null
-              if (overlapMaxX - overlapMinX >= 5 && doorX + 1 < overlapMaxX) {
-                walls[sY][doorX + 1] = null
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  for (let zIdx = 0; zIdx < zones.length; zIdx++) {
-    const zone = zones[zIdx]
-    const minX = Math.max(1, zone.x)
-    const maxX = Math.min(width - 2, zone.x + zone.width - 1)
-    const minY = Math.max(1, zone.y)
-    const maxY = Math.min(height - 2, zone.y + zone.height - 1)
-
-    const isBottomExterior = !zones.some(
-      (other, oIdx) => oIdx !== zIdx && other.y <= maxY + 1 && other.y + other.height - 1 >= maxY + 1 && other.x <= maxX && other.x + other.width - 1 >= minX
-    )
-
-    if (isBottomExterior && maxY < height - 2) {
-      const doorX = Math.floor((minX + maxX) / 2)
-      walls[maxY][doorX] = null
-      if (maxX - minX >= 5 && doorX + 1 < maxX) {
-        walls[maxY][doorX + 1] = null
-      }
-    } else {
-      const isTopExterior = !zones.some(
-        (other, oIdx) => oIdx !== zIdx && other.y <= minY - 1 && other.y + other.height - 1 >= minY - 1 && other.x <= maxX && other.x + other.width - 1 >= minX
-      )
-      if (isTopExterior && minY > 1) {
-        const doorX = Math.floor((minX + maxX) / 2)
-        walls[minY][doorX] = null
-        if (maxX - minX >= 5 && doorX + 1 < maxX) {
-          walls[minY][doorX + 1] = null
+  // Cut both sides of each connection after every room frame is built.
+  for (const zone of walledZones) {
+    const geometry = getZoneGeometry(zone, zones)
+    for (const side of ['top', 'bottom', 'left', 'right'] as const) {
+      for (const door of geometry.doors[side]) {
+        const horizontal = side === 'top' || side === 'bottom'
+        const fixed = horizontal
+          ? (side === 'top' ? Math.floor(zone.y) : Math.ceil(zone.y + zone.height) - 1)
+          : (side === 'left' ? Math.floor(zone.x) : Math.ceil(zone.x + zone.width) - 1)
+        for (let cell = Math.floor(door.start); cell < Math.ceil(door.end); cell++) {
+          const x = horizontal ? cell : fixed, y = horizontal ? fixed : cell
+          if (x > 0 && x < width - 1 && y > 0 && y < height - 1) walls[y][x] = null
         }
       }
     }

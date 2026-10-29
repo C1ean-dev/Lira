@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Radio, Minimize2, Volume2, Volume1, VolumeX, EyeOff, Crop } from 'lucide-react'
+import { Minimize2, Volume2, Volume1, VolumeX, EyeOff, Crop } from 'lucide-react'
 import { ParticipantData } from './GridParticipantTile'
 import { useMediaStore } from '../../store/useMediaStore'
 import { attachStreamToVideo } from '../../media/attachVideoElement'
 import { LiveWatchPrompt } from '../LiveWatchPrompt'
 import { useLiveGate } from '../../hooks/useLiveGate'
 import { useLiveViewBox } from '../../hooks/useLiveViewBox'
+import { LiveTransmissionInfo } from './LiveTransmissionInfo'
 
 interface Props {
   user: ParticipantData
@@ -16,6 +17,7 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
   const theaterVideoRef = useRef<HTMLVideoElement | null>(null)
   const theaterContainerRef = useRef<HTMLDivElement | null>(null)
   const [controlsVisible, setControlsVisible] = useState(true)
+  const [infoOpen, setInfoOpen] = useState(false)
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isInteractingWithVolumeRef = useRef(false)
 
@@ -46,7 +48,7 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
     })
   }, [activeStream, user.id, user.isLocal, liveGate.needsClick])
 
-  useLiveViewBox(user.id, theaterVideoRef, 'contain', liveGate.watching)
+  useLiveViewBox(user.id, theaterVideoRef, 'contain', liveGate.watching, 'full')
 
   const handleVolumeChange = (newVal: number) => {
     const clamped = Math.max(0, Math.min(200, newVal))
@@ -130,6 +132,9 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Transmissão em tela cheia"
       ref={theaterContainerRef}
       onMouseMove={handleMouseMove}
       className="fixed inset-0 z-[100] bg-black flex items-center justify-center overflow-hidden select-none cursor-default"
@@ -164,14 +169,11 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
 
       <div
         className={`absolute top-6 left-6 right-6 flex items-center justify-between transition-opacity duration-300 z-50 ${
-          controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+          controlsVisible || infoOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         }`}
       >
         <div className="flex items-center gap-3 bg-black/80 backdrop-blur-xl px-4 py-2 rounded-2xl border border-white/15 shadow-2xl">
-          <div className="flex items-center gap-2 px-2.5 py-1 bg-rose-600 text-white rounded-lg text-xs font-extrabold animate-pulse">
-            <Radio className="w-3.5 h-3.5" />
-            <span>AO VIVO</span>
-          </div>
+          <LiveTransmissionInfo stream={activeStream} local={!!user.isLocal} peerName={user.name} onOpenChange={setInfoOpen} />
           <div className="text-sm font-bold text-white flex items-center gap-2">
             <span>{user.name}</span>
             <span className="text-slate-400 font-normal text-xs">• Transmissão em Tela Cheia</span>
