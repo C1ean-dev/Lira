@@ -324,7 +324,9 @@ export class PeerManager {
         }
         markSignalingTierFailed(currentTier, 2 * 60 * 1000)
 
-        if (tierIndex < SIGNALING_TIERS.length - 1) {
+        // Reclaiming an existing room must stay on its original server: the
+        // same host ID on another server would create an isolated copy.
+        if (retryCount === 0 && tierIndex < SIGNALING_TIERS.length - 1) {
           const nextTier = SIGNALING_TIERS[tierIndex + 1]
           console.warn(`[P2P Host] Signaling tier '${currentTier}' failed (${reason}). Falling back to '${nextTier}'...`)
           this.createRoom(this.roomCode!, localPlayer, options, tierIndex + 1, 0)
@@ -549,7 +551,7 @@ export class PeerManager {
         reject(new Error(`Não foi possível estabelecer conexão com o anfitrião da sala ${this.roomCode}. A rede pode estar bloqueando a conexão entre os participantes. Confira a conexão dos dois participantes ou tente outra rede.`))
       }
 
-      const tryNextTier = () => {
+      const tryNextTier = (hostMissing = false) => {
         if (isResolved) return
         if (this.peer !== myPeer) return
         isResolved = true
@@ -563,11 +565,12 @@ export class PeerManager {
         if (this.peer === myPeer) {
           this.peer = null
         }
-        markSignalingTierFailed(currentTier, 2 * 60 * 1000)
+        // A missing room does not mean this signaling server is unhealthy.
+        if (!hostMissing) markSignalingTierFailed(currentTier, 2 * 60 * 1000)
 
         if (tierIndex < SIGNALING_TIERS.length - 1) {
           const nextTier = SIGNALING_TIERS[tierIndex + 1]
-          console.log(`[P2P Join] Signaling tier '${currentTier}' unreachable. Trying fallback tier '${nextTier}'...`)
+          console.log(`[P2P Join] ${hostMissing ? 'Host not found on' : 'Unable to reach'} tier '${currentTier}'. Trying '${nextTier}'...`)
           this.joinRoom(this.roomCode!, localPlayer, tierIndex + 1, 0)
             .then(resolve)
             .catch(reject)
@@ -575,7 +578,9 @@ export class PeerManager {
           this.stopHeartbeat()
           useGameStore.getState().setConnected(false)
           useGameStore.getState().setConnectionStatus('disconnected')
-          reject(new Error('Não foi possível conectar aos servidores de sinalização P2P. Verifique sua conexão ou tente novamente em instantes.'))
+          reject(new Error(hostMissing
+            ? `O anfitrião da sala ${this.roomCode} não foi encontrado. Confira se ele continua online e tente entrar novamente.`
+            : 'Não foi possível conectar aos servidores de sinalização P2P. Verifique sua conexão ou tente novamente em instantes.'))
         }
       }
 
@@ -775,7 +780,10 @@ export class PeerManager {
           err?.message?.includes('Could not connect to peer') ||
           err?.type === 'unavailable-id'
         ) {
-          triggerAutoHost()
+          // Visitors must search the other servers for the existing host.
+          // Only an explicit create/reclaim attempt may promote this peer.
+          if (retryCount > 0) triggerAutoHost()
+          else tryNextTier(true)
         } else if (err?.type === 'webrtc') {
           failHostConnection('webrtc-error')
         } else if (

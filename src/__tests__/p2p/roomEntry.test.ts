@@ -248,15 +248,52 @@ describe('room entry (joinRoom)', () => {
     }
   })
 
-  it('auto-hosts when the host is unreachable and logs every step', async () => {
+  it('finds the existing host on a fallback server without creating a second room', async () => {
     const pm = PeerManager.getInstance()
+    const create = vi.spyOn(pm, 'createRoom')
     const pending = pm.joinRoom('code-aaa', player() as any)
     FakePeer.instances[0].emit('open', 'client-id-1')
     FakePeer.instances[0].emit('error', { type: 'peer-unavailable', message: 'Could not connect to peer' })
     expect(FakePeer.instances).toHaveLength(2)
-    FakePeer.instances[1].emit('open', 'lira-CODE-AAA-host')
+    expect(create).not.toHaveBeenCalled()
+    FakePeer.instances[1].emit('open', 'client-id-2')
+    FakeConn.instances[1].emit('open')
     await expect(pending).resolves.toBeUndefined()
+    expect(useGameStore.getState().localPlayer.isHost).toBe(false)
+    expect(useGameStore.getState().signalingTier).toBe('public')
     expect(diagStats().buffered).toBeGreaterThanOrEqual(4)
+  })
+
+  it('rejects a missing host on every server instead of silently creating an isolated space', async () => {
+    const pm = PeerManager.getInstance()
+    const create = vi.spyOn(pm, 'createRoom')
+    const result = pm.joinRoom('code-aaa', player() as any).catch(error => error)
+    for (let index = 0; index < 3; index++) {
+      const peer = FakePeer.instances[index]
+      expect(peer).toBeDefined()
+      peer.emit('open', `client-${index}`)
+      peer.emit('error', { type: 'peer-unavailable', message: 'Could not connect to peer' })
+    }
+    expect(await result).toBeInstanceOf(Error)
+    expect(create).not.toHaveBeenCalled()
+    expect(useGameStore.getState().isConnected).toBe(false)
+    expect(useGameStore.getState().localPlayer.isHost).toBe(false)
+  })
+
+  it('finds a local host after both remote servers report it missing', async () => {
+    const pm = PeerManager.getInstance()
+    const create = vi.spyOn(pm, 'createRoom')
+    const pending = pm.joinRoom('code-aaa', player() as any)
+    for (let index = 0; index < 2; index++) {
+      FakePeer.instances[index].emit('open', `remote-client-${index}`)
+      FakePeer.instances[index].emit('error', { type: 'peer-unavailable' })
+    }
+    FakePeer.instances[2].emit('open', 'local-client')
+    FakeConn.instances[2].emit('open')
+    await expect(pending).resolves.toBeUndefined()
+    expect(create).not.toHaveBeenCalled()
+    expect(useGameStore.getState().signalingTier).toBe('local')
+    expect(useGameStore.getState().localPlayer.isHost).toBe(false)
   })
 
   it('lets the host transport negotiate beyond the old six and ten second deadlines', async () => {
@@ -459,5 +496,15 @@ describe('saved room re-entry after host registration has not been released', ()
     FakePeer.instances[0].emit('error', { type: 'unavailable-id', message: 'ID is taken' })
     expect(FakePeer.instances).toHaveLength(1)
     expect(await result).toBe('unavailable-id')
+  })
+
+  it.each(['network', 'timeout'])('does not move a host reclaim to another server after %s', async failure => {
+    const pm = PeerManager.getInstance()
+    const result = pm.createRoom('code-aaa', player() as any, undefined, 0, 1).catch(error => error)
+    if (failure === 'network') FakePeer.instances[0].emit('error', { type: 'network' })
+    else await vi.advanceTimersByTimeAsync(4000)
+    expect(await result).toBeInstanceOf(Error)
+    expect(FakePeer.instances).toHaveLength(1)
+    expect(useGameStore.getState().isConnected).toBe(false)
   })
 })
