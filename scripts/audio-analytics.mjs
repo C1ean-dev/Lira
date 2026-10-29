@@ -15,6 +15,7 @@ try {
       cwd: root, windowsHide: true, stdio: ['ignore', log.fd, log.fd],
       env: { ...process.env, LIRA_RUN_CONVERSATION_BENCHMARK: '1', LIRA_AUDIO_OUTPUT: output,
         LIRA_AUDIO_REPLAY_ONLY: '0', LIRA_CONVERSATION_SMOKE: '0',
+        LIRA_AUDIO_SNAPSHOTS: '', LIRA_EXPECT_WORKER_CONDITION: '',
         LIRA_CONVERSATION_ENGINES: 'bypass,classic,rnnoise,deepfilter',
         LIRA_CONVERSATION_PAIRS: '0,1,2,3', LIRA_CONVERSATION_VARIANT: 'normal',
         LIRA_CONVERSATION_REPETITIONS: '2', LIRA_CONVERSATION_WARMUP_MS: '6000',

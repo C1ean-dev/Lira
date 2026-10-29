@@ -49,7 +49,22 @@ Object.assign(window, { noiseBenchmark: {
   },
   async run(url: string, mode: string) {
     const context = new AudioContext({ sampleRate: 48000 })
-    const processor = mode === 'deepfilter' ? new DeepFilterProcessor() : mode.startsWith('rnnoise') ? new RnnoiseProcessor() : new NoiseSuppressor()
+    const processor = mode.startsWith('deepfilter') ? new DeepFilterProcessor() : mode.startsWith('rnnoise') ? new RnnoiseProcessor() : new NoiseSuppressor()
+    const NativeContext = window.AudioContext
+    if (mode.endsWith('-interactive')) window.AudioContext = class extends NativeContext {
+      constructor(options?: AudioContextOptions) { super({ ...options, latencyHint: 'interactive' }) }
+    }
+    const NativeWorklet = window.AudioWorkletNode
+    const inference: unknown[] = []
+    window.AudioWorkletNode = class extends NativeWorklet {
+      constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
+        super(context, name, options)
+        this.port.addEventListener('message', event => {
+          if (event.data.type === 'benchmark-timing') inference.push(event.data)
+        })
+        this.port.start()
+      }
+    }
     let recorder: AudioWorkletNode | undefined
     let moduleUrl: string | undefined
     let captureTimer: ReturnType<typeof setTimeout> | undefined
@@ -91,12 +106,16 @@ Object.assign(window, { noiseBenchmark: {
       return { raw: base64(result.raw), processed: base64(result.processed),
         graph: { sampleRate: context.sampleRate, sourceBaseLatency: context.baseLatency,
           engineBaseLatency: engineContext?.baseLatency, engineOutputLatency: engineContext?.outputLatency,
-          sensitivity: mode.endsWith('-open') ? 'manual' : 'auto', threshold: 0, suppression: true, neuralReady: 'isReady' in processor ? processor.isReady() : null } }
+          executionMode: processor instanceof NoiseSuppressor ? 'worklet' : processor.getExecutionMode?.() || 'worklet',
+          sensitivity: mode.endsWith('-open') ? 'manual' : 'auto', threshold: 0, suppression: true, neuralReady: 'isReady' in processor ? processor.isReady() : null,
+          inference } }
     } finally {
       clearTimeout(captureTimer)
       recorder?.port.close()
       recorder?.disconnect()
       processor.dispose()
+      window.AudioContext = NativeContext
+      window.AudioWorkletNode = NativeWorklet
       await context.close()
       if (moduleUrl) URL.revokeObjectURL(moduleUrl)
     }

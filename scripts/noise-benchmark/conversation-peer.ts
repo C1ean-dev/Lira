@@ -6,6 +6,8 @@ import { useMediaStore } from '../../src/store/useMediaStore'
 import { attachRemoteAudio, applyAudioOutput } from '../../src/media/remoteAudio'
 import { attachStreamToVideo } from '../../src/media/attachVideoElement'
 import { installEncodedProbe } from './encodedProbe'
+import { installReceiverStalls } from './receiver-stalls'
+import { DynamicBufferManager } from '../../src/services/DynamicBufferManager'
 
 // Each iframe has its own module instances, stores, PeerManager and processors.
 // Only test instrumentation and the synthetic microphone cross realm boundaries.
@@ -18,6 +20,7 @@ let audio: HTMLAudioElement | undefined
 let video: HTMLVideoElement | undefined
 let detachVideo: (() => void) | undefined
 let frames: ReturnType<typeof installEncodedProbe> | undefined
+let stalls: ReturnType<typeof installReceiverStalls> | undefined
 
 async function stats() {
   const call = [...peer.mediaCalls.values()][0]
@@ -48,6 +51,10 @@ const api = {
     mode = selectedMode
     input = stream
     if (encodedProbe) frames = installEncodedProbe()
+    if (variant === 'buffer-recovery') {
+      if (encodedProbe) throw new Error('Use one encoded-stream instrumentation at a time')
+      stalls = installReceiverStalls()
+    }
     Object.assign(window, { __LIRA_LOCAL_SIGNALING_PORT__: signalingPort })
     SHARED_RTC_CONFIG.iceServers = []
     setActiveSignalingTier('local')
@@ -104,6 +111,10 @@ const api = {
     return peer.mediaCalls.size === 1 && Object.values(useGameStore.getState().callStates).includes('connected') && (await stats()).bytesReceived > 0
   },
   local() { return useMediaStore.getState().localStream! },
+  seedRecoveryBuffer() {
+    const buffer = DynamicBufferManager.getInstance().getBuffers().audio
+    buffer.currentMs = 60; buffer.cleanSamples = 0; buffer.lastTargetMs = 1
+  },
   async playback() {
     const stream = Object.values(useMediaStore.getState().peerStreams)[0]
     if (!stream?.getAudioTracks().length) throw new Error('Remote Lira audio missing')
@@ -132,7 +143,8 @@ const api = {
   status() {
     api.assertMode()
     const state = useMediaStore.getState()
-    return { selectedMode: state.audioProcessorMode, deepFilterStatus: state.deepFilterStatus,
+    return { selectedMode: state.audioProcessorMode, deepFilterStatus: state.deepFilterStatus, stalls,
+      executionMode: mode === 'deepfilter' ? media['deepFilterEngine']['engine'].getExecutionMode?.() || 'worklet' : 'worklet',
       rnnoiseStatus: state.rnnoiseStatus, playbackTracks: (audio as any)?.captureStream().getAudioTracks().length || 0,
       audioElement: { paused: audio?.paused, currentTime: audio?.currentTime, readyState: audio?.readyState },
       videoElement: { paused: video?.paused, currentTime: video?.currentTime, readyState: video?.readyState },

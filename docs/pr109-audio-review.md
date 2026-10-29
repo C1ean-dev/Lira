@@ -1,5 +1,10 @@
 # Revisão das otimizações e relatório de áudio
 
+Os experimentos posteriores e o antes/depois final da implementação estão em
+[audio-optimization-ab.md](audio-optimization-ab.md). A revisão abaixo preserva
+o histórico; o código final usa Worker por mensagens e não mantém o gate extra
+automático no DeepFilterNet. RNNoise e a política de buffer conservam seus valores.
+
 `npm run test:all` termina com uma rodada real de WebRTC entre dois participantes
 locais. Mede os três supressores e uma referência `bypass` com os mesmos arquivos
 MS-SNSD, sem supressão. Usa os quatro pares do perfil `validation`: voz limpa,
