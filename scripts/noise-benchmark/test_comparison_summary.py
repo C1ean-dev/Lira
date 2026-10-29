@@ -8,6 +8,22 @@ def row(engine, case, direction, delay, stoi, noise=None):
 
 
 class ComparisonSummaryTest(unittest.TestCase):
+    def test_reference_is_paired_with_the_same_repetition(self):
+        rows = [dict(row(engine, 'same', 'A', delay, 0.9), repetition=repetition)
+                for repetition, base in [(0, 100), (1, 300)]
+                for engine, delay in [('bypass', base), ('rnnoise', base + 10)]]
+        result = comparison_summary(rows, 'rnnoise')
+        self.assertEqual(result['pairedDelayDeltaMeanMs'], 10)
+        self.assertEqual(result['remoteDelayRepeatSpreadMaxMs'], 200)
+        self.assertEqual(result['repetitions'], 2)
+
+    def test_engine_cost_does_not_include_unrelated_remote_buffer_changes(self):
+        rows = [dict(row('bypass', 'a', 'A', 200, 0.9), inputBridgeDelayMs=10, localDelayMs=10, engineDelayMs=0),
+                dict(row('rnnoise', 'a', 'A', 150, 0.9), inputBridgeDelayMs=10, localDelayMs=30, engineDelayMs=20)]
+        result = comparison_summary(rows, 'rnnoise')
+        self.assertEqual(result['engineDelayMeanMs'], 20)
+        self.assertEqual(result['pairedDelayDeltaMeanMs'], -50)
+
     def test_matches_case_and_direction_and_uses_arithmetic_mean(self):
         rows = [row('bypass', 'same', 'A', 10, 0.98), row('bypass', 'same', 'B', 40, 0.90),
                 row('rnnoise', 'same', 'B', 70, 0.95), row('rnnoise', 'same', 'A', 20, 0.96),

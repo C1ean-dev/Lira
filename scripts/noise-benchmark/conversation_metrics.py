@@ -16,9 +16,10 @@ def median_or_none(values):
 def comparison_summary(results, engine):
     """Pair by source case AND direction; absent speech is never zero latency."""
     rows = [row for row in results if row['engine'] == engine]
-    baseline = {(row['id'], row['direction']): row for row in results if row['engine'] == 'bypass'}
-    pairs = [(row, baseline[(row['id'], row['direction'])]) for row in rows
-             if (row['id'], row['direction']) in baseline]
+    def key(row):
+        return row['id'], row['direction'], row.get('repetition', 0)
+    baseline = {key(row): row for row in results if row['engine'] == 'bypass'}
+    pairs = [(row, baseline[key(row)]) for row in rows if key(row) in baseline]
     if len(pairs) != len(rows):
         raise ValueError('Missing paired bypass reference: ' + engine)
     def mean(values):
@@ -33,12 +34,29 @@ def comparison_summary(results, engine):
                   pairedLatencyCaptures=len(latency_pairs),
                   pairedReferenceDelayMeanMs=mean([reference['totalDelayMs'] for _, reference in latency_pairs]),
                   pairedDelayDeltaMeanMs=mean([row['totalDelayMs'] - reference['totalDelayMs'] for row, reference in latency_pairs]))
+    result['receiverBufferMeanMs'] = mean([row.get('receiverBufferMs') for row in rows])
+    for field, prefix in [('totalDelayMs', 'remoteDelay'), ('engineDelayMs', 'engineDelay')]:
+        values = [row.get(field) for row in rows if row.get(field) is not None]
+        result[prefix + 'MeanMs'] = mean(values)
+        result[prefix + 'MeasuredCaptures'] = len(values)
+        result[prefix + 'MinMs'] = min(values) if values else None
+        result[prefix + 'MaxMs'] = max(values) if values else None
+        result[prefix + 'P95Ms'] = float(np.percentile(values, 95)) if values else None
+        result[prefix + 'StddevMs'] = float(np.std(values)) if values else None
+        groups = {}
+        for row in rows:
+            groups.setdefault((row['id'], row['direction']), []).append(row)
+        spreads = [max(row[field] for row in group) - min(row[field] for row in group)
+                   for group in groups.values() if len(group) >= 2 and all(row.get(field) is not None for row in group)]
+        result[prefix + 'RepeatSpreadMaxMs'] = max(spreads) if spreads else None
+    result['repetitions'] = len(set(row.get('repetition', 0) for row in rows))
     for label, clean in [('clean', True), ('mixed', False)]:
         group = [(row, reference) for row, reference in pairs if (row['noise'] is None) == clean]
         result[label + 'Stoi'] = mean([row['stoi'] for row, _ in group])
         result[label + 'ReferenceStoi'] = mean([reference['stoi'] for _, reference in group])
         result[label + 'StoiDelta'] = mean([row['stoi'] - reference['stoi'] for row, reference in group])
         result[label + 'InputStoi'] = mean([row['inputStoi'] for row, _ in group])
+        result[label + 'LocalStoi'] = mean([row.get('localStoi') for row, _ in group])
     return result
 
 
@@ -93,7 +111,9 @@ def measure_direction(clean, noisy, channels, speech_start, speech_end):
         total = None
         result['delayUnavailableReason'] = 'speech correlation too weak'
     delays = [stage['processingDelayMs'] for stage in stages]
+    engine_delay = delays[1] - delays[0] if None not in delays[:2] else None
     return dict(**result, totalDelayMs=total, latencyCorrelation=correlation,
+                engineDelayMs=engine_delay,
                 localStoi=stages[1]['stoi'], decodedStoi=stages[2]['stoi'],
                 inputBridgeDelayMs=delays[0], localDelayMs=delays[1], decodedDelayMs=delays[2],
                 receiverGraphDelayMs=delays[3] - delays[2] if None not in delays[2:4] else None,
@@ -102,6 +122,7 @@ def measure_direction(clean, noisy, channels, speech_start, speech_end):
 
 def score(output):
     from dataset import write_wav
+    from call_diagnostics import stats_stages
     document = json.loads((output / 'cases.json').read_text())
     run = json.loads((output / 'conversation-run.json').read_text())
     cases = {case['id']: case for case in document['cases']}
@@ -113,10 +134,13 @@ def score(output):
             noisy = np.fromfile(output / case_id / 'input.f32', dtype='<f4').astype(np.float64)
             channels = [np.fromfile(output / f'{capture["id"]}.{direction * 6 + index}.f32', dtype='<f4').astype(np.float64) for index in range(6)]
             metrics = measure_direction(clean, noisy, channels, case['speechStart'], case['speechEnd'])
-            row = dict(**case, **metrics, engine=capture['engine'], capture=capture['id'], direction='A→B' if direction == 0 else 'B→A')
+            receiver = capture['participants'][1 - direction]
+            metrics['receiverBufferMs'] = stats_stages(receiver['before'], receiver['after'])['bufferMeanMs']
+            row = dict(**case, **metrics, engine=capture['engine'], capture=capture['id'],
+                       repetition=capture.get('repetition', 0), direction='A→B' if direction == 0 else 'B→A')
             results.append(row)
             aligned, _ = align(clean, channels[-1], max_delay=supported_speech_lag(channels[-1], case['speechEnd'])) if rms(channels[-1]) > 1e-10 else (np.zeros(len(clean)), None)
-            write_wav(output / case_id / f'conversation-{capture["engine"]}.wav', aligned)
+            write_wav(output / case_id / f'conversation-{capture["engine"]}-r{capture.get("repetition", 0)}.wav', aligned)
     summaries = []
     for engine in run['engines']:
         rows = [row for row in results if row['engine'] == engine]

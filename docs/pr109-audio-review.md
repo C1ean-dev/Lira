@@ -4,20 +4,34 @@
 locais. Mede os três supressores e uma referência `bypass` com os mesmos arquivos
 MS-SNSD, sem supressão. Usa os quatro pares do perfil `validation`: voz limpa,
 voz baixa com ruído e ruídos transitórios, nos dois sentidos da chamada.
+Cada caso é repetido duas vezes, com posições rotacionadas e ordem invertida
+entre as repetições. São 32 chamadas e 64 capturas direcionais. Cada chamada
+aquece durante seis segundos com o áudio real antes da gravação pontuada.
 
-A saída final apresenta média aritmética de latência, diferença pareada para a
+A saída final separa o custo local do motor do atraso remoto total. O primeiro
+é a diferença entre a captura da saída local e a captura da entrada do motor,
+no mesmo relógio, antes do Opus/RTP. A referência deve acrescentar exatamente
+zero nesta etapa; uma asserção valida isso. O total remoto inclui o jitter
+buffer e não deve ser interpretado como custo isolado do supressor.
+
+O relatório apresenta média aritmética de latência, diferença pareada para a
 referência, quantidade de latências válidas, STOI médio limpo e com ruído e suas
 diferenças para o bypass. O STOI é sempre calculado contra a voz limpa original;
 o bypass permite separar o efeito do supressor da degradação do caminho WebRTC.
-As comparações pareiam o arquivo de entrada e o sentido da chamada.
+As comparações pareiam arquivo de entrada, sentido e repetição. Há p95,
+desvio-padrão e amplitude máxima entre repetições do mesmo caso. A saída informa
+explicitamente quando a amplitude remota supera 30 ms e impede interpretar
+esses deltas como evidência de ganho. Esse limite é um aviso de diagnóstico,
+não um teste estatístico de significância.
 
 Uma voz apagada mantém STOI zero e latência indisponível: nunca entra como
 latência zero na média. A referência de latência de cada motor usa somente os
 mesmos pares em que ambos têm atraso mensurável. Os arquivos completos ficam em
-`node_modules/.cache/audio-analytics/`, incluindo PCM, relatório JSON e log.
+`node_modules/.cache/audio-analytics-v2/`, incluindo PCM, relatório JSON e log.
 O comando exige Python com as dependências de `scripts/noise-benchmark/requirements.txt`,
 Electron e os arquivos MS-SNSD verificados por hash, baixados na primeira execução.
-A etapa acrescenta alguns minutos à suíte. Para rodar apenas ela:
+A etapa acrescenta aproximadamente quinze minutos à suíte, dependendo da máquina.
+Para rodar apenas ela:
 `node scripts/audio-analytics.mjs`.
 
 ## Avaliação
@@ -63,7 +77,13 @@ O Electron recebe `--mute-audio`; os elementos de áudio continuam ativos com
 volume 1, e as verificações de PCM e RTP asseguram que o teste não foi silenciado
 internamente para produzir resultados artificiais.
 
-## Rodada de validação em 29/10/2026
+## Rodada inicial de 29/10/2026 — comparação remota inadequada
+
+A investigação posterior identificou que o bypass negociava apenas áudio,
+enquanto os motores negociavam áudio e vídeo preto. Além disso, havia apenas
+uma gravação por caso, ordem fixa e ausência de aquecimento com áudio. A tabela
+abaixo é preservada como registro diagnóstico e **não é uma comparação válida
+do desempenho relativo dos motores**.
 
 Captura local em Electron 33, 16 chamadas e oito sentidos/cenários por motor:
 
@@ -82,6 +102,17 @@ rodada; repetir sem carga concorrente e em ordem alternada antes de conclusões
 causais. Os alvos adaptativos e os buffers internos do navegador também diferem
 entre chamadas: um delta negativo contra bypass não é um custo negativo do filtro.
 
+Recalculando somente o custo local dessas mesmas capturas: bypass 0 ms,
+DSP clássico 50,66 ms, RNNoise 72,81 ms e DeepFilterNet 136,38 ms. A aparente
+inversão estava na comparação dos totais de chamadas independentes.
+
+O protocolo corrigido cria a mesma trilha de vídeo desativada no bypass usando
+o mesmo helper de `MediaManager`. As asserções verificam as faixas em todos os
+participantes. A captura reutiliza um nó apenas quando a trilha é exatamente o
+mesmo objeto; IDs de trilha não bastam, pois o WebRTC pode preservar o ID remoto.
+O codec continua sendo Opus e o áudio remoto continua ativo, com saída física
+silenciada por `--mute-audio`.
+
 TypeScript, 34 testes Python de métricas/relatórios e os testes específicos de
 áudio/integração passaram. As demais etapas de migração, navegador, dinâmica de
 voz, sprites e transcrição também passaram. A rodada unitária ampla registrou
@@ -91,3 +122,34 @@ produção e testes são idênticos aos de `main`. Por isso esta revisão não a
 que `test:all` completo passou: ele mantém a interrupção na primeira etapa que falha.
 Uma rodada final excluindo apenas os arquivos de instalador passou: 3261 testes
 aprovados, quatro ignorados, zero falhas em 341 arquivos.
+
+## Validação do protocolo corrigido
+
+Rodada completa sem outras capturas/testes pesados concorrentes: 32 chamadas,
+64 direções, duas repetições de cada caso, seis segundos de aquecimento com áudio,
+ordem alternada e áudio mais vídeo desativado em todos os modos.
+
+| Motor | Custo local médio ms | Total remoto médio ms | Maior diferença entre repetições do mesmo caso ms | STOI remoto limpo | STOI remoto com ruído |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Sem supressor | 0,00 | 99,31 | 15,10 | 0,988 | 0,876 |
+| DSP clássico | 38,86 | 135,85 | 13,52 | 0,928 | 0,866 |
+| RNNoise | 63,81 | 180,50 | 14,19 | 0,982 | 0,909 |
+| DeepFilterNet | 117,38 | 248,11 | 75,65 | 0,651 | 0,463 |
+
+Todas as 16 referências tiveram custo local exatamente zero. Os motores não
+apresentaram latência local negativa. DeepFilterNet teve duas latências remotas
+indisponíveis em 16; elas não entram como zero na média, e seu STOI permanece
+incluído. A comparação remota do DeepFilterNet é explicitamente sinalizada como
+instável. O custo local teve diferenças máximas entre repetições de 10 ms no
+DSP, 15,33 ms no RNNoise e 22,67 ms no DeepFilterNet.
+
+O STOI local ajuda a localizar a degradação: RNNoise teve 0,996 limpo e 0,925 com
+ruído; DeepFilterNet teve 0,968 limpo e 0,642 com ruído antes do WebRTC. O declínio
+adicional até o receptor não deve ser atribuído inteiramente ao modelo neural.
+
+O controle curto, alterando apenas a topologia e a captura compartilhada antes
+de adicionar aquecimento/repetições, também passou: bypass remoto 159,91 ms,
+RNNoise 167,11 ms e custo local do bypass zero. Não estima isoladamente a
+contribuição de cada mudança do protocolo. O comando completo posteriormente
+passou nas verificações de captura; 36 testes Python e o teste da ordem de
+execução passaram, assim como TypeScript e as verificações de sintaxe.

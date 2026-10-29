@@ -75,6 +75,11 @@ const api = {
     if (mode === 'bypass') {
       // Instrument control: PeerManager transmits the exact virtual microphone,
       // bypassing all filter graphs. This is not the UI's suppression toggle.
+      // Match startMedia's disabled camera track. Audio-only SDP is not an
+      // equivalent reference for the application's audio+dummy-video calls.
+      const dummyVideo = media.createDummyVideoTrack()
+      if (!dummyVideo) throw new Error('Reference dummy video unavailable')
+      input.addTrack(dummyVideo)
       useMediaStore.getState().setLocalStream(input)
     } else if (!await media.startMedia(false, true)) throw new Error('Lira microphone setup failed')
     if (variant === 'defer-resume') {
