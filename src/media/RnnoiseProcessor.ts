@@ -215,7 +215,8 @@ export class RnnoiseProcessor {
       const outSink = useMediaStore.getState().selectedAudioOutput
       const targetSink = !outSink || outSink === 'default' ? '' : outSink
       // Keep a little device headroom for the 10 ms neural frames.
-      const contextOptions: AudioContextOptions = { sampleRate: 48000, latencyHint: 0.02 }
+      // Keep a small device buffer for neural frames while allowing the lowest latency on DeepFilterNet.
+      const contextOptions: AudioContextOptions = { sampleRate: 48000, latencyHint: this.backend ? 'interactive' : 0.02 }
       try {
         this.audioCtx = new AudioContextClass(targetSink ? ({ ...contextOptions, sinkId: targetSink } as any) : contextOptions)
       } catch {
@@ -382,9 +383,13 @@ export class RnnoiseProcessor {
       })
 
       this.sourceNode.connect(this.inputGainNode)
-      this.inputGainNode.connect(this.highpassFilter)
-      this.highpassFilter.connect(this.highShelfFilter)
-      this.highShelfFilter.connect(this.workletNode)
+      if (this.backend) {
+        this.inputGainNode.connect(this.workletNode)
+      } else {
+        this.inputGainNode.connect(this.highpassFilter)
+        this.highpassFilter.connect(this.highShelfFilter)
+        this.highShelfFilter.connect(this.workletNode)
+      }
       this.workletNode.connect(this.postGain)
       this.postGain.connect(this.analyser)
       this.postGain.connect(this.gateGainNode)
