@@ -89,3 +89,5 @@ voz, sprites e transcrição também passaram. A rodada unitária ampla registro
 instalador; a repetição específica do instalador também falhou. Seus arquivos de
 produção e testes são idênticos aos de `main`. Por isso esta revisão não afirma
 que `test:all` completo passou: ele mantém a interrupção na primeira etapa que falha.
+Uma rodada final excluindo apenas os arquivos de instalador passou: 3261 testes
+aprovados, quatro ignorados, zero falhas em 341 arquivos.
