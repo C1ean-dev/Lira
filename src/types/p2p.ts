@@ -18,6 +18,8 @@ export type NetworkMessageType =
   | 'INDIVIDUAL_LIBRARY'
   | 'CHAT_MESSAGE'
   | 'CALL_TTS'
+  | 'PET_QUESTION'
+  | 'PET_REPLY'
   | 'CHAT_MESSAGE_STATUS'
   | 'CHANNELS_SYNC'
   | 'REACTION'

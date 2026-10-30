@@ -20,6 +20,7 @@ import {
 } from '../utils/roomChannels'
 import { buildRoomInviteMessage } from '../utils/roomInvite'
 import { reportStorageFailure } from '../utils/storageReport'
+import { isPersonMentioned } from '../utils/chatMentions'
 
 export const getDmChannelId = (userId1: string, userId2: string): string => {
   const sorted = [userId1, userId2].sort()
@@ -431,9 +432,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
 
       if (!alreadyHasMessage && message.senderId && !isFromMe && message.senderId !== 'system') {
-        if (isDm || !isCurrent) {
+        const mentioned = isPersonMentioned(message.content || '', message.mentions, [local.id, local.gameId, getLocalUserId()])
+        if (isDm || !isCurrent || mentioned) {
           sendNotification({
-            title: isDm ? `Mensagem de ${message.senderName}` : `#${message.channelId} - ${message.senderName}`,
+            title: mentioned ? `${message.senderName} mencionou você` : isDm ? `Mensagem de ${message.senderName}` : `#${message.channelId} - ${message.senderName}`,
             body: message.content,
             soundType: 'message',
             tag: `chat-${message.id}`,

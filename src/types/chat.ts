@@ -42,6 +42,14 @@ export interface RoomInviteData {
 
 export type MessageDeliveryStatus = 'sent' | 'delivered' | 'read'
 
+export interface ChatMention {
+  kind: 'person' | 'pet'
+  id: string
+  name: string
+  start: number
+  end: number
+}
+
 export interface ChatMessage {
   id: string
   senderId: string
@@ -57,5 +65,6 @@ export interface ChatMessage {
   friendRequest?: FriendRequestData
   roomInvite?: RoomInviteData
   status?: MessageDeliveryStatus
+  mentions?: ChatMention[]
 }
 
