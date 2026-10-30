@@ -21,6 +21,7 @@ import { validDjRequestSnapshot } from '../types/spotifyDjRequests'
 import { isStoppedDjSession, receiveDjStopMessage } from '../services/stopDjForEveryone'
 import { DEFAULT_AVATAR } from '../engine/Constants'
 import { receiveBedInteraction } from '../services/bedInteraction'
+import { receiveCallTts } from '../services/callTts'
 
 const receivedAtlases = new Map<string, AtlasDocument>()
 const atlasChunks = new AtlasChunkReceiver()
@@ -64,6 +65,11 @@ export function processNetworkMessage(
   onDjCallRequest?: (listenerId: string) => void
 ) {
   switch (msg.type) {
+    case 'CALL_TTS': {
+      if (!isDjMessageSource(msg, peerId, isHost)) return
+      receiveCallTts(msg.senderId, msg.payload)
+      break
+    }
     case 'BED_INTERACTION': {
       const remote = useGameStore.getState().remotePlayers[peerId]
       const isAllowedSender = !isHost || msg.senderId === peerId ||

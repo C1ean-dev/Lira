@@ -43,6 +43,8 @@ import { PlayerAvatar } from './common/PlayerAvatar'
 import { MessageStatusIcon } from './chat/MessageStatusIcon'
 import { ChatUserContextMenu } from './chat/ChatUserContextMenu'
 import { ChatPeopleList } from './chat/ChatPeopleList'
+import { prepareTtsCommand } from '../services/callTtsCore'
+import { sendCallTts } from '../services/callTts'
 import { ChatChannelList, ChannelEditing } from './chat/ChatChannelList'
 import { SpotifyIcon } from './common/SpotifyIcon'
 import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
@@ -481,6 +483,19 @@ const ChatDrawerInner: React.FC = () => {
     const trimmedInput = inputMessage.trim()
     const lowerInput = trimmedInput.toLowerCase()
     const isDm = activeChannel?.type === 'dm'
+
+    const tts = prepareTtsCommand(trimmedInput, localPlayer.currentZoneId, isDm)
+    if (tts) {
+      if ('error' in tts) {
+        addMessage({ id: 'tts-error-' + Math.random().toString(36).slice(2), senderId: 'system', senderName: 'TTS', channelId: activeChannelId, content: tts.error, timestamp: Date.now() })
+      } else if (sendCallTts(tts.text)) {
+        const newMsg: ChatMessage = { id: 'tts-chat-' + Math.random().toString(36).slice(2), senderId: localPlayer.id, senderName: localPlayer.name, channelId: activeChannelId, content: `🔊 ${tts.text}`, timestamp: Date.now(), avatarConfig: localPlayer.avatar, status: 'sent' }
+        addMessage(newMsg)
+        PeerManager.getInstance().sendChatMessage(newMsg)
+      }
+      setInputMessage('')
+      return
+    }
 
     const sendChatMessageWithContent = (text: string) => {
       const newMsg: ChatMessage = {

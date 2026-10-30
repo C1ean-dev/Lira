@@ -133,7 +133,7 @@ interface MediaStore {
   peerScreenStreams: Record<string, MediaStream>
   participantVolumes: Record<string, number>
   setParticipantVolume: (id: string, volume: number) => void
-  getEffectiveParticipantVolume: (id: string) => number
+  getEffectiveParticipantVolume: (id: string, name?: string) => number
   liveStreamVolume: number
   setLiveStreamVolume: (volume: number) => void
   liveBufferMode: 'dynamic' | 'manual'
