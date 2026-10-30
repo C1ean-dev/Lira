@@ -17,6 +17,7 @@ export type NetworkMessageType =
   | 'CUSTOM_ASSET_DELETE'
   | 'INDIVIDUAL_LIBRARY'
   | 'CHAT_MESSAGE'
+  | 'CALL_TTS'
   | 'CHAT_MESSAGE_STATUS'
   | 'CHANNELS_SYNC'
   | 'REACTION'
