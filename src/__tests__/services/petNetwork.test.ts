@@ -41,10 +41,65 @@ describe('pet chat integration', () => {
     class Utterance { lang = ''; volume = 1; constructor(public text: string) {} }
     vi.stubGlobal('window', { speechSynthesis: { speak } })
     vi.stubGlobal('SpeechSynthesisUtterance', Utterance)
-    const msg = { type: 'PET_REPLY' as const, senderId: 'other', payload: { id: 'remote-1', ownerId: 'self', zoneId: 'zone', text: 'Oi da sala!' }, timestamp: 1 }
+    const msg = { type: 'PET_REPLY' as const, senderId: 'other', payload: { id: 'remote-1', ownerId: 'self', askerId: 'self', zoneId: 'zone', text: 'Oi da sala!' }, timestamp: 1 }
     receivePetNetworkMessage(msg)
     receivePetNetworkMessage(msg)
     expect(mock.add).toHaveBeenCalledWith(expect.objectContaining({ senderName: '🐾 Mingau', content: 'Oi da sala!' }))
+    expect(speak).toHaveBeenCalledOnce()
+    vi.unstubAllGlobals()
+  })
+  it('does not speak TTS on the room owner machine when another participant asks the pet', async () => {
+    mock.owner = true
+    mock.local.role = 'owner'
+    mock.remote.role = 'member'
+    ;(mock.remote as any).isOwner = false
+    const speak = vi.fn()
+    class Utterance { lang = ''; volume = 1; constructor(public text: string) {} }
+    vi.stubGlobal('window', { speechSynthesis: { speak } })
+    vi.stubGlobal('SpeechSynthesisUtterance', Utterance)
+
+    const questionMsg = {
+      type: 'PET_QUESTION' as const,
+      senderId: 'other',
+      payload: { id: 'q-guest-1', targetId: 'self', askerId: 'other', zoneId: 'zone', question: 'Oi pet', channelId: 'general' },
+      timestamp: 1,
+    }
+    receivePetNetworkMessage(questionMsg)
+
+    await vi.waitFor(() => expect(mock.broadcast).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'PET_REPLY',
+      payload: expect.objectContaining({ id: 'q-guest-1', askerId: 'other', text: 'Olá!' }),
+    })))
+    expect(mock.add).toHaveBeenCalledWith(expect.objectContaining({ content: 'Olá!' }))
+    expect(speak).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+  it('speaks TTS on the participant machine only when the reply is for their question', () => {
+    mock.owner = false
+    mock.local.role = 'member'
+    mock.remote.role = 'host'
+    ;(mock.remote as any).isOwner = true
+    const speak = vi.fn()
+    class Utterance { lang = ''; volume = 1; constructor(public text: string) {} }
+    vi.stubGlobal('window', { speechSynthesis: { speak } })
+    vi.stubGlobal('SpeechSynthesisUtterance', Utterance)
+
+    const myReply = {
+      type: 'PET_REPLY' as const,
+      senderId: 'other',
+      payload: { id: 'r-1', ownerId: 'other', askerId: 'self', zoneId: 'zone', text: 'Resposta pra mim' },
+      timestamp: 1,
+    }
+    receivePetNetworkMessage(myReply)
+    expect(speak).toHaveBeenCalledOnce()
+
+    const someoneElseReply = {
+      type: 'PET_REPLY' as const,
+      senderId: 'other',
+      payload: { id: 'r-2', ownerId: 'other', askerId: 'third-person', zoneId: 'zone', text: 'Resposta pra outro' },
+      timestamp: 2,
+    }
+    receivePetNetworkMessage(someoneElseReply)
     expect(speak).toHaveBeenCalledOnce()
     vi.unstubAllGlobals()
   })

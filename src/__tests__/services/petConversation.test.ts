@@ -17,7 +17,7 @@ describe('pet conversation routing through the room owner', () => {
     const text = publish.mock.calls[0][0].text
     expect(text).not.toMatch(/private-secret|chave|limite/)
   })
-  it('uses the room owner key and the target pet personality', async () => {
+  it('uses the room owner key and the target pet personality and preserves the asker', async () => {
     const ask = vi.fn().mockResolvedValue('Olá!')
     const publish = vi.fn()
     const state = { roomId: 'space', isOwner: true }
@@ -26,10 +26,10 @@ describe('pet conversation routing through the room owner', () => {
       petOwner: { id: 'petOwner', zoneId: 'zone', pet: { type: 'custom' as const, customAssetId: 'cat', name: 'Mingau', personality: 'curioso' } },
     }
     const conversation = createPetConversation({ getRoom: () => state, getPlayer: (id: string) => players[id as keyof typeof players], getKey: () => 'room-key', ask, publish })
-    const q = { id: '2', targetId: 'petOwner', zoneId: 'zone', channelId: 'social', question: 'Oi' }
+    const q = { id: '2', targetId: 'petOwner', askerId: 'guest-user', zoneId: 'zone', channelId: 'social', question: 'Oi' }
     await conversation.receive('visitor', q)
     expect(ask).toHaveBeenCalledWith({ apiKey: 'room-key', personality: 'curioso', petName: 'Mingau', question: 'Oi' })
-    expect(publish).toHaveBeenCalledWith(expect.objectContaining({ id: '2', ownerId: 'petOwner', zoneId: 'zone', channelId: 'social', text: 'Olá!' }))
+    expect(publish).toHaveBeenCalledWith(expect.objectContaining({ id: '2', ownerId: 'petOwner', askerId: 'guest-user', zoneId: 'zone', channelId: 'social', text: 'Olá!' }))
     await conversation.receive('visitor', q)
     expect(ask).toHaveBeenCalledOnce()
   })
