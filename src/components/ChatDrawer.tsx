@@ -37,12 +37,19 @@ import { useLocalPlayerDetails, useRemotePlayerDetails } from '../hooks/usePlaye
 import { useMediaStore } from '../store/useMediaStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { FriendsPresenceService } from '../services/friendsPresenceService'
-import { Channel, ChatMessage, ChatAttachment } from '../types/chat'
+import { Channel, ChatMessage, ChatAttachment, ChatMention } from '../types/chat'
 import { FriendRequestCard } from './chat/FriendRequestCard'
 import { PlayerAvatar } from './common/PlayerAvatar'
 import { MessageStatusIcon } from './chat/MessageStatusIcon'
 import { ChatUserContextMenu } from './chat/ChatUserContextMenu'
 import { ChatPeopleList } from './chat/ChatPeopleList'
+import { requestPetFromChat } from '../services/petNetwork'
+import { prepareTtsCommand } from '../services/callTtsCore'
+import { sendCallTts } from '../services/callTts'
+import { MentionSuggestions } from './chat/MentionSuggestions'
+import { findMentionQuery, insertMention, updateMentions, prepareMentionMessage, mentionSegments, type MentionCandidate } from '../utils/chatMentions'
+import { renderChatContent } from '../utils/chatLinks'
+import { buildMentionCandidates } from '../utils/mentionCandidates'
 import { ChatChannelList, ChannelEditing } from './chat/ChatChannelList'
 import { SpotifyIcon } from './common/SpotifyIcon'
 import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
@@ -205,6 +212,10 @@ const ChatDrawerInner: React.FC = () => {
   const isGridCallOpen = useMediaStore((s) => s.isGridCallOpen)
 
   const [inputMessage, setInputMessage] = useState('')
+  const [selectedMentions, setSelectedMentions] = useState<ChatMention[]>([])
+  const [mentionQuery, setMentionQuery] = useState<ReturnType<typeof findMentionQuery>>(null)
+  const [mentionIndex, setMentionIndex] = useState(0)
+  const messageInputRef = useRef<HTMLInputElement>(null)
   const [pendingAttachment, setPendingAttachment] = useState<ChatAttachment | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
@@ -344,6 +355,19 @@ const ChatDrawerInner: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const activeChannel = channels.find((c) => c.id === activeChannelId) || channels[0]
+  const mentionCandidates = buildMentionCandidates(localPlayer, remoteDetails, activeChannel)
+  const mentionSuggestions = mentionQuery
+    ? mentionCandidates.filter(candidate => candidate.name.toLocaleLowerCase().includes(mentionQuery.query.trim().toLocaleLowerCase())).slice(0, 10)
+    : []
+  const chooseMention = (candidate: MentionCandidate) => {
+    if (!mentionQuery) return
+    const result = insertMention(inputMessage, mentionQuery, candidate, selectedMentions)
+    setInputMessage(result.text)
+    setSelectedMentions(result.mentions)
+    setMentionQuery(null)
+    setMentionIndex(0)
+    setTimeout(() => { messageInputRef.current?.focus(); messageInputRef.current?.setSelectionRange(result.caret, result.caret) }, 0)
+  }
   const filteredMessages = messages.filter((m) => {
     if (m.channelId === activeChannelId) return true
     if (activeChannel?.type === 'dm' && activeChannel.recipientId) {
@@ -478,9 +502,25 @@ const ChatDrawerInner: React.FC = () => {
     e.preventDefault()
     if (!inputMessage.trim() && !pendingAttachment) return
 
-    const trimmedInput = inputMessage.trim()
+    const prepared = prepareMentionMessage(inputMessage, mentionCandidates, selectedMentions, activeChannel?.type !== 'dm')
+    const trimmedInput = prepared.text
     const lowerInput = trimmedInput.toLowerCase()
     const isDm = activeChannel?.type === 'dm'
+
+    const tts = prepareTtsCommand(trimmedInput, localPlayer.currentZoneId, isDm)
+    if (tts) {
+      if ('error' in tts) {
+        addMessage({ id: 'tts-error-' + Math.random().toString(36).slice(2), senderId: 'system', senderName: 'TTS', channelId: activeChannelId, content: tts.error, timestamp: Date.now() })
+      } else if (sendCallTts(tts.text)) {
+        const newMsg: ChatMessage = { id: 'tts-chat-' + Math.random().toString(36).slice(2), senderId: localPlayer.id, senderName: localPlayer.name, channelId: activeChannelId, content: `🔊 ${tts.text}`, timestamp: Date.now(), avatarConfig: localPlayer.avatar, status: 'sent' }
+        addMessage(newMsg)
+        PeerManager.getInstance().sendChatMessage(newMsg)
+      }
+      setInputMessage('')
+      setSelectedMentions([])
+      setMentionQuery(null)
+      return
+    }
 
     const sendChatMessageWithContent = (text: string) => {
       const newMsg: ChatMessage = {
@@ -502,6 +542,8 @@ const ChatDrawerInner: React.FC = () => {
     }
 
     if (lowerInput.startsWith('/spotify') || lowerInput.startsWith('/musica')) {
+      setSelectedMentions([])
+      setMentionQuery(null)
       const parts = trimmedInput.split(' ')
       const subCommand = parts[1]?.toLowerCase()
       const fullArg = parts.slice(1).join(' ').trim()
@@ -646,6 +688,7 @@ const ChatDrawerInner: React.FC = () => {
       attachment: pendingAttachment || undefined,
       recipientId: isDm ? activeChannel.recipientId : undefined,
       status: 'sent',
+      mentions: prepared.mentions.length ? prepared.mentions : undefined,
     }
 
     addMessage(newMsg)
@@ -653,7 +696,10 @@ const ChatDrawerInner: React.FC = () => {
     if (isDm) {
       FriendsPresenceService.getInstance().sendDirectMessage(newMsg)
     }
+    for (const pet of prepared.petRequests) requestPetFromChat(pet.id, pet.question, activeChannelId)
     setInputMessage('')
+    setSelectedMentions([])
+    setMentionQuery(null)
     setPendingAttachment(null)
     setUploadError(null)
   }
@@ -687,7 +733,7 @@ const ChatDrawerInner: React.FC = () => {
       } bg-[#12151d] border-r border-[#2a3142] flex flex-col shadow-2xl animate-in slide-in-from-left duration-200 ${
         isResizingDrawer ? '' : 'transition-[width] duration-150 ease-out'
       } ${
-        isGridCallOpen ? 'top-0 z-[60]' : 'top-14 z-50'
+        isGridCallOpen ? 'top-0 z-[70]' : 'top-14 z-[70]'
       }`}
     >
       {!isMobile && (isResizingDrawer || isResizingChannels) && (
@@ -953,7 +999,7 @@ const ChatDrawerInner: React.FC = () => {
                           </div>
                         </div>
                         <div className="text-xs text-slate-200 bg-[#1b202c] p-2.5 rounded-xl border border-[#2a3142]/60 break-words">
-                          {msg.content}
+                          {renderChatContent(msg.content)}
                         </div>
                       </div>
                     )
@@ -1046,7 +1092,7 @@ const ChatDrawerInner: React.FC = () => {
                     <div className="text-xs text-slate-200 bg-[#1b202c] p-2.5 rounded-xl border border-[#2a3142]/60 break-words space-y-2">
                       {msg.content && (
                         <div>
-                          <div className="whitespace-pre-wrap">{msg.content}</div>
+                          <div className="whitespace-pre-wrap">{renderChatContent(msg.content, msg.mentions)}</div>
                           {extractSpotifyLink(msg.content) && (
                             <SpotifyChatCard url={extractSpotifyLink(msg.content)!} />
                           )}
@@ -1150,6 +1196,7 @@ const ChatDrawerInner: React.FC = () => {
           </div>
 
           <form onSubmit={handleSendMessage} className="p-3 border-t border-[#2a3142] bg-[#161a24] shrink-0">
+            <MentionSuggestions candidates={mentionSuggestions} selectedIndex={mentionIndex} onSelect={chooseMention} />
             {uploadError && (
               <div className="mb-2 px-2.5 py-1.5 bg-rose-500/10 border border-rose-500/30 rounded-lg flex items-center justify-between text-xs text-rose-300 animate-in fade-in duration-150">
                 <div className="flex items-center gap-1.5">
@@ -1224,8 +1271,28 @@ const ChatDrawerInner: React.FC = () => {
 
               <input
                 type="text"
+                ref={messageInputRef}
                 value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
+                aria-autocomplete="list"
+                aria-controls={mentionSuggestions.length ? 'chat-mention-suggestions' : undefined}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setSelectedMentions(updateMentions(inputMessage, value, selectedMentions))
+                  setInputMessage(value)
+                  setMentionQuery(findMentionQuery(value, e.target.selectionStart ?? value.length))
+                  setMentionIndex(0)
+                }}
+                onClick={(e) => { setMentionQuery(findMentionQuery(inputMessage, e.currentTarget.selectionStart ?? inputMessage.length)); setMentionIndex(0) }}
+                onKeyDown={(e) => {
+                  if (!mentionSuggestions.length) return
+                  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    setMentionIndex(index => (index + (e.key === 'ArrowDown' ? 1 : -1) + mentionSuggestions.length) % mentionSuggestions.length)
+                  } else if (e.key === 'Enter' || e.key === 'Tab') {
+                    e.preventDefault()
+                    chooseMention(mentionSuggestions[Math.min(mentionIndex, mentionSuggestions.length - 1)])
+                  } else if (e.key === 'Escape') { e.preventDefault(); setMentionQuery(null) }
+                }}
                 onPaste={(e) => {
                   if (e.clipboardData.files && e.clipboardData.files.length > 0) {
                     e.preventDefault()
@@ -1319,8 +1386,11 @@ const ChatDrawerInner: React.FC = () => {
             friendState={state}
             onAddFriend={() => sendFriendRequest(target)}
             onRemoveFriend={() => friendKey && useGameStore.getState().removeFriend(friendKey)}
-            onCopyName={() => {
-              navigator.clipboard?.writeText(target.name).catch(() => {})
+            onCopyContent={() => {
+              const contentToCopy = userMenu.msg.content || userMenu.msg.attachment?.name || ''
+              if (contentToCopy) {
+                navigator.clipboard?.writeText(contentToCopy).catch(() => {})
+              }
             }}
             onClose={closeUserMenu}
           />

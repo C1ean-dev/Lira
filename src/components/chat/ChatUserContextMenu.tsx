@@ -9,7 +9,8 @@ interface Props {
   friendState: ChatUserFriendState
   onAddFriend: () => void
   onRemoveFriend: () => void
-  onCopyName: () => void
+  onCopyContent?: () => void
+  onCopyName?: () => void
   onClose: () => void
 }
 
@@ -26,6 +27,7 @@ export const ChatUserContextMenu: React.FC<Props> = ({
   friendState,
   onAddFriend,
   onRemoveFriend,
+  onCopyContent,
   onCopyName,
   onClose,
 }) => {
@@ -91,10 +93,17 @@ export const ChatUserContextMenu: React.FC<Props> = ({
         </button>
       )}
 
-      <button type="button" role="menuitem" onClick={run(onCopyName)} className={`${itemClass} hover:bg-slate-800/80 text-slate-200`}>
-        <Copy className="w-4 h-4 text-slate-400 shrink-0" />
-        <span>Copiar nome</span>
-      </button>
+      {onCopyContent ? (
+        <button type="button" role="menuitem" onClick={run(onCopyContent)} className={`${itemClass} hover:bg-slate-800/80 text-slate-200`}>
+          <Copy className="w-4 h-4 text-slate-400 shrink-0" />
+          <span>Copiar conteúdo</span>
+        </button>
+      ) : onCopyName ? (
+        <button type="button" role="menuitem" onClick={run(onCopyName)} className={`${itemClass} hover:bg-slate-800/80 text-slate-200`}>
+          <Copy className="w-4 h-4 text-slate-400 shrink-0" />
+          <span>Copiar nome</span>
+        </button>
+      ) : null}
     </div>
   )
 }
