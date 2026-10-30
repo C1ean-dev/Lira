@@ -74,6 +74,8 @@ vi.mock('peerjs', () => ({ default: FakePeer }))
 import { PeerManager } from '../../p2p/PeerManager'
 import { diagStats, __resetDiagForTests } from '../../utils/diagnosticLogger'
 import { useGameStore } from '../../store/useGameStore'
+import { useSpotifyJamStore } from '../../store/useSpotifyJamStore'
+import { searchDjSongs } from '../../services/spotifyDjSearch'
 
 const player = () => ({
   ...useGameStore.getState().localPlayer,
@@ -176,15 +178,122 @@ describe('room entry (joinRoom)', () => {
     expect(diagStats().buffered).toBeGreaterThanOrEqual(3)
   })
 
-  it('auto-hosts when the host is unreachable and logs every step', async () => {
+  it.each(['open', 'data'])('accepts DJ messages relayed by the joined host when %s arrives first', async first => {
+    const initialGame = useGameStore.getState()
+    const initialSpotify = useSpotifyJamStore.getState()
+    const browserSearch = vi.fn(async () => ({ ok: true, tracks: [] }))
+    const browserQueue = vi.fn(async () => ({ ok: true }))
+    vi.stubGlobal('window', { electronAPI: { getSpotifySearchSuggestions: browserSearch, queueSpotifyTrack: browserQueue } })
+    try {
+      const pm = PeerManager.getInstance()
+      const joined = pm.joinRoom('code-aaa', player() as any)
+      FakePeer.instances[0].emit('open', 'listener-client')
+      const host = FakeConn.instances[0]
+      useGameStore.getState().setLocalPlayer({ currentZoneId: 'dj-room' })
+      useGameStore.setState({ remotePlayers: { owner: { ...player(), id: 'owner', currentZoneId: 'dj-room' } } })
+      useSpotifyJamStore.setState({ isDjModeActive: false, djStateByZone: {} })
+      const dj = { zoneId: 'dj-room', djPeerId: 'owner', djName: 'Aravon', startedAt: 123,
+        isDjActive: true, requests: [], requestsRevision: 0 }
+      const status = { type: 'SPOTIFY_DJ_STATUS', senderId: 'owner', timestamp: Date.now(), payload: { zoneId: dj.zoneId, djState: dj } }
+      // The host is a third participant. Do not seed connectionHostId by hand.
+      if (first === 'open') host.emit('open')
+      else host.open = true
+      host.emit('data', status)
+      expect(useSpotifyJamStore.getState().djStateByZone[dj.zoneId]).toEqual(dj)
+      expect(useGameStore.getState().connectionHostId).toBe(host.peer)
+      if (first === 'data') host.emit('open')
+      await joined
+
+      const finished = vi.fn()
+      const search = searchDjSongs(dj.zoneId, 'verso').then(result => { finished(result); return result })
+      const sent: any = host.sent.find((msg: any) => msg.type === 'SPOTIFY_DJ_SEARCH')
+      expect(sent).toBeDefined()
+      const reply = { senderId: 'owner', timestamp: Date.now(), payload: { ...sent.payload, recipientId: 'listener-client' } }
+      host.emit('data', { ...reply, type: 'SPOTIFY_DJ_SEARCH_ACK' })
+      await vi.advanceTimersByTimeAsync(15000)
+      expect(finished).not.toHaveBeenCalled()
+      host.emit('data', { ...reply, type: 'SPOTIFY_DJ_SEARCH_RESULT', payload: { ...reply.payload, result: { ok: true, tracks: [] } } })
+      expect(await search).toEqual({ ok: true, tracks: [] })
+
+      // The same joined client can also be the DJ receiving another listener's request.
+      const localDj = { ...dj, djPeerId: 'listener-client', startedAt: 456 }
+      useSpotifyJamStore.setState({ isDjModeActive: true, djStateByZone: { [dj.zoneId]: localDj } })
+      host.sent.length = 0
+      host.emit('data', { type: 'SPOTIFY_DJ_SEARCH', senderId: 'owner', timestamp: Date.now(), payload: {
+        zoneId: dj.zoneId, ownerId: localDj.djPeerId, startedAt: localDj.startedAt, requestId: `relay-${first}`, query: 'verso',
+      } })
+      expect(browserSearch).toHaveBeenCalledExactlyOnceWith('verso', 'owner')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(host.sent).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'SPOTIFY_DJ_SEARCH_ACK', payload: expect.objectContaining({ recipientId: 'owner' }) }),
+        expect.objectContaining({ type: 'SPOTIFY_DJ_SEARCH_RESULT', payload: expect.objectContaining({ recipientId: 'owner', result: { ok: true, tracks: [] } }) }),
+      ]))
+
+      const track = { id: '4uLU6hMCjMI75M1A2tKUQC', title: 'Never Gonna Give You Up', artist: 'Rick Astley', url: 'https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC' }
+      host.emit('data', { type: 'SPOTIFY_DJ_REQUEST', senderId: 'owner', timestamp: Date.now(), payload: {
+        zoneId: dj.zoneId, ownerId: localDj.djPeerId, startedAt: localDj.startedAt, requestId: `queue-${first}`, query: track.title, track,
+      } })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(browserQueue).toHaveBeenCalledExactlyOnceWith(track, `${localDj.startedAt}:queue-${first}`)
+      expect(useSpotifyJamStore.getState().djStateByZone[dj.zoneId].requests).toEqual([
+        expect.objectContaining({ track, status: 'queued', requestedById: 'owner' }),
+      ])
+      expect(host.sent).toContainEqual(expect.objectContaining({ type: 'SPOTIFY_DJ_REQUEST_RESULT',
+        payload: expect.objectContaining({ requestId: `queue-${first}`, result: { ok: true } }),
+      }))
+    } finally {
+      useGameStore.setState(initialGame)
+      useSpotifyJamStore.setState(initialSpotify)
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('finds the existing host on a fallback server without creating a second room', async () => {
     const pm = PeerManager.getInstance()
+    const create = vi.spyOn(pm, 'createRoom')
     const pending = pm.joinRoom('code-aaa', player() as any)
     FakePeer.instances[0].emit('open', 'client-id-1')
     FakePeer.instances[0].emit('error', { type: 'peer-unavailable', message: 'Could not connect to peer' })
     expect(FakePeer.instances).toHaveLength(2)
-    FakePeer.instances[1].emit('open', 'lira-CODE-AAA-host')
+    expect(create).not.toHaveBeenCalled()
+    FakePeer.instances[1].emit('open', 'client-id-2')
+    FakeConn.instances[1].emit('open')
     await expect(pending).resolves.toBeUndefined()
+    expect(useGameStore.getState().localPlayer.isHost).toBe(false)
+    expect(useGameStore.getState().signalingTier).toBe('public')
     expect(diagStats().buffered).toBeGreaterThanOrEqual(4)
+  })
+
+  it('rejects a missing host on every server instead of silently creating an isolated space', async () => {
+    const pm = PeerManager.getInstance()
+    const create = vi.spyOn(pm, 'createRoom')
+    const result = pm.joinRoom('code-aaa', player() as any).catch(error => error)
+    for (let index = 0; index < 3; index++) {
+      const peer = FakePeer.instances[index]
+      expect(peer).toBeDefined()
+      peer.emit('open', `client-${index}`)
+      peer.emit('error', { type: 'peer-unavailable', message: 'Could not connect to peer' })
+    }
+    expect(await result).toBeInstanceOf(Error)
+    expect(create).not.toHaveBeenCalled()
+    expect(useGameStore.getState().isConnected).toBe(false)
+    expect(useGameStore.getState().localPlayer.isHost).toBe(false)
+  })
+
+  it('finds a local host after both remote servers report it missing', async () => {
+    const pm = PeerManager.getInstance()
+    const create = vi.spyOn(pm, 'createRoom')
+    const pending = pm.joinRoom('code-aaa', player() as any)
+    for (let index = 0; index < 2; index++) {
+      FakePeer.instances[index].emit('open', `remote-client-${index}`)
+      FakePeer.instances[index].emit('error', { type: 'peer-unavailable' })
+    }
+    FakePeer.instances[2].emit('open', 'local-client')
+    FakeConn.instances[2].emit('open')
+    await expect(pending).resolves.toBeUndefined()
+    expect(create).not.toHaveBeenCalled()
+    expect(useGameStore.getState().signalingTier).toBe('local')
+    expect(useGameStore.getState().localPlayer.isHost).toBe(false)
   })
 
   it('lets the host transport negotiate beyond the old six and ten second deadlines', async () => {
@@ -322,10 +431,12 @@ describe('room entry (joinRoom)', () => {
     oldConnection.emit('open')
 
     expect(useGameStore.getState().connectionStatus).not.toBe('connected')
+    expect(useGameStore.getState().connectionHostId).not.toBe(oldConnection.peer)
     expect((pm as any).connections.size).toBe(0)
     newPeer.emit('open', newPeer.id)
     await expect(newerRoom).resolves.toBe('CODE-BBB')
     expect(useGameStore.getState().roomId).toBe('CODE-BBB')
+    expect(useGameStore.getState().connectionHostId).toBe(newPeer.id)
     expect(newPeer.destroyed).toBe(false)
   })
 
@@ -385,5 +496,15 @@ describe('saved room re-entry after host registration has not been released', ()
     FakePeer.instances[0].emit('error', { type: 'unavailable-id', message: 'ID is taken' })
     expect(FakePeer.instances).toHaveLength(1)
     expect(await result).toBe('unavailable-id')
+  })
+
+  it.each(['network', 'timeout'])('does not move a host reclaim to another server after %s', async failure => {
+    const pm = PeerManager.getInstance()
+    const result = pm.createRoom('code-aaa', player() as any, undefined, 0, 1).catch(error => error)
+    if (failure === 'network') FakePeer.instances[0].emit('error', { type: 'network' })
+    else await vi.advanceTimersByTimeAsync(4000)
+    expect(await result).toBeInstanceOf(Error)
+    expect(FakePeer.instances).toHaveLength(1)
+    expect(useGameStore.getState().isConnected).toBe(false)
   })
 })

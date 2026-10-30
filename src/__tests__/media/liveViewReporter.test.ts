@@ -6,6 +6,7 @@ import {
   VIEW_SHRINK_DELAY_MS,
 } from '../../media/liveViewReporter'
 import { viewHeightFor } from '../../hooks/useLiveViewBox'
+import { MAX_VIEW_HEIGHT } from '../../p2p/liveLayers'
 import { flushDiagLogs, __resetDiagForTests } from '../../utils/diagnosticLogger'
 
 const setup = (stats?: (sharerId: string) => any) => {
@@ -527,6 +528,14 @@ describe('what a viewer tells who is live', () => {
 
 describe('how tall the picture of a live is on screen', () => {
   const WIDE = { videoWidth: 1920, videoHeight: 1080 }
+
+  it('requests the full source in fullscreen even on a smaller monitor, while presentation and mini views remain adaptive', () => {
+    const monitor = { width: 1280, height: 720 }
+    expect(viewHeightFor(monitor, WIDE, 'contain', 'full')).toBe(MAX_VIEW_HEIGHT)
+    expect(viewHeightFor({ width: 854, height: 480 }, WIDE, 'contain')).toBe(480)
+    expect(viewHeightFor({ width: 160, height: 90 }, WIDE, 'contain')).toBe(90)
+    expect(viewHeightFor({ width: 0, height: 0 }, WIDE, 'contain', 'full')).toBe(0)
+  })
 
   it('is the height of the picture inside its box, in device pixels, rounded up to a step', () => {
     expect(viewHeightFor({ width: 320, height: 160 }, WIDE, 'contain')).toBe(180)

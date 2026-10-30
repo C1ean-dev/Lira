@@ -208,6 +208,58 @@ describe('Spotify tab audio pipeline', () => {
     p.capture.stop()
   })
 
+  it('compensates for clock drift and prevents buffer underrun when capture clock is slower than playback clock', async () => {
+    const p = await pipeline()
+    await p.capture.start('spotify-tab')
+    // Fill initial buffer (6 * 2048 = 12288 frames, target is 11520)
+    let chunkOffset = 0
+    for (let i = 0; i < 6; i++) {
+      p.send(music(chunkOffset * 2048))
+      chunkOffset++
+    }
+
+    // Simulate 160 seconds of continuous playback where input delivers 47920 frames/sec
+    // (a deficit of 80 frames/sec compared to 48000 frames/sec output).
+    // Without drift compensation: 160s * 80 frames/sec = 12800 frames deficit > 11520 buffer, causing underrun!
+    let underrunsDetected = 0
+    let zeroOutputBlocks = 0
+
+    for (let sec = 0; sec < 160; sec++) {
+      // In each second, 375 blocks of 128 frames (48000 frames) are rendered.
+      // Chunks arrive periodically (every ~16 blocks = 2048 frames).
+      // Total frames sent in this second will be 47920 frames (23 chunks of 2048 + 1 chunk of 816 frames = 47920 frames).
+      let chunksSent = 0
+      for (let block = 0; block < 375; block++) {
+        // Send a chunk roughly every 15-16 blocks
+        if (chunksSent < 23 && block % 16 === 0) {
+          p.send(music(chunkOffset * 2048))
+          chunkOffset++
+          chunksSent++
+        } else if (chunksSent === 23 && block === 368) {
+          // Send remaining 816 frames to total exactly 47920 frames in this second
+          p.send(music(chunkOffset * 2048, 816))
+          chunkOffset++
+          chunksSent++
+        }
+
+        const [left] = p.render(128)
+        if (left.every(sample => sample === 0)) {
+          zeroOutputBlocks++
+        }
+      }
+
+      if (p.worklet.processor.underrunCallbacks > 0) {
+        underrunsDetected = p.worklet.processor.underrunCallbacks
+        break
+      }
+    }
+
+    expect(underrunsDetected).toBe(0)
+    expect(zeroOutputBlocks).toBe(0)
+    expect(p.worklet.processor.queued).toBeGreaterThan(128)
+    p.capture.stop()
+  })
+
   it('leaves native screen audio on its existing low latency path', async () => {
     const p = await pipeline()
     await p.capture.start('window:42:0')

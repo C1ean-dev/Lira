@@ -5,6 +5,13 @@ import { describe, expect, it } from 'vitest'
 describe('release publication', () => {
   const workflow = load(readFileSync('.github/workflows/release.yml', 'utf8')) as any
 
+  it('preserves Windows packaging and Android publication without running tests', () => {
+    const steps = workflow.jobs['build-and-release'].steps
+    expect(steps.some((step: any) => step.run === 'npm run build')).toBe(true)
+    expect(steps.some((step: any) => /npm (?:test|run test:)/.test(step.run ?? ''))).toBe(false)
+    expect(workflow.jobs.android.uses).toBe('./.github/workflows/android.yml')
+  })
+
   it('serializes version allocation through Windows and Android publication', () => {
     // Manual runs on other refs also share the same release tag namespace.
     expect(workflow.concurrency?.group).toBe('lira-release-publication')

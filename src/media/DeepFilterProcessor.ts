@@ -8,6 +8,7 @@ export class DeepFilterProcessor {
   constructor() {
     this.engine = new RnnoiseProcessor({
       name: 'DeepFilterNet',
+      autoGate: false,
       buildModule: buildDeepFilterModule,
       setStatus: (status, error) => useMediaStore.getState().setDeepFilterStatus(status, error),
       setStage: stage => useMediaStore.getState().setDeepFilterStage(stage),
@@ -22,6 +23,7 @@ export class DeepFilterProcessor {
   updateAudioOutput(value: string) { this.engine.updateAudioOutput(value) }
   resumeContext() { return this.engine.resumeContext() }
   isReady() { return this.engine.isReady() }
+  getExecutionMode() { return this.engine.getExecutionMode() }
   getLastError() { return this.engine.getLastError() }
   getHoldTimeMs() { return this.engine.getHoldTimeMs() }
   getCurrentThreshold() { return this.engine.getCurrentThreshold() }

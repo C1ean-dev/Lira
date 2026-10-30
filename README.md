@@ -362,6 +362,26 @@ Os arquivos, os campos de um relatório e como registrar a partir do código est
 
 ---
 
+## Créditos dos dados de áudio
+
+O Lira utiliza o [Microsoft Scalable Noisy Speech Dataset (MS-SNSD)](https://github.com/microsoft/MS-SNSD) nos testes e avaliações dos supressores de ruído, comparando a redução do ruído de fundo com a preservação da voz. A metodologia, os resultados e as instruções de reprodução estão em [docs/noise-suppression.md](docs/noise-suppression.md).
+
+Crédito ao trabalho de Chandan K. A. Reddy e colaboradores:
+
+```bibtex
+@article{reddy2019scalable,
+  title={A Scalable Noisy Speech Dataset and Online Subjective Test Framework},
+  author={Reddy, Chandan KA and Beyrami, Ebrahim and Pool, Jamie and Cutler, Ross and Srinivasan, Sriram and Gehrke, Johannes},
+  journal={Proc. Interspeech 2019},
+  pages={1816--1820},
+  year={2019}
+}
+```
+
+As amostras seguem as [licenças dos datasets de origem descritas pelo MS-SNSD](https://github.com/microsoft/MS-SNSD#dataset-licenses).
+
+---
+
 ## Licença
 
 Este projeto é distribuído sob os termos da licença **MIT**. Consulte o arquivo [LICENSE](LICENSE) para mais informações.

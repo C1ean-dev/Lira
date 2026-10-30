@@ -1,3 +1,4 @@
+import { applyConsumptionChange } from '../services/tabletopConsumption'
 import { AtlasChunkReceiver } from '../assets/atlasChunks'
 import { readAtlas, atlasDigest, decodeTransferredAtlas } from '../assets/atlasService'
 import type { AtlasDocument, PersistedAtlas } from '../assets/atlasFormat'
@@ -14,9 +15,14 @@ import { resolveUniquePlayerName } from '../utils/playerName'
 import { sanitizeRoomChannels } from '../utils/roomChannels'
 import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
 import { receiveDjPlaybackMessage } from '../services/spotifyDjPlayback'
+import { receiveDjRequestMessage } from '../services/spotifyDjRequests'
+import { receiveDjSearchMessage } from '../services/spotifyDjSearch'
+import { validDjRequestSnapshot } from '../types/spotifyDjRequests'
 import { isStoppedDjSession, receiveDjStopMessage } from '../services/stopDjForEveryone'
 import { DEFAULT_AVATAR } from '../engine/Constants'
 import { receiveBedInteraction } from '../services/bedInteraction'
+import { receivePetNetworkMessage } from '../services/petNetwork'
+import { receiveCallTts } from '../services/callTts'
 
 const receivedAtlases = new Map<string, AtlasDocument>()
 const atlasChunks = new AtlasChunkReceiver()
@@ -45,6 +51,10 @@ function isLocalPlayerMessage(senderId: string, player?: Partial<Player>, myPeer
   return identity === (local.gameId || local.id)
 }
 
+function isDjMessageSource(msg: NetworkMessage, peerId: string, isHost: boolean): boolean {
+  return msg.senderId === peerId || (!isHost && peerId === useGameStore.getState().connectionHostId)
+}
+
 export function processNetworkMessage(
   msg: NetworkMessage,
   peerId: string,
@@ -56,6 +66,17 @@ export function processNetworkMessage(
   onDjCallRequest?: (listenerId: string) => void
 ) {
   switch (msg.type) {
+    case 'CALL_TTS': {
+      if (!isDjMessageSource(msg, peerId, isHost)) return
+      receiveCallTts(msg.senderId, msg.payload)
+      break
+    }
+    case 'PET_QUESTION':
+    case 'PET_REPLY': {
+      if (!isDjMessageSource(msg, peerId, isHost)) return
+      receivePetNetworkMessage(msg)
+      break
+    }
     case 'BED_INTERACTION': {
       const remote = useGameStore.getState().remotePlayers[peerId]
       const isAllowedSender = !isHost || msg.senderId === peerId ||
@@ -349,7 +370,9 @@ export function processNetworkMessage(
 
     case 'MAP_EDIT': {
       const { action, data } = msg.payload
-      if (action === 'set_floor') {
+      if (action === 'consume_furniture') {
+        if (!data || !applyConsumptionChange(data.mapId, data.id, data.expected)) return
+      } else if (action === 'set_floor') {
         useMapStore.getState().setFloorTile(data.x, data.y, data.floor)
       } else if (action === 'paint_floor_in_zone') {
         useMapStore.getState().paintFloorInZone(data.zoneId, data.floor)
@@ -358,7 +381,8 @@ export function processNetworkMessage(
       } else if (action === 'add_furniture') {
         useMapStore.getState().addFurniture(data.furniture)
       } else if (action === 'remove_furniture') {
-        useMapStore.getState().removeFurnitureAt(data.x, data.y)
+        if (typeof data.id === 'string') useMapStore.getState().removeFurnitureById(data.id)
+        else useMapStore.getState().removeFurnitureAt(data.x, data.y)
       } else if (action === 'add_zone') {
         useMapStore.getState().addOrUpdateZone(data.zone)
       } else if (action === 'remove_zone') {
@@ -644,6 +668,10 @@ export function processNetworkMessage(
 
     case 'SPOTIFY_DJ_STATUS': {
       const { zoneId, djState } = msg.payload || {}
+      if (djState && (djState.requests !== undefined || djState.requestsRevision !== undefined)) {
+        if (msg.senderId !== djState.djPeerId || !validDjRequestSnapshot(djState) || djState.zoneId !== zoneId
+          || !isDjMessageSource(msg, peerId, isHost)) return
+      }
       if (zoneId && djState?.isDjActive && isStoppedDjSession(zoneId, djState)) return
       if (zoneId) {
         useSpotifyJamStore.getState().syncDjStateFromPeer(zoneId, djState)
@@ -654,6 +682,19 @@ export function processNetworkMessage(
     case 'SPOTIFY_DJ_COMMAND':
     case 'SPOTIFY_DJ_COMMAND_RESULT': {
       receiveDjPlaybackMessage(msg)
+      break
+    }
+
+    case 'SPOTIFY_DJ_REQUEST':
+    case 'SPOTIFY_DJ_REQUEST_RESULT': {
+      if (!isDjMessageSource(msg, peerId, isHost) || !receiveDjRequestMessage(msg)) return
+      break
+    }
+
+    case 'SPOTIFY_DJ_SEARCH':
+    case 'SPOTIFY_DJ_SEARCH_ACK':
+    case 'SPOTIFY_DJ_SEARCH_RESULT': {
+      if (!isDjMessageSource(msg, peerId, isHost) || !receiveDjSearchMessage(msg)) return
       break
     }
 

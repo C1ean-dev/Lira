@@ -23,6 +23,8 @@ class SpotifyPcmProcessor extends AudioWorkletProcessor {
     this.latencyResyncs = 0
     this.droppedSamples = 0
     this.statsFrames = 0
+    this.lowBufferFrames = 0
+    this.driftStep = 0
     this.port.onmessage = ({ data }) => {
       if (data?.type === 'stop') {
         this.stopped = true
@@ -71,18 +73,51 @@ class SpotifyPcmProcessor extends AudioWorkletProcessor {
     this.processCallbacks++
     if (!this.playing && this.queued >= this.target) {
       this.playing = true
+      this.lowBufferFrames = 0
+      this.driftStep = 0
       if (this.interrupted) this.beginTransition()
     }
     if (this.playing && this.queued < left.length) {
       this.underrunCallbacks++
       this.playing = false
       this.interrupted = true
+      this.lowBufferFrames = 0
+      this.driftStep = 0
       this.beginTransition()
     }
     if (this.playing) {
+      if (this.queued < this.target * 0.75) {
+        this.lowBufferFrames += left.length
+      } else {
+        this.lowBufferFrames = 0
+      }
+
+      // Compensate for clock drift only when buffer is persistently depleted for over 1 second
+      const shouldCompensate = this.lowBufferFrames >= sampleRate
+      let framesConsumed = 0
+
       for (let frame = 0; frame < left.length; frame++) {
-        left[frame] = this.samples[this.read * 2] / 32768
-        right[frame] = this.samples[this.read * 2 + 1] / 32768
+        let insertSample = false
+        if (shouldCompensate) {
+          this.driftStep++
+          if (this.driftStep >= 512) {
+            insertSample = true
+            this.driftStep = 0
+          }
+        }
+
+        if (insertSample) {
+          const nextL = this.samples[this.read * 2] / 32768
+          const nextR = this.samples[this.read * 2 + 1] / 32768
+          left[frame] = (this.lastLeft + nextL) * 0.5
+          right[frame] = (this.lastRight + nextR) * 0.5
+        } else {
+          left[frame] = this.samples[this.read * 2] / 32768
+          right[frame] = this.samples[this.read * 2 + 1] / 32768
+          this.read = (this.read + 1) % this.capacity
+          framesConsumed++
+        }
+
         if (this.fadeRemaining > 0) {
           const mix = (this.fadeFrames - this.fadeRemaining) / (this.fadeFrames - 1)
           left[frame] = this.fadeLeft * (1 - mix) + left[frame] * mix
@@ -92,9 +127,8 @@ class SpotifyPcmProcessor extends AudioWorkletProcessor {
         this.lastLeft = left[frame]
         this.lastRight = right[frame]
         if (left[frame] !== 0 || right[frame] !== 0) this.outputNonZeroSamples++
-        this.read = (this.read + 1) % this.capacity
       }
-      this.queued -= left.length
+      this.queued -= framesConsumed
     } else if (this.fadeRemaining > 0) {
       for (let frame = 0; frame < left.length && this.fadeRemaining > 0; frame++) {
         const mix = (this.fadeRemaining - 1) / (this.fadeFrames - 1)

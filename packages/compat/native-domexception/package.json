@@ -1,0 +1,7 @@
+{
+  "name": "@lira/native-domexception",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.cjs",
+  "engines": { "node": ">=22.12.0" }
+}

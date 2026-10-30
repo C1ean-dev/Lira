@@ -74,6 +74,7 @@ import { PlayerAvatar } from './common/PlayerAvatar'
 import { RemoteAudio } from './common/RemoteAudio'
 import { CallPanelBody } from './common/CallPanelBody'
 import { SpotifyIcon } from './common/SpotifyIcon'
+import { PetApiSettings } from './pets/PetApiSettings'
 import { LiveWatchPrompt } from './LiveWatchPrompt'
 import { useLiveGate } from '../hooks/useLiveGate'
 import { useLiveViewBox } from '../hooks/useLiveViewBox'
@@ -601,6 +602,8 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
   const setAudioProcessorMode = useMediaStore((s) => s.setAudioProcessorMode)
 
   const localPlayer = useLocalPlayerDetails()
+  const roomId = useGameStore((s) => s.roomId)
+  const isRoomOwner = useGameStore((s) => s.isOwner)
   const peersInSameZone = useZonePeerDetails()
   const callStates = useGameStore((s) => s.callStates)
   const friendProfiles = useGameStore((s) => s.friendProfiles)
@@ -888,6 +891,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                 )}
               </button>
 
+              {roomId && isRoomOwner && <PetApiSettings roomId={roomId} />}
               <button
                 onClick={() => setGridCallOpen(true)}
                 className="p-1 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"

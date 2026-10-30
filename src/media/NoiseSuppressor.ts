@@ -1,6 +1,7 @@
 import { SensitivityMode } from '../types/audio'
 import { AutoGate } from './autoGate'
 import { useMediaStore } from '../store/useMediaStore'
+import { createVoiceDynamics } from './voiceDynamics'
 
 export class NoiseSuppressor {
   private audioCtx: AudioContext | null = null
@@ -9,6 +10,7 @@ export class NoiseSuppressor {
   private highpassFilter: BiquadFilterNode | null = null
   private notchFilter: BiquadFilterNode | null = null
   private compressor: DynamicsCompressorNode | null = null
+  private outputGain: GainNode | null = null
   private gateGain: GainNode | null = null
   private analyser: AnalyserNode | null = null
   private destination: MediaStreamAudioDestinationNode | null = null
@@ -87,12 +89,9 @@ export class NoiseSuppressor {
       this.gateGain.gain.setValueAtTime(initialGain, this.audioCtx.currentTime)
       this.isGateOpen = initialGain > 0
 
-      this.compressor = this.audioCtx.createDynamicsCompressor()
-      this.compressor.threshold.setValueAtTime(-24, this.audioCtx.currentTime)
-      this.compressor.knee.setValueAtTime(12, this.audioCtx.currentTime)
-      this.compressor.ratio.setValueAtTime(4, this.audioCtx.currentTime)
-      this.compressor.attack.setValueAtTime(0.005, this.audioCtx.currentTime)
-      this.compressor.release.setValueAtTime(0.18, this.audioCtx.currentTime)
+      const dynamics = createVoiceDynamics(this.audioCtx, 'classic')
+      this.compressor = dynamics.compressor
+      this.outputGain = dynamics.output
 
       this.analyser = this.audioCtx.createAnalyser()
       this.analyser.fftSize = 512
@@ -106,11 +105,11 @@ export class NoiseSuppressor {
       this.highpassFilter.connect(this.notchFilter)
       this.notchFilter.connect(this.gateGain)
       this.gateGain.connect(this.compressor)
-      this.compressor.connect(this.destination)
+      this.outputGain.connect(this.destination)
 
       this.inputGainNode.connect(this.analyser)
 
-      this.compressor.connect(this.testGainNode)
+      this.outputGain.connect(this.testGainNode)
       this.testGainNode.connect(this.audioCtx.destination)
 
       this.updateCalculatedThreshold()
@@ -300,6 +299,7 @@ export class NoiseSuppressor {
     this.highpassFilter = null
     this.notchFilter = null
     this.compressor = null
+    this.outputGain = null
     this.gateGain = null
     this.analyser = null
     this.destination = null

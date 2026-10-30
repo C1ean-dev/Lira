@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TextureAtlas imagePath="72006f605d06a39631d7966dd948525f272a953db04765b0d7309413eeb33663.png">
+  <SubTexture name="lira_food_cheese_bread_v1_down_0" x="44" y="511" width="389" height="291"/>
+</TextureAtlas>

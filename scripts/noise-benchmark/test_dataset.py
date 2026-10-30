@@ -15,9 +15,11 @@ class MixtureTest(unittest.TestCase):
         background[3000:8000] = 0.1
         original = background.copy()
         for snr in [-5, 0, 5, 10]:
-            mixed = mix_at_snr(clean, background, snr, 3000, 8000)
-            actual = 10 * np.log10(np.mean(clean[3000:8000] ** 2) / np.mean((mixed - clean)[3000:8000] ** 2))
-            self.assertAlmostEqual(float(actual), snr, places=6)
+            with self.subTest(snr=snr):
+                mixed = mix_at_snr(clean, background, snr, 3000, 8000)
+                actual = 10 * np.log10(np.mean(clean[3000:8000] ** 2) /
+                                      np.mean((mixed - clean)[3000:8000] ** 2))
+                self.assertAlmostEqual(float(actual), snr, places=6)
         np.testing.assert_array_equal(background, original)
 
 

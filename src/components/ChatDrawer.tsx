@@ -957,7 +957,8 @@ const ChatDrawerInner: React.FC = () => {
             </span>
           </div>
 
-          <div ref={pagination.messagesRef} onScroll={pagination.onScroll} onWheel={pagination.onWheel} onTouchStart={pagination.onTouchStart} onTouchMove={pagination.onTouchMove} className="flex-1 p-3 overflow-y-auto space-y-3">
+          <div ref={pagination.messagesRef} onScroll={pagination.onScroll} onWheel={pagination.onWheel} onTouchStart={pagination.onTouchStart} onTouchMove={pagination.onTouchMove} className="flex-1 min-h-0 p-3 overflow-y-auto">
+            <div ref={pagination.contentRef} className="space-y-3">
             {filteredMessages.length === 0 ? (
               <div className="text-center text-xs text-slate-400 py-8 space-y-1">
                 <div className="font-semibold text-slate-300">
@@ -1193,6 +1194,7 @@ const ChatDrawerInner: React.FC = () => {
                 )
               })
             })()}
+            </div>
           </div>
 
           <form onSubmit={handleSendMessage} className="p-3 border-t border-[#2a3142] bg-[#161a24] shrink-0">

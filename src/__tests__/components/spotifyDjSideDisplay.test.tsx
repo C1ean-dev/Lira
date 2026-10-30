@@ -9,7 +9,9 @@ const state = vi.hoisted(() => ({
   spotify: {
     jamsByZone: { room: { isActive: true, jamUrl: 'https://spotify.link/example', zoneName: 'Jam antiga' } },
     sharedTracksByZone: { room: [{ id: 'track', title: 'Faixa recomendada', url: 'https://open.spotify.com/track/example' }] },
-    djStateByZone: { room: { isDjActive: true, djName: 'Pessoa', playback: { playing: true, buttons: [], track: { title: 'Música compartilhada', artist: 'Artista' }, seek: { value: 25, position: 60, duration: 240 } } } },
+    djStateByZone: { room: { zoneId: 'room', djPeerId: 'local', startedAt: 1, isDjActive: true, djName: 'Pessoa',
+      requests: [{ id: 'request', query: 'Música solicitada', requestedById: 'listener', requestedByName: 'Ana', requestedAt: 1 }],
+      requestsRevision: 1, playback: { playing: true, buttons: [], track: { title: 'Música compartilhada', artist: 'Artista' }, seek: { value: 25, position: 60, duration: 240 } } } },
     isDjModeActive: true,
     isSideDisplayMinimized: false,
     volume: 80,
@@ -24,6 +26,8 @@ vi.mock('../../store/useSpotifyJamStore', () => ({ useSpotifyJamStore: (select: 
 vi.mock('../../store/useGameStore', () => ({ useGameStore: (select: any) => select({ localPlayer: state.player }) }))
 vi.mock('../../store/useMapStore', () => ({ useMapStore: (select: any) => select({ mapData: { zones: [{ id: 'room', name: 'Sala privada' }] } }) }))
 vi.mock('../../services/spotifyDjPlayback', () => ({ commandDjPlayback: vi.fn() }))
+vi.mock('../../services/spotifyDjRequests', () => ({ requestDjSong: vi.fn(), openDjSongRequest: vi.fn(), removeDjSongRequest: vi.fn() }))
+vi.mock('../../services/spotifyDjSearch', () => ({ searchDjSongs: vi.fn() }))
 vi.mock('../../media/MediaManager', () => ({ MediaManager: { getInstance: vi.fn() } }))
 vi.mock('../../hooks/useSpotifyLogin', () => ({ useSpotifyLogin: () => state.login }))
 vi.mock('../../services/stopDjForEveryone', () => ({ stopDjForEveryone: vi.fn() }))
@@ -98,8 +102,19 @@ describe('Spotify DJ side display', () => {
     expect(html).toContain('Sala privada')
     expect(html).toContain('type="range"')
     expect(html).not.toMatch(/Ouvir Jam|Recomendar Faixa|Faixa recomendada|Fila Compartilhada|Fila da Sala|Copiar Link|Trocar link|Abrir Player Integrado|Jam antiga/)
-    expect(html).not.toContain('<form')
     expect(html).not.toContain('<iframe')
+  })
+
+  it.each([false, true])('shows the request form and shared queue directly in the expanded panel when owner=%s', owner => {
+    state.spotify.isDjModeActive = owner
+    const html = renderToStaticMarkup(<SpotifyJamSideDisplay />)
+    expect(html.includes('aria-label="Pedidos de música"')).toBe(true)
+    expect(html).toContain('Buscar')
+    expect(html).toContain('maxLength="120"')
+    expect(html).toContain('Música solicitada')
+    expect(html).toContain('Pedido por')
+    expect(html).toContain('Ana')
+    expect(html.includes('aria-label="Buscar no Spotify:')).toBe(owner)
   })
 
   it('makes the DJ button full width with the same large Spotify icon as the modal', () => {
@@ -117,7 +132,7 @@ describe('Spotify DJ side display', () => {
     const html = renderToStaticMarkup(<SpotifyJamSideDisplay />)
     expect(html).not.toContain('Transmitir DJ')
     expect(html).not.toContain('Entrar pelo navegador')
-    expect(html).not.toContain('Parar DJ')
+    expect(html).toContain('Parar DJ')
     expect(html).toContain('aria-label="Reprodução do Spotify"')
     expect(html).toContain('aria-label="Volume do DJ"')
     expect(html).toContain('Música compartilhada')
@@ -146,6 +161,7 @@ describe('Spotify DJ side display', () => {
     expect(html).toContain('Expandir painel')
     expect(html).not.toContain('Recomendar')
     expect(html).not.toContain('type="range"')
+    expect(html).not.toContain('aria-label="Pedidos de música"')
   })
 
   it('does not render outside a room', () => {

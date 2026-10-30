@@ -5,7 +5,7 @@ import { PeerManager } from '../../p2p/PeerManager'
 import { MediaCallHandler } from '../../p2p/mediaCalls'
 import { useSpotifyJamStore } from '../../store/useSpotifyJamStore'
 
-vi.mock('peerjs', () => ({ default: class { on = vi.fn(); destroyed = false } }))
+vi.mock('peerjs', () => ({ default: class { on = vi.fn(); destroyed = false; id = ''; constructor(id?: string) { this.id = id || '' } } }))
 vi.mock('../../p2p/messageHandlers', () => ({ processNetworkMessage: vi.fn() }))
 vi.mock('../../media/MediaManager', () => ({ MediaManager: {} }))
 vi.mock('../../store/useCustomAssetsStore', () => ({ useCustomAssetsStore: {} }))
@@ -64,5 +64,85 @@ describe('DJ host audio', () => {
     expect(dj.answer.mock.calls[0][1].sdpTransform('m=audio 9 UDP/TLS/RTP/SAVPF 111\na=rtpmap:111 opus/48000/2\n')).toContain('stereo=1')
     const voice = incoming('other-person')
     expect(voice.answer.mock.calls[0]).toHaveLength(1)
+  })
+
+  it('generates distinct DJ bot IDs across restarts so the signaling server does not reject reuse', async () => {
+    vi.useFakeTimers()
+    const manager = Object.create(PeerManager.prototype) as any
+    manager.roomCode = 'room'
+    manager.peer = { id: 'host' }
+    manager.djMediaCalls = new Map()
+    manager.broadcast = vi.fn()
+    manager.recheckDjCalls = vi.fn()
+    const stream = { getAudioTracks: () => [] } as unknown as MediaStream
+
+    await manager.startDjBot(stream)
+    const firstId = manager.djBotId
+    manager.stopDjBot()
+
+    await manager.startDjBot(stream)
+    const secondId = manager.djBotId
+    manager.stopDjBot()
+
+    expect(firstId).toMatch(/^dj-room-/)
+    expect(secondId).toMatch(/^dj-room-/)
+    expect(firstId).not.toEqual(secondId)
+  })
+
+  it('retries with a fresh ID if the signaling server reports the ID is taken', async () => {
+    const djPeerReadyModule = await import('../../p2p/djPeerReady')
+    let attempts = 0
+    const triedIds: string[] = []
+    vi.spyOn(djPeerReadyModule, 'waitForDjPeerReady').mockImplementation(async (peer: any) => {
+      attempts++
+      triedIds.push(peer.id)
+      if (attempts === 1) {
+        throw new Error('ID "dj-room-host" is taken')
+      }
+    })
+
+    const manager = Object.create(PeerManager.prototype) as any
+    manager.roomCode = 'room'
+    manager.peer = { id: 'host' }
+    manager.djMediaCalls = new Map()
+    manager.broadcast = vi.fn()
+    manager.recheckDjCalls = vi.fn()
+    const stream = { getAudioTracks: () => [] } as unknown as MediaStream
+
+    const result = await manager.startDjBot(stream)
+    expect(result).toEqual({ ok: true })
+    expect(attempts).toBe(2)
+    expect(triedIds[0]).not.toEqual(triedIds[1])
+  })
+
+  it('re-dials listener if existing DJ call iceConnectionState becomes disconnected or closed', () => {
+    const manager = Object.create(PeerManager.prototype) as any
+    manager.djPeer = { call: vi.fn(() => ({ on: vi.fn() })) }
+    manager.djAudioStream = {}
+    manager.djBotId = 'dj-room-host-abc'
+    manager.djMediaCalls = new Map()
+    manager.callPeerFromDj = vi.fn()
+
+    const listener = { id: 'listener-1', currentZoneId: 'zone-1' }
+    useGameStore.setState({
+      localPlayer: { ...useGameStore.getState().localPlayer, currentZoneId: 'zone-1' },
+      remotePlayers: {
+        'listener-1': listener as any,
+        'dj-room-host-abc': { id: 'dj-room-host-abc', currentZoneId: 'zone-1', isDjBot: true } as any,
+      },
+    })
+
+    const staleCall = {
+      open: true,
+      close: vi.fn(),
+      peerConnection: { iceConnectionState: 'disconnected', connectionState: 'connected' },
+    }
+    manager.djMediaCalls.set('listener-1', staleCall)
+
+    manager.recheckDjCalls()
+
+    expect(staleCall.close).toHaveBeenCalled()
+    expect(manager.djMediaCalls.has('listener-1')).toBe(false)
+    expect(manager.callPeerFromDj).toHaveBeenCalledWith('listener-1')
   })
 })

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TextureAtlas imagePath="8f41f1b1f0d88694fdd619ac8b0df461efde9059c340ce9f83c7d706418e0eff.png">
+  <SubTexture name="lira_romantic_bed_v1_down_0" x="0" y="0" width="627" height="627"/>
+  <SubTexture name="lira_romantic_bed_v1_bed_0" x="627" y="0" width="627" height="627"/>
+  <SubTexture name="lira_romantic_bed_v1_bed_1" x="0" y="627" width="627" height="627"/>
+  <SubTexture name="lira_romantic_bed_v1_bed_2" x="627" y="627" width="627" height="627"/>
+</TextureAtlas>

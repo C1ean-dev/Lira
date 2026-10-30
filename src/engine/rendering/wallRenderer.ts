@@ -1,3 +1,4 @@
+import { getZoneGeometry } from '../zoneGeometry'
 import { WallType, PrivateZone } from '../../types/map'
 import { TILE_SIZE } from '../Constants'
 import { useCustomAssetsStore, getCustomAssetImage } from '../../store/useCustomAssetsStore'
@@ -269,13 +270,7 @@ export class WallRenderer {
     const frontWallH = Math.min(Math.floor(h * 0.24), Math.floor(1.5 * TILE_SIZE))
     const frontWallY = maxY - frontWallH
 
-    const doorW = Math.min(Math.floor(w * 0.38), Math.floor(2.0 * TILE_SIZE))
-    const doorStartX = minX + Math.floor((w - doorW) / 2)
-    const doorEndX = doorStartX + doorW
-
     const SIDE_WALL_PX = 6
-    const SEAM_OVERLAP_PX = 3
-    const TOP_CORNER_SHADOW_PX = 18
 
     const fillWallTexture = (rx: number, ry: number, rw: number, rh: number, dir: Direction = 'down') => {
       let pattern: CanvasPattern | null = null
@@ -308,225 +303,32 @@ export class WallRenderer {
       }
     }
 
-    const drawTopCornerShadow = (_rx: number, _ry: number, _rw: number, _maxLen: number) => {}
-
-    const leftNeighbor = zones.find(
-      (z) =>
-        z.id !== zone.id &&
-        z.hasWalls !== false &&
-        Math.abs(Math.floor((z.x + z.width) * TILE_SIZE) - minX) <= 4 &&
-        Math.max(z.y, zone.y) < Math.min(z.y + z.height, zone.y + zone.height)
-    )
-
-    const rightNeighbor = zones.find(
-      (z) =>
-        z.id !== zone.id &&
-        z.hasWalls !== false &&
-        Math.abs(maxX - Math.floor(z.x * TILE_SIZE)) <= 4 &&
-        Math.max(z.y, zone.y) < Math.min(z.y + z.height, zone.y + zone.height)
-    )
-
-    const topNeighbor = zones.find(
-      (z) =>
-        z.id !== zone.id &&
-        z.hasWalls !== false &&
-        Math.abs(Math.floor((z.y + z.height) * TILE_SIZE) - minY) <= 4 &&
-        Math.max(z.x, zone.x) < Math.min(z.x + z.width, zone.x + zone.width)
-    )
-
-    const bottomNeighbor = zones.find(
-      (z) =>
-        z.id !== zone.id &&
-        z.hasWalls !== false &&
-        Math.abs(maxY - Math.floor(z.y * TILE_SIZE)) <= 4 &&
-        Math.max(z.x, zone.x) < Math.min(z.x + z.width, zone.x + zone.width)
-    )
-
-    let hasTopDoorway = false
-    let topDoorwayStartX = 0
-    let topDoorwayEndX = 0
-
-    if (topNeighbor) {
-      const overlapMinX = Math.max(minX, Math.floor(topNeighbor.x * TILE_SIZE))
-      const overlapMaxX = Math.min(maxX, Math.floor((topNeighbor.x + topNeighbor.width) * TILE_SIZE))
-      const overlapW = overlapMaxX - overlapMinX
-
-      if (overlapW >= TILE_SIZE) {
-        const topW = Math.floor(topNeighbor.width * TILE_SIZE)
-        const topDoorW = Math.min(Math.floor(topW * 0.38), Math.floor(2.0 * TILE_SIZE))
-        const topDoorStartX = Math.floor(topNeighbor.x * TILE_SIZE) + Math.floor((topW - topDoorW) / 2)
-        const topDoorEndX = topDoorStartX + topDoorW
-
-        if (topDoorStartX >= overlapMinX && topDoorEndX <= overlapMaxX) {
-          topDoorwayStartX = topDoorStartX
-          topDoorwayEndX = topDoorEndX
-        } else {
-          const dW = Math.min(Math.floor(overlapW * 0.5), Math.floor(2.0 * TILE_SIZE))
-          topDoorwayStartX = overlapMinX + Math.floor((overlapW - dW) / 2)
-          topDoorwayEndX = topDoorwayStartX + dW
-        }
-        hasTopDoorway = true
-      }
-    }
-
-    let finalDoorStartX = doorStartX
-    let finalDoorEndX = doorEndX
-
-    if (bottomNeighbor) {
-      const overlapMinX = Math.max(minX, Math.floor(bottomNeighbor.x * TILE_SIZE))
-      const overlapMaxX = Math.min(maxX, Math.floor((bottomNeighbor.x + bottomNeighbor.width) * TILE_SIZE))
-      const overlapW = overlapMaxX - overlapMinX
-      if (overlapW >= TILE_SIZE) {
-        if (finalDoorStartX < overlapMinX || finalDoorEndX > overlapMaxX) {
-          const dW = Math.min(Math.floor(overlapW * 0.5), Math.floor(2.0 * TILE_SIZE))
-          finalDoorStartX = overlapMinX + Math.floor((overlapW - dW) / 2)
-          finalDoorEndX = finalDoorStartX + dW
-        }
-      }
-    }
-
-    const sideTopY = minY + backWallH - SEAM_OVERLAP_PX
-    const sideBottomY = frontWallY + SEAM_OVERLAP_PX
-
+    const geometry = getZoneGeometry(zone, zones.includes(zone) ? zones : [...zones, zone])
     const WALL_BORDER = 'rgba(0, 0, 0, 0.22)'
-
-    if (hasTopDoorway) {
-      const leftBackW = topDoorwayStartX - minX
-      if (leftBackW > 0) {
-        fillWallTexture(minX, minY, leftBackW, backWallH, 'up')
-        ctx.fillStyle = WALL_BORDER
-        ctx.fillRect(minX, minY, leftBackW, 1)
-        ctx.fillRect(topDoorwayStartX - 1, minY, 1, backWallH)
-      }
-
-      const rightBackW = maxX - topDoorwayEndX
-      if (rightBackW > 0) {
-        fillWallTexture(topDoorwayEndX, minY, rightBackW, backWallH, 'up')
-        ctx.fillStyle = WALL_BORDER
-        ctx.fillRect(topDoorwayEndX, minY, rightBackW, 1)
-        ctx.fillRect(topDoorwayEndX, minY, 1, backWallH)
-      }
-
-      DoorRenderer.drawConnectingCorridorArch(
-        ctx,
-        topDoorwayStartX,
-        topDoorwayEndX,
-        minY,
-        backWallH,
-        theme,
-        !!zone.isLocked,
-        zone
-      )
-    } else {
-      fillWallTexture(minX, minY, w, backWallH, 'up')
+    for (const wall of geometry.walls) {
+      const side = wall.side
+      const x = side === 'right' ? maxX - SIDE_WALL_PX : Math.floor(wall.minX * TILE_SIZE)
+      const y = Math.floor(wall.minY * TILE_SIZE)
+      const width = side === 'left' || side === 'right' ? SIDE_WALL_PX : Math.floor(wall.maxX * TILE_SIZE) - x
+      const height = Math.floor(wall.maxY * TILE_SIZE) - y
+      const direction: Direction = side === 'top' ? 'up' : side === 'bottom' ? 'down' : side
+      fillWallTexture(x, y, width, height, direction)
       ctx.fillStyle = WALL_BORDER
-      ctx.fillRect(minX, minY, w, 1)
+      ctx.fillRect(x, y, 1, height)
+      ctx.fillRect(x + width - 1, y, 1, height)
+      if (side === 'top' || side === 'bottom') ctx.fillRect(x, y, width, 1)
     }
-
-    const cornerW = SIDE_WALL_PX
-    ctx.fillStyle = WALL_BORDER
-
-    ctx.fillRect(minX, minY + 1, 1, backWallH - 1)
-
-    if (!hasTopDoorway || (topDoorwayStartX - minX) >= cornerW) {
-      ctx.fillRect(minX + cornerW - 1, minY + 1, 1, backWallH - 1)
+    for (const door of geometry.doors.top) {
+      DoorRenderer.drawConnectingCorridorArch(ctx, Math.floor(door.start * TILE_SIZE), Math.floor(door.end * TILE_SIZE), minY, backWallH, theme, !!zone.isLocked, zone)
     }
-
-    if (!hasTopDoorway || (maxX - topDoorwayEndX) >= cornerW) {
-      ctx.fillRect(maxX - cornerW, minY + 1, 1, backWallH - 1)
+    for (const door of geometry.doors.bottom) {
+      DoorRenderer.drawFrontDoor(ctx, zone, Math.floor(door.start * TILE_SIZE), Math.floor(door.end * TILE_SIZE), frontWallY, frontWallH, maxY)
     }
-
-    ctx.fillRect(maxX - 1, minY + 1, 1, backWallH - 1)
-
-    if (leftNeighbor) {
-      const overlapMinY = Math.max(minY, Math.floor(leftNeighbor.y * TILE_SIZE))
-      const overlapMaxY = Math.min(maxY, Math.floor((leftNeighbor.y + leftNeighbor.height) * TILE_SIZE))
-      const overlapH = overlapMaxY - overlapMinY
-      const doorH = Math.min(Math.floor(overlapH * 0.65), 72)
-      const doorStartY = overlapMinY + Math.floor((overlapH - doorH) / 2)
-      const doorEndY = doorStartY + doorH
-
-      if (doorStartY > sideTopY) {
-        fillWallTexture(minX, sideTopY, SIDE_WALL_PX, doorStartY - sideTopY, 'left')
-        ctx.fillStyle = WALL_BORDER
-        ctx.fillRect(minX, sideTopY, 1, doorStartY - sideTopY)
-        ctx.fillRect(minX + SIDE_WALL_PX - 1, sideTopY, 1, doorStartY - sideTopY)
-        drawTopCornerShadow(minX, sideTopY, SIDE_WALL_PX, doorStartY - sideTopY)
+    for (const side of ['left', 'right'] as const) {
+      for (const door of geometry.doors[side]) {
+        DoorRenderer.drawSideDoorway(ctx, side === 'left' ? minX : maxX - SIDE_WALL_PX, Math.floor(door.start * TILE_SIZE), Math.floor(door.end * TILE_SIZE), theme, side)
       }
-      if (sideBottomY > doorEndY) {
-        fillWallTexture(minX, doorEndY, SIDE_WALL_PX, sideBottomY - doorEndY, 'left')
-        ctx.fillStyle = WALL_BORDER
-        ctx.fillRect(minX, doorEndY, 1, sideBottomY - doorEndY)
-        ctx.fillRect(minX + SIDE_WALL_PX - 1, doorEndY, 1, sideBottomY - doorEndY)
-      }
-
-      DoorRenderer.drawSideDoorway(ctx, minX, doorStartY, doorEndY, theme, 'left')
-    } else if (sideBottomY > sideTopY) {
-      fillWallTexture(minX, sideTopY, SIDE_WALL_PX, sideBottomY - sideTopY, 'left')
-      ctx.fillStyle = WALL_BORDER
-      ctx.fillRect(minX, sideTopY, 1, sideBottomY - sideTopY)
-      ctx.fillRect(minX + SIDE_WALL_PX - 1, sideTopY, 1, sideBottomY - sideTopY)
-      drawTopCornerShadow(minX, sideTopY, SIDE_WALL_PX, sideBottomY - sideTopY)
     }
-
-    if (rightNeighbor) {
-      const overlapMinY = Math.max(minY, Math.floor(rightNeighbor.y * TILE_SIZE))
-      const overlapMaxY = Math.min(maxY, Math.floor((rightNeighbor.y + rightNeighbor.height) * TILE_SIZE))
-      const overlapH = overlapMaxY - overlapMinY
-      const doorH = Math.min(Math.floor(overlapH * 0.65), 72)
-      const doorStartY = overlapMinY + Math.floor((overlapH - doorH) / 2)
-      const doorEndY = doorStartY + doorH
-
-      if (doorStartY > sideTopY) {
-        fillWallTexture(maxX - SIDE_WALL_PX, sideTopY, SIDE_WALL_PX, doorStartY - sideTopY, 'right')
-        ctx.fillStyle = WALL_BORDER
-        ctx.fillRect(maxX - SIDE_WALL_PX, sideTopY, 1, doorStartY - sideTopY)
-        ctx.fillRect(maxX - 1, sideTopY, 1, doorStartY - sideTopY)
-        drawTopCornerShadow(maxX - SIDE_WALL_PX, sideTopY, SIDE_WALL_PX, doorStartY - sideTopY)
-      }
-      if (sideBottomY > doorEndY) {
-        fillWallTexture(maxX - SIDE_WALL_PX, doorEndY, SIDE_WALL_PX, sideBottomY - doorEndY, 'right')
-        ctx.fillStyle = WALL_BORDER
-        ctx.fillRect(maxX - SIDE_WALL_PX, doorEndY, 1, sideBottomY - doorEndY)
-        ctx.fillRect(maxX - 1, doorEndY, 1, sideBottomY - doorEndY)
-      }
-
-      DoorRenderer.drawSideDoorway(ctx, maxX - SIDE_WALL_PX, doorStartY, doorEndY, theme, 'right')
-    } else if (sideBottomY > sideTopY) {
-      fillWallTexture(maxX - SIDE_WALL_PX, sideTopY, SIDE_WALL_PX, sideBottomY - sideTopY, 'right')
-      ctx.fillStyle = WALL_BORDER
-      ctx.fillRect(maxX - SIDE_WALL_PX, sideTopY, 1, sideBottomY - sideTopY)
-      ctx.fillRect(maxX - 1, sideTopY, 1, sideBottomY - sideTopY)
-      drawTopCornerShadow(maxX - SIDE_WALL_PX, sideTopY, SIDE_WALL_PX, sideBottomY - sideTopY)
-    }
-
-    const leftBlockW = finalDoorStartX - minX
-    if (leftBlockW > 0) {
-      fillWallTexture(minX, frontWallY, leftBlockW, frontWallH, 'down')
-      ctx.fillStyle = WALL_BORDER
-      ctx.fillRect(minX, frontWallY, leftBlockW, 1)
-      ctx.fillRect(minX, frontWallY, 1, frontWallH)
-      ctx.fillRect(finalDoorStartX - 1, frontWallY, 1, frontWallH)
-    }
-
-    const rightBlockW = maxX - finalDoorEndX
-    if (rightBlockW > 0) {
-      fillWallTexture(finalDoorEndX, frontWallY, rightBlockW, frontWallH, 'down')
-      ctx.fillStyle = WALL_BORDER
-      ctx.fillRect(finalDoorEndX, frontWallY, rightBlockW, 1)
-      ctx.fillRect(finalDoorEndX, frontWallY, 1, frontWallH)
-      ctx.fillRect(maxX - 1, frontWallY, 1, frontWallH)
-    }
-
-    DoorRenderer.drawFrontDoor(
-      ctx,
-      zone,
-      finalDoorStartX,
-      finalDoorEndX,
-      frontWallY,
-      frontWallH,
-      maxY
-    )
 
     ctx.restore()
   }
