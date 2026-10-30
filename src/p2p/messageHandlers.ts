@@ -21,6 +21,7 @@ import { validDjRequestSnapshot } from '../types/spotifyDjRequests'
 import { isStoppedDjSession, receiveDjStopMessage } from '../services/stopDjForEveryone'
 import { DEFAULT_AVATAR } from '../engine/Constants'
 import { receiveBedInteraction } from '../services/bedInteraction'
+import { receivePetNetworkMessage } from '../services/petNetwork'
 import { receiveCallTts } from '../services/callTts'
 
 const receivedAtlases = new Map<string, AtlasDocument>()
@@ -68,6 +69,12 @@ export function processNetworkMessage(
     case 'CALL_TTS': {
       if (!isDjMessageSource(msg, peerId, isHost)) return
       receiveCallTts(msg.senderId, msg.payload)
+      break
+    }
+    case 'PET_QUESTION':
+    case 'PET_REPLY': {
+      if (!isDjMessageSource(msg, peerId, isHost)) return
+      receivePetNetworkMessage(msg)
       break
     }
     case 'BED_INTERACTION': {

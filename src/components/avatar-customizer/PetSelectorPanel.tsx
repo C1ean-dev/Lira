@@ -1,4 +1,6 @@
 import { RasterImage } from '../common/RasterImage'
+import { PetPersonalityEditor } from './PetPersonalityEditor'
+import { withSavedPetPersonality } from '../../services/petPersonalities'
 import React, { useState, useRef, useEffect } from 'react'
 import {
   Check,
@@ -152,22 +154,22 @@ export const PetSelectorPanel: React.FC<Props> = ({
     const opt = BUILTIN_PETS.find((p) => p.id === type)
     onChangeAvatar({
       ...avatar,
-      pet: {
+      pet: withSavedPetPersonality({
         type,
         name: currentPet.name || PetRenderer.getDefaultPetName(type),
         color: currentPet.color || opt?.defaultColor || '#10b981',
-      },
+      }),
     })
   }
 
   const handleSelectCustomPet = (asset: CustomAsset) => {
     onChangeAvatar({
       ...avatar,
-      pet: {
+      pet: withSavedPetPersonality({
         type: 'custom',
         customAssetId: asset.id,
         name: asset.name,
-      },
+      }),
     })
   }
 
@@ -406,6 +408,9 @@ export const PetSelectorPanel: React.FC<Props> = ({
           </div>
         </div>
       )}
+
+      {currentPet.type !== 'none' && <PetPersonalityEditor key={currentPet.type + ':' + (currentPet.customAssetId || '')} pet={currentPet}
+        onSave={personality => onChangeAvatar({ ...avatar, pet: { ...currentPet, personality } })} />}
 
       {deletingAsset && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in duration-150">
