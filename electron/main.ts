@@ -585,6 +585,13 @@ function createWindow() {
   trayManager.init(mainWindow)
   spotifyWindowHost.bindOwner(mainWindow, () => { spotifyLogin.cancel(); spotifyPlayer.close() })
   watchWindow(mainWindow)
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) {
+      shell.openExternal(url).catch(() => {})
+    }
+    return { action: 'deny' }
+  })
+
 
   session.defaultSession.setPermissionCheckHandler(() => {
     return true

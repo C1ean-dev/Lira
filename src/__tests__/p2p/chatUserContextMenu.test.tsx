@@ -53,4 +53,21 @@ describe('ChatUserContextMenu', () => {
     expect(html).toContain('left:40px')
     expect(html).toContain('top:60px')
   })
+
+  it('renders "Copiar conteúdo" instead of "Copiar nome" when onCopyContent is provided', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(ChatUserContextMenu, {
+        x: 40,
+        y: 60,
+        name: 'Bob',
+        friendState: 'can-add',
+        onAddFriend: vi.fn(),
+        onRemoveFriend: vi.fn(),
+        onCopyContent: vi.fn(),
+        onClose: vi.fn(),
+      })
+    )
+    expect(html).toContain('Copiar conteúdo')
+    expect(html).not.toContain('Copiar nome')
+  })
 })

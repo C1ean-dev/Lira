@@ -14,6 +14,7 @@ import { MoonPhaseIcon } from '../common/MoonPhaseIcon'
 import { getPlayerUserId, getFriendUserId, isSameParticipant } from '../../utils/userId'
 import { getRoomInviteState, readRoomInvite } from '../../utils/roomInvite'
 import { useChatPagination } from '../../hooks/useChatPagination'
+import { renderChatContent } from '../../utils/chatLinks'
 
 interface Props {
   friend: FriendProfile
@@ -280,7 +281,7 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
                             : 'bg-[#1e2433] text-slate-100 border border-[#2c354a] rounded-tl-none'
                         }`}
                       >
-                        <div>{msg.content}</div>
+                        <div>{renderChatContent(msg.content)}</div>
                       </div>
                       <div className="flex items-center gap-1 text-[10px] text-slate-500 px-1">
                         <span>{formatTime(msg.timestamp)}</span>
@@ -353,7 +354,7 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
                         {friend.name}
                       </div>
                     )}
-                    <div>{msg.content}</div>
+                    <div>{renderChatContent(msg.content)}</div>
                   </div>
 
                   <div className="flex items-center gap-1 text-[10px] text-slate-500 px-1">

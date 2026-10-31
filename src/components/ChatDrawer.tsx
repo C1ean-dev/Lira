@@ -48,6 +48,7 @@ import { prepareTtsCommand } from '../services/callTtsCore'
 import { sendCallTts } from '../services/callTts'
 import { MentionSuggestions } from './chat/MentionSuggestions'
 import { findMentionQuery, insertMention, updateMentions, prepareMentionMessage, mentionSegments, type MentionCandidate } from '../utils/chatMentions'
+import { renderChatContent } from '../utils/chatLinks'
 import { buildMentionCandidates } from '../utils/mentionCandidates'
 import { ChatChannelList, ChannelEditing } from './chat/ChatChannelList'
 import { SpotifyIcon } from './common/SpotifyIcon'
@@ -999,7 +1000,7 @@ const ChatDrawerInner: React.FC = () => {
                           </div>
                         </div>
                         <div className="text-xs text-slate-200 bg-[#1b202c] p-2.5 rounded-xl border border-[#2a3142]/60 break-words">
-                          {msg.content}
+                          {renderChatContent(msg.content)}
                         </div>
                       </div>
                     )
@@ -1092,9 +1093,7 @@ const ChatDrawerInner: React.FC = () => {
                     <div className="text-xs text-slate-200 bg-[#1b202c] p-2.5 rounded-xl border border-[#2a3142]/60 break-words space-y-2">
                       {msg.content && (
                         <div>
-                          <div className="whitespace-pre-wrap">{mentionSegments(msg.content, msg.mentions).map((part, index) => part.mention
-                            ? <span key={index} className="text-indigo-300 font-semibold bg-indigo-500/20 rounded px-0.5">{part.text}</span>
-                            : <React.Fragment key={index}>{part.text}</React.Fragment>)}</div>
+                          <div className="whitespace-pre-wrap">{renderChatContent(msg.content, msg.mentions)}</div>
                           {extractSpotifyLink(msg.content) && (
                             <SpotifyChatCard url={extractSpotifyLink(msg.content)!} />
                           )}
@@ -1389,8 +1388,11 @@ const ChatDrawerInner: React.FC = () => {
             friendState={state}
             onAddFriend={() => sendFriendRequest(target)}
             onRemoveFriend={() => friendKey && useGameStore.getState().removeFriend(friendKey)}
-            onCopyName={() => {
-              navigator.clipboard?.writeText(target.name).catch(() => {})
+            onCopyContent={() => {
+              const contentToCopy = userMenu.msg.content || userMenu.msg.attachment?.name || ''
+              if (contentToCopy) {
+                navigator.clipboard?.writeText(contentToCopy).catch(() => {})
+              }
             }}
             onClose={closeUserMenu}
           />
