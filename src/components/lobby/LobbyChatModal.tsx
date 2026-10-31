@@ -14,6 +14,7 @@ import { MoonPhaseIcon } from '../common/MoonPhaseIcon'
 import { getPlayerUserId, getFriendUserId, isSameParticipant } from '../../utils/userId'
 import { getRoomInviteState, readRoomInvite } from '../../utils/roomInvite'
 import { useChatPagination } from '../../hooks/useChatPagination'
+import { renderChatContent } from '../../utils/chatLinks'
 
 interface Props {
   friend: FriendProfile
@@ -226,7 +227,8 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
           </div>
         </div>
 
-        <div ref={pagination.messagesRef} onScroll={pagination.onScroll} onWheel={pagination.onWheel} onTouchStart={pagination.onTouchStart} onTouchMove={pagination.onTouchMove} className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#11141c]/50">
+        <div ref={pagination.messagesRef} onScroll={pagination.onScroll} onWheel={pagination.onWheel} onTouchStart={pagination.onTouchStart} onTouchMove={pagination.onTouchMove} className="flex-1 min-h-0 overflow-y-auto p-4 bg-[#11141c]/50">
+          <div ref={pagination.contentRef} className="space-y-3">
           {chatMessages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400 space-y-3 select-none">
               <div className="w-14 h-14 rounded-3xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-inner">
@@ -279,7 +281,7 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
                             : 'bg-[#1e2433] text-slate-100 border border-[#2c354a] rounded-tl-none'
                         }`}
                       >
-                        <div>{msg.content}</div>
+                        <div>{renderChatContent(msg.content)}</div>
                       </div>
                       <div className="flex items-center gap-1 text-[10px] text-slate-500 px-1">
                         <span>{formatTime(msg.timestamp)}</span>
@@ -352,7 +354,7 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
                         {friend.name}
                       </div>
                     )}
-                    <div>{msg.content}</div>
+                    <div>{renderChatContent(msg.content)}</div>
                   </div>
 
                   <div className="flex items-center gap-1 text-[10px] text-slate-500 px-1">
@@ -363,6 +365,7 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
               )
             })
           })()}
+          </div>
         </div>
 
         <div className="px-4 py-1.5 bg-[#12151e]/80 border-t border-[#22293a] flex items-center gap-2 overflow-x-auto">

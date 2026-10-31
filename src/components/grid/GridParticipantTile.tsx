@@ -11,6 +11,7 @@ import { SpotifyIcon } from '../common/SpotifyIcon'
 import { LiveWatchPrompt } from '../LiveWatchPrompt'
 import { useLiveGate } from '../../hooks/useLiveGate'
 import { useLiveViewBox } from '../../hooks/useLiveViewBox'
+import { LiveTransmissionInfo } from './LiveTransmissionInfo'
 
 export interface ParticipantData {
   id: string
@@ -43,6 +44,7 @@ interface Props {
   isSidebar?: boolean
   onFocus?: () => void
   onOpenLiveFullscreen?: (user: ParticipantData) => void
+  onOpenScreenShareSettings?: () => void
   onContextMenu?: (user: ParticipantData, e: React.MouseEvent) => void
 }
 
@@ -53,6 +55,7 @@ export const GridParticipantTile: React.FC<Props> = ({
   isSidebar = false,
   onFocus,
   onOpenLiveFullscreen,
+  onOpenScreenShareSettings,
   onContextMenu,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -355,10 +358,8 @@ export const GridParticipantTile: React.FC<Props> = ({
 
       <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
         {isLive ? (
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-rose-600/95 text-white rounded-xl text-xs font-bold shadow-lg flex-shrink-0 animate-pulse pointer-events-auto">
-            <Radio className="w-3.5 h-3.5" />
-            <span>TRANSMISSÃO AO VIVO DE TELA</span>
-          </div>
+          <LiveTransmissionInfo stream={activeStream} local={!!user.isLocal} peerName={user.name}
+            onOpenSettings={user.isLocal ? onOpenScreenShareSettings : undefined} />
         ) : !user.isLocal && user.callState === 'reconnecting' ? (
           <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/95 text-white rounded-xl text-xs font-bold shadow-lg flex-shrink-0 animate-pulse pointer-events-auto">
             <span className="w-2 h-2 rounded-full bg-white animate-ping" />

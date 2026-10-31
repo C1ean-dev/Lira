@@ -141,7 +141,8 @@ def score(output):
         summary = dict(engine=engine, captures=len(rows), cleanStoi=average(clean_rows, 'stoi'),
                               cleanSpeechGainDb=average(clean_rows, 'speechGainDb'), cleanDropoutPercent=average(clean_rows, 'dropoutPercent'),
                               noisyStoi=average(noisy_rows, 'stoi'), inputStoi=average(noisy_rows, 'inputStoi'),
-                              delayMedianMs=float(np.median(delays)), delayMinMs=min(delays), delayMaxMs=max(delays),
+                              delayMedianMs=float(np.median(delays)) if delays else None,
+                              delayMinMs=min(delays) if delays else None, delayMaxMs=max(delays) if delays else None,
                               measurableDelayCaptures=len(delays), unmeasurableDelayCaptures=len(rows) - len(delays),
                               siSdrImprovementDb=average(noisy_rows, 'siSdrImprovementDb'), noiseReductionDb=average(noisy_rows, 'noiseReductionDb'))
         summaries.append(summary)

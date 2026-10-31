@@ -298,6 +298,8 @@ export class DynamicBufferManager {
         const next = Math.max(clampedTarget, buf.currentMs - step)
         buf.currentMs = Math.max(next, Math.min(buf.currentMs, buf.lastTargetMs))
         if (buf.currentMs === clampedTarget) buf.lastTargetMs = clampedTarget
+        // Require another four clean polls before the next audio reduction.
+        if (isAudio) buf.cleanSamples = 0
       }
     } else {
       buf.cleanSamples++

@@ -1,3 +1,4 @@
+import { PeerManager } from '../../p2p/PeerManager'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useMediaStore } from '../../store/useMediaStore'
 import { useGameStore } from '../../store/useGameStore'
@@ -410,4 +411,249 @@ describe('Call Controls, Audio Deafen & Moderation Features', () => {
     expect(useGameStore.getState().localPlayer.isMutedByAdmin).toBe(true)
     expect(useGameStore.getState().localPlayer.isMuted).toBe(true)
   })
+
+  it('does not mute another remote player who shares gameId when muting a specific participant by targetUserId', () => {
+    useGameStore.getState().setLocalPlayer({ id: 'peer-aravon', gameId: 'user-aravon', name: 'Aravon', isMuted: false, isMutedByAdmin: false })
+    useGameStore.getState().setRemotePlayer({
+      id: 'lira-room-host',
+      gameId: 'user-shared-id',
+      name: 'clean',
+      x: 0,
+      y: 0,
+      direction: 'down',
+      isMoving: false,
+      avatar: { shirtColor: '#111', skinTone: '#fff', skinDetail: 'none', hairStyle: 'short1', hairColor: '#000', pantsColor: '#000', shoesColor: '#000', glassesColor: '#000', otherType: 'none', otherColor: '#000' },
+      status: 'available',
+      lastUpdated: Date.now(),
+      isMuted: false,
+      isMutedByAdmin: false,
+    })
+    useGameStore.getState().setRemotePlayer({
+      id: 'peer-ann',
+      gameId: 'user-shared-id',
+      name: 'Ann',
+      x: 0,
+      y: 0,
+      direction: 'down',
+      isMoving: false,
+      avatar: { shirtColor: '#222', skinTone: '#fff', skinDetail: 'none', hairStyle: 'short1', hairColor: '#000', pantsColor: '#000', shoesColor: '#000', glassesColor: '#000', otherType: 'none', otherColor: '#000' },
+      status: 'available',
+      lastUpdated: Date.now(),
+      isMuted: false,
+      isMutedByAdmin: false,
+    })
+
+    const adminMsg: NetworkMessage = {
+      type: 'ADMIN_MUTE_PARTICIPANT',
+      senderId: 'lira-room-host',
+      payload: {
+        targetUserId: 'peer-ann',
+        targetGameId: 'user-shared-id',
+        targetUserName: 'Ann',
+        mute: true,
+        adminName: 'clean',
+      },
+      timestamp: Date.now(),
+    }
+
+    processNetworkMessage(
+      adminMsg,
+      'lira-room-host',
+      false,
+      () => {},
+      () => {},
+      () => {},
+      'peer-aravon'
+    )
+
+    const ann = useGameStore.getState().remotePlayers['peer-ann']
+    const clean = useGameStore.getState().remotePlayers['lira-room-host']
+
+    expect(ann.isMuted).toBe(true)
+    expect(ann.isMutedByAdmin).toBe(true)
+    expect(clean.isMuted).toBe(false)
+    expect(clean.isMutedByAdmin).toBe(false)
+  })
+
+  it('does not deafen another remote player who shares gameId when deafening a specific participant by targetUserId', () => {
+    useGameStore.getState().setLocalPlayer({ id: 'peer-aravon', gameId: 'user-aravon', name: 'Aravon', isDeafened: false })
+    useGameStore.getState().setRemotePlayer({
+      id: 'lira-room-host',
+      gameId: 'user-shared-id',
+      name: 'clean',
+      x: 0,
+      y: 0,
+      direction: 'down',
+      isMoving: false,
+      avatar: { shirtColor: '#111', skinTone: '#fff', skinDetail: 'none', hairStyle: 'short1', hairColor: '#000', pantsColor: '#000', shoesColor: '#000', glassesColor: '#000', otherType: 'none', otherColor: '#000' },
+      status: 'available',
+      lastUpdated: Date.now(),
+      isDeafened: false,
+    })
+    useGameStore.getState().setRemotePlayer({
+      id: 'peer-ann',
+      gameId: 'user-shared-id',
+      name: 'Ann',
+      x: 0,
+      y: 0,
+      direction: 'down',
+      isMoving: false,
+      avatar: { shirtColor: '#222', skinTone: '#fff', skinDetail: 'none', hairStyle: 'short1', hairColor: '#000', pantsColor: '#000', shoesColor: '#000', glassesColor: '#000', otherType: 'none', otherColor: '#000' },
+      status: 'available',
+      lastUpdated: Date.now(),
+      isDeafened: false,
+    })
+
+    const adminMsg: NetworkMessage = {
+      type: 'ADMIN_DEAFEN_PARTICIPANT',
+      senderId: 'lira-room-host',
+      payload: {
+        targetUserId: 'peer-ann',
+        targetGameId: 'user-shared-id',
+        targetUserName: 'Ann',
+        deafen: true,
+        adminName: 'clean',
+      },
+      timestamp: Date.now(),
+    }
+
+    processNetworkMessage(
+      adminMsg,
+      'lira-room-host',
+      false,
+      () => {},
+      () => {},
+      () => {},
+      'peer-aravon'
+    )
+
+    const ann = useGameStore.getState().remotePlayers['peer-ann']
+    const clean = useGameStore.getState().remotePlayers['lira-room-host']
+
+    expect(ann.isDeafened).toBe(true)
+    expect(clean.isDeafened).toBe(false)
+  })
+
+  it('guarantees that PLAYER_UPDATE with isMuted: false automatically clears isMutedByAdmin on remote players', () => {
+    useGameStore.getState().setRemotePlayer({
+      id: 'alice-peer',
+      name: 'Alice',
+      x: 10,
+      y: 10,
+      direction: 'down',
+      isMoving: false,
+      avatar: { shirtColor: '#0f0', skinTone: '#fff', skinDetail: 'none', hairStyle: 'short1', hairColor: '#000', pantsColor: '#00f', shoesColor: '#222', glassesColor: '#000', otherType: 'none', otherColor: '#000' },
+      status: 'available',
+      lastUpdated: Date.now(),
+      isMuted: true,
+      isMutedByAdmin: true,
+    })
+
+    const playerUpdateMsg: NetworkMessage = {
+      type: 'PLAYER_UPDATE',
+      senderId: 'alice-peer',
+      payload: {
+        player: {
+          id: 'alice-peer',
+          isMuted: false,
+        },
+      },
+      timestamp: Date.now(),
+    }
+
+    processNetworkMessage(
+      playerUpdateMsg,
+      'alice-peer',
+      false,
+      () => {},
+      () => {},
+      () => {},
+      'my-client-peer-id'
+    )
+
+    const updatedAlice = useGameStore.getState().remotePlayers['alice-peer']
+    expect(updatedAlice.isMuted).toBe(false)
+    expect(updatedAlice.isMutedByAdmin).toBe(false)
+  })
+
+  it('does not mute another remote player who shares gameId on the sender side in sendAdminMuteParticipant', () => {
+    useGameStore.getState().setLocalPlayer({ id: 'admin-host', gameId: 'admin-game', name: 'Admin', isMuted: false, isMutedByAdmin: false })
+    useGameStore.getState().setRemotePlayer({
+      id: 'lira-room-host',
+      gameId: 'user-shared-id',
+      name: 'clean',
+      x: 0,
+      y: 0,
+      direction: 'down',
+      isMoving: false,
+      avatar: { shirtColor: '#111', skinTone: '#fff', skinDetail: 'none', hairStyle: 'short1', hairColor: '#000', pantsColor: '#000', shoesColor: '#000', glassesColor: '#000', otherType: 'none', otherColor: '#000' },
+      status: 'available',
+      lastUpdated: Date.now(),
+      isMuted: false,
+      isMutedByAdmin: false,
+    })
+    useGameStore.getState().setRemotePlayer({
+      id: 'peer-ann',
+      gameId: 'user-shared-id',
+      name: 'Ann',
+      x: 0,
+      y: 0,
+      direction: 'down',
+      isMoving: false,
+      avatar: { shirtColor: '#222', skinTone: '#fff', skinDetail: 'none', hairStyle: 'short1', hairColor: '#000', pantsColor: '#000', shoesColor: '#000', glassesColor: '#000', otherType: 'none', otherColor: '#000' },
+      status: 'available',
+      lastUpdated: Date.now(),
+      isMuted: false,
+      isMutedByAdmin: false,
+    })
+
+    PeerManager.getInstance().sendAdminMuteParticipant('peer-ann', true, 'Ann', 'user-shared-id')
+
+    const ann = useGameStore.getState().remotePlayers['peer-ann']
+    const clean = useGameStore.getState().remotePlayers['lira-room-host']
+
+    expect(ann.isMuted).toBe(true)
+    expect(ann.isMutedByAdmin).toBe(true)
+    expect(clean.isMuted).toBe(false)
+    expect(clean.isMutedByAdmin).toBe(false)
+  })
+
+  it('does not deafen another remote player who shares gameId on the sender side in sendAdminDeafenParticipant', () => {
+    useGameStore.getState().setLocalPlayer({ id: 'admin-host', gameId: 'admin-game', name: 'Admin', isDeafened: false })
+    useGameStore.getState().setRemotePlayer({
+      id: 'lira-room-host',
+      gameId: 'user-shared-id',
+      name: 'clean',
+      x: 0,
+      y: 0,
+      direction: 'down',
+      isMoving: false,
+      avatar: { shirtColor: '#111', skinTone: '#fff', skinDetail: 'none', hairStyle: 'short1', hairColor: '#000', pantsColor: '#000', shoesColor: '#000', glassesColor: '#000', otherType: 'none', otherColor: '#000' },
+      status: 'available',
+      lastUpdated: Date.now(),
+      isDeafened: false,
+    })
+    useGameStore.getState().setRemotePlayer({
+      id: 'peer-ann',
+      gameId: 'user-shared-id',
+      name: 'Ann',
+      x: 0,
+      y: 0,
+      direction: 'down',
+      isMoving: false,
+      avatar: { shirtColor: '#222', skinTone: '#fff', skinDetail: 'none', hairStyle: 'short1', hairColor: '#000', pantsColor: '#000', shoesColor: '#000', glassesColor: '#000', otherType: 'none', otherColor: '#000' },
+      status: 'available',
+      lastUpdated: Date.now(),
+      isDeafened: false,
+    })
+
+    PeerManager.getInstance().sendAdminDeafenParticipant('peer-ann', true, 'Ann', 'user-shared-id')
+
+    const ann = useGameStore.getState().remotePlayers['peer-ann']
+    const clean = useGameStore.getState().remotePlayers['lira-room-host']
+
+    expect(ann.isDeafened).toBe(true)
+    expect(clean.isDeafened).toBe(false)
+  })
+
 })

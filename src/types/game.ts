@@ -128,6 +128,7 @@ export type PetType = 'none' | 'dog' | 'cat' | 'meowth' | 'slime' | 'chick' | 'c
 export interface PetConfig {
   type: PetType
   name?: string
+  personality?: string
   color?: string
   customAssetId?: string
   directionalFrames?: Partial<Record<Direction, string | string[]>>

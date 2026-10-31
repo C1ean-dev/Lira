@@ -53,6 +53,7 @@ export function writeSettingsToDisk(settings: AppSettings, userDataDir?: string)
 }
 
 export function applyLoginItemSettings(settings: AppSettings, isPackaged: boolean = app.isPackaged) {
+  if (!isPackaged) return
   if (process.platform !== 'win32' && process.platform !== 'darwin') {
     return
   }
@@ -72,12 +73,12 @@ export class TrayManager {
   private hasShownTrayNotice = false
   private instanceTitle: string
 
-  constructor(instanceId: string = '1', isMultiInstance: boolean = false) {
-    this.instanceTitle = isMultiInstance ? `Lira (Instância ${instanceId})` : 'Lira'
+  constructor(instanceId: string = '1', isMultiInstance: boolean = false, title?: string) {
+    this.instanceTitle = title || (isMultiInstance ? `Lira (Instância ${instanceId})` : 'Lira')
     this.settings = readSettingsFromDisk()
 
     try {
-      if (process.platform === 'win32' || process.platform === 'darwin') {
+      if (app.isPackaged && (process.platform === 'win32' || process.platform === 'darwin')) {
         const loginSettings = app.getLoginItemSettings()
         if (loginSettings) {
           const login = resolveLoginItemState(loginSettings)

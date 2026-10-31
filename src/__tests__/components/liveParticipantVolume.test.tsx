@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ParticipantContextMenu } from '../../components/grid/ParticipantContextMenu'
 import { GridParticipantTile, ParticipantData } from '../../components/grid/GridParticipantTile'
 import { RemoteAudio } from '../../components/common/RemoteAudio'
+import { LiveTransmissionInfo } from '../../components/grid/LiveTransmissionInfo'
 import { useMediaStore } from '../../store/useMediaStore'
 
 vi.mock('../../data/nativeAssets.json', () => ({ default: { categories: [], assets: [] } }))
@@ -49,6 +50,28 @@ function setup() {
 }
 
 describe('independent voice and live controls', () => {
+  it('offers local capture settings inside transmission information', () => {
+    setup()
+    const onOpenScreenShareSettings = vi.fn()
+    const elements = capture(() => GridParticipantTile({ user: { ...user, isLocal: true }, onOpenScreenShareSettings }))
+    const info = elements.find(el => el.type === LiveTransmissionInfo)
+    expect(info).toBeDefined()
+    info!.props.onOpenSettings()
+    expect(onOpenScreenShareSettings).toHaveBeenCalledOnce()
+  })
+
+  it('does not offer local capture settings on another participant’s transmission or on camera tiles', () => {
+    setup()
+    for (const props of [
+      { user },
+      { user: { ...user, isLocal: true }, mediaKind: 'participant' as const },
+    ]) {
+      const elements = capture(() => GridParticipantTile({ ...props, onOpenScreenShareSettings: vi.fn() }))
+      const info = elements.find(el => el.type === LiveTransmissionInfo)
+      expect(info?.props.onOpenSettings).toBeUndefined()
+    }
+  })
+
   it('offers separate menu sliders and presets without changing the other volume', () => {
     setup()
     const elements = capture(() => ParticipantContextMenu({ user, x: 0, y: 0, onClose() {} }))

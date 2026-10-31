@@ -63,6 +63,13 @@ public static class LiraUpdateIO {
     if (File.Exists(destination)) File.Replace(temporary, destination, null);
     else File.Move(temporary, destination);
   }
+  public static void WriteDurableText(string file, string text) {
+    byte[] bytes = new System.Text.UTF8Encoding(false).GetBytes(text);
+    using (var output = new FileStream(file, FileMode.Create, FileAccess.Write, FileShare.None)) {
+      output.Write(bytes, 0, bytes.Length);
+      output.Flush(true);
+    }
+  }
   [DllImport("user32.dll", CharSet = CharSet.Unicode)]
   private static extern IntPtr SendMessageTimeout(IntPtr window, uint message, UIntPtr parameter,
     string text, uint flags, uint timeout, out UIntPtr result);
@@ -170,6 +177,7 @@ public static class LiraUpdateIO {
         }
         hash.TransformFinalBlock(new byte[0], 0, 0);
         if (copied != expectedLength) throw new IOException("The file changed while it was being copied.");
+        output.Flush(true);
       }
       Interlocked.Increment(ref FilesCopied);
       File.SetLastWriteTimeUtc(destination, File.GetLastWriteTimeUtc(source));

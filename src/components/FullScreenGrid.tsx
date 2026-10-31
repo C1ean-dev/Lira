@@ -8,6 +8,7 @@ import { useGameStore } from '../store/useGameStore'
 import { useMapStore } from '../store/useMapStore'
 import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
 import { SpotifyIcon } from './common/SpotifyIcon'
+import { PetApiSettings } from './pets/PetApiSettings'
 import { useLiveWatchStore } from '../store/useLiveWatchStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { MediaManager } from '../media/MediaManager'
@@ -36,7 +37,7 @@ const FullScreenGridInner: React.FC = () => {
   const isScreenSharing = useMediaStore((s) => s.isScreenSharing)
   const localAudioLevel = useMediaStore((s) => s.localAudioLevel)
 
-  const { localPlayer, remotePlayers, callStates, friendProfiles } = useGameStore()
+  const { localPlayer, remotePlayers, callStates, friendProfiles, roomId, isOwner } = useGameStore()
   const { mapData } = useMapStore()
   const watchingLives = useLiveWatchStore((s) => s.watching)
   const jamsByZone = useSpotifyJamStore((s) => s.jamsByZone)
@@ -236,6 +237,7 @@ const FullScreenGridInner: React.FC = () => {
               </button>
             )}
 
+            {localPlayer.currentZoneId && roomId && isOwner && <PetApiSettings roomId={roomId} />}
             <button type="button"
               onClick={() => setIsTranscriptOpen(open => !open)}
               aria-expanded={isTranscriptOpen}
@@ -266,6 +268,7 @@ const FullScreenGridInner: React.FC = () => {
                 isFocused={true}
                 isSidebar={false}
                 onOpenLiveFullscreen={(u) => setLiveTheaterUser(u)}
+                onOpenScreenShareSettings={() => setIsScreenModalOpen(true)}
                 onContextMenu={handleParticipantContextMenu}
               />
             ) : (

@@ -98,7 +98,7 @@ export const FurnitureContextMenu: React.FC = () => {
 
   const handleDelete = () => {
     removeFurnitureById(selectedFurn.id)
-    PeerManager.getInstance().sendMapEdit('remove_furniture', { x: selectedFurn.x, y: selectedFurn.y })
+    PeerManager.getInstance().sendMapEdit('remove_furniture', { id: selectedFurn.id, x: selectedFurn.x, y: selectedFurn.y })
     setSelectedPlacedFurnitureId(null)
   }
 

@@ -1,6 +1,17 @@
 import WebSocket from 'ws'
 import type { PlaybackConnection } from './spotifyPlayback'
 
+export class SpotifyPlaybackProtocolError extends Error {
+  readonly protocolCode: number | null
+  readonly protocolMessage: string
+  constructor(readonly method: string, error: { code?: unknown; message?: unknown }) {
+    super('O Spotify não respondeu ao controle.')
+    this.name = 'SpotifyPlaybackProtocolError'
+    this.protocolCode = typeof error.code === 'number' ? error.code : null
+    this.protocolMessage = typeof error.message === 'string' ? error.message.slice(0, 300) : 'Erro de protocolo sem descrição'
+  }
+}
+
 export async function playbackJson(url: string): Promise<unknown> {
   const response = await fetch(url, { signal: AbortSignal.timeout(2500), redirect: 'error' })
   if (!response.ok) throw new Error('Não foi possível conectar aos controles do Spotify.')
@@ -10,7 +21,7 @@ export async function playbackJson(url: string): Promise<unknown> {
 export function connectPlayback(url: string): Promise<PlaybackConnection> {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url, { handshakeTimeout: 2500, maxPayload: 3_000_000 })
-    const pending = new Map<number, { resolve(value: any): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>()
+    const pending = new Map<number, { method: string; resolve(value: any): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>()
     let id = 0
     const fail = (error: Error) => {
       for (const entry of pending.values()) { clearTimeout(entry.timer); entry.reject(error) }
@@ -25,7 +36,7 @@ export function connectPlayback(url: string): Promise<PlaybackConnection> {
       if (!entry) return
       pending.delete(message.id)
       clearTimeout(entry.timer)
-      if (message.error) entry.reject(new Error('O Spotify não respondeu ao controle.'))
+      if (message.error) entry.reject(new SpotifyPlaybackProtocolError(entry.method, message.error))
       else entry.resolve(message.result)
     })
     socket.once('open', () => resolve({
@@ -33,7 +44,7 @@ export function connectPlayback(url: string): Promise<PlaybackConnection> {
         if (socket.readyState !== WebSocket.OPEN) { rejectRequest(new Error('Spotify desconectado.')); return }
         const requestId = ++id
         const timer = setTimeout(() => { pending.delete(requestId); rejectRequest(new Error('O Spotify demorou para responder.')) }, timeoutMs)
-        pending.set(requestId, { resolve: resolveRequest, reject: rejectRequest, timer })
+        pending.set(requestId, { method, resolve: resolveRequest, reject: rejectRequest, timer })
         socket.send(JSON.stringify({ id: requestId, method, params }), error => {
           if (!error) return
           pending.delete(requestId)

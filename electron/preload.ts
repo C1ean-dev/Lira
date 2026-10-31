@@ -73,12 +73,16 @@ export interface IElectronAPI {
   downloadAndInstallUpdate: (downloadUrl: string, targetVersion?: string) => Promise<boolean>
   onUpdateProgress: (callback: (progress: UpdateProgress) => void) => () => void
   openExternal: (url: string) => Promise<void>
+  copyImage: (dataUrl: string, text?: string) => Promise<boolean>
   openSpotifyPlayer: (url?: string) => Promise<{ ok: boolean; error?: string }>
   closeSpotifyPlayer: () => Promise<{ ok: boolean; error?: string }>
   openSpotifyLogin: () => Promise<{ ok: boolean; error?: string }>
   completeSpotifyLogin: () => Promise<{ ok: boolean; error?: string }>
   getSpotifyLoginState: () => Promise<import('../src/types/spotifyLogin').SpotifyLoginState>
   getSpotifyPlaybackFrame: () => Promise<SpotifyPlaybackResult>
+  searchSpotifyMusic: (query: string) => Promise<SpotifyPlaybackResult>
+  queueSpotifyTrack: (track: import('../src/types/spotifySearch').SpotifySearchTrack, operationId: string) => Promise<import('../src/types/spotifyDjRequests').SpotifyDjRequestResult>
+  getSpotifySearchSuggestions: (query: string, requesterId?: string) => Promise<import('../src/types/spotifySearch').SpotifySearchResult>
   startSpotifyTabAudioCapture: () => Promise<{ ok: boolean; error?: string }>
   stopSpotifyTabAudioCapture: () => Promise<boolean>
   onSpotifyTabAudioData: (callback: (data: Uint8Array) => void) => () => void
@@ -179,12 +183,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
+  copyImage: (dataUrl: string, text?: string) => ipcRenderer.invoke('clipboard-copy-image', dataUrl, text),
   openSpotifyPlayer: (url?: string) => ipcRenderer.invoke('open-spotify-player', url),
   closeSpotifyPlayer: () => ipcRenderer.invoke('close-spotify-player'),
   openSpotifyLogin: () => ipcRenderer.invoke('open-spotify-login'),
   completeSpotifyLogin: () => ipcRenderer.invoke('complete-spotify-login'),
   getSpotifyLoginState: () => ipcRenderer.invoke('get-spotify-login-state'),
   getSpotifyPlaybackFrame: () => ipcRenderer.invoke('get-spotify-playback-frame'),
+  searchSpotifyMusic: (query: string) => ipcRenderer.invoke('search-spotify-music', query),
+  queueSpotifyTrack: (track: import('../src/types/spotifySearch').SpotifySearchTrack, operationId: string) => ipcRenderer.invoke('queue-spotify-track', track, operationId),
+  getSpotifySearchSuggestions: (query: string, requesterId?: string) => ipcRenderer.invoke('get-spotify-search-suggestions', query, requesterId),
     startSpotifyTabAudioCapture: () => ipcRenderer.invoke('start-spotify-tab-audio'),
     stopSpotifyTabAudioCapture: () => ipcRenderer.invoke('stop-spotify-tab-audio'),
     onSpotifyTabAudioData: (callback: (data: Uint8Array) => void) => {

@@ -4,6 +4,7 @@ import { FURNITURE_CATALOG, TILE_SIZE } from '../engine/Constants'
 import { FloorType, WallType, PlacedFurniture } from '../types/map'
 import { useCustomAssetsStore, getCustomAssetImage, onCustomAssetsChange } from '../store/useCustomAssetsStore'
 import { readSpriteFrame } from '../assets/spriteFrame'
+import { consumptionFrames } from '../assets/tabletopConsumptionFrames'
 
 interface PixelArtThumbnailProps {
   type: 'furniture' | 'floor' | 'wall'
@@ -113,6 +114,7 @@ export const PixelArtThumbnail: React.FC<PixelArtThumbnailProps> = ({
 
     const sources = new Set([
       ...(customAsset?.frames || []),
+      ...(type === 'furniture' ? consumptionFrames(customAsset) || [] : []),
       ...Object.values(customAsset?.directionalFrames || {}).flatMap(frames => typeof frames === 'string' ? [frames] : frames || []),
       customAsset?.thumbnail,
     ])

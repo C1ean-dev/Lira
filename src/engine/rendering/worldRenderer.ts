@@ -12,6 +12,7 @@ import { useSettingsStore } from '../../store/useSettingsStore'
 import { CameraManager } from '../camera/CameraManager'
 import { getStaticLayer } from './staticLayerCache'
 import { FurnitureRenderer, resolveFurnitureDimensions } from './furnitureRenderer'
+import { furnitureDrawOrder } from './furnitureLayers'
 import { renderBedParticipant } from './bedRenderer'
 
 export class WorldRenderer {
@@ -123,7 +124,7 @@ export class WorldRenderer {
           PixelArtRenderer.drawLiraRoom(ctx, zone, map.zones || [])
         }
 
-        for (const item of map.furniture || []) {
+        for (const item of furnitureDrawOrder(map.furniture || [], useCustomAssetsStore.getState().customAssets)) {
           if (
             enableCulling &&
             (item.x + 4 < startX || item.x - 1 > endX || item.y + 4 < startY || item.y - 1 > endY)

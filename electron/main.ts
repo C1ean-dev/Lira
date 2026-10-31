@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, session, shell, screen, Notification, powerMonitor, Tray, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, desktopCapturer, session, shell, screen, Notification, powerMonitor, Tray, Menu, nativeImage, clipboard } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
@@ -15,6 +15,7 @@ import type { ErrorReport } from '../src/utils/errorReport'
 import { appTrail } from '../src/utils/breadcrumbs'
 import { createErrorReporter } from '../src/utils/errorReporter'
 import { setupSingleInstanceLock } from './singleInstance'
+import { resolveAppInstance } from './appInstance'
 import { TrayManager, AppSettings } from './trayManager'
 import { createLogWriter, installConsoleCapture, installProcessErrorCapture } from './logWriter'
 import { readNativeDataFile } from './nativeDataFile'
@@ -39,6 +40,17 @@ import { runtimeAssetPath } from './assetPaths'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+
+// Select the profile before Chromium sessions, logging or the instance lock use it.
+const defaultUserData = app.getPath('userData')
+const appInstance = resolveAppInstance({ defaultUserData, isPackaged: app.isPackaged,
+  argv: process.argv, instanceEnv: process.env.INSTANCE })
+const { instanceId, isMultiInstance } = appInstance
+if (appInstance.userData !== defaultUserData) {
+  fs.mkdirSync(appInstance.userData, { recursive: true })
+  app.setPath('userData', appInstance.userData)
+  app.setPath('sessionData', appInstance.userData)
+}
 
 // Configure Chromium switches at startup before any app events or window creation:
 // Prevent AMD GPU DirectComposition video overlay driver conflict on Windows
@@ -526,14 +538,7 @@ app.on('child-process-gone', (_event, details) => {
   logProcessGone('child', details)
 })
 
-const instanceArg = process.argv.find((a) => a.startsWith('--instance='))?.split('=')[1]
-const isMultiFlag = process.argv.includes('--multi')
-const instanceId = process.env.INSTANCE || instanceArg || (isMultiFlag ? '2' : '1')
-const isMultiInstance = isMultiFlag || instanceId !== '1'
-
 if (isMultiInstance) {
-  const defaultUserData = app.getPath('userData')
-  app.setPath('userData', `${defaultUserData}-inst-${instanceId}`)
   console.log(`[Electron] Modo multi-instância ativo (Instância ${instanceId}). UserData isolado em: ${app.getPath('userData')}`)
 } else {
   const gotSingleInstanceLock = setupSingleInstanceLock({
@@ -563,7 +568,7 @@ function createWindow() {
     minHeight: 600,
     ...(xOffset !== undefined ? { x: xOffset } : {}),
     ...(yOffset !== undefined ? { y: yOffset } : {}),
-    title: isMultiInstance ? `Lira (Instância ${instanceId})` : 'Lira',
+    title: appInstance.title,
     backgroundColor: '#0c0e14',
     icon: runtimeAssetPath(app.getAppPath(), app.isPackaged, 'icon.png'),
     webPreferences: {
@@ -576,10 +581,17 @@ function createWindow() {
     autoHideMenuBar: true,
   })
 
-  trayManager = new TrayManager(instanceId, isMultiInstance)
+  trayManager = new TrayManager(instanceId, isMultiInstance, appInstance.title)
   trayManager.init(mainWindow)
   spotifyWindowHost.bindOwner(mainWindow, () => { spotifyLogin.cancel(); spotifyPlayer.close() })
   watchWindow(mainWindow)
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) {
+      shell.openExternal(url).catch(() => {})
+    }
+    return { action: 'deny' }
+  })
+
 
   session.defaultSession.setPermissionCheckHandler(() => {
     return true
@@ -1256,13 +1268,38 @@ ipcMain.handle('open-external', async (event, url: string) => {
   }
 })
 
+ipcMain.handle('clipboard-copy-image', async (_event, dataUrl: string, text?: string) => {
+  try {
+    if (!dataUrl) return false
+    const img = nativeImage.createFromDataURL(dataUrl)
+    if (img.isEmpty()) return false
+    if (text) {
+      clipboard.write({ image: img, text })
+    } else {
+      clipboard.writeImage(img)
+    }
+    return true
+  } catch (err) {
+    console.error('Failed to copy image to clipboard in Electron:', err)
+    return false
+  }
+})
+
 const spotifyPlayback: SpotifyPlaybackController = new SpotifyPlaybackController({
   active: () => spotifyPlayer.isOpen && !spotifyLogin.isAuthenticating && !spotifyWindowHost.isClosing,
+  canQueue: () => spotifyTabAudio.isActive,
   readPortFile: () => fs.promises.readFile(path.join(app.getPath('userData'), 'spotify-browser', 'DevToolsActivePort'), 'utf8'),
   json: playbackJson,
   connect: connectPlayback,
 })
 ipcMain.handle('get-spotify-playback-frame', () => spotifyPlayback.frame())
+ipcMain.handle('queue-spotify-track', (_event, track, operationId: string) => spotifyPlayback.enqueue(track, operationId))
+ipcMain.handle('get-spotify-search-suggestions', (_event, query: string, requesterId?: string) => spotifyPlayback.suggestions(query, requesterId))
+ipcMain.handle('search-spotify-music', async (_event, query: string) => {
+  const result = await spotifyPlayback.search(query)
+  if (result.ok) spotifyWindowHost.show()
+  return result
+})
 const spotifyTabAudio: SpotifyTabAudioController = new SpotifyTabAudioController({
   connect: () => spotifyPlayback.connectTab(),
   data: chunk => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('spotify-tab-audio-data', chunk) },
@@ -1301,10 +1338,11 @@ ipcMain.handle('get-spotify-login-state', () => spotifyLogin.state())
 ipcMain.handle('start-spotify-tab-audio', () => spotifyWindowHost.isClosing ? spotifyClosingResult() : spotifyLogin.isAuthenticating
   ? { ok: false, error: 'Conclua o login no Spotify antes de transmitir como DJ.' }
   : spotifyTabAudio.start())
-ipcMain.handle('stop-spotify-tab-audio', async () => { await spotifyTabAudio.stop(); return true })
+ipcMain.handle('stop-spotify-tab-audio', async () => { spotifyPlayback.cancelQueuedTracks(); await spotifyTabAudio.stop(); return true })
 ipcMain.handle('spotify-playback-command', (_event, command: SpotifyPlaybackCommand) => spotifyPlayback.command(command))
 ipcMain.handle('open-spotify-player', (_event, url?: string) => spotifyWindowHost.isClosing ? spotifyClosingResult() : spotifyLogin.openPlayer(url))
 ipcMain.handle('close-spotify-player', async () => {
+  spotifyPlayback.cancelQueuedTracks()
   spotifyLogin.cancel()
   spotifyPlayer.close()
   try { await spotifyWindowHost.close(); return { ok: true } }
@@ -2027,7 +2065,7 @@ app.on('before-quit', event => {
 
 app.whenReady().then(async () => {
   if (process.platform === 'win32') {
-    app.setAppUserModelId('com.lira.app')
+    app.setAppUserModelId(appInstance.appUserModelId)
   }
   startupStep('ready')
   createWindow()

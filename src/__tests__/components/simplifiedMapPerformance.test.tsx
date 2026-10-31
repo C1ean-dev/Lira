@@ -6,6 +6,9 @@ import { useGameStore } from '../../store/useGameStore'
 import { useMapStore } from '../../store/useMapStore'
 import { PeerManager } from '../../p2p/PeerManager'
 import { PrivateZone } from '../../types/map'
+import { checkCollision, isPlayerInZone } from '../../engine/physics/collision'
+import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
+import type { CustomAsset } from '../../types/customAsset'
 
 const captured = vi.hoisted(() => ({ elements: [] as React.ReactElement[] }))
 vi.mock('react/jsx-runtime', async (importOriginal) => {
@@ -29,6 +32,7 @@ vi.mock('react/jsx-dev-runtime', async (importOriginal) => {
 
 const originalGame = useGameStore.getState()
 const originalMap = useMapStore.getState()
+const originalAssets = useCustomAssetsStore.getState()
 const room: PrivateZone = { id: 'room', name: 'Meeting Room', x: 10, y: 10, width: 8, height: 8, color: '#00ff00' }
 let subscriptions: Array<{ get: () => unknown; notify: ReturnType<typeof vi.fn>; unsubscribe: () => void }>
 let sendPlayerUpdate: ReturnType<typeof vi.fn>
@@ -46,7 +50,7 @@ beforeEach(() => {
     localPlayer: { ...originalGame.localPlayer, name: 'Alice', currentZoneId: null, x: 2, y: 2, isOwner: false, role: 'member' },
     remotePlayers: { peer: { ...originalGame.localPlayer, id: 'peer', name: 'Bob', currentZoneId: null } },
   })
-  useMapStore.setState({ mapData: { ...originalMap.mapData, width: 40, height: 30, zones: [room] } })
+  useMapStore.setState({ mapData: { ...originalMap.mapData, width: 40, height: 30, zones: [room], furniture: [], walls: [] } })
   sendPlayerUpdate = vi.fn()
   sendRoomKnockRequest = vi.fn()
   vi.spyOn(PeerManager, 'getInstance').mockReturnValue({ sendPlayerUpdate, sendRoomKnockRequest, sendRoomLockToggle: vi.fn(), endAllZoneMediaCalls: vi.fn() } as unknown as PeerManager)
@@ -64,9 +68,48 @@ afterEach(() => {
   vi.useRealTimers()
   useGameStore.setState(originalGame)
   useMapStore.setState(originalMap)
+  useCustomAssetsStore.setState(originalAssets)
 })
 
 describe('simplified map low consumption', () => {
+  function furnish(width = 4, height = 4, x = 12, y = 12) {
+    const asset: CustomAsset = { id: 'blocked-center', name: 'Block', type: 'furniture', category: 'Geral', width, height, isObstacle: true, frames: [], createdAt: 1 }
+    useCustomAssetsStore.setState({ customAssets: [asset] })
+    useMapStore.setState({ mapData: { ...useMapStore.getState().mapData, furniture: [{ id: 'f', defId: asset.id, x, y }] } })
+  }
+
+  it('teleports beside furniture and broadcasts the actual free position inside the room', () => {
+    furnish()
+    mount()
+    captured.elements.find(({ props }) => props.title === `${room.name} - Clique para entrar`)!.props.onClick({ stopPropagation() {} })
+    const player = useGameStore.getState().localPlayer
+    const map = useMapStore.getState().mapData
+    expect(checkCollision(player.x, player.y, map)).toBe(false)
+    expect(isPlayerInZone(player.x, player.y, room, map)).toBe(true)
+    expect(sendPlayerUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ x: player.x, y: player.y, currentZoneId: room.id, isMoving: false, seatedOn: null }))
+  })
+
+  it('cancels a teleport when no free position exists in the room', () => {
+    furnish(8, 8, 10, 10)
+    mount()
+    captured.elements.find(({ props }) => props.title === `${room.name} - Clique para entrar`)!.props.onClick({ stopPropagation() {} })
+    expect(useGameStore.getState().localPlayer).toMatchObject({ x: 2, y: 2, currentZoneId: null })
+    expect(sendPlayerUpdate).not.toHaveBeenCalled()
+  })
+
+  it('checks hitboxes and map bounds when clicking the corridor', () => {
+    furnish(4, 4, 2, 2)
+    mount()
+    const floor = captured.elements.find(({ props }) => props.className === 'relative rounded-3xl bg-[#0e2a2e]/60 border border-[#194c52]/70 overflow-hidden')!
+    for (const [clientX, clientY] of [[3, 3], [40, 30]]) {
+      floor.props.onClick({ clientX, clientY, currentTarget: { getBoundingClientRect: () => ({ left: 0, top: 0, width: 40, height: 30 }) } })
+      const player = useGameStore.getState().localPlayer
+      expect(checkCollision(player.x, player.y, useMapStore.getState().mapData)).toBe(false)
+      expect(player.currentZoneId).toBeNull()
+      expect(sendPlayerUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ x: player.x, y: player.y, currentZoneId: null }))
+    }
+  })
+
   it('coalesces movement and room changes into one display update per second', () => {
     mount()
     const before = subscriptions.map(({ get }) => get())
