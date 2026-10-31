@@ -414,6 +414,9 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
       isMuted: nextMute,
       isMutedByAdmin: false,
     })
+    try {
+      PeerManager.getInstance().sendPlayerUpdate({ isMuted: nextMute, isMutedByAdmin: false })
+    } catch {}
     if (hasMediaHardware()) {
       try {
         MediaManager.getInstance().syncMuteState(nextMute, false)
@@ -437,6 +440,9 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
       isMuted,
       isMutedByAdmin: false,
     })
+    try {
+      PeerManager.getInstance().sendPlayerUpdate({ isMuted, isMutedByAdmin: false })
+    } catch {}
     if (hasMediaHardware()) {
       try {
         MediaManager.getInstance().syncMuteState(isMuted, false)

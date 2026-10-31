@@ -231,9 +231,16 @@ export function processNetworkMessage(
       const existing = existingKey ? remotePlayers[existingKey] : undefined
       if (existing && existingKey) {
         const isPeerHost = existingKey.endsWith('-host')
+        const nextMutedByAdmin =
+          updated?.isMuted === false
+            ? false
+            : updated?.isMutedByAdmin !== undefined
+            ? updated.isMutedByAdmin
+            : existing.isMutedByAdmin
         const nextPlayer: Player = {
           ...existing,
           ...updated,
+          isMutedByAdmin: nextMutedByAdmin,
           isCameraOff: updated?.isCameraOff !== undefined ? updated.isCameraOff : (existing.isCameraOff ?? true),
           id: existingKey,
           isHost: isPeerHost,
@@ -261,6 +268,7 @@ export function processNetworkMessage(
             lastUpdated: Date.now(),
             role: isPeerHost ? 'host' : updated.role || 'member',
             ...updated,
+            isMutedByAdmin: updated.isMuted === false ? false : updated.isMutedByAdmin,
             isCameraOff: updated.isCameraOff !== undefined ? updated.isCameraOff : true,
             isHost: isPeerHost,
           }
@@ -568,8 +576,7 @@ export function processNetworkMessage(
       const isTarget =
         (myPeerId && myPeerId === targetUserId) ||
         local.id === targetUserId ||
-        (local.gameId && local.gameId === targetUserId) ||
-        (targetGameId && (local.id === targetGameId || local.gameId === targetGameId))
+        (!targetUserId && Boolean(targetGameId) && (local.id === targetGameId || local.gameId === targetGameId))
 
       if (isTarget) {
         useMediaStore.getState().setMuted(mute)
@@ -586,12 +593,10 @@ export function processNetworkMessage(
       }
       const remotePlayers = useGameStore.getState().remotePlayers
       for (const [rId, rPlayer] of Object.entries(remotePlayers)) {
-        if (
-          rId === targetUserId ||
-          rPlayer.id === targetUserId ||
-          rPlayer.gameId === targetUserId ||
-          (targetGameId && (rPlayer.id === targetGameId || rPlayer.gameId === targetGameId))
-        ) {
+        const matchesTarget =
+          (Boolean(targetUserId) && (rId === targetUserId || rPlayer.id === targetUserId)) ||
+          (!targetUserId && Boolean(targetGameId) && (rId === targetGameId || rPlayer.id === targetGameId || rPlayer.gameId === targetGameId))
+        if (matchesTarget) {
           useGameStore.getState().setRemotePlayer({
             ...rPlayer,
             isMuted: mute,
@@ -613,8 +618,7 @@ export function processNetworkMessage(
       const isTarget =
         (myPeerId && myPeerId === targetUserId) ||
         local.id === targetUserId ||
-        (local.gameId && local.gameId === targetUserId) ||
-        (targetGameId && (local.id === targetGameId || local.gameId === targetGameId))
+        (!targetUserId && Boolean(targetGameId) && (local.id === targetGameId || local.gameId === targetGameId))
 
       if (isTarget) {
         useMediaStore.getState().setDeafened(deafen)
@@ -628,12 +632,10 @@ export function processNetworkMessage(
       }
       const remotePlayers = useGameStore.getState().remotePlayers
       for (const [rId, rPlayer] of Object.entries(remotePlayers)) {
-        if (
-          rId === targetUserId ||
-          rPlayer.id === targetUserId ||
-          rPlayer.gameId === targetUserId ||
-          (targetGameId && (rPlayer.id === targetGameId || rPlayer.gameId === targetGameId))
-        ) {
+        const matchesTarget =
+          (Boolean(targetUserId) && (rId === targetUserId || rPlayer.id === targetUserId)) ||
+          (!targetUserId && Boolean(targetGameId) && (rId === targetGameId || rPlayer.id === targetGameId || rPlayer.gameId === targetGameId))
+        if (matchesTarget) {
           useGameStore.getState().setRemotePlayer({
             ...rPlayer,
             isDeafened: deafen,
