@@ -78,6 +78,7 @@ vi.mock('../../services/publicRoomsService', () => ({
 
 import { PeerManager } from '../../p2p/PeerManager'
 import { MediaCallHandler } from '../../p2p/mediaCalls'
+import { processNetworkMessage } from '../../p2p/messageHandlers'
 import { useGameStore } from '../../store/useGameStore'
 import { Player } from '../../types/game'
 
@@ -282,5 +283,29 @@ describe('Zombie Peer Eviction & Immediate Call Abort on Peer Unavailable', () =
 
     // Healthy player should NOT be evicted
     expect(useGameStore.getState().remotePlayers[HEALTHY_PLAYER]).toBeDefined()
+  })
+
+  it('resets failed call state to idle when a reconnecting player sends PLAYER_JOIN', () => {
+    useGameStore.getState().setCallState(GHOST_PLAYER, 'failed')
+    expect(useGameStore.getState().callStates[GHOST_PLAYER]).toBe('failed')
+
+    const eligibilitySpy = vi.fn()
+    processNetworkMessage(
+      {
+        type: 'PLAYER_JOIN',
+        senderId: GHOST_PLAYER,
+        payload: { player: makePlayer(GHOST_PLAYER, 'Reconnected Player') },
+        timestamp: Date.now(),
+      },
+      GHOST_PLAYER,
+      false,
+      vi.fn(),
+      vi.fn(),
+      eligibilitySpy,
+      CLIENT_CLEAN
+    )
+
+    expect(useGameStore.getState().callStates[GHOST_PLAYER]).toBeUndefined()
+    expect(eligibilitySpy).toHaveBeenCalled()
   })
 })
