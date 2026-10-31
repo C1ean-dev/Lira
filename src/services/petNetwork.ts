@@ -50,7 +50,9 @@ const network = createPetNetwork({
   receive: (senderId, question) => { void conversation.receive(senderId, question) },
   deliver: (ownerId, petName, reply) => {
     useChatStore.getState().addMessage({ id: `pet-reply-${ownerId}-${reply.id}`, senderId: `pet-${ownerId}`, senderName: `🐾 ${petName}`, channelId: reply.channelId ?? 'general', content: reply.text, timestamp: Date.now() })
-    if (!reply.error && typeof window !== 'undefined' && window.speechSynthesis && typeof SpeechSynthesisUtterance !== 'undefined') {
+    const local = useGameStore.getState().localPlayer
+    const isAsker = !reply.askerId ? (reply.ownerId === local.id) : (reply.askerId === local.id || (!!local.gameId && reply.askerId === local.gameId))
+    if (isAsker && !reply.error && typeof window !== 'undefined' && window.speechSynthesis && typeof SpeechSynthesisUtterance !== 'undefined') {
       speakPetReply(reply.text, useMediaStore.getState(), window.speechSynthesis, SpeechSynthesisUtterance)
     }
   },
@@ -66,7 +68,7 @@ export function requestPetFromChat(targetId: string, question: string, channelId
   if (!target || target.currentZoneId !== zoneId || !target.avatar?.pet || target.avatar.pet.type === 'none') return
   const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
   const pm = PeerManager.getInstance()
-  const payload = { id, targetId: target.id, zoneId, question: text, channelId }
+  const payload = { id, targetId: target.id, askerId: local.id, zoneId, question: text, channelId }
   network.question(local.id, payload)
   pm.broadcast({ type: 'PET_QUESTION', senderId: pm.getPeerId() || local.id, payload, timestamp: Date.now() })
 }

@@ -1,6 +1,6 @@
 type Player = { id: string; zoneId: string | null; petName?: string }
-type Question = { id: string; targetId: string; zoneId: string; question: string; channelId?: string }
-type Reply = { id: string; ownerId: string; zoneId: string; text: string; channelId?: string; error?: boolean }
+type Question = { id: string; targetId: string; zoneId: string; question: string; channelId?: string; askerId?: string }
+type Reply = { id: string; ownerId: string; askerId?: string; zoneId: string; text: string; channelId?: string; error?: boolean }
 type Dependencies = {
   local(): Player
   player(id: string): Player | undefined

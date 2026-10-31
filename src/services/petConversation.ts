@@ -1,8 +1,8 @@
 import type { PetConfig } from '../types/game'
 import { PetOpenRouterError } from './petOpenRouter'
 
-type PetQuestion = { id: string; targetId: string; zoneId: string; question: string; channelId?: string }
-type PetReply = { id: string; ownerId: string; zoneId: string; channelId: string; text: string; error?: boolean }
+type PetQuestion = { id: string; targetId: string; zoneId: string; question: string; channelId?: string; askerId?: string }
+type PetReply = { id: string; ownerId: string; askerId?: string; zoneId: string; channelId: string; text: string; error?: boolean }
 type RoomPlayer = { id: string; zoneId: string | null; pet?: PetConfig }
 type Dependencies = {
   getRoom(): { roomId: string | null; isOwner: boolean }
@@ -37,7 +37,8 @@ export function createPetConversation(deps: Dependencies) {
         return currentRoom.isOwner && currentRoom.roomId === room.roomId && now?.zoneId === message.zoneId && deps.getPlayer(senderId)?.zoneId === message.zoneId &&
           now.pet?.type === pet.type && now.pet?.customAssetId === pet.customAssetId
       }
-      const reply = (text: string, error = false) => deps.publish({ id: message.id, ownerId: message.targetId, zoneId: message.zoneId, channelId, text, ...(error ? { error: true } : {}) })
+      const askerId = message.askerId || senderId
+      const reply = (text: string, error = false) => deps.publish({ id: message.id, ownerId: message.targetId, askerId, zoneId: message.zoneId, channelId, text, ...(error ? { error: true } : {}) })
       if (pending) {
         if (queue.length >= 10) { reply('O pet já está respondendo. Tente novamente em instantes.', true); return }
         await new Promise<void>(resolve => queue.push(resolve))
