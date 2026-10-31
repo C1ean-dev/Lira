@@ -1000,6 +1000,23 @@ export class MediaCallHandler {
     }
   }
 
+  static handlePeerUnavailable(
+    peerId: string,
+    mediaCalls: Map<string, MediaConnection>,
+    endMediaCallWithPeer: (peerId: string) => void
+  ) {
+    MediaCallHandler.callRetryCounts.delete(peerId)
+    MediaCallHandler.clearCallRetryTimer(peerId)
+    MediaCallHandler.clearIceDisconnectTimer(peerId)
+    endMediaCallWithPeer(peerId)
+    useGameStore.getState().setCallState(peerId, 'failed')
+    diagLog('p2p', 'call.outgoing-failed', {
+      withPeer: peerId,
+      fromPeer: peerId,
+      reason: 'peer-unavailable',
+    })
+  }
+
   static retryCall(
     remotePlayer: Player,
     peer: Peer | null,

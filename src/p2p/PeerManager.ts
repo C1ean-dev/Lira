@@ -415,6 +415,9 @@ export class PeerManager {
             useGameStore.getState().setConnectionStatus('reconnecting')
             this.scheduleSignalingReconnect()
           }
+          if (errType === 'peer-unavailable' || err?.message?.includes('Could not connect to peer')) {
+            this.handlePeerUnavailable(err)
+          }
           return
         }
         if (this.peer !== myPeer) return
@@ -764,6 +767,9 @@ export class PeerManager {
             useGameStore.getState().setConnectionStatus('reconnecting')
             this.scheduleSignalingReconnect()
           }
+          if (errType === 'peer-unavailable' || err?.message?.includes('Could not connect to peer')) {
+            this.handlePeerUnavailable(err)
+          }
           return
         }
 
@@ -835,6 +841,13 @@ export class PeerManager {
       if (!this.isIntentionalDisconnect && this.roomCode && this.peer === myPeer) {
         if (this.hostRecovery) this.retryHostRecoveryClient(this.hostRecovery, 'signaling-closed')
         else useGameStore.getState().setConnectionStatus('disconnected')
+      }
+    })
+
+    myPeer.on('error', (err: any) => {
+      if (this.peer !== myPeer) return
+      if (err?.type === 'peer-unavailable' || err?.message?.includes('Could not connect to peer')) {
+        this.handlePeerUnavailable(err)
       }
     })
   }
@@ -1451,6 +1464,9 @@ export class PeerManager {
         useGameStore.getState().setConnectionStatus('reconnecting')
         this.scheduleSignalingReconnect()
       }
+      if (error?.type === 'peer-unavailable' || error?.message?.includes('Could not connect to peer')) {
+        this.handlePeerUnavailable(error)
+      }
     })
   }
 
@@ -1710,6 +1726,10 @@ export class PeerManager {
         this.confirmHostTransfer(hostIdentity)
       }
 
+      if (msg.type === 'PEER_UNREACHABLE_REPORT') {
+        this.handlePeerUnreachableReport(msg)
+      }
+
       if (msg.type === 'LIVE_VIEW') this.handleLiveView(msg)
       if (msg.type === 'DJ_CALL_REQUEST') {
         const listenerId = msg.payload?.listenerId || msg.senderId
@@ -1869,6 +1889,15 @@ export class PeerManager {
   private startHeartbeat() {
     this.stopHeartbeat()
 
+    if (this.isHost) {
+      const now = Date.now()
+      for (const [peerId, player] of Object.entries(useGameStore.getState().remotePlayers)) {
+        if (!player.isDjBot && !peerId.startsWith('dj-') && !peerId.endsWith('-host') && !this.peerLastSeen.has(peerId)) {
+          this.peerLastSeen.set(peerId, now)
+        }
+      }
+    }
+
     this.heartbeatInterval = setInterval(() => {
       if (!this.peer || this.connections.size === 0) return
       const pingMsg: NetworkMessage = {
@@ -1886,6 +1915,16 @@ export class PeerManager {
 
     this.staleCheckInterval = setInterval(() => {
       const now = Date.now()
+
+      if (this.isHost) {
+        const remotePlayers = useGameStore.getState().remotePlayers
+        for (const [peerId, player] of Object.entries(remotePlayers)) {
+          if (player.isDjBot || peerId.startsWith('dj-') || peerId.endsWith('-host')) continue
+          if (!this.peerLastSeen.has(peerId)) {
+            this.peerLastSeen.set(peerId, now)
+          }
+        }
+      }
 
       this.peerLastSeen.forEach((lastSeen, peerId) => {
         const hasActiveMedia = this.mediaCalls.has(peerId)
@@ -1966,6 +2005,51 @@ export class PeerManager {
     this.pendingZoneCalls.clear()
     if (this.zoneCallTimer !== null) clearTimeout(this.zoneCallTimer)
     this.zoneCallTimer = null
+  }
+
+  private handlePeerUnavailable(err: any) {
+    const match = /peer\s+(\S+)\s*$/i.exec(String(err?.message || ''))
+    const peerId = err?.peer || match?.[1] || null
+    if (!peerId) return
+
+    console.warn(`[P2P] Handling peer-unavailable error for ${peerId}`)
+    diagLog('p2p', 'peer-unavailable', { peerId, message: String(err?.message || err) })
+
+    MediaCallHandler.handlePeerUnavailable(
+      peerId,
+      this.mediaCalls,
+      (pid) => this.endMediaCallWithPeer(pid)
+    )
+
+    if (this.isHost && (!this.connections.has(peerId) || !this.connections.get(peerId)?.open)) {
+      console.warn(`[P2P] Peer ${peerId} unavailable on signaling and has no data connection. Evicting.`)
+      this.removePeer(peerId)
+    } else if (!this.isHost && this.roomCode) {
+      const hostPeerId = `lira-${this.roomCode}-host`
+      const hostConn = this.connections.get(hostPeerId)
+      if (hostConn && hostConn.open) {
+        this.sendToPeer(hostConn, {
+          type: 'PEER_UNREACHABLE_REPORT',
+          senderId: this.peer?.id || useGameStore.getState().localPlayer.id,
+          payload: { peerId },
+          timestamp: Date.now(),
+        })
+      }
+    }
+  }
+
+  public handlePeerUnreachableReport(msg: NetworkMessage) {
+    if (!this.isHost) return
+    const targetPeerId = msg.payload?.peerId
+    if (typeof targetPeerId !== 'string' || !targetPeerId) return
+    if (targetPeerId.endsWith('-host') || targetPeerId.startsWith('dj-') || targetPeerId === this.peer?.id) return
+
+    const conn = this.connections.get(targetPeerId)
+    if (!conn || !conn.open) {
+      console.warn(`[P2P] Peer ${targetPeerId} was reported unreachable via signaling and has no active data connection. Evicting.`)
+      diagLog('room', 'ghost-peer-evicted-by-report', { targetPeerId, reporter: msg.senderId })
+      this.removePeer(targetPeerId)
+    }
   }
 
   public recheckZoneCalls() {

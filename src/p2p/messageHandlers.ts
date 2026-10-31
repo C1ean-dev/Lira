@@ -88,6 +88,7 @@ export function processNetworkMessage(
     case 'HEARTBEAT':
     case 'HEARTBEAT_ACK':
     case 'HOST_TRANSFER':
+    case 'PEER_UNREACHABLE_REPORT':
       return
 
     case 'PLAYER_JOIN': {
@@ -133,6 +134,9 @@ export function processNetworkMessage(
         role: isPeerHost ? 'host' : msg.payload.player?.role === 'admin' ? 'admin' : msg.payload.player?.role === 'guest' ? 'guest' : 'member',
       }
       useGameStore.getState().setRemotePlayer(player)
+      if (useGameStore.getState().callStates[remotePeerId] === 'failed') {
+        useGameStore.getState().setCallState(remotePeerId, 'idle')
+      }
 
       if (isHost && resolvedName !== incomingName) {
         broadcast({
