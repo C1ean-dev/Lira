@@ -74,6 +74,8 @@ export const SHARED_RTC_CONFIG: RTCConfiguration = {
 }
 
 export class MediaCallHandler {
+  public static readonly VOICE_MIN_JITTER_BUFFER_MS = 40
+  public static readonly VOICE_MIN_PLAYOUT_DELAY_SEC = 0.04
   public static readonly VOICE_MAX_PLAYOUT_DELAY_SEC = 0.5
   public static readonly VOICE_MAX_JITTER_BUFFER_MS = 500
   public static readonly VIDEO_MAX_PLAYOUT_DELAY_SEC = 1.5
@@ -93,8 +95,9 @@ export class MediaCallHandler {
         safeAudioMs = Math.min(videoDelayMs, MediaCallHandler.VOICE_MAX_JITTER_BUFFER_MS)
       }
     }
+    safeAudioMs = Math.max(MediaCallHandler.VOICE_MIN_JITTER_BUFFER_MS, Math.min(MediaCallHandler.VOICE_MAX_JITTER_BUFFER_MS, safeAudioMs))
     const safeVideoMs = Math.min(videoDelayMs, MediaCallHandler.VIDEO_MAX_JITTER_BUFFER_MS)
-    const audioDelaySec = Math.max(0.001, Math.min(MediaCallHandler.VOICE_MAX_PLAYOUT_DELAY_SEC, safeAudioMs / 1000))
+    const audioDelaySec = Math.max(MediaCallHandler.VOICE_MIN_PLAYOUT_DELAY_SEC, Math.min(MediaCallHandler.VOICE_MAX_PLAYOUT_DELAY_SEC, safeAudioMs / 1000))
     const videoDelaySec = Math.max(0.001, Math.min(MediaCallHandler.VIDEO_MAX_PLAYOUT_DELAY_SEC, safeVideoMs / 1000))
     try {
       if (pc && pc.getReceivers) {

@@ -42,7 +42,7 @@ describe('DynamicBufferManager (Adaptive Jitter Buffer — network driven, 1ms f
     expect(useMediaStore.getState().liveBufferMode).toBe('dynamic')
   })
 
-  it('should seed unspecified audio from adaptive buffers (1ms floor), not a fixed 200ms', () => {
+  it('should seed audio with safe floor (40ms) to protect NetEQ from starvation on 20ms Opus frames', () => {
     const mgr = DynamicBufferManager.getInstance()
     try {
       mgr.resetForNewCall()
@@ -53,12 +53,22 @@ describe('DynamicBufferManager (Adaptive Jitter Buffer — network driven, 1ms f
 
       MediaCallHandler.applyReceiverBuffer(pc as any, 600)
 
-      expect(audioReceiver.jitterBufferTarget).toBe(1)
-      expect(audioReceiver.playoutDelayHint).toBeCloseTo(0.001, 3)
+      expect(audioReceiver.jitterBufferTarget).toBe(40)
+      expect(audioReceiver.playoutDelayHint).toBeCloseTo(0.040, 3)
       expect(videoReceiver.jitterBufferTarget).toBe(600)
       expect(videoReceiver.playoutDelayHint).toBeCloseTo(0.6, 3)
     } finally {
       mgr.stopMonitoring()
     }
+  })
+
+  it('should never allow audio playoutDelayHint or jitterBufferTarget to drop below safe floor of 40ms', () => {
+    const audioReceiver: any = { track: { kind: 'audio' }, playoutDelayHint: 0, jitterBufferTarget: 0 }
+    const pc = { getReceivers: () => [audioReceiver] }
+
+    MediaCallHandler.applyReceiverBuffer(pc as any, 1, 1)
+
+    expect(audioReceiver.jitterBufferTarget).toBe(40)
+    expect(audioReceiver.playoutDelayHint).toBeCloseTo(0.040, 3)
   })
 })
