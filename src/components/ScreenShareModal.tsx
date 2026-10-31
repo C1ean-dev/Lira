@@ -49,8 +49,10 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const setScreenShareOptimizationMode = useMediaStore((s) => s.setScreenShareOptimizationMode)
 
   const includeAudio = true
-  const [resolution, setResolution] = useState<'auto' | '480p' | '720p' | '1080p'>('auto')
-  const [fps, setFps] = useState<'auto' | 30 | 60>('auto')
+  const resolution = useMediaStore((s) => s.screenShareResolution)
+  const setResolution = useMediaStore((s) => s.setScreenShareResolution)
+  const fps = useMediaStore((s) => s.screenShareFps)
+  const setFps = useMediaStore((s) => s.setScreenShareFps)
   const captureMethod = 'auto'
 
   const fetchSources = async () => {

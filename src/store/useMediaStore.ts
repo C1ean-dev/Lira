@@ -73,6 +73,10 @@ interface MediaStore {
   screenShareTargetTitle: string | null
   screenShareAudioMode: 'app_only' | 'app_and_mic'
   screenShareOptimizationMode: 'quality' | 'smoothness'
+  screenShareResolution: 'auto' | '480p' | '720p' | '1080p'
+  screenShareFps: 'auto' | 30 | 60
+  setScreenShareResolution: (res: 'auto' | '480p' | '720p' | '1080p') => void
+  setScreenShareFps: (fps: 'auto' | 30 | 60) => void
   removeCaptureBorder: boolean
   soundEffectsEnabled: boolean
   soundEffectsVolume: number
@@ -133,7 +137,7 @@ interface MediaStore {
   peerScreenStreams: Record<string, MediaStream>
   participantVolumes: Record<string, number>
   setParticipantVolume: (id: string, volume: number) => void
-  getEffectiveParticipantVolume: (id: string) => number
+  getEffectiveParticipantVolume: (id: string, name?: string) => number
   liveStreamVolume: number
   setLiveStreamVolume: (volume: number) => void
   liveBufferMode: 'dynamic' | 'manual'
@@ -243,6 +247,14 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   screenShareAudioMode: saved.screenShareAudioMode === 'app_and_mic' ? 'app_and_mic' : 'app_only',
   screenShareOptimizationMode:
     saved.screenShareOptimizationMode === 'smoothness' ? 'smoothness' : 'quality',
+  screenShareResolution:
+    saved.screenShareResolution && ['auto', '480p', '720p', '1080p'].includes(saved.screenShareResolution)
+      ? saved.screenShareResolution
+      : 'auto',
+  screenShareFps:
+    saved.screenShareFps && ['auto', 30, 60].includes(saved.screenShareFps)
+      ? saved.screenShareFps
+      : 'auto',
   removeCaptureBorder: saved.removeCaptureBorder !== undefined ? Boolean(saved.removeCaptureBorder) : true,
   soundEffectsEnabled: saved.soundEffectsEnabled !== undefined ? Boolean(saved.soundEffectsEnabled) : true,
   soundEffectsVolume: typeof saved.soundEffectsVolume === 'number' ? saved.soundEffectsVolume : 80,
@@ -352,6 +364,14 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
     saveAudioSettings({ screenShareOptimizationMode: mode })
     set({ screenShareOptimizationMode: mode })
     MediaManager.getInstance().updateScreenShareOptimizationMode(mode)
+  },
+  setScreenShareResolution: (screenShareResolution) => {
+    saveAudioSettingsDebounced({ screenShareResolution })
+    set({ screenShareResolution })
+  },
+  setScreenShareFps: (screenShareFps) => {
+    saveAudioSettingsDebounced({ screenShareFps })
+    set({ screenShareFps })
   },
   setRemoveCaptureBorder: (enabled: boolean) => {
     saveAudioSettings({ removeCaptureBorder: enabled })

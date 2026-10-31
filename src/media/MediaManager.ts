@@ -966,27 +966,17 @@ export class MediaManager {
   ): { resolution: '480p' | '720p' | '1080p'; fps: 30 | 60; targetBitrate: number } {
     const state = useGameStore.getState()
     const localZone = state.localPlayer.currentZoneId
-    const peersInZone = Object.values(state.remotePlayers).filter(
-      (p) => p.currentZoneId === localZone
-    ).length
     const activeScreensInZone = Object.values(state.remotePlayers).filter(
       (p) => p.currentZoneId === localZone && p.isScreenSharing
     ).length
-    const ping = state.localPlayer.ping || 20
-
-    const navConn = typeof navigator !== 'undefined' && (navigator as any).connection
-    const effectiveType = navConn?.effectiveType
-    const isConstrained = effectiveType === '3g' || effectiveType === '2g' || ping > 180
 
     let chosenRes: '480p' | '720p' | '1080p' = '1080p'
     let chosenFps: 30 | 60 = 60
 
     if (requestedRes === 'auto') {
-      if (isConstrained || peersInZone >= 8) {
-        chosenRes = '480p'
-      } else if (activeScreensInZone >= 2) {
+      if (activeScreensInZone >= 2) {
         chosenRes = '720p'
-      } else if (peersInZone >= 4 || activeScreensInZone >= 1 || ping > 100) {
+      } else if (activeScreensInZone >= 1) {
         chosenRes = '720p'
       } else {
         chosenRes = '1080p'
@@ -996,7 +986,7 @@ export class MediaManager {
     }
 
     if (requestedFps === 'auto') {
-      if (isConstrained || peersInZone >= 6 || activeScreensInZone >= 2) {
+      if (activeScreensInZone >= 2) {
         chosenFps = 30
       } else {
         chosenFps = chosenRes === '480p' ? 30 : 60
@@ -1018,8 +1008,6 @@ export class MediaManager {
       targetBitrate = Math.min(targetBitrate, 2_000_000)
     } else if (activeScreensInZone >= 1) {
       targetBitrate = Math.min(targetBitrate, 3_000_000)
-    } else if (peersInZone >= 6) {
-      targetBitrate = Math.min(targetBitrate, 2_500_000)
     }
 
     return { resolution: chosenRes, fps: chosenFps, targetBitrate }
@@ -1053,20 +1041,20 @@ export class MediaManager {
 
       let width = 1920
       let height = 1080
-      if (effectiveResolution === '480p') {
+      if (resolution === '480p') {
         width = 854
         height = 480
-      } else if (effectiveResolution === '720p') {
+      } else if (resolution === '720p') {
         width = 1280
         height = 720
-      } else if (effectiveResolution === '1080p') {
+      } else {
         width = 1920
         height = 1080
       }
 
       let screenStream: MediaStream
 
-      const electronAPI = (window as any).electronAPI
+      const electronAPI = typeof window !== 'undefined' ? (window as any).electronAPI : undefined
       const isElectronCapture = Boolean(electronAPI?.setScreenSource)
       diagLog('screenshare-audio', 'capture-request', {
         sourceId: sourceId || null,
@@ -1666,12 +1654,15 @@ export class MediaManager {
 
         let width = 1920
         let height = 1080
-        if (effectiveResolution === '480p') {
+        if (config.resolution === '480p') {
           width = 854
           height = 480
-        } else if (effectiveResolution === '720p') {
+        } else if (config.resolution === '720p') {
           width = 1280
           height = 720
+        } else {
+          width = 1920
+          height = 1080
         }
 
         const newStream = await navigator.mediaDevices.getDisplayMedia({
