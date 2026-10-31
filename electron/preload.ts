@@ -73,6 +73,7 @@ export interface IElectronAPI {
   downloadAndInstallUpdate: (downloadUrl: string, targetVersion?: string) => Promise<boolean>
   onUpdateProgress: (callback: (progress: UpdateProgress) => void) => () => void
   openExternal: (url: string) => Promise<void>
+  copyImage: (dataUrl: string, text?: string) => Promise<boolean>
   openSpotifyPlayer: (url?: string) => Promise<{ ok: boolean; error?: string }>
   closeSpotifyPlayer: () => Promise<{ ok: boolean; error?: string }>
   openSpotifyLogin: () => Promise<{ ok: boolean; error?: string }>
@@ -182,6 +183,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
+  copyImage: (dataUrl: string, text?: string) => ipcRenderer.invoke('clipboard-copy-image', dataUrl, text),
   openSpotifyPlayer: (url?: string) => ipcRenderer.invoke('open-spotify-player', url),
   closeSpotifyPlayer: () => ipcRenderer.invoke('close-spotify-player'),
   openSpotifyLogin: () => ipcRenderer.invoke('open-spotify-login'),

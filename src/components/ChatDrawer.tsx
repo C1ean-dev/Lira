@@ -49,6 +49,7 @@ import { sendCallTts } from '../services/callTts'
 import { MentionSuggestions } from './chat/MentionSuggestions'
 import { findMentionQuery, insertMention, updateMentions, prepareMentionMessage, mentionSegments, type MentionCandidate } from '../utils/chatMentions'
 import { renderChatContent } from '../utils/chatLinks'
+import { copyChatMessage, isImageAttachment } from '../utils/chatClipboard'
 import { buildMentionCandidates } from '../utils/mentionCandidates'
 import { ChatChannelList, ChannelEditing } from './chat/ChatChannelList'
 import { SpotifyIcon } from './common/SpotifyIcon'
@@ -93,12 +94,6 @@ function formatFileSize(bytes: number): string {
   if (!bytes || bytes < 1024) return `${bytes || 0} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function isImageAttachment(att: { type?: string; name?: string }): boolean {
-  if (att.type && att.type.startsWith('image/')) return true
-  const ext = att.name?.toLowerCase().split('.').pop() || ''
-  return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext)
 }
 
 function downloadAttachment(att: ChatAttachment) {
@@ -1131,6 +1126,14 @@ const ChatDrawerInner: React.FC = () => {
                                 </button>
                                 <button
                                   type="button"
+                                  onClick={() => copyChatMessage(msg).catch(() => {})}
+                                  className="p-1 rounded bg-black/70 hover:bg-black/90 text-white backdrop-blur-sm shadow"
+                                  title="Copiar imagem"
+                                >
+                                  <Copy className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
                                   onClick={() => downloadAttachment(msg.attachment!)}
                                   className="p-1 rounded bg-black/70 hover:bg-black/90 text-white backdrop-blur-sm shadow"
                                   title="Baixar imagem"
@@ -1354,6 +1357,25 @@ const ChatDrawerInner: React.FC = () => {
                 </button>
                 <button
                   type="button"
+                  onClick={() =>
+                    copyChatMessage({
+                      attachment: {
+                        id: '',
+                        name: lightboxImage.name,
+                        size: 0,
+                        type: 'image/png',
+                        dataUrl: lightboxImage.url,
+                      },
+                    }).catch(() => {})
+                  }
+                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors flex items-center gap-1.5 text-xs font-medium"
+                  title="Copiar imagem"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copiar</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => setLightboxImage(null)}
                   className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
                 >
@@ -1389,10 +1411,7 @@ const ChatDrawerInner: React.FC = () => {
             onAddFriend={() => sendFriendRequest(target)}
             onRemoveFriend={() => friendKey && useGameStore.getState().removeFriend(friendKey)}
             onCopyContent={() => {
-              const contentToCopy = userMenu.msg.content || userMenu.msg.attachment?.name || ''
-              if (contentToCopy) {
-                navigator.clipboard?.writeText(contentToCopy).catch(() => {})
-              }
+              copyChatMessage(userMenu.msg).catch(() => {})
             }}
             onClose={closeUserMenu}
           />

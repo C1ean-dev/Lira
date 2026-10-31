@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, session, shell, screen, Notification, powerMonitor, Tray, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, desktopCapturer, session, shell, screen, Notification, powerMonitor, Tray, Menu, nativeImage, clipboard } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
@@ -1265,6 +1265,23 @@ ipcMain.handle('download-and-install-update', async (_event, downloadUrl: string
 ipcMain.handle('open-external', async (event, url: string) => {
   if (url) {
     await shell.openExternal(url)
+  }
+})
+
+ipcMain.handle('clipboard-copy-image', async (_event, dataUrl: string, text?: string) => {
+  try {
+    if (!dataUrl) return false
+    const img = nativeImage.createFromDataURL(dataUrl)
+    if (img.isEmpty()) return false
+    if (text) {
+      clipboard.write({ image: img, text })
+    } else {
+      clipboard.writeImage(img)
+    }
+    return true
+  } catch (err) {
+    console.error('Failed to copy image to clipboard in Electron:', err)
+    return false
   }
 })
 
