@@ -2628,12 +2628,10 @@ export class PeerManager {
     const senderId = this.peer ? this.peer.id : localPlayer.id
     const remotePlayers = useGameStore.getState().remotePlayers
     for (const [rId, rPlayer] of Object.entries(remotePlayers)) {
-      if (
-        rId === targetUserId ||
-        rPlayer.id === targetUserId ||
-        rPlayer.gameId === targetUserId ||
-        (targetGameId && (rPlayer.id === targetGameId || rPlayer.gameId === targetGameId))
-      ) {
+      const matchesTarget =
+        (Boolean(targetUserId) && (rId === targetUserId || rPlayer.id === targetUserId)) ||
+        (!targetUserId && Boolean(targetGameId) && (rId === targetGameId || rPlayer.id === targetGameId || rPlayer.gameId === targetGameId))
+      if (matchesTarget) {
         useGameStore.getState().setRemotePlayer({
           ...rPlayer,
           isMuted: mute,
@@ -2661,12 +2659,10 @@ export class PeerManager {
     const senderId = this.peer ? this.peer.id : localPlayer.id
     const remotePlayers = useGameStore.getState().remotePlayers
     for (const [rId, rPlayer] of Object.entries(remotePlayers)) {
-      if (
-        rId === targetUserId ||
-        rPlayer.id === targetUserId ||
-        rPlayer.gameId === targetUserId ||
-        (targetGameId && (rPlayer.id === targetGameId || rPlayer.gameId === targetGameId))
-      ) {
+      const matchesTarget =
+        (Boolean(targetUserId) && (rId === targetUserId || rPlayer.id === targetUserId)) ||
+        (!targetUserId && Boolean(targetGameId) && (rId === targetGameId || rPlayer.id === targetGameId || rPlayer.gameId === targetGameId))
+      if (matchesTarget) {
         useGameStore.getState().setRemotePlayer({
           ...rPlayer,
           isDeafened: deafen,
