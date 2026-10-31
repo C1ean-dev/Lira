@@ -67,6 +67,7 @@ export function processNetworkMessage(
     case 'HEARTBEAT':
     case 'HEARTBEAT_ACK':
     case 'HOST_TRANSFER':
+    case 'PEER_UNREACHABLE_REPORT':
       return
 
     case 'PLAYER_JOIN': {
