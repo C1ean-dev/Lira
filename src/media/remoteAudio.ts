@@ -24,7 +24,11 @@ export function attachRemoteAudio(el: HTMLMediaElement, stream: MediaStream, ctx
   let playback = input
   try {
     if (typeof AudioContext !== 'undefined' && input.getAudioTracks().length > 0) {
-      context = new AudioContext()
+      try {
+        context = new AudioContext({ sampleRate: 48000 })
+      } catch {
+        context = new AudioContext()
+      }
       source = context.createMediaStreamSource(input)
       gain = context.createGain()
       destination = context.createMediaStreamDestination()

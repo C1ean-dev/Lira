@@ -408,6 +408,10 @@ export class MediaManager {
           echoCancellation: state.echoCancellation,
           autoGainControl: state.autoGainControl,
           noiseSuppression: false,
+          channelCount: { ideal: 1 },
+          // Prefer the engines' rate without rejecting native 96 kHz devices.
+          // MediaStreamAudioSourceNode resamples to the 48 kHz AudioContext.
+          sampleRate: { ideal: 48000 },
         }
       : false
 
@@ -837,6 +841,8 @@ export class MediaManager {
             echoCancellation: state.echoCancellation,
             autoGainControl: state.autoGainControl,
             noiseSuppression: false,
+            channelCount: { ideal: 1 },
+            sampleRate: { ideal: 48000 },
           },
         })
       } catch {
@@ -848,6 +854,7 @@ export class MediaManager {
                 echoCancellation: state.echoCancellation,
                 autoGainControl: state.autoGainControl,
                 noiseSuppression: false,
+                sampleRate: { ideal: 48000 },
               },
             })
           } catch {}
@@ -860,6 +867,8 @@ export class MediaManager {
             echoCancellation: state.echoCancellation,
             autoGainControl: state.autoGainControl,
             noiseSuppression: false,
+            channelCount: { ideal: 1 },
+            sampleRate: { ideal: 48000 },
           },
         })
       }

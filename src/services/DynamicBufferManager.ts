@@ -27,11 +27,11 @@ export interface AdaptiveBuffer {
 
 export const DYNAMIC_BUFFER_DEFAULT: Record<'audio' | 'video', AdaptiveBuffer> = {
   audio: {
-    currentMs: 1,
-    floorMs: 1,
+    currentMs: 40,
+    floorMs: 40,
     ceilingMs: 500,
     cleanSamples: 0,
-    lastTargetMs: 1,
+    lastTargetMs: 40,
   },
   video: {
     currentMs: 1,
