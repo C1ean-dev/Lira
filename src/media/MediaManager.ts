@@ -995,11 +995,11 @@ export class MediaManager {
       chosenFps = requestedFps
     }
 
-    let targetBitrate = 3_500_000
+    let targetBitrate = 4_000_000
     if (chosenRes === '1080p') {
-      targetBitrate = chosenFps === 60 ? 5_500_000 : 3_500_000
+      targetBitrate = chosenFps === 60 ? 15_000_000 : 5_000_000
     } else if (chosenRes === '720p') {
-      targetBitrate = chosenFps === 60 ? 3_000_000 : 2_000_000
+      targetBitrate = chosenFps === 60 ? 4_500_000 : 2_000_000
     } else if (chosenRes === '480p') {
       targetBitrate = chosenFps === 60 ? 1_500_000 : 1_000_000
     }
@@ -1077,7 +1077,7 @@ export class MediaManager {
         video: {
           width: { ideal: width },
           height: { ideal: height },
-          frameRate: { ideal: effectiveFps, max: 60 },
+          frameRate: { ideal: effectiveFps },
         },
         audio: displayAudioConstraint,
         ...(isElectronCapture
@@ -1234,12 +1234,12 @@ export class MediaManager {
       const screenVideoTrack = screenStream.getVideoTracks()[0]
       if (screenVideoTrack) {
         screenVideoTrack.enabled = true
+        const degradationPref = optimizationMode === 'quality' ? 'maintain-resolution' : 'maintain-framerate'
         if ('contentHint' in screenVideoTrack) {
-          screenVideoTrack.contentHint = optimizationMode === 'quality' ? 'detail' : 'motion'
+          screenVideoTrack.contentHint = effectiveFps === 60 || optimizationMode === 'smoothness' ? 'motion' : 'detail'
         }
 
-        const degradationPref = optimizationMode === 'quality' ? 'maintain-resolution' : 'maintain-framerate'
-        PeerManager.getInstance().replaceVideoTrack(screenVideoTrack, true, targetBitrate, effectiveFps)
+        PeerManager.getInstance().replaceVideoTrack(screenVideoTrack, true, targetBitrate, effectiveFps, degradationPref)
         PeerManager.getInstance().updateScreenShareOptimizationMode(optimizationMode)
         diagLog('screenshare', 'video-track-sent', {
           bitrate: targetBitrate,
@@ -1669,7 +1669,7 @@ export class MediaManager {
           video: {
             width: { ideal: width },
             height: { ideal: height },
-            frameRate: { ideal: effectiveFps, max: 60 },
+            frameRate: { ideal: effectiveFps },
           },
           audio: false,
         })
@@ -1697,11 +1697,12 @@ export class MediaManager {
 
           const optimizationMode =
             config.optimizationMode ?? useMediaStore.getState().screenShareOptimizationMode ?? 'quality'
+          const degradationPref = optimizationMode === 'quality' ? 'maintain-resolution' : 'maintain-framerate'
           if ('contentHint' in newVideoTrack) {
-            newVideoTrack.contentHint = optimizationMode === 'quality' ? 'detail' : 'motion'
+            newVideoTrack.contentHint = effectiveFps === 60 || optimizationMode === 'smoothness' ? 'motion' : 'detail'
           }
 
-          PeerManager.getInstance().replaceVideoTrack(newVideoTrack, true, targetBitrate, effectiveFps)
+          PeerManager.getInstance().replaceVideoTrack(newVideoTrack, true, targetBitrate, effectiveFps, degradationPref)
 
           newVideoTrack.onended = () => {
             if (this.rawScreenStream !== newStream) return
@@ -1738,11 +1739,56 @@ export class MediaManager {
   public updateScreenShareOptimizationMode(mode: 'quality' | 'smoothness') {
     const localScreenStream = useMediaStore.getState().localScreenStream
     const track = localScreenStream?.getVideoTracks()[0]
+    const currentFps = useMediaStore.getState().screenShareFps
     if (track && 'contentHint' in track) {
-      track.contentHint = mode === 'quality' ? 'detail' : 'motion'
+      track.contentHint = currentFps === 60 || mode === 'smoothness' ? 'motion' : 'detail'
     }
     PeerManager.getInstance().updateScreenShareOptimizationMode(mode)
     diagLog('screenshare', 'optimization-mode-updated', { mode })
+  }
+
+  public async updateScreenShareQuality(
+    requestedRes?: 'auto' | '480p' | '720p' | '1080p',
+    requestedFps?: 'auto' | 30 | 60
+  ): Promise<void> {
+    const res = requestedRes ?? useMediaStore.getState().screenShareResolution
+    const fps = requestedFps ?? useMediaStore.getState().screenShareFps
+    const optimizationMode = useMediaStore.getState().screenShareOptimizationMode
+
+    const { resolution: effectiveResolution, fps: effectiveFps, targetBitrate } =
+      MediaManager.resolveOptimalScreenQuality(res, fps)
+
+    let width = 1920
+    let height = 1080
+    if (res === '480p') {
+      width = 854
+      height = 480
+    } else if (res === '720p') {
+      width = 1280
+      height = 720
+    }
+
+    const currentScreenStream = useMediaStore.getState().localScreenStream
+    const videoTrack = currentScreenStream?.getVideoTracks()[0]
+    if (videoTrack && videoTrack.readyState === 'live') {
+      if ('contentHint' in videoTrack) {
+        videoTrack.contentHint = effectiveFps === 60 || optimizationMode === 'smoothness' ? 'motion' : 'detail'
+      }
+      if (typeof videoTrack.applyConstraints === 'function') {
+        try {
+          await videoTrack.applyConstraints({
+            width: { ideal: width },
+            height: { ideal: height },
+            frameRate: { ideal: effectiveFps },
+          })
+        } catch (err) {
+          diagLog('screenshare', 'apply-constraints-failed', { error: errShort(err) })
+        }
+      }
+    }
+
+    PeerManager.getInstance().updateScreenShareBitrate(targetBitrate)
+    diagLog('screenshare', 'quality-updated', { res, fps, effectiveResolution, effectiveFps, targetBitrate })
   }
 
   public stopAllMedia() {

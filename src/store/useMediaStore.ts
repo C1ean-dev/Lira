@@ -368,10 +368,16 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
   setScreenShareResolution: (screenShareResolution) => {
     saveAudioSettingsDebounced({ screenShareResolution })
     set({ screenShareResolution })
+    if (get().isScreenSharing) {
+      void MediaManager.getInstance().updateScreenShareQuality(screenShareResolution, get().screenShareFps)
+    }
   },
   setScreenShareFps: (screenShareFps) => {
     saveAudioSettingsDebounced({ screenShareFps })
     set({ screenShareFps })
+    if (get().isScreenSharing) {
+      void MediaManager.getInstance().updateScreenShareQuality(get().screenShareResolution, screenShareFps)
+    }
   },
   setRemoveCaptureBorder: (enabled: boolean) => {
     saveAudioSettings({ removeCaptureBorder: enabled })
@@ -399,12 +405,18 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
     saveAudioSettings({ isHardwareAccelerationEnabled: enabled })
     setHwCodecEnabled(enabled)
     set({ isHardwareAccelerationEnabled: enabled })
+    try {
+      PeerManager.getInstance().redialZoneCalls()
+    } catch {}
   },
   toggleHardwareAcceleration: () => {
     const next = !get().isHardwareAccelerationEnabled
     saveAudioSettings({ isHardwareAccelerationEnabled: next })
     setHwCodecEnabled(next)
     set({ isHardwareAccelerationEnabled: next })
+    try {
+      PeerManager.getInstance().redialZoneCalls()
+    } catch {}
   },
 
   setMicCalibration: (deviceId, cal) => {
@@ -434,9 +446,6 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
       isMuted: nextMute,
       isMutedByAdmin: false,
     })
-    try {
-      PeerManager.getInstance().sendPlayerUpdate({ isMuted: nextMute, isMutedByAdmin: false })
-    } catch {}
     if (hasMediaHardware()) {
       try {
         MediaManager.getInstance().syncMuteState(nextMute, false)
@@ -460,9 +469,6 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
       isMuted,
       isMutedByAdmin: false,
     })
-    try {
-      PeerManager.getInstance().sendPlayerUpdate({ isMuted, isMutedByAdmin: false })
-    } catch {}
     if (hasMediaHardware()) {
       try {
         MediaManager.getInstance().syncMuteState(isMuted, false)

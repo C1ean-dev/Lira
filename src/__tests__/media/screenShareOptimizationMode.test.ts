@@ -101,4 +101,56 @@ describe('Screen Share Optimization Mode (Qualidade vs Fluidez)', () => {
       vi.useRealTimers()
     }
   })
+
+  it('passes degradationPreference and sets contentHint correctly in replaceVideoTrack', async () => {
+    const fakeTrack: any = {
+      kind: 'video',
+      id: 'screen-track-pref',
+      contentHint: '',
+      enabled: true,
+      readyState: 'live',
+      stop: vi.fn(),
+      getSettings: () => ({ width: 1920, height: 1080 }),
+    }
+    const fakeStream: any = {
+      getVideoTracks: () => [fakeTrack],
+      getAudioTracks: () => [],
+      getTracks: () => [fakeTrack],
+      removeTrack: vi.fn(),
+      addTrack: vi.fn(),
+    }
+
+    const mockGetDisplayMedia = vi.fn().mockResolvedValue(fakeStream)
+    const originalMediaDevices = navigator.mediaDevices
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: { ...originalMediaDevices, getDisplayMedia: mockGetDisplayMedia },
+      configurable: true,
+      writable: true,
+    })
+
+    const replaceSpy = vi.spyOn(PeerManager.getInstance(), 'replaceVideoTrack').mockImplementation(() => {})
+    vi.spyOn(PeerManager.getInstance(), 'primeScreenShare').mockImplementation(() => {})
+    vi.spyOn(PeerManager.getInstance(), 'startLiveVoiceCalls').mockImplementation(() => {})
+
+    try {
+      useMediaStore.setState({ screenShareOptimizationMode: 'quality' })
+      await MediaManager.getInstance().startScreenShare({ resolution: '1080p', fps: 60, optimizationMode: 'quality' })
+
+      expect(replaceSpy).toHaveBeenCalledWith(
+        fakeTrack,
+        true,
+        15_000_000,
+        60,
+        'maintain-resolution'
+      )
+      expect(fakeTrack.contentHint).toBe('motion')
+    } finally {
+      MediaManager.getInstance().stopScreenShare()
+      Object.defineProperty(navigator, 'mediaDevices', {
+        value: originalMediaDevices,
+        configurable: true,
+        writable: true,
+      })
+    }
+  })
 })

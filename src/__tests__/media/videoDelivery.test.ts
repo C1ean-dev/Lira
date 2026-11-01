@@ -653,8 +653,8 @@ describe('Video Delivery & Screen Share Guarantee Tests', () => {
       await MediaManager.getInstance().startScreenShare({ resolution: '1080p', fps: 60 })
 
       expect(order).toEqual(['prime', 'capture', 'swap'])
-      expect(primeSpy).toHaveBeenCalledWith(5_500_000, 60)
-      expect(replaceSpy).toHaveBeenCalledWith(screenVideoTrack, true, 5_500_000, 60)
+      expect(primeSpy).toHaveBeenCalledWith(15_000_000, 60)
+      expect(replaceSpy).toHaveBeenCalledWith(screenVideoTrack, true, 15_000_000, 60, 'maintain-resolution')
       MediaManager.getInstance().stopScreenShare()
     })
 
@@ -791,7 +791,7 @@ describe('Video Delivery & Screen Share Guarantee Tests', () => {
       })
 
       expect(useMediaStore.getState().isScreenSharing).toBe(true)
-      expect(replaceSpy).toHaveBeenCalledWith(track1, true, expect.any(Number), expect.any(Number))
+      expect(replaceSpy).toHaveBeenCalledWith(track1, true, expect.any(Number), expect.any(Number), expect.anything())
 
       if (track1.onended) {
         track1.onended()
@@ -800,7 +800,7 @@ describe('Video Delivery & Screen Share Guarantee Tests', () => {
       await new Promise((r) => setTimeout(r, 800))
 
       expect(useMediaStore.getState().isScreenSharing).toBe(true)
-      expect(replaceSpy).toHaveBeenCalledWith(track2, true, expect.any(Number), expect.any(Number))
+      expect(replaceSpy).toHaveBeenCalledWith(track2, true, expect.any(Number), expect.any(Number), expect.anything())
 
       MediaManager.getInstance().stopScreenShare()
       expect(useMediaStore.getState().isScreenSharing).toBe(false)

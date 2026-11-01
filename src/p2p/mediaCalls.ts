@@ -2,7 +2,12 @@ import Peer, { MediaConnection } from 'peerjs'
 import { Player } from '../types/game'
 import { useGameStore } from '../store/useGameStore'
 import { useMediaStore } from '../store/useMediaStore'
-import { prioritizeH264HardwareCodec } from '../media/hardwareCodec'
+import {
+  prioritizeH264HardwareCodec,
+  prioritizeCodecInSdp,
+  isConnectionSendingH264,
+  isHardwareAccelerationEnabled,
+} from '../media/hardwareCodec'
 import { silentAudioTrack } from '../media/silentAudioTrack'
 import { djMusicSdp } from './djMusicSdp'
 import { buildIceServers } from './rtcIceServers'
@@ -883,8 +888,9 @@ export class MediaCallHandler {
         prioritizeH264HardwareCodec(pc)
       } catch {}
     }
-    if (isDjBot) call.answer(streamToAnswer, { sdpTransform: djMusicSdp })
-    else call.answer(streamToAnswer)
+    const sdpTransform = (sdp: string) =>
+      isDjBot ? djMusicSdp(prioritizeCodecInSdp(sdp)) : prioritizeCodecInSdp(sdp)
+    call.answer(streamToAnswer, { sdpTransform })
     ;(call as unknown as { __dir?: 'in' | 'out' }).__dir = 'in'
     mediaCalls.set(call.peer, call)
 
@@ -948,7 +954,9 @@ export class MediaCallHandler {
 
         let call: MediaConnection | undefined
         try {
-          call = peer.call(remotePlayer.id, streamToSend)
+          call = peer.call(remotePlayer.id, streamToSend, {
+            sdpTransform: (sdp: string) => prioritizeCodecInSdp(sdp),
+          })
         } catch (error) {
           useGameStore.getState().setCallState(remotePlayer.id, 'failed')
           diagLog('p2p', 'call.dial-error', { toPeer: remotePlayer.id, error: String(error) })
@@ -1102,7 +1110,8 @@ export class MediaCallHandler {
     isScreenShare: boolean = false,
     maxBitrate: number = 5_500_000,
     maxFramerate: number = 60,
-    degradationPreference?: VideoDegradation
+    degradationPreference?: VideoDegradation,
+    onRedialNeeded?: (peerId: string) => void
   ) {
     if (isScreenShare && degradationPreference) {
       setScreenDegradationPreference(degradationPreference)
@@ -1130,6 +1139,16 @@ export class MediaCallHandler {
         if (pc) {
           prioritizeH264HardwareCodec(pc)
           const videoSender = findVideoSender(pc)
+
+          const hwEnabled = isHardwareAccelerationEnabled()
+          const isH264 = isConnectionSendingH264(pc)
+          if (toScreen && ((isH264 !== null && hwEnabled !== isH264) || !videoSender)) {
+            if (onRedialNeeded) {
+              diagLog('screenshare', 'codec-or-sender-mismatch-redialing', { peerId, hwEnabled, isH264, hasSender: !!videoSender })
+              onRedialNeeded(peerId)
+              return
+            }
+          }
 
           if (videoSender) {
             if (toScreen) {
