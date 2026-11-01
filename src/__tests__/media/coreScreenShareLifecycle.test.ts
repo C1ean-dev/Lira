@@ -188,7 +188,7 @@ describe('core screen capture lifetime', () => {
     first.onended!()
     await vi.advanceTimersByTimeAsync(600)
     expect(useMediaStore.getState().isScreenSharing).toBe(true)
-    expect(peer.replaceVideoTrack).toHaveBeenLastCalledWith(recovered, true, expect.any(Number), expect.any(Number))
+    expect(peer.replaceVideoTrack).toHaveBeenLastCalledWith(recovered, true, expect.any(Number), expect.any(Number), expect.anything())
     expect(setScreenSource.mock.calls.every(([id]) => id === 'window:selected')).toBe(true)
   })
 

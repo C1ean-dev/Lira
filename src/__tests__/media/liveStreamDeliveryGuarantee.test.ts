@@ -264,7 +264,7 @@ describe('Live Stream Delivery Guarantee (Video & Audio)', () => {
     expect(videoTracks[0].kind).toBe('video')
     expect(videoTracks[0].enabled).toBe(true)
     expect(['detail', 'motion']).toContain(videoTracks[0].contentHint)
-    expect(replaceVideoSpy).toHaveBeenCalledWith(videoTracks[0], true, expect.any(Number), expect.any(Number))
+    expect(replaceVideoSpy).toHaveBeenCalledWith(videoTracks[0], true, expect.any(Number), expect.any(Number), expect.anything())
 
     const audioTracks = resultStream!.getAudioTracks()
     expect(audioTracks.length).toBeGreaterThan(0)
