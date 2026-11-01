@@ -997,7 +997,7 @@ export class MediaManager {
 
     let targetBitrate = 4_000_000
     if (chosenRes === '1080p') {
-      targetBitrate = chosenFps === 60 ? 9_000_000 : 5_000_000
+      targetBitrate = chosenFps === 60 ? 15_000_000 : 5_000_000
     } else if (chosenRes === '720p') {
       targetBitrate = chosenFps === 60 ? 4_500_000 : 2_000_000
     } else if (chosenRes === '480p') {

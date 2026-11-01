@@ -139,7 +139,7 @@ describe('Screen Share Optimization Mode (Qualidade vs Fluidez)', () => {
       expect(replaceSpy).toHaveBeenCalledWith(
         fakeTrack,
         true,
-        9_000_000,
+        15_000_000,
         60,
         'maintain-resolution'
       )

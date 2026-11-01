@@ -45,7 +45,7 @@ describe('Multi-Screen Sharing & Connection Stability Tests', () => {
     const quality = MediaManager.resolveOptimalScreenQuality('auto', 'auto')
     expect(quality.resolution).toBe('1080p')
     expect(quality.fps).toBe(60)
-    expect(quality.targetBitrate).toBe(9_000_000)
+    expect(quality.targetBitrate).toBe(15_000_000)
   })
 
   it('adapts to 720p @ 60fps (3.0 Mbps) when a second screen is shared in the zone', () => {
@@ -99,7 +99,7 @@ describe('Multi-Screen Sharing & Connection Stability Tests', () => {
     const quality = MediaManager.resolveOptimalScreenQuality('auto', 'auto')
     expect(quality.resolution).toBe('1080p')
     expect(quality.fps).toBe(60)
-    expect(quality.targetBitrate).toBe(9_000_000)
+    expect(quality.targetBitrate).toBe(15_000_000)
   })
 
   it('does not downgrade resolution when navigator.connection reports 3g or 2g', () => {

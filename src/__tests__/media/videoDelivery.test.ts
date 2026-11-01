@@ -653,8 +653,8 @@ describe('Video Delivery & Screen Share Guarantee Tests', () => {
       await MediaManager.getInstance().startScreenShare({ resolution: '1080p', fps: 60 })
 
       expect(order).toEqual(['prime', 'capture', 'swap'])
-      expect(primeSpy).toHaveBeenCalledWith(9_000_000, 60)
-      expect(replaceSpy).toHaveBeenCalledWith(screenVideoTrack, true, 9_000_000, 60, 'maintain-resolution')
+      expect(primeSpy).toHaveBeenCalledWith(15_000_000, 60)
+      expect(replaceSpy).toHaveBeenCalledWith(screenVideoTrack, true, 15_000_000, 60, 'maintain-resolution')
       MediaManager.getInstance().stopScreenShare()
     })
 

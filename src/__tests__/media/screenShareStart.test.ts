@@ -91,10 +91,10 @@ describe('screen share start', () => {
       expect(activeScreenCaps()).toEqual({ maxBitrate: 5_500_000, maxFramerate: 60 })
     })
 
-    it('never asks for more than 10 Mbps or 60 fps', () => {
+    it('never asks for more than 15 Mbps or 60 fps', () => {
       const a = fakeCall()
       MediaCallHandler.primeScreenShare(callsOf(['a', a]), 20_000_000, 144)
-      expect(a.last()).toMatchObject({ maxBitrate: 10_000_000, maxFramerate: 60 })
+      expect(a.last()).toMatchObject({ maxBitrate: 15_000_000, maxFramerate: 60 })
     })
 
     it('goes back to the camera caps when the capture is cancelled or fails', async () => {

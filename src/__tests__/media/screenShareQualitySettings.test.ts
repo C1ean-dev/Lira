@@ -302,12 +302,12 @@ describe('Screen Share Quality Settings and Capture Constraints', () => {
     const q1080p60 = MediaManager.resolveOptimalScreenQuality('1080p', 60)
     expect(q1080p60.resolution).toBe('1080p')
     expect(q1080p60.fps).toBe(60)
-    expect(q1080p60.targetBitrate).toBe(9_000_000)
+    expect(q1080p60.targetBitrate).toBe(15_000_000)
 
     const qAuto = MediaManager.resolveOptimalScreenQuality('auto', 'auto')
     expect(qAuto.resolution).toBe('1080p')
     expect(qAuto.fps).toBe(60)
-    expect(qAuto.targetBitrate).toBe(9_000_000)
+    expect(qAuto.targetBitrate).toBe(15_000_000)
 
     const q1080p30 = MediaManager.resolveOptimalScreenQuality('1080p', 30)
     expect(q1080p30.targetBitrate).toBe(5_000_000)
