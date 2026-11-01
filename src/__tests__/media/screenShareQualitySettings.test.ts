@@ -97,6 +97,71 @@ describe('Screen Share Quality Settings and Capture Constraints', () => {
     }
   })
 
+  it('strictly adheres to W3C Screen Capture specification by omitting min and exact constraints', async () => {
+    let capturedConstraints: any = null
+    const fakeTrack: any = {
+      kind: 'video',
+      id: 'screen-track-w3c',
+      enabled: true,
+      readyState: 'live',
+      stop: vi.fn(),
+      getSettings: () => ({ width: 1920, height: 1080 }),
+    }
+    const fakeStream: any = {
+      getVideoTracks: () => [fakeTrack],
+      getAudioTracks: () => [],
+      getTracks: () => [fakeTrack],
+      removeTrack: vi.fn(),
+      addTrack: vi.fn(),
+    }
+
+    const mockGetDisplayMedia = vi.fn().mockImplementation(async (options: any) => {
+      const videoConstraints = options?.video || {}
+      for (const key of Object.keys(videoConstraints)) {
+        const val = videoConstraints[key]
+        if (typeof val === 'object' && val !== null) {
+          if ('min' in val || 'exact' in val) {
+            throw new TypeError('Min or exact constraints are not allowed in getDisplayMedia')
+          }
+        }
+      }
+      capturedConstraints = options
+      return fakeStream
+    })
+
+    const originalMediaDevices = navigator.mediaDevices
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: {
+        ...originalMediaDevices,
+        getDisplayMedia: mockGetDisplayMedia,
+      },
+      configurable: true,
+      writable: true,
+    })
+
+    vi.spyOn(PeerManager.getInstance(), 'primeScreenShare').mockImplementation(() => {})
+    vi.spyOn(PeerManager.getInstance(), 'replaceVideoTrack').mockImplementation(() => {})
+    vi.spyOn(PeerManager.getInstance(), 'startLiveVoiceCalls').mockImplementation(() => {})
+
+    try {
+      const stream = await MediaManager.getInstance().startScreenShare({
+        resolution: '1080p',
+        fps: 60,
+      })
+      expect(stream).toBe(fakeStream)
+      expect(mockGetDisplayMedia).toHaveBeenCalled()
+      expect(capturedConstraints?.video?.frameRate?.min).toBeUndefined()
+      expect(capturedConstraints?.video?.frameRate?.exact).toBeUndefined()
+    } finally {
+      MediaManager.getInstance().stopScreenShare()
+      Object.defineProperty(navigator, 'mediaDevices', {
+        value: originalMediaDevices,
+        configurable: true,
+        writable: true,
+      })
+    }
+  })
+
   it('does not downscale getDisplayMedia capture to 480p when 8 peers are in zone with auto resolution', async () => {
     const players: Record<string, any> = {}
     for (let i = 2; i <= 10; i++) {
@@ -296,7 +361,7 @@ describe('Screen Share Quality Settings and Capture Constraints', () => {
 
       expect(capturedOptions?.video?.frameRate?.ideal).toBe(60)
       expect(capturedOptions?.video?.frameRate?.max).toBeUndefined()
-      expect(capturedOptions?.video?.frameRate?.min).toBe(30)
+      expect(capturedOptions?.video?.frameRate?.min).toBeUndefined()
     } finally {
       MediaManager.getInstance().stopScreenShare()
       Object.defineProperty(navigator, 'mediaDevices', {

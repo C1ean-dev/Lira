@@ -1077,7 +1077,7 @@ export class MediaManager {
         video: {
           width: { ideal: width },
           height: { ideal: height },
-          frameRate: effectiveFps === 60 ? { ideal: 60, min: 30 } : { ideal: effectiveFps },
+          frameRate: { ideal: effectiveFps },
         },
         audio: displayAudioConstraint,
         ...(isElectronCapture
@@ -1669,7 +1669,7 @@ export class MediaManager {
           video: {
             width: { ideal: width },
             height: { ideal: height },
-            frameRate: effectiveFps === 60 ? { ideal: 60, min: 30 } : { ideal: effectiveFps },
+            frameRate: { ideal: effectiveFps },
           },
           audio: false,
         })
@@ -1779,7 +1779,7 @@ export class MediaManager {
           await videoTrack.applyConstraints({
             width: { ideal: width },
             height: { ideal: height },
-            frameRate: effectiveFps === 60 ? { ideal: 60, min: 30 } : { ideal: effectiveFps },
+            frameRate: { ideal: effectiveFps },
           })
         } catch (err) {
           diagLog('screenshare', 'apply-constraints-failed', { error: errShort(err) })

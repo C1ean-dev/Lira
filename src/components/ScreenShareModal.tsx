@@ -120,8 +120,13 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
       fps,
       optimizationMode,
     }
-    await MediaManager.getInstance().startScreenShare(config)
-    onClose()
+    try {
+      await MediaManager.getInstance().startScreenShare(config)
+    } catch (err) {
+      console.error('Falha ao iniciar compartilhamento de tela:', err)
+    } finally {
+      onClose()
+    }
   }
 
   const handleNativePicker = async () => {
@@ -133,8 +138,13 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
       fps,
       optimizationMode,
     }
-    await MediaManager.getInstance().startScreenShare(config)
-    onClose()
+    try {
+      await MediaManager.getInstance().startScreenShare(config)
+    } catch (err) {
+      console.error('Falha ao iniciar compartilhamento nativo de tela:', err)
+    } finally {
+      onClose()
+    }
   }
 
   return (
