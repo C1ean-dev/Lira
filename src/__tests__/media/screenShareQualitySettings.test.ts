@@ -227,4 +227,123 @@ describe('Screen Share Quality Settings and Capture Constraints', () => {
       })
     }
   })
+
+  it('resolves optimal screen quality targeting 9 Mbps for 1080p 60fps in high quality conditions', () => {
+    useGameStore.setState({
+      localPlayer: { id: 'p1', currentZoneId: 'z1', ping: 10 } as any,
+      remotePlayers: {},
+    })
+
+    const q1080p60 = MediaManager.resolveOptimalScreenQuality('1080p', 60)
+    expect(q1080p60.resolution).toBe('1080p')
+    expect(q1080p60.fps).toBe(60)
+    expect(q1080p60.targetBitrate).toBe(9_000_000)
+
+    const qAuto = MediaManager.resolveOptimalScreenQuality('auto', 'auto')
+    expect(qAuto.resolution).toBe('1080p')
+    expect(qAuto.fps).toBe(60)
+    expect(qAuto.targetBitrate).toBe(9_000_000)
+
+    const q1080p30 = MediaManager.resolveOptimalScreenQuality('1080p', 30)
+    expect(q1080p30.targetBitrate).toBe(5_000_000)
+
+    const q720p60 = MediaManager.resolveOptimalScreenQuality('720p', 60)
+    expect(q720p60.targetBitrate).toBe(4_500_000)
+  })
+
+  it('configures capture constraints for 60fps without strict max: 60 clipping filter to prevent frame drops', async () => {
+    let capturedOptions: any = null
+    const fakeTrack: any = {
+      kind: 'video',
+      id: 'screen-track-60fps',
+      enabled: true,
+      readyState: 'live',
+      stop: vi.fn(),
+      getSettings: () => ({ width: 1920, height: 1080, frameRate: 60 }),
+    }
+    const fakeStream: any = {
+      getVideoTracks: () => [fakeTrack],
+      getAudioTracks: () => [],
+      getTracks: () => [fakeTrack],
+      removeTrack: vi.fn(),
+      addTrack: vi.fn(),
+    }
+
+    const mockGetDisplayMedia = vi.fn().mockImplementation(async (options: any) => {
+      capturedOptions = options
+      return fakeStream
+    })
+
+    const originalMediaDevices = navigator.mediaDevices
+    Object.defineProperty(navigator, 'mediaDevices', {
+      value: {
+        ...originalMediaDevices,
+        getDisplayMedia: mockGetDisplayMedia,
+      },
+      configurable: true,
+      writable: true,
+    })
+
+    vi.spyOn(PeerManager.getInstance(), 'primeScreenShare').mockImplementation(() => {})
+    vi.spyOn(PeerManager.getInstance(), 'replaceVideoTrack').mockImplementation(() => {})
+    vi.spyOn(PeerManager.getInstance(), 'startLiveVoiceCalls').mockImplementation(() => {})
+
+    try {
+      await MediaManager.getInstance().startScreenShare({
+        resolution: '1080p',
+        fps: 60,
+      })
+
+      expect(capturedOptions?.video?.frameRate?.ideal).toBe(60)
+      expect(capturedOptions?.video?.frameRate?.max).toBeUndefined()
+      expect(capturedOptions?.video?.frameRate?.min).toBe(30)
+    } finally {
+      MediaManager.getInstance().stopScreenShare()
+      Object.defineProperty(navigator, 'mediaDevices', {
+        value: originalMediaDevices,
+        configurable: true,
+        writable: true,
+      })
+    }
+  })
+
+  it('dynamically reconfigures track constraints and sender parameters on the fly via updateScreenShareQuality', async () => {
+    const applyConstraintsMock = vi.fn().mockResolvedValue(undefined)
+    const fakeTrack: any = {
+      kind: 'video',
+      id: 'screen-track-dynamic',
+      enabled: true,
+      readyState: 'live',
+      applyConstraints: applyConstraintsMock,
+      stop: vi.fn(),
+      getSettings: () => ({ width: 1920, height: 1080 }),
+    }
+    const fakeStream: any = {
+      getVideoTracks: () => [fakeTrack],
+      getAudioTracks: () => [],
+      getTracks: () => [fakeTrack],
+      removeTrack: vi.fn(),
+      addTrack: vi.fn(),
+    }
+
+    useMediaStore.setState({
+      localScreenStream: fakeStream,
+      isScreenSharing: true,
+      screenShareResolution: '1080p',
+      screenShareFps: 60,
+    })
+
+    const updateBitrateSpy = vi.spyOn(PeerManager.getInstance(), 'updateScreenShareBitrate').mockImplementation(() => {})
+
+    await MediaManager.getInstance().updateScreenShareQuality('720p', 30)
+
+    expect(applyConstraintsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 30 },
+      })
+    )
+    expect(updateBitrateSpy).toHaveBeenCalledWith(2_000_000)
+  })
 })

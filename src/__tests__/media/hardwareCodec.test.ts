@@ -107,6 +107,35 @@ describe('WebRTC Hardware Codec Acceleration (H.264 Priority)', () => {
     expect(passedCodecs[2].mimeType).toBe('video/VP8')
   })
 
+  it('prioritizes High Profile (6400xx) H264 mode 1 codecs above Baseline (42e0xx) mode 1 codecs for hardware acceleration', () => {
+    const mockCodecs = [
+      { mimeType: 'video/VP8', clockRate: 90000 },
+      { mimeType: 'video/H264', clockRate: 90000, sdpFmtpLine: 'profile-level-id=42e01f;packetization-mode=1' },
+      { mimeType: 'video/H264', clockRate: 90000, sdpFmtpLine: 'profile-level-id=640032;packetization-mode=1' },
+      { mimeType: 'video/H264', clockRate: 90000, sdpFmtpLine: 'profile-level-id=42001f;packetization-mode=0' },
+    ]
+
+    const setCodecPreferencesMock = vi.fn()
+    const videoTransceiver = {
+      receiver: { track: { kind: 'video' } },
+      setCodecPreferences: setCodecPreferencesMock,
+    }
+    const mockPc = {
+      getTransceivers: vi.fn().mockReturnValue([videoTransceiver]),
+    } as unknown as RTCPeerConnection
+
+    ;(globalThis as any).RTCRtpReceiver = {
+      getCapabilities: vi.fn().mockReturnValue({ codecs: mockCodecs }),
+    }
+
+    prioritizeH264HardwareCodec(mockPc)
+
+    const passedCodecs = setCodecPreferencesMock.mock.calls[0][0]
+    expect(passedCodecs[0].sdpFmtpLine).toContain('profile-level-id=640032')
+    expect(passedCodecs[1].sdpFmtpLine).toContain('profile-level-id=42e01f')
+    expect(passedCodecs[2].sdpFmtpLine).toContain('profile-level-id=42001f')
+  })
+
   it('prioritizeH264InSdp reorders m=video payload list to place H.264 at the front', async () => {
     const { prioritizeH264InSdp } = await import('../../media/hardwareCodec')
     const sampleSdp = [
@@ -125,6 +154,27 @@ describe('WebRTC Hardware Codec Acceleration (H.264 Priority)', () => {
     const munged = prioritizeH264InSdp(sampleSdp)
     expect(munged).toContain('m=video 9 UDP/TLS/RTP/SAVPF 102 104 96 97\r\na=rtpmap:96')
     expect(munged).not.toContain('97a=rtpmap')
+  })
+
+  it('prioritizeH264InSdp reorders m=video payload list to place High Profile H.264 at the front', async () => {
+    const { prioritizeH264InSdp } = await import('../../media/hardwareCodec')
+    const sampleSdp = [
+      'v=0',
+      'o=- 12345 2 IN IP4 127.0.0.1',
+      's=-',
+      'm=video 9 UDP/TLS/RTP/SAVPF 96 97 102 103 104',
+      'a=rtpmap:96 VP8/90000',
+      'a=rtpmap:97 VP9/90000',
+      'a=rtpmap:102 H264/90000',
+      'a=fmtp:102 profile-level-id=42e01f;packetization-mode=1',
+      'a=rtpmap:103 H264/90000',
+      'a=fmtp:103 profile-level-id=640032;packetization-mode=1',
+      'a=rtpmap:104 H264/90000',
+      'a=fmtp:104 profile-level-id=42001f;packetization-mode=0',
+    ].join('\r\n')
+
+    const munged = prioritizeH264InSdp(sampleSdp)
+    expect(munged).toContain('m=video 9 UDP/TLS/RTP/SAVPF 103 102 104 96 97\r\na=rtpmap:96')
   })
 
   it('allows toggling hardware acceleration on and off dynamically', async () => {

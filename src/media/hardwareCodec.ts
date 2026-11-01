@@ -26,6 +26,18 @@ export function setHardwareAccelerationEnabled(enabled: boolean) {
   console.info(`[HardwareCodec] Hardware acceleration: ${enabled ? 'ENABLED (GPU / H.264)' : 'DISABLED (CPU / VP8)'}`)
 }
 
+export function getH264ProfileScore(fmtpLine?: string): number {
+  if (!fmtpLine) return 0
+  const lower = fmtpLine.toLowerCase()
+  const isMode1 = lower.includes('packetization-mode=1')
+  const base = isMode1 ? 100 : 0
+  if (lower.includes('profile-level-id=6400')) return base + 50 // High Profile (Level 5.0/4.2 with CABAC)
+  if (lower.includes('profile-level-id=4d00')) return base + 40 // Main Profile
+  if (lower.includes('profile-level-id=42e0')) return base + 30 // Constrained Baseline
+  if (lower.includes('profile-level-id=4200')) return base + 20 // Baseline
+  return base + 10
+}
+
 export function prioritizeH264HardwareCodec(pc?: RTCPeerConnection | null, forceH264?: boolean) {
   if (!pc || typeof pc.getTransceivers !== 'function') return
 
@@ -48,18 +60,15 @@ export function prioritizeH264HardwareCodec(pc?: RTCPeerConnection | null, force
       )
       if (h264Codecs.length === 0) return
 
-      const h264Mode1 = h264Codecs.filter(
-        (c: any) => c.sdpFmtpLine && c.sdpFmtpLine.includes('packetization-mode=1')
-      )
-      const h264Other = h264Codecs.filter(
-        (c: any) => !c.sdpFmtpLine || !c.sdpFmtpLine.includes('packetization-mode=1')
-      )
+      const sortedH264 = [...h264Codecs].sort((a: any, b: any) => {
+        return getH264ProfileScore(b.sdpFmtpLine) - getH264ProfileScore(a.sdpFmtpLine)
+      })
 
       const otherCodecs = capabilities.codecs.filter(
         (c: any) => !c.mimeType || c.mimeType.toLowerCase() !== 'video/h264'
       )
 
-      sortedCodecs = [...h264Mode1, ...h264Other, ...otherCodecs]
+      sortedCodecs = [...sortedH264, ...otherCodecs]
     } else {
       const vp8Codecs = capabilities.codecs.filter(
         (c: any) => c.mimeType && c.mimeType.toLowerCase() === 'video/vp8'
@@ -111,20 +120,17 @@ export function prioritizeH264InSdp(sdp: string): string {
 
     if (h264Payloads.length === 0) return sdp
 
-    for (const pt of h264Payloads) {
-      const fmtpMatch = lines.some((line) => {
-        const regex = new RegExp(`^a=fmtp:${pt}\\s+[^\\r\\n]*packetization-mode=1`, 'i')
-        return regex.test(line)
-      })
-      if (fmtpMatch) {
-        h264Mode1Payloads.push(pt)
+    const ptFmtpMap = new Map<string, string>()
+    for (const line of lines) {
+      const match = line.match(/^a=fmtp:(\d+)\s+(.+)$/i)
+      if (match) {
+        ptFmtpMap.set(match[1], match[2])
       }
     }
 
-    const preferredH264 = [
-      ...h264Mode1Payloads,
-      ...h264Payloads.filter((pt) => !h264Mode1Payloads.includes(pt)),
-    ]
+    const preferredH264 = [...h264Payloads].sort((a, b) => {
+      return getH264ProfileScore(ptFmtpMap.get(b)) - getH264ProfileScore(ptFmtpMap.get(a))
+    })
 
     return sdp.replace(
       /(m=video\s+\d+\s+[^\r\n\s]+\s+)([0-9\s]+?)(?=\r?\n|$)/i,

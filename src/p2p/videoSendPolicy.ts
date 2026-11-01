@@ -10,7 +10,7 @@ export type VideoDegradation = 'maintain-framerate' | 'maintain-resolution'
 
 export const CAMERA_CAPS: VideoCaps = { maxBitrate: 1_200_000, maxFramerate: 30 }
 
-const SCREEN_MAX_BITRATE = 6_000_000
+const SCREEN_MAX_BITRATE = 10_000_000
 const SCREEN_MAX_FRAMERATE = 60
 
 export const SCREEN_START_HOLD_MS = 4000
