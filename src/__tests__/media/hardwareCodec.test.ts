@@ -239,5 +239,162 @@ describe('WebRTC Hardware Codec Acceleration (H.264 Priority)', () => {
 
     setHardwareAccelerationEnabled(true)
   })
+
+  it('detects whether an active RTCPeerConnection is sending H.264 or VP8', async () => {
+    const { isConnectionSendingH264 } = await import('../../media/hardwareCodec')
+
+    const pcH264 = {
+      currentLocalDescription: {
+        sdp: 'v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 102 96\r\na=rtpmap:102 H264/90000\r\na=rtpmap:96 VP8/90000\r\n',
+      },
+    } as unknown as RTCPeerConnection
+
+    const pcVP8 = {
+      currentLocalDescription: {
+        sdp: 'v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96 102\r\na=rtpmap:96 VP8/90000\r\na=rtpmap:102 H264/90000\r\n',
+      },
+    } as unknown as RTCPeerConnection
+
+    const pcNoVideo = {
+      currentLocalDescription: {
+        sdp: 'v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n',
+      },
+    } as unknown as RTCPeerConnection
+
+    expect(isConnectionSendingH264(pcH264)).toBe(true)
+    expect(isConnectionSendingH264(pcVP8)).toBe(false)
+    expect(isConnectionSendingH264(pcNoVideo)).toBeNull()
+    expect(isConnectionSendingH264(null as any)).toBeNull()
+  })
+
+  it('provides sdpTransform prioritizing H.264 when dialing and answering calls', async () => {
+    const { MediaCallHandler } = await import('../../p2p/mediaCalls')
+    const { useMediaStore } = await import('../../store/useMediaStore')
+    const { useGameStore } = await import('../../store/useGameStore')
+    const { setHardwareAccelerationEnabled } = await import('../../media/hardwareCodec')
+
+    setHardwareAccelerationEnabled(true)
+
+    const mockAudioTrack = { kind: 'audio', readyState: 'live', enabled: true }
+    const mockStream = {
+      getAudioTracks: () => [mockAudioTrack],
+      getVideoTracks: () => [],
+    } as unknown as MediaStream
+    useMediaStore.setState({ localStream: mockStream, isScreenSharing: false, localScreenStream: null })
+
+    const localPlayer = { id: 'local-p', currentZoneId: 'zone-1' } as any
+    const remotePlayer = { id: 'remote-p', currentZoneId: 'zone-1', name: 'Remote' } as any
+    useGameStore.setState({
+      localPlayer,
+      remotePlayers: { 'remote-p': remotePlayer },
+      callStates: {},
+    })
+
+    const sampleSdp = 'v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96 102\r\na=rtpmap:96 VP8/90000\r\na=rtpmap:102 H264/90000\r\na=fmtp:102 profile-level-id=42e01f;packetization-mode=1\r\n'
+
+    // 1. Dialing (checkZoneCallEligibility)
+    const mockCall = { peer: 'remote-p', on: vi.fn(), close: vi.fn() }
+    const mockPeer = {
+      call: vi.fn().mockReturnValue(mockCall),
+    } as any
+
+    const mediaCalls = new Map<string, any>()
+    MediaCallHandler.checkZoneCallEligibility(remotePlayer, mockPeer, mediaCalls, vi.fn())
+
+    expect(mockPeer.call).toHaveBeenCalledTimes(1)
+    const dialOptions = mockPeer.call.mock.calls[0][2]
+    expect(dialOptions).toBeDefined()
+    expect(typeof dialOptions.sdpTransform).toBe('function')
+    const transformedDialSdp = dialOptions.sdpTransform(sampleSdp)
+    expect(transformedDialSdp).toContain('m=video 9 UDP/TLS/RTP/SAVPF 102 96')
+
+    // 2. Answering (handleIncomingCall)
+    const incomingCall = {
+      peer: 'remote-p',
+      answer: vi.fn(),
+      on: vi.fn(),
+      close: vi.fn(),
+    } as any
+
+    MediaCallHandler.handleIncomingCall({
+      call: incomingCall,
+      myId: 'local-p',
+      mediaCalls: new Map(),
+      endMediaCallWithPeer: vi.fn(),
+    })
+
+    expect(incomingCall.answer).toHaveBeenCalledTimes(1)
+    const answerOptions = incomingCall.answer.mock.calls[0][1]
+    expect(answerOptions).toBeDefined()
+    expect(typeof answerOptions.sdpTransform).toBe('function')
+    const transformedAnswerSdp = answerOptions.sdpTransform(sampleSdp)
+    expect(transformedAnswerSdp).toContain('m=video 9 UDP/TLS/RTP/SAVPF 102 96')
+  })
+
+  it('triggers onRedialNeeded when starting screen share if the connection is stuck on VP8', async () => {
+    const { MediaCallHandler } = await import('../../p2p/mediaCalls')
+    const { setHardwareAccelerationEnabled } = await import('../../media/hardwareCodec')
+
+    setHardwareAccelerationEnabled(true)
+
+    const mockSender = {
+      track: { kind: 'video' },
+      replaceTrack: vi.fn().mockResolvedValue(undefined),
+      getParameters: vi.fn().mockReturnValue({ encodings: [{}] }),
+      setParameters: vi.fn().mockResolvedValue(undefined),
+    }
+
+    const mockPcVP8 = {
+      getSenders: vi.fn().mockReturnValue([mockSender]),
+      getTransceivers: vi.fn().mockReturnValue([]),
+      currentLocalDescription: {
+        sdp: 'v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96 102\r\na=rtpmap:96 VP8/90000\r\na=rtpmap:102 H264/90000\r\n',
+      },
+    }
+
+    const mockCall = {
+      peer: 'peer-1',
+      peerConnection: mockPcVP8,
+      on: vi.fn(),
+      close: vi.fn(),
+    }
+
+    const mediaCalls = new Map<string, any>([['peer-1', mockCall]])
+    const fakeScreenTrack = {
+      kind: 'video',
+      id: 'screen-track-1',
+      enabled: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaStreamTrack
+
+    const redialNeededMock = vi.fn()
+
+    MediaCallHandler.replaceVideoTrack(
+      mediaCalls,
+      fakeScreenTrack,
+      true, // isScreenShare
+      10_000_000,
+      60,
+      'maintain-framerate',
+      redialNeededMock
+    )
+
+    expect(redialNeededMock).toHaveBeenCalledWith('peer-1')
+  })
+
+  it('redials zone calls when hardware acceleration is toggled in useMediaStore', async () => {
+    const { useMediaStore } = await import('../../store/useMediaStore')
+    const { PeerManager } = await import('../../p2p/PeerManager')
+
+    const redialSpy = vi.spyOn(PeerManager.getInstance(), 'redialZoneCalls').mockImplementation(() => {})
+
+    useMediaStore.getState().setHardwareAccelerationEnabled(false)
+    expect(redialSpy).toHaveBeenCalled()
+
+    redialSpy.mockClear()
+    useMediaStore.getState().toggleHardwareAcceleration()
+    expect(redialSpy).toHaveBeenCalled()
+  })
 })
 

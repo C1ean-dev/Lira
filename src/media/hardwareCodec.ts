@@ -184,3 +184,23 @@ export function prioritizeCodecInSdp(sdp: string, forceH264?: boolean): string {
 
 export function installHardwareCodecInterceptor() {
 }
+
+export function isConnectionSendingH264(pc?: RTCPeerConnection | null): boolean | null {
+  if (!pc) return null
+  try {
+    const sdp = pc.currentLocalDescription?.sdp || pc.localDescription?.sdp
+    if (!sdp || !sdp.includes('m=video')) return null
+    const videoLine = sdp.split(/\r\n|\n/).find((l) => l.startsWith('m=video'))
+    if (!videoLine) return null
+    const parts = videoLine.trim().split(/\s+/)
+    if (parts.length < 4) return null
+    const firstPayload = parts[3]
+    const lines = sdp.split(/\r\n|\n/)
+    const prefix = 'a=rtpmap:' + firstPayload + ' '
+    const rtpmap = lines.find((l) => l.startsWith(prefix))
+    if (rtpmap) {
+      return rtpmap.toUpperCase().includes('H264')
+    }
+  } catch {}
+  return null
+}

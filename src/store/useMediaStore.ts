@@ -405,12 +405,18 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
     saveAudioSettings({ isHardwareAccelerationEnabled: enabled })
     setHwCodecEnabled(enabled)
     set({ isHardwareAccelerationEnabled: enabled })
+    try {
+      PeerManager.getInstance().redialZoneCalls()
+    } catch {}
   },
   toggleHardwareAcceleration: () => {
     const next = !get().isHardwareAccelerationEnabled
     saveAudioSettings({ isHardwareAccelerationEnabled: next })
     setHwCodecEnabled(next)
     set({ isHardwareAccelerationEnabled: next })
+    try {
+      PeerManager.getInstance().redialZoneCalls()
+    } catch {}
   },
 
   setMicCalibration: (deviceId, cal) => {
