@@ -30,8 +30,13 @@ export function useLiveViewBox(
     let exact: { width: number; height: number } | null = null
 
     const report = () => {
-      const scale = window.devicePixelRatio || 1
-      const box = exact ?? { width: video.clientWidth * scale, height: video.clientHeight * scale }
+      const scale = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+      const fallbackWidth = quality === 'full' && typeof window !== 'undefined' ? window.innerWidth : 0
+      const fallbackHeight = quality === 'full' && typeof window !== 'undefined' ? window.innerHeight : 0
+      const box = exact ?? {
+        width: (video.clientWidth || fallbackWidth) * scale,
+        height: (video.clientHeight || fallbackHeight) * scale,
+      }
       liveViewReporter.setBox(key, sharerId, viewHeightFor(box, video, fit, quality))
     }
 

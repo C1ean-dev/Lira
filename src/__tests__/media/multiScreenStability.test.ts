@@ -76,6 +76,67 @@ describe('Multi-Screen Sharing & Connection Stability Tests', () => {
     expect(quality.targetBitrate).toBe(2_000_000)
   })
 
+  it('does not downgrade resolution or fps when 8 or more peers are in the zone but not sharing screens', () => {
+    const players: Record<string, any> = {}
+    for (let i = 2; i <= 10; i++) {
+      players[`player-${i}`] = {
+        id: `player-${i}`,
+        name: `Player ${i}`,
+        currentZoneId: 'zone-1',
+        isScreenSharing: false,
+      }
+    }
+    useGameStore.setState({
+      localPlayer: {
+        id: 'player-1',
+        name: 'Player 1',
+        currentZoneId: 'zone-1',
+        ping: 25,
+      } as any,
+      remotePlayers: players,
+    })
+
+    const quality = MediaManager.resolveOptimalScreenQuality('auto', 'auto')
+    expect(quality.resolution).toBe('1080p')
+    expect(quality.fps).toBe(60)
+    expect(quality.targetBitrate).toBe(5_500_000)
+  })
+
+  it('does not downgrade resolution when navigator.connection reports 3g or 2g', () => {
+    const originalNavigator = global.navigator
+    try {
+      Object.defineProperty(global, 'navigator', {
+        value: {
+          ...originalNavigator,
+          connection: { effectiveType: '3g' },
+        },
+        configurable: true,
+        writable: true,
+      })
+
+      const quality = MediaManager.resolveOptimalScreenQuality('auto', 'auto')
+      expect(quality.resolution).toBe('1080p')
+      expect(quality.fps).toBe(60)
+    } finally {
+      Object.defineProperty(global, 'navigator', {
+        value: originalNavigator,
+        configurable: true,
+        writable: true,
+      })
+    }
+  })
+
+  it('preserves user explicit requested resolution and fps even when other screens exist', () => {
+    useGameStore.getState().setRemotePlayer({
+      ...useGameStore.getState().remotePlayers['player-2'],
+      isScreenSharing: true,
+    })
+
+    const quality = MediaManager.resolveOptimalScreenQuality('1080p', 60)
+    expect(quality.resolution).toBe('1080p')
+    expect(quality.fps).toBe(60)
+  })
+
   it('dynamically adjusts RTCRtpSender encoding bitrate without renegotiating', () => {
     const mockSender = {
       track: { kind: 'video', id: 'video-track-1' },
