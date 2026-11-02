@@ -231,7 +231,7 @@ export const TopNavBar: React.FC<Props> = ({
 
         {connectionStatus === 'disconnected' && roomId && (
           <button
-            onClick={() => PeerManager.getInstance().scheduleSignalingReconnect()}
+onClick={() => PeerManager.getInstance().reconnect()}
             className="flex shrink-0 items-center gap-1.5 px-2 sm:px-3 py-2 sm:py-1 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 rounded-xl text-xs font-semibold text-rose-300 transition-all cursor-pointer shadow-sm active:scale-95"
             title="Conexão com o servidor perdida. Clique para tentar reconectar agora."
           >

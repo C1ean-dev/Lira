@@ -195,6 +195,13 @@ export class PeerManager {
   private djBotId: string | null = null
   private djHealthCheckTimer: any = null
 
+  private handleNetworkOnline = () => {
+    if (this.isIntentionalDisconnect || !this.roomCode || this.hostRecovery) return
+    if (useGameStore.getState().connectionStatus === 'connected' &&
+        this.peer?.open && !this.peer.destroyed && !this.peer.disconnected) return
+    this.reconnect()
+  }
+
   private constructor() {
     registerReportContext('p2p', () => this.describeForReport())
     connectLiveView({
@@ -210,6 +217,7 @@ export class PeerManager {
         MediaCallHandler.applyJitterBuffer(this.mediaCalls, ms)
       }
       window.addEventListener('lira:live-buffer-changed', handleBufferChanged)
+      window.addEventListener('online', this.handleNetworkOnline)
     }
   }
 
@@ -805,6 +813,7 @@ export class PeerManager {
       this.signalingReconnectTimer = null
       this.signalingReconnectAttempts = 0
       if (this.isHost || [...this.connections.values()].some(connection => connection.open)) {
+        useGameStore.getState().setConnected(true)
         useGameStore.getState().setConnectionStatus('connected')
       }
       for (const [peerId, state] of Object.entries(useGameStore.getState().callStates)) {
@@ -844,23 +853,33 @@ export class PeerManager {
     })
   }
 
-  public scheduleSignalingReconnect() {
+  public reconnect() {
+    if (this.isIntentionalDisconnect || !this.roomCode || this.hostRecovery) return
+    if (this.signalingReconnectTimer) clearTimeout(this.signalingReconnectTimer)
+    this.signalingReconnectTimer = null
+    this.signalingReconnectAttempts = 0
+    useGameStore.getState().setConnectionStatus('reconnecting')
+    this.scheduleSignalingReconnect(true)
+  }
+
+  public scheduleSignalingReconnect(immediate = false) {
     if (this.signalingReconnectTimer || this.isIntentionalDisconnect || !this.roomCode || this.hostRecovery) return
     const owner = this.peer
 
     this.signalingReconnectAttempts++
-    // A prolonged outage must not permanently disable recovery. Keep one
+// A prolonged outage must not permanently disable recovery. Keep one
     // bounded retry pending until the session recovers or the user leaves.
     useGameStore.getState().setConnectionStatus('reconnecting')
-    const delay = Math.min(8000, 1000 * Math.pow(1.5, Math.min(6, this.signalingReconnectAttempts - 1)))
+    const delay = immediate ? 0 : Math.min(8000, 1000 * Math.pow(1.5, Math.min(6, this.signalingReconnectAttempts - 1)))
     console.log(`[P2P Signaling] Scheduling reconnect attempt #${this.signalingReconnectAttempts} in ${delay}ms...`)
 
     this.signalingReconnectTimer = setTimeout(() => {
       this.signalingReconnectTimer = null
-      if (!this.peer || this.peer !== owner || this.isIntentionalDisconnect || !this.roomCode) return
+      if (this.peer !== owner || this.isIntentionalDisconnect || !this.roomCode) return
 
       // PeerJS retains the reconnect ID internally and clears public id on disconnect.
-      if (!this.peer.destroyed && (this.peer.id || this.peer.disconnected)) {
+      const lostHostConnection = owner?.open && !this.isHost && ![...this.connections.values()].some(connection => connection.open)
+      if (owner && !owner.destroyed && (owner.id || owner.disconnected) && !lostHostConnection) {
         console.log('[P2P Signaling] Calling this.peer.reconnect()...')
         this.signalingReconnectTimer = setTimeout(() => {
           const stalled = this.peer === owner && !this.isIntentionalDisconnect && this.roomCode && !owner?.open
@@ -877,7 +896,8 @@ export class PeerManager {
           }
         }, 5000)
         try {
-          this.peer.reconnect()
+          if (owner.disconnected === false) owner.disconnect()
+          owner.reconnect()
         } catch (err) {
           clearTimeout(this.signalingReconnectTimer)
           this.signalingReconnectTimer = null
@@ -886,14 +906,23 @@ export class PeerManager {
         }
       } else {
         console.log('[P2P Signaling] Peer destroyed or missing ID, attempting full re-join...')
-        const localPlayer = useGameStore.getState().localPlayer
+        const state = useGameStore.getState()
+        const localPlayer = state.localPlayer
+        const roomCode = this.roomCode
         const tierIdx = SIGNALING_TIERS.indexOf(this.currentSignalingTier)
         const safeTier = tierIdx >= 0 ? tierIdx : 0
-        if (this.isHost) {
-          this.createRoom(this.roomCode!, localPlayer, undefined, safeTier).catch(() => { })
-        } else {
-          this.joinRoom(this.roomCode!, localPlayer, safeTier).catch(() => { })
-        }
+        const rejoining = this.isHost
+          ? this.createRoom(roomCode, localPlayer, {
+              roomName: state.roomName, roomDescription: state.roomDescription,
+              isPublic: state.isRoomPublic, maxPlayers: state.maxPlayers, color: state.roomColor,
+            }, safeTier)
+          : this.joinRoom(roomCode, localPlayer, safeTier)
+        const rejoiningPeer = this.peer
+        rejoining.catch(error => {
+          if (this.peer !== rejoiningPeer || this.roomCode !== roomCode || this.isIntentionalDisconnect) return
+          diagLog('room', 'reconnect-failed', { roomCode, error: String(error?.message || error).slice(0, 160) })
+          useGameStore.getState().setConnectionStatus('disconnected')
+        })
       }
     }, delay)
   }
