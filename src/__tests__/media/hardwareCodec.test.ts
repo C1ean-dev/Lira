@@ -177,6 +177,30 @@ describe('WebRTC Hardware Codec Acceleration (H.264 Priority)', () => {
     expect(munged).toContain('m=video 9 UDP/TLS/RTP/SAVPF 103 102 104 96 97\r\na=rtpmap:96')
   })
 
+  it('prioritizeH264InSdp keeps associated RTX retransmission payloads immediately after their primary H.264 payload', async () => {
+    const { prioritizeH264InSdp } = await import('../../media/hardwareCodec')
+    const sampleSdp = [
+      'v=0',
+      'o=- 12345 2 IN IP4 127.0.0.1',
+      's=-',
+      'm=video 9 UDP/TLS/RTP/SAVPF 96 97 102 121 103 123',
+      'a=rtpmap:96 VP8/90000',
+      'a=rtpmap:97 rtx/90000',
+      'a=fmtp:97 apt=96',
+      'a=rtpmap:102 H264/90000',
+      'a=fmtp:102 profile-level-id=42e01f;packetization-mode=1',
+      'a=rtpmap:121 rtx/90000',
+      'a=fmtp:121 apt=102',
+      'a=rtpmap:103 H264/90000',
+      'a=fmtp:103 profile-level-id=640032;packetization-mode=1',
+      'a=rtpmap:123 rtx/90000',
+      'a=fmtp:123 apt=103',
+    ].join('\r\n')
+
+    const munged = prioritizeH264InSdp(sampleSdp)
+    expect(munged).toContain('m=video 9 UDP/TLS/RTP/SAVPF 103 123 102 121 96 97\r\na=rtpmap:96')
+  })
+
   it('allows toggling hardware acceleration on and off dynamically', async () => {
     const {
       isHardwareAccelerationEnabled,

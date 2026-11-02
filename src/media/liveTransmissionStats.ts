@@ -12,6 +12,8 @@ export interface TransmissionStats {
   rttMs: number | null
   lossPct: number | null
   droppedFrames: number | null
+  freezeCount: number | null
+  freezeDurationSec: number | null
   codec: string | null
   limitation: string | null
 }
@@ -77,6 +79,8 @@ export function createTransmissionSampler() {
           lossPct: local ? (number(remote?.fractionLost) === null ? null : remote.fractionLost * 100)
             : lost !== null && received !== null && lost + received > 0 ? lost * 100 / (lost + received) : null,
           droppedFrames: local ? null : delta(video.framesDropped, before?.framesDropped),
+          freezeCount: local ? null : number(video.freezeCount),
+          freezeDurationSec: local ? null : number(video.totalFreezesDuration),
           codec: typeof codec?.mimeType === 'string' ? codec.mimeType.replace(/^video\//, '') : null,
           limitation: local && typeof video.qualityLimitationReason === 'string' ? video.qualityLimitationReason : null,
         })

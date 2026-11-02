@@ -71,4 +71,10 @@ describe('DynamicBufferManager (Adaptive Jitter Buffer — network driven, 1ms f
     expect(audioReceiver.jitterBufferTarget).toBe(40)
     expect(audioReceiver.playoutDelayHint).toBeCloseTo(0.040, 3)
   })
+
+  it('caps dynamic video buffer ceiling to 350ms to prevent playout delay freeze stalls', () => {
+    const mgr = DynamicBufferManager.getInstance()
+    mgr.resetForNewCall()
+    expect(mgr.getBuffers().video.ceilingMs).toBe(350)
+  })
 })

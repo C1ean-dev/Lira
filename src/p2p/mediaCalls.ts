@@ -893,6 +893,10 @@ export class MediaCallHandler {
     call.answer(streamToAnswer, { sdpTransform })
     ;(call as unknown as { __dir?: 'in' | 'out' }).__dir = 'in'
     mediaCalls.set(call.peer, call)
+    try {
+      const answeredPc = (call as any).peerConnection as RTCPeerConnection | undefined
+      if (answeredPc) prioritizeH264HardwareCodec(answeredPc)
+    } catch {}
 
     const remotePlayer = useGameStore.getState().remotePlayers[call.peer]
 

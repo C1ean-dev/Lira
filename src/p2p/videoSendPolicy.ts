@@ -1,5 +1,6 @@
 import { diagLog } from '../utils/diagnosticLogger'
 import { MAX_VIEW_HEIGHT, layerFor } from './liveLayers'
+import { isHardwareAccelerationEnabled } from '../media/hardwareCodec'
 
 export interface VideoCaps {
   maxBitrate: number
@@ -10,8 +11,26 @@ export type VideoDegradation = 'maintain-framerate' | 'maintain-resolution'
 
 export const CAMERA_CAPS: VideoCaps = { maxBitrate: 1_200_000, maxFramerate: 30 }
 
-const SCREEN_MAX_BITRATE = 15_000_000
-const SCREEN_MAX_FRAMERATE = 60
+export const SCREEN_MAX_BITRATE = 15_000_000
+export const VP8_SCREEN_MAX_BITRATE = 5_000_000
+export const SCREEN_MAX_FRAMERATE = 60
+
+const peerNegotiatedCodecs = new Map<string, string>()
+
+export function setPeerNegotiatedCodec(peerId: string, codec: string | null | undefined): void {
+  if (!peerId) return
+  if (!codec) {
+    peerNegotiatedCodecs.delete(peerId)
+  } else {
+    peerNegotiatedCodecs.set(peerId, codec)
+  }
+}
+
+export function isPeerVp8(peerId: string | undefined): boolean {
+  if (!peerId) return false
+  const codec = peerNegotiatedCodecs.get(peerId)
+  return typeof codec === 'string' && codec.toLowerCase().includes('vp8')
+}
 
 export const SCREEN_START_HOLD_MS = 4000
 
@@ -61,9 +80,11 @@ export function getScreenDegradationPreference(): VideoDegradation {
   return configuredScreenDegradation
 }
 
-export function screenCaps(maxBitrate: number, maxFramerate: number): VideoCaps {
+export function screenCaps(maxBitrate: number, maxFramerate: number, isH264?: boolean): VideoCaps {
+  const effectiveH264 = isH264 !== undefined ? isH264 : isHardwareAccelerationEnabled()
+  const cap = effectiveH264 ? SCREEN_MAX_BITRATE : VP8_SCREEN_MAX_BITRATE
   return {
-    maxBitrate: Math.min(maxBitrate, SCREEN_MAX_BITRATE),
+    maxBitrate: Math.min(maxBitrate, cap),
     maxFramerate: Math.min(maxFramerate, SCREEN_MAX_FRAMERATE),
   }
 }
@@ -82,6 +103,7 @@ export function endScreenShare(): void {
   shareEpoch++
   captureTrack = null
   viewRequests.clear()
+  peerNegotiatedCodecs.clear()
 }
 
 export function setCaptureSource(track: MediaStreamTrack | null): void {
@@ -151,6 +173,7 @@ export function takeExpiredRequest(peerId: string): boolean {
 
 export function forgetViewer(peerId: string): void {
   viewRequests.delete(peerId)
+  peerNegotiatedCodecs.delete(peerId)
 }
 
 export function forgetAllViewers(): void {
@@ -165,8 +188,11 @@ export function askedHeight(peerId: string | undefined): number | null {
 
 function planFor(peerId: string | undefined): SendPlan | null {
   if (!activeShare) return null
-  if (viewerMode(peerId) === 'off') return { active: false, scale: 1, ...activeShare }
-  const layer = layerFor(activeShare, captureHeight(), askedHeight(peerId))
+  const isVp8 = isPeerVp8(peerId) || !isHardwareAccelerationEnabled()
+  const maxAllowedBitrate = isVp8 ? Math.min(activeShare.maxBitrate, VP8_SCREEN_MAX_BITRATE) : activeShare.maxBitrate
+  if (viewerMode(peerId) === 'off') return { active: false, scale: 1, ...activeShare, maxBitrate: maxAllowedBitrate }
+  const effectiveShare = maxAllowedBitrate !== activeShare.maxBitrate ? { ...activeShare, maxBitrate: maxAllowedBitrate } : activeShare
+  const layer = layerFor(effectiveShare, captureHeight(), askedHeight(peerId))
   return { active: true, scale: layer.scale, maxBitrate: layer.maxBitrate, maxFramerate: layer.maxFramerate }
 }
 

@@ -40,7 +40,8 @@ describe('live transmission statistics', () => {
       bytesReceived: timestamp * 100, framesDecoded: timestamp / 20,
       jitterBufferDelay: timestamp / 1000, jitterBufferEmittedCount: timestamp / 20,
       packetsLost: timestamp / 1000, packetsReceived: timestamp / 10,
-      framesDropped: timestamp / 1000, jitter: 0.005, codecId: 'codec', ...extra,
+      framesDropped: timestamp / 1000, jitter: 0.005, codecId: 'codec',
+      freezeCount: 6, totalFreezesDuration: 7.4, ...extra,
     })
     const codec = { id: 'codec', type: 'codec', mimeType: 'video/VP9' }
     const pc = connection(report(inbound(1000), codec))
@@ -50,6 +51,7 @@ describe('live transmission statistics', () => {
     expect((await sample(calls, stream, false))[0]).toMatchObject({
       bitrateKbps: 800, fps: 50, bufferKind: 'playback', bufferMs: 20,
       lossPct: 100 / 101, droppedFrames: 1, jitterMs: 5, codec: 'VP9',
+      freezeCount: 6, freezeDurationSec: 7.4,
     })
   })
 

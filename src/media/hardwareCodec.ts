@@ -121,10 +121,15 @@ export function prioritizeH264InSdp(sdp: string): string {
     if (h264Payloads.length === 0) return sdp
 
     const ptFmtpMap = new Map<string, string>()
+    const aptMap = new Map<string, string>()
     for (const line of lines) {
       const match = line.match(/^a=fmtp:(\d+)\s+(.+)$/i)
       if (match) {
         ptFmtpMap.set(match[1], match[2])
+        const aptMatch = match[2].match(/apt=(\d+)/i)
+        if (aptMatch) {
+          aptMap.set(match[1], aptMatch[1])
+        }
       }
     }
 
@@ -132,12 +137,25 @@ export function prioritizeH264InSdp(sdp: string): string {
       return getH264ProfileScore(ptFmtpMap.get(b)) - getH264ProfileScore(ptFmtpMap.get(a))
     })
 
+    const preferredWithRtx: string[] = []
+    const preferredSet = new Set<string>()
+    for (const pt of preferredH264) {
+      preferredWithRtx.push(pt)
+      preferredSet.add(pt)
+      for (const [rtxPt, primaryPt] of aptMap.entries()) {
+        if (primaryPt === pt && !preferredSet.has(rtxPt)) {
+          preferredWithRtx.push(rtxPt)
+          preferredSet.add(rtxPt)
+        }
+      }
+    }
+
     return sdp.replace(
       /(m=video\s+\d+\s+[^\r\n\s]+\s+)([0-9\s]+?)(?=\r?\n|$)/i,
       (_all, prefix, payloadStr) => {
         const existingPayloads = payloadStr.trim().split(/\s+/)
-        const remaining = existingPayloads.filter((pt: string) => !preferredH264.includes(pt))
-        const reordered = [...preferredH264, ...remaining].join(' ')
+        const remaining = existingPayloads.filter((pt: string) => !preferredSet.has(pt))
+        const reordered = [...preferredWithRtx, ...remaining].join(' ')
         return `${prefix}${reordered}`
       }
     )
@@ -163,12 +181,36 @@ export function prioritizeVP8InSdp(sdp: string): string {
 
     if (vp8Payloads.length === 0) return sdp
 
+    const aptMap = new Map<string, string>()
+    for (const line of lines) {
+      const match = line.match(/^a=fmtp:(\d+)\s+(.+)$/i)
+      if (match) {
+        const aptMatch = match[2].match(/apt=(\d+)/i)
+        if (aptMatch) {
+          aptMap.set(match[1], aptMatch[1])
+        }
+      }
+    }
+
+    const vp8WithRtx: string[] = []
+    const vp8Set = new Set<string>()
+    for (const pt of vp8Payloads) {
+      vp8WithRtx.push(pt)
+      vp8Set.add(pt)
+      for (const [rtxPt, primaryPt] of aptMap.entries()) {
+        if (primaryPt === pt && !vp8Set.has(rtxPt)) {
+          vp8WithRtx.push(rtxPt)
+          vp8Set.add(rtxPt)
+        }
+      }
+    }
+
     return sdp.replace(
       /(m=video\s+\d+\s+[^\r\n\s]+\s+)([0-9\s]+?)(?=\r?\n|$)/i,
       (_all, prefix, payloadStr) => {
         const existingPayloads = payloadStr.trim().split(/\s+/)
-        const remaining = existingPayloads.filter((pt: string) => !vp8Payloads.includes(pt))
-        const reordered = [...vp8Payloads, ...remaining].join(' ')
+        const remaining = existingPayloads.filter((pt: string) => !vp8Set.has(pt))
+        const reordered = [...vp8WithRtx, ...remaining].join(' ')
         return `${prefix}${reordered}`
       }
     )
