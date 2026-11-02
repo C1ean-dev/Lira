@@ -2068,20 +2068,46 @@ export class PeerManager {
         return { ok: true }
       }
 
+      this.djAudioStream = audioStream
+
       const localPlayer = useGameStore.getState().localPlayer
       const safeRoomCode = (this.roomCode || 'room').replace(/[^a-zA-Z0-9_-]/g, '')
       const safeLocalId = localPlayer.id.replace(/[^a-zA-Z0-9_-]/g, '').slice(-8)
-      const djBotId = `dj-${safeRoomCode}-${safeLocalId}`
 
-      this.djAudioStream = audioStream
-      this.djBotId = djBotId
+      let newDjPeer: Peer | null = null
+      let djBotId = ''
+      const maxAttempts = 3
 
-      const newDjPeer = createPeerInstance(djBotId, { tier: this.currentSignalingTier })
-      this.djPeer = newDjPeer
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const sessionSuffix = Date.now().toString(36).slice(-4) + Math.random().toString(36).slice(2, 6)
+        djBotId = `dj-${safeRoomCode}-${safeLocalId}-${sessionSuffix}`
+        this.djBotId = djBotId
 
-      await waitForDjPeerReady(newDjPeer)
-      if (this.djPeer !== newDjPeer || newDjPeer.destroyed) {
-        throw new Error('Inicialização do DJ cancelada.')
+        const candidatePeer = createPeerInstance(djBotId, { tier: this.currentSignalingTier })
+        this.djPeer = candidatePeer
+
+        try {
+          await waitForDjPeerReady(candidatePeer)
+          if (this.djPeer !== candidatePeer || candidatePeer.destroyed) {
+            throw new Error('Inicialização do DJ cancelada.')
+          }
+          newDjPeer = candidatePeer
+          break
+        } catch (err: any) {
+          try { candidatePeer.destroy() } catch { }
+          this.djPeer = null
+          const isTaken = String(err?.message || err).toLowerCase().includes('taken') ||
+                          String(err?.type || '').toLowerCase().includes('unavailable-id')
+          if (isTaken && attempt < maxAttempts) {
+            console.warn(`[PeerManager DJ] ID "${djBotId}" taken, retrying with fresh ID (attempt ${attempt + 1}/${maxAttempts})...`)
+            continue
+          }
+          throw err
+        }
+      }
+
+      if (!newDjPeer) {
+        throw new Error('Falha ao inicializar bot DJ.')
       }
       newDjPeer.on('error', (err) => console.warn('[PeerManager DJ Bot Peer Error]:', err))
 
@@ -2247,7 +2273,18 @@ export class PeerManager {
       if (inSameZone) {
         const existingCall = this.djMediaCalls.get(p.id)
         const existingPc = existingCall ? ((existingCall as any).peerConnection as RTCPeerConnection | undefined) : null
-        if (existingCall && existingPc && (existingPc.iceConnectionState === 'failed' || existingPc.connectionState === 'failed')) {
+        const isDead = existingCall && (
+          (existingCall as any).open === false ||
+          (existingPc && (
+            existingPc.iceConnectionState === 'failed' ||
+            existingPc.iceConnectionState === 'closed' ||
+            existingPc.iceConnectionState === 'disconnected' ||
+            existingPc.connectionState === 'failed' ||
+            existingPc.connectionState === 'closed' ||
+            existingPc.connectionState === 'disconnected'
+          ))
+        )
+        if (isDead) {
           try { existingCall.close() } catch { }
           this.djMediaCalls.delete(p.id)
         }
