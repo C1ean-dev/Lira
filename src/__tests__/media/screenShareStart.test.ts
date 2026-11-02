@@ -88,7 +88,7 @@ describe('screen share start', () => {
         expect(c.pc.addTrack).not.toHaveBeenCalled()
         expect(c.pc.addTransceiver).not.toHaveBeenCalled()
       }
-      expect(activeScreenCaps()).toEqual({ maxBitrate: 5_500_000, maxFramerate: 60 })
+      expect(activeScreenCaps()).toEqual({ maxBitrate: 5_500_000, maxFramerate: 60, minBitrate: 2_500_000 })
     })
 
     it('never asks for more than 15 Mbps or 60 fps', () => {

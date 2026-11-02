@@ -38,6 +38,8 @@ export function getH264ProfileScore(fmtpLine?: string): number {
   return base + 10
 }
 
+export const DEFAULT_PLI_THROTTLE_MS = 1200
+
 export function prioritizeH264HardwareCodec(pc?: RTCPeerConnection | null, forceH264?: boolean) {
   if (!pc || typeof pc.getTransceivers !== 'function') return
 
@@ -54,33 +56,31 @@ export function prioritizeH264HardwareCodec(pc?: RTCPeerConnection | null, force
     const useHw = forceH264 !== undefined ? forceH264 : hwAccelerationActive
     let sortedCodecs: any[]
 
+    const h264Codecs = capabilities.codecs.filter(
+      (c: any) => c.mimeType && c.mimeType.toLowerCase() === 'video/h264'
+    )
+    const av1Codecs = capabilities.codecs.filter(
+      (c: any) => c.mimeType && c.mimeType.toLowerCase() === 'video/av1'
+    )
+    const vp9Codecs = capabilities.codecs.filter(
+      (c: any) => c.mimeType && c.mimeType.toLowerCase() === 'video/vp9'
+    )
+    const vp8Codecs = capabilities.codecs.filter(
+      (c: any) => c.mimeType && c.mimeType.toLowerCase() === 'video/vp8'
+    )
+    const knownMimes = new Set(['video/h264', 'video/av1', 'video/vp9', 'video/vp8'])
+    const otherCodecs = capabilities.codecs.filter(
+      (c: any) => !c.mimeType || !knownMimes.has(c.mimeType.toLowerCase())
+    )
+
+    const sortedH264 = [...h264Codecs].sort((a: any, b: any) => {
+      return getH264ProfileScore(b.sdpFmtpLine) - getH264ProfileScore(a.sdpFmtpLine)
+    })
+
     if (useHw) {
-      const h264Codecs = capabilities.codecs.filter(
-        (c: any) => c.mimeType && c.mimeType.toLowerCase() === 'video/h264'
-      )
-      if (h264Codecs.length === 0) return
-
-      const sortedH264 = [...h264Codecs].sort((a: any, b: any) => {
-        return getH264ProfileScore(b.sdpFmtpLine) - getH264ProfileScore(a.sdpFmtpLine)
-      })
-
-      const otherCodecs = capabilities.codecs.filter(
-        (c: any) => !c.mimeType || c.mimeType.toLowerCase() !== 'video/h264'
-      )
-
-      sortedCodecs = [...sortedH264, ...otherCodecs]
+      sortedCodecs = [...sortedH264, ...av1Codecs, ...vp9Codecs, ...vp8Codecs, ...otherCodecs]
     } else {
-      const vp8Codecs = capabilities.codecs.filter(
-        (c: any) => c.mimeType && c.mimeType.toLowerCase() === 'video/vp8'
-      )
-      const vp9Codecs = capabilities.codecs.filter(
-        (c: any) => c.mimeType && c.mimeType.toLowerCase() === 'video/vp9'
-      )
-      const otherCodecs = capabilities.codecs.filter(
-        (c: any) => !c.mimeType || (!c.mimeType.toLowerCase().includes('vp8') && !c.mimeType.toLowerCase().includes('vp9'))
-      )
-
-      sortedCodecs = [...vp8Codecs, ...vp9Codecs, ...otherCodecs]
+      sortedCodecs = [...av1Codecs, ...vp9Codecs, ...vp8Codecs, ...sortedH264, ...otherCodecs]
     }
 
     pc.getTransceivers().forEach((transceiver) => {
@@ -103,120 +103,121 @@ export function prioritizeH264HardwareCodec(pc?: RTCPeerConnection | null, force
   }
 }
 
-export function prioritizeH264InSdp(sdp: string): string {
+export function reorderVideoCodecsInSdp(sdp: string, codecPreferenceOrder: string[], trrIntMs: number = DEFAULT_PLI_THROTTLE_MS): string {
   if (!sdp || !sdp.includes('m=video')) return sdp
 
   try {
+    const isCrlf = sdp.includes('\r\n')
+    const sep = isCrlf ? '\r\n' : '\n'
     const lines = sdp.split(/\r\n|\n/)
-    const h264Payloads: string[] = []
-    const h264Mode1Payloads: string[] = []
 
-    for (const line of lines) {
-      const rtpMatch = line.match(/^a=rtpmap:(\d+)\s+H264\/90000/i)
-      if (rtpMatch) {
-        h264Payloads.push(rtpMatch[1])
-      }
-    }
+    const videoLineIdx = lines.findIndex((l) => l.startsWith('m=video'))
+    if (videoLineIdx === -1) return sdp
 
-    if (h264Payloads.length === 0) return sdp
+    const vParts = lines[videoLineIdx].trim().split(/\s+/)
+    const videoPts = vParts.slice(3)
+    const videoPtSet = new Set(videoPts)
 
+    const ptMimeMap = new Map<string, string>()
     const ptFmtpMap = new Map<string, string>()
     const aptMap = new Map<string, string>()
+
     for (const line of lines) {
-      const match = line.match(/^a=fmtp:(\d+)\s+(.+)$/i)
-      if (match) {
-        ptFmtpMap.set(match[1], match[2])
-        const aptMatch = match[2].match(/apt=(\d+)/i)
+      const rtpMatch = line.match(/^a=rtpmap:(\d+)\s+([A-Za-z0-9_-]+)\//i)
+      if (rtpMatch) {
+        ptMimeMap.set(rtpMatch[1], rtpMatch[2].toUpperCase())
+      }
+      const fmtpMatch = line.match(/^a=fmtp:(\d+)\s+(.+)$/i)
+      if (fmtpMatch) {
+        ptFmtpMap.set(fmtpMatch[1], fmtpMatch[2])
+        const aptMatch = fmtpMatch[2].match(/apt=(\d+)/i)
         if (aptMatch) {
-          aptMap.set(match[1], aptMatch[1])
+          aptMap.set(fmtpMatch[1], aptMatch[1])
         }
       }
     }
 
-    const preferredH264 = [...h264Payloads].sort((a, b) => {
-      return getH264ProfileScore(ptFmtpMap.get(b)) - getH264ProfileScore(ptFmtpMap.get(a))
-    })
+    const orderedPts: string[] = []
+    const seen = new Set<string>()
 
-    const preferredWithRtx: string[] = []
-    const preferredSet = new Set<string>()
-    for (const pt of preferredH264) {
-      preferredWithRtx.push(pt)
-      preferredSet.add(pt)
-      for (const [rtxPt, primaryPt] of aptMap.entries()) {
-        if (primaryPt === pt && !preferredSet.has(rtxPt)) {
-          preferredWithRtx.push(rtxPt)
-          preferredSet.add(rtxPt)
+    for (const codec of codecPreferenceOrder) {
+      const matchingPts = videoPts.filter((pt) => ptMimeMap.get(pt) === codec)
+      if (codec === 'H264') {
+        matchingPts.sort((a, b) => getH264ProfileScore(ptFmtpMap.get(b)) - getH264ProfileScore(ptFmtpMap.get(a)))
+      }
+      for (const pt of matchingPts) {
+        if (!seen.has(pt)) {
+          orderedPts.push(pt)
+          seen.add(pt)
+        }
+        for (const [rtxPt, primaryPt] of aptMap.entries()) {
+          if (primaryPt === pt && !seen.has(rtxPt) && videoPtSet.has(rtxPt)) {
+            orderedPts.push(rtxPt)
+            seen.add(rtxPt)
+          }
         }
       }
     }
 
-    return sdp.replace(
-      /(m=video\s+\d+\s+[^\r\n\s]+\s+)([0-9\s]+?)(?=\r?\n|$)/i,
-      (_all, prefix, payloadStr) => {
-        const existingPayloads = payloadStr.trim().split(/\s+/)
-        const remaining = existingPayloads.filter((pt: string) => !preferredSet.has(pt))
-        const reordered = [...preferredWithRtx, ...remaining].join(' ')
-        return `${prefix}${reordered}`
+    for (const pt of videoPts) {
+      if (!seen.has(pt)) {
+        orderedPts.push(pt)
+        seen.add(pt)
       }
-    )
+    }
+
+    lines[videoLineIdx] = vParts.slice(0, 3).join(' ') + ' ' + orderedPts.join(' ')
+
+    // Inject/throttle RTCP-FB trr-int for video payload types
+    if (trrIntMs > 0) {
+      const fbPtsWithTrr = new Set<string>()
+      for (const l of lines) {
+        const trrMatch = l.match(/^a=rtcp-fb:(\d+)\s+trr-int\b/i)
+        if (trrMatch) {
+          fbPtsWithTrr.add(trrMatch[1])
+        }
+      }
+
+      const updatedLines: string[] = []
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]
+        const trrMatch = line.match(/^a=rtcp-fb:(\d+)\s+trr-int\s+(\d+)/i)
+        if (trrMatch) {
+          updatedLines.push('a=rtcp-fb:' + trrMatch[1] + ' trr-int ' + trrIntMs)
+          continue
+        }
+
+        updatedLines.push(line)
+
+        const fbMatch = line.match(/^a=rtcp-fb:(\d+)\s+/i)
+        if (fbMatch) {
+          const pt = fbMatch[1]
+          if (videoPtSet.has(pt) && !fbPtsWithTrr.has(pt)) {
+            const nextLine = lines[i + 1]
+            const nextIsSamePtFb = nextLine && nextLine.toLowerCase().startsWith('a=rtcp-fb:' + pt.toLowerCase())
+            if (!nextIsSamePtFb) {
+              updatedLines.push('a=rtcp-fb:' + pt + ' trr-int ' + trrIntMs)
+              fbPtsWithTrr.add(pt)
+            }
+          }
+        }
+      }
+      return updatedLines.join(sep)
+    }
+
+    return lines.join(sep)
   } catch (err) {
-    console.warn('[HardwareCodec] Error munging SDP for H.264:', err)
+    console.warn('[HardwareCodec] Error reordering codecs in SDP:', err)
     return sdp
   }
 }
 
+export function prioritizeH264InSdp(sdp: string): string {
+  return reorderVideoCodecsInSdp(sdp, ['H264', 'AV1', 'VP9', 'VP8'])
+}
+
 export function prioritizeVP8InSdp(sdp: string): string {
-  if (!sdp || !sdp.includes('m=video')) return sdp
-
-  try {
-    const lines = sdp.split(/\r\n|\n/)
-    const vp8Payloads: string[] = []
-
-    for (const line of lines) {
-      const rtpMatch = line.match(/^a=rtpmap:(\d+)\s+VP8\/90000/i)
-      if (rtpMatch) {
-        vp8Payloads.push(rtpMatch[1])
-      }
-    }
-
-    if (vp8Payloads.length === 0) return sdp
-
-    const aptMap = new Map<string, string>()
-    for (const line of lines) {
-      const match = line.match(/^a=fmtp:(\d+)\s+(.+)$/i)
-      if (match) {
-        const aptMatch = match[2].match(/apt=(\d+)/i)
-        if (aptMatch) {
-          aptMap.set(match[1], aptMatch[1])
-        }
-      }
-    }
-
-    const vp8WithRtx: string[] = []
-    const vp8Set = new Set<string>()
-    for (const pt of vp8Payloads) {
-      vp8WithRtx.push(pt)
-      vp8Set.add(pt)
-      for (const [rtxPt, primaryPt] of aptMap.entries()) {
-        if (primaryPt === pt && !vp8Set.has(rtxPt)) {
-          vp8WithRtx.push(rtxPt)
-          vp8Set.add(rtxPt)
-        }
-      }
-    }
-
-    return sdp.replace(
-      /(m=video\s+\d+\s+[^\r\n\s]+\s+)([0-9\s]+?)(?=\r?\n|$)/i,
-      (_all, prefix, payloadStr) => {
-        const existingPayloads = payloadStr.trim().split(/\s+/)
-        const remaining = existingPayloads.filter((pt: string) => !vp8Set.has(pt))
-        const reordered = [...vp8WithRtx, ...remaining].join(' ')
-        return `${prefix}${reordered}`
-      }
-    )
-  } catch (err) {
-    return sdp
-  }
+  return reorderVideoCodecsInSdp(sdp, ['AV1', 'VP9', 'VP8', 'H264'])
 }
 
 export function prioritizeCodecInSdp(sdp: string, forceH264?: boolean): string {

@@ -1115,7 +1115,8 @@ export class MediaCallHandler {
     maxBitrate: number = 5_500_000,
     maxFramerate: number = 60,
     degradationPreference?: VideoDegradation,
-    onRedialNeeded?: (peerId: string) => void
+    onRedialNeeded?: (peerId: string) => void,
+    minBitrate?: number
   ) {
     if (isScreenShare && degradationPreference) {
       setScreenDegradationPreference(degradationPreference)
@@ -1131,7 +1132,7 @@ export class MediaCallHandler {
 
     const toScreen = isScreenShare && !!newTrack
     if (toScreen) {
-      beginScreenShare(screenCaps(maxBitrate, maxFramerate))
+      beginScreenShare(screenCaps(maxBitrate, maxFramerate, undefined, minBitrate))
       setCaptureSource(newTrack)
     } else {
       endScreenShare()

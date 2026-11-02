@@ -2364,7 +2364,8 @@ export class PeerManager {
     isScreenShare: boolean = false,
     maxBitrate: number = 8_000_000,
     maxFramerate: number = 60,
-    degradationPreference?: VideoDegradation
+    degradationPreference?: VideoDegradation,
+    minBitrate?: number
   ) {
     MediaCallHandler.replaceVideoTrack(
       this.mediaCalls,
@@ -2373,7 +2374,8 @@ export class PeerManager {
       maxBitrate,
       maxFramerate,
       degradationPreference,
-      (peerId) => this.retryZoneCall(peerId)
+      (peerId) => this.retryZoneCall(peerId),
+      minBitrate
     )
   }
 

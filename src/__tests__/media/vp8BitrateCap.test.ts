@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
+import { vi } from 'vitest'
 import {
   beginScreenShare,
   endScreenShare,
@@ -6,8 +7,10 @@ import {
   screenCaps,
   setPeerNegotiatedCodec,
   viewerSend,
+  applyVideoCaps,
   SCREEN_MAX_BITRATE,
   VP8_SCREEN_MAX_BITRATE,
+  SCREEN_DEFAULT_MIN_BITRATE,
 } from '../../p2p/videoSendPolicy'
 import { setHardwareAccelerationEnabled } from '../../media/hardwareCodec'
 
@@ -48,5 +51,27 @@ describe('VP8 Software Encoder Bitrate Ceiling', () => {
     // Negotiated on H264: restores full 15000 kbps
     setPeerNegotiatedCodec('viewer-1', 'video/H264')
     expect(viewerSend('viewer-1').kbps).toBe(15000)
+  })
+
+  it('configures minBitrate in screenCaps and applies it to RTCRtpEncodingParameters', () => {
+    const caps = screenCaps(15_000_000, 60)
+    expect(caps.minBitrate).toBe(SCREEN_DEFAULT_MIN_BITRATE)
+    expect(SCREEN_DEFAULT_MIN_BITRATE).toBe(2_500_000)
+
+    const setParametersMock = vi.fn().mockResolvedValue(undefined)
+    const mockSender = {
+      getParameters: () => ({
+        encodings: [
+          { active: true, maxBitrate: 1000 },
+        ],
+      }),
+      setParameters: setParametersMock,
+    } as unknown as RTCRtpSender
+
+    applyVideoCaps(mockSender, caps, 'maintain-resolution')
+    expect(setParametersMock).toHaveBeenCalledTimes(1)
+    const passedParams = setParametersMock.mock.calls[0][0]
+    expect(passedParams.encodings[0].minBitrate).toBe(2_500_000)
+    expect(passedParams.encodings[0].networkPriority).toBe('high')
   })
 })

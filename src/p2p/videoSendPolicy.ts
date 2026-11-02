@@ -5,6 +5,7 @@ import { isHardwareAccelerationEnabled } from '../media/hardwareCodec'
 export interface VideoCaps {
   maxBitrate: number
   maxFramerate: number
+  minBitrate?: number
 }
 
 export type VideoDegradation = 'maintain-framerate' | 'maintain-resolution'
@@ -14,6 +15,7 @@ export const CAMERA_CAPS: VideoCaps = { maxBitrate: 1_200_000, maxFramerate: 30 
 export const SCREEN_MAX_BITRATE = 15_000_000
 export const VP8_SCREEN_MAX_BITRATE = 10_000_000
 export const SCREEN_MAX_FRAMERATE = 60
+export const SCREEN_DEFAULT_MIN_BITRATE = 2_500_000
 
 const peerNegotiatedCodecs = new Map<string, string>()
 
@@ -80,12 +82,20 @@ export function getScreenDegradationPreference(): VideoDegradation {
   return configuredScreenDegradation
 }
 
-export function screenCaps(maxBitrate: number, maxFramerate: number, isH264?: boolean): VideoCaps {
+export function screenCaps(
+  maxBitrate: number,
+  maxFramerate: number,
+  isH264?: boolean,
+  minBitrate?: number
+): VideoCaps {
   const effectiveH264 = isH264 !== undefined ? isH264 : isHardwareAccelerationEnabled()
   const cap = effectiveH264 ? SCREEN_MAX_BITRATE : VP8_SCREEN_MAX_BITRATE
+  const effectiveMaxBitrate = Math.min(maxBitrate, cap)
+  const effectiveMinBitrate = minBitrate !== undefined ? minBitrate : SCREEN_DEFAULT_MIN_BITRATE
   return {
-    maxBitrate: Math.min(maxBitrate, cap),
+    maxBitrate: effectiveMaxBitrate,
     maxFramerate: Math.min(maxFramerate, SCREEN_MAX_FRAMERATE),
+    minBitrate: Math.min(effectiveMinBitrate, effectiveMaxBitrate),
   }
 }
 
@@ -190,10 +200,19 @@ function planFor(peerId: string | undefined): SendPlan | null {
   if (!activeShare) return null
   const isVp8 = isPeerVp8(peerId) || !isHardwareAccelerationEnabled()
   const maxAllowedBitrate = isVp8 ? Math.min(activeShare.maxBitrate, VP8_SCREEN_MAX_BITRATE) : activeShare.maxBitrate
-  if (viewerMode(peerId) === 'off') return { active: false, scale: 1, ...activeShare, maxBitrate: maxAllowedBitrate }
-  const effectiveShare = maxAllowedBitrate !== activeShare.maxBitrate ? { ...activeShare, maxBitrate: maxAllowedBitrate } : activeShare
+  const baseMinBitrate = activeShare.minBitrate ?? SCREEN_DEFAULT_MIN_BITRATE
+  const effectiveMinBitrate = Math.min(baseMinBitrate, maxAllowedBitrate)
+  if (viewerMode(peerId) === 'off') return { active: false, scale: 1, ...activeShare, maxBitrate: maxAllowedBitrate, minBitrate: effectiveMinBitrate }
+  const effectiveShare = maxAllowedBitrate !== activeShare.maxBitrate ? { ...activeShare, maxBitrate: maxAllowedBitrate, minBitrate: effectiveMinBitrate } : activeShare
   const layer = layerFor(effectiveShare, captureHeight(), askedHeight(peerId))
-  return { active: true, scale: layer.scale, maxBitrate: layer.maxBitrate, maxFramerate: layer.maxFramerate }
+  const scaledMinBitrate = layer.scale > 1 ? Math.min(Math.round(effectiveMinBitrate / (layer.scale * layer.scale)), layer.maxBitrate) : effectiveMinBitrate
+  return {
+    active: true,
+    scale: layer.scale,
+    maxBitrate: layer.maxBitrate,
+    maxFramerate: layer.maxFramerate,
+    minBitrate: scaledMinBitrate,
+  }
 }
 
 export function viewerSend(peerId: string): {
@@ -248,6 +267,9 @@ export function applyVideoCaps(
       params.encodings[0].maxBitrate = caps.maxBitrate
       params.encodings[0].maxFramerate = caps.maxFramerate
       params.encodings[0].scaleResolutionDownBy = scale
+      if (typeof caps.minBitrate === 'number' && caps.minBitrate > 0) {
+        ;(params.encodings[0] as any).minBitrate = Math.min(caps.minBitrate, caps.maxBitrate)
+      }
       ;(params.encodings[0] as any).networkPriority = 'high'
       ;(params.encodings[0] as any).priority = 'high'
       ;(params as any).degradationPreference = degradation
