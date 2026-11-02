@@ -12,7 +12,7 @@ export type VideoDegradation = 'maintain-framerate' | 'maintain-resolution'
 export const CAMERA_CAPS: VideoCaps = { maxBitrate: 1_200_000, maxFramerate: 30 }
 
 export const SCREEN_MAX_BITRATE = 15_000_000
-export const VP8_SCREEN_MAX_BITRATE = 5_000_000
+export const VP8_SCREEN_MAX_BITRATE = 10_000_000
 export const SCREEN_MAX_FRAMERATE = 60
 
 const peerNegotiatedCodecs = new Map<string, string>()
