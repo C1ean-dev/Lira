@@ -681,7 +681,7 @@ describe('Video Delivery & Screen Share Guarantee Tests', () => {
 
       expect(stream).toBeNull()
       expect(cancelSpy).not.toHaveBeenCalled()
-      expect(activeScreenCaps()).toEqual({ maxBitrate: 2_000_000, maxFramerate: 30 })
+      expect(activeScreenCaps()).toEqual({ maxBitrate: 2_000_000, maxFramerate: 30, minBitrate: 2_000_000 })
     })
 
     it('puts the camera caps back when the capture has no video to send', async () => {

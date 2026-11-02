@@ -1,4 +1,5 @@
 import { diagLog } from '../utils/diagnosticLogger'
+import { setPeerNegotiatedCodec } from './videoSendPolicy'
 
 export const LIVE_QUALITY_INTERVAL_MS = 10_000
 
@@ -116,6 +117,9 @@ export function watchLiveQuality({ pc, peerId, isActive, onTick, viewer }: LiveQ
 
             const codecReport =
               video.codecId && typeof (stats as any).get === 'function' ? (stats as any).get(video.codecId) : null
+            if (peerId && codecReport?.mimeType) {
+              setPeerNegotiatedCodec(peerId, codecReport.mimeType)
+            }
             diagLog('screenshare', 'quality-stats', {
               toPeer: peerId,
               mode: state?.mode ?? null,

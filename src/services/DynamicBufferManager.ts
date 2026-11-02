@@ -36,7 +36,7 @@ export const DYNAMIC_BUFFER_DEFAULT: Record<'audio' | 'video', AdaptiveBuffer> =
   video: {
     currentMs: 1,
     floorMs: 1,
-    ceilingMs: 1500,
+    ceilingMs: 350,
     cleanSamples: 0,
     lastTargetMs: 1,
   },
@@ -291,21 +291,19 @@ export class DynamicBufferManager {
       }
       buf.cleanSamples = 0
     } else if (clampedTarget < buf.currentMs) {
-      const relaxThreshold = kind === 'audio' ? 4 : 6
+      const relaxThreshold = kind === 'audio' ? 4 : 4
       buf.cleanSamples++
       if (buf.cleanSamples >= relaxThreshold) {
-        const step = kind === 'audio' ? 10 : 5
+        const step = kind === 'audio' ? 10 : 25
         const next = Math.max(clampedTarget, buf.currentMs - step)
         buf.currentMs = Math.max(next, Math.min(buf.currentMs, buf.lastTargetMs))
         if (buf.currentMs === clampedTarget) buf.lastTargetMs = clampedTarget
-        // Require another four clean polls before the next audio reduction.
-        if (isAudio) buf.cleanSamples = 0
       }
     } else {
       buf.cleanSamples++
-      const nibbleThreshold = kind === 'audio' ? 5 : 8
+      const nibbleThreshold = kind === 'audio' ? 5 : 5
       if (buf.cleanSamples >= nibbleThreshold && buf.currentMs > buf.floorMs) {
-        buf.currentMs = Math.max(buf.floorMs, buf.currentMs - 2)
+        buf.currentMs = Math.max(buf.floorMs, buf.currentMs - (kind === 'audio' ? 2 : 10))
       }
     }
 

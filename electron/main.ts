@@ -65,6 +65,7 @@ app.commandLine.appendSwitch('enable-accelerated-mjpeg-decode')
 app.commandLine.appendSwitch('enable-zero-copy')
 app.commandLine.appendSwitch('enable-native-gpu-memory-buffers')
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+app.commandLine.appendSwitch('enable-webrtc-dscp')
 
 // Explicitly disable Windows Graphics Capture (WGC) capturer flags to avoid the OS security yellow border:
 // Screen capture uses DXGI Desktop Duplication (ScreenCapturerWinDirectx) with zero border and high performance.
@@ -74,7 +75,7 @@ app.commandLine.appendSwitch(
 )
 app.commandLine.appendSwitch(
   'enable-features',
-  'PlatformHEVCDecoderSupport,CanvasOopRasterization,WebRtcHWEncoding,WebRtcHWDecoding,ZeroCopy'
+  'PlatformHEVCDecoderSupport,CanvasOopRasterization,WebRtcHWEncoding,WebRtcHWDecoding,ZeroCopy,WebRtcPacerSmoothing,WebRtcDscpSupport'
 )
 
 let mainWindow: BrowserWindow | null = null

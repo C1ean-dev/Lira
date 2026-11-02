@@ -63,7 +63,11 @@ export function LiveTransmissionInfo({ stream, local, peerName, onOpenSettings, 
           <dt>Latência (RTT)</dt><dd>{measure(row.rttMs, 'ms', 0)}</dd>
           <dt>Jitter</dt><dd>{measure(row.jitterMs, 'ms')}</dd>
           <dt>Perda de pacotes</dt><dd>{measure(row.lossPct, '%')}</dd>
-          {!local && <><dt>Quadros descartados</dt><dd>{row.droppedFrames ?? '—'}</dd></>}
+          {!local && <>
+            <dt>Quadros descartados</dt><dd>{row.droppedFrames ?? '—'}</dd>
+            <dt>Congelamentos</dt><dd>{row.freezeCount ?? '—'}</dd>
+            <dt>Tempo congelado</dt><dd>{row.freezeDurationSec === null || row.freezeDurationSec === undefined ? '—' : row.freezeDurationSec < 1 ? measure(row.freezeDurationSec * 1000, 'ms', 0) : measure(row.freezeDurationSec, 's', 1)}</dd>
+          </>}
           <dt>Codec</dt><dd>{row.codec || '—'}</dd>
           {local && <><dt>Limitação de qualidade</dt><dd>{row.limitation ? limits[row.limitation] || row.limitation : '—'}</dd></>}
         </dl>

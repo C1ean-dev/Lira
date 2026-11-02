@@ -59,12 +59,17 @@ describe('transmission information', () => {
   it('shows received bitrate and playback buffer for viewers without local capture settings', () => {
     state.open = true
     state.stats = [{ id: 'remote', peerId: 'peer', width: null, height: null, fps: null, bitrateKbps: null,
-      bytes: null, bufferMs: 20, rttMs: null, jitterMs: null, lossPct: null, droppedFrames: 2, codec: null }]
+      bytes: null, bufferMs: 20, rttMs: null, jitterMs: null, lossPct: null, droppedFrames: 2, codec: null,
+      freezeCount: 6, freezeDurationSec: 7.4 }]
     const html = renderToStaticMarkup(<LiveTransmissionInfo {...props} local={false} peerName="Pessoa" />)
     expect(html).toContain('Bitrate recebido')
     expect(html).toContain('Buffer de reprodução')
     expect(html).toContain('20 ms')
     expect(html).toContain('Quadros descartados')
+    expect(html).toContain('Congelamentos')
+    expect(html).toContain('6')
+    expect(html).toContain('Tempo congelado')
+    expect(html).toContain('7.4 s')
     expect(html).not.toContain('Resolução e FPS')
   })
 })

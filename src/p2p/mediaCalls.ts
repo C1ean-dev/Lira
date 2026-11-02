@@ -893,6 +893,10 @@ export class MediaCallHandler {
     call.answer(streamToAnswer, { sdpTransform })
     ;(call as unknown as { __dir?: 'in' | 'out' }).__dir = 'in'
     mediaCalls.set(call.peer, call)
+    try {
+      const answeredPc = (call as any).peerConnection as RTCPeerConnection | undefined
+      if (answeredPc) prioritizeH264HardwareCodec(answeredPc)
+    } catch {}
 
     const remotePlayer = useGameStore.getState().remotePlayers[call.peer]
 
@@ -1111,7 +1115,8 @@ export class MediaCallHandler {
     maxBitrate: number = 5_500_000,
     maxFramerate: number = 60,
     degradationPreference?: VideoDegradation,
-    onRedialNeeded?: (peerId: string) => void
+    onRedialNeeded?: (peerId: string) => void,
+    minBitrate?: number
   ) {
     if (isScreenShare && degradationPreference) {
       setScreenDegradationPreference(degradationPreference)
@@ -1127,7 +1132,7 @@ export class MediaCallHandler {
 
     const toScreen = isScreenShare && !!newTrack
     if (toScreen) {
-      beginScreenShare(screenCaps(maxBitrate, maxFramerate))
+      beginScreenShare(screenCaps(maxBitrate, maxFramerate, undefined, minBitrate))
       setCaptureSource(newTrack)
     } else {
       endScreenShare()

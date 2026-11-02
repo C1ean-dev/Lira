@@ -43,8 +43,12 @@ describe('WebRTC Hardware Codec Acceleration (H.264 Priority)', () => {
     expect(setCodecPreferencesMock).toHaveBeenCalledTimes(1)
     const passedCodecs = setCodecPreferencesMock.mock.calls[0][0]
 
-    expect(passedCodecs[0].mimeType).toBe('video/H264')
-    expect(passedCodecs.length).toBe(4)
+    expect(passedCodecs.map((c: any) => c.mimeType)).toEqual([
+      'video/H264',
+      'video/AV1',
+      'video/VP9',
+      'video/VP8',
+    ])
   })
 
   it('should strictly only apply setCodecPreferences to video transceivers and ignore audio transceivers', () => {
@@ -152,7 +156,7 @@ describe('WebRTC Hardware Codec Acceleration (H.264 Priority)', () => {
     ].join('\r\n')
 
     const munged = prioritizeH264InSdp(sampleSdp)
-    expect(munged).toContain('m=video 9 UDP/TLS/RTP/SAVPF 102 104 96 97\r\na=rtpmap:96')
+    expect(munged).toContain('m=video 9 UDP/TLS/RTP/SAVPF 102 104 97 96\r\na=rtpmap:96')
     expect(munged).not.toContain('97a=rtpmap')
   })
 
@@ -174,7 +178,31 @@ describe('WebRTC Hardware Codec Acceleration (H.264 Priority)', () => {
     ].join('\r\n')
 
     const munged = prioritizeH264InSdp(sampleSdp)
-    expect(munged).toContain('m=video 9 UDP/TLS/RTP/SAVPF 103 102 104 96 97\r\na=rtpmap:96')
+    expect(munged).toContain('m=video 9 UDP/TLS/RTP/SAVPF 103 102 104 97 96\r\na=rtpmap:96')
+  })
+
+  it('prioritizeH264InSdp keeps associated RTX retransmission payloads immediately after their primary H.264 payload', async () => {
+    const { prioritizeH264InSdp } = await import('../../media/hardwareCodec')
+    const sampleSdp = [
+      'v=0',
+      'o=- 12345 2 IN IP4 127.0.0.1',
+      's=-',
+      'm=video 9 UDP/TLS/RTP/SAVPF 96 97 102 121 103 123',
+      'a=rtpmap:96 VP8/90000',
+      'a=rtpmap:97 rtx/90000',
+      'a=fmtp:97 apt=96',
+      'a=rtpmap:102 H264/90000',
+      'a=fmtp:102 profile-level-id=42e01f;packetization-mode=1',
+      'a=rtpmap:121 rtx/90000',
+      'a=fmtp:121 apt=102',
+      'a=rtpmap:103 H264/90000',
+      'a=fmtp:103 profile-level-id=640032;packetization-mode=1',
+      'a=rtpmap:123 rtx/90000',
+      'a=fmtp:123 apt=103',
+    ].join('\r\n')
+
+    const munged = prioritizeH264InSdp(sampleSdp)
+    expect(munged).toContain('m=video 9 UDP/TLS/RTP/SAVPF 103 123 102 121 96 97\r\na=rtpmap:96')
   })
 
   it('allows toggling hardware acceleration on and off dynamically', async () => {
@@ -205,7 +233,7 @@ describe('WebRTC Hardware Codec Acceleration (H.264 Priority)', () => {
     expect(enabledSdp).toContain('m=video 9 UDP/TLS/RTP/SAVPF 102 96')
   })
 
-  it('sorts VP8 first when hardware acceleration is disabled', async () => {
+  it('sorts AV1 > VP9 > VP8 > H.264 when hardware acceleration is disabled', async () => {
     const { setHardwareAccelerationEnabled, prioritizeH264HardwareCodec } = await import('../../media/hardwareCodec'
     )
 
@@ -215,6 +243,7 @@ describe('WebRTC Hardware Codec Acceleration (H.264 Priority)', () => {
       { mimeType: 'video/H264', clockRate: 90000, sdpFmtpLine: 'profile-level-id=42e01f;packetization-mode=1' },
       { mimeType: 'video/VP8', clockRate: 90000 },
       { mimeType: 'video/VP9', clockRate: 90000 },
+      { mimeType: 'video/AV1', clockRate: 90000 },
     ]
 
     const setCodecPreferencesMock = vi.fn()
@@ -233,9 +262,12 @@ describe('WebRTC Hardware Codec Acceleration (H.264 Priority)', () => {
     prioritizeH264HardwareCodec(mockPc)
 
     const passedCodecs = setCodecPreferencesMock.mock.calls[0][0]
-    expect(passedCodecs[0].mimeType).toBe('video/VP8')
-    expect(passedCodecs[1].mimeType).toBe('video/VP9')
-    expect(passedCodecs[2].mimeType).toBe('video/H264')
+    expect(passedCodecs.map((c: any) => c.mimeType)).toEqual([
+      'video/AV1',
+      'video/VP9',
+      'video/VP8',
+      'video/H264',
+    ])
 
     setHardwareAccelerationEnabled(true)
   })
@@ -395,6 +427,49 @@ describe('WebRTC Hardware Codec Acceleration (H.264 Priority)', () => {
     redialSpy.mockClear()
     useMediaStore.getState().toggleHardwareAcceleration()
     expect(redialSpy).toHaveBeenCalled()
+  })
+
+  it('prioritizes H.264 > AV1 > VP9 > VP8 in SDP when hardware acceleration is active', async () => {
+    const { prioritizeCodecInSdp, setHardwareAccelerationEnabled } = await import('../../media/hardwareCodec')
+    setHardwareAccelerationEnabled(true)
+
+    const sampleSdp = [
+      'v=0',
+      'm=video 9 UDP/TLS/RTP/SAVPF 96 97 98 99 35 36 102 121',
+      'a=rtpmap:96 VP8/90000',
+      'a=rtpmap:97 rtx/90000',
+      'a=fmtp:97 apt=96',
+      'a=rtpmap:98 VP9/90000',
+      'a=rtpmap:99 rtx/90000',
+      'a=fmtp:99 apt=98',
+      'a=rtpmap:35 AV1/90000',
+      'a=rtpmap:36 rtx/90000',
+      'a=fmtp:36 apt=35',
+      'a=rtpmap:102 H264/90000',
+      'a=fmtp:102 profile-level-id=42e01f;packetization-mode=1',
+      'a=rtpmap:121 rtx/90000',
+      'a=fmtp:121 apt=102',
+    ].join('\r\n')
+
+    const munged = prioritizeCodecInSdp(sampleSdp)
+    expect(munged).toContain('m=video 9 UDP/TLS/RTP/SAVPF 102 121 35 36 98 99 96 97')
+  })
+
+  it('injects RTCP-FB trr-int 1200 to throttle receiver keyframe requests', async () => {
+    const { prioritizeCodecInSdp } = await import('../../media/hardwareCodec')
+
+    const sampleSdp = [
+      'v=0',
+      'm=video 9 UDP/TLS/RTP/SAVPF 102 96',
+      'a=rtpmap:102 H264/90000',
+      'a=rtcp-fb:102 nack pli',
+      'a=rtpmap:96 VP8/90000',
+      'a=rtcp-fb:96 nack pli',
+    ].join('\r\n')
+
+    const munged = prioritizeCodecInSdp(sampleSdp)
+    expect(munged).toContain('a=rtcp-fb:102 trr-int 1200')
+    expect(munged).toContain('a=rtcp-fb:96 trr-int 1200')
   })
 })
 
