@@ -1,0 +1,91 @@
+import React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { ReportIssueModal, submitReportIssue } from '../../components/ReportIssueModal'
+
+describe('ReportIssueModal UI', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('renders nothing when isOpen is false', () => {
+    const html = renderToStaticMarkup(<ReportIssueModal isOpen={false} onClose={() => {}} />)
+    expect(html).toBe('')
+  })
+
+  it('renders form with title, description, and notice when isOpen is true', () => {
+    const html = renderToStaticMarkup(<ReportIssueModal isOpen={true} onClose={() => {}} />)
+
+    expect(html).toContain('Reportar problema')
+    expect(html).toContain('Título do problema')
+    expect(html).toContain('Descrição do problema')
+    expect(html).toContain('Criar Issue no GitHub')
+    expect(html).toContain('Cancelar')
+    expect(html).toMatch(/logs.*anexados|diagnóstico/i)
+  })
+
+  it('has disabled submit button initially when inputs are empty', () => {
+    const html = renderToStaticMarkup(<ReportIssueModal isOpen={true} onClose={() => {}} />)
+    expect(html).toMatch(/<button[^>]*disabled[^>]*>[\s\S]*?Criar Issue no GitHub/)
+  })
+})
+
+describe('submitReportIssue', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('validates empty inputs and returns error', async () => {
+    const result = await submitReportIssue('   ', '   ')
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/obrigatórios/i)
+  })
+
+  it('calls electronAPI.reportIssue when available in electron environment', async () => {
+    const mockReport = vi.fn().mockResolvedValue({
+      ok: true,
+      issueUrl: 'https://github.com/C1ean-dev/Lira/issues/123',
+      method: 'cli',
+    })
+    vi.stubGlobal('window', {
+      electronAPI: {
+        reportIssue: mockReport,
+      },
+    })
+
+    const result = await submitReportIssue('DJ travando', 'Ao trocar de faixa o áudio para')
+
+    expect(mockReport).toHaveBeenCalledWith({
+      title: 'DJ travando',
+      description: 'Ao trocar de faixa o áudio para',
+    })
+    expect(result.ok).toBe(true)
+    expect(result.issueUrl).toBe('https://github.com/C1ean-dev/Lira/issues/123')
+    expect(result.method).toBe('cli')
+  })
+
+  it('falls back to window.open when electronAPI is not present', async () => {
+    const mockOpen = vi.fn()
+    vi.stubGlobal('window', {
+      open: mockOpen,
+    })
+
+    const result = await submitReportIssue('Problema no web', 'Descrição do teste web')
+
+    expect(mockOpen).toHaveBeenCalledWith(
+      expect.stringContaining('https://github.com/C1ean-dev/Lira/issues/new?'),
+      '_blank'
+    )
+    expect(result.ok).toBe(true)
+    expect(result.method).toBe('web')
+    expect(result.issueUrl).toContain('https://github.com/C1ean-dev/Lira/issues/new?')
+  })
+})

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react'
-import { X, Sliders, Mic, Sparkles, CheckCircle2, Monitor } from 'lucide-react'
+import { X, Sliders, Mic, Sparkles, Monitor, Bug } from 'lucide-react'
 import { useMediaStore } from '../store/useMediaStore'
 import { MediaManager } from '../media/MediaManager'
 import { ExportLogsButton } from './ExportLogsButton'
+import { ReportIssueModal } from './ReportIssueModal'
 import { AudioDeviceInfo } from '../types/audio'
 import { AudioDevicesTab } from './settings/AudioDevicesTab'
 import { AdvancedAudioTab } from './settings/AdvancedAudioTab'
@@ -18,6 +19,7 @@ export const AudioSettingsModal: React.FC = () => {
   const [videoDevices, setVideoDevices] = useState<AudioDeviceInfo[]>([])
   const [activeTab, setActiveTab] = useState<'devices' | 'advanced' | 'system'>('devices')
   const [isPlayingTestSound, setIsPlayingTestSound] = useState(false)
+  const [isReportIssueOpen, setIsReportIssueOpen] = useState(false)
 
   const refreshDevices = async () => {
     try {
@@ -173,12 +175,17 @@ export const AudioSettingsModal: React.FC = () => {
         </div>
 
         <div className="p-4 border-t border-[#2a3142] bg-[#12151d]/90 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Configurações salvas automaticamente no seu dispositivo</span>
-            </div>
+          <div className="flex items-center gap-2">
             <ExportLogsButton className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-[11px] font-bold transition-all disabled:opacity-60" />
+            <button
+              type="button"
+              onClick={() => setIsReportIssueOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 hover:text-rose-200 text-[11px] font-bold transition-all"
+              title="Relatar um problema no GitHub com diagnóstico e logs do app"
+            >
+              <Bug className="w-3.5 h-3.5" />
+              <span>Reportar problema</span>
+            </button>
           </div>
 
           <button
@@ -189,6 +196,7 @@ export const AudioSettingsModal: React.FC = () => {
           </button>
         </div>
       </div>
+      <ReportIssueModal isOpen={isReportIssueOpen} onClose={() => setIsReportIssueOpen(false)} />
     </div>
   )
 }
