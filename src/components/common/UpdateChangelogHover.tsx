@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Sparkles, Download, ExternalLink, CheckCircle2, RefreshCw } from 'lucide-react'
+import { Sparkles, Download, ExternalLink, RefreshCw } from 'lucide-react'
 import { UpdateInfo } from '../../services/updateService'
 
 export interface UpdateChangelogHoverProps {
@@ -55,6 +55,7 @@ export const UpdateChangelogHover: React.FC<UpdateChangelogHoverProps> = ({
   children,
 }) => {
   const [isOpen, setIsOpen] = useState(false)
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const clearTimer = () => {
@@ -76,8 +77,25 @@ export const UpdateChangelogHover: React.FC<UpdateChangelogHoverProps> = ({
     }, 200)
   }
 
+  const toggle = (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation()
+    }
+    clearTimer()
+    setIsOpen((prev) => !prev)
+  }
+
   useEffect(() => {
-    return () => clearTimer()
+    const handleClickOutside = (event: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      clearTimer()
+    }
   }, [])
 
   const shouldShow = forceOpen !== undefined ? forceOpen : isOpen
@@ -89,13 +107,27 @@ export const UpdateChangelogHover: React.FC<UpdateChangelogHoverProps> = ({
 
   return (
     <div
+      ref={wrapperRef}
       className="relative inline-block group"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onFocus={handleMouseEnter}
       onBlur={handleMouseLeave}
     >
-      {children}
+      <div
+        onClick={toggle}
+        className="inline-block cursor-pointer"
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            toggle()
+          }
+        }}
+      >
+        {children}
+      </div>
 
       <div
         className={`absolute top-full ${
@@ -107,6 +139,7 @@ export const UpdateChangelogHover: React.FC<UpdateChangelogHoverProps> = ({
         }`}
         role="tooltip"
         aria-hidden={!shouldShow}
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="w-80 sm:w-96 rounded-2xl bg-[#141824]/95 backdrop-blur-xl border border-indigo-500/30 p-4 shadow-2xl shadow-indigo-950/60 text-left relative">
           {/* Subtle pointer arrow */}
@@ -196,8 +229,8 @@ export const UpdateChangelogHover: React.FC<UpdateChangelogHoverProps> = ({
                 <Download className="w-3.5 h-3.5" />
                 <span>
                   {isDownloading
-                    ? `Baixando atualização (${safePercent}%)`
-                    : 'Instalar Atualização Agora'}
+                    ? `Baixando... (${safePercent}%)`
+                    : 'Instalar'}
                 </span>
               </button>
             </div>
