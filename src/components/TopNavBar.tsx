@@ -26,6 +26,7 @@ import { useNetworkQualityStore } from '../store/useNetworkQualityStore'
 import { STATUS_META } from '../types/game'
 import { PlayerAvatar } from './common/PlayerAvatar'
 import { UpdateDownloadIndicator } from './common/UpdateDownloadIndicator'
+import { UpdateChangelogHover } from './common/UpdateChangelogHover'
 import { isAndroid } from '../utils/platform'
 import { useRoomPublication } from '../hooks/useRoomPublication'
 
@@ -314,36 +315,44 @@ onClick={() => PeerManager.getInstance().reconnect()}
           )}
         </button>
 
-        {showUpdateAction && onApplyUpdate ? (
-          <button
-            onClick={onApplyUpdate}
-            disabled={isUpdating || isDownloadingUpdate}
-            className="p-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 hover:text-emerald-300 transition-all hover:scale-105 shadow-sm shadow-emerald-500/20 disabled:opacity-75 disabled:cursor-wait cursor-pointer"
-            aria-label={updateActionLabel}
-            title={isDownloadingUpdate ? updateActionLabel : isAndroidPlatform ? 'Nova atualização disponível! Clique para atualizar agora.' : 'Atualização pronta. Clique para instalar.'}
-          >
-            {isUpdating ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
-            ) : (
-              <UpdateDownloadIndicator downloading={isDownloadingUpdate} percent={updatePercent} />
-            )}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => checkNow()}
-            disabled={manualCheck === 'checking'}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#1b202c] hover:bg-[#232a3a] border border-[#2a3142] text-slate-300 text-xs font-semibold select-none transition-colors cursor-pointer disabled:cursor-wait"
-            title={`Versão atual do Lira: ${currentVersion}. Clique para verificar atualizações.`}
-          >
-            {manualCheck === 'checking' ? (
-              <RefreshCw className="w-3 h-3 animate-spin text-slate-400" />
-            ) : (
-              <span className={`w-1.5 h-1.5 rounded-full ${manualCheck === 'failed' ? 'bg-rose-400' : 'bg-emerald-400'}`} />
-            )}
-            <span className="font-mono text-[11px] text-slate-400">{versionBadgeLabel(manualCheck, currentVersion)}</span>
-          </button>
-        )}
+        <UpdateChangelogHover
+          updateInfo={updateInfo}
+          isUpdateReady={isReadyToInstall}
+          isDownloading={isDownloadingUpdate}
+          downloadPercent={updatePercent}
+          onApplyUpdate={showUpdateAction && onApplyUpdate ? onApplyUpdate : undefined}
+        >
+          {showUpdateAction && onApplyUpdate ? (
+            <button
+              onClick={onApplyUpdate}
+              disabled={isUpdating || isDownloadingUpdate}
+              className="p-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 hover:text-emerald-300 transition-all hover:scale-105 shadow-sm shadow-emerald-500/20 disabled:opacity-75 disabled:cursor-wait cursor-pointer"
+              aria-label={updateActionLabel}
+              title={isDownloadingUpdate ? updateActionLabel : isAndroidPlatform ? 'Nova atualização disponível! Clique para atualizar agora.' : 'Atualização pronta. Clique para instalar.'}
+            >
+              {isUpdating ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <UpdateDownloadIndicator downloading={isDownloadingUpdate} percent={updatePercent} />
+              )}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => checkNow()}
+              disabled={manualCheck === 'checking'}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#1b202c] hover:bg-[#232a3a] border border-[#2a3142] text-slate-300 text-xs font-semibold select-none transition-colors cursor-pointer disabled:cursor-wait"
+              title={`Versão atual do Lira: ${currentVersion}. Clique para verificar atualizações.`}
+            >
+              {manualCheck === 'checking' ? (
+                <RefreshCw className="w-3 h-3 animate-spin text-slate-400" />
+              ) : (
+                <span className={`w-1.5 h-1.5 rounded-full ${manualCheck === 'failed' ? 'bg-rose-400' : 'bg-emerald-400'}`} />
+              )}
+              <span className="font-mono text-[11px] text-slate-400">{versionBadgeLabel(manualCheck, currentVersion)}</span>
+            </button>
+          )}
+        </UpdateChangelogHover>
 
         <div
           className="flex items-center px-2.5 py-1.5 bg-[#1b202c] border border-[#2a3142] rounded-xl hover:bg-slate-800 transition-colors"

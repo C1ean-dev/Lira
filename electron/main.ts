@@ -7,6 +7,7 @@ import { spawn, exec, execSync, execFile } from 'child_process'
 import { release as getOsRelease } from 'os'
 import { guardIpcMain } from './ipcGuard'
 import { createLogBundle } from './logBundle'
+import { createGithubIssue } from './githubIssue'
 import { logErrorWith } from './logWriter'
 import { buildMainContext, summarizeGpu } from './mainContext'
 import { describeProcessGone } from './processGone'
@@ -1559,6 +1560,21 @@ ipcMain.handle('export-log-bundle', async () => {
   } catch (err) {
     console.error('[DiagLog] log bundle failed:', err)
     return { ok: false, path: null as string | null }
+  }
+})
+
+ipcMain.handle('report-issue', async (_event, payload: { title: string; description: string; attachments?: any[] }) => {
+  try {
+    appLog.flushReports()
+    return await createGithubIssue({
+      title: payload.title,
+      description: payload.description,
+      logsDir: getLogsDirectory(),
+      attachments: payload.attachments,
+    })
+  } catch (err) {
+    console.error('[ReportIssue] failed:', err)
+    return { ok: false, error: err instanceof Error ? err.message : String(err), method: 'web' as const }
   }
 })
 
