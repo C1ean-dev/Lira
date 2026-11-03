@@ -37,7 +37,7 @@ export async function submitReportIssue(
   title: string,
   description: string,
   attachments?: UserFileAttachment[]
-): Promise<{ ok: boolean; issueUrl?: string; gistUrl?: string; error?: string; method?: 'cli' | 'web' }> {
+): Promise<{ ok: boolean; issueUrl?: string; gistUrl?: string; error?: string; method?: 'cli' | 'backend' | 'web' }> {
   const trimmedTitle = title.trim()
   const trimmedDesc = description.trim()
   if (!trimmedTitle || !trimmedDesc) {
@@ -57,7 +57,7 @@ export async function submitReportIssue(
                 issueUrl?: string
                 gistUrl?: string
                 error?: string
-                method?: 'cli' | 'web'
+                method?: 'cli' | 'backend' | 'web'
               }>
             }
           | undefined)
