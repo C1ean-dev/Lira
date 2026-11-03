@@ -2,15 +2,18 @@
 
 /**
  * Lira - AI Issue Triage & Solution Planner
- * Analyzes reported issues, diagnostics, and logs using OpenRouter API,
- * posts an architectural solution plan and sets canonical triage labels.
+ * Analyzes reported issues, diagnostics, and logs using Gemini (Google AI Studio)
+ * or OpenRouter API, posts an architectural solution plan and sets canonical triage labels.
  */
 
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 export const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
-export const DEFAULT_MODEL = 'google/gemini-2.5-flash'
+export const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
+
+export const DEFAULT_OPENROUTER_MODEL = 'google/gemini-2.5-flash'
+export const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash'
 export const BOT_SIGNATURE = '<!-- AI-ISSUE-TRIAGE -->'
 
 /**
@@ -43,7 +46,7 @@ export function extractRecommendedLabel(response) {
 }
 
 /**
- * Formats prompt messages for OpenRouter.
+ * Formats prompt messages for the AI model.
  */
 export function buildTriagePrompt({ title, body, author, gistLogs }) {
   const systemPrompt = `Você é um engenheiro de software sênior e arquiteto especialista no projeto Lira.
@@ -101,23 +104,32 @@ ${body}
 }
 
 /**
- * Calls OpenRouter chat completion API.
+ * Calls OpenAI-compatible completions API (Gemini via Google AI Studio or OpenRouter).
  */
-export async function callOpenRouter({ apiKey, model = DEFAULT_MODEL, messages, fetchFn = fetch }) {
+export async function callAIProvider({ apiKey, provider = 'gemini', model, messages, fetchFn = fetch }) {
   if (!apiKey) {
-    throw new Error('OPENROUTER_API_KEY is required')
+    throw new Error('API key is required')
   }
 
-  const response = await fetchFn(OPENROUTER_API_URL, {
+  const isGemini = provider === 'gemini'
+  const endpoint = isGemini ? GEMINI_API_URL : OPENROUTER_API_URL
+  const selectedModel = model || (isGemini ? DEFAULT_GEMINI_MODEL : DEFAULT_OPENROUTER_MODEL)
+
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+  }
+
+  if (!isGemini) {
+    headers['HTTP-Referer'] = 'https://github.com/C1ean-dev/Lira'
+    headers['X-Title'] = 'Lira AI Issue Triage'
+  }
+
+  const response = await fetchFn(endpoint, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://github.com/C1ean-dev/Lira',
-      'X-Title': 'Lira AI Issue Triage',
-    },
+    headers,
     body: JSON.stringify({
-      model,
+      model: selectedModel,
       messages,
       temperature: 0.2,
     }),
@@ -125,16 +137,24 @@ export async function callOpenRouter({ apiKey, model = DEFAULT_MODEL, messages, 
 
   if (!response.ok) {
     const errorText = await response.text()
-    throw new Error(`OpenRouter API error ${response.status}: ${errorText}`)
+    const providerName = isGemini ? 'Google Gemini' : 'OpenRouter'
+    throw new Error(`${providerName} API error ${response.status}: ${errorText}`)
   }
 
   const data = await response.json()
   const content = data?.choices?.[0]?.message?.content
   if (!content) {
-    throw new Error('OpenRouter API returned empty response')
+    throw new Error('API returned empty response')
   }
 
   return content
+}
+
+/**
+ * OpenRouter-specific alias for backwards compatibility.
+ */
+export async function callOpenRouter(opts) {
+  return callAIProvider({ ...opts, provider: 'openrouter' })
 }
 
 /**
@@ -167,10 +187,14 @@ export async function fetchGistLogs(gistId, fetchFn = fetch, token) {
  * Main issue triage runner.
  */
 export async function runIssueTriage(env = process.env, fetchFn = fetch) {
-  const apiKey = env.OPENROUTER_API_KEY
+  const geminiKey = env.GEMINI_API_KEY
+  const openRouterKey = env.OPENROUTER_API_KEY
+  const apiKey = geminiKey || openRouterKey
+  const provider = geminiKey ? 'gemini' : 'openrouter'
+
   if (!apiKey) {
-    console.log('[AI Triage] OPENROUTER_API_KEY is not configured in repository secrets. Skipping triage.')
-    return { skipped: true, reason: 'OPENROUTER_API_KEY is not configured.' }
+    console.log('[AI Triage] Neither GEMINI_API_KEY nor OPENROUTER_API_KEY is configured in repository secrets. Skipping triage.')
+    return { skipped: true, reason: 'Neither GEMINI_API_KEY nor OPENROUTER_API_KEY is configured.' }
   }
 
   const token = env.GITHUB_TOKEN
@@ -179,13 +203,13 @@ export async function runIssueTriage(env = process.env, fetchFn = fetch) {
   const title = env.ISSUE_TITLE || ''
   const body = env.ISSUE_BODY || ''
   const author = env.ISSUE_AUTHOR || ''
-  const model = env.OPENROUTER_MODEL || DEFAULT_MODEL
+  const model = env.AI_MODEL || env.OPENROUTER_MODEL || (provider === 'gemini' ? DEFAULT_GEMINI_MODEL : DEFAULT_OPENROUTER_MODEL)
 
   if (!issueNumber) {
     throw new Error('ISSUE_NUMBER is missing')
   }
 
-  console.log(`[AI Triage] Processing Issue #${issueNumber} on ${repo} using model ${model}...`)
+  console.log(`[AI Triage] Processing Issue #${issueNumber} on ${repo} using ${provider} (${model})...`)
 
   // 1. Check if issue is already triaged
   if (token) {
@@ -218,10 +242,10 @@ export async function runIssueTriage(env = process.env, fetchFn = fetch) {
     gistLogs = await fetchGistLogs(gistId, fetchFn, token)
   }
 
-  // 3. Build prompt and call OpenRouter
-  console.log('[AI Triage] Generating analysis with OpenRouter...')
+  // 3. Build prompt and call AI provider
+  console.log(`[AI Triage] Generating analysis with ${provider} (${model})...`)
   const messages = buildTriagePrompt({ title, body, author, gistLogs })
-  const analysis = await callOpenRouter({ apiKey, model, messages, fetchFn })
+  const analysis = await callAIProvider({ apiKey, provider, model, messages, fetchFn })
   const recommendedLabel = extractRecommendedLabel(analysis)
 
   console.log(`[AI Triage] Recommended label: ${recommendedLabel}`)
