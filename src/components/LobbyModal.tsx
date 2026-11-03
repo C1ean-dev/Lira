@@ -22,6 +22,7 @@ import { FriendsTab } from './lobby/FriendsTab'
 import { LobbyChatModal } from './lobby/LobbyChatModal'
 import { LiraLogo } from './LiraLogo'
 import { UpdateDownloadIndicator } from './common/UpdateDownloadIndicator'
+import { UpdateChangelogHover } from './common/UpdateChangelogHover'
 import { useUpdateStore, versionBadgeLabel } from '../store/useUpdateStore'
 import { CURRENT_APP_VERSION } from '../services/updateService'
 import { isAndroid } from '../utils/platform'
@@ -587,39 +588,51 @@ export const LobbyModal: React.FC<Props> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0c0e14]/90 backdrop-blur-xl p-2 sm:p-4 select-none animate-in fade-in duration-300">
       <div className="bg-[#1b202c] border border-[#2a3142] rounded-2xl sm:rounded-3xl w-full max-w-2xl sm:max-w-[740px] overflow-hidden shadow-2xl flex flex-col max-h-[96vh] sm:max-h-[92vh]">
-        <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 p-3.5 sm:p-5 text-center relative overflow-hidden shrink-0">
-          <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full bg-white/10 blur-2xl" />
-          {showUpdateAction && onApplyUpdate ? (
-            <button
-              type="button"
-              onClick={onApplyUpdate}
-              disabled={isUpdating || isDownloadingUpdate}
-              className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 p-2 sm:p-2.5 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-300 hover:text-white transition-all hover:scale-105 active:scale-95 shadow-lg shadow-emerald-500/20 cursor-pointer disabled:opacity-75 disabled:pointer-events-none"
-              aria-label={updateActionLabel}
-              title={isDownloadingUpdate ? updateActionLabel : isAndroidPlatform ? 'Nova versão disponível! Clique para atualizar agora.' : 'Atualização pronta. Clique para instalar.'}
+        <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 p-3.5 sm:p-5 text-center relative shrink-0 z-20">
+          <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-t-2xl sm:rounded-t-3xl">
+            <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full bg-white/10 blur-2xl" />
+          </div>
+          <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-30">
+            <UpdateChangelogHover
+              updateInfo={updateInfo}
+              isUpdateReady={isReadyToInstall}
+              isDownloading={isDownloadingUpdate}
+              downloadPercent={updatePercent}
+              onApplyUpdate={showUpdateAction && onApplyUpdate ? onApplyUpdate : undefined}
             >
-              {isUpdating ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
+              {showUpdateAction && onApplyUpdate ? (
+                <button
+                  type="button"
+                  onClick={onApplyUpdate}
+                  disabled={isUpdating || isDownloadingUpdate}
+                  className="p-2 sm:p-2.5 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-300 hover:text-white transition-all hover:scale-105 active:scale-95 shadow-lg shadow-emerald-500/20 cursor-pointer disabled:opacity-75 disabled:pointer-events-none"
+                  aria-label={updateActionLabel}
+                  title={isDownloadingUpdate ? updateActionLabel : isAndroidPlatform ? 'Nova versão disponível! Clique para atualizar agora.' : 'Atualização pronta. Clique para instalar.'}
+                >
+                  {isUpdating ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <UpdateDownloadIndicator downloading={isDownloadingUpdate} percent={updatePercent} />
+                  )}
+                </button>
               ) : (
-                <UpdateDownloadIndicator downloading={isDownloadingUpdate} percent={updatePercent} />
+                <button
+                  type="button"
+                  onClick={() => checkNow()}
+                  disabled={manualCheck === 'checking'}
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/20 text-white/90 text-xs font-bold shadow-sm transition-all cursor-pointer disabled:cursor-wait"
+                  title={`Versão atual do Lira: ${currentVersion}. Clique para verificar atualizações.`}
+                >
+                  {manualCheck === 'checking' ? (
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <span className={`w-2 h-2 rounded-full ${manualCheck === 'failed' ? 'bg-rose-400' : 'bg-emerald-400'}`} />
+                  )}
+                  <span className="font-mono">{versionBadgeLabel(manualCheck, currentVersion)}</span>
+                </button>
               )}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => checkNow()}
-              disabled={manualCheck === 'checking'}
-              className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/20 text-white/90 text-xs font-bold shadow-sm transition-all cursor-pointer disabled:cursor-wait"
-              title={`Versão atual do Lira: ${currentVersion}. Clique para verificar atualizações.`}
-            >
-              {manualCheck === 'checking' ? (
-                <RefreshCw className="w-3 h-3 animate-spin" />
-              ) : (
-                <span className={`w-2 h-2 rounded-full ${manualCheck === 'failed' ? 'bg-rose-400' : 'bg-emerald-400'}`} />
-              )}
-              <span className="font-mono">{versionBadgeLabel(manualCheck, currentVersion)}</span>
-            </button>
-          )}
+            </UpdateChangelogHover>
+          </div>
           <div className="relative z-10 flex flex-col items-center">
             <div className="mb-1 sm:mb-2 scale-90 sm:scale-100">
               <LiraLogo size={46} />
