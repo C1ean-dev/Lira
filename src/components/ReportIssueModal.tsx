@@ -22,15 +22,18 @@ export interface UserFileAttachment {
   base64Data?: string
 }
 
+export interface ReportIssueFeedback {
+  type: 'success' | 'warning' | 'error'
+  message: string
+  issueUrl?: string
+  gistUrl?: string
+  method?: 'cli' | 'backend' | 'web'
+}
+
 export interface ReportIssueModalProps {
   isOpen: boolean
   onClose: () => void
-  initialFeedback?: {
-    type: 'success' | 'error'
-    message: string
-    issueUrl?: string
-    gistUrl?: string
-  } | null
+  initialFeedback?: ReportIssueFeedback | null
 }
 
 export async function submitReportIssue(
@@ -107,12 +110,7 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
   const [userFiles, setUserFiles] = useState<UserFileAttachment[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [feedback, setFeedback] = useState<{
-    type: 'success' | 'error'
-    message: string
-    issueUrl?: string
-    gistUrl?: string
-  } | null>(initialFeedback ?? null)
+  const [feedback, setFeedback] = useState<ReportIssueFeedback | null>(initialFeedback ?? null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -211,12 +209,24 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
     try {
       const result = await submitReportIssue(trimmedTitle, trimmedDesc, userFiles)
       if (result.ok) {
-        setFeedback({
-          type: 'success',
-          message: 'Issue criada com os logs anexados!',
-          issueUrl: result.issueUrl,
-          gistUrl: result.gistUrl,
-        })
+        if (result.method === 'web') {
+          setFeedback({
+            type: 'warning',
+            message:
+              'O envio automático pelo servidor não estava disponível no momento. Preparamos o relatório com todos os detalhes e logs para você concluir a publicação no GitHub:',
+            issueUrl: result.issueUrl,
+            gistUrl: result.gistUrl,
+            method: 'web',
+          })
+        } else {
+          setFeedback({
+            type: 'success',
+            message: 'Issue criada com sucesso no GitHub com os logs anexados!',
+            issueUrl: result.issueUrl,
+            gistUrl: result.gistUrl,
+            method: result.method,
+          })
+        }
       } else {
         setFeedback({
           type: 'error',
@@ -270,36 +280,73 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
         </div>
 
         {/* Content */}
-        {feedback?.type === 'success' ? (
+        {feedback?.type === 'success' || feedback?.type === 'warning' ? (
           <div className="p-6 space-y-4">
-            <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 flex items-start gap-3 text-emerald-300">
-              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-              <div className="space-y-2">
-                <p className="text-sm font-semibold">{feedback.message}</p>
-                <div className="flex flex-wrap gap-2 pt-1">
-                  {feedback.issueUrl && (
-                    <button
-                      type="button"
-                      onClick={() => handleOpenLink(feedback.issueUrl!)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 hover:text-emerald-200 text-xs font-bold transition-all shadow-sm"
-                    >
-                      <span>Ver issue no GitHub</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                  {feedback.gistUrl && (
-                    <button
-                      type="button"
-                      onClick={() => handleOpenLink(feedback.gistUrl!)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition-all shadow-sm"
-                    >
-                      <span>Ver logs anexados (Gist)</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+            {feedback.type === 'warning' ? (
+              <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/30 flex items-start gap-3 text-amber-200">
+                <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-2">
+                  <div>
+                    <p className="text-sm font-bold text-amber-300">Quase lá! Conclua o envio no GitHub</p>
+                    <p className="text-xs text-amber-200/90 leading-relaxed mt-0.5">{feedback.message}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    {feedback.issueUrl && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenLink(feedback.issueUrl!)}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 hover:text-amber-100 text-xs font-bold transition-all shadow-sm"
+                      >
+                        <span>Abrir e publicar no GitHub</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {feedback.gistUrl && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenLink(feedback.gistUrl!)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition-all shadow-sm"
+                      >
+                        <span>Ver logs anexados (Gist)</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 pt-1">
+                    Ao clicar no botão, a página de criação de issue será aberta no seu navegador com o título e os logs já preenchidos. Basta clicar em <strong>Submit new issue</strong>.
+                  </p>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 flex items-start gap-3 text-emerald-300">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold">{feedback.message}</p>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {feedback.issueUrl && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenLink(feedback.issueUrl!)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 hover:text-emerald-200 text-xs font-bold transition-all shadow-sm"
+                      >
+                        <span>Ver issue no GitHub</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {feedback.gistUrl && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenLink(feedback.gistUrl!)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition-all shadow-sm"
+                      >
+                        <span>Ver logs anexados (Gist)</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="flex justify-end">
               <button
                 type="button"
