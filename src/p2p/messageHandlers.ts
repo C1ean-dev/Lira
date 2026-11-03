@@ -93,7 +93,7 @@ export function processNetworkMessage(
 
     case 'PLAYER_JOIN': {
       const remotePeerId = msg.senderId || msg.payload.player?.id || peerId
-      const isPeerHost = remotePeerId.endsWith('-host')
+      const isPeerHost = !remotePeerId.startsWith('dj-') && remotePeerId.endsWith('-host')
       const incomingGameId: string | undefined =
         msg.payload.player?.gameId ?? msg.payload.player?.id
       const localPlayer = useGameStore.getState().localPlayer
@@ -234,7 +234,7 @@ export function processNetworkMessage(
       }
       const existing = existingKey ? remotePlayers[existingKey] : undefined
       if (existing && existingKey) {
-        const isPeerHost = existingKey.endsWith('-host')
+        const isPeerHost = !existingKey.startsWith('dj-') && existingKey.endsWith('-host')
         const nextMutedByAdmin =
           updated?.isMuted === false
             ? false
@@ -258,7 +258,7 @@ export function processNetworkMessage(
       } else if (updated) {
         const fallbackKey = targetSender || peerId
         if (fallbackKey) {
-          const isPeerHost = fallbackKey.endsWith('-host')
+          const isPeerHost = !fallbackKey.startsWith('dj-') && fallbackKey.endsWith('-host')
           const nextPlayer: Player = {
             id: fallbackKey,
             gameId: updated.gameId || fallbackKey,
@@ -434,7 +434,7 @@ export function processNetworkMessage(
     }
 
     case 'CHANNELS_SYNC': {
-      if (isHost || !peerId.endsWith('-host') || msg.senderId !== peerId) break
+      if (isHost || peerId.startsWith('dj-') || !peerId.endsWith('-host') || msg.senderId !== peerId) break
       const channels = sanitizeRoomChannels(msg.payload?.channels)
       if (channels) useChatStore.getState().setRoomChannels(channels)
       break

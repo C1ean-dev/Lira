@@ -96,4 +96,44 @@ describe('DJ disconnection cleanup', () => {
     expect(useGameStore.getState().remotePlayers[BOT]).toBeDefined()
     expect(close).not.toHaveBeenCalled()
   })
+
+  it('does not trigger host-recovery failover when a DJ bot whose peer ID ends with -host leaves', () => {
+    const handleHostDisconnected = vi.spyOn(manager, 'handleHostDisconnected')
+    const djBotWithHostSuffix = 'dj-651CAA21-6733-4B2C-8208-3C261790C707-707-host'
+    const player = (id: string, extra = {}) => ({ ...game.localPlayer, id, gameId: id, currentZoneId: 'room', ...extra })
+    useGameStore.setState({
+      connectionStatus: 'connected',
+      remotePlayers: {
+        ...useGameStore.getState().remotePlayers,
+        [djBotWithHostSuffix]: player(djBotWithHostSuffix, { isDjBot: true, djOwnerId: 'host' }),
+      },
+    })
+    manager.removePeer(djBotWithHostSuffix)
+    expect(handleHostDisconnected).not.toHaveBeenCalled()
+    expect(useGameStore.getState().connectionStatus).toBe('connected')
+  })
+
+  it('does not treat a DJ bot whose peer ID ends with -host as the room host on network messages', () => {
+    const djBotWithHostSuffix = 'dj-651CAA21-6733-4B2C-8208-3C261790C707-707-host'
+    processNetworkMessage({
+      type: 'PLAYER_JOIN',
+      senderId: djBotWithHostSuffix,
+      payload: {
+        player: {
+          id: djBotWithHostSuffix,
+          name: 'DJ Lira',
+          isDjBot: true,
+          djOwnerId: 'host',
+          role: 'member',
+          isHost: false,
+        },
+      },
+      timestamp: Date.now(),
+    }, djBotWithHostSuffix, false, manager.broadcast, vi.fn(), vi.fn(), 'local')
+
+    const botPlayer = useGameStore.getState().remotePlayers[djBotWithHostSuffix]
+    expect(botPlayer).toBeDefined()
+    expect(botPlayer?.isHost).toBe(false)
+    expect(botPlayer?.role).not.toBe('host')
+  })
 })

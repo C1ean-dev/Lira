@@ -1176,7 +1176,7 @@ export class PeerManager {
       } catch (e) { }
     }
 
-    const wasHost = peerId.endsWith('-host') || (this.roomCode && peerId === `lira-${this.roomCode}-host`)
+    const wasHost = !departingPlayer?.isDjBot && !peerId.startsWith('dj-') && (peerId.endsWith('-host') || (this.roomCode && peerId === `lira-${this.roomCode}-host`))
 
     useGameStore.getState().removeRemotePlayer(peerId)
     this.endMediaCallWithPeer(peerId)
@@ -2101,7 +2101,7 @@ export class PeerManager {
 
       const localPlayer = useGameStore.getState().localPlayer
       const safeRoomCode = (this.roomCode || 'room').replace(/[^a-zA-Z0-9_-]/g, '')
-      const safeLocalId = localPlayer.id.replace(/[^a-zA-Z0-9_-]/g, '').slice(-8)
+      const safeLocalId = localPlayer.id.replace(/-host$/, '').replace(/[^a-zA-Z0-9_-]/g, '').slice(-8)
 
       let newDjPeer: Peer | null = null
       let djBotId = ''
