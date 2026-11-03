@@ -107,7 +107,7 @@ export interface IElectronAPI {
   diagnosticLogBatch: (entries: unknown[]) => Promise<{ ok: boolean; path: string | null }>
   openLogsFolder: () => Promise<string | null>
   exportLogBundle: () => Promise<{ ok: boolean; path: string | null }>
-  reportIssue: (payload: { title: string; description: string }) => Promise<{ ok: boolean; issueUrl?: string; error?: string; method?: 'cli' | 'web' }>
+  reportIssue: (payload: { title: string; description: string; attachments?: any[] }) => Promise<{ ok: boolean; issueUrl?: string; error?: string; method?: 'cli' | 'web' }>
   logBatch: (records: unknown[]) => Promise<{ ok: boolean }>
   broadcastPresence?: (presence: any) => Promise<any[]>
   removePresence?: (userId: string) => Promise<void>
@@ -236,7 +236,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   diagnosticLogBatch: (entries: unknown[]) => ipcRenderer.invoke('diagnostic-log-batch', entries),
   openLogsFolder: () => ipcRenderer.invoke('open-logs-folder'),
   exportLogBundle: () => ipcRenderer.invoke('export-log-bundle'),
-  reportIssue: (payload: { title: string; description: string }) => ipcRenderer.invoke('report-issue', payload),
+  reportIssue: (payload: { title: string; description: string; attachments?: any[] }) => ipcRenderer.invoke('report-issue', payload),
   logBatch: (records: unknown[]) => ipcRenderer.invoke('renderer-log-batch', records),
   broadcastPresence: (presence: any) => ipcRenderer.invoke('broadcast-presence', presence),
   removePresence: (userId: string) => ipcRenderer.invoke('remove-presence', userId),

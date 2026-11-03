@@ -25,15 +25,23 @@ describe('ReportIssueModal UI', () => {
     expect(html).toContain('Descrição do problema')
     expect(html).toContain('Criar Issue no GitHub')
     expect(html).toContain('Cancelar')
-    expect(html).toMatch(/logs.*anexados|diagnóstico/i)
   })
 
-  it('displays the list of automatically attached log files in the modal', () => {
+  it('displays the list of attached log files without (DJ/Audio) and without Automático tag', () => {
     const html = renderToStaticMarkup(<ReportIssueModal isOpen={true} onClose={() => {}} />)
     expect(html).toContain('call-debug.log')
+    expect(html).not.toContain('(DJ/Áudio)')
+    expect(html).not.toContain('(DJ/Audio)')
+    expect(html).not.toContain('Automático')
     expect(html).toContain('lira-errors.log')
     expect(html).toContain('lira.log')
     expect(html).toContain('lira-reports.jsonl')
+  })
+
+  it('renders a drag-and-drop file upload zone for user attachments', () => {
+    const html = renderToStaticMarkup(<ReportIssueModal isOpen={true} onClose={() => {}} />)
+    expect(html).toMatch(/arraste arquivos/i)
+    expect(html).toMatch(/clique para selecionar/i)
   })
 
   it('has disabled submit button initially when inputs are empty', () => {
@@ -69,7 +77,7 @@ describe('submitReportIssue', () => {
     expect(result.error).toMatch(/obrigatórios/i)
   })
 
-  it('calls electronAPI.reportIssue when available in electron environment', async () => {
+  it('calls electronAPI.reportIssue with attachments when available in electron environment', async () => {
     const mockReport = vi.fn().mockResolvedValue({
       ok: true,
       issueUrl: 'https://github.com/C1ean-dev/Lira/issues/123',
@@ -81,11 +89,20 @@ describe('submitReportIssue', () => {
       },
     })
 
-    const result = await submitReportIssue('DJ travando', 'Ao trocar de faixa o áudio para')
+    const attachments = [{
+      name: 'screenshot.png',
+      size: 1024,
+      type: 'image/png',
+      isImage: true,
+      base64Data: 'iVBORw0KGgo...',
+    }]
+
+    const result = await submitReportIssue('DJ travando', 'Ao trocar de faixa o áudio para', attachments)
 
     expect(mockReport).toHaveBeenCalledWith({
       title: 'DJ travando',
       description: 'Ao trocar de faixa o áudio para',
+      attachments,
     })
     expect(result.ok).toBe(true)
     expect(result.issueUrl).toBe('https://github.com/C1ean-dev/Lira/issues/123')

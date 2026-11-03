@@ -114,6 +114,49 @@ describe('buildIssueMarkdown', () => {
     expect(md).toContain('[diag:dj] freeze')
     expect(md).toContain('2026-11-03T12:00:00Z ERROR [Audio] Fail')
   })
+
+  it('formats issue markdown with user attachments (images and logs)', () => {
+    const md = buildIssueMarkdown({
+      title: 'DJ com erro visual',
+      description: 'Veja o print anexo',
+      diagnostics: {
+        systemInfo: {
+          appVersion: '1.0.0',
+          platform: 'win32 x64',
+          electron: '30.0.0',
+          chrome: '124.0.0',
+          node: '20.0.0',
+          date: '2026-11-03T12:00:00.000Z',
+        },
+        summaryText: '',
+        recentErrorsText: '',
+        callDebugText: '',
+        appLogText: '',
+        attachedFiles: [],
+      },
+      userAttachments: [
+        {
+          name: 'print.png',
+          size: 2048,
+          type: 'image/png',
+          isImage: true,
+          url: 'https://github.com/user-attachments/assets/abc-123',
+        },
+        {
+          name: 'extra-client.log',
+          size: 512,
+          type: 'text/plain',
+          isImage: false,
+          url: 'https://github.com/user-attachments/assets/def-456',
+        },
+      ],
+    })
+
+    expect(md).toContain('### 🖼️ Imagens / Evidências Anexadas')
+    expect(md).toContain('![print.png](https://github.com/user-attachments/assets/abc-123)')
+    expect(md).toContain('### 📂 Arquivos Adicionais Anexados')
+    expect(md).toContain('[extra-client.log](https://github.com/user-attachments/assets/def-456)')
+  })
 })
 
 describe('buildGithubWebUrl', () => {

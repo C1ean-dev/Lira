@@ -8,6 +8,15 @@ import { buildGithubWebUrl, MAX_WEB_URL_LENGTH } from '../src/utils/githubIssueU
 
 export { buildGithubWebUrl, MAX_WEB_URL_LENGTH }
 
+export interface UserAttachment {
+  name: string
+  size: number
+  type: string
+  isImage: boolean
+  base64Data?: string
+  url?: string
+}
+
 export interface IssueDiagnostics {
   systemInfo: Record<string, string>
   summaryText: string
@@ -139,8 +148,9 @@ export function buildIssueMarkdown(payload: {
   title: string
   description: string
   diagnostics: IssueDiagnostics
+  userAttachments?: UserAttachment[]
 }): string {
-  const { description, diagnostics } = payload
+  const { description, diagnostics, userAttachments } = payload
   const { systemInfo } = diagnostics
 
   const gistCallout = diagnostics.gistUrl
@@ -156,6 +166,28 @@ export function buildIssueMarkdown(payload: {
         '',
       ]
 
+  const images = (userAttachments ?? []).filter((a) => a.isImage && a.url)
+  const imageSection =
+    images.length > 0
+      ? [
+          '### 🖼️ Imagens / Evidências Anexadas',
+          '',
+          ...images.map((img) => `![${img.name}](${img.url})`),
+          '',
+        ]
+      : []
+
+  const nonImages = (userAttachments ?? []).filter((a) => !a.isImage && a.url)
+  const nonImageSection =
+    nonImages.length > 0
+      ? [
+          '### 📂 Arquivos Adicionais Anexados',
+          '',
+          ...nonImages.map((file) => `- 📎 [${file.name}](${file.url}) (${Math.round(file.size / 1024)} KB)`),
+          '',
+        ]
+      : []
+
   return [
     '### Descrição do problema',
     description.trim(),
@@ -168,6 +200,8 @@ export function buildIssueMarkdown(payload: {
     `- **Node**: ${systemInfo.node}`,
     `- **Data/Hora**: ${systemInfo.date}`,
     '',
+    ...imageSection,
+    ...nonImageSection,
     '### 📎 Anexo dos Logs de Diagnóstico',
     '',
     ...gistCallout,
@@ -215,6 +249,7 @@ export interface CreateIssueOptions {
   title: string
   description: string
   logsDir: string
+  attachments?: UserAttachment[]
   repo?: string
   execGh?: (args: string[]) => Promise<{ stdout: string; stderr: string }>
   openExternal?: (url: string) => Promise<void>
@@ -238,6 +273,54 @@ function defaultExecGh(args: string[]): Promise<{ stdout: string; stderr: string
       }
     })
   })
+}
+
+export async function uploadUserAttachments(
+  attachments: UserAttachment[],
+  repo: string,
+  execGh: (args: string[]) => Promise<{ stdout: string; stderr: string }>
+): Promise<void> {
+  if (!attachments || attachments.length === 0) return
+
+  let token = ''
+  let repoId = ''
+  try {
+    const tokenRes = await execGh(['auth', 'token'])
+    token = tokenRes.stdout.trim()
+    const repoIdRes = await execGh(['api', `repos/${repo}`, '--jq', '.id'])
+    repoId = repoIdRes.stdout.trim()
+  } catch {}
+
+  if (!token || !repoId) return
+
+  for (const att of attachments) {
+    if (!att.base64Data || att.url) continue
+    try {
+      const buf = Buffer.from(att.base64Data, 'base64')
+      const uploadUrl = `https://uploads.github.com/user-attachments/assets?name=${encodeURIComponent(
+        att.name
+      )}&content_type=${encodeURIComponent(att.type || 'application/octet-stream')}&repository_id=${repoId}`
+
+      const res = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/json',
+          'Content-Type': att.type || 'application/octet-stream',
+        },
+        body: buf,
+      })
+
+      if (res.ok) {
+        const data = (await res.json()) as { url?: string }
+        if (data?.url) {
+          att.url = data.url
+        }
+      }
+    } catch (err) {
+      console.warn(`[uploadUserAttachments] failed to upload ${att.name}:`, err)
+    }
+  }
 }
 
 export async function uploadLogsGist(
@@ -299,13 +382,28 @@ export async function uploadLogsGist(
 export async function createGithubIssue(options: CreateIssueOptions): Promise<CreateIssueResult> {
   const repo = options.repo ?? 'C1ean-dev/Lira'
   const execCmd = options.execGh ?? defaultExecGh
-  const openUrl = options.openExternal ?? (async (u: string) => {
-    if (typeof shell !== 'undefined' && shell.openExternal) {
-      await shell.openExternal(u)
-    }
-  })
 
   const diagnostics = await collectIssueDiagnostics(options.logsDir)
+
+  // Upload user attachments if provided
+  if (options.attachments && options.attachments.length > 0) {
+    // Add text attachments to rawFiles for Gist
+    for (const att of options.attachments) {
+      if (!att.isImage && att.base64Data) {
+        try {
+          const text = Buffer.from(att.base64Data, 'base64').toString('utf8')
+          diagnostics.rawFiles?.push({ name: att.name, content: text })
+          diagnostics.attachedFiles.push(att.name)
+        } catch {}
+      }
+    }
+
+    try {
+      await uploadUserAttachments(options.attachments, repo, execCmd)
+    } catch (err) {
+      console.warn('[createGithubIssue] user attachments upload failed:', err)
+    }
+  }
 
   // Try creating a Gist with the full log attachments first
   let gistUrl: string | null = null
@@ -320,6 +418,7 @@ export async function createGithubIssue(options: CreateIssueOptions): Promise<Cr
     title: options.title,
     description: options.description,
     diagnostics,
+    userAttachments: options.attachments,
   })
 
   const tempFile = path.join(os.tmpdir(), `lira-issue-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.md`)

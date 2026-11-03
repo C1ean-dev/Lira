@@ -1563,13 +1563,14 @@ ipcMain.handle('export-log-bundle', async () => {
   }
 })
 
-ipcMain.handle('report-issue', async (_event, payload: { title: string; description: string }) => {
+ipcMain.handle('report-issue', async (_event, payload: { title: string; description: string; attachments?: any[] }) => {
   try {
     appLog.flushReports()
     return await createGithubIssue({
       title: payload.title,
       description: payload.description,
       logsDir: getLogsDirectory(),
+      attachments: payload.attachments,
     })
   } catch (err) {
     console.error('[ReportIssue] failed:', err)
