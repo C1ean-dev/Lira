@@ -22,7 +22,7 @@ describe('collectIssueDiagnostics', () => {
     } catch {}
   })
 
-  it('collects system info and reads recent error reports and error logs', async () => {
+  it('collects system info, error reports, error logs, call debug, and app timeline', async () => {
     const reportLine1 = JSON.stringify({
       fingerprint: 'fp123',
       message: 'Cannot read properties of undefined (reading audio)',
@@ -39,6 +39,16 @@ describe('collectIssueDiagnostics', () => {
       '2026-11-03T10:00:00.000Z ERROR renderer sess-1 [Audio] Failure playing stream\n',
       'utf8'
     )
+    await fs.promises.writeFile(
+      path.join(tempDir, 'call-debug-2026-11-03.log'),
+      '2026-11-03T10:00:01.000Z [diag:dj] stream-drop { duration: 5 }\n',
+      'utf8'
+    )
+    await fs.promises.writeFile(
+      path.join(tempDir, 'lira-2026-11-03.log'),
+      '2026-11-03T10:00:00.500Z INFO app started\n',
+      'utf8'
+    )
 
     const diag = await collectIssueDiagnostics(tempDir, {
       version: '1.2.3',
@@ -50,6 +60,9 @@ describe('collectIssueDiagnostics', () => {
     expect(diag.summaryText).toContain('fp123')
     expect(diag.summaryText).toContain('Cannot read properties of undefined')
     expect(diag.recentErrorsText).toContain('[Audio] Failure playing stream')
+    expect(diag.callDebugText).toContain('[diag:dj] stream-drop')
+    expect(diag.appLogText).toContain('INFO app started')
+    expect(diag.attachedFiles).toContain('call-debug.log')
   })
 
   it('handles empty logs directory gracefully', async () => {
@@ -60,11 +73,13 @@ describe('collectIssueDiagnostics', () => {
     expect(diag.systemInfo.appVersion).toBe('1.2.3')
     expect(diag.summaryText).toBe('')
     expect(diag.recentErrorsText).toBe('')
+    expect(diag.callDebugText).toBe('')
+    expect(diag.appLogText).toBe('')
   })
 })
 
 describe('buildIssueMarkdown', () => {
-  it('formats issue markdown with user description, system details, and collapsible log sections', () => {
+  it('formats issue markdown with user description, system details, and visible log attachment sections', () => {
     const md = buildIssueMarkdown({
       title: 'DJ cortando som',
       description: 'O som para do nada após 5 minutos tocando.',
@@ -79,6 +94,10 @@ describe('buildIssueMarkdown', () => {
         },
         summaryText: '3x fp123 Cannot read properties',
         recentErrorsText: '2026-11-03T12:00:00Z ERROR [Audio] Fail',
+        callDebugText: '2026-11-03T12:00:01Z [diag:dj] freeze',
+        appLogText: '2026-11-03T12:00:00Z INFO loaded',
+        gistUrl: 'https://gist.github.com/C1ean-dev/123456',
+        attachedFiles: ['call-debug.log', 'lira-errors.log', 'lira.log', 'resumo.txt'],
       },
     })
 
@@ -86,10 +105,13 @@ describe('buildIssueMarkdown', () => {
     expect(md).toContain('O som para do nada após 5 minutos tocando.')
     expect(md).toContain('**Versão do App**: 1.0.0')
     expect(md).toContain('**SO**: win32 x64')
-    expect(md).toContain('<details>')
-    expect(md).toContain('<summary>📋 Resumo dos Erros Registrados</summary>')
+    expect(md).toContain('### 📎 Anexo dos Logs de Diagnóstico')
+    expect(md).toContain('https://gist.github.com/C1ean-dev/123456')
+    expect(md).toContain('<details open>')
+    expect(md).toContain('Resumo dos Erros')
     expect(md).toContain('3x fp123 Cannot read properties')
-    expect(md).toContain('<summary>📄 Últimas Linhas de Log de Erro</summary>')
+    expect(md).toContain('Diagnóstico de Chamadas e DJ')
+    expect(md).toContain('[diag:dj] freeze')
     expect(md).toContain('2026-11-03T12:00:00Z ERROR [Audio] Fail')
   })
 })
@@ -132,10 +154,15 @@ describe('createGithubIssue', () => {
     } catch {}
   })
 
-  it('creates an issue via gh CLI when available, opens issue in browser, and returns cli method', async () => {
-    const mockExecGh = vi.fn().mockResolvedValue({
-      stdout: 'https://github.com/C1ean-dev/Lira/issues/42\n',
-      stderr: '',
+  it('creates an issue via gh CLI, creates gist for full logs, opens issue in browser, and returns cli method', async () => {
+    const mockExecGh = vi.fn().mockImplementation(async (args: string[]) => {
+      if (args[0] === 'gist') {
+        return { stdout: 'https://gist.github.com/C1ean-dev/gist999\n', stderr: '' }
+      }
+      if (args[0] === 'issue') {
+        return { stdout: 'https://github.com/C1ean-dev/Lira/issues/42\n', stderr: '' }
+      }
+      return { stdout: '', stderr: '' }
     })
     const mockOpenExternal = vi.fn().mockResolvedValue(undefined)
 
@@ -150,6 +177,9 @@ describe('createGithubIssue', () => {
     expect(result.ok).toBe(true)
     expect(result.method).toBe('cli')
     expect(result.issueUrl).toBe('https://github.com/C1ean-dev/Lira/issues/42')
+    expect(mockExecGh).toHaveBeenCalledWith(
+      expect.arrayContaining(['gist', 'create'])
+    )
     expect(mockExecGh).toHaveBeenCalledWith(
       expect.arrayContaining([
         'issue',

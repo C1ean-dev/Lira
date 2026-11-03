@@ -28,6 +28,14 @@ describe('ReportIssueModal UI', () => {
     expect(html).toMatch(/logs.*anexados|diagnóstico/i)
   })
 
+  it('displays the list of automatically attached log files in the modal', () => {
+    const html = renderToStaticMarkup(<ReportIssueModal isOpen={true} onClose={() => {}} />)
+    expect(html).toContain('call-debug.log')
+    expect(html).toContain('lira-errors.log')
+    expect(html).toContain('lira.log')
+    expect(html).toContain('lira-reports.jsonl')
+  })
+
   it('has disabled submit button initially when inputs are empty', () => {
     const html = renderToStaticMarkup(<ReportIssueModal isOpen={true} onClose={() => {}} />)
     expect(html).toMatch(/<button[^>]*disabled[^>]*>[\s\S]*?Criar Issue no GitHub/)

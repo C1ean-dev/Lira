@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { X, Bug, Loader2, AlertCircle, CheckCircle2, Info, ExternalLink } from 'lucide-react'
+import { X, Bug, Loader2, AlertCircle, CheckCircle2, Paperclip, FileText, ExternalLink } from 'lucide-react'
 import { buildGithubWebUrl } from '../utils/githubIssueUrl'
 
 export interface ReportIssueModalProps {
@@ -10,7 +10,7 @@ export interface ReportIssueModalProps {
 export async function submitReportIssue(
   title: string,
   description: string
-): Promise<{ ok: boolean; issueUrl?: string; error?: string; method?: 'cli' | 'web' }> {
+): Promise<{ ok: boolean; issueUrl?: string; gistUrl?: string; error?: string; method?: 'cli' | 'web' }> {
   const trimmedTitle = title.trim()
   const trimmedDesc = description.trim()
   if (!trimmedTitle || !trimmedDesc) {
@@ -24,6 +24,7 @@ export async function submitReportIssue(
               reportIssue?: (payload: { title: string; description: string }) => Promise<{
                 ok: boolean
                 issueUrl?: string
+                gistUrl?: string
                 error?: string
                 method?: 'cli' | 'web'
               }>
@@ -60,6 +61,7 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
     type: 'success' | 'error'
     message: string
     issueUrl?: string
+    gistUrl?: string
   } | null>(null)
 
   if (!isOpen) return null
@@ -86,8 +88,9 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
       if (result.ok) {
         setFeedback({
           type: 'success',
-          message: 'Issue criada e aberta no seu navegador!',
+          message: 'Issue criada com os logs anexados!',
           issueUrl: result.issueUrl,
+          gistUrl: result.gistUrl,
         })
       } else {
         setFeedback({
@@ -126,7 +129,7 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
                 Reportar problema
               </h2>
               <p className="text-xs text-slate-400">
-                Crie uma issue com diagnóstico e logs para suporte
+                Crie uma issue com diagnóstico e anexos de logs
               </p>
             </div>
           </div>
@@ -146,19 +149,32 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
           <div className="p-6 space-y-4">
             <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 flex items-start gap-3 text-emerald-300">
               <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <p className="text-sm font-semibold">{feedback.message}</p>
-                {feedback.issueUrl && (
-                  <a
-                    href={feedback.issueUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-emerald-400 underline hover:text-emerald-300"
-                  >
-                    <span>Ver issue no GitHub</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                )}
+                <div className="flex flex-col gap-1">
+                  {feedback.issueUrl && (
+                    <a
+                      href={feedback.issueUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-emerald-400 underline hover:text-emerald-300"
+                    >
+                      <span>Ver issue no GitHub</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                  {feedback.gistUrl && (
+                    <a
+                      href={feedback.gistUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-indigo-400 underline hover:text-indigo-300"
+                    >
+                      <span>Ver arquivos de log anexados (Gist)</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
             <div className="flex justify-end">
@@ -194,7 +210,7 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
               </label>
               <textarea
                 id="issue-desc-input"
-                rows={4}
+                rows={3}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 disabled={isSubmitting}
@@ -203,11 +219,38 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
               />
             </div>
 
-            <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs text-slate-400 flex items-start gap-2.5">
-              <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
-              <span>
-                Os logs de erro recentes e informações do sistema serão anexados automaticamente à issue para auxiliar os desenvolvedores.
-              </span>
+            {/* Visual Attachment Card */}
+            <div className="p-3.5 rounded-2xl bg-[#12151d] border border-[#2a3142] space-y-2">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-300">
+                <div className="flex items-center gap-1.5 text-indigo-400">
+                  <Paperclip className="w-3.5 h-3.5" />
+                  <span>Anexos de Logs Incluídos</span>
+                </div>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
+                  Automático
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-400">
+                <div className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-800/40 border border-slate-700/40">
+                  <FileText className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                  <span className="truncate">call-debug.log (DJ/Áudio)</span>
+                </div>
+                <div className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-800/40 border border-slate-700/40">
+                  <FileText className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                  <span className="truncate">lira-errors.log (Erros)</span>
+                </div>
+                <div className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-800/40 border border-slate-700/40">
+                  <FileText className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span className="truncate">lira.log (Geral)</span>
+                </div>
+                <div className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-800/40 border border-slate-700/40">
+                  <FileText className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="truncate">lira-reports.jsonl</span>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-500 leading-tight">
+                Estes arquivos de log e informações do sistema serão anexados diretamente à issue no GitHub.
+              </p>
             </div>
 
             {feedback?.type === 'error' && (
