@@ -40,6 +40,18 @@ describe('ReportIssueModal UI', () => {
     const html = renderToStaticMarkup(<ReportIssueModal isOpen={true} onClose={() => {}} />)
     expect(html).toMatch(/<button[^>]*disabled[^>]*>[\s\S]*?Criar Issue no GitHub/)
   })
+
+  it('renders success view with "Ver issue no GitHub" when feedback has issueUrl', () => {
+    const feedback = {
+      type: 'success' as const,
+      message: 'Issue criada com os logs anexados!',
+      issueUrl: 'https://github.com/C1ean-dev/Lira/issues/127',
+    }
+
+    const html = renderToStaticMarkup(<ReportIssueModal isOpen={true} onClose={() => {}} initialFeedback={feedback} />)
+    expect(html).toContain('Ver issue no GitHub')
+    expect(html).toContain('Fechar')
+  })
 })
 
 describe('submitReportIssue', () => {
@@ -80,7 +92,7 @@ describe('submitReportIssue', () => {
     expect(result.method).toBe('cli')
   })
 
-  it('falls back to window.open when electronAPI is not present', async () => {
+  it('prepares webUrl when electronAPI is not present without opening browser automatically', async () => {
     const mockOpen = vi.fn()
     vi.stubGlobal('window', {
       open: mockOpen,
@@ -88,10 +100,8 @@ describe('submitReportIssue', () => {
 
     const result = await submitReportIssue('Problema no web', 'Descrição do teste web')
 
-    expect(mockOpen).toHaveBeenCalledWith(
-      expect.stringContaining('https://github.com/C1ean-dev/Lira/issues/new?'),
-      '_blank'
-    )
+    // Must NOT open browser automatically on submit:
+    expect(mockOpen).not.toHaveBeenCalled()
     expect(result.ok).toBe(true)
     expect(result.method).toBe('web')
     expect(result.issueUrl).toContain('https://github.com/C1ean-dev/Lira/issues/new?')

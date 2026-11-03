@@ -346,7 +346,6 @@ export async function createGithubIssue(options: CreateIssueOptions): Promise<Cr
       const match = res.stdout.match(/https:\/\/github\.com\/[^\s]+/)
       const issueUrl = match ? match[0] : `https://github.com/${repo}/issues`
 
-      await openUrl(issueUrl)
       return { ok: true, issueUrl, gistUrl: gistUrl ?? undefined, method: 'cli' }
     } catch {
       const webUrl = buildGithubWebUrl({
@@ -354,7 +353,6 @@ export async function createGithubIssue(options: CreateIssueOptions): Promise<Cr
         body: markdown,
         repo,
       })
-      await openUrl(webUrl)
       return { ok: true, issueUrl: webUrl, gistUrl: gistUrl ?? undefined, method: 'web' }
     }
   } catch (err) {

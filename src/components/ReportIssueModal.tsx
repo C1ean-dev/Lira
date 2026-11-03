@@ -5,6 +5,12 @@ import { buildGithubWebUrl } from '../utils/githubIssueUrl'
 export interface ReportIssueModalProps {
   isOpen: boolean
   onClose: () => void
+  initialFeedback?: {
+    type: 'success' | 'error'
+    message: string
+    issueUrl?: string
+    gistUrl?: string
+  } | null
 }
 
 export async function submitReportIssue(
@@ -43,9 +49,6 @@ export async function submitReportIssue(
     title: trimmedTitle,
     body: trimmedDesc,
   })
-  if (typeof window !== 'undefined' && typeof window.open === 'function') {
-    window.open(webUrl, '_blank')
-  }
   return {
     ok: true,
     issueUrl: webUrl,
@@ -53,7 +56,7 @@ export async function submitReportIssue(
   }
 }
 
-export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onClose }) => {
+export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onClose, initialFeedback }) => {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -62,7 +65,7 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
     message: string
     issueUrl?: string
     gistUrl?: string
-  } | null>(null)
+  } | null>(initialFeedback ?? null)
 
   if (!isOpen) return null
 
@@ -72,6 +75,21 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
     setDescription('')
     setFeedback(null)
     onClose()
+  }
+
+  const handleOpenLink = (url: string) => {
+    const electronApi =
+      typeof window !== 'undefined'
+        ? ((window as unknown as Record<string, unknown>).electronAPI as
+            | { openExternal?: (targetUrl: string) => Promise<void> }
+            | undefined)
+        : undefined
+
+    if (electronApi && typeof electronApi.openExternal === 'function') {
+      void electronApi.openExternal(url)
+    } else if (typeof window !== 'undefined' && typeof window.open === 'function') {
+      window.open(url, '_blank')
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -149,30 +167,28 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
           <div className="p-6 space-y-4">
             <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 flex items-start gap-3 text-emerald-300">
               <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <p className="text-sm font-semibold">{feedback.message}</p>
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-wrap gap-2 pt-1">
                   {feedback.issueUrl && (
-                    <a
-                      href={feedback.issueUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-xs text-emerald-400 underline hover:text-emerald-300"
+                    <button
+                      type="button"
+                      onClick={() => handleOpenLink(feedback.issueUrl!)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 hover:text-emerald-200 text-xs font-bold transition-all shadow-sm"
                     >
                       <span>Ver issue no GitHub</span>
                       <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
+                    </button>
                   )}
                   {feedback.gistUrl && (
-                    <a
-                      href={feedback.gistUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-xs text-indigo-400 underline hover:text-indigo-300"
+                    <button
+                      type="button"
+                      onClick={() => handleOpenLink(feedback.gistUrl!)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition-all shadow-sm"
                     >
-                      <span>Ver arquivos de log anexados (Gist)</span>
+                      <span>Ver logs anexados (Gist)</span>
                       <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
+                    </button>
                   )}
                 </div>
               </div>

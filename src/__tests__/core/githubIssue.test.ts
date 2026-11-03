@@ -154,7 +154,7 @@ describe('createGithubIssue', () => {
     } catch {}
   })
 
-  it('creates an issue via gh CLI, creates gist for full logs, opens issue in browser, and returns cli method', async () => {
+  it('creates an issue via gh CLI, creates gist for full logs, does not automatically open browser, and returns cli method', async () => {
     const mockExecGh = vi.fn().mockImplementation(async (args: string[]) => {
       if (args[0] === 'gist') {
         return { stdout: 'https://gist.github.com/C1ean-dev/gist999\n', stderr: '' }
@@ -194,10 +194,11 @@ describe('createGithubIssue', () => {
         'needs-triage',
       ])
     )
-    expect(mockOpenExternal).toHaveBeenCalledWith('https://github.com/C1ean-dev/Lira/issues/42')
+    // Must NOT automatically open browser on submit:
+    expect(mockOpenExternal).not.toHaveBeenCalled()
   })
 
-  it('falls back to opening GitHub web issue page when gh CLI fails', async () => {
+  it('falls back to GitHub web issue URL when gh CLI fails without opening browser automatically', async () => {
     const mockExecGh = vi.fn().mockRejectedValue(new Error('gh: command not found'))
     const mockOpenExternal = vi.fn().mockResolvedValue(undefined)
 
@@ -212,6 +213,7 @@ describe('createGithubIssue', () => {
     expect(result.ok).toBe(true)
     expect(result.method).toBe('web')
     expect(result.issueUrl).toContain('https://github.com/C1ean-dev/Lira/issues/new?')
-    expect(mockOpenExternal).toHaveBeenCalledWith(expect.stringContaining('https://github.com/C1ean-dev/Lira/issues/new?'))
+    // Must NOT automatically open browser on submit:
+    expect(mockOpenExternal).not.toHaveBeenCalled()
   })
 })
