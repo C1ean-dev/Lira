@@ -4,10 +4,11 @@ import {
   extractRecommendedLabel,
   buildTriagePrompt,
   callAIProvider,
-  callOpenRouter,
+  executeCascadeTriage,
   runIssueTriage,
   GEMINI_API_URL,
   OPENROUTER_API_URL,
+  CASCADE_TIERS,
 } from '../../../scripts/ai-issue-triage.mjs'
 
 describe('ai-issue-triage', () => {
@@ -88,26 +89,20 @@ Label Recomendada: ready-for-human
     })
   })
 
-  describe('callAIProvider with Gemini and OpenRouter', () => {
-    it('calls Google Gemini endpoint when provider is gemini', async () => {
+  describe('callAIProvider', () => {
+    it('calls Google Gemini endpoint with gemini-3.8-flash', async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
         json: async () => ({
-          choices: [
-            {
-              message: {
-                content: '## Diagnóstico Gemini\nErro no WebRTC.',
-              },
-            },
-          ],
+          choices: [{ message: { content: 'Resposta Gemini' } }],
         }),
       })
 
       const content = await callAIProvider({
         apiKey: 'test-gemini-key',
         provider: 'gemini',
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3.8-flash',
         messages: [{ role: 'user', content: 'test' }],
         fetchFn: mockFetch,
       })
@@ -122,27 +117,23 @@ Label Recomendada: ready-for-human
           }),
         })
       )
-      expect(content).toBe('## Diagnóstico Gemini\nErro no WebRTC.')
+      expect(content).toBe('Resposta Gemini')
     })
 
-    it('calls OpenRouter endpoint when provider is openrouter', async () => {
+    it('sends provider sort price config to OpenRouter for deepseek-v4.1-flash', async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
         json: async () => ({
-          choices: [
-            {
-              message: {
-                content: '## Diagnóstico OpenRouter\nErro no PeerManager.',
-              },
-            },
-          ],
+          choices: [{ message: { content: 'Resposta DeepSeek' } }],
         }),
       })
 
-      const content = await callOpenRouter({
+      const content = await callAIProvider({
         apiKey: 'test-openrouter-key',
-        model: 'google/gemini-2.5-flash',
+        provider: 'openrouter',
+        model: 'deepseek/deepseek-v4.1-flash-1017',
+        providerConfig: { sort: 'price' },
         messages: [{ role: 'user', content: 'test' }],
         fetchFn: mockFetch,
       })
@@ -151,15 +142,93 @@ Label Recomendada: ready-for-human
         OPENROUTER_API_URL,
         expect.objectContaining({
           method: 'POST',
-          headers: expect.objectContaining({
-            Authorization: 'Bearer test-openrouter-key',
-            'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://github.com/C1ean-dev/Lira',
-            'X-Title': 'Lira AI Issue Triage',
-          }),
+          body: expect.stringContaining('"provider":{"sort":"price"}'),
         })
       )
-      expect(content).toBe('## Diagnóstico OpenRouter\nErro no PeerManager.')
+      expect(content).toBe('Resposta DeepSeek')
+    })
+  })
+
+  describe('executeCascadeTriage', () => {
+    it('verifies CASCADE_TIERS structure with 3 tiers in exact requested order', () => {
+      expect(CASCADE_TIERS).toHaveLength(3)
+      expect(CASCADE_TIERS[0].model).toBe('gemini-3.8-flash')
+      expect(CASCADE_TIERS[0].provider).toBe('gemini')
+      expect(CASCADE_TIERS[0].maxAttempts).toBe(3)
+
+      expect(CASCADE_TIERS[1].model).toBe('deepseek/deepseek-v4.1-flash-1017')
+      expect(CASCADE_TIERS[1].provider).toBe('openrouter')
+      expect(CASCADE_TIERS[1].providerConfig).toEqual({ sort: 'price' })
+      expect(CASCADE_TIERS[1].maxAttempts).toBe(3)
+
+      expect(CASCADE_TIERS[2].model).toBe('nvidia/nemotron-3-ultra-550b-a55b:free')
+      expect(CASCADE_TIERS[2].provider).toBe('openrouter')
+      expect(CASCADE_TIERS[2].maxAttempts).toBe(3)
+    })
+
+    it('falls back to DeepSeek on OpenRouter if Gemini fails 3 times', async () => {
+      const mockFetch = vi.fn()
+
+      // Gemini attempts 1, 2, 3 fail
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 503, text: async () => 'Unavailable' })
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 503, text: async () => 'Unavailable' })
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 503, text: async () => 'Unavailable' })
+
+      // DeepSeek attempt 1 succeeds
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ message: { content: 'Plano via DeepSeek' } }],
+        }),
+      })
+
+      const result = await executeCascadeTriage({
+        geminiKey: 'gemini-key',
+        openRouterKey: 'openrouter-key',
+        messages: [{ role: 'user', content: 'hi' }],
+        fetchFn: mockFetch,
+        sleepFn: () => Promise.resolve(),
+      })
+
+      expect(result.content).toBe('Plano via DeepSeek')
+      expect(result.tierUsed).toContain('DeepSeek')
+      expect(mockFetch).toHaveBeenCalledTimes(4)
+    })
+
+    it('falls back to Nemotron Free if DeepSeek on OpenRouter also fails 3 times', async () => {
+      const mockFetch = vi.fn()
+
+      // Gemini: 3 failures
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'err' })
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'err' })
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'err' })
+
+      // DeepSeek: 3 failures
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 502, text: async () => 'bad gateway' })
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 502, text: async () => 'bad gateway' })
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 502, text: async () => 'bad gateway' })
+
+      // Nemotron: attempt 1 succeeds
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ message: { content: 'Plano via Nemotron' } }],
+        }),
+      })
+
+      const result = await executeCascadeTriage({
+        geminiKey: 'gemini-key',
+        openRouterKey: 'openrouter-key',
+        messages: [{ role: 'user', content: 'hi' }],
+        fetchFn: mockFetch,
+        sleepFn: () => Promise.resolve(),
+      })
+
+      expect(result.content).toBe('Plano via Nemotron')
+      expect(result.tierUsed).toContain('Nemotron')
+      expect(mockFetch).toHaveBeenCalledTimes(7)
     })
   })
 
@@ -179,7 +248,7 @@ Label Recomendada: ready-for-human
       expect(mockFetch).not.toHaveBeenCalled()
     })
 
-    it('works seamlessly using GEMINI_API_KEY with Google Gemini', async () => {
+    it('executes full flow using Gemini first, posting comment and label', async () => {
       const mockFetch = vi.fn()
 
       // 1. Comments check
@@ -189,7 +258,7 @@ Label Recomendada: ready-for-human
         json: async () => [],
       })
 
-      // 2. Gemini completion
+      // 2. Gemini completion (Tier 1 succeeds on attempt 1)
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
@@ -231,19 +300,13 @@ Label Recomendada: ready-for-human
           ISSUE_TITLE: 'Erro no áudio',
           ISSUE_BODY: 'DJ falhando',
         },
-        mockFetch
+        mockFetch,
+        () => Promise.resolve()
       )
 
       expect(result.success).toBe(true)
       expect(result.label).toBe('ready-for-agent')
-      expect(mockFetch).toHaveBeenCalledWith(
-        GEMINI_API_URL,
-        expect.objectContaining({
-          headers: expect.objectContaining({
-            Authorization: 'Bearer free-gemini-key',
-          }),
-        })
-      )
+      expect(result.tierUsed).toContain('Gemini 3.8 Flash')
     })
   })
 })

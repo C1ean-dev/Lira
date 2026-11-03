@@ -2,8 +2,10 @@
 
 /**
  * Lira - AI Issue Triage & Solution Planner
- * Analyzes reported issues, diagnostics, and logs using Gemini (Google AI Studio)
- * or OpenRouter API, posts an architectural solution plan and sets canonical triage labels.
+ * Analyzes reported issues, diagnostics, and logs using a robust fallback cascade:
+ * 1. Google Gemini (gemini-3.8-flash via Google AI Studio) -> 3 attempts
+ * 2. DeepSeek V4.1 Flash (deepseek/deepseek-v4.1-flash-1017 via OpenRouter cheapest provider) -> 3 attempts
+ * 3. NVIDIA Nemotron (nvidia/nemotron-3-ultra-550b-a55b:free via OpenRouter free tier) -> 3 attempts
  */
 
 import { fileURLToPath } from 'node:url'
@@ -12,9 +14,29 @@ import path from 'node:path'
 export const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
 export const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
 
-export const DEFAULT_OPENROUTER_MODEL = 'google/gemini-2.5-flash'
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash'
 export const BOT_SIGNATURE = '<!-- AI-ISSUE-TRIAGE -->'
+
+export const CASCADE_TIERS = [
+  {
+    name: 'Gemini 3.8 Flash (Google AI Studio)',
+    provider: 'gemini',
+    model: 'gemini-3.8-flash',
+    maxAttempts: 3,
+  },
+  {
+    name: 'DeepSeek V4.1 Flash (OpenRouter - Provedor Mais Barato)',
+    provider: 'openrouter',
+    model: 'deepseek/deepseek-v4.1-flash-1017',
+    providerConfig: { sort: 'price' },
+    maxAttempts: 3,
+  },
+  {
+    name: 'NVIDIA Nemotron 3 Ultra Free (OpenRouter)',
+    provider: 'openrouter',
+    model: 'nvidia/nemotron-3-ultra-550b-a55b:free',
+    maxAttempts: 3,
+  },
+]
 
 /**
  * Extracts a GitHub Gist ID from issue body markdown if present.
@@ -33,7 +55,6 @@ export function extractGistId(body) {
 export function extractRecommendedLabel(response) {
   if (!response || typeof response !== 'string') return 'needs-triage'
 
-  // Look specifically in section 5 or across the text
   const section5Match = response.match(/###\s*5\.[^#]+/i)
   const searchText = section5Match ? section5Match[0] : response
 
@@ -106,14 +127,13 @@ ${body}
 /**
  * Calls OpenAI-compatible completions API (Gemini via Google AI Studio or OpenRouter).
  */
-export async function callAIProvider({ apiKey, provider = 'gemini', model, messages, fetchFn = fetch }) {
+export async function callAIProvider({ apiKey, provider = 'gemini', model, providerConfig, messages, fetchFn = fetch }) {
   if (!apiKey) {
     throw new Error('API key is required')
   }
 
   const isGemini = provider === 'gemini'
   const endpoint = isGemini ? GEMINI_API_URL : OPENROUTER_API_URL
-  const selectedModel = model || (isGemini ? DEFAULT_GEMINI_MODEL : DEFAULT_OPENROUTER_MODEL)
 
   const headers = {
     Authorization: `Bearer ${apiKey}`,
@@ -125,14 +145,20 @@ export async function callAIProvider({ apiKey, provider = 'gemini', model, messa
     headers['X-Title'] = 'Lira AI Issue Triage'
   }
 
+  const payload = {
+    model,
+    messages,
+    temperature: 0.2,
+  }
+
+  if (providerConfig && !isGemini) {
+    payload.provider = providerConfig
+  }
+
   const response = await fetchFn(endpoint, {
     method: 'POST',
     headers,
-    body: JSON.stringify({
-      model: selectedModel,
-      messages,
-      temperature: 0.2,
-    }),
+    body: JSON.stringify(payload),
   })
 
   if (!response.ok) {
@@ -148,6 +174,61 @@ export async function callAIProvider({ apiKey, provider = 'gemini', model, messa
   }
 
   return content
+}
+
+/**
+ * Executes the cascading triage strategy:
+ * 1. Gemini (3 attempts)
+ * 2. OpenRouter DeepSeek (3 attempts, cheapest provider)
+ * 3. OpenRouter Nemotron Free (3 attempts)
+ */
+export async function executeCascadeTriage({
+  geminiKey,
+  openRouterKey,
+  messages,
+  fetchFn = fetch,
+  sleepFn = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+}) {
+  const errors = []
+
+  for (const tier of CASCADE_TIERS) {
+    const isGemini = tier.provider === 'gemini'
+    const apiKey = isGemini ? geminiKey : openRouterKey
+
+    if (!apiKey) {
+      console.log(`[AI Triage] Skipping ${tier.name}: ${isGemini ? 'GEMINI_API_KEY' : 'OPENROUTER_API_KEY'} is not configured.`)
+      continue
+    }
+
+    console.log(`[AI Triage] Starting ${tier.name} (up to ${tier.maxAttempts} attempts)...`)
+
+    for (let attempt = 1; attempt <= tier.maxAttempts; attempt++) {
+      try {
+        console.log(`[AI Triage] [${tier.name}] Attempt ${attempt}/${tier.maxAttempts}...`)
+        const content = await callAIProvider({
+          apiKey,
+          provider: tier.provider,
+          model: tier.model,
+          providerConfig: tier.providerConfig,
+          messages,
+          fetchFn,
+        })
+        console.log(`[AI Triage] Successfully received analysis from ${tier.name}!`)
+        return { content, tierUsed: tier.name }
+      } catch (err) {
+        console.warn(`[AI Triage] [${tier.name}] Attempt ${attempt} failed:`, err?.message || err)
+        errors.push(`[${tier.name}] Attempt ${attempt}: ${err?.message || err}`)
+        if (attempt < tier.maxAttempts) {
+          const backoffMs = Math.min(attempt * 1500, 3000)
+          await sleepFn(backoffMs)
+        }
+      }
+    }
+
+    console.warn(`[AI Triage] ${tier.name} exhausted all ${tier.maxAttempts} attempts. Moving to next fallback tier...`)
+  }
+
+  throw new Error(`All AI triage cascade tiers failed:\n${errors.join('\n')}`)
 }
 
 /**
@@ -186,13 +267,11 @@ export async function fetchGistLogs(gistId, fetchFn = fetch, token) {
 /**
  * Main issue triage runner.
  */
-export async function runIssueTriage(env = process.env, fetchFn = fetch) {
+export async function runIssueTriage(env = process.env, fetchFn = fetch, sleepFn) {
   const geminiKey = env.GEMINI_API_KEY
   const openRouterKey = env.OPENROUTER_API_KEY
-  const apiKey = geminiKey || openRouterKey
-  const provider = geminiKey ? 'gemini' : 'openrouter'
 
-  if (!apiKey) {
+  if (!geminiKey && !openRouterKey) {
     console.log('[AI Triage] Neither GEMINI_API_KEY nor OPENROUTER_API_KEY is configured in repository secrets. Skipping triage.')
     return { skipped: true, reason: 'Neither GEMINI_API_KEY nor OPENROUTER_API_KEY is configured.' }
   }
@@ -203,13 +282,12 @@ export async function runIssueTriage(env = process.env, fetchFn = fetch) {
   const title = env.ISSUE_TITLE || ''
   const body = env.ISSUE_BODY || ''
   const author = env.ISSUE_AUTHOR || ''
-  const model = env.AI_MODEL || env.OPENROUTER_MODEL || (provider === 'gemini' ? DEFAULT_GEMINI_MODEL : DEFAULT_OPENROUTER_MODEL)
 
   if (!issueNumber) {
     throw new Error('ISSUE_NUMBER is missing')
   }
 
-  console.log(`[AI Triage] Processing Issue #${issueNumber} on ${repo} using ${provider} (${model})...`)
+  console.log(`[AI Triage] Processing Issue #${issueNumber} on ${repo}...`)
 
   // 1. Check if issue is already triaged
   if (token) {
@@ -242,17 +320,24 @@ export async function runIssueTriage(env = process.env, fetchFn = fetch) {
     gistLogs = await fetchGistLogs(gistId, fetchFn, token)
   }
 
-  // 3. Build prompt and call AI provider
-  console.log(`[AI Triage] Generating analysis with ${provider} (${model})...`)
+  // 3. Build prompt and run cascade
+  console.log('[AI Triage] Running AI triage cascade...')
   const messages = buildTriagePrompt({ title, body, author, gistLogs })
-  const analysis = await callAIProvider({ apiKey, provider, model, messages, fetchFn })
-  const recommendedLabel = extractRecommendedLabel(analysis)
+  const { content: analysis, tierUsed } = await executeCascadeTriage({
+    geminiKey,
+    openRouterKey,
+    messages,
+    fetchFn,
+    sleepFn,
+  })
 
-  console.log(`[AI Triage] Recommended label: ${recommendedLabel}`)
+  const recommendedLabel = extractRecommendedLabel(analysis)
+  console.log(`[AI Triage] Recommended label: ${recommendedLabel} (via ${tierUsed})`)
 
   // 4. Post comment on GitHub issue
   if (token) {
     console.log('[AI Triage] Posting analysis comment on GitHub Issue...')
+    const commentWithFooter = `${analysis}\n\n---\n*Triagem realizada automaticamente via **${tierUsed}***`
     const commentRes = await fetchFn(
       `https://api.github.com/repos/${repo}/issues/${issueNumber}/comments`,
       {
@@ -262,7 +347,7 @@ export async function runIssueTriage(env = process.env, fetchFn = fetch) {
           'User-Agent': 'Lira-AI-Triage',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ body: analysis }),
+        body: JSON.stringify({ body: commentWithFooter }),
       }
     )
     if (!commentRes.ok) {
@@ -289,7 +374,7 @@ export async function runIssueTriage(env = process.env, fetchFn = fetch) {
   }
 
   console.log('[AI Triage] Triage completed successfully!')
-  return { success: true, label: recommendedLabel }
+  return { success: true, label: recommendedLabel, tierUsed }
 }
 
 // CLI Execution
