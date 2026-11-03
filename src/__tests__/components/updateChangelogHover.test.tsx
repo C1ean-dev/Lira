@@ -83,7 +83,8 @@ describe('UpdateChangelogHover Component', () => {
     expect(html).toContain('Novidades da Atualização')
     expect(html).toContain('v1.1.185')
     expect(html).toContain('fix(p2p): correcao do bot DJ')
-    expect(html).toContain('Instalar Atualização Agora')
+    expect(html).toContain('Instalar')
+    expect(html).not.toContain('Instalar Atualização Agora')
     expect(html).toContain('Ver notas completas no GitHub')
   })
 

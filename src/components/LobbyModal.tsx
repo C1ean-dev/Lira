@@ -603,11 +603,10 @@ export const LobbyModal: React.FC<Props> = ({
               {showUpdateAction && onApplyUpdate ? (
                 <button
                   type="button"
-                  onClick={onApplyUpdate}
                   disabled={isUpdating || isDownloadingUpdate}
                   className="p-2 sm:p-2.5 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-300 hover:text-white transition-all hover:scale-105 active:scale-95 shadow-lg shadow-emerald-500/20 cursor-pointer disabled:opacity-75 disabled:pointer-events-none"
                   aria-label={updateActionLabel}
-                  title={isDownloadingUpdate ? updateActionLabel : isAndroidPlatform ? 'Nova versão disponível! Clique para atualizar agora.' : 'Atualização pronta. Clique para instalar.'}
+                  title={isDownloadingUpdate ? updateActionLabel : 'Nova versão disponível. Passe o mouse ou clique para ver novidades e instalar.'}
                 >
                   {isUpdating ? (
                     <RefreshCw className="w-4 h-4 animate-spin" />
@@ -618,7 +617,7 @@ export const LobbyModal: React.FC<Props> = ({
               ) : (
                 <button
                   type="button"
-                  onClick={() => checkNow()}
+                  onClick={(e) => { e.stopPropagation(); checkNow() }}
                   disabled={manualCheck === 'checking'}
                   className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/20 text-white/90 text-xs font-bold shadow-sm transition-all cursor-pointer disabled:cursor-wait"
                   title={`Versão atual do Lira: ${currentVersion}. Clique para verificar atualizações.`}

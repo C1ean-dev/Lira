@@ -324,11 +324,11 @@ onClick={() => PeerManager.getInstance().reconnect()}
         >
           {showUpdateAction && onApplyUpdate ? (
             <button
-              onClick={onApplyUpdate}
+              type="button"
               disabled={isUpdating || isDownloadingUpdate}
               className="p-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 hover:text-emerald-300 transition-all hover:scale-105 shadow-sm shadow-emerald-500/20 disabled:opacity-75 disabled:cursor-wait cursor-pointer"
               aria-label={updateActionLabel}
-              title={isDownloadingUpdate ? updateActionLabel : isAndroidPlatform ? 'Nova atualização disponível! Clique para atualizar agora.' : 'Atualização pronta. Clique para instalar.'}
+              title={isDownloadingUpdate ? updateActionLabel : 'Nova versão disponível. Passe o mouse ou clique para ver novidades e instalar.'}
             >
               {isUpdating ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
@@ -339,7 +339,7 @@ onClick={() => PeerManager.getInstance().reconnect()}
           ) : (
             <button
               type="button"
-              onClick={() => checkNow()}
+              onClick={(e) => { e.stopPropagation(); checkNow() }}
               disabled={manualCheck === 'checking'}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#1b202c] hover:bg-[#232a3a] border border-[#2a3142] text-slate-300 text-xs font-semibold select-none transition-colors cursor-pointer disabled:cursor-wait"
               title={`Versão atual do Lira: ${currentVersion}. Clique para verificar atualizações.`}
