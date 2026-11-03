@@ -298,6 +298,7 @@ export class DynamicBufferManager {
         const next = Math.max(clampedTarget, buf.currentMs - step)
         buf.currentMs = Math.max(next, Math.min(buf.currentMs, buf.lastTargetMs))
         if (buf.currentMs === clampedTarget) buf.lastTargetMs = clampedTarget
+        buf.cleanSamples = 0
       }
     } else {
       buf.cleanSamples++

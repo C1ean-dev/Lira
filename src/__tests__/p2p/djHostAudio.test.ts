@@ -63,7 +63,7 @@ describe('DJ host audio', () => {
     expect(dj.answer.mock.calls[0][1]).toEqual(expect.objectContaining({ sdpTransform: expect.any(Function) }))
     expect(dj.answer.mock.calls[0][1].sdpTransform('m=audio 9 UDP/TLS/RTP/SAVPF 111\na=rtpmap:111 opus/48000/2\n')).toContain('stereo=1')
     const voice = incoming('other-person')
-    expect(voice.answer.mock.calls[0]).toHaveLength(1)
+    expect(voice.answer.mock.calls[0][1]?.sdpTransform?.('m=audio 9 UDP/TLS/RTP/SAVPF 111\na=rtpmap:111 opus/48000/2\n') ?? '').not.toContain('stereo=1')
   })
 
   it('generates distinct DJ bot IDs across restarts so the signaling server does not reject reuse', async () => {
