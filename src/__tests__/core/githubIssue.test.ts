@@ -7,6 +7,8 @@ import {
   buildIssueMarkdown,
   buildGithubWebUrl,
   createGithubIssue,
+  submitIssueToBackend,
+  DEFAULT_REPORT_BACKEND_URL,
 } from '../../../electron/githubIssue'
 
 describe('collectIssueDiagnostics', () => {
@@ -258,5 +260,55 @@ describe('createGithubIssue', () => {
     expect(result.issueUrl).toContain('https://github.com/C1ean-dev/Lira/issues/new?')
     // Must NOT automatically open browser on submit:
     expect(mockOpenExternal).not.toHaveBeenCalled()
+  })
+
+  it('submits issue to Render backend successfully when gh CLI fails', async () => {
+    const mockExecGh = vi.fn().mockRejectedValue(new Error('gh: command not found'))
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        issueUrl: 'https://github.com/C1ean-dev/Lira/issues/777',
+        issueNumber: 777,
+      }),
+    })
+
+    const result = await createGithubIssue({
+      title: 'Bug anonimo',
+      description: 'Usuario sem GitHub enviando relato',
+      logsDir: tempDir,
+      execGh: mockExecGh,
+      fetchFn: mockFetch as unknown as typeof fetch,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(result.method).toBe('backend')
+    expect(result.issueUrl).toBe('https://github.com/C1ean-dev/Lira/issues/777')
+    expect(mockFetch).toHaveBeenCalledWith(
+      DEFAULT_REPORT_BACKEND_URL,
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+    )
+  })
+
+  it('submits directly via submitIssueToBackend helper', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        issueUrl: 'https://github.com/C1ean-dev/Lira/issues/888',
+      }),
+    })
+
+    const res = await submitIssueToBackend(
+      { title: 'Teste direto', description: 'Descricao direta' },
+      'https://lira-signaling.onrender.com/report-issue',
+      mockFetch as unknown as typeof fetch
+    )
+
+    expect(res.ok).toBe(true)
+    expect(res.issueUrl).toBe('https://github.com/C1ean-dev/Lira/issues/888')
   })
 })

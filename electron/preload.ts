@@ -107,7 +107,7 @@ export interface IElectronAPI {
   diagnosticLogBatch: (entries: unknown[]) => Promise<{ ok: boolean; path: string | null }>
   openLogsFolder: () => Promise<string | null>
   exportLogBundle: () => Promise<{ ok: boolean; path: string | null }>
-  reportIssue: (payload: { title: string; description: string; attachments?: any[] }) => Promise<{ ok: boolean; issueUrl?: string; error?: string; method?: 'cli' | 'web' }>
+  reportIssue: (payload: { title: string; description: string; attachments?: any[] }) => Promise<{ ok: boolean; issueUrl?: string; error?: string; method?: 'cli' | 'backend' | 'web' }>
   logBatch: (records: unknown[]) => Promise<{ ok: boolean }>
   broadcastPresence?: (presence: any) => Promise<any[]>
   removePresence?: (userId: string) => Promise<void>
