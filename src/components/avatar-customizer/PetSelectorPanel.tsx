@@ -1,4 +1,4 @@
-import { RasterImage } from '../common/RasterImage'
+import { AutoCroppedThumbnail } from './AutoCroppedThumbnail'
 import { PetPersonalityEditor } from './PetPersonalityEditor'
 import { withSavedPetPersonality } from '../../services/petPersonalities'
 import React, { useState, useRef, useEffect } from 'react'
@@ -19,7 +19,6 @@ import { AvatarConfig, AvatarComponentSlot, PetConfig, PetType, Direction } from
 import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 import { CustomAsset } from '../../types/customAsset'
 import { PetRenderer } from '../../engine/pet/PetRenderer'
-import { cropContentDataUrl } from '../../engine/avatar/avatarBakeService'
 import { exportCategoryAtlas } from '../../engine/avatar/avatarAtlasExporter'
 import { AtlasImportModal } from './AtlasImportModal'
 import { AvatarSpritesheetSlicerModal } from './AvatarSpritesheetSlicerModal'
@@ -51,31 +50,7 @@ const BUILTIN_PETS: BuiltinPetOption[] = [
   },
 ]
 
-const AutoCroppedThumbnail: React.FC<{ src: string; alt: string }> = ({ src, alt }) => {
-  const [displayUrl, setDisplayUrl] = useState<string>(src)
 
-  useEffect(() => {
-    let active = true
-    cropContentDataUrl(src).then((cropped) => {
-      if (active && cropped) {
-        setDisplayUrl(cropped)
-      }
-    })
-    return () => {
-      active = false
-    }
-  }, [src])
-
-  return (
-    <div className="w-12 h-12 rounded-xl mb-1 flex items-center justify-center relative shadow-sm overflow-hidden border border-slate-700/50 bg-[#18191c]">
-      <RasterImage
-        src={displayUrl}
-        alt={alt}
-        className="w-full h-full object-contain [image-rendering:pixelated]"
-      />
-    </div>
-  )
-}
 
 export const PetSelectorPanel: React.FC<Props> = ({
   avatar,
@@ -363,7 +338,12 @@ export const PetSelectorPanel: React.FC<Props> = ({
                   <Trash2 className="w-3.5 h-3.5" />
                 </div>
 
-                <AutoCroppedThumbnail src={thumbSrc} alt={asset.name} />
+                <AutoCroppedThumbnail
+                  src={thumbSrc}
+                  alt={asset.name}
+                  className="w-12 h-12 rounded-xl mb-1 flex items-center justify-center relative shadow-sm overflow-hidden border border-slate-700/50 bg-[#18191c]"
+                  fallbackIcon="pet"
+                />
 
                 <span className="text-[11px] font-bold text-[#60a5fa] truncate max-w-[80px]">
                   {asset.name}
