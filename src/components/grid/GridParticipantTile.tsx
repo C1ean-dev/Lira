@@ -12,6 +12,7 @@ import { LiveWatchPrompt } from '../LiveWatchPrompt'
 import { useLiveGate } from '../../hooks/useLiveGate'
 import { useLiveViewBox } from '../../hooks/useLiveViewBox'
 import { LiveTransmissionInfo } from './LiveTransmissionInfo'
+import { useLiveFrameFit } from '../../hooks/useLiveFrameFit'
 
 export interface ParticipantData {
   id: string
@@ -59,6 +60,7 @@ export const GridParticipantTile: React.FC<Props> = ({
   onContextMenu,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const frameRef = useRef<HTMLDivElement | null>(null)
   const hasLive = Boolean(user.screenStream || user.isScreenSharing)
   const isLive = mediaKind !== 'participant' && hasLive
   // Some peers send the screen in the regular call stream. It cannot also be
@@ -77,7 +79,6 @@ export const GridParticipantTile: React.FC<Props> = ({
   const selectedAudioOutput = useMediaStore((s) => s.selectedAudioOutput)
   const isDeafened = useMediaStore((s) => s.isDeafened)
   const isSilenced = useMediaStore((s) => s.isUserSilenced(user.id, user.name))
-  const removeCaptureBorder = useMediaStore((s) => s.removeCaptureBorder)
   const networkQuality = useUserNetworkQuality(user.id, user.isLocal)
 
   const rawVolume = isLive ? (liveStreamVolume ?? 100)
@@ -112,7 +113,8 @@ export const GridParticipantTile: React.FC<Props> = ({
     })
   }, [activeStream, isLive, user.isLocal, liveGate.needsClick])
 
-  useLiveViewBox(user.id, videoRef, isSidebar ? 'cover' : 'contain', liveGate.watching)
+  useLiveViewBox(user.id, videoRef, 'contain', liveGate.watching)
+  const frameStyle = useLiveFrameFit(frameRef, videoRef, activeStream, isLive && !liveGate.needsClick, { inset: 4, widthOnly: isSidebar })
 
   const remoteAudio =
     !user.isLocal && activeStream ? (
@@ -145,6 +147,8 @@ export const GridParticipantTile: React.FC<Props> = ({
   if (isSidebar) {
     return (
       <div
+        ref={frameRef}
+        style={frameStyle}
         onClick={onFocus}
         onContextMenu={(e) => {
           e.preventDefault()
@@ -177,7 +181,7 @@ export const GridParticipantTile: React.FC<Props> = ({
             onCanPlay={() => videoRef.current?.play().catch(() => {})}
             onLoadedData={liveGate.onFrame}
             onPlaying={liveGate.onFrame}
-            className={`w-full h-full object-cover bg-black ${removeCaptureBorder ? 'scale-[1.01]' : ''}`}
+            className="w-full h-full object-contain bg-black"
           />
         ) : (
           <>
@@ -285,6 +289,8 @@ export const GridParticipantTile: React.FC<Props> = ({
 
   return (
     <div
+      ref={frameRef}
+      style={frameStyle}
       onClick={onFocus}
       onDoubleClick={handleFullscreenClick}
       onContextMenu={(e) => {
@@ -310,7 +316,7 @@ export const GridParticipantTile: React.FC<Props> = ({
           onCanPlay={() => videoRef.current?.play().catch(() => {})}
           onLoadedData={liveGate.onFrame}
           onPlaying={liveGate.onFrame}
-          className={`w-full h-full object-contain bg-black ${removeCaptureBorder ? 'scale-[1.01]' : ''}`}
+          className="w-full h-full object-contain bg-black"
         />
       ) : (
         <>

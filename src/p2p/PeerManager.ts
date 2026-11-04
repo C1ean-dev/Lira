@@ -15,8 +15,10 @@ import { CustomAsset } from '../types/customAsset'
 import { PublicRoomsService } from '../services/publicRoomsService'
 import { processNetworkMessage } from './messageHandlers'
 import { MediaCallHandler, ICE_CONNECT_TIMEOUT_MS, SHARED_RTC_CONFIG, resolveCallGlare } from './mediaCalls'
-import { VideoDegradation } from './videoSendPolicy'
-import { prioritizeH264HardwareCodec } from '../media/hardwareCodec'
+import { VideoDegradation, setAlmViewer, findVideoSender, syncScreenCaps } from './videoSendPolicy'
+import { prioritizeH264HardwareCodec, isHardwareAccelerationEnabled } from '../media/hardwareCodec'
+import { AlmLive } from './almLive'
+import { useLiveWatchStore } from '../store/useLiveWatchStore'
 import { MediaManager } from '../media/MediaManager'
 import { silentAudioTrack } from '../media/silentAudioTrack'
 import { waitForDjPeerReady } from './djPeerReady'
@@ -194,6 +196,44 @@ export class PeerManager {
   private djAudioStream: MediaStream | null = null
   private djBotId: string | null = null
   private djHealthCheckTimer: any = null
+  private almSession?: AlmLive
+  private get alm(): AlmLive { return this.almSession ??= new AlmLive({
+    id: () => this.peer?.id ?? null,
+    peers: () => Object.keys(useGameStore.getState().remotePlayers),
+    eligible: (id, root) => {
+      const state = useGameStore.getState()
+      const local = state.localPlayer
+      const presenter = root === this.peer?.id ? local : state.remotePlayers[root]
+      const participant = id === this.peer?.id ? local : state.remotePlayers[id]
+      return !!presenter && !!participant && presenter.isScreenSharing === true &&
+        local.currentZoneId != null && presenter.currentZoneId === local.currentZoneId &&
+        participant.currentZoneId === local.currentZoneId && !participant.isDjBot
+    },
+    watching: root => !!useLiveWatchStore.getState().watching[root],
+    send: (to, payload) => {
+      if (this.peer) this.broadcast({ type: 'LIVE_ALM', senderId: this.peer.id, payload: { to, ...payload }, timestamp: Date.now() })
+    },
+    ice: async () => {
+      let cloudflare: RTCIceServer[] = []
+      try { cloudflare = await loadCloudflareIceServers() } catch {}
+      return { ...SHARED_RTC_CONFIG, iceServers: [...(SHARED_RTC_CONFIG.iceServers || []), ...cloudflare, ...buildIceServers(import.meta.env).slice(2)] }
+    },
+    stream: (root, stream) => {
+      if (stream) {
+        const current = useMediaStore.getState().peerScreenStreams[root]
+        if (current?.getVideoTracks()[0] !== stream.getVideoTracks()[0])
+          useMediaStore.getState().setPeerScreenStream(root, stream)
+      }
+      else useMediaStore.getState().removePeerScreenStream(root)
+    },
+    rtp: (viewer, playing) => {
+      setAlmViewer(viewer, playing)
+      const pc = this.mediaCalls.get(viewer)?.peerConnection
+      if (pc) { const sender = findVideoSender(pc); if (sender) syncScreenCaps(sender, viewer) }
+      MediaCallHandler.syncViewerAudio(this.mediaCalls, viewer)
+    },
+    log: (event, data) => diagLog('screenshare', `alm-${event}`, data),
+  }) }
 
   private handleNetworkOnline = () => {
     if (this.isIntentionalDisconnect || !this.roomCode || this.hostRecovery) return
@@ -255,6 +295,7 @@ export class PeerManager {
       host: this.isHost,
       connections: { total: this.connections.size, open },
       mediaCalls: this.mediaCalls.size,
+      liveDistribution: this.alm.describe(),
       reconnectAttempts: this.signalingReconnectAttempts,
       reconnectPending: !!this.signalingReconnectTimer,
       leaving: this.isIntentionalDisconnect,
@@ -332,7 +373,12 @@ export class PeerManager {
         }
         markSignalingTierFailed(currentTier, 2 * 60 * 1000)
 
-        if (tierIndex < SIGNALING_TIERS.length - 1) {
+        if (retryCount > 0) {
+          // A reclaim belongs to the original room's signaling server.
+          useGameStore.getState().setConnected(false)
+          useGameStore.getState().setConnectionStatus('disconnected')
+          reject(new Error(`Não foi possível retomar o espaço no servidor P2P (${reason}). Tente novamente em instantes.`))
+        } else if (tierIndex < SIGNALING_TIERS.length - 1) {
           const nextTier = SIGNALING_TIERS[tierIndex + 1]
           console.warn(`[P2P Host] Signaling tier '${currentTier}' failed (${reason}). Falling back to '${nextTier}'...`)
           this.createRoom(this.roomCode!, localPlayer, options, tierIndex + 1, 0)
@@ -789,7 +835,10 @@ export class PeerManager {
           err?.message?.includes('Could not connect to peer') ||
           err?.type === 'unavailable-id'
         ) {
-          triggerAutoHost()
+          // Only reclaim a host after createRoom found an occupied ID.
+          // Ordinary visitors must search the remaining servers instead.
+          if (retryCount > 0) triggerAutoHost()
+          else tryNextTier()
         } else if (err?.type === 'webrtc') {
           failHostConnection('webrtc-error')
         } else if (
@@ -1165,6 +1214,7 @@ export class PeerManager {
   }
 
   private removePeer(peerId: string) {
+    this.alm.peerLeft(peerId)
     const departingPlayer = useGameStore.getState().remotePlayers[peerId]
     this.peerLastSeen.delete(peerId)
     this.pendingHeartbeats.delete(peerId)
@@ -1689,6 +1739,15 @@ export class PeerManager {
   private handleNetworkMessage(msg: NetworkMessage, peerId: string) {
     this.peerLastSeen.set(peerId, Date.now())
     try {
+      if (msg.type === 'LIVE_ALM') {
+        // Room clients may relay only through the authenticated room host.
+        const host = useGameStore.getState().connectionHostId
+        if (this.isHost ? msg.senderId !== peerId : peerId !== host && msg.senderId !== peerId) return
+        if (this.isHost) this.broadcast(msg, peerId)
+        if (msg.payload?.to === this.peer?.id)
+          void this.alm.receive(msg.senderId, msg.payload).catch(error => diagLog('screenshare', 'alm-control-error', { error: String(error) }))
+        return
+      }
       if (msg.type === 'HOST_TRANSFER') {
         this.handleHostTransfer(msg, peerId)
         return
@@ -1789,6 +1848,7 @@ export class PeerManager {
 
   public sendLiveView(sharerId: string, watch: boolean, h: number | null) {
     if (!this.peer) return
+    this.alm.watch(sharerId, watch, h)
     this.broadcast({
       type: 'LIVE_VIEW',
       senderId: this.peer.id,
@@ -2417,6 +2477,7 @@ export class PeerManager {
   }
 
   public endAllZoneMediaCalls() {
+    this.alm.close()
     this.clearPendingZoneCalls()
     this.stopLiveVoiceCalls()
     this.incomingLiveVoiceCalls?.forEach((call) => call.close())
@@ -2443,6 +2504,11 @@ export class PeerManager {
       (peerId) => this.retryZoneCall(peerId),
       minBitrate
     )
+    if (isScreenShare && newTrack) {
+      const audio = useMediaStore.getState().localScreenStream?.getAudioTracks().find(track =>
+        (track as any).__screenShareLiveAudio === true && track.readyState === 'live')
+      void this.alm.start(newTrack, maxBitrate, maxFramerate, isHardwareAccelerationEnabled(), audio)
+    } else this.alm.stopSource()
   }
 
   public updateScreenShareOptimizationMode(mode: 'quality' | 'smoothness') {
@@ -2460,6 +2526,7 @@ export class PeerManager {
 
   public updateScreenShareBitrate(maxBitrate: number) {
     MediaCallHandler.updateScreenShareBitrate(this.mediaCalls, maxBitrate)
+    this.alm.updateBitrate(maxBitrate)
   }
 
   public replaceAudioTrack(newTrack: MediaStreamTrack | null) {
@@ -2751,10 +2818,8 @@ export class PeerManager {
     const remotePlayers = useGameStore.getState().remotePlayers
     for (const [rId, rPlayer] of Object.entries(remotePlayers)) {
       if (
-        rId === targetUserId ||
-        rPlayer.id === targetUserId ||
-        rPlayer.gameId === targetUserId ||
-        (targetGameId && (rPlayer.id === targetGameId || rPlayer.gameId === targetGameId))
+        (Boolean(targetUserId) && (rId === targetUserId || rPlayer.id === targetUserId)) ||
+        (!targetUserId && Boolean(targetGameId) && (rId === targetGameId || rPlayer.id === targetGameId || rPlayer.gameId === targetGameId))
       ) {
         useGameStore.getState().setRemotePlayer({
           ...rPlayer,
@@ -2784,10 +2849,8 @@ export class PeerManager {
     const remotePlayers = useGameStore.getState().remotePlayers
     for (const [rId, rPlayer] of Object.entries(remotePlayers)) {
       if (
-        rId === targetUserId ||
-        rPlayer.id === targetUserId ||
-        rPlayer.gameId === targetUserId ||
-        (targetGameId && (rPlayer.id === targetGameId || rPlayer.gameId === targetGameId))
+        (Boolean(targetUserId) && (rId === targetUserId || rPlayer.id === targetUserId)) ||
+        (!targetUserId && Boolean(targetGameId) && (rId === targetGameId || rPlayer.id === targetGameId || rPlayer.gameId === targetGameId))
       ) {
         useGameStore.getState().setRemotePlayer({
           ...rPlayer,

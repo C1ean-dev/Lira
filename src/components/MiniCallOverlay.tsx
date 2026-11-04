@@ -78,6 +78,7 @@ import { PetApiSettings } from './pets/PetApiSettings'
 import { LiveWatchPrompt } from './LiveWatchPrompt'
 import { useLiveGate } from '../hooks/useLiveGate'
 import { useLiveViewBox } from '../hooks/useLiveViewBox'
+import { useLiveFrameFit } from '../hooks/useLiveFrameFit'
 import { noiseSuppressionDisplay, resolveNoiseProcessorPreference } from '../media/noiseSuppressionStatus'
 import { NoiseSuppressionNotice } from './common/NoiseSuppressionNotice'
 import { useLiveWatchStore } from '../store/useLiveWatchStore'
@@ -128,6 +129,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
   liveWatching = false,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const frameRef = useRef<HTMLDivElement | null>(null)
   const liveGate = useLiveGate(id, Boolean(!isLocal && isScreenTrack && liveOptIn), liveWatching)
   const outputVolume = useMediaStore((s) => s.outputVolume)
   const selectedAudioOutput = useMediaStore((s) => s.selectedAudioOutput)
@@ -137,7 +139,6 @@ export const VideoTile: React.FC<VideoTileProps> = ({
   const setLiveStreamVolume = useMediaStore((s) => s.setLiveStreamVolume)
   const isGlobalDeafened = useMediaStore((s) => s.isDeafened)
   const isSilenced = useMediaStore((s) => (id ? s.isUserSilenced(id, name) : false))
-  const removeCaptureBorder = useMediaStore((s) => s.removeCaptureBorder)
   const rawVolume = isScreenTrack
     ? (liveStreamVolume !== undefined ? liveStreamVolume : 100)
     : (id && participantVolumes[id] !== undefined ? participantVolumes[id] : 100)
@@ -169,9 +170,12 @@ export const VideoTile: React.FC<VideoTileProps> = ({
   }, [stream, isLocal, liveGate.needsClick])
 
   useLiveViewBox(id, videoRef, 'contain', liveGate.watching && !suppressAudio)
+  const frameStyle = useLiveFrameFit(frameRef, videoRef, stream, !!isScreenTrack && !liveGate.needsClick, { inset: 4, bounds: { width: 128, height: 96 } })
 
   return (
     <div
+      ref={frameRef}
+      style={frameStyle}
       onClick={onClick}
       onContextMenu={(e) => {
         e.preventDefault()
@@ -196,8 +200,6 @@ export const VideoTile: React.FC<VideoTileProps> = ({
           onLoadedData={liveGate.onFrame}
           onPlaying={liveGate.onFrame}
           className={`w-full h-full ${isScreenTrack ? 'object-contain bg-black' : 'object-cover'} ${
-            isScreenTrack && removeCaptureBorder ? 'scale-[1.02]' : ''
-          } ${
             shouldShowVideo ? 'block' : 'hidden'
           } ${isLocal && !isScreenSharing && !isScreenTrack ? '-scale-x-100' : ''}`}
         />
@@ -410,6 +412,8 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const liveGate = useLiveGate(presenterId, Boolean(!isLocal && asksFirst), watching)
+  const frameRef = useRef<HTMLDivElement | null>(null)
+  const frameStyle = useLiveFrameFit(frameRef, videoRef, stream, !liveGate.needsClick, { widthOnly: true })
   const outputVolume = useMediaStore((s) => s.outputVolume)
   const selectedAudioOutput = useMediaStore((s) => s.selectedAudioOutput)
   const liveStreamVolume = useMediaStore((s) => s.liveStreamVolume)
@@ -527,6 +531,8 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
 
       <div
         onClick={onExpand}
+        ref={frameRef}
+        style={frameStyle}
         className="relative w-full h-40 bg-black flex items-center justify-center cursor-pointer group"
         title="Clique para expandir em tela cheia"
       >
@@ -583,6 +589,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
   const localStream = useMediaStore((s) => s.localStream)
   const localScreenStream = useMediaStore((s) => s.localScreenStream)
   const peerStreams = useMediaStore((s) => s.peerStreams)
+  const peerScreenStreams = useMediaStore((s) => s.peerScreenStreams)
   const peerVoiceStreams = useMediaStore((s) => s.peerVoiceStreams)
   const isMuted = useMediaStore((s) => s.isMuted)
   const isDeafened = useMediaStore((s) => s.isDeafened)
@@ -745,14 +752,14 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
     (p) => callStates[p.id] === 'reconnecting'
   )
 
-  const remotePresenters = peersInSameZone.filter((p) => p.isScreenSharing && peerStreams[p.id])
+  const remotePresenters = peersInSameZone.filter((p) => p.isScreenSharing && (peerScreenStreams[p.id] || peerStreams[p.id]))
   const remotePresenter = remotePresenters.find((p) => watchingLives[p.id]) || remotePresenters[0]
   const hasActiveScreenShare = isScreenSharing || !!remotePresenter
 
   const activeScreenStream = isScreenSharing
     ? localScreenStream
     : remotePresenter
-    ? peerStreams[remotePresenter.id]
+    ? peerScreenStreams[remotePresenter.id] || peerStreams[remotePresenter.id]
     : null
 
   const presenterId = isScreenSharing

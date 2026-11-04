@@ -11,6 +11,7 @@ import { MediaManager } from '../media/MediaManager'
 import { PeerManager } from '../p2p/PeerManager'
 import { reportStorageFailure } from '../utils/storageReport'
 import { playSoundEffect, setSoundEffectsOptionsProvider } from '../utils/soundEffects'
+import { isAlmStream } from '../media/almStreams'
 
 export interface MicCalibration {
   noiseFloorDb: number
@@ -700,9 +701,14 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
     }),
 
   setPeerStream: (peerId, stream) =>
-    set((state) => ({
-      peerStreams: { ...state.peerStreams, [peerId]: stream },
-    })),
+    set((state) => {
+      const screen = state.peerScreenStreams[peerId]
+      return {
+        peerStreams: { ...state.peerStreams, [peerId]: stream },
+        ...(screen && !isAlmStream(screen) ? { peerScreenStreams: { ...state.peerScreenStreams,
+          [peerId]: new MediaStream([...screen.getVideoTracks(), ...stream.getAudioTracks()]) } } : {}),
+      }
+    }),
 
   removePeerStream: (peerId) =>
     set((state) => {

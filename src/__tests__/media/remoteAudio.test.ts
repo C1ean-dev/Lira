@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { applyAudioOutput, attachRemoteAudio, audioOnlyStream } from '../../media/remoteAudio'
 import { __resetDiagForTests } from '../../utils/diagnosticLogger'
+import { markAlmStream } from '../../media/almStreams'
 
 class FakeMediaStream {
   private tracks: any[]
@@ -55,6 +56,20 @@ const fakeElement = (extra: Record<string, unknown> = {}) =>
   }) as any
 
 describe('remote call audio', () => {
+  it('routes synchronized live volume and output selection to its existing clocked graph', () => {
+    const stream = new FakeMediaStream([track('video', 'live')]) as unknown as MediaStream
+    const output = { setConsumer: vi.fn(), removeConsumer: vi.fn(), level: () => 0 }
+    markAlmStream(stream, output)
+    const audio = fakeElement()
+    const detach = attachRemoteAudio(audio, stream, { tile: 'live', peer: 'presenter', muted: false })
+    applyAudioOutput(audio, { muted: false, volume: 0.5, sinkId: 'headphones' })
+    expect(output.setConsumer).toHaveBeenLastCalledWith(audio, { muted: false, volume: 0.5, sinkId: 'headphones' })
+    applyAudioOutput(audio, { muted: true, volume: 0.5 })
+    expect(output.setConsumer).toHaveBeenLastCalledWith(audio, { muted: true, volume: 0.5 })
+    expect(audio.play).not.toHaveBeenCalled()
+    detach()
+    expect(output.removeConsumer).toHaveBeenCalledWith(audio)
+  })
   let previousMediaStream: unknown
   beforeEach(() => {
     previousMediaStream = (globalThis as any).MediaStream
