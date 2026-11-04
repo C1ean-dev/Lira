@@ -9,6 +9,7 @@ export interface UpdateInfo {
   releaseNotes: string
   downloadUrl: string | null
   releaseUrl: string
+  prUrl?: string | null
 }
 
 export interface UpdateProgress {
