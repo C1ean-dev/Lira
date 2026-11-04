@@ -1,7 +1,9 @@
 import { attachStreamToVideo, AttachCtx } from './attachVideoElement'
+import { almAudioOutput, type AlmAudioOutput } from './almStreams'
 
 const audioViews = new WeakMap<MediaStream, MediaStream>()
 const audioGains = new WeakMap<HTMLMediaElement, { context: AudioContext; gain: GainNode }>()
+const almOutputs = new WeakMap<HTMLMediaElement, AlmAudioOutput>()
 
 export function audioOnlyStream(stream: MediaStream): MediaStream {
   const tracks = stream.getAudioTracks()
@@ -16,6 +18,12 @@ export function audioOnlyStream(stream: MediaStream): MediaStream {
 }
 
 export function attachRemoteAudio(el: HTMLMediaElement, stream: MediaStream, ctx: AttachCtx): () => void {
+  const alm = almAudioOutput(stream)
+  if (alm) {
+    almOutputs.set(el, alm)
+    alm.setConsumer(el, { muted: ctx.muted === true, volume: 0 })
+    return () => { alm.removeConsumer(el); if (almOutputs.get(el) === alm) almOutputs.delete(el) }
+  }
   const input = audioOnlyStream(stream)
   let context: AudioContext | undefined
   let source: MediaStreamAudioSourceNode | undefined
@@ -70,6 +78,8 @@ export interface AudioOutput {
 }
 
 export function applyAudioOutput(el: HTMLMediaElement, out: AudioOutput): void {
+  const alm = almOutputs.get(el)
+  if (alm) { alm.setConsumer(el, out); return }
   const graph = audioGains.get(el)
   const volume = out.muted ? 0 : Math.max(0, Math.min(2, out.volume || 0))
   try {

@@ -30,7 +30,7 @@ beforeAll(() => {
 public class Fixture { public static void Main() {
   string root = AppDomain.CurrentDomain.BaseDirectory;
   File.AppendAllText(Path.Combine(root, "started"), "started\\n");
-  for (int i = 0; i < 100 && !File.Exists(Path.Combine(root, "stop")); i++) Thread.Sleep(100);
+  for (int i = 0; i < 600 && !File.Exists(Path.Combine(root, "stop")); i++) Thread.Sleep(100);
 } }`
   const command = `Add-Type -OutputAssembly '${exe.replace(/'/g, "''")}' -OutputType WindowsApplication -TypeDefinition @'\n${appSource}\n'@`
   execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(command, 'utf16le').toString('base64')], { windowsHide: true, stdio: 'pipe' })
@@ -108,7 +108,7 @@ it.skipIf(!enabled).each([
   { name: 'previous executable cannot start', workerCode: 0, route: 'rollback', silent: true, app: 'invalid', restart: false },
   { name: 'interactive notice acknowledged', workerCode: 0, route: 'rollback', silent: false, app: 'slow', restart: true },
   { name: 'rollback triggered by GUI shutdown', workerCode: 0, route: 'gui-end', silent: false, app: 'slow', restart: true },
-])('finishes $name without waiting for the app or a hidden notice', { timeout: 30000 }, async scenario => {
+])('finishes $name without waiting for the app or a hidden notice', { timeout: 90000 }, async scenario => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'lira-rollback-exit-'))
   const install = path.join(root, 'app')
   const profile = path.join(root, 'profile')
@@ -121,11 +121,21 @@ it.skipIf(!enabled).each([
     const child = spawn(fixture, [...(scenario.silent ? ['/S'] : []), `/ROOT=${root}`, `/MODE=${scenario.route}`], { windowsHide: true, stdio: 'ignore' })
     const result = await new Promise<{ code: number | null; timedOut: boolean }>((resolve, reject) => {
       let timedOut = false
-      const timer = setTimeout(() => { timedOut = true; child.kill() }, 10000)
-      child.once('error', error => { clearTimeout(timer); reject(error) })
-      child.once('exit', code => { clearTimeout(timer); resolve({ code, timedOut }) })
+      const expire = () => { timedOut = true; child.kill() }
+      // Measure exit after recovery finishes, independently of Windows process
+      // and PowerShell startup. The app outlives the five-second exit deadline.
+      let timer = setTimeout(expire, 60000)
+      const logPath = path.join(root, 'lira_install.log')
+      const monitor = setInterval(() => {
+        if (!existsSync(logPath) || !readFileSync(logPath, 'utf8').includes('[Rollback] Finalizando instalador')) return
+        clearInterval(monitor)
+        clearTimeout(timer)
+        timer = setTimeout(expire, 5000)
+      }, 25)
+      child.once('error', error => { clearInterval(monitor); clearTimeout(timer); reject(error) })
+      child.once('exit', code => { clearInterval(monitor); clearTimeout(timer); resolve({ code, timedOut }) })
     })
-    expect(result.timedOut, 'rollback finished, but the installer still waits for an invisible dialog').toBe(false)
+    expect(result.timedOut, `rollback finished, but the installer still waits for an invisible dialog:\n${readFileSync(path.join(root, 'lira_install.log'), 'utf8')}`).toBe(false)
     expect(result.code).toBe(1)
     const log = readFileSync(path.join(root, 'lira_install.log'), 'utf8')
     expect(log.match(/Aviso concluido/g)).toHaveLength(1)

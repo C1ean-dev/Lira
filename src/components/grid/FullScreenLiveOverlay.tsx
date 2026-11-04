@@ -7,6 +7,7 @@ import { LiveWatchPrompt } from '../LiveWatchPrompt'
 import { useLiveGate } from '../../hooks/useLiveGate'
 import { useLiveViewBox } from '../../hooks/useLiveViewBox'
 import { LiveTransmissionInfo } from './LiveTransmissionInfo'
+import { useLiveFrameFit } from '../../hooks/useLiveFrameFit'
 
 interface Props {
   user: ParticipantData
@@ -15,6 +16,7 @@ interface Props {
 
 export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
   const theaterVideoRef = useRef<HTMLVideoElement | null>(null)
+  const frameRef = useRef<HTMLDivElement | null>(null)
   const theaterContainerRef = useRef<HTMLDivElement | null>(null)
   const [controlsVisible, setControlsVisible] = useState(true)
   const [infoOpen, setInfoOpen] = useState(false)
@@ -27,12 +29,14 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
   const rawVolume = liveStreamVolume !== undefined ? liveStreamVolume : 100
 
   const [prevVolume, setPrevVolume] = useState<number>(rawVolume > 0 ? rawVolume : 100)
-  const removeCaptureBorder = useMediaStore((s) => s.removeCaptureBorder)
-  const toggleRemoveCaptureBorder = useMediaStore((s) => s.toggleRemoveCaptureBorder)
+  // Hiding a native capture outline is an explicit crop, never an automatic zoom.
+  const [removeCaptureBorder, setRemoveCaptureBorder] = useState(false)
+  const toggleRemoveCaptureBorder = () => setRemoveCaptureBorder(hidden => !hidden)
 
   const activeStream = user.screenStream || user.stream
   const isLive = Boolean(user.screenStream || user.isScreenSharing)
   const liveGate = useLiveGate(user.id, Boolean(!user.isLocal && isLive && user.liveOptIn), !!user.liveWatching)
+  const frameStyle = useLiveFrameFit(frameRef, theaterVideoRef, activeStream, !liveGate.needsClick)
 
   useEffect(() => {
     const video = theaterVideoRef.current
@@ -137,10 +141,12 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
       aria-label="Transmissão em tela cheia"
       ref={theaterContainerRef}
       onMouseMove={handleMouseMove}
-      className="fixed inset-0 z-[100] bg-black flex items-center justify-center overflow-hidden select-none cursor-default"
+      className="fixed inset-0 z-[100] bg-[#0c0e14] flex items-center justify-center overflow-hidden select-none cursor-default"
     >
       {!liveGate.needsClick && (
         <div
+          ref={frameRef}
+          style={frameStyle}
           className="relative w-full h-full overflow-hidden flex items-center justify-center"
         >
           <video

@@ -16,6 +16,7 @@ import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
 import { logVideoCodecsOnce, watchLiveQuality } from './liveQualityLog'
 import {
   CAMERA_CAPS,
+  isAlmViewer,
   VideoDegradation,
   activeScreenCaps,
   applyCameraCaps,
@@ -170,6 +171,7 @@ export class MediaCallHandler {
   }
 
   private static audioTrackFor(peerId: string | undefined, track: MediaStreamTrack): MediaStreamTrack | null {
+    if (isAlmViewer(peerId)) return MediaCallHandler.quietAudioTrack()
     let source = track
     if ((source as any).__screenShareLiveAudio !== true && useMediaStore.getState().isScreenSharing) {
       const liveAudio = MediaCallHandler.liveAudioTrack()
@@ -1247,7 +1249,7 @@ export class MediaCallHandler {
     } catch (e) {}
   }
 
-  private static syncViewerAudio(mediaCalls: Map<string, MediaConnection>, peerId: string) {
+  static syncViewerAudio(mediaCalls: Map<string, MediaConnection>, peerId: string) {
     const liveAudio = MediaCallHandler.liveAudioTrack()
     if (!useMediaStore.getState().isScreenSharing) return
     const call = mediaCalls.get(peerId)

@@ -5,7 +5,8 @@ import path from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { createUpdateIoHarness } from '../helpers/updateIoHarness'
 
-describe.skipIf(process.platform !== 'win32')('installer batch file IO', () => {
+// These integration tests start fresh PowerShell processes, sometimes twice.
+describe.skipIf(process.platform !== 'win32')('installer batch file IO', { timeout: 30000 }, () => {
   let root: string
   let source: string
   let destination: string

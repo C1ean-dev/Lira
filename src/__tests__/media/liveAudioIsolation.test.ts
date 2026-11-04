@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MediaCallHandler } from '../../p2p/mediaCalls'
 import { useGameStore } from '../../store/useGameStore'
 import { useMediaStore } from '../../store/useMediaStore'
-import { __resetVideoSendPolicyForTests } from '../../p2p/videoSendPolicy'
+import { __resetVideoSendPolicyForTests, setAlmViewer } from '../../p2p/videoSendPolicy'
 import { __resetSilentAudioForTests } from '../../media/silentAudioTrack'
 
 vi.mock('../../data/nativeAssets.json', () => ({ default: { assets: [], categories: [] } }))
@@ -39,6 +39,18 @@ function call() {
 }
 
 describe('the live connection never carries the presenter microphone', () => {
+  it('removes duplicate RTP application audio after synchronized ALM playback and restores it on fallback', () => {
+    const { sender, calls } = call()
+    MediaCallHandler.primeScreenShare(calls, 5_500_000, 60)
+    MediaCallHandler.applyViewerRequest(calls, 'viewer', true, 180)
+    expect(sender.track).toBe(liveAudio)
+    setAlmViewer('viewer', true)
+    MediaCallHandler.syncViewerAudio(calls, 'viewer')
+    expect(sender.track).toBe(silence)
+    setAlmViewer('viewer', false)
+    MediaCallHandler.syncViewerAudio(calls, 'viewer')
+    expect(sender.track).toBe(liveAudio)
+  })
   it('sends silence while waiting to watch and after stopping, with app audio only while watching', async () => {
     const { sender, calls } = call()
     MediaCallHandler.primeScreenShare(calls, 5_500_000, 60)
