@@ -92,18 +92,21 @@ const OnlineUsersMenuInner: React.FC = () => {
     ...remoteList.map((p) => ({ player: p, isLocal: false })),
   ]
 
-  const filteredPlayers = allPlayers.filter(({ player }) => {
-    const q = searchQuery.toLowerCase()
+  const friendsInRoomCount = useMemo(() => {
+    return remoteList.filter((p) => !!findFriendKey(friends, friendProfiles, [p.id, p.gameId])).length
+  }, [remoteList, friends, friendProfiles])
+
+  const filteredPlayers = allPlayers.filter(({ player, isLocal }) => {
+    const q = searchQuery.toLowerCase().trim()
     const matchesQuery =
+      !q ||
       player.name.toLowerCase().includes(q) ||
       (player.statusText && player.statusText.toLowerCase().includes(q))
     if (!matchesQuery) return false
 
     if (filterTab === 'friends') {
-      return (
-        !!findFriendKey(friends, friendProfiles, [player.id, player.gameId]) ||
-        player.id === localPlayer.id
-      )
+      if (isLocal) return false
+      return !!findFriendKey(friends, friendProfiles, [player.id, player.gameId])
     }
     return true
   })
@@ -237,7 +240,7 @@ const OnlineUsersMenuInner: React.FC = () => {
             }`}
           >
             <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-            <span>Amigos ({friends.length})</span>
+            <span>Amigos ({friendsInRoomCount})</span>
           </button>
         </div>
       </div>
@@ -248,7 +251,13 @@ const OnlineUsersMenuInner: React.FC = () => {
         {filteredPlayers.length === 0 ? (
           <div className="text-center py-8 text-xs text-slate-500 space-y-1">
             <Users className="w-6 h-6 mx-auto text-slate-600" />
-            <div>Nenhum participante encontrado</div>
+            <div>
+              {searchQuery
+                ? 'Nenhum participante encontrado'
+                : filterTab === 'friends'
+                ? 'Nenhum amigo nesta sala no momento'
+                : 'Nenhum participante encontrado'}
+            </div>
           </div>
         ) : (
           filteredPlayers.map(({ player, isLocal }) => {
