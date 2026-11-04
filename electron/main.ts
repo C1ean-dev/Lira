@@ -38,6 +38,7 @@ import { SpotifyNativeWindowBridge } from './spotifyNativeWindow'
 import { singleFlightDownload } from './updateDownload'
 import { downloadUpdateFile, updateDownloadErrorMessage } from './updateFileDownload'
 import { runtimeAssetPath } from './assetPaths'
+import { getLanAddresses, startLocalSignalingServer } from './lanSignaling'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -1804,6 +1805,8 @@ function initNetworkTriggerAndLanDiscovery() {
 
 let localPeerServer: any = null
 let localPeerPort = 9000
+let localPeerReady = false
+let localPeerIPv6 = false
 
 async function initLocalPeerServer() {
   try {
@@ -1814,34 +1817,15 @@ async function initLocalPeerServer() {
       return
     }
 
-    const tryPort = (port: number) => {
-      try {
-        const srv = PeerServer({
-          port,
-          path: '/',
-          allow_discovery: true,
-        })
-        srv.on('error', (err: any) => {
-          if (err?.code === 'EADDRINUSE') {
-            console.log(`[P2P Server] Port ${port} in use, trying ${port + 1}...`)
-            tryPort(port + 1)
-          } else {
-            console.warn('[P2P Server] Error:', err)
-          }
-        })
-        localPeerServer = srv
+    localPeerServer = startLocalSignalingServer(PeerServer, {
+      onReady: ({ port, ipv6 }) => {
+        localPeerReady = true
         localPeerPort = port
-        console.log(`[P2P Server] Embedded signaling server active on port ${port}`)
-      } catch (err: any) {
-        if (err?.code === 'EADDRINUSE') {
-          tryPort(port + 1)
-        } else {
-          console.warn('[P2P Server] Failed to bind port:', err)
-        }
-      }
-    }
-
-    tryPort(9000)
+        localPeerIPv6 = ipv6
+        console.log(`[P2P Server] Embedded signaling server active on port ${port} (${ipv6 ? 'IPv4/IPv6' : 'IPv4'})`)
+      },
+      onError: error => console.warn('[P2P Server] Failed to bind signaling server:', error),
+    })
   } catch (err) {
     console.warn('[P2P Server] Failed to initialize embedded peer server:', err)
   }
@@ -1854,6 +1838,7 @@ ipcMain.on('get-signaling-port-sync', (event) => {
 ipcMain.handle('get-signaling-config', () => {
   return {
     port: localPeerPort,
+    addresses: localPeerReady ? getLanAddresses(undefined, localPeerIPv6) : [],
   }
 })
 

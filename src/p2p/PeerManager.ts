@@ -36,9 +36,12 @@ import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
 import { buildIceServers } from './rtcIceServers'
 import { loadCloudflareIceServers } from './cloudflareTurn'
 import { installRtcTransportPriority } from './rtcTransportPriority'
+import { createOfflinePeer, getDirectSignaling, installDirectSignaling } from './directSignaling'
+import { ManualConnection } from './manualConnection'
+import { decodeDirectInvite, decodeLanInvite, encodeLanInvite } from './directInvite'
 
 export type { SignalingTier }
-export const SIGNALING_TIERS: SignalingTier[] = ['render', 'public', 'local']
+export const SIGNALING_TIERS: SignalingTier[] = ['render', 'public', 'local', 'direct']
 export const RENDER_SIGNALING_HOST = 'lira-signaling.onrender.com'
 const HOST_TRANSPORT_TIMEOUT_MS = 30_000
 const HOST_RECONNECT_DELAY_MS = 2500
@@ -53,6 +56,7 @@ const tierFailedUntil: Record<SignalingTier, number> = {
   render: 0,
   public: 0,
   local: 0,
+  direct: 0,
 }
 
 export function getActiveSignalingTier(): SignalingTier {
@@ -70,6 +74,7 @@ export function markSignalingTierFailed(tier: SignalingTier, durationMs: number 
 export function getPreferredSignalingTier(): SignalingTier {
   const now = Date.now()
   for (const tier of SIGNALING_TIERS) {
+    if (tier === 'direct') continue // Friend discovery still needs a shared server.
     if (now >= tierFailedUntil[tier]) {
       return tier
     }
@@ -89,13 +94,16 @@ export function shouldPreferLocalSignaling(): boolean {
 
 export function createPeerInstance(
   id: string,
-  options?: { tier?: SignalingTier; useLocalFallback?: boolean }
+  options?: { tier?: SignalingTier; useLocalFallback?: boolean; endpoint?: { host: string; port: number } }
 ): Peer {
-  const prioritize = (peer: Peer) => installRtcTransportPriority(peer, {
-    discovery: SHARED_RTC_CONFIG.iceServers || [],
-    cloudflare: loadCloudflareIceServers,
-    metered: buildIceServers(import.meta.env).slice(2),
-  })
+  const prioritize = (peer: Peer) => {
+    if (typeof peer.socket?.send === 'function') installDirectSignaling(peer, id)
+    return installRtcTransportPriority(peer, {
+      discovery: SHARED_RTC_CONFIG.iceServers || [],
+      cloudflare: loadCloudflareIceServers,
+      metered: buildIceServers(import.meta.env).slice(2),
+    })
+  }
   const localPort =
     (typeof window !== 'undefined' &&
       ((window as any).__LIRA_LOCAL_SIGNALING_PORT__ ||
@@ -103,6 +111,7 @@ export function createPeerInstance(
     9000
 
   const tier: SignalingTier = options?.tier || (options?.useLocalFallback ? 'local' : activeSignalingTier)
+  if (tier === 'direct') return prioritize(createOfflinePeer(id, SHARED_RTC_CONFIG))
 
   if (tier === 'render') {
     console.log(`[P2P] Connecting via Primary Render signaling server (${RENDER_SIGNALING_HOST}:443)...`)
@@ -124,8 +133,8 @@ export function createPeerInstance(
 
   console.log(`[P2P] Connecting via Embedded local signaling server (127.0.0.1:${localPort})...`)
   return prioritize(new Peer(id, {
-    host: '127.0.0.1',
-    port: localPort,
+    host: options?.endpoint?.host || '127.0.0.1',
+    port: options?.endpoint?.port || localPort,
     path: '/',
     secure: false,
     config: SHARED_RTC_CONFIG,
@@ -188,6 +197,11 @@ export class PeerManager {
   private isHost: boolean = false
   private currentSignalingTier: SignalingTier = 'render'
   private isUsingLocalSignaling = false
+  private lanEndpoint?: { host: string; port: number }
+  private manualConnections = new Set<ManualConnection>()
+  private pendingManualInvite?: ManualConnection
+  private manualJoinReject?: (error: Error) => void
+  private manualGeneration = 0
   private isIntentionalDisconnect = false
   private signalingReconnectTimer: any = null
   private signalingReconnectAttempts = 0
@@ -314,6 +328,83 @@ export class PeerManager {
     }
   }
 
+  public async getLanInvites(): Promise<string[]> {
+    if (!this.isHost || !this.roomCode || this.currentSignalingTier !== 'local') return []
+    const config = await window.electronAPI?.getSignalingConfig?.()
+    if (!config) return []
+    return (config.addresses || []).map(host => encodeLanInvite({ room: this.roomCode!, host, port: config.port }))
+  }
+
+  private async newManualConnection(): Promise<ManualConnection> {
+    const owner = this.peer
+    if (!owner) throw new Error('Entre em um espaço antes de gerar um convite.')
+    const iceServers = [...buildIceServers(import.meta.env), ...await loadCloudflareIceServers()]
+    if (this.peer !== owner || owner.destroyed) throw new Error('A sala foi encerrada.')
+    const session = new ManualConnection(() => new RTCPeerConnection({ ...SHARED_RTC_CONFIG, iceServers, iceTransportPolicy: 'all' }),
+      (remote, channel, pc) => {
+        if (this.peer !== owner || owner.destroyed) { pc.close(); return }
+        const router = getDirectSignaling(owner)!
+        channel.addEventListener('message', event => {
+          if (this.peer !== owner || typeof event.data !== 'string' || event.data.length > 160000) return
+          try { router.receive(JSON.parse(event.data), remote) } catch { }
+        })
+        const remove = router.addLink(remote, packet => {
+          if (channel.readyState !== 'open' || channel.bufferedAmount > 1024 * 1024) throw new Error('Canal ocupado')
+          channel.send(JSON.stringify(packet))
+        })
+        channel.addEventListener('close', () => { remove(); this.manualConnections.delete(session) }, { once: true })
+      }, error => {
+        this.manualConnections.delete(session)
+        if (this.peer === owner) this.manualJoinReject?.(error)
+      })
+    this.manualConnections.add(session)
+    return session
+  }
+
+  public async createDirectInvite(): Promise<string> {
+    if (!this.isHost || !this.roomCode) throw new Error('Somente o anfitrião pode gerar um convite direto.')
+    this.cancelDirectInvite()
+    const generation = this.manualGeneration
+    const session = await this.newManualConnection()
+    if (generation !== this.manualGeneration) {
+      session.close(); this.manualConnections.delete(session)
+      throw new Error('Convite direto cancelado.')
+    }
+    this.pendingManualInvite = session
+    return session.offer(this.roomCode)
+  }
+  public async acceptDirectAnswer(answer: string): Promise<void> {
+    if (!this.pendingManualInvite) throw new Error('Gere um convite antes de receber uma resposta.')
+    await this.pendingManualInvite.accept(answer)
+  }
+  public cancelDirectInvite() {
+    this.manualGeneration++
+    const session = this.pendingManualInvite
+    this.pendingManualInvite = undefined
+    if (session && !session.isLinked()) { session.close(); this.manualConnections.delete(session) }
+  }
+  public async prepareDirectJoin(text: string, player: Player): Promise<{ answer: string; connected: Promise<void> }> {
+    const invite = decodeDirectInvite(text)
+    if (invite.kind !== 'offer') throw new Error('Cole o convite enviado pelo anfitrião.')
+    const connected = this.joinRoom(invite.room, player, SIGNALING_TIERS.indexOf('direct'), 0, invite.guest)
+    const owner = this.peer
+    void connected.catch(() => {})
+    try {
+      const session = await this.newManualConnection()
+      const answer = await session.answer(text)
+      return { answer, connected }
+    } catch (error) { if (this.peer === owner) this.disconnect(); throw error }
+  }
+
+  private clearManualConnections() {
+    this.manualGeneration++
+    this.manualJoinReject?.(new Error('Conexão direta cancelada.'))
+    this.manualJoinReject = undefined
+    for (const session of this.manualConnections) session.close()
+    this.manualConnections.clear()
+    this.pendingManualInvite = undefined
+  }
+
   public async createRoom(
     roomCode: string,
     localPlayer: Player,
@@ -323,10 +414,17 @@ export class PeerManager {
       isPublic?: boolean
       maxPlayers?: number
       color?: string
+      connectionMode?: 'auto' | 'lan' | 'direct'
     },
     tierIndex: number = 0,
     retryCount: number = 0
   ): Promise<string> {
+    this.clearManualConnections()
+    if (tierIndex === 0) {
+      this.lanEndpoint = undefined
+      if (options?.connectionMode === 'lan') tierIndex = SIGNALING_TIERS.indexOf('local')
+      if (options?.connectionMode === 'direct') tierIndex = SIGNALING_TIERS.indexOf('direct')
+    }
     this.cancelHostTransfer()
     this.cancelHostRecovery()
     this.stopHeartbeat()
@@ -404,7 +502,17 @@ export class PeerManager {
         }
       }, timeoutMs)
 
-      const myPeer = createPeerInstance(hostPeerId, { tier: currentTier })
+      let myPeer: Peer
+      try { myPeer = createPeerInstance(hostPeerId, { tier: currentTier }) }
+      catch (error) {
+        resolved = true
+        clearTimeout(hostTimeout)
+        markSignalingTierFailed(currentTier)
+        if (tierIndex < SIGNALING_TIERS.length - 1) {
+          this.createRoom(this.roomCode!, localPlayer, options, tierIndex + 1, 0).then(resolve, reject)
+        } else reject(error)
+        return
+      }
       this.peer = myPeer
 
       this.peer.on('open', (id) => {
@@ -429,7 +537,7 @@ export class PeerManager {
         }
         resolved = true
         this.currentSignalingTier = currentTier
-        setActiveSignalingTier(currentTier)
+        if (currentTier !== 'direct') setActiveSignalingTier(currentTier)
         this.isUsingLocalSignaling = (currentTier === 'local')
         useGameStore.getState().setSignalingTier(currentTier)
         this.signalingReconnectAttempts = 0
@@ -541,8 +649,21 @@ export class PeerManager {
     roomCode: string,
     localPlayer: Player,
     tierIndex: number = 0,
-    retryCount: number = 0
+    retryCount: number = 0,
+    directPeerId?: string
   ): Promise<void> {
+    this.clearManualConnections()
+    if (roomCode.trim().startsWith('LIRA-LAN:')) {
+      const invite = decodeLanInvite(roomCode)
+      this.lanEndpoint = { host: invite.host, port: invite.port }
+      roomCode = invite.room
+      tierIndex = SIGNALING_TIERS.indexOf('local')
+    } else if (tierIndex === 0) this.lanEndpoint = undefined
+    if (SIGNALING_TIERS[tierIndex] === 'direct' && !directPeerId) {
+      useGameStore.getState().setConnected(false)
+      useGameStore.getState().setConnectionStatus('disconnected')
+      throw new Error('Os servidores de sinalização estão indisponíveis. Use um convite de conexão direta ou da rede local para encontrar o anfitrião.')
+    }
     this.cancelHostTransfer()
     this.cancelHostRecovery()
     this.stopHeartbeat()
@@ -555,7 +676,7 @@ export class PeerManager {
       this.signalingReconnectTimer = null
     }
     this.signalingReconnectAttempts = 0
-    const clientPeerId = `lira-${this.roomCode}-peer-${Math.random().toString(36).substring(2, 7)}`
+    const clientPeerId = directPeerId || `lira-${this.roomCode}-peer-${Math.random().toString(36).substring(2, 7)}`
     const hostPeerId = `lira-${this.roomCode}-host`
 
     if (this.peer) {
@@ -603,7 +724,10 @@ export class PeerManager {
         try { myPeer.destroy() } catch { }
         useGameStore.getState().setConnected(false)
         useGameStore.getState().setConnectionStatus('disconnected')
-        reject(new Error(`Não foi possível estabelecer conexão com o anfitrião da sala ${this.roomCode}. A rede pode estar bloqueando a conexão entre os participantes. Confira a conexão dos dois participantes ou tente outra rede.`))
+        const message = currentTier === 'local' && !this.lanEndpoint
+          ? 'O anfitrião não está neste servidor local. Use um convite de conexão direta ou da rede local enviado por ele.'
+          : `Não foi possível estabelecer conexão com o anfitrião da sala ${this.roomCode}. A rede pode estar bloqueando a conexão entre os participantes. Confira a conexão dos dois participantes ou tente outra rede.`
+        reject(new Error(message))
       }
 
       const tryNextTier = () => {
@@ -637,6 +761,10 @@ export class PeerManager {
       }
 
       const triggerAutoHost = async () => {
+        if (currentTier === 'local' || currentTier === 'direct') {
+          failHostConnection('host-unavailable')
+          return
+        }
         if (isResolved) return
         if (this.peer !== myPeer) return
         isResolved = true
@@ -708,8 +836,32 @@ export class PeerManager {
         }
       }, 10000)
 
-      const myPeer = createPeerInstance(clientPeerId, { tier: currentTier })
+      let myPeer: Peer
+      try { myPeer = createPeerInstance(clientPeerId, { tier: currentTier, endpoint: this.lanEndpoint }) }
+      catch (error) {
+        isResolved = true
+        clearTimeout(joinTimeout)
+        markSignalingTierFailed(currentTier)
+        if (tierIndex < SIGNALING_TIERS.length - 1) {
+          this.joinRoom(this.roomCode!, localPlayer, tierIndex + 1, 0).then(resolve, reject)
+        } else reject(error)
+        return
+      }
       this.peer = myPeer
+      if (currentTier === 'direct') this.manualJoinReject = error => {
+        if (isResolved || this.peer !== myPeer) return
+        isResolved = true
+        clearTimeout(joinTimeout)
+        clearTimeout(fallbackTimer)
+        this.manualJoinReject = undefined
+        this.stopHeartbeat()
+        this.peer = null
+        myPeer.removeAllListeners?.()
+        myPeer.destroy()
+        useGameStore.getState().setConnected(false)
+        useGameStore.getState().setConnectionStatus('disconnected')
+        reject(error)
+      }
 
       this.peer.on('open', (id) => {
         console.log(`[P2P] Joined peer network with ID: ${id} on tier: ${currentTier}`)
@@ -768,15 +920,16 @@ export class PeerManager {
 
         fallbackTimer = setTimeout(() => {
           failHostConnection('timeout')
-        }, HOST_TRANSPORT_TIMEOUT_MS)
+        }, currentTier === 'direct' ? 10 * 60000 : HOST_TRANSPORT_TIMEOUT_MS)
 
         conn.on('open', () => {
           if (!isResolved && this.peer === myPeer && !this.isIntentionalDisconnect) {
             if (fallbackTimer) clearTimeout(fallbackTimer)
             if (joinTimeout) clearTimeout(joinTimeout)
             isResolved = true
+            this.manualJoinReject = undefined
             this.currentSignalingTier = currentTier
-            setActiveSignalingTier(currentTier)
+            if (currentTier !== 'direct') setActiveSignalingTier(currentTier)
             this.isUsingLocalSignaling = (currentTier === 'local')
             useGameStore.getState().setSignalingTier(currentTier)
             this.signalingReconnectAttempts = 0
@@ -877,7 +1030,7 @@ export class PeerManager {
 
       if (this.isIntentionalDisconnect || !this.roomCode || this.peer !== myPeer) return
 
-      useGameStore.getState().setConnectionStatus('reconnecting')
+      useGameStore.getState().setConnectionStatus(getDirectSignaling(myPeer)?.hasLinks() ? 'connected' : 'reconnecting')
       if (this.hostRecovery) {
         this.retryHostRecoveryClient(this.hostRecovery, 'signaling-disconnected')
         return
@@ -903,6 +1056,7 @@ export class PeerManager {
   }
 
   public reconnect() {
+    if (this.currentSignalingTier === 'direct') return
     if (this.isIntentionalDisconnect || !this.roomCode || this.hostRecovery) return
     if (this.signalingReconnectTimer) clearTimeout(this.signalingReconnectTimer)
     this.signalingReconnectTimer = null
@@ -912,13 +1066,14 @@ export class PeerManager {
   }
 
   public scheduleSignalingReconnect(immediate = false) {
+    if (this.currentSignalingTier === 'direct') return
     if (this.signalingReconnectTimer || this.isIntentionalDisconnect || !this.roomCode || this.hostRecovery) return
     const owner = this.peer
 
     this.signalingReconnectAttempts++
 // A prolonged outage must not permanently disable recovery. Keep one
     // bounded retry pending until the session recovers or the user leaves.
-    useGameStore.getState().setConnectionStatus('reconnecting')
+    useGameStore.getState().setConnectionStatus(getDirectSignaling(owner)?.hasLinks() ? 'connected' : 'reconnecting')
     const delay = immediate ? 0 : Math.min(8000, 1000 * Math.pow(1.5, Math.min(6, this.signalingReconnectAttempts - 1)))
     console.log(`[P2P Signaling] Scheduling reconnect attempt #${this.signalingReconnectAttempts} in ${delay}ms...`)
 
@@ -1015,6 +1170,7 @@ export class PeerManager {
     const isCurrentSession = () => !retired && this.peer === owner && this.roomCode === roomCode && !this.isIntentionalDisconnect
     const isActive = () => isCurrentSession() && this.connections.get(conn.peer) === conn
     let openHandled = false
+    let removeDirectLink: (() => void) | undefined
     const handleOpen = () => {
       if (openHandled) return
       openHandled = true
@@ -1028,6 +1184,7 @@ export class PeerManager {
       console.log('[P2P Data] Connected to peer:', conn.peer)
       useGameStore.getState().setConnectionStatus('connected')
       this.connections.set(conn.peer, conn)
+      if (getDirectSignaling(owner)) conn.send({ __liraSignalHello: 1 })
       this.peerLastSeen.set(conn.peer, Date.now())
       this.sendToPeer(conn, { type: 'INDIVIDUAL_LIBRARY', senderId: this.peer!.id,
         payload: { kind: 'hello', id: 'individual-images-v2', catalogVersion: 3 }, timestamp: Date.now() })
@@ -1136,10 +1293,18 @@ export class PeerManager {
       }
       if (!isActive()) return
       this.peerLastSeen.set(conn.peer, Date.now())
+      const router = getDirectSignaling(owner)
+      if (router && data?.__liraSignalHello === 1) {
+        removeDirectLink?.()
+        removeDirectLink = router.addLink(conn.peer, packet => conn.send(packet))
+        return
+      }
+      if (router?.receive(data, conn.peer)) return
       this.handleNetworkMessage(data as NetworkMessage, conn.peer)
     })
 
     conn.on('close', () => {
+      removeDirectLink?.()
       const active = isActive()
       retired = true
       if (!active) return
@@ -2874,6 +3039,8 @@ export class PeerManager {
   }
 
   public disconnect() {
+    this.clearManualConnections()
+    this.lanEndpoint = undefined
     this.cancelHostTransfer()
     this.isIntentionalDisconnect = true
     this.cancelHostRecovery()

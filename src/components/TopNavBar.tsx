@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Menu,
   X,
+  Link2,
 } from 'lucide-react'
 import { useGameStore } from '../store/useGameStore'
 import { useMapStore } from '../store/useMapStore'
@@ -29,6 +30,7 @@ import { UpdateDownloadIndicator } from './common/UpdateDownloadIndicator'
 import { UpdateChangelogHover } from './common/UpdateChangelogHover'
 import { isAndroid } from '../utils/platform'
 import { useRoomPublication } from '../hooks/useRoomPublication'
+import { DirectConnectionPanel } from './lobby/DirectConnectionPanel'
 
 interface Props {
   onOpenAvatarModal: () => void
@@ -90,6 +92,7 @@ export const TopNavBar: React.FC<Props> = ({
   const localQuality = useNetworkQualityStore((s) => s.localQuality)
 
   const [copied, setCopied] = useState(false)
+  const [showDirectConnection, setShowDirectConnection] = useState(false)
   const [autoSavedNotice, setAutoSavedNotice] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const prevEditorOpenRef = useRef(isEditorOpen)
@@ -219,6 +222,12 @@ export const TopNavBar: React.FC<Props> = ({
             )}
           </button>
         )}
+
+        {roomId && isHost && <button type="button" onClick={() => setShowDirectConnection(true)}
+          className="flex items-center gap-1.5 shrink-0 p-2 rounded-xl border border-indigo-500/40 text-xs text-indigo-300 hover:bg-indigo-500/20"
+          aria-label="Conexão direta" title="Convidar um jogador sem depender dos servidores">
+          <Link2 className="w-4 h-4" /><span className="hidden sm:inline">Conexão direta</span>
+        </button>}
 
         {connectionStatus === 'reconnecting' && (
           <div
@@ -606,6 +615,17 @@ onClick={() => PeerManager.getInstance().reconnect()}
         </div>
         </>
       )}
+      {showDirectConnection && <div className="fixed inset-0 z-[200] bg-black/70 flex items-center justify-center p-4"
+        onClick={() => setShowDirectConnection(false)}>
+        <div role="dialog" aria-modal="true" aria-label="Conexão direta" className="w-full max-w-xl max-h-[90vh] overflow-y-auto bg-[#181d28] border border-slate-600 rounded-2xl p-5 space-y-4"
+          onClick={event => event.stopPropagation()} onKeyDown={event => { if (event.key === 'Escape') setShowDirectConnection(false) }}>
+          <div className="flex justify-between items-center">
+            <span className="font-bold text-slate-100">Conexão direta</span>
+            <button type="button" autoFocus aria-label="Fechar conexão direta" onClick={() => setShowDirectConnection(false)} className="p-2 text-slate-300"><X className="w-4 h-4" /></button>
+          </div>
+          <DirectConnectionPanel role="host" />
+        </div>
+      </div>}
     </header>
   )
 }

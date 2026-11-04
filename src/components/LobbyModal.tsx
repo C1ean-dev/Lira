@@ -91,6 +91,7 @@ export const LobbyModal: React.FC<Props> = ({
   const [userName, setUserName] = useState(localPlayer.name || '')
   const [roomInput, setRoomInput] = useState('')
   const [mode, setMode] = useState<'create' | 'join'>('create')
+  const [connectionMode, setConnectionMode] = useState<'auto' | 'lan' | 'direct'>('auto')
   const [createRoomName, setCreateRoomName] = useState(`Espaço de ${localPlayer.name || 'Trabalho'}`)
   const [createDescription, setCreateDescription] = useState('Espaço virtual e comunicação em tempo real')
   const [createIsPublic, setCreateIsPublic] = useState(true)
@@ -405,6 +406,7 @@ export const LobbyModal: React.FC<Props> = ({
               isPublic: createIsPublic,
               maxPlayers: 25,
               color,
+              connectionMode,
             }
           ),
         ])
@@ -749,6 +751,9 @@ export const LobbyModal: React.FC<Props> = ({
             error={error}
             loading={loading}
             onSubmit={handleStart}
+            connectionMode={connectionMode}
+            setConnectionMode={setConnectionMode}
+            onJoined={onJoined}
           />
         )}
 

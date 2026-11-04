@@ -6,6 +6,10 @@ vi.mock('peerjs', () => ({ default: class {
   _addConnection = vi.fn()
   _handleMessage = vi.fn()
   socket = { send: vi.fn() }
+  connect = vi.fn()
+  call = vi.fn()
+  disconnect = vi.fn()
+  destroy = vi.fn()
   constructor(public id: string, public options: any) {}
   getConnection() { return null }
 } }))

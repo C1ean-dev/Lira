@@ -129,7 +129,7 @@ export interface IElectronAPI {
     callback: (event: { tag?: string; action: 'click' | 'button'; buttonIndex?: number }) => void
   ) => () => void
   getSystemIdleTime: () => Promise<number>
-  getSignalingConfig?: () => Promise<{ port: number }>
+  getSignalingConfig?: () => Promise<{ port: number; addresses: string[] }>
   localSignalingPort?: number
 }
 
