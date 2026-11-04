@@ -243,9 +243,10 @@ describe('createGithubIssue', () => {
     expect(mockOpenExternal).not.toHaveBeenCalled()
   })
 
-  it('falls back to GitHub web issue URL when gh CLI fails without opening browser automatically', async () => {
+  it('falls back to GitHub web issue URL when gh CLI and backend fail without opening browser automatically', async () => {
     const mockExecGh = vi.fn().mockRejectedValue(new Error('gh: command not found'))
     const mockOpenExternal = vi.fn().mockResolvedValue(undefined)
+    const mockFetch = vi.fn().mockRejectedValue(new Error('Backend offline'))
 
     const result = await createGithubIssue({
       title: 'Bug no chat',
@@ -253,6 +254,7 @@ describe('createGithubIssue', () => {
       logsDir: tempDir,
       execGh: mockExecGh,
       openExternal: mockOpenExternal,
+      fetchFn: mockFetch as unknown as typeof fetch,
     })
 
     expect(result.ok).toBe(true)
