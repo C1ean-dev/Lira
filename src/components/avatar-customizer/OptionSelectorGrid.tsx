@@ -1,4 +1,4 @@
-import { RasterImage } from '../common/RasterImage'
+import { AutoCroppedThumbnail } from './AutoCroppedThumbnail'
 import React, { useState, useEffect, useRef } from 'react'
 import { Check, Pencil, Plus, Trash2, Download, Upload, Scissors, Paintbrush } from 'lucide-react'
 import {
@@ -9,7 +9,6 @@ import { CategoryKey } from './CategoryTabs'
 import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 import { CustomAsset } from '../../types/customAsset'
 import { exportCategoryAtlas } from '../../engine/avatar/avatarAtlasExporter'
-import { cropContentDataUrl } from '../../engine/avatar/avatarBakeService'
 import { AtlasImportModal } from './AtlasImportModal'
 import { AvatarSpritesheetSlicerModal } from './AvatarSpritesheetSlicerModal'
 import { prepareAssetForSlicer } from '../../utils/avatarAssetOrigin'
@@ -22,39 +21,7 @@ interface Props {
   onCreatePreset?: (category: AvatarComponentSlot) => void
 }
 
-const AutoCroppedThumbnail: React.FC<{
-  src: string
-  alt: string
-  isSkinCategory?: boolean
-  skinTone?: string
-}> = ({ src, alt, isSkinCategory, skinTone }) => {
-  const [displayUrl, setDisplayUrl] = useState<string>(src)
 
-  useEffect(() => {
-    let active = true
-    cropContentDataUrl(src).then((cropped) => {
-      if (active && cropped) {
-        setDisplayUrl(cropped)
-      }
-    })
-    return () => {
-      active = false
-    }
-  }, [src])
-
-  return (
-    <div
-      className="w-12 h-12 rounded-xl mb-1.5 flex items-center justify-center relative shadow-sm overflow-hidden border border-slate-700/50"
-      style={{ backgroundColor: isSkinCategory && skinTone ? skinTone : '#18191c' }}
-    >
-      <RasterImage
-        src={displayUrl}
-        alt={alt}
-        className="w-full h-full object-contain [image-rendering:pixelated]"
-      />
-    </div>
-  )
-}
 
 export const OptionSelectorGrid: React.FC<Props> = ({
   activeCategory,

@@ -147,14 +147,26 @@ export function cropContentBoundingBox(
   return cropCanvas.toDataURL('image/png')
 }
 
+const croppedContentCache = new Map<string, string>()
+
+export function clearCroppedContentCache(): void {
+  croppedContentCache.clear()
+}
+
 export function cropContentDataUrl(
   dataUrl: string,
   padding: number = 1
 ): Promise<string> {
+  if (typeof document === 'undefined' || !dataUrl) {
+    return Promise.resolve(dataUrl)
+  }
+  const cacheKey = `${padding}:${dataUrl}`
+  const cached = croppedContentCache.get(cacheKey)
+  if (cached) {
+    return Promise.resolve(cached)
+  }
+
   return new Promise((resolve) => {
-    if (typeof document === 'undefined' || !dataUrl) {
-      return resolve(dataUrl)
-    }
     const img = new Image()
     img.onload = () => {
       const canvas = document.createElement('canvas')
@@ -163,7 +175,12 @@ export function cropContentDataUrl(
       const ctx = canvas.getContext('2d', { willReadFrequently: true })
       if (!ctx) return resolve(dataUrl)
       ctx.drawImage(img, 0, 0)
-      resolve(cropContentBoundingBox(canvas, padding))
+      const cropped = cropContentBoundingBox(canvas, padding)
+      if (croppedContentCache.size >= 500) {
+        croppedContentCache.delete(croppedContentCache.keys().next().value!)
+      }
+      croppedContentCache.set(cacheKey, cropped)
+      resolve(cropped)
     }
     img.onerror = () => resolve(dataUrl)
     setRasterImageSource(img, dataUrl)
