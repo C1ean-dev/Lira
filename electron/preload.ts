@@ -55,6 +55,8 @@ export interface SpotifySourceResult {
 }
 
 export interface IElectronAPI {
+  platform: string
+  configureParsecEcho: () => Promise<import('../src/types/parsecEcho').ParsecEchoResult>
   getSources: () => Promise<Array<{ id: string; name: string; thumbnail: string; appIcon: string | null }>>
   setScreenSource: (sourceId: string | null, withAudio?: boolean, captureMethod?: string, sourceName?: string | null) => Promise<boolean>
   stopScreenCapture: () => Promise<boolean>
@@ -132,6 +134,8 @@ export interface IElectronAPI {
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  platform: process.platform,
+  configureParsecEcho: () => ipcRenderer.invoke('configure-parsec-echo'),
   getSources: () => ipcRenderer.invoke('get-sources'),
   setScreenSource: (sourceId: string | null, withAudio: boolean = true, captureMethod = 'auto', sourceName?: string | null) =>
     ipcRenderer.invoke('set-screen-source', { sourceId, withAudio, captureMethod, sourceName }),

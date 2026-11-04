@@ -28,6 +28,7 @@ import { attachStreamToVideo } from '../../media/attachVideoElement'
 import { AudioDeviceInfo, SensitivityMode } from '../../types/audio'
 import { CustomDropdown } from '../common/CustomDropdown'
 import { toDeviceOptions } from './deviceOptions'
+import { ParsecEchoSettings } from './ParsecEchoSettings'
 
 interface Props {
   inputDevices: AudioDeviceInfo[]
@@ -225,6 +226,7 @@ export const AudioDevicesTab: React.FC<Props> = ({
 
   return (
     <div className="space-y-6">
+      <ParsecEchoSettings />
       <div className="bg-[#12151d]/70 rounded-2xl p-4 border border-[#2a3142] space-y-3.5">
         <div className="flex items-center justify-between">
           <label className="flex items-center gap-2 text-xs font-bold text-slate-200">
