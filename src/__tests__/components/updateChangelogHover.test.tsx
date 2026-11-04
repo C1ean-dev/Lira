@@ -1,7 +1,7 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { UpdateChangelogHover, parseReleaseNotes } from '../../components/common/UpdateChangelogHover'
+import { UpdateChangelogHover, parseReleaseNotes, extractPullRequestUrl, resolveChangelogUrl } from '../../components/common/UpdateChangelogHover'
 import { LobbyModal } from '../../components/LobbyModal'
 import { useUpdateStore } from '../../store/useUpdateStore'
 
@@ -46,6 +46,70 @@ describe('parseReleaseNotes', () => {
   })
 })
 
+
+describe('extractPullRequestUrl and resolveChangelogUrl', () => {
+  it('extracts PR URL from GitHub release notes with full repository path', () => {
+    const raw = "## What's Changed\n* fix(avatar): show loading spinner by @C1ean-dev in https://github.com/C1ean-dev/Lira/pull/144\n\n**Full Changelog**: https://github.com/compare";
+    expect(extractPullRequestUrl(raw)).toBe('https://github.com/C1ean-dev/Lira/pull/144');
+  });
+
+  it('extracts PR URL from shorthand pull URL', () => {
+    const raw = "* fix(p2p): patch in https://github.com/pull/124";
+    expect(extractPullRequestUrl(raw)).toBe('https://github.com/pull/124');
+  });
+
+  it('returns null when notes contain no pull request URL', () => {
+    expect(extractPullRequestUrl('Melhorias gerais de estabilidade')).toBeNull();
+    expect(extractPullRequestUrl(null)).toBeNull();
+    expect(extractPullRequestUrl(undefined)).toBeNull();
+  });
+
+  it('resolves PR URL prioritizing explicit prUrl', () => {
+    const info = {
+      hasUpdate: false,
+      currentVersion: '1.1.192',
+      latestVersion: 'v1.1.192',
+      releaseName: 'v1.1.192',
+      releaseNotes: 'notes without link',
+      downloadUrl: null,
+      releaseUrl: 'https://github.com/C1ean-dev/Lira/releases/tag/v1.1.192',
+      prUrl: 'https://github.com/C1ean-dev/Lira/pull/144',
+    };
+    expect(resolveChangelogUrl(info)).toBe('https://github.com/C1ean-dev/Lira/pull/144');
+  });
+
+  it('resolves PR URL extracted from releaseNotes', () => {
+    const info = {
+      hasUpdate: false,
+      currentVersion: '1.1.192',
+      latestVersion: 'v1.1.192',
+      releaseName: 'v1.1.192',
+      releaseNotes: "## What's Changed\n* fix(avatar): show loading spinner by @C1ean-dev in https://github.com/C1ean-dev/Lira/pull/144",
+      downloadUrl: null,
+      releaseUrl: 'https://github.com/C1ean-dev/Lira/releases/tag/v1.1.192',
+    };
+    expect(resolveChangelogUrl(info)).toBe('https://github.com/C1ean-dev/Lira/pull/144');
+  });
+
+  it('falls back to releaseUrl when no PR URL is available', () => {
+    const info = {
+      hasUpdate: false,
+      currentVersion: '1.1.192',
+      latestVersion: 'v1.1.192',
+      releaseName: 'v1.1.192',
+      releaseNotes: 'Melhorias de desempenho',
+      downloadUrl: null,
+      releaseUrl: 'https://github.com/C1ean-dev/Lira/releases/tag/v1.1.192',
+    };
+    expect(resolveChangelogUrl(info)).toBe('https://github.com/C1ean-dev/Lira/releases/tag/v1.1.192');
+  });
+
+  it('returns undefined when updateInfo is missing', () => {
+    expect(resolveChangelogUrl(null)).toBeUndefined();
+    expect(resolveChangelogUrl(undefined)).toBeUndefined();
+  });
+});
+
 describe('UpdateChangelogHover Component', () => {
   const sampleUpdateInfo = {
     hasUpdate: true,
@@ -87,6 +151,20 @@ describe('UpdateChangelogHover Component', () => {
     expect(html).not.toContain('Instalar Atualização Agora')
     expect(html).toContain('Ver notas completas no GitHub')
   })
+  it('renders "Ver notas completas no GitHub" linking directly to the closed PR of the update', () => {
+    const html = renderToStaticMarkup(
+      <UpdateChangelogHover
+        updateInfo={sampleUpdateInfo}
+        forceOpen={true}
+      >
+        <button>Trigger</button>
+      </UpdateChangelogHover>
+    );
+
+    expect(html).toContain('href="https://github.com/pull/124"');
+    expect(html).toContain('Ver notas completas no GitHub');
+  });
+
 
   it('shows fallback message when releaseNotes is empty', () => {
     const emptyNotesInfo = {

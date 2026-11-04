@@ -16,6 +16,20 @@ export interface UpdateChangelogHoverProps {
 /**
  * Parses release notes text (e.g. from GitHub releases) into clean bullet items.
  */
+export function extractPullRequestUrl(notes?: string | null): string | null {
+  if (!notes || typeof notes !== 'string') return null
+  const match = notes.match(/https:\/\/github\.com\/(?:[^\s/]+\/[^\s/]+\/)?pull\/\d+/i)
+  return match ? match[0] : null
+}
+
+export function resolveChangelogUrl(updateInfo?: UpdateInfo | null): string | undefined {
+  if (!updateInfo) return undefined
+  if (updateInfo.prUrl) return updateInfo.prUrl
+  const prUrl = extractPullRequestUrl(updateInfo.releaseNotes)
+  if (prUrl) return prUrl
+  return updateInfo.releaseUrl || undefined
+}
+
 export function parseReleaseNotes(notes?: string | null): string[] {
   if (!notes || typeof notes !== 'string' || !notes.trim()) {
     return []
@@ -100,6 +114,7 @@ export const UpdateChangelogHover: React.FC<UpdateChangelogHoverProps> = ({
 
   const shouldShow = forceOpen !== undefined ? forceOpen : isOpen
   const changes = parseReleaseNotes(updateInfo?.releaseNotes)
+  const changelogUrl = resolveChangelogUrl(updateInfo)
   const targetVersion = updateInfo?.latestVersion || updateInfo?.currentVersion || ''
   const hasUpdate = !!updateInfo?.hasUpdate
   const title = hasUpdate ? 'Novidades da Atualização' : 'Últimas Alterações'
@@ -237,10 +252,10 @@ export const UpdateChangelogHover: React.FC<UpdateChangelogHoverProps> = ({
           )}
 
           {/* External release notes link */}
-          {updateInfo?.releaseUrl && (
+          {changelogUrl && (
             <div className="mt-2 text-center">
               <a
-                href={updateInfo.releaseUrl}
+                href={changelogUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300 transition-colors hover:underline"

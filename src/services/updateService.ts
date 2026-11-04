@@ -9,6 +9,7 @@ export interface UpdateInfo {
   releaseNotes: string
   downloadUrl: string | null
   releaseUrl: string
+  prUrl?: string | null
   checkFailed?: boolean
 }
 
@@ -130,6 +131,7 @@ export class UpdateService {
         releaseNotes: data.body || '',
         downloadUrl,
         releaseUrl: data.html_url || `https://github.com/${GITHUB_REPO}/releases`,
+        prUrl: (data.body || '').match(/https:\/\/github\.com\/(?:[^\s/]+\/[^\s/]+\/)?pull\/\d+/i)?.[0] || null,
       }
     } catch (e) {
       return {
