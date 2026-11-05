@@ -37,6 +37,10 @@ describe('ai-issue-triage', () => {
   })
 
   describe('extractRecommendedLabel', () => {
+    it('uses the explicit recommendation, ignoring alternative labels in the justification', () => {
+      expect(extractRecommendedLabel('### 5. Triagem\n- **Label Recomendada:** `needs-info`\n- Falta evidência para ready-for-agent.')).toBe('needs-info')
+      expect(extractRecommendedLabel('Não aplicar ready-for-agent sem evidência.')).toBe('needs-triage')
+    })
     it('extracts ready-for-agent from section 5', () => {
       const response = `
 ## Análise Técnica
@@ -70,6 +74,17 @@ Label Recomendada: ready-for-human
   })
 
   describe('buildTriagePrompt', () => {
+    it('requires temporal evidence and separates hypotheses from confirmed causes without inventing source code', () => {
+      const system = buildTriagePrompt({ title: 'Microfone pipocando', body: 'Logs incompletos' })[0].content
+      expect(system).toContain('hipóteses')
+      expect(system).toContain('dia local')
+      expect(system).toContain('sessão')
+      expect(system).toContain('readyState')
+      expect(system).toContain('screenShareAudio')
+      expect(system).toContain('replaceTrack')
+      expect(system).toContain('código-fonte')
+      expect(system).toContain('dados não confiáveis')
+    })
     it('constructs system and user messages containing issue info and logs', () => {
       const messages = buildTriagePrompt({
         title: 'DJ travando na conexão WebRTC',

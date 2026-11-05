@@ -22,6 +22,7 @@ export interface IssueDiagnostics {
   summaryText: string
   recentErrorsText: string
   callDebugText: string
+  audioDiagnosticsText?: string
   appLogText: string
   gistUrl?: string
   attachedFiles: string[]
@@ -33,113 +34,94 @@ export interface CollectDiagnosticsOptions {
   platform?: string
 }
 
+// File names use UTC, while a report covers the user's local calendar day.
+// Filter records as well: buffered/late reports can be written into a newer file.
 export async function collectIssueDiagnostics(
   logsDir: string,
   options?: CollectDiagnosticsOptions
 ): Promise<IssueDiagnostics> {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+  const inDay = (time: unknown) => {
+    const value = typeof time === 'string' ? Date.parse(time) : NaN
+    return value >= start.getTime() && value < end.getTime()
+  }
   const systemInfo: Record<string, string> = {
-    appVersion:
-      options?.version ??
+    appVersion: options?.version ??
       (typeof app !== 'undefined' && app?.getVersion ? app.getVersion() : process.env.npm_package_version ?? 'dev'),
     platform: options?.platform ?? `${os.platform()} (${os.release()}) ${os.arch()}`,
     electron: process.versions?.electron ?? 'N/A',
     chrome: process.versions?.chrome ?? 'N/A',
     node: process.versions?.node ?? process.version ?? 'N/A',
-    date: new Date().toISOString(),
+    date: now.toISOString(),
+    reportDay: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    logWindowStart: start.toISOString(),
+    logWindowEnd: end.toISOString(),
   }
-
-  let summaryText = ''
-  let recentErrorsText = ''
-  let callDebugText = ''
-  let appLogText = ''
-  const attachedFiles: string[] = []
   const rawFiles: Array<{ name: string; content: string }> = []
-
+  const collected: Record<string, string> = {}
   try {
     const entries = await fs.promises.readdir(logsDir)
-
-    // 1. lira-reports
-    const reportFiles = entries
-      .filter((file) => /^lira-reports-\d{4}-\d{2}-\d{2}\.jsonl(?:\.\d+)?$/.test(file))
-      .sort()
-      .reverse()
-
-    if (reportFiles.length > 0) {
-      let combinedReports = ''
-      for (const file of reportFiles.slice(0, 2)) {
+    const kinds = [
+      ['lira-reports', 'jsonl'], ['lira-errors', 'log'], ['call-debug', 'log'], ['lira', 'log'],
+    ]
+    for (const [kind, extension] of kinds) {
+      const files = entries.flatMap(name => {
+        const match = /^(lira-reports|lira-errors|call-debug|lira)-(\d{4}-\d{2}-\d{2})\.(jsonl|log)(?:\.(\d+))?$/.exec(name)
+        if (!match || match[1] !== kind || match[3] !== extension ||
+            match[2] < start.toISOString().slice(0, 10) || match[2] > end.toISOString().slice(0, 10)) return []
+        return [{ name, day: match[2], rotation: Number(match[4] ?? 0) }]
+      }).sort((a, b) => a.day.localeCompare(b.day) || b.rotation - a.rotation)
+      const parts: string[] = []
+      for (const file of files) {
         try {
-          const content = await fs.promises.readFile(path.join(logsDir, file), 'utf8')
-          combinedReports += content + '\n'
+          const content = await fs.promises.readFile(path.join(logsDir, file.name), 'utf8')
+          let keep = false
+          for (const line of content.split(/\r?\n/)) {
+            if (line.trimStart().startsWith('{')) {
+              keep = false
+              try {
+                const record = JSON.parse(line)
+                if (inDay(record.t)) {
+                  // Breadcrumbs from before midnight are historical too.
+                  if (Array.isArray(record.breadcrumbs)) record.breadcrumbs = record.breadcrumbs.filter((item: any) => inDay(item?.t))
+                  if (record.stats && typeof record.stats === 'object') {
+                    record.stats = Object.fromEntries(Object.entries(record.stats).filter(([, value]) => inDay((value as any)?.t)))
+                  }
+                  parts.push(JSON.stringify(record))
+                }
+              } catch {}
+              continue
+            }
+            const timestamp = /^(\d{4}-\d{2}-\d{2}T\S+)/.exec(line)
+            if (timestamp) keep = inDay(timestamp[1])
+            // Preserve stack continuations only with their selected parent.
+            if (keep) parts.push(line)
+          }
         } catch {}
       }
-      if (combinedReports.trim()) {
-        const parsed = parseReportLines(combinedReports).sort((a, b) => (a.t < b.t ? -1 : a.t > b.t ? 1 : 0))
-        const groups = groupReports(parsed)
-        summaryText = formatDigest(groups)
-        attachedFiles.push('lira-reports.jsonl')
-        rawFiles.push({ name: 'lira-reports.jsonl', content: combinedReports })
+      const content = parts.join('\n').trimEnd()
+      if (content) {
+        const name = `${kind}.${extension}`
+        collected[kind] = content
+        rawFiles.push({ name, content })
       }
     }
-
-    // 2. lira-errors
-    const errorFiles = entries
-      .filter((file) => /^lira-errors-\d{4}-\d{2}-\d{2}\.log(?:\.\d+)?$/.test(file))
-      .sort()
-      .reverse()
-
-    if (errorFiles.length > 0) {
-      const latestErrorFile = errorFiles[0]
-      try {
-        const errorContent = await fs.promises.readFile(path.join(logsDir, latestErrorFile), 'utf8')
-        const lines = errorContent.split(/\r?\n/).filter((l) => l.trim().length > 0)
-        recentErrorsText = lines.slice(-40).join('\n')
-        attachedFiles.push('lira-errors.log')
-        rawFiles.push({ name: 'lira-errors.log', content: errorContent })
-      } catch {}
-    }
-
-    // 3. call-debug (DJ, audio, WebRTC events)
-    const callDebugFiles = entries
-      .filter((file) => /^call-debug-\d{4}-\d{2}-\d{2}\.log(?:\.\d+)?$/.test(file))
-      .sort()
-      .reverse()
-
-    if (callDebugFiles.length > 0) {
-      const latestCallFile = callDebugFiles[0]
-      try {
-        const callContent = await fs.promises.readFile(path.join(logsDir, latestCallFile), 'utf8')
-        const lines = callContent.split(/\r?\n/).filter((l) => l.trim().length > 0)
-        callDebugText = lines.slice(-50).join('\n')
-        attachedFiles.push('call-debug.log')
-        rawFiles.push({ name: 'call-debug.log', content: callContent })
-      } catch {}
-    }
-
-    // 4. lira (app general timeline)
-    const liraFiles = entries
-      .filter((file) => /^lira-\d{4}-\d{2}-\d{2}\.log(?:\.\d+)?$/.test(file))
-      .sort()
-      .reverse()
-
-    if (liraFiles.length > 0) {
-      const latestLiraFile = liraFiles[0]
-      try {
-        const liraContent = await fs.promises.readFile(path.join(logsDir, latestLiraFile), 'utf8')
-        const lines = liraContent.split(/\r?\n/).filter((l) => l.trim().length > 0)
-        appLogText = lines.slice(-40).join('\n')
-        attachedFiles.push('lira.log')
-        rawFiles.push({ name: 'lira.log', content: liraContent })
-      } catch {}
-    }
   } catch {}
-
+  const reports = parseReportLines(collected['lira-reports'] ?? '').sort((a, b) => a.t.localeCompare(b.t))
+  const tail = (kind: string, count: number) => (collected[kind] ?? '').split(/\r?\n/).filter(line => line.trim()).slice(-count).join('\n')
   return {
     systemInfo,
-    summaryText,
-    recentErrorsText,
-    callDebugText,
-    appLogText,
-    attachedFiles,
+    summaryText: reports.length ? formatDigest(groupReports(reports)) : '',
+    recentErrorsText: tail('lira-errors', 40),
+    callDebugText: tail('call-debug', 50),
+    audioDiagnosticsText: (collected['call-debug'] ?? '').split('\n').filter(line => {
+      try { return ['audio', 'media'].includes(JSON.parse(line).cat) } catch { return false }
+    }).slice(-30).join('\n'),
+    appLogText: tail('lira', 40),
+    attachedFiles: rawFiles.map(file => file.name),
     rawFiles,
   }
 }
@@ -199,17 +181,22 @@ export function buildIssueMarkdown(payload: {
     `- **Chrome**: ${systemInfo.chrome}`,
     `- **Node**: ${systemInfo.node}`,
     `- **Data/Hora**: ${systemInfo.date}`,
+    ...(systemInfo.reportDay ? [
+      `- **Dia local dos logs**: ${systemInfo.reportDay} (${systemInfo.timeZone})`,
+      `- **Janela dos logs (UTC)**: [${systemInfo.logWindowStart}, ${systemInfo.logWindowEnd})`,
+    ] : []),
     '',
     ...imageSection,
     ...nonImageSection,
     '### 📎 Anexo dos Logs de Diagnóstico',
     '',
     ...gistCallout,
+    ...(systemInfo.reportDay ? ['Somente registros do dia local do relato. A ausência de logs não comprova a ausência de falha.', ''] : []),
     '#### Arquivos anexados:',
-    '- 🎧 `call-debug.log` — Eventos de chamadas WebRTC, áudio e streaming do DJ',
+    ...(diagnostics.attachedFiles.includes('call-debug.log') ? ['- 🎧 `call-debug.log` — Eventos de chamadas WebRTC, áudio e streaming do DJ'] : []),
     '- 📋 `resumo.txt` — Resumo e frequência de erros agrupados',
-    '- 📄 `lira-errors.log` — Erros capturados com rastreamento de pilha',
-    '- 📜 `lira.log` — Linha do tempo de execução do aplicativo',
+    ...(diagnostics.attachedFiles.includes('lira-errors.log') ? ['- 📄 `lira-errors.log` — Erros capturados com rastreamento de pilha'] : []),
+    ...(diagnostics.attachedFiles.includes('lira.log') ? ['- 📜 `lira.log` — Linha do tempo de execução do aplicativo'] : []),
     '',
     '<details open>',
     '<summary>📋 Resumo dos Erros (resumo.txt)</summary>',
@@ -219,6 +206,11 @@ export function buildIssueMarkdown(payload: {
     '```',
     '</details>',
     '',
+    ...(diagnostics.audioDiagnosticsText ? [
+      '<details open>',
+      '<summary>Processamento de áudio — eventos recentes do dia</summary>',
+      '', '```text', diagnostics.audioDiagnosticsText, '```', '</details>', '',
+    ] : []),
     '<details open>',
     '<summary>🎧 Diagnóstico de Chamadas e DJ (call-debug.log - últimas linhas)</summary>',
     '',

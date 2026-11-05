@@ -557,7 +557,7 @@ export class MediaCallHandler {
           ? MediaCallHandler.quietAudioTrack()
           : mediaState.localStream?.getAudioTracks?.()[0]) || null
         if (!isDjBot) {
-          MediaCallHandler.replaceAudioTrack(mediaCalls, localAudioTrack, 'connected-reconcile')
+          MediaCallHandler.replaceAudioTrack(mediaCalls, localAudioTrack, 'connected-reconcile', peerId)
         }
         applyBuffer()
         if (remoteStream) {
@@ -1259,8 +1259,7 @@ export class MediaCallHandler {
       call,
       peerId,
       liveAudio ? MediaCallHandler.audioTrackFor(peerId, liveAudio) : MediaCallHandler.quietAudioTrack(),
-      'viewer',
-      true
+      'viewer'
     )
   }
 
@@ -1301,61 +1300,71 @@ export class MediaCallHandler {
   static replaceAudioTrack(
     mediaCalls: Map<string, MediaConnection>,
     newTrack: MediaStreamTrack | null,
-    reason: string = 'replace'
+    reason: string = 'replace',
+    onlyPeerId?: string
   ) {
-    diagLog('p2p', 'audio-replace-request', {
-      callCount: mediaCalls.size,
-      track: newTrack
-        ? {
-            id: shortTrackId(newTrack.id),
-            kind: newTrack.kind,
-            enabled: newTrack.enabled,
-            ready: newTrack.readyState,
-            liveAudio: (newTrack as any).__screenShareLiveAudio === true,
-            reason,
-          }
-        : null,
-    })
+    if (newTrack?.readyState === 'ended') return
     mediaCalls.forEach((call, peerId) => {
+      if (onlyPeerId !== undefined && peerId !== onlyPeerId) return
       const track = newTrack ? MediaCallHandler.audioTrackFor(peerId, newTrack) : null
-      MediaCallHandler.putAudioTrack(mediaCalls, call, peerId, track, reason, track !== newTrack)
+      MediaCallHandler.putAudioTrack(mediaCalls, call, peerId, track, reason)
     })
   }
+
+  private static audioReplacements = new WeakMap<RTCRtpSender, {
+    track: MediaStreamTrack | null
+    done: Promise<void>
+  }>()
 
   private static putAudioTrack(
     mediaCalls: Map<string, MediaConnection>,
     call: MediaConnection,
     peerId: string,
     newTrack: MediaStreamTrack | null,
-    reason: string,
-    onlyIfDifferent: boolean = false
+    reason: string
   ) {
+    if (newTrack?.readyState === 'ended') return
     try {
       const pc = (call as any).peerConnection as RTCPeerConnection
       if (pc) {
         const senders = pc.getSenders()
         const audioSender = MediaCallHandler.findAudioSender(pc, senders)
-        if (onlyIfDifferent && audioSender && audioSender.track === newTrack) return
-        if (audioSender && !newTrack) {
-          void audioSender.replaceTrack(null).catch(() => {})
-        } else if (audioSender && newTrack) {
-          diagLog('p2p', 'audio-replace-sender-found', {
-            toPeer: peerId,
-            previousTrack: audioSender.track
-              ? { id: shortTrackId(audioSender.track.id), ready: audioSender.track.readyState, enabled: audioSender.track.enabled }
-              : null,
-          })
-          audioSender.replaceTrack(newTrack).then(
-            () => {
-              diagLog('p2p', 'audio-replace-ok', { toPeer: peerId, trackId: shortTrackId(newTrack.id) })
-              MediaCallHandler.logSenderSnapshot(mediaCalls, 'audio-replace-ok')
-            },
-            (err) => {
+        if (audioSender) {
+          const pending = MediaCallHandler.audioReplacements.get(audioSender)
+          // enabled is mutable on the attached object. Mute changes need no
+          // replacement; a disabled, live microphone remains a valid sender.
+          if ((pending ? pending.track : audioSender.track) === newTrack) return
+          const replace = async () => {
+            if (mediaCalls.get(peerId) !== call || pc.signalingState === 'closed' ||
+                newTrack?.readyState === 'ended' || audioSender.track === newTrack) return
+            diagLog('p2p', 'audio-replace-request', {
+              toPeer: peerId,
+              reason,
+              track: newTrack ? {
+                id: shortTrackId(newTrack.id), kind: newTrack.kind, enabled: newTrack.enabled,
+                readyState: newTrack.readyState,
+                screenShareAudio: (newTrack as any).__screenShareLiveAudio === true,
+              } : null,
+            })
+            await audioSender.replaceTrack(newTrack)
+            diagLog('p2p', 'audio-replace-ok', { toPeer: peerId, trackId: newTrack ? shortTrackId(newTrack.id) : null })
+            MediaCallHandler.logSenderSnapshot(new Map([[peerId, call]]), 'audio-replace-ok')
+          }
+          const entry = { track: newTrack, done: Promise.resolve() }
+          // Serialize real device/source changes without delaying the first
+          // one. Coalesce duplicate requests while replaceTrack is pending.
+          entry.done = (pending ? pending.done.then(replace) : replace())
+            .catch(err => {
               const error = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
               diagLog('p2p', 'audio-replace-failed', { toPeer: peerId, error })
               console.warn('Could not replace audio track:', err)
-            }
-          )
+            })
+            .finally(() => {
+              if (MediaCallHandler.audioReplacements.get(audioSender) === entry) {
+                MediaCallHandler.audioReplacements.delete(audioSender)
+              }
+            })
+          MediaCallHandler.audioReplacements.set(audioSender, entry)
         } else {
           if (newTrack && typeof pc.addTrack === 'function') {
             try {

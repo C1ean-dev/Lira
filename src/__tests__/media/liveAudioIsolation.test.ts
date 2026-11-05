@@ -37,28 +37,35 @@ function call() {
   const sender = { track: mic as any, replaceTrack: vi.fn(async (track: any) => { sender.track = track }) }
   return { sender, calls: new Map([['viewer', { peerConnection: { getSenders: () => [sender] } } as any]]) }
 }
+const settleAudio = async () => { for (let i = 0; i < 12; i++) await Promise.resolve() }
 
 describe('the live connection never carries the presenter microphone', () => {
-  it('removes duplicate RTP application audio after synchronized ALM playback and restores it on fallback', () => {
+  it('removes duplicate RTP application audio after synchronized ALM playback and restores it on fallback', async () => {
     const { sender, calls } = call()
     MediaCallHandler.primeScreenShare(calls, 5_500_000, 60)
     MediaCallHandler.applyViewerRequest(calls, 'viewer', true, 180)
+    await settleAudio()
     expect(sender.track).toBe(liveAudio)
     setAlmViewer('viewer', true)
     MediaCallHandler.syncViewerAudio(calls, 'viewer')
+    await settleAudio()
     expect(sender.track).toBe(silence)
     setAlmViewer('viewer', false)
     MediaCallHandler.syncViewerAudio(calls, 'viewer')
+    await settleAudio()
     expect(sender.track).toBe(liveAudio)
   })
   it('sends silence while waiting to watch and after stopping, with app audio only while watching', async () => {
     const { sender, calls } = call()
     MediaCallHandler.primeScreenShare(calls, 5_500_000, 60)
     MediaCallHandler.replaceAudioTrack(calls, liveAudio as any)
+    await settleAudio()
     expect(sender.track).toBe(silence)
     MediaCallHandler.applyViewerRequest(calls, 'viewer', true, 180)
+    await settleAudio()
     expect(sender.track).toBe(liveAudio)
     MediaCallHandler.applyViewerRequest(calls, 'viewer', false, 0)
+    await settleAudio()
     expect(sender.track).toBe(silence)
   })
 

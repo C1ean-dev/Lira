@@ -71,7 +71,10 @@ class LiraDeepFilterProcessor extends AudioWorkletProcessor {
         const start = now()
         const clean = df_process_frame(this.handle, this.frame)
         const elapsed = now() - start
-        this.slowFrames = elapsed > 10 ? this.slowFrames + 1 : Math.max(0, this.slowFrames - 1)
+        // Inference runs synchronously inside this render callback, even though
+        // the model consumes a larger (10 ms) frame. Use the callback's budget.
+        const quantumMs = output.length * 1000 / sampleRate
+        this.slowFrames = elapsed > quantumMs * 1.5 ? this.slowFrames + 1 : Math.max(0, this.slowFrames - 1)
         if (this.slowFrames >= 30) throw new Error('DeepFilterNet exceeded the real-time audio processing budget')
         if (clean.length !== this.frameLength) throw new Error('Invalid DeepFilterNet output length')
         for (let j = 0; j < clean.length; j++) {
