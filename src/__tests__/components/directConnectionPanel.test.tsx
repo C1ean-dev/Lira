@@ -32,11 +32,13 @@ afterEach(() => vi.unstubAllGlobals())
 describe('direct connection controls', () => {
   it('offers an IPv6 invitation that can be copied without a manual answer exchange', async () => {
     const invite = encodeLanInvite({ room: 'ROOM', host: '[2001:db8::20]', port: 9002 })
-    captured.invites = [invite]
+    captured.invites = [encodeLanInvite({ room: 'ROOM', host: '192.168.1.20', port: 9002 }), invite]
     const copy = vi.fn(async () => {})
     vi.stubGlobal('navigator', { clipboard: { writeText: copy } })
     const html = renderPanel({ role: 'host' })
     expect(html).toContain('Convite por IPv6')
+    expect(html.indexOf('Convite por IPv6')).toBeLessThan(html.indexOf('Convite IPv4 da rede local'))
+    expect(html).not.toContain('precisa de um endereço IPv6 global')
     expect(html).toContain('[2001:db8::20]')
     expect(html).toContain('sem trocar uma resposta')
     const button = captured.elements.find(([type, , label]) => type === 'button' && label === 'Copiar convite IPv6')
@@ -48,6 +50,14 @@ describe('direct connection controls', () => {
     const html = renderPanel({ role: 'host' })
     expect(html).toContain('Convite IPv6 da rede local')
     expect(html).toContain('Copiar convite IPv6 local')
+    expect(html).toContain('O IPv6 disponível é apenas para a rede local.')
+  })
+  it('explains why an IPv4-only list has no internet IPv6 invitation', () => {
+    captured.invites = [encodeLanInvite({ room: 'ROOM', host: '192.168.1.20', port: 9000 })]
+    const html = renderPanel({ role: 'host' })
+    expect(html).toContain('Apenas IPv4 está disponível para convites na rede local.')
+    expect(html).toContain('o anfitrião precisa de um endereço IPv6 global')
+    expect(html).toContain('Convite IPv4 da rede local')
   })
   it('explains the two-way exchange and provides a reachable host action', async () => {
     const create = vi.spyOn(PeerManager.getInstance(), 'createDirectInvite').mockResolvedValue('LIRA-DIRECT:offer')

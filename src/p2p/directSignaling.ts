@@ -1,4 +1,4 @@
-import Peer from 'peerjs'
+import Peer, { SocketEventType } from 'peerjs'
 
 type Signal = { type: string; src: string; dst: string; payload: any }
 type Packet = { __liraSignal: 1; message: Signal }
@@ -20,6 +20,8 @@ export class DirectSignaling {
   private pending: Packet[] = []
   private buffering = false
   private host: string | undefined
+  private lanPeer?: Peer
+  private lanRoutes = new Map<string, number>()
   constructor(private peer: Peer, readonly id: string) {
     const match = id.match(/^(lira-.+)-(?:peer-[a-zA-Z0-9_-]+)$/)
     this.host = match ? `${match[1]}-host` : undefined
@@ -51,15 +53,51 @@ export class DirectSignaling {
     const disconnect = peer.disconnect.bind(peer)
     peer.disconnect = () => { disconnect(); if (!peer.destroyed) (peer as any)._id = id }
     const destroy = peer.destroy.bind(peer)
-    peer.destroy = () => { this.links.clear(); this.pending = []; this.buffering = false; destroy() }
+    peer.destroy = () => {
+      this.lanPeer?.destroy()
+      this.lanRoutes.clear()
+      this.links.clear(); this.pending = []; this.buffering = false; destroy()
+    }
   }
   hasLinks() { return this.links.size > 0 }
   queueUntilLinked() { this.buffering = true }
-  private canRoute(id: string) { return this.links.has(id) || (!!this.host && this.links.has(this.host)) }
+  getLanPort() { return this.lanPeer?.open ? this.lanPeer.options.port : undefined }
+
+  attachLanPeer(lanPeer: Peer) {
+    this.lanPeer?.destroy()
+    this.lanRoutes.clear()
+    this.lanPeer = lanPeer
+    const guestPrefix = this.id.replace(/-host$/, '-peer-')
+    const socket = lanPeer.socket
+    socket.removeAllListeners(SocketEventType.Message)
+    socket.on(SocketEventType.Message, (message: Signal) => {
+      if (!['OFFER', 'ANSWER', 'CANDIDATE'].includes(message.type)) {
+        ;(lanPeer as any)._handleMessage(message)
+        return
+      }
+      if (!valid(message) || message.dst !== this.id || !message.src.startsWith(guestPrefix)) return
+      const now = Date.now()
+      for (const [id, expiresAt] of this.lanRoutes) if (expiresAt <= now) this.lanRoutes.delete(id)
+      if (this.lanRoutes.size >= 128 && !this.lanRoutes.has(message.src)) return
+      this.lanRoutes.set(message.src, now + 45000)
+      try { (this.peer as any)._handleMessage(message) } catch { /* Isolate malformed negotiation. */ }
+    })
+  }
+
+  private hasLanRoute(id: string) {
+    return !!this.lanPeer?.open && (this.lanRoutes.get(id) ?? 0) > Date.now()
+  }
+  private canRoute(id: string) { return this.links.has(id) || (!!this.host && this.links.has(this.host)) || this.hasLanRoute(id) }
   private route(packet: Packet): boolean {
-    const send = this.links.get(packet.message.dst) || (this.host && this.links.get(this.host))
-    if (!send) return false
-    try { send(packet); return true } catch { return false }
+    const { message } = packet
+    const send = this.links.get(message.dst) || (this.host && this.links.get(this.host))
+    if (send) {
+      try { send(packet); return true } catch { /* Try the available sockets. */ }
+    }
+    if (this.hasLanRoute(message.dst)) {
+      try { this.lanPeer!.socket.send(message); return true } catch { /* Try the primary socket. */ }
+    }
+    return false
   }
   addLink(remote: string, send: Send): () => void {
     this.links.set(remote, send)

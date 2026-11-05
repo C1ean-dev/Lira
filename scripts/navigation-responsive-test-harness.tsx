@@ -2,6 +2,7 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { TopNavBar } from '../src/components/TopNavBar'
+import { DirectConnectTab } from '../src/components/lobby/DirectConnectTab'
 import { OnlineUsersMenu } from '../src/components/OnlineUsersMenu'
 import { ChatDrawer } from '../src/components/ChatDrawer'
 import { SpotifyJamSideDisplay } from '../src/components/spotify/SpotifyJamSideDisplay'
@@ -41,5 +42,28 @@ function configure({ publicRoom = false, connectionStatus = 'connected', update 
   </React.Fragment>))
 }
 
-Object.assign(window, { navigationTesting: { configure, events, zoneName, settingsOpen: () => useMediaStore.getState().isSettingsModalOpen } })
+const lobbyActions: string[] = []
+
+function LobbyConnectFixture() {
+  const [userName, setUserName] = React.useState('Player #2')
+  const [roomInput, setRoomInput] = React.useState('')
+  const [createRoomName, setCreateRoomName] = React.useState('Espaço de Player #2')
+  return <main className="mx-auto mt-4 w-full max-w-[740px] rounded-2xl bg-[#1b202c]">
+    <DirectConnectTab
+      userName={userName} setUserName={setUserName} onOpenAvatarCustomizer={() => {}}
+      createRoomName={createRoomName} setCreateRoomName={setCreateRoomName}
+      roomInput={roomInput} setRoomInput={setRoomInput} error={null} loading={false}
+      onCreate={() => lobbyActions.push(`create:${createRoomName}`)} onJoin={code => lobbyActions.push(`join:${code}`)}
+      onJoined={() => {}} beginDirectJoin={() => true} endDirectJoin={() => {}}
+    />
+  </main>
+}
+
+function configureLobby() {
+  lobbyActions.length = 0
+  useGameStore.getState().setLocalPlayer({ name: 'Player #2' })
+  flushSync(() => root.render(<LobbyConnectFixture key={++generation} />))
+}
+
+Object.assign(window, { navigationTesting: { configure, configureLobby, lobbyActions, events, zoneName, settingsOpen: () => useMediaStore.getState().isSettingsModalOpen } })
 configure()

@@ -19,17 +19,17 @@ Ambiente virtual para coworking, reuniões e interação em tempo real, integran
 ## Conexões sem sinalização externa
 
 O modo automático pode criar o espaço mesmo quando os servidores externos não
-respondem. Use **Conexão direta** para trocar um convite e uma resposta, ou crie
-uma sala em **Rede local / IPv6** no desktop e compartilhe o convite com o endereço do
+respondem. Dentro do espaço, use **Convites individuais** para trocar um convite e uma resposta,
+ou ative **Rede local / IPv6** no desktop e compartilhe o convite com o endereço do
 anfitrião. STUN e TURN ajudam quando disponíveis; a ausência de TURN não impede
 a tentativa direta. Veja [como conectar e os limites de rede](docs/autonomous-connections.md).
 
 ### Convite direto por IPv6
 
-Com IPv6 global nos dois computadores, o anfitrião pode criar o espaço escolhendo
-**Rede local / IPv6 — hospedar neste computador**, abrir **Conexão direta** e usar
-**Copiar convite IPv6**. O outro jogador cola o convite em **Entrar por Código →
-Código da Sala**. A sinalização acontece no computador do anfitrião, dispensando
+Com IPv6 global nos dois computadores, o anfitrião abre **Convites individuais** dentro
+do espaço, clica em **Ativar rede local / IPv6** e usa **Copiar convite IPv6**.
+O outro jogador cola o convite em **Conectar → Código da sala**. A sinalização acontece no
+computador do anfitrião, dispensando
 servidores externos de sinalização e a troca manual de uma resposta.
 
 O servidor embutido atende IPv4 e IPv6 e volta para IPv4 se IPv6 não estiver

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { installDirectSignaling, createOfflinePeer } from '../../p2p/directSignaling'
-import { util } from 'peerjs'
+import { SocketEventType, util } from 'peerjs'
 
 function peer(id: string) {
   const p: any = { _id: id, _disconnected: false, get id() { return this._id },
@@ -13,6 +13,35 @@ function peer(id: string) {
 }
 
 describe('signaling through existing direct links', () => {
+  it('accepts IPv6 negotiation on the embedded socket and keeps the primary peer and its other routes', () => {
+    const host = peer('lira-ROOM-host')
+    const primarySend = host.socket.send
+    const lan = peer(host.id)
+    lan.open = true
+    lan.options = { port: 9000 }
+    lan.socket.on = vi.fn()
+    lan.socket.removeAllListeners = vi.fn()
+    const router = installDirectSignaling(host, host.id)
+    router.attachLanPeer(lan)
+    const [event, receive] = lan.socket.on.mock.calls[0]
+    expect(event).toBe(SocketEventType.Message)
+    expect(router.getLanPort()).toBe(9000)
+
+    const offer = { type: 'OFFER', src: 'lira-ROOM-peer-ipv6', dst: host.id,
+      payload: { type: 'data', serialization: 'json', connectionId: 'dc_1' } }
+    receive({ ...offer, src: 'lira-OTHER-peer-unrelated' })
+    expect(host._handleMessage).not.toHaveBeenCalled()
+    receive(offer)
+    expect(host._handleMessage).toHaveBeenCalledWith(offer)
+    const reply = { type: 'ANSWER', dst: offer.src, payload: { connectionId: 'dc_1' } }
+    host.socket.send(reply)
+    expect(lan.socket.send).toHaveBeenCalledWith({ ...reply, src: host.id })
+    host.socket.send({ ...reply, dst: 'lira-ROOM-peer-public' })
+    expect(primarySend).toHaveBeenCalledOnce()
+    host.destroy()
+    expect(lan.destroy).toHaveBeenCalledOnce()
+  })
+
   it('routes offers and candidates through a host without a server, preserving the authenticated sender', () => {
     const host = peer('lira-ROOM-host'), a = peer('lira-ROOM-peer-a'), b = peer('lira-ROOM-peer-b')
     const h = installDirectSignaling(host, host.id), x = installDirectSignaling(a, a.id), y = installDirectSignaling(b, b.id)

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react'
 import {
   Copy,
   Check,
+  CircleAlert,
+  LoaderCircle,
   Edit3,
   MessageSquare,
   Users,
@@ -91,12 +93,17 @@ export const TopNavBar: React.FC<Props> = ({
   const connectionStatus = useGameStore((s) => s.connectionStatus)
   const localQuality = useNetworkQualityStore((s) => s.localQuality)
 
-  const [copied, setCopied] = useState(false)
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'copied' | 'error'>('idle')
   const [showDirectConnection, setShowDirectConnection] = useState(false)
   const [autoSavedNotice, setAutoSavedNotice] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const prevEditorOpenRef = useRef(isEditorOpen)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const directConnectionDialogRef = useRef<HTMLDialogElement>(null)
+
+  useEffect(() => {
+    if (showDirectConnection) directConnectionDialogRef.current?.showModal()
+  }, [showDirectConnection])
 
   useEffect(() => {
     if (prevEditorOpenRef.current && !isEditorOpen) {
@@ -139,13 +146,23 @@ export const TopNavBar: React.FC<Props> = ({
   const displayRoomId = isAndroidPlatform && roomId ? roomId.slice(0, 8) : roomId
 
   const handleCopyCode = async () => {
-    if (!roomId) return
+    if (!roomId || copyStatus === 'copying') return
+    setCopyStatus('copying')
     try {
-      await navigator.clipboard.writeText(roomId.toUpperCase())
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2500)
-    } catch (e) {
-      console.warn('Could not copy room ID:', e)
+      if (!isHost) {
+        await navigator.clipboard.writeText(roomId.toUpperCase())
+      } else if (typeof ClipboardItem !== 'undefined' && typeof navigator.clipboard.write === 'function') {
+        const text = PeerManager.getInstance().createAllInvite()
+        const item = new ClipboardItem({ 'text/plain': text.then(value => new Blob([value], { type: 'text/plain' })) })
+        await navigator.clipboard.write([item])
+      } else {
+        await navigator.clipboard.writeText(await PeerManager.getInstance().createAllInvite())
+      }
+      setCopyStatus('copied')
+    } catch {
+      setCopyStatus('error')
+    } finally {
+      setTimeout(() => setCopyStatus(current => current === 'copying' ? current : 'idle'), 2500)
     }
   }
 
@@ -160,21 +177,37 @@ export const TopNavBar: React.FC<Props> = ({
         {roomId && (
           <button
             onClick={handleCopyCode}
-            className="flex min-w-0 max-w-[360px] items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] rounded-xl text-xs font-semibold text-slate-200 transition-all group cursor-pointer"
-            title={`ID do Espaço: ${roomId}\n(Clique para copiar tudo)`}
+            disabled={copyStatus === 'copying'}
+            aria-busy={copyStatus === 'copying'}
+            aria-label={copyStatus === 'copying' ? 'Preparando convite' : copyStatus === 'error' ? 'Falha ao copiar. Tente novamente.' : isHost ? 'Copiar convite completo' : 'Copiar ID do espaço'}
+            className={`flex min-w-0 max-w-[360px] items-center gap-1.5 rounded-xl border px-2 py-2 text-xs font-semibold transition-all sm:px-3 ${
+              isHost ? 'shrink-0 border-indigo-500/40 bg-indigo-500/15 text-indigo-200 hover:bg-indigo-500/25' : 'border-[#2a3142] bg-[#1b202c] text-slate-200 hover:bg-slate-800'
+            }`}
+            title={isHost ? 'Copiar convite completo' : `ID do Espaço: ${roomId}\nClique para copiar o ID`}
           >
-            {!isAndroidPlatform && <span className="text-slate-400 font-normal whitespace-nowrap shrink-0 hidden xl:inline 2xl:hidden min-[1800px]:inline">ID do Espaço:</span>}
-            <span className="font-mono text-indigo-300 font-bold min-w-0 truncate">{displayRoomId}</span>
-            {copied ? (
-              <span className="flex shrink-0 items-center gap-1 text-emerald-400 font-bold text-[11px] animate-in fade-in">
-                <Check className="w-3.5 h-3.5 shrink-0" />
-                {!isAndroidPlatform && <span className="hidden sm:inline">Copiado!</span>}
-              </span>
+            {copyStatus === 'copied' ? (
+              <Check className="h-4 w-4 shrink-0 text-emerald-400" />
+            ) : copyStatus === 'copying' ? (
+              <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-indigo-300" />
+            ) : copyStatus === 'error' ? (
+              <CircleAlert className="h-3.5 w-3.5 shrink-0 text-rose-300" />
             ) : (
-              <Copy className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-200 shrink-0" />
+              <Copy className="h-4 w-4 shrink-0" />
+            )}
+            {isHost ? (
+              <span className="hidden whitespace-nowrap min-[520px]:inline">{copyStatus === 'copied' ? 'Convite copiado' : 'Convite completo'}</span>
+            ) : (
+              <span className="min-w-0 truncate font-mono font-bold text-indigo-300">{displayRoomId}</span>
             )}
           </button>
         )}
+
+        {roomId && isHost && <button type="button" onClick={() => setShowDirectConnection(true)}
+          className="flex shrink-0 items-center gap-1.5 rounded-xl border border-indigo-500/40 p-2 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/20 sm:px-3"
+          aria-label="Convites individuais" title="Convites individuais">
+          <Link2 className="h-4 w-4 shrink-0" />
+          <span className="hidden whitespace-nowrap min-[520px]:inline">Convites individuais</span>
+        </button>}
 
         {roomId && (
           <button
@@ -222,12 +255,6 @@ export const TopNavBar: React.FC<Props> = ({
             )}
           </button>
         )}
-
-        {roomId && isHost && <button type="button" onClick={() => setShowDirectConnection(true)}
-          className="flex items-center gap-1.5 shrink-0 p-2 rounded-xl border border-indigo-500/40 text-xs text-indigo-300 hover:bg-indigo-500/20"
-          aria-label="Conexão direta" title="Convidar um jogador sem depender dos servidores">
-          <Link2 className="w-4 h-4" /><span className="hidden sm:inline">Conexão direta</span>
-        </button>}
 
         {connectionStatus === 'reconnecting' && (
           <div
@@ -615,17 +642,23 @@ onClick={() => PeerManager.getInstance().reconnect()}
         </div>
         </>
       )}
-      {showDirectConnection && <div className="fixed inset-0 z-[200] bg-black/70 flex items-center justify-center p-4"
-        onClick={() => setShowDirectConnection(false)}>
-        <div role="dialog" aria-modal="true" aria-label="Conexão direta" className="w-full max-w-xl max-h-[90vh] overflow-y-auto bg-[#181d28] border border-slate-600 rounded-2xl p-5 space-y-4"
-          onClick={event => event.stopPropagation()} onKeyDown={event => { if (event.key === 'Escape') setShowDirectConnection(false) }}>
-          <div className="flex justify-between items-center">
-            <span className="font-bold text-slate-100">Conexão direta</span>
-            <button type="button" autoFocus aria-label="Fechar conexão direta" onClick={() => setShowDirectConnection(false)} className="p-2 text-slate-300"><X className="w-4 h-4" /></button>
-          </div>
+      {showDirectConnection && <dialog
+        ref={directConnectionDialogRef}
+        aria-labelledby="direct-connection-title"
+        className="fixed inset-0 m-auto max-h-[calc(100dvh-1.5rem)] w-[calc(100%-1.5rem)] max-w-xl select-text flex-col overflow-hidden rounded-2xl border border-slate-600 bg-[#181d28] p-0 text-slate-100 open:flex backdrop:bg-black/70"
+        onClose={() => setShowDirectConnection(false)}
+        onClick={event => { if (event.target === event.currentTarget) event.currentTarget.close() }}>
+        <div className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-700 px-4 py-2 sm:px-5">
+          <h2 id="direct-connection-title" className="text-base font-bold">Convites individuais</h2>
+          <button type="button" aria-label="Fechar convites individuais" onClick={() => directConnectionDialogRef.current?.close()}
+            className="rounded-lg p-2.5 text-slate-300 hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5">
           <DirectConnectionPanel role="host" />
         </div>
-      </div>}
+      </dialog>}
     </header>
   )
 }

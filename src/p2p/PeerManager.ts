@@ -38,7 +38,7 @@ import { loadCloudflareIceServers } from './cloudflareTurn'
 import { installRtcTransportPriority } from './rtcTransportPriority'
 import { createOfflinePeer, getDirectSignaling, installDirectSignaling } from './directSignaling'
 import { ManualConnection } from './manualConnection'
-import { decodeDirectInvite, decodeLanInvite, encodeLanInvite } from './directInvite'
+import { decodeDirectInvite, decodeLanInvite, encodeAllInvite, encodeDirectInvite, encodeLanInvite, isGlobalIpv6InviteAddress, type AllInvite } from './directInvite'
 
 export type { SignalingTier }
 export const SIGNALING_TIERS: SignalingTier[] = ['render', 'public', 'local', 'direct']
@@ -200,6 +200,8 @@ export class PeerManager {
   private lanEndpoint?: { host: string; port: number }
   private manualConnections = new Set<ManualConnection>()
   private pendingManualInvite?: ManualConnection
+  private sharedManualInvites?: Map<string, ManualConnection>
+  private sharedInviteGeneration = 0
   private manualJoinReject?: (error: Error) => void
   private manualGeneration = 0
   private isIntentionalDisconnect = false
@@ -329,13 +331,97 @@ export class PeerManager {
   }
 
   public async getLanInvites(): Promise<string[]> {
-    if (!this.isHost || !this.roomCode || this.currentSignalingTier !== 'local') return []
+    const owner = this.peer
+    const room = this.roomCode
+    if (!this.isHost || !room || !owner) return []
     const config = await window.electronAPI?.getSignalingConfig?.()
-    if (!config) return []
-    return (config.addresses || []).map(host => encodeLanInvite({ room: this.roomCode!, host, port: config.port }))
+    if (!config || this.peer !== owner || (this.currentSignalingTier !== 'local' && getDirectSignaling(owner)?.getLanPort() !== config.port)) return []
+    return (config.addresses || []).map(host => encodeLanInvite({ room, host, port: config.port }))
   }
 
-  private async newManualConnection(): Promise<ManualConnection> {
+  private async registerLanPeer(room: string, port: number): Promise<Peer> {
+    const peer = createPeerInstance(`lira-${room}-host`, { tier: 'local', endpoint: { host: '127.0.0.1', port } })
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const error = new Error('Não foi possível ativar a rede local neste computador. Tente novamente.')
+        const timeout = setTimeout(() => reject(error), 4000)
+        peer.on('open', () => { clearTimeout(timeout); resolve() })
+        peer.on('error', () => { clearTimeout(timeout); reject(error) })
+      })
+    } catch (error) {
+      peer.destroy()
+      throw error
+    } finally {
+      peer.removeAllListeners()
+    }
+    return peer
+  }
+
+  private async prepareIpv6Invite(owner: Peer, room: string): Promise<AllInvite['ipv6']> {
+    const config = await window.electronAPI?.getSignalingConfig?.()
+    const addresses = [...new Set(config?.addresses?.filter(isGlobalIpv6InviteAddress))].slice(0, 4)
+    if (!config || !addresses.length || this.peer !== owner) return
+    if (this.currentSignalingTier !== 'local') {
+      const router = getDirectSignaling(owner)
+      if (!router) return
+      if (router.getLanPort() !== config.port) {
+        const lanPeer = await this.registerLanPeer(room, config.port)
+        if (this.peer !== owner || owner.destroyed) { lanPeer.destroy(); return }
+        router.attachLanPeer(lanPeer)
+      }
+    }
+    return { addresses, port: config.port }
+  }
+
+  public async enableLanHosting(): Promise<string[]> {
+    const owner = this.peer
+    const room = this.roomCode
+    if (!owner || !room || !this.isHost) throw new Error('Somente o anfitrião pode ativar a rede local.')
+
+    const config = await window.electronAPI?.getSignalingConfig?.()
+    if (!config?.addresses?.length) throw new Error('Nenhum endereço de rede disponível. Verifique a conexão deste computador.')
+    if (this.peer !== owner || this.roomCode !== room || !this.isHost) throw new Error('O espaço mudou. Abra Convites individuais novamente.')
+    const invites = config.addresses.map(host => encodeLanInvite({ room, host, port: config.port }))
+    if (this.currentSignalingTier === 'local' || getDirectSignaling(owner)?.getLanPort() === config.port) return invites
+
+    const ensureRoomIsEmpty = () => {
+      if (this.connections.size || Object.values(owner.connections || {}).some(connections => connections.length)
+        || [...this.manualConnections].some(session => session.isLinked())) {
+        throw new Error('Ative a rede local quando estiver sozinho no espaço.')
+      }
+      if (this.manualConnections.size) throw new Error('Expire os convites diretos pendentes antes de ativar a rede local.')
+    }
+    ensureRoomIsEmpty()
+
+    // Keep the current room available until the embedded server accepts its ID.
+    const localPeer = await this.registerLanPeer(room, config.port)
+    try {
+      if (this.peer !== owner || this.roomCode !== room || !this.isHost) throw new Error('O espaço mudou. Abra Convites individuais novamente.')
+      ensureRoomIsEmpty()
+    } catch (error) {
+      localPeer.destroy()
+      throw error
+    }
+
+    clearTimeout(this.signalingReconnectTimer)
+    this.signalingReconnectTimer = null
+    this.signalingReconnectAttempts = 0
+    this.lanEndpoint = undefined
+    this.peer = localPeer
+    this.currentSignalingTier = 'local'
+    this.isUsingLocalSignaling = true
+    owner.removeAllListeners()
+    owner.destroy()
+    this.setupPeerListeners()
+    this.setupSignalingListeners(localPeer)
+    const state = useGameStore.getState()
+    state.setSignalingTier('local')
+    state.setConnected(true)
+    state.setIsRoomPublic(false)
+    return invites
+  }
+
+  private async newManualConnection(onEnd?: () => void): Promise<ManualConnection> {
     const owner = this.peer
     if (!owner) throw new Error('Entre em um espaço antes de gerar um convite.')
     const iceServers = [...buildIceServers(import.meta.env), ...await loadCloudflareIceServers()]
@@ -352,9 +438,10 @@ export class PeerManager {
           if (channel.readyState !== 'open' || channel.bufferedAmount > 1024 * 1024) throw new Error('Canal ocupado')
           channel.send(JSON.stringify(packet))
         })
-        channel.addEventListener('close', () => { remove(); this.manualConnections.delete(session) }, { once: true })
+        channel.addEventListener('close', () => { remove(); this.manualConnections.delete(session); onEnd?.() }, { once: true })
       }, error => {
         this.manualConnections.delete(session)
+        onEnd?.()
         if (this.peer === owner) this.manualJoinReject?.(error)
       })
     this.manualConnections.add(session)
@@ -374,14 +461,90 @@ export class PeerManager {
     return session.offer(this.roomCode)
   }
   public async acceptDirectAnswer(answer: string): Promise<void> {
-    if (!this.pendingManualInvite) throw new Error('Gere um convite antes de receber uma resposta.')
-    await this.pendingManualInvite.accept(answer)
+    const { session } = decodeDirectInvite(answer)
+    const pending = this.sharedManualInvites?.get(session) ?? this.pendingManualInvite
+    if (!pending) throw new Error('Gere um convite antes de receber uma resposta.')
+    await pending.accept(answer)
+    this.sharedManualInvites?.delete(session)
+  }
+
+  private async createSharedDirectOffer(room: string) {
+    const generation = this.sharedInviteGeneration
+    const invites = this.sharedManualInvites ??= new Map()
+    if (invites.size >= 25) return
+    let id: string | undefined
+    const session = await this.newManualConnection(() => { if (id) invites.delete(id) })
+    try {
+      if (generation !== this.sharedInviteGeneration) throw new Error('Convite direto expirado pelo anfitrião.')
+      const offer = decodeDirectInvite(await session.offer(room))
+      if (!this.manualConnections.has(session)) throw new Error('O espaço mudou. Copie o convite novamente.')
+      id = offer.session
+      invites.set(id, session)
+      return offer
+    } catch (error) {
+      session.close()
+      this.manualConnections.delete(session)
+      throw error
+    }
+  }
+
+  public async createAllInvite(): Promise<string> {
+    const owner = this.peer
+    const room = this.roomCode
+    if (!owner || !room || !this.isHost) throw new Error('Somente o anfitrião pode gerar um convite completo.')
+    const generation = this.sharedInviteGeneration
+    const [ipv6, direct] = await Promise.allSettled([this.prepareIpv6Invite(owner, room), this.createSharedDirectOffer(room)])
+    if (this.peer !== owner || this.roomCode !== room || !this.isHost) throw new Error('O espaço mudou. Copie o convite novamente.')
+    const tier = this.currentSignalingTier
+    const invite: AllInvite = {
+      version: 1, room,
+      signaling: tier === 'render' || tier === 'public' ? tier : undefined,
+      ipv6: ipv6.status === 'fulfilled' ? ipv6.value : undefined,
+      direct: generation === this.sharedInviteGeneration && direct.status === 'fulfilled' ? direct.value : undefined,
+    }
+    if (!invite.signaling && !invite.ipv6 && !invite.direct) throw new Error('Não foi possível gerar um convite. Verifique sua conexão e tente novamente.')
+    return encodeAllInvite(invite)
+  }
+
+  public async joinAllInvite(invite: AllInvite, player: Player): Promise<string | undefined> {
+    const routes = []
+    if (invite.signaling) routes.push({ code: invite.room, tier: invite.signaling })
+    if (invite.ipv6) {
+      const { addresses, port } = invite.ipv6
+      for (const host of addresses) routes.push({ code: encodeLanInvite({ room: invite.room, host, port }), tier: 'local' as const })
+    }
+    for (const { code, tier } of routes) {
+      try {
+        await this.joinRoom(code, player, SIGNALING_TIERS.indexOf(tier), 0, undefined, true)
+        return
+      } catch (error) {
+        if (this.isIntentionalDisconnect) throw error
+      }
+    }
+    if (invite.direct && invite.direct.expiresAt > Date.now()) return encodeDirectInvite(invite.direct)
+    throw new Error('Nenhuma rota do convite conectou. Peça ao anfitrião um novo convite.')
   }
   public cancelDirectInvite() {
     this.manualGeneration++
     const session = this.pendingManualInvite
     this.pendingManualInvite = undefined
     if (session && !session.isLinked()) { session.close(); this.manualConnections.delete(session) }
+  }
+
+  public expirePendingDirectInvites(): number {
+    if (!this.isHost) return 0
+    this.manualGeneration++
+    this.sharedInviteGeneration++
+    this.pendingManualInvite = undefined
+    this.sharedManualInvites?.clear()
+    let expired = 0
+    for (const session of this.manualConnections) {
+      if (session.isLinked()) continue
+      this.manualConnections.delete(session)
+      session.close()
+      expired++
+    }
+    return expired
   }
   public async prepareDirectJoin(text: string, player: Player): Promise<{ answer: string; connected: Promise<void> }> {
     const invite = decodeDirectInvite(text)
@@ -402,6 +565,7 @@ export class PeerManager {
     this.manualJoinReject = undefined
     for (const session of this.manualConnections) session.close()
     this.manualConnections.clear()
+    this.sharedManualInvites?.clear()
     this.pendingManualInvite = undefined
   }
 
@@ -650,7 +814,8 @@ export class PeerManager {
     localPlayer: Player,
     tierIndex: number = 0,
     retryCount: number = 0,
-    directPeerId?: string
+    directPeerId?: string,
+    onlyTier = false,
   ): Promise<void> {
     this.clearManualConnections()
     if (roomCode.trim().startsWith('LIRA-LAN:')) {
@@ -733,6 +898,7 @@ export class PeerManager {
       const tryNextTier = () => {
         if (isResolved) return
         if (this.peer !== myPeer) return
+        if (onlyTier) { failHostConnection('signaling-unavailable'); return }
         isResolved = true
         if (fallbackTimer) clearTimeout(fallbackTimer)
         if (joinTimeout) clearTimeout(joinTimeout)
@@ -841,8 +1007,8 @@ export class PeerManager {
       catch (error) {
         isResolved = true
         clearTimeout(joinTimeout)
-        markSignalingTierFailed(currentTier)
-        if (tierIndex < SIGNALING_TIERS.length - 1) {
+        if (!onlyTier) markSignalingTierFailed(currentTier)
+        if (!onlyTier && tierIndex < SIGNALING_TIERS.length - 1) {
           this.joinRoom(this.roomCode!, localPlayer, tierIndex + 1, 0).then(resolve, reject)
         } else reject(error)
         return
