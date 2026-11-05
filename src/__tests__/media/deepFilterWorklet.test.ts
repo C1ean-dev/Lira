@@ -28,6 +28,23 @@ function createWorklet(real = false) {
 afterEach(() => { vi.restoreAllMocks() })
 
 describe('DeepFilterNet AudioWorklet', () => {
+  it('detects sustained render overruns below the old 10 ms threshold', () => {
+    const { processor, process, messages, globals } = createWorklet()
+    let clock = 0
+    globals.performance.now = () => clock
+    process.mockImplementation(frame => { clock += 6; return Float32Array.from(frame) })
+    for (let q = 0; q < 600; q++) processor.process([[new Float32Array(128).fill(0.1)]], [[new Float32Array(128)]])
+    expect(messages.filter(message => message.type === 'error' && message.message.includes('processing budget'))).toHaveLength(1)
+  })
+
+  it('tolerates an isolated slow inference without falling back', () => {
+    const { processor, process, messages, globals } = createWorklet()
+    let clock = 0
+    globals.performance.now = () => clock
+    process.mockImplementation(frame => { clock += process.mock.calls.length === 40 ? 12 : 0.2; return Float32Array.from(frame) })
+    for (let q = 0; q < 600; q++) processor.process([[new Float32Array(128).fill(0.1)]], [[new Float32Array(128)]])
+    expect(messages.filter(message => message.type === 'error')).toEqual([])
+  })
   it('registers and runs the real model in the restricted AudioWorklet global scope', () => {
     const messages: any[] = []
     let Processor: any

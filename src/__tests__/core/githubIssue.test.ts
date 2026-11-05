@@ -15,10 +15,13 @@ describe('collectIssueDiagnostics', () => {
   let tempDir: string
 
   beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-03T12:00:00.000Z'))
     tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'lira-issue-test-'))
   })
 
   afterEach(async () => {
+    vi.useRealTimers()
     try {
       await fs.promises.rm(tempDir, { recursive: true, force: true })
     } catch {}
@@ -77,6 +80,86 @@ describe('collectIssueDiagnostics', () => {
     expect(diag.recentErrorsText).toBe('')
     expect(diag.callDebugText).toBe('')
     expect(diag.appLogText).toBe('')
+  })
+
+  it('never substitutes historic errors when the report day has no errors', async () => {
+    await fs.promises.writeFile(path.join(tempDir, 'lira-reports-2026-10-15.jsonl'), JSON.stringify({
+      t: '2026-10-15T10:00:00Z', fingerprint: 'old', message: 'historic failover', count: 99,
+    }))
+    await fs.promises.writeFile(path.join(tempDir, 'lira-errors-2026-10-15.log'), '2026-10-15T10:00:00Z ERROR historic failover\n    at oldStack\n')
+    await fs.promises.writeFile(path.join(tempDir, 'call-debug-2026-11-03.log'), '{"t":"2026-11-03T10:00:00Z","event":"current-call"}\n')
+    const diag = await collectIssueDiagnostics(tempDir)
+    expect(diag.summaryText).toBe('')
+    expect(diag.recentErrorsText).toBe('')
+    expect(diag.attachedFiles).not.toContain('lira-reports.jsonl')
+    expect(diag.attachedFiles).not.toContain('lira-errors.log')
+    expect(JSON.stringify(diag)).not.toContain('historic failover')
+    expect(diag.callDebugText).toContain('current-call')
+  })
+
+  it('keeps audio processor evidence visible even when connection chatter fills the recent log tail', async () => {
+    const lines = [
+      { t: '2026-11-03T10:00:00Z', cat: 'audio', event: 'rnnoise.ready', data: { sampleRate: 48000 } },
+      ...Array.from({ length: 60 }, () => ({ t: '2026-11-03T10:01:00Z', cat: 'p2p', event: 'sender-state' })),
+    ]
+    await fs.promises.writeFile(path.join(tempDir, 'call-debug-2026-11-03.log'), lines.map(line => JSON.stringify(line)).join('\n'))
+    const diag = await collectIssueDiagnostics(tempDir)
+    const markdown = buildIssueMarkdown({ title: 'Microfone', description: 'Estalos', diagnostics: diag })
+    expect(markdown).toContain('rnnoise.ready')
+    expect(markdown).toContain('48000')
+    expect(markdown).toContain(diag.systemInfo.reportDay)
+    expect(markdown).toContain(diag.systemInfo.logWindowStart)
+    expect(markdown).toContain(diag.systemInfo.logWindowEnd)
+    expect(markdown).not.toContain('- 📄 `lira-errors.log`')
+  })
+
+  it('excludes prior-day records and breadcrumbs even when they were flushed into a current-day file', async () => {
+    const old = '2026-10-15T10:00:00Z'
+    const current = '2026-11-03T10:00:00Z'
+    await fs.promises.writeFile(path.join(tempDir, 'lira-reports-2026-11-03.jsonl'), [
+      { t: old, fingerprint: 'old', message: 'old-failover', count: 99 },
+      { t: current, fingerprint: 'current', message: 'current-error', count: 1,
+        breadcrumbs: [{ t: old, event: 'historic-crumb' }, { t: current, event: 'current-crumb' }],
+        stats: { old: { t: old, event: 'historic-stat' }, current: { t: current, event: 'current-stat' } } },
+    ].map(entry => JSON.stringify(entry)).join('\n'))
+    const diag = await collectIssueDiagnostics(tempDir)
+    expect(diag.summaryText).toContain('1 occurrence')
+    expect(JSON.stringify(diag)).not.toMatch(/old-failover|historic-crumb|historic-stat/)
+    expect(diag.rawFiles![0].content).toContain('current-crumb')
+    expect(diag.rawFiles![0].content).toContain('current-stat')
+  })
+
+  it('filters records by the local calendar day across UTC midnight, preserving current stacks and numeric rotation order', async () => {
+    vi.setSystemTime(new Date(2026, 10, 3, 23, 30))
+    const start = new Date(2026, 10, 3).getTime()
+    const end = new Date(2026, 10, 4).getTime()
+    const iso = (ms: number) => new Date(ms).toISOString()
+    const day = (ms: number) => iso(ms).slice(0, 10)
+    const write = (name: string, content: string) => fs.promises.writeFile(path.join(tempDir, name), content)
+    await write(`lira-${day(start)}.log.10`, `${iso(start - 1)} ERROR previous-day\n    at previousStack\n${iso(start)} ERROR first-current\n    at currentStack\n`)
+    await write(`lira-${day(start)}.log.2`, `${iso(start + 1000)} INFO second-current\n`)
+    await write(`lira-${day(end - 1)}.log`, `${iso(end - 1)} INFO last-current\n${iso(end)} ERROR next-day\n    at nextStack\n`)
+    await write(`call-debug-${day(end - 1)}.log`, [
+      { t: iso(start - 1), event: 'previous-call' },
+      { t: iso(end - 1), event: 'current-call' },
+      { t: iso(end), event: 'future-call' },
+    ].map(entry => JSON.stringify(entry)).join('\n'))
+    await write(`lira-reports-${day(end - 1)}.jsonl`, [
+      { t: iso(start - 1), fingerprint: 'previous', message: 'previous-report' },
+      { t: iso(end - 1), fingerprint: 'current', message: 'current-report', count: 1 },
+      { t: iso(end), fingerprint: 'future', message: 'future-report' },
+    ].map(entry => JSON.stringify(entry)).join('\n'))
+    const diag = await collectIssueDiagnostics(tempDir)
+    const logs = diag.rawFiles!.map(file => file.content).join('\n')
+    expect(logs).toContain('currentStack')
+    expect(logs).toContain('current-call')
+    expect(logs).toContain('current-report')
+    expect(logs).not.toMatch(/previous|next-day|nextStack|future/)
+    expect(diag.appLogText.indexOf('first-current')).toBeLessThan(diag.appLogText.indexOf('second-current'))
+    expect(diag.appLogText.indexOf('second-current')).toBeLessThan(diag.appLogText.indexOf('last-current'))
+    expect(diag.systemInfo.reportDay).toBe('2026-11-03')
+    expect(diag.systemInfo.logWindowStart).toBe(iso(start))
+    expect(diag.systemInfo.logWindowEnd).toBe(iso(end))
   })
 })
 
@@ -194,9 +277,34 @@ describe('createGithubIssue', () => {
   })
 
   afterEach(async () => {
+    vi.useRealTimers()
     try {
       await fs.promises.rm(tempDir, { recursive: true, force: true })
     } catch {}
+  })
+
+  it('sends the same day-filtered logs through the Gist, issue body and backend fallback', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-03T12:00:00Z'))
+    await fs.promises.writeFile(path.join(tempDir, 'lira-errors-2026-10-15.log'), '2026-10-15T10:00:00Z ERROR historic-failover\n')
+    await fs.promises.writeFile(path.join(tempDir, 'call-debug-2026-11-03.log'), '{"t":"2026-11-03T10:00:00Z","cat":"audio","event":"rnnoise.ready"}\n')
+    let uploaded: string[] = []
+    let issueBody = ''
+    const execGh = vi.fn(async (args: string[]) => {
+      if (args[0] === 'gist') {
+        uploaded = await Promise.all(args.slice(2, args.indexOf('-d')).map(file => fs.promises.readFile(file, 'utf8')))
+      }
+      if (args[0] === 'issue') issueBody = await fs.promises.readFile(args[args.indexOf('--body-file') + 1], 'utf8')
+      throw new Error('CLI unavailable')
+    })
+    const fetchFn = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true, issueUrl: 'https://github.com/C1ean-dev/Lira/issues/999' }) }))
+    const result = await createGithubIssue({ title: 'Microfone', description: 'Estalos', logsDir: tempDir, execGh, fetchFn: fetchFn as any })
+    expect(result.method).toBe('backend')
+    const payload = JSON.parse((fetchFn.mock.calls[0] as any)[1].body)
+    expect(uploaded.join('\n')).toContain('rnnoise.ready')
+    expect(issueBody).toContain('rnnoise.ready')
+    expect(JSON.stringify(payload)).toContain('rnnoise.ready')
+    expect([uploaded.join('\n'), issueBody, JSON.stringify(payload)].join('\n')).not.toContain('historic-failover')
   })
 
   it('creates an issue via gh CLI, creates gist for full logs, does not automatically open browser, and returns cli method', async () => {
