@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { encodeDirectInvite, decodeDirectInvite, encodeLanInvite, decodeLanInvite } from '../../p2p/directInvite'
+import { encodeDirectInvite, decodeDirectInvite, encodeLanInvite, decodeLanInvite, encodeAllInvite, decodeAllInvite, type AllInvite } from '../../p2p/directInvite'
 
 const invitation = { version: 1 as const, kind: 'offer' as const, session: 'session-123', room: 'ROOM',
   host: 'lira-ROOM-host', guest: 'lira-ROOM-peer-abc', expiresAt: Date.now() + 600000,
@@ -29,5 +29,25 @@ describe('portable direct invitations', () => {
     for (const host of ['[:::]', '[1:2:3]', '[12345::1]', '[fe80::1%3]', '[::1]:9000', '2001:db8::20']) {
       expect(() => decodeLanInvite(encodeLanInvite({ ...invite, host }))).toThrow()
     }
+  })
+})
+
+describe('complete invitations', () => {
+  const invite: AllInvite = { version: 1, room: 'ROOM', signaling: 'render',
+    ipv6: { addresses: ['[2001:db8::20]'], port: 9000 }, direct: invitation }
+
+  it('keeps all available routes and tolerates an expired direct offer while other routes remain', () => {
+    expect(decodeAllInvite(encodeAllInvite(invite))).toEqual(invite)
+    const expired = { ...invitation, expiresAt: 1 }
+    expect(decodeAllInvite(encodeAllInvite({ ...invite, direct: expired }))).toEqual({ ...invite, direct: undefined })
+    expect(() => decodeAllInvite(encodeAllInvite({ version: 1, room: 'ROOM', direct: expired }))).toThrow()
+  })
+
+  it('rejects another room’s offer, private IPv6 and invalid ports', () => {
+    for (const value of [
+      { ...invite, direct: { ...invitation, room: 'OTHER' } },
+      { ...invite, ipv6: { addresses: ['[fd12::20]'], port: 9000 } },
+      { ...invite, ipv6: { addresses: ['[2001:db8::20]'], port: 65536 } },
+    ]) expect(() => decodeAllInvite(encodeAllInvite(value))).toThrow()
   })
 })

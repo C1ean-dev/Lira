@@ -2,16 +2,29 @@
 
 O Lira tenta a sinalização do Render, o PeerJS público e o servidor embutido no
 desktop. Se nenhum responder, o anfitrião ainda pode entrar no espaço em modo
-direto. Também é possível escolher esse modo ao criar um espaço, sem esperar os
-servidores. A sala pode ser usada localmente enquanto aguarda participantes.
+direto. A sala pode ser usada localmente enquanto aguarda participantes.
+
+## Compartilhar um convite completo
+
+O anfitrião pode clicar em **Convite completo** na barra superior para copiar um
+convite `LIRA-ALL:`. O visitante cola o texto em **Conectar → Código da sala** e
+clica em **Entrar na sala**. O Lira tenta, na ordem, o servidor de sinalização do
+espaço e os endereços IPv6 globais disponíveis no desktop do anfitrião. Quando o
+convite inclui uma oferta direta e as outras rotas falham, o Lira prepara a
+resposta automaticamente. O visitante usa **Copiar resposta** e envia o texto ao
+anfitrião, que cola a resposta em **Convites individuais →
+Resposta do jogador** e clica em **Aplicar resposta**.
+
+A oferta direta vale por dez minutos e aceita um visitante. Copie um convite
+por pessoa se precisar dessa alternativa. As rotas pelo servidor e por IPv6
+continuam disponíveis enquanto seus endereços e o espaço estiverem acessíveis.
 
 ## Convidar pela internet sem sinalização externa
 
-1. Crie o espaço e abra **Conexão direta** na barra superior.
+1. Crie o espaço e abra **Convites individuais** na barra superior.
 2. Clique em **Gerar convite direto** e envie o texto completo ao outro jogador.
-3. O visitante abre **Entrar por Código → Conectar por convite direto**, cola o
-   convite e clica em **Gerar resposta e conectar**. Colar o convite direto no
-   campo de código também abre esse fluxo.
+3. Na tela **Conectar**, o visitante cola o convite em **Código da sala**. Quando
+   o Lira preparar a resposta, o visitante clica em **Copiar resposta**.
 4. O visitante envia a resposta ao anfitrião, que a cola em **Resposta do jogador**
    e clica em **Aplicar resposta**.
 
@@ -27,9 +40,12 @@ canais. Clientes antigos continuam usando a sinalização normal.
 
 ## Na mesma rede
 
-No desktop do anfitrião, selecione **Rede local / IPv6 — hospedar neste computador** ao
-criar o espaço. Em **Conexão direta**, copie um **convite da rede local**. O outro
-jogador cola esse texto no campo **Código da Sala** e entra normalmente.
+No desktop do anfitrião, abra **Convites individuais** dentro do espaço, clique em
+**Ativar rede local / IPv6** e copie um **convite da rede local**. Ative enquanto
+estiver sozinho no espaço. Se houver convites diretos pendentes, use **Expirar
+convites diretos** antes de ativar. Isso também expira a oferta direta dos
+convites completos já copiados. A ativação retira o espaço do Hub. O outro jogador
+cola o convite em **Conectar → Código da sala** e clica em **Entrar na sala**.
 
 O convite contém o IP do adaptador e a porta do servidor embutido. Quando existem
 vários adaptadores, há um convite por endereço. Use o da rede compartilhada pelos
@@ -44,9 +60,9 @@ O servidor embutido tenta escutar em IPv6 e IPv4 simultaneamente. Se o sistema
 não oferecer IPv6, utiliza IPv4. Convites só são disponibilizados depois que o
 servidor começa a escutar, e endereços IPv6 não são anunciados no fallback IPv4.
 
-Para usar, crie o espaço no modo **Rede local / IPv6**, abra **Conexão direta** e
+Dentro do espaço, abra **Convites individuais**, ative **Rede local / IPv6** e
 clique em **Copiar convite IPv6**. O visitante cola o texto completo em
-**Entrar por Código → Código da Sala**. O convite contém o endereço IPv6 global,
+**Conectar → Código da sala**. O convite contém o endereço IPv6 global,
 entre colchetes, e a porta do anfitrião. Não é necessário devolver uma resposta:
 os aplicativos trocam a negociação pelo servidor embutido do anfitrião.
 

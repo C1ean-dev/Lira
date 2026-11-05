@@ -64,7 +64,7 @@ vi.mock('peerjs', () => ({ default: TestPeer }))
 vi.mock('../../p2p/cloudflareTurn', () => ({ loadCloudflareIceServers: vi.fn(async () => []) }))
 import { PeerManager } from '../../p2p/PeerManager'
 import { useGameStore } from '../../store/useGameStore'
-import { decodeDirectInvite } from '../../p2p/directInvite'
+import { decodeAllInvite, decodeDirectInvite, encodeDirectInvite, type DirectInvite } from '../../p2p/directInvite'
 import { loadCloudflareIceServers } from '../../p2p/cloudflareTurn'
 
 class Channel extends EventTarget {
@@ -140,6 +140,52 @@ it('automatically creates a direct room when constructing every server transport
   await expect(host.createRoom('ROOM', original.localPlayer)).resolves.toBe('ROOM')
   expect(host.getSignalingTier()).toBe('direct')
   expect(TestPeer.networkAttempts).toBe(3)
+})
+
+it('keeps a copied complete invitation usable after opening and closing the manual invitation panel', async () => {
+  await host.createRoom('ROOM', original.localPlayer, { connectionMode: 'direct' })
+  const first = decodeAllInvite(await host.createAllInvite())
+  const second = decodeAllInvite(await host.createAllInvite())
+  expect(first.direct?.session).not.toBe(second.direct?.session)
+  await host.createDirectInvite()
+  host.cancelDirectInvite()
+  const offer = await guest.joinAllInvite(first, original.localPlayer)
+  const result = await guest.prepareDirectJoin(offer!, original.localPlayer)
+  await host.acceptDirectAnswer(result.answer)
+  await vi.advanceTimersByTimeAsync(0)
+  await expect(result.connected).resolves.toBeUndefined()
+  expect((host as any).connections.get(first.direct?.guest).open).toBe(true)
+})
+
+it('expires individual and complete invitations without closing an established direct connection', async () => {
+  await host.createRoom('ROOM', original.localPlayer, { connectionMode: 'direct' })
+  const connectedOffer = await host.createDirectInvite()
+  const result = await guest.prepareDirectJoin(connectedOffer, original.localPlayer)
+  await host.acceptDirectAnswer(result.answer)
+  await vi.advanceTimersByTimeAsync(0)
+  await expect(result.connected).resolves.toBeUndefined()
+
+  const individual = decodeDirectInvite(await host.createDirectInvite())
+  const complete = decodeAllInvite(await host.createAllInvite())
+  expect(complete.direct).toBeDefined()
+  expect(host.expirePendingDirectInvites()).toBe(2)
+  const answer = (offer: DirectInvite) => encodeDirectInvite({ ...offer, kind: 'answer', description: { type: 'answer', sdp: 'v=0' } })
+  await expect(host.acceptDirectAnswer(answer(individual))).rejects.toThrow(/convite/i)
+  await expect(host.acceptDirectAnswer(answer(complete.direct!))).rejects.toThrow(/convite/i)
+  expect((host as any).connections.get(decodeDirectInvite(connectedOffer).guest).open).toBe(true)
+  expect(host.expirePendingDirectInvites()).toBe(0)
+})
+
+it('expires a complete invitation while its relay credentials are still loading', async () => {
+  await host.createRoom('ROOM', original.localPlayer, { connectionMode: 'direct' })
+  let finish!: (servers: RTCIceServer[]) => void
+  vi.mocked(loadCloudflareIceServers).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  const pending = host.createAllInvite()
+  const rejected = expect(pending).rejects.toThrow(/gerar um convite/i)
+  host.expirePendingDirectInvites()
+  finish([])
+  await rejected
+  expect((host as any).manualConnections.size).toBe(0)
 })
 
 it('offers manual connection instead of silently creating a separate room when all join servers fail', async () => {

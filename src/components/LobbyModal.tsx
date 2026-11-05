@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { DoorOpen, Globe, LayoutGrid, Users, MessageSquare, RefreshCw } from 'lucide-react'
 import { useGameStore } from '../store/useGameStore'
 import { useChatStore } from '../store/useChatStore'
@@ -7,6 +7,7 @@ import { useMediaStore } from '../store/useMediaStore'
 import { useSavedSpacesStore } from '../store/useSavedSpacesStore'
 import { useRoomJoinStore } from '../store/useRoomJoinStore'
 import { PeerManager } from '../p2p/PeerManager'
+import { ALL_INVITE_PREFIX, decodeAllInvite } from '../p2p/directInvite'
 import { MediaManager } from '../media/MediaManager'
 import { createEmptyWorkspace } from '../editor/templates'
 import { PublicRoomsService } from '../services/publicRoomsService'
@@ -90,11 +91,8 @@ export const LobbyModal: React.FC<Props> = ({
   const [activeTab, setActiveTab] = useState<'connect' | 'available_rooms' | 'friends' | 'saved_rooms'>('connect')
   const [userName, setUserName] = useState(localPlayer.name || '')
   const [roomInput, setRoomInput] = useState('')
-  const [mode, setMode] = useState<'create' | 'join'>('create')
-  const [connectionMode, setConnectionMode] = useState<'auto' | 'lan' | 'direct'>('auto')
+  const [directFallback, setDirectFallback] = useState<{ code: string; offer: string } | null>(null)
   const [createRoomName, setCreateRoomName] = useState(`Espaço de ${localPlayer.name || 'Trabalho'}`)
-  const [createDescription, setCreateDescription] = useState('Espaço virtual e comunicação em tempo real')
-  const [createIsPublic, setCreateIsPublic] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [chatFriend, setChatFriend] = useState<FriendProfile | null>(null)
@@ -288,6 +286,7 @@ export const LobbyModal: React.FC<Props> = ({
     setError(null)
 
     try {
+      const invite = code.trim().startsWith(ALL_INVITE_PREFIX) ? decodeAllInvite(code) : undefined
       useMediaStore.getState().setMuted(true)
       useMediaStore.getState().setCameraOff(true)
       setLocalPlayer({ name: userName.trim(), isCameraOff: true, isMuted: true })
@@ -299,7 +298,7 @@ export const LobbyModal: React.FC<Props> = ({
       }
 
       const matchingSpace = savedSpaces.find(
-        (s) => s.roomCode?.toUpperCase() === code.trim().toUpperCase()
+        (s) => s.roomCode?.toUpperCase() === (invite?.room ?? code.trim().toUpperCase())
       )
       if (matchingSpace) {
         useMapStore.getState().setMapData(matchingSpace.mapData)
@@ -311,14 +310,26 @@ export const LobbyModal: React.FC<Props> = ({
         playerPayload.y = spawnY
       }
 
-      await Promise.all([
-        MediaManager.getInstance().startMedia(false, true),
-        PeerManager.getInstance().joinRoom(code.trim(), playerPayload),
-      ])
+      const manager = PeerManager.getInstance()
+      if (invite) {
+        const offer = await manager.joinAllInvite(invite, playerPayload)
+        if (offer) {
+          setRoomInput(code.trim())
+          setDirectFallback({ code: code.trim(), offer })
+          setActiveTab('connect')
+          return
+        }
+        await MediaManager.getInstance().startMedia(false, true)
+      } else {
+        await Promise.all([
+          MediaManager.getInstance().startMedia(false, true),
+          manager.joinRoom(code.trim(), playerPayload),
+        ])
+      }
       onJoined()
     } catch (err: any) {
       console.error(err)
-      setError(err?.message || `Não foi possível conectar à sala (${code}). Tente novamente em instantes.`)
+      setError(err?.message || 'Não foi possível conectar à sala. Tente novamente em instantes.')
     } finally {
       enterGuardRef.current.release()
       setLoading(false)
@@ -332,8 +343,19 @@ export const LobbyModal: React.FC<Props> = ({
     handleJoinByCode(pendingRoomCode)
   }, [pendingRoomCode])
 
-  const handleStart = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const beginDirectJoin = useCallback(() => {
+    if (!enterGuardRef.current.tryEnter()) return false
+    setLoading(true)
+    setError(null)
+    return true
+  }, [])
+
+  const endDirectJoin = useCallback(() => {
+    enterGuardRef.current.release()
+    setLoading(false)
+  }, [])
+
+  const handleCreateSpace = async () => {
     if (!userName.trim()) {
       setError('Por favor, informe seu nickname.')
       return
@@ -348,99 +370,65 @@ export const LobbyModal: React.FC<Props> = ({
       useMediaStore.getState().setMuted(true)
       useMediaStore.getState().setCameraOff(true)
 
-      if (mode === 'join' && !roomInput.trim()) {
-        setError('Por favor, insira o código da sala.')
-        setLoading(false)
-        return
-      }
-
       const mediaReady = MediaManager.getInstance().startMedia(false, true)
+      const roomTitle = createRoomName.trim() || `Espaço de ${userName.trim()}`
+      const description = 'Espaço virtual e comunicação em tempo real'
+      const newMap = createEmptyWorkspace()
+      newMap.id = 'room-' + Math.random().toString(36).substring(2, 8)
+      newMap.name = roomTitle
 
-      if (mode === 'create') {
-        const roomTitle = createRoomName.trim() || `Espaço de ${userName.trim()}`
-        const newMap = createEmptyWorkspace()
-        newMap.id = 'room-' + Math.random().toString(36).substring(2, 8)
-        newMap.name = roomTitle
+      const persistentRoomCode = generateUUID()
 
-        const persistentRoomCode = generateUUID()
+      const createdSpace = createSavedSpace(
+        roomTitle,
+        newMap,
+        description,
+        persistentRoomCode
+      )
 
-        const createdSpace = createSavedSpace(
-          roomTitle,
-          newMap,
-          createDescription.trim() || 'Espaço criado via Conectar',
-          persistentRoomCode
-        )
+      setActiveSpaceId(createdSpace.id)
+      setSelectedSpaceId(createdSpace.id)
+      useMapStore.getState().setMapData(newMap)
 
-        setActiveSpaceId(createdSpace.id)
-        setSelectedSpaceId(createdSpace.id)
-        useMapStore.getState().setMapData(newMap)
+      setLocalPlayer({
+        name: userName.trim(),
+        x: newMap.spawnPoint.x,
+        y: newMap.spawnPoint.y,
+        currentZoneId: null,
+      })
 
-        setLocalPlayer({
-          name: userName.trim(),
-          x: newMap.spawnPoint.x,
-          y: newMap.spawnPoint.y,
-          currentZoneId: null,
-        })
+      const randomColors = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4']
+      const color = randomColors[Math.floor(Math.random() * randomColors.length)]
 
-        const randomColors = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4']
-        const color = randomColors[Math.floor(Math.random() * randomColors.length)]
-
-        const playerPayload: Player = {
-          ...useGameStore.getState().localPlayer,
-          name: userName.trim(),
-          x: newMap.spawnPoint.x,
-          y: newMap.spawnPoint.y,
-          currentZoneId: null,
-          isCameraOff: useMediaStore.getState().isCameraOff ?? true,
-          isMuted: useMediaStore.getState().isMuted ?? true,
-        }
-
-        await Promise.all([
-          mediaReady,
-          PeerManager.getInstance().createRoom(
-            persistentRoomCode,
-            playerPayload,
-            {
-              roomName: createdSpace.name,
-              roomDescription: createDescription.trim() || 'Espaço virtual público aberto para todos',
-              isPublic: createIsPublic,
-              maxPlayers: 25,
-              color,
-              connectionMode,
-            }
-          ),
-        ])
-      } else {
-        const playerPayload: Player = {
-          ...useGameStore.getState().localPlayer,
-          name: userName.trim(),
-          isCameraOff: useMediaStore.getState().isCameraOff ?? true,
-          isMuted: useMediaStore.getState().isMuted ?? true,
-        }
-
-        const matchingSpace = savedSpaces.find(
-          (s) => s.roomCode?.toUpperCase() === roomInput.trim().toUpperCase()
-        )
-        if (matchingSpace) {
-          useMapStore.getState().setMapData(matchingSpace.mapData)
-          setActiveSpaceId(matchingSpace.id)
-          setSelectedSpaceId(matchingSpace.id)
-          const spawnX = matchingSpace.mapData.spawnPoint?.x ?? 34
-          const spawnY = matchingSpace.mapData.spawnPoint?.y ?? 20
-          playerPayload.x = spawnX
-          playerPayload.y = spawnY
-        }
-
-        await Promise.all([
-          mediaReady,
-          PeerManager.getInstance().joinRoom(roomInput.trim(), playerPayload),
-        ])
+      const playerPayload: Player = {
+        ...useGameStore.getState().localPlayer,
+        name: userName.trim(),
+        x: newMap.spawnPoint.x,
+        y: newMap.spawnPoint.y,
+        currentZoneId: null,
+        isCameraOff: useMediaStore.getState().isCameraOff ?? true,
+        isMuted: useMediaStore.getState().isMuted ?? true,
       }
+
+      await Promise.all([
+        mediaReady,
+        PeerManager.getInstance().createRoom(
+          persistentRoomCode,
+          playerPayload,
+          {
+            roomName: createdSpace.name,
+            roomDescription: description,
+            isPublic: true,
+            maxPlayers: 25,
+            color,
+          }
+        ),
+      ])
 
       onJoined()
     } catch (err: any) {
       console.error(err)
-      setError(err?.message || 'Não foi possível conectar. Verifique o código da sala e tente novamente.')
+      setError(err?.message || 'Não foi possível criar o espaço. Tente novamente em instantes.')
     } finally {
       enterGuardRef.current.release()
       setLoading(false)
@@ -740,20 +728,18 @@ export const LobbyModal: React.FC<Props> = ({
               }
             }}
             onOpenAvatarCustomizer={onOpenAvatarCustomizer}
-            mode={mode}
-            setMode={setMode}
             createRoomName={createRoomName}
             setCreateRoomName={setCreateRoomName}
-            createIsPublic={createIsPublic}
-            setCreateIsPublic={setCreateIsPublic}
             roomInput={roomInput}
-            setRoomInput={setRoomInput}
+            setRoomInput={code => { setRoomInput(code); setDirectFallback(null) }}
+            directFallback={directFallback?.code === roomInput.trim() ? directFallback.offer : undefined}
             error={error}
             loading={loading}
-            onSubmit={handleStart}
-            connectionMode={connectionMode}
-            setConnectionMode={setConnectionMode}
+            onCreate={handleCreateSpace}
+            onJoin={handleJoinByCode}
             onJoined={onJoined}
+            beginDirectJoin={beginDirectJoin}
+            endDirectJoin={endDirectJoin}
           />
         )}
 

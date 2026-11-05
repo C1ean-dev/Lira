@@ -1,263 +1,159 @@
-import React, { useState } from 'react'
-import { User, PlusCircle, LogIn, Globe, Lock, Shield, Sparkles, Clipboard } from 'lucide-react'
+import React, { useId } from 'react'
+import { User, PlusCircle, LogIn, Sparkles, Clipboard } from 'lucide-react'
 import { useMediaStore } from '../../store/useMediaStore'
-import { isAndroid } from '../../utils/platform'
 import { DirectConnectionPanel } from './DirectConnectionPanel'
 
 interface Props {
   userName: string
   setUserName: (name: string) => void
   onOpenAvatarCustomizer: () => void
-  mode: 'create' | 'join'
-  setMode: (mode: 'create' | 'join') => void
   createRoomName: string
   setCreateRoomName: (name: string) => void
-  createIsPublic: boolean
-  setCreateIsPublic: (isPublic: boolean) => void
   roomInput: string
   setRoomInput: (code: string) => void
+  directFallback?: string
   error: string | null
   loading: boolean
-  onSubmit: (e: React.FormEvent) => void
-  connectionMode?: 'auto' | 'lan' | 'direct'
-  setConnectionMode?: (mode: 'auto' | 'lan' | 'direct') => void
-  onJoined?: () => void
+  onCreate: () => void
+  onJoin: (code: string) => void
+  onJoined: () => void
+  beginDirectJoin: () => boolean
+  endDirectJoin: () => void
 }
 
+const inputClass = 'min-w-0 w-full rounded-xl border border-[#2a3142] bg-[#12151d] px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-400'
+const actionClass = 'min-h-10 rounded-xl px-3 py-2 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300'
+const rowClass = 'grid gap-2 sm:grid-cols-[minmax(0,1fr)_9rem] sm:items-end'
+
 export const DirectConnectTab: React.FC<Props> = ({
-  userName,
-  setUserName,
-  onOpenAvatarCustomizer,
-  mode,
-  setMode,
-  createRoomName,
-  setCreateRoomName,
-  createIsPublic,
-  setCreateIsPublic,
-  roomInput,
-  setRoomInput,
-  error,
-  loading,
-  onSubmit,
-  connectionMode = 'auto',
-  setConnectionMode,
-  onJoined,
+  userName, setUserName, onOpenAvatarCustomizer, createRoomName, setCreateRoomName,
+  roomInput, setRoomInput, directFallback, error, loading, onCreate, onJoin, onJoined, beginDirectJoin, endDirectJoin,
 }) => {
-  const isAndroidPlatform = isAndroid()
-  const canHostLan = typeof window !== 'undefined' && !!window.electronAPI?.getSignalingConfig
-  const [showDirect, setShowDirect] = useState(false)
-  const directInvite = roomInput.trim().startsWith('LIRA-DIRECT:')
+  const fieldId = useId()
+  const code = roomInput.trim()
+  const directInvite = code.startsWith('LIRA-DIRECT:') ? code : directFallback
 
   return (
-    <form onSubmit={onSubmit} className="p-4 sm:p-6 space-y-3.5 sm:space-y-4 overflow-y-auto">
+    <div className="space-y-4 overflow-y-auto p-4 sm:p-6">
       <div>
-        <label className="block text-xs font-semibold text-slate-300 mb-1.5">Seu Nickname</label>
+        <label htmlFor={`${fieldId}-name`} className="mb-1.5 block text-xs font-semibold text-slate-300">Seu Nickname</label>
         <div className="flex gap-2">
           <input
+            id={`${fieldId}-name`}
             type="text"
             value={userName}
-            onChange={(e) => setUserName(e.target.value)}
+            onChange={event => setUserName(event.target.value)}
             placeholder="Ex: Lucas, Carol..."
-            className="flex-1 bg-[#12151d] border border-[#2a3142] rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:outline-none focus:border-indigo-500"
+            className={inputClass}
             maxLength={32}
-            required
           />
           <button
             type="button"
             onClick={onOpenAvatarCustomizer}
-            className="px-3.5 py-2 bg-[#12151d] hover:bg-slate-800 border border-[#2a3142] rounded-xl text-xs font-semibold text-indigo-400 flex items-center gap-1.5 transition-colors"
+            className={`${actionClass} shrink-0 border border-[#2a3142] bg-[#12151d] text-indigo-300 hover:bg-slate-800`}
             title="Personalizar Avatar Pixel Art"
           >
-            <User className="w-4 h-4" />
-            <span>Avatar</span>
+            <User className="h-4 w-4" />
+            Avatar
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 p-1 bg-[#12151d] rounded-2xl border border-[#2a3142]">
-        <button
-          type="button"
-          onClick={() => setMode('create')}
-          className={`py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-            mode === 'create'
-              ? 'bg-indigo-600 text-white shadow-md'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <PlusCircle className="w-4 h-4" />
-          Criar Espaço
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode('join')}
-          className={`py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-            mode === 'join'
-              ? 'bg-indigo-600 text-white shadow-md'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <LogIn className="w-4 h-4" />
-          Entrar por Código
-        </button>
-      </div>
-
-      {mode === 'create' && (
-        <div className="space-y-3 p-3.5 bg-[#12151d]/60 rounded-2xl border border-[#2a3142]/60 animate-in fade-in duration-150">
-          <label className="block text-xs text-slate-300 space-y-1">
-            <span>Como conectar</span>
-            <select aria-label="Como conectar" value={connectionMode} onChange={event => setConnectionMode?.(event.target.value as 'auto' | 'lan' | 'direct')}
-              className="w-full rounded-xl bg-[#12151d] border border-[#2a3142] px-3 py-2">
-              <option value="auto">Automático — usar as rotas disponíveis</option>
-              {canHostLan && <option value="lan">Rede local / IPv6 — hospedar neste computador</option>}
-              <option value="direct">Convite direto — sem servidores do Lira</option>
-            </select>
-          </label>
+      <form className="space-y-3 border-t border-[#2a3142] pt-4" onSubmit={event => {
+        event.preventDefault()
+        if (!loading && code && !directInvite) onJoin(code)
+      }}>
+        <div className={rowClass}>
           <div>
-            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-              Nome da Sala / Espaço
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={createRoomName}
-                onChange={(e) => setCreateRoomName(e.target.value)}
-                placeholder="Ex: Devs Hub, Reunião de Equipe..."
-                className="flex-1 bg-[#12151d] border border-[#2a3142] rounded-xl px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
-                maxLength={35}
-              />
-              {isAndroidPlatform && (
-                <button
-                  type="button"
-                  onClick={() => setCreateIsPublic(!createIsPublic)}
-                  className={`p-2 rounded-xl border transition-all shrink-0 ${
-                    createIsPublic
-                      ? 'bg-blue-500/15 border-blue-500/40 text-blue-400'
-                      : 'bg-[#12151d] border-[#2a3142] text-slate-400'
-                  }`}
-                  title={createIsPublic ? 'Sala Pública' : 'Sala Privada'}
-                >
-                  {createIsPublic ? (
-                    <Globe className="w-4 h-4 text-blue-400" />
-                  ) : (
-                    <Lock className="w-4 h-4 text-slate-400" />
-                  )}
-                </button>
-              )}
-            </div>
-          </div>
-
-          {!isAndroidPlatform && (
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-300 mb-1">Visibilidade da Sala</label>
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <label htmlFor={`${fieldId}-code`} className="text-xs font-semibold text-slate-300">Código da sala</label>
               <button
                 type="button"
-                onClick={() => setCreateIsPublic(!createIsPublic)}
-                className={`w-full py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-between transition-colors ${
-                  createIsPublic
-                    ? 'bg-blue-500/15 border-blue-500/40 text-blue-300'
-                    : 'bg-[#12151d] border-[#2a3142] text-slate-400'
-                }`}
+                disabled={loading && !directInvite}
+                onClick={async () => {
+                  try {
+                    const text = await navigator.clipboard.readText()
+                    if (text) setRoomInput(text.trim())
+                  } catch {
+                    document.getElementById(`${fieldId}-code`)?.focus()
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-300 hover:underline disabled:opacity-50"
               >
-                <span className="flex items-center gap-2">
-                  {createIsPublic ? (
-                    <Globe className="w-4 h-4 text-blue-400" />
-                  ) : (
-                    <Shield className="w-4 h-4 text-slate-400" />
-                  )}
-                  <span>{createIsPublic ? 'Pública (visível no Hub)' : 'Privada (somente com código)'}</span>
-                </span>
-                <span
-                  className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${
-                    createIsPublic ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-400'
-                  }`}
-                >
-                  {createIsPublic ? '✓' : ''}
-                </span>
+                <Clipboard className="h-3.5 w-3.5" />
+                Colar código
               </button>
             </div>
-          )}
-
-          {!isAndroidPlatform && createIsPublic && (
-            <p className="text-[10px] text-indigo-300/80 bg-indigo-500/10 p-2 rounded-xl border border-indigo-500/20">
-              🌐 <strong>Sala Pública:</strong> outros usuários do app verão sua sala no Hub de Salas Disponíveis e poderão entrar facilmente!
-            </p>
-          )}
-        </div>
-      )}
-
-      {mode === 'join' && (
-        <div className="space-y-1.5 animate-in fade-in duration-150">
-          <div className="flex items-center justify-between">
-            <label className="block text-xs font-semibold text-slate-300">Código da Sala</label>
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  const text = await navigator.clipboard.readText()
-                  if (text) {
-                    setRoomInput(text.trim())
-                  }
-                } catch (e) {
-                  console.warn('Could not read clipboard:', e)
-                }
-              }}
-              className="text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1 hover:underline cursor-pointer"
-              title="Colar código copiado da área de transferência"
-            >
-              <Clipboard className="w-3 h-3" />
-              <span>Colar Código</span>
+            <input
+              id={`${fieldId}-code`}
+              type="text"
+              value={roomInput}
+              onChange={event => setRoomInput(event.target.value)}
+              placeholder="Cole o código ou convite"
+              className={inputClass}
+              autoCapitalize="off"
+              spellCheck={false}
+              readOnly={loading && !directInvite}
+            />
+          </div>
+          {!directInvite && (
+            <button type="submit" disabled={loading || !code} className={`${actionClass} bg-indigo-600 text-white enabled:hover:bg-indigo-500`}>
+              <LogIn className="h-4 w-4" />
+              Entrar na sala
             </button>
-          </div>
-          <input
-            type="text"
-            value={roomInput}
-            onChange={(e) => setRoomInput(e.target.value.trim())}
-            placeholder="Código da sala ou convite de rede local / IPv6"
-            className="w-full bg-[#12151d] border border-[#2a3142] rounded-xl px-3.5 py-2 text-sm font-mono text-indigo-300 focus:outline-none focus:border-indigo-500"
-            autoCapitalize="off" spellCheck={false}
+          )}
+        </div>
+        {directFallback && <p className="text-sm text-slate-300">As outras rotas não conectaram. O Lira vai preparar uma resposta direta.</p>}
+        {directInvite && (
+          <DirectConnectionPanel
+            key={directInvite}
+            role="guest"
+            invite={directInvite}
+            onJoined={onJoined}
+            beginJoin={beginDirectJoin}
+            endJoin={endDirectJoin}
           />
-          <button type="button" className="py-2 text-xs text-indigo-300 underline" onClick={() => setShowDirect(value => !value)}>
-            {showDirect ? 'Voltar à conexão por código' : 'Conectar por convite direto'}
-          </button>
-          {(showDirect || directInvite) && <DirectConnectionPanel key={directInvite ? roomInput : 'manual'} role="guest" onJoined={onJoined} initialInvite={directInvite ? roomInput : ''} />}
-        </div>
-      )}
-
-      <div className="bg-[#12151d]/60 rounded-2xl p-3 border border-[#2a3142]/60 space-y-2 text-[11px] text-slate-400">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Supressor de Ruído DSP & Anti-Eco ativados</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => useMediaStore.getState().setSettingsModalOpen(true)}
-            className="text-[11px] font-bold text-indigo-400 hover:text-indigo-300 underline"
-          >
-            Configurar Áudio
-          </button>
-        </div>
-      </div>
-
-      {error && (
-        <div className="text-xs text-rose-400 bg-rose-500/10 p-2.5 rounded-xl border border-rose-500/30">
-          {error}
-        </div>
-      )}
-
-      {!(mode === 'join' && (showDirect || directInvite)) && <button
-        type="submit"
-        disabled={loading}
-        className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-sm shadow-xl shadow-indigo-600/30 transition-all active:scale-98 flex items-center justify-center gap-2"
-      >
-        {loading ? (
-          <span>Conectando ao Espaço...</span>
-        ) : mode === 'create' ? (
-          <span>Criar e Entrar no Espaço</span>
-        ) : (
-          <span>Entrar na Sala</span>
         )}
-      </button>}
-    </form>
+      </form>
+
+      <form className={`${rowClass} border-t border-[#2a3142] pt-4`} onSubmit={event => {
+        event.preventDefault()
+        if (!loading) onCreate()
+      }}>
+        <div>
+          <label htmlFor={`${fieldId}-space`} className="mb-1.5 block text-xs font-semibold text-slate-300">Nome do espaço</label>
+          <input
+            id={`${fieldId}-space`}
+            type="text"
+            value={createRoomName}
+            onChange={event => setCreateRoomName(event.target.value)}
+            placeholder="Ex: Reunião de Equipe"
+            className={inputClass}
+            maxLength={35}
+          />
+        </div>
+        <button type="submit" disabled={loading} className={`${actionClass} border border-indigo-500/40 text-indigo-200 enabled:hover:bg-indigo-500/15`}>
+          <PlusCircle className="h-4 w-4" />
+          Criar espaço
+        </button>
+      </form>
+
+      {loading && !directInvite && <p role="status" className="text-sm text-indigo-300">Conectando ao espaço…</p>}
+      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-[#2a3142] pt-3 text-xs text-slate-400">
+        <span className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 shrink-0 text-indigo-400" />
+          Supressor de Ruído DSP &amp; Anti-Eco ativados
+        </span>
+        <button
+          type="button"
+          onClick={() => useMediaStore.getState().setSettingsModalOpen(true)}
+          className="py-1 font-semibold text-indigo-300 underline"
+        >
+          Configurar Áudio
+        </button>
+      </div>
+    </div>
   )
 }
