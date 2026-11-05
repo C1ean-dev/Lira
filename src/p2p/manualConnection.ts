@@ -6,7 +6,7 @@ export class ManualConnection {
   private pc?: RTCPeerConnection
   private invite?: DirectInvite
   private timer?: ReturnType<typeof setTimeout>
-  private cancelGather?: () => void
+  private cancelIceCollection?: () => void
   private accepted = false
   private linked = false
   constructor(private create: () => RTCPeerConnection, private onLink: OnLink, private onFailure?: (error: Error) => void) {}
@@ -44,11 +44,11 @@ export class ManualConnection {
   private async description(pc: RTCPeerConnection): Promise<RTCSessionDescriptionInit> {
     if (pc.iceGatheringState !== 'complete') {
       await new Promise<void>((resolve, reject) => {
-        const clean = () => { clearTimeout(timer); pc.removeEventListener('icegatheringstatechange', state); this.cancelGather = undefined }
+        const clean = () => { clearTimeout(timer); pc.removeEventListener('icegatheringstatechange', state); this.cancelIceCollection = undefined }
         const done = () => { clean(); resolve() }
         const state = () => { if (pc.iceGatheringState === 'complete') done() }
         const timer = setTimeout(done, 8000)
-        this.cancelGather = () => { clean(); reject(new Error('Conexão direta cancelada.')) }
+        this.cancelIceCollection = () => { clean(); reject(new Error('Conexão direta cancelada.')) }
         pc.addEventListener('icegatheringstatechange', state)
         state()
       })
@@ -95,7 +95,7 @@ export class ManualConnection {
   isLinked() { return this.linked }
   close() {
     clearTimeout(this.timer)
-    this.cancelGather?.()
+    this.cancelIceCollection?.()
     const pc = this.pc
     this.pc = undefined
     this.invite = undefined
