@@ -38,6 +38,8 @@ import { SpotifyNativeWindowBridge } from './spotifyNativeWindow'
 import { singleFlightDownload } from './updateDownload'
 import { downloadUpdateFile, updateDownloadErrorMessage } from './updateFileDownload'
 import { runtimeAssetPath } from './assetPaths'
+import { configureParsecEcho } from './parsecEcho'
+import { createParsecEchoHandler } from './parsecEchoIpc'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -1264,6 +1266,18 @@ ipcMain.handle('download-and-install-update', async (_event, downloadUrl: string
   }
   return false
 })
+
+ipcMain.handle('configure-parsec-echo', createParsecEchoHandler(
+  () => mainWindow?.webContents ?? null,
+  () => configureParsecEcho({
+    platform: process.platform,
+    osRelease: getOsRelease(),
+    packaged: app.isPackaged,
+    executablePath: process.execPath,
+    appData: app.getPath('appData'),
+    programData: process.env.ProgramData,
+  }),
+))
 
 ipcMain.handle('open-external', async (event, url: string) => {
   if (url) {
