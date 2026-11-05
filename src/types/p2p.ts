@@ -2,7 +2,7 @@ import { Player } from './game'
 import { MapData, PlacedFurniture, PrivateZone } from './map'
 import { ChatMessage } from './chat'
 
-export type SignalingTier = 'render' | 'public' | 'local'
+export type SignalingTier = 'render' | 'public' | 'local' | 'direct'
 
 export type NetworkMessageType =
   | 'PLAYER_JOIN'

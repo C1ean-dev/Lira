@@ -1,7 +1,8 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { User, PlusCircle, LogIn, Globe, Lock, Shield, Sparkles, Clipboard } from 'lucide-react'
 import { useMediaStore } from '../../store/useMediaStore'
 import { isAndroid } from '../../utils/platform'
+import { DirectConnectionPanel } from './DirectConnectionPanel'
 
 interface Props {
   userName: string
@@ -18,6 +19,9 @@ interface Props {
   error: string | null
   loading: boolean
   onSubmit: (e: React.FormEvent) => void
+  connectionMode?: 'auto' | 'lan' | 'direct'
+  setConnectionMode?: (mode: 'auto' | 'lan' | 'direct') => void
+  onJoined?: () => void
 }
 
 export const DirectConnectTab: React.FC<Props> = ({
@@ -35,8 +39,14 @@ export const DirectConnectTab: React.FC<Props> = ({
   error,
   loading,
   onSubmit,
+  connectionMode = 'auto',
+  setConnectionMode,
+  onJoined,
 }) => {
   const isAndroidPlatform = isAndroid()
+  const canHostLan = typeof window !== 'undefined' && !!window.electronAPI?.getSignalingConfig
+  const [showDirect, setShowDirect] = useState(false)
+  const directInvite = roomInput.trim().startsWith('LIRA-DIRECT:')
 
   return (
     <form onSubmit={onSubmit} className="p-4 sm:p-6 space-y-3.5 sm:space-y-4 overflow-y-auto">
@@ -93,6 +103,15 @@ export const DirectConnectTab: React.FC<Props> = ({
 
       {mode === 'create' && (
         <div className="space-y-3 p-3.5 bg-[#12151d]/60 rounded-2xl border border-[#2a3142]/60 animate-in fade-in duration-150">
+          <label className="block text-xs text-slate-300 space-y-1">
+            <span>Como conectar</span>
+            <select aria-label="Como conectar" value={connectionMode} onChange={event => setConnectionMode?.(event.target.value as 'auto' | 'lan' | 'direct')}
+              className="w-full rounded-xl bg-[#12151d] border border-[#2a3142] px-3 py-2">
+              <option value="auto">Automático — usar as rotas disponíveis</option>
+              {canHostLan && <option value="lan">Rede local / IPv6 — hospedar neste computador</option>}
+              <option value="direct">Convite direto — sem servidores do Lira</option>
+            </select>
+          </label>
           <div>
             <label className="block text-[11px] font-semibold text-slate-300 mb-1">
               Nome da Sala / Espaço
@@ -176,7 +195,7 @@ export const DirectConnectTab: React.FC<Props> = ({
                 try {
                   const text = await navigator.clipboard.readText()
                   if (text) {
-                    setRoomInput(text.replace(/\s+/g, '').toUpperCase())
+                    setRoomInput(text.trim())
                   }
                 } catch (e) {
                   console.warn('Could not read clipboard:', e)
@@ -192,10 +211,15 @@ export const DirectConnectTab: React.FC<Props> = ({
           <input
             type="text"
             value={roomInput}
-            onChange={(e) => setRoomInput(e.target.value.replace(/\s+/g, '').toUpperCase())}
-            placeholder="Ex: LIRA-A9K3F ou cole o código UUID"
-            className="w-full bg-[#12151d] border border-[#2a3142] rounded-xl px-3.5 py-2 text-sm font-mono text-indigo-300 tracking-wider uppercase focus:outline-none focus:border-indigo-500"
+            onChange={(e) => setRoomInput(e.target.value.trim())}
+            placeholder="Código da sala ou convite de rede local / IPv6"
+            className="w-full bg-[#12151d] border border-[#2a3142] rounded-xl px-3.5 py-2 text-sm font-mono text-indigo-300 focus:outline-none focus:border-indigo-500"
+            autoCapitalize="off" spellCheck={false}
           />
+          <button type="button" className="py-2 text-xs text-indigo-300 underline" onClick={() => setShowDirect(value => !value)}>
+            {showDirect ? 'Voltar à conexão por código' : 'Conectar por convite direto'}
+          </button>
+          {(showDirect || directInvite) && <DirectConnectionPanel key={directInvite ? roomInput : 'manual'} role="guest" onJoined={onJoined} initialInvite={directInvite ? roomInput : ''} />}
         </div>
       )}
 
@@ -221,7 +245,7 @@ export const DirectConnectTab: React.FC<Props> = ({
         </div>
       )}
 
-      <button
+      {!(mode === 'join' && (showDirect || directInvite)) && <button
         type="submit"
         disabled={loading}
         className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-sm shadow-xl shadow-indigo-600/30 transition-all active:scale-98 flex items-center justify-center gap-2"
@@ -233,7 +257,7 @@ export const DirectConnectTab: React.FC<Props> = ({
         ) : (
           <span>Entrar na Sala</span>
         )}
-      </button>
+      </button>}
     </form>
   )
 }

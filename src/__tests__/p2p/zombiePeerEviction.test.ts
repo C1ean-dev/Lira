@@ -131,6 +131,7 @@ beforeEach(() => {
     hostTransfer: null,
     preparedHostTransfer: null,
     currentSignalingTier: 'render',
+    manualConnections: new Set(), manualGeneration: 0,
     djPeer: null,
     djMediaCalls: new Map(),
   })

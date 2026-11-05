@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PeerManager } from '../../p2p/PeerManager'
 import { useGameStore } from '../../store/useGameStore'
+import { installDirectSignaling } from '../../p2p/directSignaling'
 vi.mock('../../data/nativeAssets.json', () => ({ default: { assets: [], categories: [] } }))
 const original = useGameStore.getState()
 let manager: any
@@ -18,6 +19,14 @@ beforeEach(() => {
 })
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); useGameStore.setState(original) })
 describe('core signaling recovery contract', () => {
+  it('keeps a working direct room connected while retrying an unavailable server in the background', async () => {
+    Object.assign(peer, { socket: { send: vi.fn() }, connect: vi.fn(), call: vi.fn(), destroy: vi.fn(), _handleMessage: vi.fn() })
+    installDirectSignaling(peer, 'local').addLink('remote', () => {})
+    events.disconnected('local')
+    expect(useGameStore.getState().connectionStatus).toBe('connected')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(peer.reconnect).toHaveBeenCalledOnce()
+  })
   it('reconnects the same PeerJS session when disconnected clears its public id', async () => {
     const call = { close: vi.fn() }
     manager.mediaCalls.set('remote', call)

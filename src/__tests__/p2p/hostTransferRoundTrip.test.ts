@@ -170,6 +170,7 @@ function renderer(id: string, isHost: boolean) {
   wire.run(actor, () => {
     actor.manager = Object.assign(Object.create(PeerManager.prototype), {
       peer: new Peer(id), roomCode: 'TEST', isHost, isIntentionalDisconnect: false,
+      manualConnections: new Set(), manualGeneration: 0,
       connections: new Map(), mediaCalls: new Map(), peerLastSeen: new Map(), pendingHeartbeats: new Map(),
       liveVoiceCalls: new Map(), incomingLiveVoiceCalls: new Map(), liveVoiceRetryTimers: new Map(),
       liveVoiceReadyTimers: new Map(), liveVoiceRetryCounts: new Map(), pendingZoneCalls: new Map(),

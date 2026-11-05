@@ -20,7 +20,7 @@ class Connection extends EventTarget {
   }
 }
 
-function fixture(incoming = false) {
+function fixture(incoming = false, relays = metered) {
   const pc = new Connection()
   const events = new Map<string, (() => void)[]>()
   const conn: any = { peer: 'remote', connectionId: 'dc_test', type: 'data', peerConnection: pc,
@@ -32,7 +32,7 @@ function fixture(incoming = false) {
   const peer: any = { socket: { send }, getConnection: () => conn,
     _handleMessage: normalHandle, _addConnection: vi.fn(), on: vi.fn() }
   const load = vi.fn(async () => cloudflare)
-  installRtcTransportPriority(peer, { cloudflare: load, metered, discovery: stun })
+  installRtcTransportPriority(peer, { cloudflare: load, metered: relays, discovery: stun })
   peer._addConnection('remote', conn)
   return { pc, conn, peer, load, send, normalHandle, close: () => events.get('close')?.forEach(fn => fn()) }
 }
@@ -40,6 +40,22 @@ function fixture(incoming = false) {
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers() })
 describe('P2P, Cloudflare, then Metered transport selection', () => {
+  it('leaves direct ICE running when all relay services are unavailable', async () => {
+    const f = fixture(false, [])
+    f.load.mockResolvedValue([])
+    // A deployment without a Metered credential must still exhaust direct ICE.
+    f.conn.close = vi.fn()
+    await vi.advanceTimersByTimeAsync(DIRECT_ATTEMPT_MS)
+    expect(f.conn.close).not.toHaveBeenCalled()
+    expect(f.pc.connectionState).toBe('new')
+  })
+
+  it('still tries Metered if loading Cloudflare credentials rejects', async () => {
+    const f = fixture()
+    f.load.mockRejectedValue(new Error('provider offline'))
+    await vi.advanceTimersByTimeAsync(DIRECT_ATTEMPT_MS + 1)
+    expect(f.pc.setConfiguration).toHaveBeenLastCalledWith(expect.objectContaining({ iceServers: [...stun, ...metered] }))
+  })
   it('allows direct ICE first, then negotiates Cloudflare and Metered separately on the same connection', async () => {
     const f = fixture()
     expect(f.load).not.toHaveBeenCalled()

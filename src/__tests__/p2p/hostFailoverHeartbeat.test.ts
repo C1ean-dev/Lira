@@ -89,6 +89,7 @@ beforeEach(() => {
   vi.spyOn(console, 'debug').mockImplementation(() => {})
   manager = Object.assign(Object.create(PeerManager.prototype), {
     peer: null, roomCode: null, isHost: false, isIntentionalDisconnect: false,
+    manualConnections: new Set(), manualGeneration: 0,
     connections: new Map(), mediaCalls: new Map(), peerLastSeen: new Map(),
     liveVoiceCalls: new Map(), incomingLiveVoiceCalls: new Map(),
     liveVoiceRetryTimers: new Map(), liveVoiceReadyTimers: new Map(), liveVoiceRetryCounts: new Map(),
