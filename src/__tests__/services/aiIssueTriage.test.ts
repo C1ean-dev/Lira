@@ -173,7 +173,7 @@ Label Recomendada: ready-for-human
 
       expect(CASCADE_TIERS[1].model).toBe('deepseek/deepseek-v4.1-flash-1017')
       expect(CASCADE_TIERS[1].provider).toBe('openrouter')
-      expect(CASCADE_TIERS[1].providerConfig).toEqual({ sort: 'price' })
+      expect(CASCADE_TIERS[1].providerConfig).toEqual({ sort: 'price', require_parameters: true })
       expect(CASCADE_TIERS[1].maxAttempts).toBe(3)
 
       expect(CASCADE_TIERS[2].model).toBe('nvidia/nemotron-3-ultra-550b-a55b:free')
@@ -244,6 +244,14 @@ Label Recomendada: ready-for-human
       expect(result.content).toBe('Plano via Nemotron')
       expect(result.tierUsed).toContain('Nemotron')
       expect(mockFetch).toHaveBeenCalledTimes(7)
+
+      const bodies = mockFetch.mock.calls.map(([, options]) => JSON.parse(options.body))
+      expect(bodies.map((body) => body.reasoning_effort)).toEqual([
+        undefined, undefined, undefined, 'max', 'max', 'max', undefined,
+      ])
+      for (const body of bodies.slice(3, 6)) {
+        expect(body.provider).toEqual({ sort: 'price', require_parameters: true })
+      }
     })
   })
 

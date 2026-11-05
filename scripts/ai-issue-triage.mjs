@@ -25,7 +25,8 @@ export const CASCADE_TIERS = [
     name: 'DeepSeek V4.1 Flash (OpenRouter - Provedor Mais Barato)',
     provider: 'openrouter',
     model: 'deepseek/deepseek-v4.1-flash-1017',
-    providerConfig: { sort: 'price' },
+    providerConfig: { sort: 'price', require_parameters: true },
+    reasoningEffort: 'max',
     maxAttempts: 3,
   },
   {
@@ -131,7 +132,7 @@ ${body}
 /**
  * Calls OpenAI-compatible completions API (Gemini via Google AI Studio or OpenRouter).
  */
-export async function callAIProvider({ apiKey, provider = 'gemini', model, providerConfig, messages, fetchFn = fetch }) {
+export async function callAIProvider({ apiKey, provider = 'gemini', model, providerConfig, reasoningEffort, messages, fetchFn = fetch }) {
   if (!apiKey) {
     throw new Error('API key is required')
   }
@@ -157,6 +158,10 @@ export async function callAIProvider({ apiKey, provider = 'gemini', model, provi
 
   if (providerConfig && !isGemini) {
     payload.provider = providerConfig
+  }
+
+  if (reasoningEffort) {
+    payload.reasoning_effort = reasoningEffort
   }
 
   const response = await fetchFn(endpoint, {
@@ -214,6 +219,7 @@ export async function executeCascadeTriage({
           provider: tier.provider,
           model: tier.model,
           providerConfig: tier.providerConfig,
+          reasoningEffort: tier.reasoningEffort,
           messages,
           fetchFn,
         })
