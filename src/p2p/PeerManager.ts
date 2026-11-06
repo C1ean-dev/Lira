@@ -209,6 +209,7 @@ export class PeerManager {
   private signalingReconnectAttempts = 0
   private djPeer: Peer | null = null
   private djMediaCalls: Map<string, MediaConnection> = new Map()
+  private djCallUnreadySince = new WeakMap<MediaConnection, number>()
   private djAudioStream: MediaStream | null = null
   private djBotId: string | null = null
   private djHealthCheckTimer: any = null
@@ -2128,7 +2129,9 @@ export class PeerManager {
         (pid) => this.removePeer(pid),
         (remotePlayer) => this.checkZoneCallEligibility(remotePlayer),
         this.peer ? this.peer.id : null,
-        (listenerId) => this.redialDjToPeer(listenerId)
+        (listenerId) => {
+          if (this.isDjBotRunning()) this.redialDjToPeer(listenerId)
+        }
       )
       const transfer = this.hostTransfer
       if (transfer?.released && transfer.roomCode === this.roomCode && msg.type === 'PLAYER_JOIN' &&
@@ -2142,13 +2145,6 @@ export class PeerManager {
       }
 
       if (msg.type === 'LIVE_VIEW') this.handleLiveView(msg)
-      if (msg.type === 'DJ_CALL_REQUEST') {
-        const listenerId = msg.payload?.listenerId || msg.senderId
-        if (listenerId && this.isDjBotRunning()) {
-          this.redialDjToPeer(listenerId)
-        }
-      }
-
       if (msg.type === 'PLAYER_UPDATE' && msg.payload?.player?.isScreenSharing !== undefined) {
         if (useMediaStore.getState().isScreenSharing) {
           try {
@@ -2589,10 +2585,10 @@ export class PeerManager {
 
       newDjPeer.on('call', (call) => {
         console.log('[PeerManager DJ] Answering call from peer:', call.peer)
+        const existing = this.djMediaCalls.get(call.peer)
+        if (existing) this.closeDjCall(call.peer, existing)
         call.answer(this.djAudioStream || new MediaStream(), { sdpTransform: djMusicSdp })
-        this.djMediaCalls.set(call.peer, call)
-        call.on('close', () => this.djMediaCalls.delete(call.peer))
-        call.on('error', () => this.djMediaCalls.delete(call.peer))
+        this.trackDjCall(call.peer, call)
       })
 
       this.recheckDjCalls()
@@ -2624,43 +2620,53 @@ export class PeerManager {
     try {
       console.log('[PeerManager DJ] Calling peer:', remotePeerId)
       const call = this.djPeer.call(remotePeerId, this.djAudioStream, { sdpTransform: djMusicSdp })
-      if (call) {
-        this.djMediaCalls.set(remotePeerId, call)
-        call.on('close', () => {
-          this.djMediaCalls.delete(remotePeerId)
-        })
-        call.on('error', (err) => {
-          console.warn('[PeerManager DJ] Call error with:', remotePeerId, err)
-          this.djMediaCalls.delete(remotePeerId)
-        })
-
-        const pc = (call as any).peerConnection as RTCPeerConnection | undefined
-        if (pc && pc.addEventListener) {
-          pc.addEventListener('connectionstatechange', () => {
-            if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-              this.djMediaCalls.delete(remotePeerId)
-            }
-          })
-          pc.addEventListener('iceconnectionstatechange', () => {
-            if (pc.iceConnectionState === 'failed') {
-              this.djMediaCalls.delete(remotePeerId)
-            }
-          })
-        }
-      }
+      if (call) this.trackDjCall(remotePeerId, call)
     } catch (e) {
       console.warn('[PeerManager DJ] Failed to call peer:', remotePeerId, e)
     }
+  }
+
+  private trackDjCall(listenerId: string, call: MediaConnection) {
+    this.djMediaCalls.set(listenerId, call)
+    this.djCallUnreadySince.set(call, Date.now())
+    call.on('close', () => {
+      if (this.djMediaCalls.get(listenerId) === call) this.djMediaCalls.delete(listenerId)
+    })
+    call.on('error', (err) => {
+      if (this.djMediaCalls.get(listenerId) !== call) return
+      console.warn('[PeerManager DJ] Call error with:', listenerId, err)
+      this.closeDjCall(listenerId, call)
+    })
+
+    const pc = call.peerConnection
+    const closeFailed = () => {
+      if (pc.connectionState === 'failed' || pc.iceConnectionState === 'failed') {
+        this.closeDjCall(listenerId, call)
+      }
+    }
+    pc?.addEventListener?.('connectionstatechange', closeFailed)
+    pc?.addEventListener?.('iceconnectionstatechange', closeFailed)
+  }
+
+  private closeDjCall(listenerId: string, call: MediaConnection) {
+    if (this.djMediaCalls.get(listenerId) !== call) return
+    this.djMediaCalls.delete(listenerId)
+    try { call.close() } catch { }
+  }
+
+  private isDjCallConnected(call: MediaConnection) {
+    const pc = call.peerConnection
+    return pc && !['disconnected', 'failed', 'closed'].includes(pc.iceConnectionState) &&
+      !['disconnected', 'failed', 'closed'].includes(pc.connectionState) &&
+      (pc.connectionState === 'connected' || ['connected', 'completed'].includes(pc.iceConnectionState))
   }
 
   public redialDjToPeer(listenerId: string) {
     if (!this.djPeer || !this.djAudioStream || !this.djBotId) return
     const existingCall = this.djMediaCalls.get(listenerId)
     if (existingCall) {
-      try {
-        existingCall.close()
-      } catch { }
-      this.djMediaCalls.delete(listenerId)
+      if (!this.isDjCallConnected(existingCall)) return
+      this.closeDjCall(listenerId, existingCall)
     }
     this.callPeerFromDj(listenerId)
   }
@@ -2690,36 +2696,22 @@ export class PeerManager {
         localPlayer.currentZoneId !== undefined &&
         p.currentZoneId === localPlayer.currentZoneId
 
-      if (inSameZone) {
-        const existingCall = this.djMediaCalls.get(p.id)
-        const existingPc = existingCall ? ((existingCall as any).peerConnection as RTCPeerConnection | undefined) : null
-        const isDead = existingCall && (
-          (existingCall as any).open === false ||
-          (existingPc && (
-            existingPc.iceConnectionState === 'failed' ||
-            existingPc.iceConnectionState === 'closed' ||
-            existingPc.iceConnectionState === 'disconnected' ||
-            existingPc.connectionState === 'failed' ||
-            existingPc.connectionState === 'closed' ||
-            existingPc.connectionState === 'disconnected'
-          ))
-        )
-        if (isDead) {
-          try { existingCall.close() } catch { }
-          this.djMediaCalls.delete(p.id)
-        }
-
-        if (!this.djMediaCalls.has(p.id)) {
-          this.callPeerFromDj(p.id)
-        }
-      } else {
-        if (this.djMediaCalls.has(p.id)) {
-          try {
-            this.djMediaCalls.get(p.id)?.close()
-          } catch { }
-          this.djMediaCalls.delete(p.id)
+      const existingCall = this.djMediaCalls.get(p.id)
+      if (existingCall) {
+        const pc = existingCall.peerConnection
+        if (!inSameZone || pc?.connectionState === 'closed' || pc?.iceConnectionState === 'closed') {
+          this.closeDjCall(p.id, existingCall)
+        } else if (this.isDjCallConnected(existingCall)) {
+          this.djCallUnreadySince.delete(existingCall)
+        } else {
+          // Allow the offer/answer and ICE fallbacks to finish between health checks.
+          const now = Date.now()
+          const unreadySince = this.djCallUnreadySince.get(existingCall) ?? now
+          this.djCallUnreadySince.set(existingCall, unreadySince)
+          if (now - unreadySince >= 12000) this.closeDjCall(p.id, existingCall)
         }
       }
+      if (inSameZone && !this.djMediaCalls.has(p.id)) this.callPeerFromDj(p.id)
     })
   }
 

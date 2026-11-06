@@ -1,6 +1,13 @@
 import WebSocket from 'ws'
 import type { PlaybackConnection } from './spotifyPlayback'
 
+export class SpotifyPlaybackDisconnectedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'SpotifyPlaybackDisconnectedError'
+  }
+}
+
 export class SpotifyPlaybackProtocolError extends Error {
   readonly protocolCode: number | null
   readonly protocolMessage: string
@@ -27,8 +34,13 @@ export function connectPlayback(url: string): Promise<PlaybackConnection> {
       for (const entry of pending.values()) { clearTimeout(entry.timer); entry.reject(error) }
       pending.clear()
     }
-    socket.on('error', error => { reject(error); fail(error) })
-    socket.on('close', () => { const error = new Error('A conexão com o Spotify foi encerrada.'); reject(error); fail(error) })
+    const disconnected = (message: string) => {
+      const error = new SpotifyPlaybackDisconnectedError(message)
+      reject(error)
+      fail(error)
+    }
+    socket.on('error', error => disconnected(error.message))
+    socket.on('close', () => disconnected('A conexão com o Spotify foi encerrada.'))
     socket.on('message', data => {
       let message: any
       try { message = JSON.parse(data.toString()) } catch { return }
@@ -41,7 +53,7 @@ export function connectPlayback(url: string): Promise<PlaybackConnection> {
     })
     socket.once('open', () => resolve({
       request: (method, params, timeoutMs = 2500) => new Promise((resolveRequest, rejectRequest) => {
-        if (socket.readyState !== WebSocket.OPEN) { rejectRequest(new Error('Spotify desconectado.')); return }
+        if (socket.readyState !== WebSocket.OPEN) { rejectRequest(new SpotifyPlaybackDisconnectedError('Spotify desconectado.')); return }
         const requestId = ++id
         const timer = setTimeout(() => { pending.delete(requestId); rejectRequest(new Error('O Spotify demorou para responder.')) }, timeoutMs)
         pending.set(requestId, { method, resolve: resolveRequest, reject: rejectRequest, timer })
@@ -49,7 +61,7 @@ export function connectPlayback(url: string): Promise<PlaybackConnection> {
           if (!error) return
           pending.delete(requestId)
           clearTimeout(timer)
-          rejectRequest(error)
+          rejectRequest(new SpotifyPlaybackDisconnectedError(error.message))
         })
       }),
       close: () => { fail(new Error('Conexão encerrada.')); socket.close() },
