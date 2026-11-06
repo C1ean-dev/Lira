@@ -247,7 +247,7 @@ describe('host recovery in a room whose clients only have a data connection to t
   it('ignores a pending follower connection from an older retry when it opens late', () => {
     client()
     manager.handleHostDisconnected(HOST)
-    vi.advanceTimersByTime(5000)
+    vi.advanceTimersByTime(12_501)
     const [old, current] = FakeConn.instances
     old.emit('open')
     expect(manager.connections.size).toBe(0)
@@ -258,12 +258,46 @@ describe('host recovery in a room whose clients only have a data connection to t
     expect(useGameStore.getState().connectionStatus).toBe('connected')
   })
 
+  it('lets the same host connection finish its WebRTC fallback before redialing', () => {
+    client()
+    manager.handleHostDisconnected(HOST)
+    vi.advanceTimersByTime(2500)
+    const [attempt] = FakeConn.instances
+
+    vi.advanceTimersByTime(8500)
+    expect(attempt.closeCount).toBe(0)
+    expect(FakeConn.instances).toEqual([attempt])
+    attempt.emit('open')
+    expect(manager.connections.get(HOST)).toBe(attempt)
+    expect(appTrail.list()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ event: 'host-recovery-dial', data: expect.objectContaining({ attempt: 1 }) }),
+      expect.objectContaining({ event: 'host-recovery-connected', data: expect.objectContaining({ attemptMs: 8500 }) }),
+    ]))
+  })
+
+  it('retries promptly after a host connection error and logs the failed attempt', () => {
+    client()
+    manager.handleHostDisconnected(HOST)
+    vi.advanceTimersByTime(2500)
+    const [attempt] = FakeConn.instances
+    vi.advanceTimersByTime(1000)
+    attempt.emit('error', { type: 'negotiation-failed' })
+
+    expect(attempt.closeCount).toBe(1)
+    expect(appTrail.list()).toContainEqual(expect.objectContaining({
+      event: 'host-recovery-attempt-failed',
+      data: expect.objectContaining({ reason: 'error', errorType: 'negotiation-failed', attemptMs: 1000 }),
+    }))
+    vi.advanceTimersByTime(2500)
+    expect(FakeConn.instances).toHaveLength(2)
+  })
+
   it.each([B, C])('allows follower %s to assume the host when earlier candidates never register', id => {
     client(id, [A, B, C].filter(other => other !== id))
     const map = useMapStore.getState().mapData
     const channels = useChatStore.getState().channels
     manager.handleHostDisconnected(HOST)
-    vi.advanceTimersByTime(20_000)
+    vi.advanceTimersByTime(25_000)
     const claimant = FakePeer.instances.at(-1)!
     expect(claimant.id).toBe(HOST)
     expect(manager.isHost).toBe(false)
@@ -283,7 +317,7 @@ describe('host recovery in a room whose clients only have a data connection to t
     const first = FakePeer.instances.at(-1)!
     first.emit('error', { type: 'unavailable-id' })
     FakePeer.instances.at(-1)!.emit('open', A)
-    vi.advanceTimersByTime(20_000)
+    vi.advanceTimersByTime(25_000)
 
     const next = FakePeer.instances.at(-1)!
     expect(next).not.toBe(first)
@@ -341,7 +375,7 @@ describe('host recovery in a room whose clients only have a data connection to t
     manager.handleHostDisconnected(HOST)
     expect(useGameStore.getState().connectionHostId).toBeNull()
     expect(useGameStore.getState().isConnected).toBe(false)
-    vi.advanceTimersByTime(20_000)
+    vi.advanceTimersByTime(25_000)
     FakePeer.instances.at(-1)!.emit('open', HOST)
     const events = appTrail.list().filter(crumb => crumb.cat === 'room').map(crumb => crumb.event)
     expect(events).toEqual(expect.arrayContaining(['host-recovery-start', 'host-recovery-claim', 'host-recovery-promoted']))
@@ -629,7 +663,7 @@ describe('manual connection host transfer', () => {
     // Exercise a recovery that has already exhausted the successor's priority,
     // while the caller is still waiting for an identity confirmation.
     manager.hostRecovery.preferenceExpiresAt = Date.now()
-    vi.advanceTimersByTime(20_000)
+    vi.advanceTimersByTime(25_000)
     const claimant = FakePeer.instances.at(-1)!
     expect(claimant.id).toBe(HOST)
     claimant.emit('open', HOST)

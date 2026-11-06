@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { installRtcTransportPriority, DIRECT_ATTEMPT_MS, RELAY_ATTEMPT_MS } from '../../p2p/rtcTransportPriority'
+import { appTrail } from '../../utils/breadcrumbs'
 
 const stun = [{ urls: 'stun:discovery.example:3478' }]
 const cloudflare = [{ urls: 'turn:turn.cloudflare.com:3478?transport=udp', username: 'temporary', credential: 'credential' }]
@@ -37,7 +38,7 @@ function fixture(incoming = false, relays = metered) {
   return { pc, conn, peer, load, send, normalHandle, close: () => events.get('close')?.forEach(fn => fn()) }
 }
 
-beforeEach(() => vi.useFakeTimers())
+beforeEach(() => { vi.useFakeTimers(); appTrail.clear() })
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers() })
 describe('P2P, Cloudflare, then Metered transport selection', () => {
   it('leaves direct ICE running when all relay services are unavailable', async () => {
@@ -66,6 +67,12 @@ describe('P2P, Cloudflare, then Metered transport selection', () => {
     await vi.advanceTimersByTimeAsync(RELAY_ATTEMPT_MS)
     expect(f.pc.setConfiguration).toHaveBeenLastCalledWith(expect.objectContaining({ iceServers: [...stun, ...metered] }))
     expect(f.pc.createOffer).toHaveBeenCalledTimes(2)
+    const fallback = appTrail.list().filter(entry => entry.event === 'rtc.fallback-attempt')
+    expect(fallback.map(entry => entry.data)).toEqual([
+      expect.objectContaining({ connectionId: 'dc_test', tier: 'cloudflare', role: 'offerer' }),
+      expect.objectContaining({ connectionId: 'dc_test', tier: 'metered', role: 'offerer' }),
+    ])
+    expect(JSON.stringify(fallback)).not.toContain('credential')
   })
 
   it('never allocates relay credentials when direct ICE succeeds', async () => {
@@ -112,6 +119,10 @@ describe('P2P, Cloudflare, then Metered transport selection', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(terminal).not.toHaveBeenCalled()
     expect(f.pc.createOffer).toHaveBeenCalledTimes(1)
+    expect(appTrail.list()).toContainEqual(expect.objectContaining({
+      event: 'rtc.fallback-trigger',
+      data: expect.objectContaining({ connectionId: 'dc_test', iceState: 'failed', role: 'offerer' }),
+    }))
   })
 
   it('does not revive closed connections when credentials arrive late', async () => {

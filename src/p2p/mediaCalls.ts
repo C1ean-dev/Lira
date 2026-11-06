@@ -14,6 +14,7 @@ import { buildIceServers } from './rtcIceServers'
 import { DynamicBufferManager } from '../services/DynamicBufferManager'
 import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
 import { logVideoCodecsOnce, watchLiveQuality } from './liveQualityLog'
+import { DIRECT_ATTEMPT_MS, RELAY_ATTEMPT_MS } from './rtcTransportPriority'
 import {
   CAMERA_CAPS,
   isAlmViewer,
@@ -51,6 +52,9 @@ setViewerOptInLookup((peerId) => useGameStore.getState().remotePlayers[peerId]?.
 const ICE_POOL_SIZE = 0
 
 export const ICE_CONNECT_TIMEOUT_MS = 1200
+const INCOMING_CALL_NEGOTIATION_GRACE_MS = DIRECT_ATTEMPT_MS + RELAY_ATTEMPT_MS
+const VOICE_QUALITY_SAMPLE_MS = 10_000
+const callStartedAt = new WeakMap<MediaConnection, number>()
 
 export type CallDirection = 'in' | 'out'
 
@@ -501,6 +505,7 @@ export class MediaCallHandler {
     let iceTimeout: any = null
     let disconnectGraceTimer: any = null
     let readinessTimeout: any = null
+    let qualityTimer: ReturnType<typeof setInterval> | undefined
     let readinessPollTimer: any = null
     let remoteStream: MediaStream | null = null
     let lastReadinessSignature = ''
@@ -527,6 +532,31 @@ export class MediaCallHandler {
     }
 
     const isDjBot = peerId.startsWith('dj-') || !!useGameStore.getState().remotePlayers[peerId]?.isDjBot
+    const startedAt = Date.now()
+    callStartedAt.set(call, startedAt)
+    const isCurrent = () => mediaCalls.get(peerId) === call
+    const transport = () => ({
+      connectionId: call.connectionId,
+      iceState: pc?.iceConnectionState,
+      connectionState: pc?.connectionState,
+      signalingState: pc?.signalingState,
+      elapsedMs: Date.now() - startedAt,
+    })
+    const logTransport = (event: string) => {
+      if (isCurrent()) diagLog('p2p', 'call.transport-state', { withPeer: peerId, direction, event, ...transport() }, call.connectionId)
+    }
+    const stopQualitySampling = () => clearInterval(qualityTimer)
+    const startQualitySampling = () => {
+      if (isDjBot || typeof pc?.getStats !== 'function') return
+      let sampling = false
+      qualityTimer = setInterval(async () => {
+        if (!isCurrent()) { stopQualitySampling(); return }
+        if (sampling) return
+        sampling = true
+        await MediaCallHandler.logReceiverSnapshot(call, peerId, 'periodic', isCurrent)
+        sampling = false
+      }, VOICE_QUALITY_SAMPLE_MS)
+    }
 
     const markConnected = (reason: string) => {
       if (mediaCalls.get(peerId) !== call) return
@@ -537,11 +567,13 @@ export class MediaCallHandler {
 
       if (!isConnected) {
         isConnected = true
+        startQualitySampling()
         console.log(`[Zone Call] Connected (${direction}) with ${remotePlayerName || peerId} (${reason})`)
         diagLog('p2p', direction === 'out' ? 'call.outgoing-connected' : 'call.incoming-connected', {
           withPeer: peerId,
           fromPeer: peerId,
           reason,
+          ...transport(),
         })
         MediaCallHandler.logSenderSnapshot(mediaCalls, direction === 'out' ? 'outgoing-connected' : 'incoming-connected')
         if (pc) {
@@ -631,6 +663,7 @@ export class MediaCallHandler {
 
     const handleCallFailure = (reason: string) => {
       clearLocalTimers()
+      stopQualitySampling()
       MediaCallHandler.clearIceDisconnectTimer(peerId)
       if (mediaCalls.get(peerId) !== call) return
 
@@ -640,7 +673,7 @@ export class MediaCallHandler {
         withPeer: peerId,
         fromPeer: peerId,
         reason,
-        iceState: (pc as RTCPeerConnection | null)?.iceConnectionState,
+        ...transport(),
       })
 
       endMediaCallWithPeer(peerId)
@@ -678,8 +711,11 @@ export class MediaCallHandler {
     }
 
     if (pc && pc.addEventListener) {
+      logTransport('setup')
+      pc.addEventListener('signalingstatechange', () => logTransport('signaling'))
       pc.addEventListener('iceconnectionstatechange', () => {
         if (mediaCalls.get(peerId) !== call) return
+        logTransport('ice')
         const s = pc.iceConnectionState
         if (s === 'connected' || s === 'completed') {
           if (isDjBot && remoteStream?.getAudioTracks?.().some((t) => t.readyState !== 'ended')) {
@@ -707,6 +743,7 @@ export class MediaCallHandler {
 
       pc.addEventListener('connectionstatechange', () => {
         if (mediaCalls.get(peerId) !== call) return
+        logTransport('connection')
         const s = pc.connectionState
         if (s === 'connected') {
           if (isDjBot && remoteStream?.getAudioTracks?.().some((t) => t.readyState !== 'ended')) {
@@ -743,7 +780,7 @@ export class MediaCallHandler {
         fromPeer: peerId,
         tracks: summarizeStream(incomingStream),
       })
-      MediaCallHandler.logReceiverSnapshot(call, peerId, 'remote-stream')
+      void MediaCallHandler.logReceiverSnapshot(call, peerId, 'remote-stream', isCurrent)
       if (isDjBot && incomingStream?.getAudioTracks?.().some((t) => t.readyState !== 'ended')) {
         useMediaStore.getState().setPeerStream(peerId, incomingStream)
         markConnected('dj-stream-ready')
@@ -754,9 +791,11 @@ export class MediaCallHandler {
 
     call.on('close', () => {
       clearLocalTimers()
+      stopQualitySampling()
       diagLog('p2p', 'call.closed', {
         withPeer: peerId,
         current: mediaCalls.get(peerId) === call,
+        ...transport(),
       })
       if (mediaCalls.get(peerId) === call) {
         handleCallFailure('call-closed')
@@ -765,6 +804,7 @@ export class MediaCallHandler {
 
     call.on('error', (err) => {
       clearLocalTimers()
+      stopQualitySampling()
       diagLog('p2p', 'call.error', {
         withPeer: peerId,
         current: mediaCalls.get(peerId) === call,
@@ -809,21 +849,32 @@ export class MediaCallHandler {
     attemptRedialIfEligible?: () => void
   }) {
     console.log('[P2P Media] Incoming call from:', call.peer)
+    const isDjBot = call.peer.startsWith('dj-') || !!useGameStore.getState().remotePlayers[call.peer]?.isDjBot
     const existing = mediaCalls.get(call.peer)
     if (existing && existing !== call) {
-      const verdict = resolveCallGlare(
-        myId,
-        call.peer,
-        (existing as unknown as { __dir?: 'in' | 'out' }).__dir
-      )
-      if (verdict === 'drop-incoming') {
-        diagLog('p2p', 'call.duplicate-dropped', { fromPeer: call.peer })
+      const previousDirection = (existing as unknown as { __dir?: CallDirection }).__dir
+      const previousPc = existing.peerConnection
+      const startedAt = callStartedAt.get(existing)
+      const previousAgeMs = startedAt === undefined ? undefined : Date.now() - startedAt
+      const stillNegotiating = !isDjBot && previousDirection === 'in' &&
+        previousAgeMs !== undefined && previousAgeMs < INCOMING_CALL_NEGOTIATION_GRACE_MS &&
+        (previousPc?.iceConnectionState === 'new' || previousPc?.iceConnectionState === 'checking') &&
+        (previousPc.connectionState === 'new' || previousPc.connectionState === 'connecting')
+      const duplicate = {
+        fromPeer: call.peer, connectionId: call.connectionId, previousConnectionId: existing.connectionId,
+        previousDirection, previousAgeMs, previousIceState: previousPc?.iceConnectionState,
+        previousConnectionState: previousPc?.connectionState,
+      }
+      if (stillNegotiating || resolveCallGlare(myId, call.peer, previousDirection) === 'drop-incoming') {
+        diagLog('p2p', 'call.duplicate-dropped', {
+          ...duplicate, reason: stillNegotiating ? 'existing-incoming-negotiating' : 'outgoing-glare',
+        }, call.connectionId)
         try {
           call.close()
         } catch {}
         return
       }
-      diagLog('p2p', 'call.duplicate-replaced', { fromPeer: call.peer })
+      diagLog('p2p', 'call.duplicate-replaced', duplicate, call.connectionId)
       mediaCalls.delete(call.peer)
       try {
         ;(existing as unknown as { close?: () => void }).close?.()
@@ -840,8 +891,6 @@ export class MediaCallHandler {
       ? screenStream?.getAudioTracks?.().find((track) => (track as any).__screenShareLiveAudio === true && hasUsableAudio(track))
       : undefined
     const localAudioReady = !!localStream?.getAudioTracks?.().some((track) => hasUsableAudio(track)) || !!liveScreenAudio
-    const isDjBot = call.peer.startsWith('dj-') || !!useGameStore.getState().remotePlayers[call.peer]?.isDjBot
-
     if (!localAudioReady && !isDjBot) {
       useGameStore.getState().setCallState(call.peer, 'reconnecting')
       diagLog('p2p', 'call.answer-skipped-no-audio', {
@@ -1393,25 +1442,54 @@ export class MediaCallHandler {
     }
   }
 
-  static logReceiverSnapshot(call: MediaConnection, peerId: string, reason: string) {
+  static async logReceiverSnapshot(call: MediaConnection, peerId: string, reason: string, isCurrent: () => boolean) {
     try {
-      const pc = (call as any).peerConnection as RTCPeerConnection | undefined
+      const pc = call.peerConnection
       if (!pc || typeof pc.getStats !== 'function') return
-      pc.getStats().then((stats) => {
-        const inbound: Record<string, unknown> = {}
-        stats.forEach((report: any) => {
-          if (report?.type === 'inbound-rtp' && (report.kind === 'audio' || report.mediaType === 'audio')) {
-            inbound.audio = {
-              bytesReceived: report.bytesReceived ?? null,
-              packetsReceived: report.packetsReceived ?? null,
-              packetsLost: report.packetsLost ?? null,
-              jitter: report.jitter ?? null,
-              audioLevel: report.audioLevel ?? null,
-            }
+      const stats = await pc.getStats()
+      if (!isCurrent()) return
+      const inbound: Record<string, unknown> = {}
+      let remoteAudio: Record<string, unknown> | undefined
+      let transportId: string | undefined
+      let selectedPairId: string | undefined
+      stats.forEach(report => {
+        if (report?.type === 'transport' && report.selectedCandidatePairId) {
+          selectedPairId = report.selectedCandidatePairId
+        }
+        if ((report?.kind ?? report?.mediaType) !== 'audio') return
+        if (report.type === 'inbound-rtp') {
+          transportId = report.transportId
+          inbound.audio = {
+            bytesReceived: report.bytesReceived ?? null,
+            packetsReceived: report.packetsReceived ?? null,
+            packetsLost: report.packetsLost ?? null,
+            jitter: report.jitter ?? null,
+            audioLevel: report.audioLevel ?? null,
+            concealedSamples: report.concealedSamples ?? null,
+            jitterBufferDelay: report.jitterBufferDelay ?? null,
+            jitterBufferEmittedCount: report.jitterBufferEmittedCount ?? null,
           }
-        })
-        diagLog('p2p', 'receiver-stats', { fromPeer: peerId, reason, inbound })
-      }).catch(() => {})
+        } else if (report.type === 'remote-inbound-rtp') {
+          remoteAudio = {
+            packetsLost: report.packetsLost ?? null,
+            fractionLost: report.fractionLost ?? null,
+            jitter: report.jitter ?? null,
+            roundTripTime: report.roundTripTime ?? null,
+          }
+        }
+      })
+      const audioTransport = transportId && stats.get?.(transportId)
+      const pairId = audioTransport?.selectedCandidatePairId || selectedPairId
+      const pair = pairId && stats.get?.(pairId)
+      const local = pair && stats.get?.(pair.localCandidateId)
+      const remote = pair && stats.get?.(pair.remoteCandidateId)
+      const route = pair ? {
+        localType: local?.candidateType ?? null,
+        remoteType: remote?.candidateType ?? null,
+        protocol: local?.protocol ?? null,
+        rttMs: typeof pair.currentRoundTripTime === 'number' ? Math.round(pair.currentRoundTripTime * 1000) : null,
+      } : undefined
+      diagLog('p2p', 'receiver-stats', { fromPeer: peerId, connectionId: call.connectionId, reason, inbound, remoteAudio, route })
     } catch {}
   }
 
