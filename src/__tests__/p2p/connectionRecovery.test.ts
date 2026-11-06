@@ -4,6 +4,7 @@ import { PeerManager } from '../../p2p/PeerManager'
 import { useGameStore } from '../../store/useGameStore'
 import { useMediaStore } from '../../store/useMediaStore'
 import { Player } from '../../types/game'
+import { appTrail } from '../../utils/breadcrumbs'
 
 // The editor can save native assets while these call-only tests run.
 vi.mock('../../data/nativeAssets.json', () => ({ default: { categories: [], assets: [] } }))
@@ -45,6 +46,7 @@ describe('Connection Recovery & Call Resilience Tests', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     vi.useFakeTimers()
+    appTrail.clear()
 
     useGameStore.setState({
       isConnected: true,
@@ -149,6 +151,90 @@ describe('Connection Recovery & Call Resilience Tests', () => {
   })
 
   describe('WebRTC Call Lifecycle, ICE Disconnect Grace & Failure Auto-Recovery', () => {
+    it('keeps a negotiating incoming voice call and accepts a fresh offer after the grace period', () => {
+      const peer = 'remote-peer-1'
+      const mediaCalls = new Map()
+      const pc = { iceConnectionState: 'checking', connectionState: 'connecting', signalingState: 'stable' }
+      const oldCall = { peer, connectionId: 'old', peerConnection: pc, on: vi.fn(), answer: vi.fn(), close: vi.fn() }
+      const duplicate = { ...oldCall, connectionId: 'duplicate', answer: vi.fn(), close: vi.fn() }
+      const replacement = { ...oldCall, connectionId: 'replacement', answer: vi.fn(), close: vi.fn() }
+      const receive = (call: typeof oldCall) => MediaCallHandler.handleIncomingCall({
+        call: call as any, myId: 'local-peer', mediaCalls, endMediaCallWithPeer: vi.fn(),
+      })
+
+      receive(oldCall)
+      vi.advanceTimersByTime(3000)
+      receive(duplicate)
+      expect(mediaCalls.get(peer)).toBe(oldCall)
+      expect(oldCall.close).not.toHaveBeenCalled()
+      expect(duplicate.close).toHaveBeenCalledOnce()
+      expect(duplicate.answer).not.toHaveBeenCalled()
+      expect(appTrail.list()).toContainEqual(expect.objectContaining({
+        event: 'call.duplicate-dropped',
+        data: expect.objectContaining({ connectionId: 'duplicate', previousConnectionId: 'old', reason: 'existing-incoming-negotiating' }),
+      }))
+
+      vi.advanceTimersByTime(2500)
+      receive(replacement)
+      expect(oldCall.close).toHaveBeenCalledOnce()
+      expect(replacement.answer).toHaveBeenCalledOnce()
+      expect(mediaCalls.get(peer)).toBe(replacement)
+    })
+
+    it('logs transport transitions and audio quality after connection and stops sampling retired calls', async () => {
+      const peerId = 'remote-peer-1'
+      const audioTrack = { kind: 'audio', enabled: true, readyState: 'live' }
+      const events = new Map<string, () => void>()
+      const callEvents = new Map<string, (stream: MockMediaStream) => void>()
+      const pc = {
+        iceConnectionState: 'connected', connectionState: 'connected', signalingState: 'stable',
+        addEventListener: (name: string, fn: () => void) => events.set(name, fn),
+        getSenders: () => [{ track: audioTrack, replaceTrack: vi.fn().mockResolvedValue(undefined) }],
+        getReceivers: () => [{ track: audioTrack }],
+        getStats: vi.fn(async () => new Map([
+          ['in', { type: 'inbound-rtp', kind: 'audio', packetsReceived: 250, packetsLost: 8, jitter: 0.025, concealedSamples: 240 }],
+          ['out', { type: 'outbound-rtp', kind: 'audio' }],
+          ['remote-in', { type: 'remote-inbound-rtp', kind: 'audio', packetsLost: 4, fractionLost: 0.04, jitter: 0.015, roundTripTime: 0.12 }],
+          ['transport', { type: 'transport', selectedCandidatePairId: 'pair' }],
+          ['pair', { type: 'candidate-pair', currentRoundTripTime: 0.12, localCandidateId: 'local', remoteCandidateId: 'remote' }],
+          ['local', { type: 'local-candidate', candidateType: 'relay', protocol: 'udp', address: '10.0.0.2' }],
+          ['remote', { type: 'remote-candidate', candidateType: 'srflx' }],
+        ])),
+      }
+      const call = {
+        peer: peerId, connectionId: 'voice-1', peerConnection: pc,
+        on: (name: string, fn: (stream: MockMediaStream) => void) => callEvents.set(name, fn),
+      }
+      const mediaCalls = new Map([[peerId, call as any]])
+      MediaCallHandler.setupCallLifecycle({ call: call as any, peerId, direction: 'in', mediaCalls, endMediaCallWithPeer: vi.fn() })
+      callEvents.get('stream')?.(new MockMediaStream([audioTrack]))
+      await vi.advanceTimersByTimeAsync(0)
+      expect(useGameStore.getState().callStates[peerId]).toBe('connected')
+
+      pc.iceConnectionState = 'disconnected'
+      events.get('iceconnectionstatechange')?.()
+      expect(appTrail.list()).toContainEqual(expect.objectContaining({
+        event: 'call.transport-state',
+        data: expect.objectContaining({ connectionId: 'voice-1', iceState: 'disconnected' }),
+      }))
+      pc.iceConnectionState = 'connected'
+      events.get('iceconnectionstatechange')?.()
+      await vi.advanceTimersByTimeAsync(10_000)
+
+      const sample = appTrail.stats()['p2p/receiver-stats']
+      expect(sample?.data).toMatchObject({
+        connectionId: 'voice-1', fromPeer: peerId, reason: 'periodic',
+        inbound: { audio: { packetsReceived: 250, packetsLost: 8, jitter: 0.025, concealedSamples: 240 } },
+        remoteAudio: { packetsLost: 4, fractionLost: 0.04, jitter: 0.015, roundTripTime: 0.12 },
+        route: { localType: 'relay', remoteType: 'srflx', protocol: 'udp', rttMs: 120 },
+      })
+      expect(JSON.stringify(sample)).not.toContain('10.0.0.2')
+      mediaCalls.delete(peerId)
+      const samplesBefore = pc.getStats.mock.calls.length
+      await vi.advanceTimersByTimeAsync(20_000)
+      expect(pc.getStats).toHaveBeenCalledTimes(samplesBefore)
+    })
+
     it('does not negotiate a video-only call while the microphone track is unavailable', () => {
       useMediaStore.setState({
         localStream: new MockMediaStream([{ kind: 'video', enabled: false, stop: vi.fn() }]) as any,

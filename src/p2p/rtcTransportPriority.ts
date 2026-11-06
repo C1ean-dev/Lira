@@ -1,4 +1,5 @@
 import type Peer from 'peerjs'
+import { diagLog } from '../utils/diagnosticLogger'
 
 export const DIRECT_ATTEMPT_MS = 1500
 export const RELAY_ATTEMPT_MS = 3500
@@ -56,6 +57,10 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
     }
     const send = (type: 'OFFER' | 'ANSWER', sdp: RTCSessionDescriptionInit, next: RelayTier) => {
       peer.socket.send({ type, dst: conn.peer, payload: { sdp, type: conn.type, connectionId: conn.connectionId, liraIceRestart: next } } as any)
+      diagLog('p2p', 'rtc.fallback-attempt', {
+        peerId: conn.peer, connectionId: conn.connectionId, connectionType: conn.type,
+        tier: next, role: type === 'OFFER' ? 'offerer' : 'answerer',
+      }, `${conn.connectionId}:${next}`)
     }
     async function advance() {
       if (!alive() || busy || !originator || !supportsPriority || connected()) return
@@ -112,14 +117,16 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
     const state = (event: Event) => {
       if (!alive()) { clear(); return }
       if (connected()) { clear(); return }
-      if (pc.iceConnectionState === 'failed' || pc.connectionState === 'failed') {
-        if (supportsPriority && (tier < 1 || busy)) {
-          event.stopImmediatePropagation()
-          if (originator) void advance()
-        }
-      } else if (pc.iceConnectionState === 'disconnected' || pc.connectionState === 'disconnected') {
-        if (supportsPriority && tier < 1) { event.stopImmediatePropagation(); if (originator) void advance() }
-      }
+      const failed = pc.iceConnectionState === 'failed' || pc.connectionState === 'failed'
+      const disconnected = pc.iceConnectionState === 'disconnected' || pc.connectionState === 'disconnected'
+      if (!supportsPriority || !((failed || disconnected) && tier < 1 || failed && busy)) return
+      event.stopImmediatePropagation()
+      diagLog('p2p', 'rtc.fallback-trigger', {
+        peerId: conn.peer, connectionId: conn.connectionId, connectionType: conn.type,
+        role: originator ? 'offerer' : 'answerer',
+        iceState: pc.iceConnectionState, connectionState: pc.connectionState, signalingState: pc.signalingState,
+      }, conn.connectionId)
+      if (originator) void advance()
     }
     const signaling = () => {
       // Give each transport a full attempt after its answer arrives, even when
