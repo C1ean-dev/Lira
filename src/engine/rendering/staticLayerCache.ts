@@ -8,6 +8,7 @@ import { useCustomAssetsStore, getCustomAssetImage, onCustomAssetsChange } from 
 
 interface StaticLayer {
   canvas: HTMLCanvasElement
+  foregroundCanvas: HTMLCanvasElement | null
   mapRef: MapData
   mapW: number
   mapH: number
@@ -107,6 +108,26 @@ export function getStaticLayer(map: MapData): StaticLayer | null {
     }
   }
 
+  // Keep cached walls and furniture above the floors redrawn each frame.
+  const foregroundCanvas = animatedFloorTiles.length > 0
+    ? cached?.foregroundCanvas ?? document.createElement('canvas')
+    : null
+  let foregroundCtx = ctx
+  if (foregroundCanvas) {
+    if (foregroundCanvas.width !== pxW || foregroundCanvas.height !== pxH) {
+      foregroundCanvas.width = pxW
+      foregroundCanvas.height = pxH
+    }
+    const context = foregroundCanvas.getContext('2d')
+    if (!context) {
+      cached = null
+      return null
+    }
+    context.imageSmoothingEnabled = false
+    context.clearRect(0, 0, pxW, pxH)
+    foregroundCtx = context
+  }
+
   const zones = map.zones || []
   const staticZones: PrivateZone[] = []
   for (const zone of zones) {
@@ -118,7 +139,7 @@ export function getStaticLayer(map: MapData): StaticLayer | null {
     }
   }
   for (const zone of staticZones) {
-    WallRenderer.drawLiraRoom(ctx, zone, zones)
+    WallRenderer.drawLiraRoom(foregroundCtx, zone, zones)
   }
 
   for (const item of furnitureDrawOrder(map.furniture || [], customAssets)) {
@@ -127,12 +148,13 @@ export function getStaticLayer(map: MapData): StaticLayer | null {
       animatedFurniture.push(item)
       continue
     }
-    FurnitureRenderer.drawFurniture(ctx, item)
+    FurnitureRenderer.drawFurniture(foregroundCtx, item)
   }
 
   lastAssetRef = customAssets
   cached = {
     canvas,
+    foregroundCanvas,
     mapRef: map,
     mapW,
     mapH,

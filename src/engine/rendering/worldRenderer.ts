@@ -86,6 +86,7 @@ export class WorldRenderer {
           if (enableCulling && (t.x < startX || t.x >= endX || t.y < startY || t.y >= endY)) continue
           PixelArtRenderer.drawFloor(ctx, t.type, t.x * TILE_SIZE, t.y * TILE_SIZE, TILE_SIZE, t.x, t.y, map.floors)
         }
+        if (staticLayer.foregroundCanvas) ctx.drawImage(staticLayer.foregroundCanvas, 0, 0)
         for (const zone of staticLayer.animatedZones) {
           PixelArtRenderer.drawLiraRoom(ctx, zone, map.zones || [])
         }
