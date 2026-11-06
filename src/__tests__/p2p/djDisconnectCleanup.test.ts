@@ -42,6 +42,22 @@ afterEach(() => {
 })
 
 describe('DJ disconnection cleanup', () => {
+  it.each([false, true])('redials once per DJ call request when room host=%s', isHost => {
+    manager.isHost = isHost
+    manager.djPeer = { id: BOT }
+    manager.djBotId = BOT
+    const redial = vi.spyOn(manager, 'redialDjToPeer').mockImplementation(() => {})
+
+    manager.handleNetworkMessage({
+      type: 'DJ_CALL_REQUEST',
+      senderId: 'other',
+      payload: { listenerId: 'other' },
+      timestamp: Date.now(),
+    }, isHost ? 'other' : 'room-host')
+
+    expect(redial).toHaveBeenCalledExactlyOnceWith('other')
+  })
+
   it.each([false, true])('removes the departed owner broadcast, bot and audio as connection host=%s', isHost => {
     manager.isHost = isHost
     manager.removePeer(OWNER)
