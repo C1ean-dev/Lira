@@ -306,6 +306,12 @@ export class MediaCallHandler {
     } catch {}
   }
 
+  static isDjTransportReady(pc: RTCPeerConnection | null | undefined) {
+    if (!pc || ['disconnected', 'failed', 'closed'].includes(pc.iceConnectionState)) return false
+    return pc.connectionState === 'connected' ||
+      (pc.connectionState == null && ['connected', 'completed'].includes(pc.iceConnectionState))
+  }
+
   static evaluateCallReadiness(
     pc: RTCPeerConnection | null | undefined,
     remoteStream: MediaStream | null | undefined,
@@ -373,7 +379,9 @@ export class MediaCallHandler {
     const iceState = (pc as any)?.iceConnectionState
     const connectionState = (pc as any)?.connectionState
     const signalingState = (pc as any)?.signalingState
-    const transportReady = iceState === 'connected' || iceState === 'completed' || connectionState === 'connected'
+    const transportReady = isDjBot
+      ? MediaCallHandler.isDjTransportReady(pc)
+      : iceState === 'connected' || iceState === 'completed' || connectionState === 'connected'
     const signalingReady = signalingState === undefined || signalingState === null || signalingState === 'stable'
     const sendAudioReady = isDjBot || !!audioSender
     const sendVideoReady = !!videoSender
@@ -595,7 +603,7 @@ export class MediaCallHandler {
         if (remoteStream) {
           useMediaStore.getState().setPeerStream(peerId, remoteStream)
         } else if (isDjBot) {
-          const rxTrack = pc?.getReceivers().find((r) => r.track && r.track.kind === 'audio')?.track
+          const rxTrack = pc?.getReceivers?.().find((r) => r.track?.kind === 'audio' && r.track.readyState !== 'ended')?.track
           if (rxTrack) {
             useMediaStore.getState().setPeerStream(peerId, new MediaStream([rxTrack]))
           }
@@ -613,9 +621,15 @@ export class MediaCallHandler {
         // without re-running media setup or creating another voice call.
         const ice = pc?.iceConnectionState
         const connection = pc?.connectionState
-        if ((ice === 'connected' || ice === 'completed' || connection === 'connected') &&
+        const transportRecovered = isDjBot ? MediaCallHandler.isDjTransportReady(pc) :
+          (ice === 'connected' || ice === 'completed' || connection === 'connected') &&
             !['disconnected', 'failed', 'closed'].includes(ice ?? '') &&
-            !['disconnected', 'failed', 'closed'].includes(connection ?? '')) {
+            !['disconnected', 'failed', 'closed'].includes(connection ?? '')
+        if (transportRecovered) {
+          if (isDjBot && remoteStream?.getAudioTracks().some((track) => track.readyState !== 'ended')) {
+            const mediaState = useMediaStore.getState()
+            if (mediaState.peerStreams[peerId] !== remoteStream) mediaState.setPeerStream(peerId, remoteStream)
+          }
           markConnected(`transport-recovered:${reason}`)
         }
         return
@@ -642,6 +656,7 @@ export class MediaCallHandler {
       void MediaCallHandler.evaluateAudioRtpReadiness(pc, isDjBot).then((stats) => {
         readinessStatsInFlight = false
         if (isConnected || mediaCalls.get(peerId) !== call) return
+        if (isDjBot && !MediaCallHandler.isDjTransportReady(pc)) return
         if (!stats.ready) {
           diagLog('p2p', 'call.readiness-audio-stats-pending', {
             withPeer: peerId,
@@ -718,12 +733,7 @@ export class MediaCallHandler {
         logTransport('ice')
         const s = pc.iceConnectionState
         if (s === 'connected' || s === 'completed') {
-          if (isDjBot && remoteStream?.getAudioTracks?.().some((t) => t.readyState !== 'ended')) {
-            useMediaStore.getState().setPeerStream(peerId, remoteStream)
-            markConnected('ice-dj-stream-ready')
-          } else {
-            tryFinalizeReadiness('ice=' + s)
-          }
+          tryFinalizeReadiness('ice=' + s)
         } else if (s === 'disconnected') {
           if (isConnected) {
             useGameStore.getState().setCallState(peerId, 'reconnecting')
@@ -746,12 +756,7 @@ export class MediaCallHandler {
         logTransport('connection')
         const s = pc.connectionState
         if (s === 'connected') {
-          if (isDjBot && remoteStream?.getAudioTracks?.().some((t) => t.readyState !== 'ended')) {
-            useMediaStore.getState().setPeerStream(peerId, remoteStream)
-            markConnected('pc-dj-stream-ready')
-          } else {
-            tryFinalizeReadiness('pc=connected')
-          }
+          tryFinalizeReadiness('pc=connected')
         } else if (s === 'failed' || s === 'closed') {
           handleCallFailure('pc=' + s)
         }
@@ -781,11 +786,6 @@ export class MediaCallHandler {
         tracks: summarizeStream(incomingStream),
       })
       void MediaCallHandler.logReceiverSnapshot(call, peerId, 'remote-stream', isCurrent)
-      if (isDjBot && incomingStream?.getAudioTracks?.().some((t) => t.readyState !== 'ended')) {
-        useMediaStore.getState().setPeerStream(peerId, incomingStream)
-        markConnected('dj-stream-ready')
-        return
-      }
       tryFinalizeReadiness('remote-stream')
     })
 
@@ -817,14 +817,6 @@ export class MediaCallHandler {
 
     readinessTimeout = setTimeout(() => {
       if (!isConnected) {
-        if (isDjBot) {
-          const pcIce = pc?.iceConnectionState
-          const pcState = pc?.connectionState
-          if (pcIce === 'connected' || pcIce === 'completed' || pcState === 'connected') {
-            markConnected('dj-timeout-grace-connected')
-            return
-          }
-        }
         handleCallFailure('media-readiness-timeout')
       }
     }, 12000)

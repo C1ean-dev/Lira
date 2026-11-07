@@ -62,6 +62,31 @@ describe('signaling through existing direct links', () => {
     expect(b._handleMessage).toHaveBeenCalledTimes(1)
   })
 
+  it('returns the DJ answer and ICE candidates over the signaling socket when the room host has no link to the bot', () => {
+    const host = peer('lira-ROOM-host')
+    const listener = peer('lira-ROOM-peer-listener')
+    const dj = peer('dj-ROOM-owner')
+    const signalingSend = listener.socket.send
+    const hostRouter = installDirectSignaling(host, host.id)
+    const listenerRouter = installDirectSignaling(listener, listener.id)
+    const hostLink = vi.fn(packet => hostRouter.receive(packet, listener.id))
+    listenerRouter.addLink(host.id, hostLink)
+    hostRouter.addLink(listener.id, packet => listenerRouter.receive(packet, host.id))
+    signalingSend.mockImplementation(message => dj._handleMessage({ ...message, src: listener.id }))
+
+    const answer = { type: 'ANSWER', dst: dj.id, payload: {
+      type: 'media', connectionId: 'mc_dj', sdp: { type: 'answer', sdp: 'v=0' },
+    } }
+    const candidate = { type: 'CANDIDATE', dst: dj.id, payload: {
+      type: 'media', connectionId: 'mc_dj', candidate: { candidate: 'candidate:test' },
+    } }
+    listener.socket.send(answer)
+    listener.socket.send(candidate)
+
+    expect(hostLink).not.toHaveBeenCalled()
+    expect(dj._handleMessage.mock.calls).toEqual([[{ ...answer, src: listener.id }], [{ ...candidate, src: listener.id }]])
+  })
+
   it('does not consume normal room messages and rejects arbitrary server control messages', () => {
     const p = peer('lira-ROOM-host'), router = installDirectSignaling(p, p.id)
     router.addLink('lira-ROOM-peer-a', () => {})
