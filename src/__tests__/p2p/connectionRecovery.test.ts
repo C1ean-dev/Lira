@@ -235,6 +235,55 @@ describe('Connection Recovery & Call Resilience Tests', () => {
       expect(pc.getStats).toHaveBeenCalledTimes(samplesBefore)
     })
 
+    it('waits for the DJ transport before attaching the track announced by the offer', async () => {
+      const peerId = 'dj-room-owner'
+      const track = { kind: 'audio', readyState: 'live' }
+      const stream = new MockMediaStream([track])
+      const pc = Object.assign(new EventTarget(), {
+        iceConnectionState: 'new', connectionState: 'new', signalingState: 'have-remote-offer',
+        getReceivers: () => [{ track }],
+      })
+      const events = new Map<string, (value?: any) => void>()
+      const call = {
+        peer: peerId, connectionId: 'dj-incoming', peerConnection: pc,
+        on: (event: string, listener: (value?: any) => void) => events.set(event, listener),
+      }
+      const mediaCalls = new Map([[peerId, call as any]])
+      const onCallConnected = vi.fn()
+      useGameStore.getState().setCallState(peerId, 'connecting')
+      MediaCallHandler.setupCallLifecycle({
+        call: call as any, peerId, direction: 'in', mediaCalls, endMediaCallWithPeer: vi.fn(), onCallConnected,
+      })
+      events.get('stream')?.(stream)
+      expect(useGameStore.getState().callStates[peerId]).toBe('connecting')
+      expect(useMediaStore.getState().peerStreams[peerId]).toBeUndefined()
+      expect(onCallConnected).not.toHaveBeenCalled()
+
+      pc.signalingState = 'stable'
+      pc.iceConnectionState = 'connected'
+      pc.connectionState = 'connecting'
+      pc.dispatchEvent(new Event('iceconnectionstatechange'))
+      expect(onCallConnected).not.toHaveBeenCalled()
+
+      pc.connectionState = 'connected'
+      pc.dispatchEvent(new Event('connectionstatechange'))
+      expect(useGameStore.getState().callStates[peerId]).toBe('connected')
+      expect(useMediaStore.getState().peerStreams[peerId]).toBe(stream)
+      expect(onCallConnected).toHaveBeenCalledExactlyOnceWith(peerId)
+
+      pc.iceConnectionState = 'disconnected'
+      pc.connectionState = 'disconnected'
+      pc.dispatchEvent(new Event('iceconnectionstatechange'))
+      const replacement = new MockMediaStream([{ kind: 'audio', readyState: 'live' }])
+      events.get('stream')?.(replacement)
+      expect(useMediaStore.getState().peerStreams[peerId]).toBe(stream)
+      pc.iceConnectionState = 'completed'
+      pc.connectionState = 'connected'
+      pc.dispatchEvent(new Event('connectionstatechange'))
+      expect(useMediaStore.getState().peerStreams[peerId]).toBe(replacement)
+      expect(onCallConnected).toHaveBeenCalledTimes(1)
+    })
+
     it('does not negotiate a video-only call while the microphone track is unavailable', () => {
       useMediaStore.setState({
         localStream: new MockMediaStream([{ kind: 'video', enabled: false, stop: vi.fn() }]) as any,
