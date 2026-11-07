@@ -73,9 +73,13 @@ app.commandLine.appendSwitch('enable-webrtc-dscp')
 
 // Explicitly disable Windows Graphics Capture (WGC) capturer flags to avoid the OS security yellow border:
 // Screen capture uses DXGI Desktop Duplication (ScreenCapturerWinDirectx) with zero border and high performance.
+// Keep WebRTC gain processing inside the app, without changing the OS input level.
+const disabledFeatures = app.commandLine.getSwitchValue('disable-features')
 app.commandLine.appendSwitch(
   'disable-features',
-  'WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer,WebRtcAllowWgcDesktopCapturer,WebRtcWgcRequireBorder'
+  [disabledFeatures, 'WebRtcAllowInputVolumeAdjustment',
+    'WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer,WebRtcAllowWgcDesktopCapturer,WebRtcWgcRequireBorder']
+    .filter(Boolean).join(',')
 )
 app.commandLine.appendSwitch(
   'enable-features',
