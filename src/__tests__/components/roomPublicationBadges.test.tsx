@@ -40,6 +40,21 @@ describe('room publication in the navigation bar', () => {
     expect(renderBar()).toContain('Aguardando publicação')
   })
 
+  it('uses the available space for publication instead of hiding it below 1800px', () => {
+    publication.servers = [{ name: 'Render', host: 'lira-signaling.onrender.com' }]
+    const html = renderBar()
+    const badge = html.match(/<span[^>]*aria-label="Sala publicada em Render"[^>]*>/)?.[0]
+    expect(badge).toBeDefined()
+    expect(badge).not.toContain('hidden')
+    expect(badge).not.toContain('min-[1800px]')
+    expect(html).toContain('aria-label="Servidores de publicação"')
+    expect(html).not.toContain('max-w-[260px]')
+    publication.servers = []
+    const pending = renderBar().match(/<span[^>]*>Aguardando publicação<\/span>/)?.[0]
+    expect(pending).toBeDefined()
+    expect(pending).not.toContain('min-[1800px]')
+  })
+
   it('hides publication services when the room becomes private or is left', () => {
     publication.servers = [{ name: 'Render', host: 'lira-signaling.onrender.com' }]
     useGameStore.setState({ isRoomPublic: false })
