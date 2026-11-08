@@ -32,6 +32,7 @@ import { UpdateDownloadIndicator } from './common/UpdateDownloadIndicator'
 import { UpdateChangelogHover } from './common/UpdateChangelogHover'
 import { isAndroid } from '../utils/platform'
 import { useRoomPublication } from '../hooks/useRoomPublication'
+import { useInlineContentFit } from '../hooks/useInlineContentFit'
 import { DirectConnectionPanel } from './lobby/DirectConnectionPanel'
 
 interface Props {
@@ -144,6 +145,10 @@ export const TopNavBar: React.FC<Props> = ({
       ? 'Atualizar Lira'
       : 'Instalar atualização'
   const displayRoomId = isAndroidPlatform && roomId ? roomId.slice(0, 8) : roomId
+  const publicationFit = useInlineContentFit(
+    !!roomId && isRoomPublic && !isAndroidPlatform,
+    JSON.stringify([roomId, isHost, connectionStatus, publicationServers]),
+  )
 
   const handleCopyCode = async () => {
     if (!roomId || copyStatus === 'copying') return
@@ -168,7 +173,7 @@ export const TopNavBar: React.FC<Props> = ({
 
   return (
     <header className={`h-14 shrink-0 bg-[#12151d]/90 backdrop-blur-md border-b border-[#2a3142] px-3 sm:px-4 flex items-center justify-between gap-2 select-none relative ${isMobileMenuOpen ? 'z-[80]' : 'z-30'}`}>
-      <div className="flex flex-1 min-w-0 items-center gap-1.5 sm:gap-3">
+      <div ref={publicationFit.containerRef} className="flex flex-1 min-w-0 items-center gap-1.5 sm:gap-3">
         <div className="flex shrink-0 items-center">
           <LiraLogo size={32} showText={true} className="hidden sm:inline-flex" />
           <LiraLogo size={28} showText={false} className="sm:hidden" />
@@ -213,7 +218,7 @@ export const TopNavBar: React.FC<Props> = ({
           <button
             onClick={isHost ? toggleRoomPrivacy : undefined}
             disabled={!isHost}
-            className={`flex shrink-0 min-w-0 max-w-[260px] whitespace-nowrap items-center justify-center gap-1.5 ${
+            className={`relative flex shrink-0 min-w-0 overflow-hidden whitespace-nowrap items-center justify-center gap-1.5 ${
               isAndroidPlatform ? 'p-2' : 'p-2 sm:px-3 sm:py-1.5'
             } rounded-xl border text-xs font-semibold transition-all ${
               isRoomPublic
@@ -238,19 +243,26 @@ export const TopNavBar: React.FC<Props> = ({
             {!isAndroidPlatform && (
               <>
                 <span className="hidden sm:inline">{isRoomPublic ? 'Pública' : 'Privada'}</span>
-                {isRoomPublic && publicationServers.map(server => (
-                  <span
-                    key={server.host}
-                    className="hidden min-[1800px]:inline-block min-w-0 max-w-24 truncate text-[9px] border px-1.5 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                    aria-label={`Sala publicada em ${server.name}`}
-                    title={server.host}
-                  >
-                    {server.name}
-                  </span>
-                ))}
-                {isRoomPublic && publicationServers.length === 0 && (
-                  <span className="hidden min-[1800px]:inline text-[9px] text-amber-300">Aguardando publicação</span>
-                )}
+                {isRoomPublic && <span
+                  ref={publicationFit.contentRef}
+                  aria-label="Servidores de publicação"
+                  aria-hidden={!publicationFit.fits}
+                  className={`inline-flex w-max shrink-0 items-center gap-1.5 ${publicationFit.fits ? '' : 'absolute invisible pointer-events-none'}`}
+                >
+                  {publicationServers.map(server => (
+                    <span
+                      key={server.host}
+                      className="inline-block min-w-0 max-w-24 truncate text-[9px] border px-1.5 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                      aria-label={`Sala publicada em ${server.name}`}
+                      title={server.host}
+                    >
+                      {server.name}
+                    </span>
+                  ))}
+                  {publicationServers.length === 0 && (
+                    <span className="text-[9px] text-amber-300">Aguardando publicação</span>
+                  )}
+                </span>}
               </>
             )}
           </button>
