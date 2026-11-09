@@ -189,6 +189,33 @@ describe('local Windows and Android release', () => {
     expect(calls.find(call => call.command === 'gradle')?.env.JAVA_HOME).toBe(jdk)
   })
 
+  it('installs the Python test dependencies in an isolated environment before the suite', async () => {
+    const python = path.join(root, 'Python install', 'python.exe')
+    await execute({ LIRA_PYTHON: python })
+    const suiteIndex = calls.findIndex(call => call.command === 'npm' && call.args.join(' ') === 'run test:all')
+    const suite = calls[suiteIndex]
+    const venv = path.join(suite.cwd, '.scratch', 'release-python')
+    const isolatedPython = path.join(venv, 'Scripts', 'python.exe')
+    expect(suite.env.LIRA_PYTHON).toBe(isolatedPython)
+    const preparation = calls.slice(0, suiteIndex)
+    expect(preparation).toContainEqual(expect.objectContaining({ command: python, args: ['-m', 'venv', venv] }))
+    expect(preparation).toContainEqual(expect.objectContaining({ command: isolatedPython, args: expect.arrayContaining([
+      '-m', 'pip', 'install', '-r', 'scripts/noise-benchmark/requirements.txt', 'Pillow',
+    ]) }))
+  })
+
+  it('stops before the test suite if Python dependencies cannot be installed', async () => {
+    failure = '-m pip install'
+    await expect(execute()).rejects.toThrow('simulated failure')
+    expect(calls.some(call => call.args.includes('test:all') || call.args.includes('create'))).toBe(false)
+  })
+
+  it('removes ignored files left in the temporary checkout by git worktree remove', async () => {
+    await execute()
+    const worktree = calls.find(call => call.command === 'git' && call.args[1] === 'add')!.args.at(-2)!
+    await expect(fs.access(path.dirname(worktree))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('keeps TURN settings in both builds and strips CI version outputs', () => {
     const env = buildEnvironment({ VITE_TURN_URLS: 'turn:relay.test:3478', VITE_TURN_CREDENTIAL: 'credential', GITHUB_OUTPUT: 'do-not-write', LIRA_TARGET: 'web' }, '1.1.207')
     expect(env.VITE_TURN_CREDENTIAL).toBe('credential')

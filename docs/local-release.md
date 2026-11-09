@@ -6,6 +6,7 @@ no terminal com `npm run release`.
 
 O script busca o código mais recente de `origin/main` e as tags, escolhe a próxima
 versão disponível (incluindo rascunhos), instala as dependências com `npm ci`,
+prepara um ambiente Python com Pillow e as dependências de análise de áudio,
 instala o Chromium dos testes e executa **todas as suítes de `npm run test:all`**.
 Depois gera o instalador Windows e o APK Android assinado, verifica a assinatura
 do APK, envia ambos a um rascunho no GitHub Releases e publica a release como
@@ -26,7 +27,8 @@ Instale uma vez neste computador:
 - Node.js 22.12 ou superior, com npm, e Git.
 - GitHub CLI (`gh`), autenticado com `gh auth login`, com permissão para criar
   releases e enviar arquivos no repositório apontado por `origin`.
-- Python 3 e Pillow (`python -m pip install Pillow`).
+- Python 3 com `venv` e `pip`. O publicador instala Pillow e os pacotes listados
+  em `scripts/noise-benchmark/requirements.txt` na cópia temporária.
 - Visual Studio Build Tools, com **Desktop development with C++** e Windows SDK,
   para compilar o capturador de áudio do Windows.
 - JDK 21 ou superior.

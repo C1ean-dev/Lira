@@ -48,7 +48,7 @@ Preparação inicial (Node 22.12+, Python 3 e Pillow):
 
 ```bash
 npm ci
-python -m pip install Pillow
+python -m pip install Pillow -r scripts/noise-benchmark/requirements.txt
 npx playwright install chromium
 ```
 
