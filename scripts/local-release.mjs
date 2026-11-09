@@ -91,6 +91,7 @@ export async function runRelease({ root = projectRoot, run, env = process.env, p
   const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number)
   if (nodeMajor < 22 || (nodeMajor === 22 && nodeMinor < 12)) throw new Error('Use Node.js 22.12 ou superior.')
   env = await loadEnvironment(root, env)
+  if (env.LIRA_JAVA_HOME) env.JAVA_HOME = path.resolve(root, env.LIRA_JAVA_HOME)
   const output = path.join(root, '.scratch/local-releases', new Date().toISOString().replace(/[:.]/g, '-') + '-' + process.pid)
   await fs.mkdir(output, { recursive: true })
   run ||= createRunner(path.join(output, 'release.log'))
@@ -126,7 +127,7 @@ export async function runRelease({ root = projectRoot, run, env = process.env, p
     state.commit = commit
     const java = env.JAVA_HOME ? path.join(env.JAVA_HOME, 'bin/java.exe') : 'java'
     const javaVersion = await exec(java, ['-version'], { quiet: true })
-    if (Number(javaVersion.match(/version\s+"(\d+)/)?.[1]) < 21 || !/version\s+"\d+/.test(javaVersion)) throw new Error('Instale JDK 21 ou superior e configure JAVA_HOME.')
+    if (Number(javaVersion.match(/version\s+"(\d+)/)?.[1]) < 21 || !/version\s+"\d+/.test(javaVersion)) throw new Error('Instale JDK 21 ou superior e configure LIRA_JAVA_HOME ou JAVA_HOME.')
     const sdk = env.ANDROID_HOME || env.ANDROID_SDK_ROOT || (env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'Android/Sdk'))
     for (const part of ['platforms/android-35', 'build-tools/35.0.0', 'platform-tools']) {
       if (!sdk || !existsSync(path.join(sdk, part))) throw new Error(`Android SDK ausente: ${part}. Configure ANDROID_HOME.`)

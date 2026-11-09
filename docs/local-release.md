@@ -40,6 +40,9 @@ do Windows têm prioridade. A publicação também lê `.env`, `.env.local`,
 `.env.production` e `.env.production.local`, nessa ordem, antes da configuração
 específica da release.
 
+Use `LIRA_JAVA_HOME` para escolher o JDK da publicação quando o `JAVA_HOME` do
+Windows apontar para outra versão. Essa escolha vale também para o Gradle.
+
 Para atualizar instalações Android existentes, use **a mesma chave e alias das
 versões anteriores**, com suas respectivas senhas. Sem `LIRA_KEYSTORE_PATH`, o
 script usa `android/app/lira-release.jks` do seu diretório original. Ele não gera
