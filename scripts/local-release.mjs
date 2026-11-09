@@ -162,8 +162,8 @@ export async function runRelease({ root = projectRoot, run, env = process.env, p
     if (executables.length !== 1) throw new Error('Artefato Windows: esperado exatamente um instalador .exe novo.')
     const windowsAsset = path.join(output, `Lira.Setup.${version}.exe`)
     await fs.copyFile(path.join(source, 'release', executables[0]), windowsAsset)
+    // The Windows build already type-checks the shared sources. Only Vite needs the web target.
     const webEnv = { ...buildEnv, LIRA_TARGET: 'web' }
-    await atSource('npm', ['exec', '--', 'tsc'], { env: webEnv })
     await atSource('npm', ['exec', '--', 'vite', 'build'], { env: webEnv })
     await atSource('npm', ['exec', '--', 'cap', 'sync', 'android'], { env: webEnv })
     await atSource('gradle', ['assembleRelease', '--no-daemon'], { cwd: path.join(source, 'android'), env: webEnv })

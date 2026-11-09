@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -68,6 +69,7 @@ describe('local Windows and Android release', () => {
     const lines = calls.map(call => [call.command, ...call.args].join(' '))
     const install = lines.indexOf('npm ci')
     const windows = lines.indexOf('npm run build')
+    const androidBundle = lines.indexOf('npm exec -- vite build')
     const android = lines.findIndex(line => line.includes('assembleRelease'))
     const upload = calls.findIndex(call => call.command === 'gh' && call.args[1] === 'create')
     const publish = calls.findIndex(call => call.command === 'gh' && call.args[1] === 'edit')
@@ -76,7 +78,8 @@ describe('local Windows and Android release', () => {
     expect(lines).not.toContain('npm run test:all')
     expect(lines).not.toContain('npm exec -- playwright install chromium')
     expect(lines.some(line => /(?:python|pip)\b/i.test(line))).toBe(false)
-    expect(android).toBeGreaterThan(windows)
+    expect(androidBundle).toBeGreaterThan(windows)
+    expect(android).toBeGreaterThan(androidBundle)
     expect(upload).toBeGreaterThan(android)
     expect(publish).toBeGreaterThan(upload)
     expect(calls[upload].args).toEqual(expect.arrayContaining(['--draft', '--target', sha, '--generate-notes']))
@@ -86,6 +89,13 @@ describe('local Windows and Android release', () => {
     expect(await fs.readFile(path.join(root, 'untouched.txt'), 'utf8')).toBe('uncommitted work')
     expect(lines.some(line => line.includes('worktree remove'))).toBe(true)
     expect(await fs.readdir(path.join(root, '.git'))).not.toContain('lira-release.lock')
+  })
+
+  it('reuses the Windows build type check for Android', async () => {
+    const { scripts } = JSON.parse(readFileSync('package.json', 'utf8'))
+    expect(scripts.build).toMatch(/&& tsc && vite build/)
+    await execute()
+    expect(calls.some(call => call.command === 'npm' && call.args.includes('tsc'))).toBe(false)
   })
 
   it.each(['npm ci', 'npm run build', 'assembleRelease', 'apksigner.jar verify'])('stops without creating a release if %s fails', async stage => {
