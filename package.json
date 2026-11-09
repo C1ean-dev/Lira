@@ -18,6 +18,7 @@
     }
   },
   "scripts": {
+    "release": "node scripts/local-release.mjs",
     "test": "vitest run src/__tests__",
     "test:all": "node scripts/test-all.mjs",
     "teste:all": "npm run test:all",

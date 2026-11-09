@@ -8,7 +8,7 @@ describe('local regression tests', () => {
   })
 
   it('keeps test execution and browser installation out of every CI workflow', () => {
-    for (const file of readdirSync('.github/workflows').filter(file => /\.ya?ml$/.test(file))) {
+    for (const file of (existsSync('.github/workflows') ? readdirSync('.github/workflows') : []).filter(file => /\.ya?ml$/.test(file))) {
       const workflow = load(readFileSync(`.github/workflows/${file}`, 'utf8')) as any
       for (const job of Object.values(workflow.jobs) as any[]) {
         for (const step of job.steps ?? []) {

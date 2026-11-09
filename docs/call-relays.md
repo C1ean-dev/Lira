@@ -47,8 +47,8 @@ VITE_TURN_CREDENTIALS_URL=https://lira-signaling.onrender.com/turn/credentials
 ```
 
 Esse endereço é o padrão quando a variável está vazia. Para outro backend,
-configure `.env.local` e o Secret `VITE_TURN_CREDENTIALS_URL` do repositório Lira.
-Os workflows Windows e Android recebem esse endereço durante o build. O token
+configure `VITE_TURN_CREDENTIALS_URL` em `.env.local` ou `.env.release.local`.
+O publicador local passa esse endereço aos builds Windows e Android. O token
 administrativo da Cloudflare nunca entra em variáveis `VITE_`, no pacote ou em
 arquivos versionados. O cliente mantém credenciais temporárias somente em memória,
 compartilha pedidos simultâneos e renova o cache um minuto antes do vencimento.
@@ -57,8 +57,8 @@ Documentação: https://developers.cloudflare.com/realtime/turn/generate-credent
 
 ## Metered: último fallback
 
-As credenciais de cliente Metered existentes continuam em `.env.local` e nos
-Secrets do GitHub Actions usados para gerar os instaladores:
+Configure as credenciais de cliente Metered em `.env.local` ou em
+`.env.release.local`, lidos pelo [publicador local](local-release.md):
 
 ```dotenv
 VITE_TURN_URLS=turn:relay.example.com:3478,turns:relay.example.com:443?transport=tcp

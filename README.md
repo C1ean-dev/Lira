@@ -43,7 +43,7 @@ STUN/TURN configurados. Quando a rota IPv6 direta funciona, TURN não é necess�
 ## Testes locais
 
 Os testes são executados localmente para economizar a cota do GitHub Actions. O projeto possui **387 suítes de teste e mais de 3.550 testes automatizados** cobrindo P2P Mesh, processamento digital de áudio (DSP), motores neurais WASM, renderização de salas, componentes de UI, IA em cascata e integração Electron.
-O CI/CD mantém os builds e a publicação de Windows e Android, sem executar testes.
+Builds, testes e publicação de Windows e Android agora rodam no seu computador. Dê dois cliques em **Publicar-Atualizacao.cmd** ou execute `npm run release`. Consulte a [preparação inicial e o fluxo de publicação local](docs/local-release.md).
 Preparação inicial (Node 22.12+, Python 3 e Pillow):
 
 ```bash
@@ -184,7 +184,7 @@ Para executar apenas a suíte unitária, use `npm test`.
   - Suporte a múltiplos anexos do usuário por drag-and-drop (capturas de tela, imagens e arquivos de log adicionais).
   - Envio anônimo transparente via backend Render (`lira-signaling`), permitindo que qualquer usuário abra issues sem necessidade de conta no GitHub ou CLI `gh`, com fallback seguro via navegador.
 - **Triagem e Planejamento Arquitetural por IA em Cascata**:
-  - Workflow no GitHub Actions disparado na abertura de issues que analisa o relato, logs de diagnóstico e contexto técnico.
+  - Script local que analisa o relato, logs de diagnóstico e contexto técnico; o disparo automático pelo GitHub Actions foi removido.
   - Estratégia de contingência em 3 camadas (3 tentativas por camada com backoff):
     1. **Google Gemini (`gemini-3.8-flash`)**: Processamento primário gratuito via Google AI Studio.
     2. **DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash-1017`)**: Fallback automático no OpenRouter com roteamento dinâmico pelo provedor de menor preço (`sort: "price"`).
@@ -236,7 +236,7 @@ Consulte [configuração e fallback TURN](docs/call-relays.md) para implantaçã
   - Para redes que impedem conexão direta (como certos NATs e firewalls), é necessário configurar um servidor TURN autenticado. Isso vale tanto para entrar no espaço pelo canal de dados quanto para chamadas de áudio, vídeo e compartilhamento de tela. Não há relay anônimo habilitado por padrão.
   - A entrada aguarda até 30 segundos pela conexão com o anfitrião, a partir do registro no servidor de sinalização. Falhas de transporte não promovem o visitante a anfitrião; a retomada automática continua disponível quando o servidor informa que o anfitrião está indisponível.
 
-Para habilitar o último fallback, Metered, configure as três variáveis abaixo no ambiente de build (ou em `.env.local` no desenvolvimento). Para os instaladores Windows e Android, cadastre secrets do GitHub Actions com esses mesmos nomes antes de gerar uma nova versão:
+Para habilitar o último fallback, Metered, configure as três variáveis abaixo no ambiente de build (ou em `.env.local` no desenvolvimento). Para os instaladores Windows e Android, configure `.env.release.local` com esses mesmos nomes antes de gerar uma nova versão:
 
 | Variável | Valor |
 | --- | --- |
@@ -259,7 +259,7 @@ O arquivo [`.env.example`](.env.example) contém as quatro rotas TURN do Metered
 2. Preencha `VITE_TURN_USERNAME` com o `username` da credencial TURN e `VITE_TURN_CREDENTIAL` com o valor de `credential` fornecido pelo Metered. Confira também os hostnames de `VITE_TURN_URLS` no painel.
 3. Reinicie o processo de desenvolvimento para carregar as variáveis. O arquivo `.env.local` já é ignorado pelo Git.
 
-Para gerar os instaladores pelo GitHub Actions, cadastre `VITE_TURN_URLS`, `VITE_TURN_USERNAME` e `VITE_TURN_CREDENTIAL` como secrets do repositório. Os workflows de Windows e Android recebem os três valores na etapa que gera o aplicativo. O modelo `.env.example` mantém as credenciais vazias para poder ser versionado.
+Para gerar os instaladores localmente, configure `VITE_TURN_URLS`, `VITE_TURN_USERNAME` e `VITE_TURN_CREDENTIAL` em `.env.release.local`. O publicador local passa os mesmos valores aos builds Windows e Android. O modelo `.env.example` mantém as credenciais vazias para poder ser versionado.
 
 Sem esses valores, o aplicativo tenta P2P e Cloudflare. Se ambos estiverem indisponíveis, não haverá relay adicional. As configurações Metered são incorporadas ao aplicativo durante o build: use credenciais próprias para clientes, com limites de uso e rotação, e não coloque os valores no repositório. Alterar os secrets Metered exige gerar e distribuir novos instaladores.
 
@@ -326,7 +326,7 @@ O projeto é estruturado segundo princípios de modularidade e separação de re
 | **Servidores & Relays de Rede** | Cloudflare TURN, Metered TURN, Servidor Render (`lira-signaling`) | Descoberta pública de salas, sinalização distribuída, emissão dinâmica de credenciais TURN e rota de reporte anônimo |
 | **Processamento de Áudio & DSP** | Web Audio API (AudioWorklet), WebAssembly SIMD, C++ WASAPI | DeepFilterNet3 neural offline, RNNoise neural, DSP clássico adaptativo, auto noise gate e captura de processos sem eco |
 | **IA Local & Transcrição** | Whisper local (`@huggingface/transformers 3.8.1`) | Transcrição e reconhecimento de voz executado localmente via pipeline offline |
-| **Triagem & Resolução por IA** | Google Gemini (`gemini-3.8-flash`), DeepSeek V4.1 Flash, NVIDIA Nemotron 3 Ultra | Cascata inteligente em 3 camadas no GitHub Actions para diagnóstico, planejamento de arquitetura e triagem de issues |
+| **Triagem & Resolução por IA** | Google Gemini (`gemini-3.8-flash`), DeepSeek V4.1 Flash, NVIDIA Nemotron 3 Ultra | Script local em 3 camadas para diagnóstico, planejamento de arquitetura e triagem de issues |
 | **Gerenciamento de Estado** | Zustand 5.0 | Stores atômicos desacoplados (`useGameStore`, `useMediaStore`, `useMapStore`, `useChatStore`, etc.) |
 | **Testes Automatizados & Qualidade** | Vitest 4.1, Playwright 1.64, Node Test Runner, Python unittest | **387 arquivos de teste**, mais de **3.550 testes automatizados**, testes E2E em Chromium, testes Electron e benchmarks acústicos (MS-SNSD) |
 
@@ -391,7 +391,7 @@ npx tsc --noEmit
 npm run build
 ```
 
-O comando compila o capturador nativo, verifica os tipos, gera os processos do Electron em `out/` e o instalador em `release/`. O fluxo de GitHub Actions executa esse mesmo comando e publica o instalador no GitHub Releases a cada envio para `main`, ou quando acionado manualmente. Executar o comando localmente gera os arquivos em `release/`.
+O comando compila o capturador nativo, verifica os tipos, gera os processos do Electron em `out/` e o instalador em `release/`. Para testar, gerar Windows e Android e publicar no GitHub Releases, use **Publicar-Atualizacao.cmd** ou `npm run release`. A [documentação da publicação local](docs/local-release.md) descreve os pré-requisitos e a recuperação de falhas.
 
 ### 7. Logs e Relatórios de Erro
 

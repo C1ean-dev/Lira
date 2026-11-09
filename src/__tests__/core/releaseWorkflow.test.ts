@@ -1,30 +1,22 @@
-import { readFileSync } from 'node:fs'
-import { load } from 'js-yaml'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-describe('release publication', () => {
-  const workflow = load(readFileSync('.github/workflows/release.yml', 'utf8')) as any
-
-  it('preserves Windows packaging and Android publication without running tests', () => {
-    const steps = workflow.jobs['build-and-release'].steps
-    expect(steps.some((step: any) => step.run === 'npm run build')).toBe(true)
-    expect(steps.some((step: any) => /npm (?:test|run test:)/.test(step.run ?? ''))).toBe(false)
-    expect(workflow.jobs.android.uses).toBe('./.github/workflows/android.yml')
+describe('local release entry point', () => {
+  it('removes all GitHub Actions workflows', () => {
+    const directory = '.github/workflows'
+    expect(existsSync(directory) ? readdirSync(directory).filter(file => /\.ya?ml$/.test(file)) : []).toEqual([])
   })
 
-  it('serializes version allocation through Windows and Android publication', () => {
-    // Manual runs on other refs also share the same release tag namespace.
-    expect(workflow.concurrency?.group).toBe('lira-release-publication')
-    expect(workflow.concurrency?.['cancel-in-progress']).toBe(false)
-    expect(workflow.jobs.android.needs).toBe('build-and-release')
+  it('provides a double-click launcher and an npm command for the same pipeline', () => {
+    const launcher = readFileSync('Publicar-Atualizacao.cmd', 'utf8')
+    expect(launcher).toContain('%~dp0')
+    expect(launcher).toContain('scripts\\local-release.mjs')
+    expect(launcher).toContain('pause')
+    expect(JSON.parse(readFileSync('package.json', 'utf8')).scripts.release).toBe('node scripts/local-release.mjs')
   })
 
-  it('refreshes tags before choosing a version and publishes the compiled commit', () => {
-    const steps = workflow.jobs['build-and-release'].steps
-    const versionStep = steps.find((step: any) => step.id === 'tag')
-    const releaseStep = steps.find((step: any) => step.uses === 'softprops/action-gh-release@v2')
-
-    expect(versionStep.run).toMatch(/git fetch origin --tags[\s\S]*node scripts\/bump-version\.js/)
-    expect(releaseStep.with.target_commitish).toBe('${{ github.sha }}')
+  it('ignores the local configuration containing signing and TURN credentials', () => {
+    expect(readFileSync('.gitignore', 'utf8')).toContain('.env.release.local')
+    expect(existsSync('.env.release.example')).toBe(true)
   })
 })
