@@ -62,17 +62,20 @@ beforeEach(async () => {
 afterEach(async () => { await fs.rm(root, { recursive: true, force: true }) })
 
 describe('local Windows and Android release', () => {
-  it('tests and builds both platforms before uploading a draft, then publishes it as latest', async () => {
+  it('builds both platforms without running tests before publishing the draft as latest', async () => {
     const result = await execute()
     expect(result.tag).toBe('v1.1.207')
     const lines = calls.map(call => [call.command, ...call.args].join(' '))
-    const tests = lines.indexOf('npm run test:all')
+    const install = lines.indexOf('npm ci')
     const windows = lines.indexOf('npm run build')
     const android = lines.findIndex(line => line.includes('assembleRelease'))
     const upload = calls.findIndex(call => call.command === 'gh' && call.args[1] === 'create')
     const publish = calls.findIndex(call => call.command === 'gh' && call.args[1] === 'edit')
-    expect(tests).toBeGreaterThan(-1)
-    expect(windows).toBeGreaterThan(tests)
+    expect(install).toBeGreaterThan(-1)
+    expect(windows).toBeGreaterThan(install)
+    expect(lines).not.toContain('npm run test:all')
+    expect(lines).not.toContain('npm exec -- playwright install chromium')
+    expect(lines.some(line => /(?:python|pip)\b/i.test(line))).toBe(false)
     expect(android).toBeGreaterThan(windows)
     expect(upload).toBeGreaterThan(android)
     expect(publish).toBeGreaterThan(upload)
@@ -85,7 +88,7 @@ describe('local Windows and Android release', () => {
     expect(await fs.readdir(path.join(root, '.git'))).not.toContain('lira-release.lock')
   })
 
-  it.each(['npm ci', 'npm run test:all', 'npm run build', 'assembleRelease', 'apksigner.jar verify'])('stops without creating a release if %s fails', async stage => {
+  it.each(['npm ci', 'npm run build', 'assembleRelease', 'apksigner.jar verify'])('stops without creating a release if %s fails', async stage => {
     failure = stage
     await expect(execute()).rejects.toThrow('simulated failure')
     expect(calls.some(call => call.command === 'gh' && call.args.includes('create'))).toBe(false)
@@ -187,27 +190,6 @@ describe('local Windows and Android release', () => {
     await execute({ JAVA_HOME: path.join(root, 'JDK 18') })
     expect(calls.find(call => call.args.includes('-version'))?.command).toBe(path.join(jdk, 'bin/java.exe'))
     expect(calls.find(call => call.command === 'gradle')?.env.JAVA_HOME).toBe(jdk)
-  })
-
-  it('installs the Python test dependencies in an isolated environment before the suite', async () => {
-    const python = path.join(root, 'Python install', 'python.exe')
-    await execute({ LIRA_PYTHON: python })
-    const suiteIndex = calls.findIndex(call => call.command === 'npm' && call.args.join(' ') === 'run test:all')
-    const suite = calls[suiteIndex]
-    const venv = path.join(suite.cwd, '.scratch', 'release-python')
-    const isolatedPython = path.join(venv, 'Scripts', 'python.exe')
-    expect(suite.env.LIRA_PYTHON).toBe(isolatedPython)
-    const preparation = calls.slice(0, suiteIndex)
-    expect(preparation).toContainEqual(expect.objectContaining({ command: python, args: ['-m', 'venv', venv] }))
-    expect(preparation).toContainEqual(expect.objectContaining({ command: isolatedPython, args: expect.arrayContaining([
-      '-m', 'pip', 'install', '-r', 'scripts/noise-benchmark/requirements.txt', 'Pillow',
-    ]) }))
-  })
-
-  it('stops before the test suite if Python dependencies cannot be installed', async () => {
-    failure = '-m pip install'
-    await expect(execute()).rejects.toThrow('simulated failure')
-    expect(calls.some(call => call.args.includes('test:all') || call.args.includes('create'))).toBe(false)
   })
 
   it('removes ignored files left in the temporary checkout by git worktree remove', async () => {

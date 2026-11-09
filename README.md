@@ -43,7 +43,7 @@ STUN/TURN configurados. Quando a rota IPv6 direta funciona, TURN não é necess�
 ## Testes locais
 
 Os testes são executados localmente para economizar a cota do GitHub Actions. O projeto possui **387 suítes de teste e mais de 3.550 testes automatizados** cobrindo P2P Mesh, processamento digital de áudio (DSP), motores neurais WASM, renderização de salas, componentes de UI, IA em cascata e integração Electron.
-Builds, testes e publicação de Windows e Android agora rodam no seu computador. Dê dois cliques em **Publicar-Atualizacao.cmd** ou execute `npm run release`. Consulte a [preparação inicial e o fluxo de publicação local](docs/local-release.md).
+Para gerar e publicar os instaladores de Windows e Android pelo computador, dê dois cliques em **Publicar-Atualizacao.cmd** ou execute `npm run release`. Os testes rodam separadamente. Consulte a [preparação inicial e o fluxo de publicação local](docs/local-release.md).
 Preparação inicial (Node 22.12+, Python 3 e Pillow):
 
 ```bash
@@ -52,7 +52,7 @@ python -m pip install Pillow -r scripts/noise-benchmark/requirements.txt
 npx playwright install chromium
 ```
 
-Antes de publicar, execute todas as suítes com:
+Para executar todas as suítes, use:
 
 ```bash
 npm run teste:all
@@ -391,7 +391,7 @@ npx tsc --noEmit
 npm run build
 ```
 
-O comando compila o capturador nativo, verifica os tipos, gera os processos do Electron em `out/` e o instalador em `release/`. Para testar, gerar Windows e Android e publicar no GitHub Releases, use **Publicar-Atualizacao.cmd** ou `npm run release`. A [documentação da publicação local](docs/local-release.md) descreve os pré-requisitos e a recuperação de falhas.
+O comando compila o capturador nativo, verifica os tipos, gera os processos do Electron em `out/` e o instalador em `release/`. Para gerar Windows e Android e publicar no GitHub Releases, use **Publicar-Atualizacao.cmd** ou `npm run release`. A [documentação da publicação local](docs/local-release.md) descreve os pré-requisitos e a recuperação de falhas.
 
 ### 7. Logs e Relatórios de Erro
 

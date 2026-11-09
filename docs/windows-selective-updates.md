@@ -1,5 +1,8 @@
 # Atualização seletiva no Windows
 
+Este documento descreve o instalador legado. As novas releases usam o
+[fluxo padrão do NSIS](local-release.md), sem gerar backups do Lira.
+
 O instalador continua sendo baixado por inteiro e o pacote é extraído temporariamente.
 Em instalações com `resources/update-manifest.json`, o instalador mantém os arquivos
 idênticos no lugar, publica somente as adições/substituições e remove somente arquivos

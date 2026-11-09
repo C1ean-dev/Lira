@@ -42,4 +42,14 @@ describe('production package boundaries', () => {
     expect(pkg.build.win.target).toEqual([{ target: 'nsis', arch: ['x64'] }])
     expect(pkg.build.afterPack).toBe('scripts/verify-production-package.cjs')
   })
+
+  it('uses the standard NSIS update flow with the user profile protected and no backup hooks', () => {
+    const { build } = JSON.parse(readFileSync('package.json', 'utf8'))
+    const hooks = readFileSync(build.nsis.include, 'utf8')
+    expect(build.nsis.script).toBeUndefined()
+    expect(build.artifactBuildStarted).toBeUndefined()
+    expect(build.nsis.deleteAppDataOnUninstall).toBe(false)
+    expect(hooks).not.toMatch(/lira\.backup|update-recovery\.ps1|-Action\s+Backup/i)
+    expect(hooks).toContain('lira.update-pending.json')
+  })
 })

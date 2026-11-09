@@ -16,7 +16,6 @@ function verifyProductionFiles(files) {
 }
 
 module.exports = async context => {
-  require('./windows-update-package.cjs').rememberPack(context)
   const files = []
   function visit(node, prefix = '') {
     for (const [name, entry] of Object.entries(node.files || {})) {

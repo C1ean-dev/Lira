@@ -116,11 +116,10 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "runAfterFinish": false,
-      "include": "build/installer.nsh",
-      "script": ".scratch/windows-installer/installer.nsi"
+      "deleteAppDataOnUninstall": false,
+      "include": "build/direct-install.nsh"
     },
     "publish": null,
-    "afterPack": "scripts/verify-production-package.cjs",
-    "artifactBuildStarted": "scripts/windows-update-package.cjs"
+    "afterPack": "scripts/verify-production-package.cjs"
   }
 }

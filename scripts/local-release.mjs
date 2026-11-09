@@ -134,8 +134,6 @@ export async function runRelease({ root = projectRoot, run, env = process.env, p
     }
     const keystore = path.resolve(root, env.LIRA_KEYSTORE_PATH || 'android/app/lira-release.jks')
     if (!existsSync(keystore)) throw new Error('Keystore Android não encontrado. Configure LIRA_KEYSTORE_PATH com a chave usada nas versões anteriores.')
-    const python = env.LIRA_PYTHON || 'python'
-    await exec(python, ['--version'])
     await exec('powershell', ['-NoProfile', '-Command', "$v = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\\Installer\\vswhere.exe'; if (!(Test-Path -LiteralPath $v)) { throw 'Instale Visual Studio Build Tools com C++' }; $p = & $v -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath; if (!$p) { throw 'Instale o componente Desktop development with C++' }"])
     temporary = await fs.mkdtemp(path.join(await fs.realpath(tmpdir()), 'lira-publish-'))
     source = path.join(temporary, 'source')
@@ -146,18 +144,10 @@ export async function runRelease({ root = projectRoot, run, env = process.env, p
     const tags = (await exec('git', ['tag', '--list', 'v*'], { quiet: true })).split(/\r?\n/)
     const releases = JSON.parse(await exec('gh', ['release', 'list', '--repo', repository, '--limit', '1000', '--json', 'tagName'], { quiet: true }))
     const { version, tagName, releaseTitle } = selectVersion(pkg.version, tags, releases.map(release => release.tagName))
-    Object.assign(state, { tag: tagName, version, status: 'testing' })
+    Object.assign(state, { tag: tagName, version, status: 'building' })
     await saveState()
     const buildEnv = buildEnvironment({ ...env, ANDROID_HOME: sdk, ANDROID_SDK_ROOT: sdk, LIRA_KEYSTORE_PATH: keystore }, version)
     const atSource = (command, args, extra = {}) => exec(command, args, { cwd: source, env: buildEnv, ...extra })
-    const pythonVenv = path.join(source, '.scratch', 'release-python')
-    const releasePython = path.join(pythonVenv, 'Scripts', 'python.exe')
-    await exec(python, ['-m', 'venv', pythonVenv])
-    const testEnv = { ...buildEnv, LIRA_PYTHON: releasePython }
-    delete testEnv.PYTHONHOME
-    delete testEnv.PYTHONPATH
-    await atSource(releasePython, ['-m', 'pip', 'install', '--disable-pip-version-check', '--only-binary=:all:',
-      '-r', 'scripts/noise-benchmark/requirements.txt', 'Pillow'], { env: testEnv })
     await atSource('npm', ['ci'])
     // Update only the isolated checkout, keeping both npm manifests consistent.
     pkg.version = version
@@ -167,9 +157,6 @@ export async function runRelease({ root = projectRoot, run, env = process.env, p
     packageLock.version = version
     if (packageLock.packages?.['']) packageLock.packages[''].version = version
     await fs.writeFile(lockPath, JSON.stringify(packageLock, null, 2) + '\n')
-    await atSource('npm', ['exec', '--', 'playwright', 'install', 'chromium'])
-    await atSource('npm', ['run', 'test:all'], { env: testEnv })
-    state.status = 'building'; await saveState()
     await atSource('npm', ['run', 'build'])
     const executables = (await fs.readdir(path.join(source, 'release'))).filter(file => file.toLowerCase().endsWith('.exe'))
     if (executables.length !== 1) throw new Error('Artefato Windows: esperado exatamente um instalador .exe novo.')

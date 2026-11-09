@@ -1233,10 +1233,7 @@ async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
     }
 
     // O aplicativo NÃO deve fechar a si mesmo aqui!
-    // O instalador NSIS (build/installer.nsh) possui customInit com:
-    //   nsExec::Exec `"$SYSDIR\taskkill.exe" /F /IM "Lira.exe" /T`
-    //   nsExec::Exec `"$SYSDIR\taskkill.exe" /F /IM "process-audio-capture.exe" /T`
-    // O instalador assume o controle e encerra o Lira no momento exato em que inicializa.
+    // O instalador NSIS encerra o Lira e o capturador de áudio antes da instalação.
     // Manter o Lira aberto garante que se o usuário estiver aguardando o prompt do UAC,
     // ou se o instalador levar alguns segundos para carregar, o app não desapareça,
     // e caso o lançamento falhe, a interface continue acessível com opção de tentar novamente.
