@@ -9,6 +9,7 @@ export interface QualityProfile {
 }
 
 interface TrackStatsSnapshot {
+  connection: RTCPeerConnection
   framesDropped: number
   framesReceived: number
   packetsLost: number
@@ -47,6 +48,7 @@ export class DynamicBufferManager {
   private monitorInterval: any = null
 
   private lastStats: Map<string, TrackStatsSnapshot> = new Map()
+  private evaluation: Promise<{ audio: number; video: number }> | null = null
 
   private buffers: Record<'audio' | 'video', AdaptiveBuffer> = {
     audio: { ...DYNAMIC_BUFFER_DEFAULT.audio },
@@ -96,16 +98,23 @@ export class DynamicBufferManager {
     }
   }
 
-  public async evaluateAndAdjustBuffer(): Promise<{ audio: number; video: number }> {
-    const store = useMediaStore.getState()
-    if (store.liveBufferMode === 'manual') {
-      return { audio: this.buffers.audio.currentMs, video: this.buffers.video.currentMs }
+  public evaluateAndAdjustBuffer(): Promise<{ audio: number; video: number }> {
+    if (!this.evaluation) {
+      this.evaluation = this.evaluate().finally(() => { this.evaluation = null })
     }
+    return this.evaluation
+  }
+
+  private async evaluate(): Promise<{ audio: number; video: number }> {
+    const store = useMediaStore.getState()
+    const dynamic = store.liveBufferMode !== 'manual'
 
     const peerManager = PeerManager.getInstance()
     const mediaCalls = peerManager.getMediaCalls()
     if (!mediaCalls || mediaCalls.size === 0) {
-      this.applyToStore(store, this.buffers.audio.currentMs, this.buffers.video.currentMs, 0, 0)
+      this.lastStats.clear()
+      if (dynamic) this.applyToStore(store, this.buffers.audio.currentMs, this.buffers.video.currentMs, 0, 0)
+      useNetworkQualityStore.getState().clearAll()
       useNetworkQualityStore.getState().setLocalQuality({
         pingMs: 0,
         lossPct: 0,
@@ -129,6 +138,7 @@ export class DynamicBufferManager {
     let peerPingCount = 0
 
     const now = Date.now()
+    const activeStats = new Set<string>()
 
     for (const [peerId, call] of mediaCalls.entries()) {
       const pc = (call as any).peerConnection as RTCPeerConnection
@@ -140,10 +150,16 @@ export class DynamicBufferManager {
 
       try {
         const stats = await pc.getStats()
+        // Prefer the selected transport. Successful pairs can remain in the report
+        // after ICE changes route and must not overwrite its current RTT.
+        let selectedPairId: string | undefined
+        stats.forEach(report => {
+          if (report.type === 'transport' && report.selectedCandidatePairId) selectedPairId = report.selectedCandidatePairId
+        })
         stats.forEach((report) => {
           if (
             report.type === 'candidate-pair' &&
-            ((report as any).state === 'succeeded' || (report as any).currentRoundTripTime !== undefined)
+            (selectedPairId ? report.id === selectedPairId : report.nominated === true && report.state === 'succeeded')
           ) {
             const rttSec = (report as any).currentRoundTripTime ?? (report as any).roundTripTime
             if (typeof rttSec === 'number' && rttSec > 0) {
@@ -152,10 +168,11 @@ export class DynamicBufferManager {
           }
 
           if (report.type !== 'inbound-rtp') return
-          const kind: 'audio' | 'video' | undefined = (report as any).kind
+          const kind: 'audio' | 'video' | undefined = report.kind ?? report.mediaType
           if (kind !== 'audio' && kind !== 'video') return
 
-          const key = `${peerId}:${kind}`
+          const key = `${peerId}:${report.id}`
+          activeStats.add(key)
           const prev = this.lastStats.get(key)
 
           const jitterSec = (report.jitter as number) || 0
@@ -170,7 +187,8 @@ export class DynamicBufferManager {
           const height = (report.frameHeight as number) || 0
 
           let lossRatio = 0
-          if (prev) {
+          if (prev && prev.connection === pc && packetsReceived >= prev.packetsReceived
+            && (report.timestamp ?? now) > prev.timestamp) {
             const deltaLost = Math.max(0, packetsLost - prev.packetsLost)
             const deltaRecv = Math.max(0, packetsReceived - prev.packetsReceived)
             const total = deltaLost + deltaRecv
@@ -194,12 +212,13 @@ export class DynamicBufferManager {
           }
 
           this.lastStats.set(key, {
+            connection: pc,
             framesDropped,
             framesReceived,
             packetsLost,
             packetsReceived,
             jitterSec,
-            timestamp: now,
+            timestamp: report.timestamp ?? now,
           })
         })
 
@@ -217,6 +236,10 @@ export class DynamicBufferManager {
       }
     }
 
+    for (const key of this.lastStats.keys()) {
+      if (!activeStats.has(key)) this.lastStats.delete(key)
+    }
+
     const storedPeerQualities = useNetworkQualityStore.getState().peerQualities
     for (const storedPeerId of Object.keys(storedPeerQualities)) {
       if (!mediaCalls.has(storedPeerId)) {
@@ -224,18 +247,18 @@ export class DynamicBufferManager {
       }
     }
 
-    if (hasAudio) {
+    if (dynamic && hasAudio) {
       this.adaptBuffer('audio', maxJitterAudioMs, maxLossRatioAudio, 0, 0, 0)
-    } else {
+    } else if (dynamic) {
       this.buffers.audio.currentMs = this.buffers.audio.floorMs
       this.buffers.audio.lastTargetMs = this.buffers.audio.floorMs
       this.buffers.audio.cleanSamples = 0
     }
 
-    if (hasVideo) {
+    if (dynamic && hasVideo) {
       const frameMs = maxVideoFps > 0 ? 1000 / maxVideoFps : 16.6
       this.adaptBuffer('video', maxJitterVideoMs, maxLossRatioVideo, frameMs, maxVideoWidth, maxVideoHeight)
-    } else {
+    } else if (dynamic) {
       this.buffers.video.currentMs = this.buffers.video.floorMs
       this.buffers.video.lastTargetMs = this.buffers.video.floorMs
       this.buffers.video.cleanSamples = 0
@@ -244,11 +267,11 @@ export class DynamicBufferManager {
     const audioMs = this.buffers.audio.currentMs
     const videoMs = this.buffers.video.currentMs
 
-    MediaCallHandler.applyJitterBuffer(mediaCalls, videoMs, audioMs)
+    if (dynamic) MediaCallHandler.applyJitterBuffer(mediaCalls, videoMs, audioMs)
 
     const peakJitter = Math.max(maxJitterAudioMs, maxJitterVideoMs)
     const peakLossPct = Math.max(maxLossRatioAudio, maxLossRatioVideo) * 100
-    this.applyToStore(store, audioMs, videoMs, peakJitter, peakLossPct)
+    if (dynamic) this.applyToStore(store, audioMs, videoMs, peakJitter, peakLossPct)
     this.hasEvaluatedOnce = true
 
     const avgPing = peerPingCount > 0 ? Math.round(totalPeerPing / peerPingCount) : 0
@@ -275,7 +298,9 @@ export class DynamicBufferManager {
     const SAFETY = isAudio ? 1.5 : 2.5
     const jitterTarget = jitterMs * SAFETY
     const frameTarget = frameMs > 0 ? frameMs * 1.5 : 0
-    const lossPenalty = Math.min(500, Math.round(lossRatio * 100 * (isAudio ? 15 : 30)))
+    // Missing voice packets need FEC/concealment or a better route. Extra playout
+    // delay cannot recover them and used to pin low-jitter calls at 500 ms.
+    const lossPenalty = isAudio ? 0 : Math.min(500, Math.round(lossRatio * 100 * 30))
     const startupHeadroom = buf.cleanSamples === 0 ? (isAudio ? 2 : 5) : 0
     const target = Math.round(
       Math.max(jitterTarget + frameTarget, buf.floorMs) + lossPenalty + startupHeadroom
