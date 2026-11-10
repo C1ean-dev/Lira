@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installRtcTransportPriority, DIRECT_ATTEMPT_MS, RELAY_ATTEMPT_MS } from '../../p2p/rtcTransportPriority'
+import { installRtcTransportPriority, observeVoiceRoute, DIRECT_ATTEMPT_MS, RELAY_ATTEMPT_MS } from '../../p2p/rtcTransportPriority'
+import { MediaCallHandler } from '../../p2p/mediaCalls'
 import { appTrail } from '../../utils/breadcrumbs'
 
 const stun = [{ urls: 'stun:discovery.example:3478' }]
@@ -21,10 +22,10 @@ class Connection extends EventTarget {
   }
 }
 
-function fixture(incoming = false, relays = metered) {
+function fixture(incoming = false, relays = metered, type = 'data') {
   const pc = new Connection()
   const events = new Map<string, (() => void)[]>()
-  const conn: any = { peer: 'remote', connectionId: 'dc_test', type: 'data', peerConnection: pc,
+  const conn: any = { peer: 'remote', connectionId: 'dc_test', type, peerConnection: pc, close: vi.fn(),
     metadata: { existing: true }, options: incoming ? { _payload: { liraIcePriorityVersion: 1 } } : {},
     on: (name, fn) => { events.set(name, [...events.get(name) || [], fn]) },
   }
@@ -201,5 +202,253 @@ describe('P2P, Cloudflare, then Metered transport selection', () => {
     f.peer.socket.send({ type: 'OFFER', payload: { metadata: f.conn.metadata } })
     expect(f.send).toHaveBeenCalledWith({ type: 'OFFER', payload: { metadata: { existing: true }, liraIcePriorityVersion: 1 } })
     expect(f.conn.metadata).toEqual({ existing: true })
+  })
+})
+
+describe('automatic relay for sustained voice packet loss', () => {
+  async function sample(f: ReturnType<typeof fixture>, index: number, lost: number, options: {
+    pairId?: string; relayed?: boolean; direction?: 'inbound' | 'outbound'; packets?: number; rttMs?: number; timestamp?: number
+  } = {}) {
+    if (index > 0) await vi.advanceTimersByTimeAsync(10_000)
+    observeVoiceRoute(f.conn, {
+      pairId: options.pairId ?? 'direct',
+      relayed: options.relayed ?? false,
+      rttMs: options.rttMs ?? 26,
+      [options.direction ?? 'inbound']: {
+        id: 'audio', timestamp: options.timestamp ?? Date.now(), packets: options.packets ?? 500 * index, lost,
+      },
+    })
+    await vi.advanceTimersByTimeAsync(0)
+  }
+
+  it.each(['inbound', 'outbound'] as const)('forces TURN on the existing call after three bad %s windows', async (direction) => {
+    const f = fixture(false, metered, 'media')
+    f.pc.change('connected')
+    await sample(f, 0, 0, { direction })
+    await sample(f, 1, 85, { direction })
+    await sample(f, 2, 170, { direction })
+    expect(f.load).not.toHaveBeenCalled()
+
+    await sample(f, 3, 255, { direction })
+    expect(f.pc.setConfiguration).toHaveBeenLastCalledWith({ iceServers: cloudflare, iceTransportPolicy: 'relay' })
+    expect(f.pc.createOffer).toHaveBeenCalledExactlyOnceWith({ iceRestart: true })
+    expect(f.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'OFFER', payload: expect.objectContaining({ connectionId: 'dc_test', liraIceRestart: 'cloudflare' }),
+    }))
+    expect(f.conn.close).not.toHaveBeenCalled()
+    f.pc.signalingState = 'have-local-offer'
+    const answer = { type: 'ANSWER', src: 'remote', payload: {
+      connectionId: 'dc_test', liraIceRestart: 'cloudflare', sdp: { type: 'answer', sdp: 'relay-answer' },
+    } }
+    f.peer._handleMessage(answer)
+    expect(f.normalHandle).toHaveBeenCalledWith(answer)
+    f.pc.signalingState = 'stable'
+
+    await sample(f, 4, 255, { direction, pairId: 'new-pair', relayed: true, rttMs: 42 })
+    await sample(f, 5, 260, { direction, pairId: 'new-pair', relayed: true, rttMs: 43 })
+    expect(f.pc.createOffer).toHaveBeenCalledTimes(1)
+    expect(appTrail.list()).toContainEqual(expect.objectContaining({
+      event: 'rtc.voice-route-recovery',
+      data: expect.objectContaining({ result: 'relay-selected' }),
+    }))
+    expect(appTrail.list()).toContainEqual(expect.objectContaining({
+      event: 'rtc.voice-route-recovery',
+      data: expect.objectContaining({
+        result: 'relay-quality', direction, directLossPct: 17, directRttMs: 26, relayLossPct: 1, relayRttMs: 43,
+      }),
+    }))
+  })
+
+  it('resets the loss streak on healthy windows and when the selected pair changes', async () => {
+    const f = fixture(false, metered, 'media')
+    f.pc.change('connected')
+    await sample(f, 0, 0)
+    await sample(f, 1, 80)
+    await sample(f, 2, 80)
+    await sample(f, 3, 160)
+    await sample(f, 4, 240)
+    await sample(f, 5, 320, { pairId: 'other' })
+    await sample(f, 6, 400, { pairId: 'other' })
+    await sample(f, 7, 480, { pairId: 'other' })
+    expect(f.pc.createOffer).not.toHaveBeenCalled()
+    await sample(f, 8, 560, { pairId: 'other' })
+    expect(f.pc.createOffer).toHaveBeenCalledOnce()
+  })
+
+  it('ignores a tiny sample, counters that restart, and loss on a route already using a relay', async () => {
+    const f = fixture(false, metered, 'media')
+    f.pc.change('connected')
+    await sample(f, 0, 0)
+    await sample(f, 1, 5, { packets: 10 })
+    await sample(f, 2, 6, { packets: 20 })
+    await sample(f, 3, 8, { packets: 30 })
+    await sample(f, 4, 80)
+    await sample(f, 5, 160)
+    await sample(f, 6, 1, { packets: 50 })
+    await sample(f, 7, 85, { relayed: true })
+    await sample(f, 8, 170, { relayed: true })
+    await sample(f, 9, 255, { relayed: true })
+    expect(f.pc.createOffer).not.toHaveBeenCalled()
+  })
+
+  it('does not use a stale remote report as a fresh sample of sent audio', async () => {
+    const f = fixture(false, metered, 'media')
+    f.pc.change('connected')
+    for (let index = 0; index <= 3; index++) {
+      await sample(f, index, index * 85, { direction: 'outbound', timestamp: 1 })
+    }
+    expect(f.pc.createOffer).not.toHaveBeenCalled()
+  })
+
+  it.each(['data', 'legacy', 'closed'])('leaves %s sessions alone', async (kind) => {
+    const f = fixture(false, metered, kind === 'data' ? 'data' : 'media')
+    f.pc.change('connected')
+    if (kind === 'legacy') f.peer._handleMessage({ type: 'ANSWER', src: 'remote', payload: { connectionId: 'dc_test' } })
+    if (kind === 'closed') f.close()
+    for (let index = 0; index <= 3; index++) await sample(f, index, index * 85)
+    expect(f.load).not.toHaveBeenCalled()
+    expect(f.pc.createOffer).not.toHaveBeenCalled()
+  })
+
+  it('tries Metered if Cloudflare has no TURN credentials', async () => {
+    const f = fixture(false, metered, 'media')
+    f.pc.change('connected')
+    f.load.mockResolvedValue([])
+    for (let index = 0; index <= 3; index++) await sample(f, index, index * 85)
+    expect(f.pc.setConfiguration).toHaveBeenLastCalledWith({ iceServers: metered, iceTransportPolicy: 'relay' })
+  })
+
+  it('preserves the direct configuration if no relay is available', async () => {
+    const f = fixture(false, [], 'media')
+    f.pc.change('connected')
+    f.load.mockResolvedValue([])
+    for (let index = 0; index <= 5; index++) await sample(f, index, index * 85)
+    expect(f.load).toHaveBeenCalledOnce()
+    expect(f.pc.setConfiguration).not.toHaveBeenCalled()
+    expect(f.conn.close).not.toHaveBeenCalled()
+  })
+
+  it('can use a relay that becomes available after the initial connection attempts', async () => {
+    const f = fixture(false, [], 'media')
+    f.load.mockResolvedValueOnce([])
+    await vi.advanceTimersByTimeAsync(DIRECT_ATTEMPT_MS)
+    expect(f.pc.createOffer).not.toHaveBeenCalled()
+    f.pc.change('connected')
+    for (let index = 0; index <= 3; index++) await sample(f, index, index * 85)
+    expect(f.pc.setConfiguration).toHaveBeenLastCalledWith({ iceServers: cloudflare, iceTransportPolicy: 'relay' })
+  })
+
+  it('redials an incoming call over TURN after sustained direct loss without sending an incompatible restart offer', async () => {
+    const f = fixture(true, metered, 'media')
+    f.pc.change('connected')
+    for (let index = 0; index <= 3; index++) await sample(f, index, index * 235)
+    expect(f.conn.close).toHaveBeenCalledOnce()
+    expect(f.pc.createOffer).not.toHaveBeenCalled()
+    f.close()
+    const nextPc = new Connection()
+    const replacement = { ...f.conn, connectionId: 'relay-replacement', options: {}, peerConnection: nextPc }
+    f.peer._addConnection('remote', replacement)
+    expect(nextPc.setConfiguration).toHaveBeenLastCalledWith({ iceServers: cloudflare, iceTransportPolicy: 'relay' })
+    expect(appTrail.list()).toContainEqual(expect.objectContaining({ event: 'rtc.voice-route-recovery',
+      data: expect.objectContaining({ result: 'redial-relay', directLossPct: 47 }) }))
+  })
+
+  it('keeps an incoming call intact when there are no relay credentials', async () => {
+    const f = fixture(true, [], 'media')
+    f.load.mockResolvedValue([])
+    f.pc.change('connected')
+    for (let index = 0; index <= 3; index++) await sample(f, index, index * 235)
+    expect(f.conn.close).not.toHaveBeenCalled()
+    expect(f.pc.setConfiguration).not.toHaveBeenCalled()
+  })
+
+  it('releases a pinned relay after it fails so recovery can return to direct ICE', async () => {
+    const f = fixture(true, metered, 'media')
+    f.pc.change('connected')
+    for (let index = 0; index <= 3; index++) await sample(f, index, index * 235)
+    f.close()
+    const relayPc = new Connection()
+    f.peer._addConnection('remote', { ...f.conn, options: {}, peerConnection: relayPc })
+    expect(relayPc.setConfiguration).toHaveBeenCalled()
+    relayPc.change('failed')
+    const retryPc = new Connection()
+    f.peer._addConnection('remote', { ...f.conn, options: {}, peerConnection: retryPc })
+    expect(retryPc.setConfiguration).not.toHaveBeenCalled()
+  })
+
+  it('restores the previous policy when the relay never becomes the selected route', async () => {
+    const f = fixture(false, metered, 'media')
+    f.pc.change('connected')
+    f.pc.setLocalDescription.mockImplementation(async (sdp) => {
+      f.pc.localDescription = sdp
+      f.pc.signalingState = sdp.type === 'rollback' ? 'stable' : 'have-local-offer'
+    })
+    for (let index = 0; index <= 5; index++) await sample(f, index, index * 85)
+    expect(f.pc.setConfiguration).toHaveBeenLastCalledWith({ iceServers: stun, iceTransportPolicy: 'all' })
+    expect(f.pc.setLocalDescription).toHaveBeenLastCalledWith({ type: 'rollback' })
+    expect(f.pc.createOffer).toHaveBeenCalledTimes(1)
+    expect(f.conn.close).not.toHaveBeenCalled()
+
+    f.peer._handleMessage({ type: 'ANSWER', src: 'remote', payload: {
+      connectionId: 'dc_test', liraIceRestart: 'cloudflare', sdp: { type: 'answer', sdp: 'late-answer' },
+    } })
+    expect(f.normalHandle).not.toHaveBeenCalled()
+  })
+
+  it('keeps regular ICE recovery available while fetching credentials for the voice relay', async () => {
+    const f = fixture(false, metered, 'media')
+    f.pc.change('connected')
+    let provideCredentials!: (servers: typeof cloudflare) => void
+    const pending = new Promise<typeof cloudflare>(resolve => { provideCredentials = resolve })
+    f.load.mockReturnValue(pending)
+    for (let index = 0; index <= 3; index++) await sample(f, index, index * 85)
+    f.pc.change('failed')
+    provideCredentials(cloudflare)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(f.pc.setConfiguration).toHaveBeenLastCalledWith({
+      iceServers: [...stun, ...cloudflare], iceTransportPolicy: 'all',
+    })
+    expect(f.pc.createOffer).toHaveBeenCalledOnce()
+  })
+
+  it('does not immediately repeat the relay trial when the same peer is redialed', async () => {
+    const f = fixture(false, metered, 'media')
+    f.pc.change('connected')
+    for (let index = 0; index <= 3; index++) await sample(f, index, index * 85)
+    f.close()
+
+    const pc = new Connection()
+    const conn = { ...f.conn, connectionId: 'replacement', peerConnection: pc }
+    f.peer._addConnection('remote', conn)
+    pc.change('connected')
+    for (let index = 0; index <= 3; index++) await sample({ ...f, pc, conn }, index, index * 85)
+    expect(pc.createOffer).not.toHaveBeenCalled()
+
+    for (let index = 4; index <= 12; index++) await sample({ ...f, pc, conn }, index, index * 85)
+    expect(pc.createOffer).toHaveBeenCalledOnce()
+  })
+
+  it.each(['inbound', 'outbound'])('uses the periodic WebRTC %s voice counters for the selected pair', async (direction) => {
+    const f = fixture(false, metered, 'media')
+    f.pc.change('connected')
+    let index = 0
+    Object.assign(f.pc, { getStats: async () => new Map<string, object>([
+      ['transport', { type: 'transport', selectedCandidatePairId: 'pair' }],
+      ['pair', { type: 'candidate-pair', localCandidateId: 'local', remoteCandidateId: 'remote' }],
+      ['local', { candidateType: 'srflx' }],
+      ['remote', { candidateType: 'srflx' }],
+      ['in', { id: 'in', type: 'inbound-rtp', kind: 'audio', timestamp: Date.now(),
+        packetsReceived: index * (direction === 'inbound' ? 415 : 500), packetsLost: direction === 'inbound' ? 85 * index : 0 }],
+      ['out', { id: 'out', type: 'outbound-rtp', kind: 'audio', packetsSent: 500 * index }],
+      ['rtcp', { id: 'rtcp', type: 'remote-inbound-rtp', kind: 'audio', localId: 'out',
+        timestamp: Date.now(), packetsLost: direction === 'outbound' ? 85 * index : 0 }],
+      ['video', { id: 'video', type: 'inbound-rtp', kind: 'video', packetsReceived: 200, packetsLost: 0 }],
+    ]) })
+    for (; index <= 3; index++) {
+      await vi.advanceTimersByTimeAsync(10_000)
+      await MediaCallHandler.logReceiverSnapshot(f.conn, 'remote', 'periodic', () => true)
+    }
+    await vi.advanceTimersByTimeAsync(0)
+    expect(f.pc.createOffer).toHaveBeenCalledOnce()
   })
 })
