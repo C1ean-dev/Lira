@@ -1,10 +1,41 @@
 import type Peer from 'peerjs'
+import type { MediaConnection } from 'peerjs'
 import { diagLog } from '../utils/diagnosticLogger'
+import { selectVoiceRecoveryServers } from './voiceRecoveryServers'
 
 export const DIRECT_ATTEMPT_MS = 1500
 export const RELAY_ATTEMPT_MS = 3500
+export const VOICE_QUALITY_SAMPLE_MS = 10_000
+const VOICE_LOSS_WINDOW_MS = 3 * VOICE_QUALITY_SAMPLE_MS
+const VOICE_RELAY_TIMEOUT_MS = 15_000
+const VOICE_RELAY_COOLDOWN_MS = 120_000
+const VOICE_LOSS_THRESHOLD = 0.10
+const VOICE_MIN_PACKETS = 50
 type RelayTier = 'cloudflare' | 'metered'
 type Options = { cloudflare: () => Promise<RTCIceServer[]>; metered: RTCIceServer[]; discovery: RTCIceServer[] }
+
+type VoicePacketSample = { id: string; timestamp: number; packets: number; lost: number }
+type VoiceDirection = 'inbound' | 'outbound'
+type VoiceRouteBaseline = { direction: VoiceDirection; directLossPct: number; directRttMs?: number | null }
+export type VoiceRouteSample = {
+  pairId: string
+  relayed: boolean
+  rttMs?: number | null
+  inbound?: VoicePacketSample
+  outbound?: VoicePacketSample
+}
+const voiceRouteObservers = new WeakMap<MediaConnection, (sample?: VoiceRouteSample) => void>()
+
+export function observeVoiceRoute(call: MediaConnection, sample?: VoiceRouteSample) {
+  voiceRouteObservers.get(call)?.(sample)
+}
+
+function voiceLoss(before?: VoicePacketSample, after?: VoicePacketSample): number | undefined {
+  if (!before || !after || before.id !== after.id || !(after.timestamp > before.timestamp)) return
+  const packets = after.packets - before.packets
+  const lost = after.lost - before.lost
+  if (packets >= VOICE_MIN_PACKETS && lost <= packets) return Math.max(0, lost) / packets
+}
 
 // PeerJS 1.5 treats a second OFFER as a new connection, so ICE restarts must be
 // routed to the existing PC. Keep that compatibility adapter in one place.
@@ -12,6 +43,8 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
   const internal = peer as any
   if (typeof internal._addConnection !== 'function' || typeof internal._handleMessage !== 'function') return peer
   const sessions = new WeakMap<object, ReturnType<typeof attach>>()
+  const voiceRetryAt = new Map<string, number>()
+  const incomingVoiceRelays = new Map<string, { servers: RTCIceServer[]; tier: RelayTier; expiresAt: number }>()
   const add = internal._addConnection.bind(peer)
   const handle = internal._handleMessage.bind(peer)
   const signal = peer.socket.send.bind(peer.socket)
@@ -27,10 +60,14 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
     if (!candidatePc?.addEventListener || !candidatePc.setConfiguration) return undefined
     const pc: RTCPeerConnection = candidatePc
     let tier = -1
+    let lastOfferedTier: RelayTier | undefined
     let stopped = false
     let busy = false
     let answering = false
     let remoteReady = false
+    let voiceAttempted = false
+    let voiceTrial: { previousConfig: RTCConfiguration; baseline: VoiceRouteBaseline; timer?: ReturnType<typeof setTimeout> } | undefined
+    let voiceComparison: { baseline: VoiceRouteBaseline; relay: VoiceRouteSample } | undefined
     const candidates: any[] = []
     let timer: ReturnType<typeof setTimeout> | undefined
     const originator = !conn.options?._payload
@@ -38,12 +75,17 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
     const candidateHandler = pc.onicecandidate
     const tiers: RelayTier[] = ['cloudflare', 'metered']
     const alive = () => !stopped && pc.signalingState !== 'closed' && pc.connectionState !== 'closed'
-    const connected = () => ['connected', 'completed'].includes(pc.iceConnectionState) || pc.connectionState === 'connected'
+    const iceConnected = () => ['connected', 'completed'].includes(pc.iceConnectionState)
+    const connected = () => iceConnected() || pc.connectionState === 'connected'
     const clear = () => { clearTimeout(timer); timer = undefined }
     const schedule = (delay: number) => { clear(); if (originator && tier < 1 && alive()) timer = setTimeout(() => { void advance() }, delay) }
     const serversFor = async (next: RelayTier) => next === 'cloudflare' ? options.cloudflare() : options.metered
-    const configure = (servers: RTCIceServer[]) => {
-      pc.setConfiguration({ ...pc.getConfiguration(), iceServers: [...options.discovery, ...servers], iceTransportPolicy: 'all' })
+    const configure = (servers: RTCIceServer[], relayOnly = false) => {
+      pc.setConfiguration({
+        ...pc.getConfiguration(),
+        iceServers: relayOnly ? servers : [...options.discovery, ...servers],
+        iceTransportPolicy: relayOnly ? 'relay' : 'all',
+      })
       // PeerJS stops forwarding candidates after ICE completes. A recovered
       // connection needs its candidate sender again for the new ICE generation.
       pc.onicecandidate = candidateHandler
@@ -51,19 +93,148 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
     // Older clients cannot renegotiate the same PeerJS connection. Preserve
     // their existing authenticated Metered behavior when they initiate a call.
     if (!supportsPriority) { tier = 1; configure(options.metered) }
+    const savedRelay = incomingVoiceRelays.get(conn.peer)
+    const pinnedVoiceRelay = conn.type === 'media' && savedRelay && savedRelay.expiresAt > Date.now() ? savedRelay : undefined
+    if (savedRelay && savedRelay.expiresAt <= Date.now()) incomingVoiceRelays.delete(conn.peer)
+    if (pinnedVoiceRelay) {
+      tier = tiers.indexOf(pinnedVoiceRelay.tier)
+      configure(pinnedVoiceRelay.servers, true)
+    }
     const transform = (sdp: RTCSessionDescriptionInit) => {
       if (conn.options?.sdpTransform && sdp.sdp) sdp.sdp = conn.options.sdpTransform(sdp.sdp) || sdp.sdp
       return sdp
     }
     const send = (type: 'OFFER' | 'ANSWER', sdp: RTCSessionDescriptionInit, next: RelayTier) => {
+      if (type === 'OFFER') lastOfferedTier = next
       peer.socket.send({ type, dst: conn.peer, payload: { sdp, type: conn.type, connectionId: conn.connectionId, liraIceRestart: next } } as any)
       diagLog('p2p', 'rtc.fallback-attempt', {
         peerId: conn.peer, connectionId: conn.connectionId, connectionType: conn.type,
         tier: next, role: type === 'OFFER' ? 'offerer' : 'answerer',
       }, `${conn.connectionId}:${next}`)
     }
+    async function makeRestartOffer(servers: RTCIceServer[], relayOnly = false) {
+      configure(servers, relayOnly)
+      const offer = transform(await pc.createOffer({ iceRestart: true }))
+      if (!alive()) return
+      await pc.setLocalDescription(offer)
+      if (alive()) return offer
+    }
+    const logVoiceRoute = (result: string, details: Record<string, unknown> = {}) => {
+      diagLog('p2p', 'rtc.voice-route-recovery', {
+        connectionId: conn.connectionId, peerId: conn.peer, result, ...details,
+      }, `${conn.connectionId}:${result}`)
+    }
+    async function restoreVoiceRoute(result: string) {
+      const trial = voiceTrial
+      if (!trial) return
+      clearTimeout(trial.timer)
+      trial.timer = undefined
+      try {
+        if (!alive()) return
+        if (pc.signalingState === 'have-local-offer') {
+          await pc.setLocalDescription({ type: 'rollback' })
+        }
+        if (alive()) pc.setConfiguration(trial.previousConfig)
+      } catch {
+        if (alive()) conn.close()
+        return
+      } finally {
+        voiceTrial = undefined
+      }
+      logVoiceRoute(result)
+      if (alive() && (!iceConnected() || pc.connectionState === 'failed')) {
+        conn.close()
+      }
+    }
+    async function tryVoiceRelay(baseline: VoiceRouteBaseline) {
+      if (busy || voiceAttempted || !alive() || (originator && !supportsPriority) || !iceConnected() ||
+          Date.now() < (voiceRetryAt.get(conn.peer) ?? 0) ||
+          !pc.remoteDescription || pc.signalingState !== 'stable') return
+      voiceAttempted = true
+      // The original offerer can restart ICE in place. The answering endpoint
+      // instead pins TURN for a normal replacement call to support older peers.
+      const firstTier = lastOfferedTier ?? 'cloudflare'
+      for (let index = tiers.indexOf(firstTier); index < tiers.length; index++) {
+        const next = tiers[index]
+        const servers = selectVoiceRecoveryServers(await serversFor(next).catch(() => []))
+        if (!alive() || busy || !iceConnected() || pc.signalingState !== 'stable' ||
+            Date.now() < (voiceRetryAt.get(conn.peer) ?? 0) ||
+            (lastOfferedTier && index < tiers.indexOf(lastOfferedTier))) return
+        if (!servers.length) continue
+        const now = Date.now()
+        for (const [peerId, retryAt] of voiceRetryAt) {
+          if (retryAt <= now) voiceRetryAt.delete(peerId)
+        }
+        voiceRetryAt.set(conn.peer, now + VOICE_RELAY_COOLDOWN_MS)
+        clear()
+        try {
+          if (!originator) {
+            // The original caller may not accept reversed restart offers. Use a
+            // normal replacement call with TURN in its initial ICE generation.
+            incomingVoiceRelays.set(conn.peer, { servers, tier: next, expiresAt: now + VOICE_RELAY_COOLDOWN_MS })
+            logVoiceRoute('redial-relay', { tier: next, ...baseline })
+            conn.close()
+            return
+          }
+          const trial: NonNullable<typeof voiceTrial> = { previousConfig: pc.getConfiguration(), baseline }
+          voiceTrial = trial
+          const offer = await makeRestartOffer(servers, true)
+          if (!offer) return
+          tier = index
+          trial.timer = setTimeout(() => { void restoreVoiceRoute('relay-not-selected') }, VOICE_RELAY_TIMEOUT_MS)
+          send('OFFER', offer, next)
+          logVoiceRoute('attempt', { tier: next, ...baseline })
+        } catch {
+          await restoreVoiceRoute('restart-failed')
+        }
+        return
+      }
+      logVoiceRoute('relay-unavailable')
+    }
+
+    if (conn.type === 'media') {
+      let previous: VoiceRouteSample | undefined
+      let previousAt = 0
+      const lossSince: Record<VoiceDirection, number | undefined> = { inbound: undefined, outbound: undefined }
+      voiceRouteObservers.set(conn, (sample) => {
+        if (voiceComparison) {
+          const { baseline, relay } = voiceComparison
+          if (sample?.pairId === relay.pairId && sample.relayed) {
+            const loss = voiceLoss(relay[baseline.direction], sample[baseline.direction])
+            if (loss !== undefined) {
+              logVoiceRoute('relay-quality', { ...baseline, relayLossPct: Math.round(100 * loss), relayRttMs: sample.rttMs })
+            }
+          }
+          voiceComparison = undefined
+        }
+        if (voiceTrial?.timer && sample?.relayed) {
+          clearTimeout(voiceTrial.timer)
+          voiceComparison = { baseline: voiceTrial.baseline, relay: sample }
+          voiceTrial = undefined
+          logVoiceRoute('relay-selected')
+        }
+        if (voiceAttempted || (originator && !supportsPriority)) return
+        const now = Date.now()
+        const sameRoute = iceConnected() && sample && !sample.relayed && previous?.pairId === sample.pairId
+          && now - previousAt <= 1.5 * VOICE_QUALITY_SAMPLE_MS
+        for (const direction of ['inbound', 'outbound'] as const) {
+          const loss = (sameRoute ? voiceLoss(previous?.[direction], sample[direction]) : undefined) ?? 0
+          if (loss >= VOICE_LOSS_THRESHOLD) {
+            lossSince[direction] ??= previousAt
+            if (now - lossSince[direction] >= VOICE_LOSS_WINDOW_MS) {
+              void tryVoiceRelay({ direction, directLossPct: Math.round(100 * loss), directRttMs: sample?.rttMs })
+            }
+          } else {
+            lossSince[direction] = undefined
+          }
+        }
+        previous = iceConnected() && !sample?.relayed ? sample : undefined
+        previousAt = now
+      })
+    }
+
     async function advance() {
-      if (!alive() || busy || !originator || !supportsPriority || connected()) return
+      if (!alive() || busy || voiceTrial || !originator || !supportsPriority || connected()) return
       // Restart only after the previous offer/answer has completed; otherwise
       // a delayed initial answer could be applied to a new ICE generation.
       if (!pc.remoteDescription || pc.signalingState !== 'stable') { schedule(250); return }
@@ -75,11 +246,8 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
           const servers = await serversFor(next)
           if (!alive() || connected()) return
           if (!servers.length) continue
-          configure(servers)
-          const offer = transform(await pc.createOffer({ iceRestart: true }))
-          if (!alive()) return
-          await pc.setLocalDescription(offer)
-          if (!alive()) return
+          const offer = await makeRestartOffer(servers, !!pinnedVoiceRelay)
+          if (!offer) return
           send('OFFER', offer, next)
           schedule(RELAY_ATTEMPT_MS)
           return
@@ -102,7 +270,7 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
       try {
         const servers = await serversFor(next)
         if (!alive()) return
-        configure(servers)
+        configure(servers, !!pinnedVoiceRelay)
         await pc.setRemoteDescription(payload.sdp)
         if (!alive()) return
         remoteReady = true
@@ -116,9 +284,17 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
     }
     const state = (event: Event) => {
       if (!alive()) { clear(); return }
-      if (connected()) { clear(); return }
       const failed = pc.iceConnectionState === 'failed' || pc.connectionState === 'failed'
+      if (failed && pinnedVoiceRelay && incomingVoiceRelays.get(conn.peer) === pinnedVoiceRelay) {
+        incomingVoiceRelays.delete(conn.peer)
+        logVoiceRoute('redial-relay-failed')
+      }
       const disconnected = pc.iceConnectionState === 'disconnected' || pc.connectionState === 'disconnected'
+      if (voiceTrial && (failed || disconnected)) {
+        event.stopImmediatePropagation()
+        return
+      }
+      if (connected()) { clear(); return }
       if (!supportsPriority || !((failed || disconnected) && tier < 1 || failed && busy)) return
       event.stopImmediatePropagation()
       diagLog('p2p', 'rtc.fallback-trigger', {
@@ -140,12 +316,17 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
     pc.addEventListener('signalingstatechange', signaling)
     conn.on('close', () => {
       stopped = true; clear()
+      clearTimeout(voiceTrial?.timer)
+      voiceTrial = undefined
+      voiceRouteObservers.delete(conn)
       pc.removeEventListener('iceconnectionstatechange', state, true)
       pc.removeEventListener('connectionstatechange', state, true)
       pc.removeEventListener('signalingstatechange', signaling)
     })
     schedule(DIRECT_ATTEMPT_MS)
-    return { answer, setRemoteSupport: (supported: boolean) => { supportsPriority = supported; if (!supported) clear() }, queueCandidate: (message: any) => {
+    return { answer, expectsRestartAnswer: (next: RelayTier) => pc.signalingState === 'have-local-offer' &&
+        next === lastOfferedTier && (!voiceTrial || !!voiceTrial.timer),
+      setRemoteSupport: (supported: boolean) => { supportsPriority = supported; if (!supported) clear() }, queueCandidate: (message: any) => {
       if (!answering || remoteReady) return false
       // Bound untrusted signaling while credentials are being fetched.
       if (candidates.length < 256) candidates.push(message)
@@ -165,9 +346,14 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
   internal._addConnection = (id: string, conn: any) => { add(id, conn); prepare(conn) }
   internal._handleMessage = (message: any) => {
     const payload = message?.payload
-    if (message?.type === 'ANSWER' && !payload?.liraIceRestart) {
+    if (message?.type === 'ANSWER') {
       const conn = peer.getConnection(message.src, payload?.connectionId)
-      if (conn) sessions.get(conn)?.setRemoteSupport(payload?.liraIcePriorityVersion === 1)
+      const session = conn && sessions.get(conn)
+      if (payload?.liraIceRestart) {
+        if (session && !session.expectsRestartAnswer(payload.liraIceRestart)) return
+      } else {
+        session?.setRemoteSupport(payload?.liraIcePriorityVersion === 1)
+      }
     }
     if (message?.type === 'CANDIDATE') {
       const conn = peer.getConnection(message.src, payload?.connectionId)

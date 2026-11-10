@@ -14,7 +14,7 @@ import { buildIceServers } from './rtcIceServers'
 import { DynamicBufferManager } from '../services/DynamicBufferManager'
 import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
 import { logVideoCodecsOnce, watchLiveQuality } from './liveQualityLog'
-import { DIRECT_ATTEMPT_MS, RELAY_ATTEMPT_MS } from './rtcTransportPriority'
+import { DIRECT_ATTEMPT_MS, RELAY_ATTEMPT_MS, VOICE_QUALITY_SAMPLE_MS, observeVoiceRoute, type VoiceRouteSample } from './rtcTransportPriority'
 import {
   CAMERA_CAPS,
   isAlmViewer,
@@ -53,7 +53,6 @@ const ICE_POOL_SIZE = 0
 
 export const ICE_CONNECT_TIMEOUT_MS = 1200
 const INCOMING_CALL_NEGOTIATION_GRACE_MS = DIRECT_ATTEMPT_MS + RELAY_ATTEMPT_MS
-const VOICE_QUALITY_SAMPLE_MS = 10_000
 const callStartedAt = new WeakMap<MediaConnection, number>()
 
 export type CallDirection = 'in' | 'out'
@@ -1442,6 +1441,8 @@ export class MediaCallHandler {
       if (!isCurrent()) return
       const inbound: Record<string, unknown> = {}
       let remoteAudio: Record<string, unknown> | undefined
+      let inboundPackets: VoiceRouteSample['inbound']
+      let remoteInboundAudio: (Pick<RTCStats, 'id' | 'timestamp'> & { localId?: string; packetsLost?: number }) | undefined
       let transportId: string | undefined
       let selectedPairId: string | undefined
       stats.forEach(report => {
@@ -1451,6 +1452,10 @@ export class MediaCallHandler {
         if ((report?.kind ?? report?.mediaType) !== 'audio') return
         if (report.type === 'inbound-rtp') {
           transportId = report.transportId
+          inboundPackets = {
+            id: report.id, timestamp: report.timestamp,
+            packets: report.packetsReceived + report.packetsLost, lost: report.packetsLost,
+          }
           inbound.audio = {
             bytesReceived: report.bytesReceived ?? null,
             packetsReceived: report.packetsReceived ?? null,
@@ -1462,6 +1467,7 @@ export class MediaCallHandler {
             jitterBufferEmittedCount: report.jitterBufferEmittedCount ?? null,
           }
         } else if (report.type === 'remote-inbound-rtp') {
+          remoteInboundAudio = report
           remoteAudio = {
             packetsLost: report.packetsLost ?? null,
             fractionLost: report.fractionLost ?? null,
@@ -1479,10 +1485,26 @@ export class MediaCallHandler {
         localType: local?.candidateType ?? null,
         remoteType: remote?.candidateType ?? null,
         protocol: local?.protocol ?? null,
+        relayProtocol: local?.relayProtocol ?? null,
         rttMs: typeof pair.currentRoundTripTime === 'number' ? Math.round(pair.currentRoundTripTime * 1000) : null,
       } : undefined
       diagLog('p2p', 'receiver-stats', { fromPeer: peerId, connectionId: call.connectionId, reason, inbound, remoteAudio, route })
-    } catch {}
+      if (reason !== 'periodic') return
+      const outboundAudio = remoteInboundAudio?.localId ? stats.get?.(remoteInboundAudio.localId) : undefined
+      const outbound = remoteInboundAudio && outboundAudio?.type === 'outbound-rtp' ? {
+        id: remoteInboundAudio.id, timestamp: remoteInboundAudio.timestamp,
+        packets: outboundAudio.packetsSent, lost: remoteInboundAudio.packetsLost ?? NaN,
+      } : undefined
+      observeVoiceRoute(call, pairId && route?.localType && route.remoteType ? {
+        pairId,
+        relayed: route.localType === 'relay' || route.remoteType === 'relay',
+        rttMs: route.rttMs,
+        inbound: inboundPackets,
+        outbound,
+      } : undefined)
+    } catch {
+      if (reason === 'periodic' && isCurrent()) observeVoiceRoute(call)
+    }
   }
 
   static endMediaCall(mediaCalls: Map<string, MediaConnection>, peerId: string) {
