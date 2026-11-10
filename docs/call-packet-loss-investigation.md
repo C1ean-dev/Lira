@@ -56,9 +56,7 @@ a correção e comparar as duas pontas atualizadas para concluir essa verificaç
 
 ## Verificação
 
-86 testes de voz, buffer, medição, reconexão, DJ, sinalização, transporte e tipagem
-passaram. A aplicação foi compilada e testada na sala real. A publicação de uma
-release não fez parte deste diagnóstico.
-
-O trabalho de convite por link está salvo separadamente no stash identificado
-como `WIP convite por link pausado para investigar lag`.
+87 testes de voz, buffer, medição, reconexão, DJ, sinalização, transporte e tipagem
+passaram em 11 arquivos na branch isolada do PR. A aplicação foi compilada e
+testada na sala real durante o diagnóstico. A publicação de uma release não fez
+parte desta verificação.
