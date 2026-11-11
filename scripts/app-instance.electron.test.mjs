@@ -20,7 +20,7 @@ test('native Electron locks isolate development and still reject duplicate insta
       import fs from 'node:fs';
       import { resolveAppInstance } from './electron/appInstance';
       import { setupSingleInstanceLock } from './electron/singleInstance';
-      const profile = resolveAppInstance({ defaultUserData: ${JSON.stringify(path.join(temporary, 'profile'))}, isPackaged: process.argv.includes('--installed') });
+      const profile = resolveAppInstance({ defaultUserData: ${JSON.stringify(path.join(temporary, 'profile'))}, isPackaged: process.argv.includes('--installed'), argv: process.argv });
       fs.mkdirSync(profile.userData, { recursive: true });
       app.setPath('userData', profile.userData);
       app.setPath('sessionData', profile.userData);
@@ -28,9 +28,9 @@ test('native Electron locks isolate development and still reject duplicate insta
       app.whenReady().then(() => process.stdout.write('LIRA_LOCK:' + JSON.stringify({ locked, userData: app.getPath('userData') }) + '\\n', () => { if (!locked) app.exit(0); }));
       setTimeout(() => app.exit(0), 30000);
     ` }, outfile: entry, bundle: true, platform: 'node', format: 'cjs', external: ['electron'], logLevel: 'silent' })
-    async function launch(installed) {
+    async function launch(installed, instance = '1') {
       const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE
-      const child = spawn(require('electron'), [entry, ...(installed ? ['--installed'] : [])], { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      const child = spawn(require('electron'), [entry, `--instance=${instance}`, ...(installed ? ['--installed'] : [])], { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
       const closed = new Promise(resolve => child.once('close', resolve))
       children.push({ child, closed })
       return new Promise((resolve, reject) => {
@@ -53,6 +53,10 @@ test('native Electron locks isolate development and still reject duplicate insta
     assert.notEqual(dev.userData, installed.userData)
     assert.equal((await launch(true)).locked, false)
     assert.equal((await launch(false)).locked, false)
+    const second = await launch(false, '2')
+    assert.equal(second.locked, true)
+    assert.notEqual(second.userData, dev.userData)
+    assert.equal((await launch(false, '2')).locked, false)
   } finally {
     for (const { child } of children) if (child.exitCode === null) child.kill()
     await Promise.all(children.map(({ closed }) => closed))

@@ -90,6 +90,15 @@ app.commandLine.appendSwitch(
 
 let mainWindow: BrowserWindow | null = null
 setupSpaceInviteHandling(app, ipcMain, () => mainWindow, process.argv)
+// Each profile gets one process, including the second profile used by electron:dual.
+// Exit duplicates before sessions and background services can contend for its cache.
+if (!setupSingleInstanceLock({
+  requestLock: () => app.requestSingleInstanceLock(),
+  quit: () => app.exit(0),
+  onSecondInstance: cb => app.on('second-instance', cb),
+  getWindows: () => mainWindow ? [mainWindow] : [],
+})) app.exit(0)
+
 function queryBrowserWindows(script: string): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
@@ -552,19 +561,6 @@ app.on('child-process-gone', (_event, details) => {
 
 if (isMultiInstance) {
   console.log(`[Electron] Modo multi-instância ativo (Instância ${instanceId}). UserData isolado em: ${app.getPath('userData')}`)
-} else {
-  const gotSingleInstanceLock = setupSingleInstanceLock({
-    requestLock: () => app.requestSingleInstanceLock(),
-    quit: () => {
-      app.exit(0)
-    },
-    onSecondInstance: (cb) => app.on('second-instance', cb),
-    getWindows: () => mainWindow ? [mainWindow] : [],
-  })
-
-  if (!gotSingleInstanceLock) {
-    app.exit(0)
-  }
 }
 
 registerSpaceInviteProtocol(app, { isMultiInstance })
