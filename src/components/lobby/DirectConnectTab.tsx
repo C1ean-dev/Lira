@@ -2,6 +2,7 @@ import React, { useId } from 'react'
 import { User, PlusCircle, LogIn, Sparkles, Clipboard } from 'lucide-react'
 import { useMediaStore } from '../../store/useMediaStore'
 import { DirectConnectionPanel } from './DirectConnectionPanel'
+import { normalizeSpaceInvite } from '../../utils/spaceInviteLink'
 
 interface Props {
   userName: string
@@ -30,7 +31,9 @@ export const DirectConnectTab: React.FC<Props> = ({
   roomInput, setRoomInput, directFallback, error, loading, onCreate, onJoin, onJoined, beginDirectJoin, endDirectJoin,
 }) => {
   const fieldId = useId()
-  const code = roomInput.trim()
+  let code = roomInput.trim()
+  // A direct offer must still use the existing answer exchange panel.
+  try { code = normalizeSpaceInvite(code) } catch { /* The join action displays validation errors. */ }
   const directInvite = code.startsWith('LIRA-DIRECT:') ? code : directFallback
 
   return (
@@ -89,7 +92,7 @@ export const DirectConnectTab: React.FC<Props> = ({
               type="text"
               value={roomInput}
               onChange={event => setRoomInput(event.target.value)}
-              placeholder="Cole o código ou convite"
+              placeholder="Cole o código, convite ou link"
               className={inputClass}
               autoCapitalize="off"
               spellCheck={false}
@@ -109,6 +112,7 @@ export const DirectConnectTab: React.FC<Props> = ({
             key={directInvite}
             role="guest"
             invite={directInvite}
+            guestName={userName}
             onJoined={onJoined}
             beginJoin={beginDirectJoin}
             endJoin={endDirectJoin}

@@ -1,10 +1,16 @@
 import React from 'react'
 import { mentionSegments } from './chatMentions'
 import type { ChatMention } from '../types/chat'
+import { isSpaceInviteWebLink, normalizeSpaceInvite } from './spaceInviteLink'
+import { useRoomJoinStore } from '../store/useRoomJoinStore'
 
-const URL_REGEX = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi
+const URL_REGEX = /(https?:\/\/[^\s<]+|lira:\/\/[^\s<]+|www\.[^\s<]+)/gi
 
 export function openExternalUrl(rawUrl: string): void {
+  if (/^lira:/i.test(rawUrl) || isSpaceInviteWebLink(rawUrl)) {
+    try { useRoomJoinStore.getState().requestJoin(normalizeSpaceInvite(rawUrl)) } catch {}
+    return
+  }
   const url = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(rawUrl) ? rawUrl : `https://${rawUrl}`
   try {
     const electronAPI = typeof window !== 'undefined' ? (window as any).electronAPI : null
@@ -54,7 +60,7 @@ export function linkifyText(text: string): React.ReactNode {
     const matchedRaw = match[0]
     const { url, trailing } = parseUrlTrailing(matchedRaw)
     if (url) {
-      const href = /^https?:\/\//i.test(url) ? url : `https://${url}`
+      const href = /^(https?|lira):\/\//i.test(url) ? url : `https://${url}`
       parts.push(
         <a
           key={`link-${matchIndex}`}

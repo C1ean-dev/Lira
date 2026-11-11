@@ -19,6 +19,7 @@ export function testSuites() {
     { name: 'noise:guards', command: process.env.LIRA_PYTHON || 'python', args: ['-B', path.join(root, 'scripts/quiet-unittest.py'), path.join(root, 'scripts/noise-benchmark/test_report.py')] },
     nodeTest('core:browser', 'LIRA_RUN_BROWSER_TESTS', ['scripts/core-realtime.browser.test.mjs', 'scripts/chat-scroll.browser.test.mjs'], ['--test-force-exit']),
     nodeTest('navigation:browser', 'LIRA_RUN_NAVIGATION_TESTS', 'scripts/navigation-responsive.browser.test.mjs'),
+    nodeTest('invites:electron', 'LIRA_RUN_INVITE_TESTS', 'scripts/space-invite.electron.test.mjs'),
     nodeTest('sprites:electron', 'LIRA_RUN_SPRITE_TESTS', 'scripts/individual-library.electron.test.mjs'),
     { name: 'noise:dynamics', command: process.execPath, args: [path.join(root, 'scripts/noise-benchmark.mjs'), '--dynamics-only', '--quiet', '--output=node_modules/.cache/noise-dynamics-check'] },
     nodeTest('transcription:electron', 'LIRA_RUN_TRANSCRIPTION_TESTS', 'scripts/transcription-module.electron.test.mjs'),

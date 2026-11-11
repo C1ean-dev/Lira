@@ -32,6 +32,7 @@ describe.skipIf(!compiler)('NSIS recovery hooks', () => {
       `OutFile "${output}"`,
       'RequestExecutionLevel user',
       '!define APP_PACKAGE_NAME "lira"',
+      '!define APP_EXECUTABLE_FILENAME "Lira.exe"',
       `!define BUILD_RESOURCES_DIR "${path.resolve('build')}"`,
       '!define isUpdated \'$R9 == "true"\'',
       ...(mode === 'uninstaller' ? ['!define BUILD_UNINSTALLER'] : []),

@@ -6,6 +6,47 @@ direto. A sala pode ser usada localmente enquanto aguarda participantes.
 
 ## Compartilhar um convite completo
 
+### Entrar por link
+
+Na barra do espaço, **Copiar link do convite** copia um endereço HTTPS:
+`https://lira-signaling.onrender.com/join#invite=…`. Compartilhe o endereço completo
+no WhatsApp, em sites ou em outros mensageiros. O navegador abre a página do
+convite e tenta abrir o aplicativo automaticamente. Se o navegador bloquear essa
+tentativa, clique em **Abrir no Lira** e confirme a abertura quando solicitado.
+Quem ainda não instalou pode usar **Baixar Lira**, instalar o programa
+e voltar à mesma página para abrir o convite. O link continua disponível nessa
+página; se a instalação demorar e só houver uma oferta direta, peça um novo convite.
+
+O convite fica no fragmento após `#`, sem enviar SDP ou endereços de conexão ao
+servidor HTTP. A rota `/join` é independente da sinalização e não requer banco
+de dados. O chat do próprio Lira e o campo **Código da sala** também aceitam esse
+endereço HTTPS. Os links `lira://join?invite=…` anteriores continuam funcionando
+no aplicativo e como destino do botão **Abrir no Lira**.
+
+Se o aplicativo estiver aberto em outro espaço, ele sai desse espaço antes de
+entrar no convidado. Se já estiver no espaço de destino, permanece nele. Sem
+nickname, o convite fica preenchido na tela **Conectar**; informe seu nome e clique
+em **Entrar na sala**.
+
+O link gerado pelo anfitrião leva o convite completo, com as mesmas rotas e prazo
+da oferta direta. Se somente a rota direta estiver disponível, a troca de resposta
+manual continua necessária. Convites acima do limite de tamanho de links do
+aplicativo devem ser compartilhados com **Copiar convite completo**, que continua
+disponível. Visitantes podem copiar um link com o ID do espaço, dependente da
+sinalização online.
+
+O instalador Windows registra `lira://`, e o aplicativo instalado renova esse
+registro ao abrir. Uma build de desenvolvimento registra seu próprio caminho
+somente quando não existe nenhum aplicativo registrado; ela preserva o registro
+do Lira instalado. Convites longos usam gzip no endereço de abertura para respeitar
+o limite de URLs externas do Windows, e o aplicativo valida o convite após descompactar.
+O destinatário precisa instalar uma versão com suporte a `lira://`
+para o botão da página abrir o aplicativo. Se tiver uma versão anterior, atualize
+o Lira ou use **Copiar convite para colar no Lira** na página. O endpoint `/join`
+precisa estar publicado no servidor Render junto com a versão correspondente do cliente.
+
+### Convite em texto
+
 O anfitrião pode clicar em **Convite completo** na barra superior para copiar um
 convite `LIRA-ALL:`. O visitante cola o texto em **Conectar → Código da sala** e
 clica em **Entrar na sala**. O Lira tenta, na ordem, o servidor de sinalização do
