@@ -11,8 +11,9 @@ direto. A sala pode ser usada localmente enquanto aguarda participantes.
 Na barra do espaço, **Copiar link do convite** copia um endereço HTTPS:
 `https://lira-signaling.onrender.com/join#invite=…`. Compartilhe o endereço completo
 no WhatsApp, em sites ou em outros mensageiros. O navegador abre a página do
-convite; clique em **Abrir no Lira** e confirme a abertura do aplicativo quando
-solicitado. Quem ainda não instalou pode usar **Baixar Lira**, instalar o programa
+convite e tenta abrir o aplicativo automaticamente. Se o navegador bloquear essa
+tentativa, clique em **Abrir no Lira** e confirme a abertura quando solicitado.
+Quem ainda não instalou pode usar **Baixar Lira**, instalar o programa
 e voltar à mesma página para abrir o convite. O link continua disponível nessa
 página; se a instalação demorar e só houver uma oferta direta, peça um novo convite.
 
@@ -35,8 +36,11 @@ disponível. Visitantes podem copiar um link com o ID do espaço, dependente da
 sinalização online.
 
 O instalador Windows registra `lira://`, e o aplicativo instalado renova esse
-registro ao abrir. Builds de desenvolvimento não substituem o registro do Lira
-instalado. O destinatário precisa instalar uma versão com suporte a `lira://`
+registro ao abrir. Uma build de desenvolvimento registra seu próprio caminho
+somente quando não existe nenhum aplicativo registrado; ela preserva o registro
+do Lira instalado. Convites longos usam gzip no endereço de abertura para respeitar
+o limite de URLs externas do Windows, e o aplicativo valida o convite após descompactar.
+O destinatário precisa instalar uma versão com suporte a `lira://`
 para o botão da página abrir o aplicativo. Se tiver uma versão anterior, atualize
 o Lira ou use **Copiar convite para colar no Lira** na página. O endpoint `/join`
 precisa estar publicado no servidor Render junto com a versão correspondente do cliente.

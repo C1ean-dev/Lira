@@ -18,6 +18,7 @@ import { createErrorReporter } from '../src/utils/errorReporter'
 import { setupSingleInstanceLock } from './singleInstance'
 import { resolveAppInstance } from './appInstance'
 import { setupSpaceInviteHandling } from './spaceInviteInbox'
+import { registerSpaceInviteProtocol } from './spaceInviteProtocol'
 import { TrayManager, AppSettings } from './trayManager'
 import { createLogWriter, installConsoleCapture, installProcessErrorCapture } from './logWriter'
 import { readNativeDataFile } from './nativeDataFile'
@@ -566,10 +567,7 @@ if (isMultiInstance) {
   }
 }
 
-// Development builds must never replace the installed application's handler.
-if (app.isPackaged && !isMultiInstance && !app.isDefaultProtocolClient('lira')) {
-  app.setAsDefaultProtocolClient('lira', process.execPath, ['--'])
-}
+registerSpaceInviteProtocol(app, { isMultiInstance })
 
 
 function createWindow() {

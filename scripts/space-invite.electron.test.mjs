@@ -5,6 +5,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
+import { randomUUID } from 'node:crypto'
+import { gzipSync } from 'node:zlib'
 
 test('space invitation links reach the real app through Electron startup and a second launch', {
   skip: process.env.LIRA_RUN_INVITE_TESTS !== '1', timeout: 90000,
@@ -16,6 +18,7 @@ test('space invitation links reach the real app through Electron startup and a s
   const root = process.cwd()
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'lira-invite-test-'))
   const entry = path.join(temporary, 'main.cjs')
+  const protocol = 'lira-invite-test-' + randomUUID()
   const complete = 'LIRA-ALL:' + Buffer.from(JSON.stringify({ version: 1, room: 'STARTUP', signaling: 'render' })).toString('base64url')
   const link = invite => 'lira://join?invite=' + encodeURIComponent(invite)
   const mocks = {
@@ -52,12 +55,19 @@ test('space invitation links reach the real app through Electron startup and a s
         import {app,BrowserWindow,ipcMain} from 'electron';
         import {setupSpaceInviteHandling} from './electron/spaceInviteInbox';
         import {setupSingleInstanceLock} from './electron/singleInstance';
+        import {registerSpaceInviteProtocol} from './electron/spaceInviteProtocol';
         app.setPath('userData', ${JSON.stringify(path.join(temporary, 'profile'))});
         let window = null;
         ipcMain.on('get-signaling-port-sync',event=>{event.returnValue=9000;});
+        // Test the OS registry without taking over the user's actual lira:// handler.
+        app.on('second-instance',(_event,argv)=>{
+          for(let i=0;i<argv.length;i++) if(argv[i].startsWith(${JSON.stringify(protocol + '://')}))
+            argv[i]='lira'+argv[i].slice(${protocol.length});
+        });
         setupSpaceInviteHandling(app,ipcMain,()=>window,process.argv);
         if(!setupSingleInstanceLock({requestLock:()=>app.requestSingleInstanceLock(),quit:()=>app.exit(0),
           onSecondInstance:cb=>app.on('second-instance',cb),getWindows:()=>window?[window]:[]})) app.exit(0);
+        if(process.platform==='win32') registerSpaceInviteProtocol(app,{scheme:${JSON.stringify(protocol)},entry:${JSON.stringify(entry)}});
         app.whenReady().then(()=>{
           window = new BrowserWindow({show:false,webPreferences:{preload:${JSON.stringify(path.join(temporary, 'preload.cjs'))},contextIsolation:true,nodeIntegration:false,backgroundThrottling:false}});
           window.loadFile(${JSON.stringify(path.join(temporary, 'index.html'))});
@@ -141,6 +151,18 @@ test('space invitation links reach the real app through Electron startup and a s
       assert.equal(await page.evaluate(() => window.inviteEvents.filter(event => event[0] === 'join').length), 2)
       assert.equal(await page.evaluate(() => window.inviteEvents.filter(event => event[0] === 'disconnect').length), 1)
     })
+    await t.test('Windows launches the registered app with a compressed complete invitation', { skip: process.platform !== 'win32' }, async () => {
+      const invite = 'LIRA-ALL:' + Buffer.from(JSON.stringify({ version: 1, room: 'OS-LINK', signaling: 'render', direct: {
+        version: 1, kind: 'offer', room: 'OS-LINK', session: 'windows-session', host: 'lira-OS-LINK-host', guest: 'lira-OS-LINK-peer-Guest',
+        expiresAt: Date.now() + 600000, description: { type: 'offer', sdp: 'v=0\r\n' + 'a=candidate:MixedCASE 192.168.1.20\r\n'.repeat(60) },
+      } })).toString('base64url')
+      const url = protocol + '://join?inviteGzip=' + gzipSync(invite).toString('base64url')
+      assert.ok(invite.length > 2081 && url.length < 2081)
+      assert.ok(await electronApp.evaluate(({ app }, scheme) => !!app.getApplicationNameForProtocol(scheme + '://'), protocol))
+      await electronApp.evaluate(({ shell }, link) => shell.openExternal(link), url)
+      await space.filter({ hasText: 'OS-LINK' }).waitFor()
+      assert.deepEqual(await page.evaluate(() => window.inviteEvents.filter(event => event[0] === 'all').at(-1)), ['all', 'OS-LINK', 'render'])
+    })
     await t.test('missing nickname preserves the invite for entry after typing a name', async () => {
       await page.evaluate(() => window.inviteTesting.reset(''))
       await secondLaunch(complete)
@@ -177,6 +199,9 @@ test('space invitation links reach the real app through Electron startup and a s
     })
     assert.deepEqual(errors, [])
   } finally {
+    if (electronApp && process.platform === 'win32') {
+      await electronApp.evaluate(({ app }, { protocol, entry }) => app.removeAsDefaultProtocolClient(protocol, process.execPath, [entry, '--']), { protocol, entry }).catch(() => {})
+    }
     await electronApp?.close()
     for (const child of children) if (child.exitCode === null) child.kill()
     assert.equal(path.dirname(path.resolve(temporary)), path.resolve(os.tmpdir()))

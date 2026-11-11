@@ -1,4 +1,4 @@
-import { readSpaceInviteLink } from '../src/utils/spaceInviteLink'
+import { expandNativeSpaceInvite } from './nativeSpaceInvite'
 import type { App, BrowserWindow, IpcMain } from 'electron'
 
 /** Keep an OS invitation until the renderer subscribes, including during startup. */
@@ -6,8 +6,7 @@ export function createSpaceInviteInbox(notify: () => void) {
   let pending: string | null = null
   return {
     receive(link: string): boolean {
-      try { readSpaceInviteLink(link) } catch { return false }
-      pending = link
+      try { pending = expandNativeSpaceInvite(link) } catch { return false }
       notify()
       return true
     },
