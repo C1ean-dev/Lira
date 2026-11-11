@@ -82,6 +82,12 @@ somente `lira-release.lock` no caminho informado. O arquivo contém o PID e a pa
 de logs. Se a limpeza automática falhar, o log informa o worktree temporário
 preservado; remova apenas aquele worktree quando não estiver mais em uso.
 
+Para retomar apenas o envio e a publicação de uma pasta que falhou na etapa de upload, sem recompilar nem alocar outra versão:
+
+```powershell
+npm run release -- --resume .scratch/local-releases/<data>-<processo>
+```
+
 Para publicar um commit específico já enviado ao GitHub, use:
 
 ```powershell

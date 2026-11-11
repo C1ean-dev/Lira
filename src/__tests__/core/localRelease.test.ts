@@ -2,8 +2,8 @@ import fs from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { runRelease, buildEnvironment, selectVersion, commandInvocation, createRunner, ghUploadEnvironment } from '../../../scripts/local-release.mjs'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { runRelease, resumeRelease, parseCliArgs, buildEnvironment, selectVersion, commandInvocation, createRunner, ghUploadEnvironment } from '../../../scripts/local-release.mjs'
 
 let root: string
 let calls: { command: string; args: string[]; cwd: string; env: Record<string, string> }[]
@@ -12,6 +12,8 @@ let failOnce: Map<string | RegExp, number>
 let skipArtifact: string
 let javaOutput: string
 let createLongWorktreePath: boolean
+let releaseViewResponse: string | Error
+let releaseListResponse: string
 const sha = 'a'.repeat(40)
 
 function matchesPattern(line: string, pattern: string | RegExp) {
@@ -33,7 +35,11 @@ async function run(command: string, args: string[], options: any = {}) {
   if (line.includes('gh api repos/')) return sha
   if (line.includes('remote get-url')) return 'https://github.com/C1ean-dev/Lira.git'
   if (line.includes('git tag --list')) return 'v1.1.205\nv1.1.9\nv9.0.0-beta.1'
-  if (line.includes('gh release list')) return JSON.stringify([{ tagName: 'v1.1.206' }])
+  if (line.includes('gh release list')) return releaseListResponse
+  if (line.includes('gh release view')) {
+    if (releaseViewResponse instanceof Error) throw releaseViewResponse
+    return releaseViewResponse
+  }
   if (line.includes('java') && args.includes('-version')) return javaOutput
   if (line.includes('worktree add')) {
     const dir = args.at(-2)!
@@ -73,6 +79,8 @@ function execute(extraEnv: Record<string, string> = {}, options: Record<string, 
 beforeEach(async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), 'lira-release-test-'))
   calls = []; failure = ''; failOnce = new Map(); skipArtifact = ''; javaOutput = 'openjdk version "21.0.7"'; createLongWorktreePath = false
+  releaseViewResponse = JSON.stringify({ isDraft: true, targetCommitish: sha, assets: [] })
+  releaseListResponse = JSON.stringify([{ tagName: 'v1.1.206' }])
   for (const dir of ['.git', 'sdk/platforms/android-35', 'sdk/build-tools/35.0.0', 'sdk/platform-tools']) await fs.mkdir(path.join(root, dir), { recursive: true })
   await fs.writeFile(path.join(root, 'release.jks'), 'fixture keystore')
   await fs.writeFile(path.join(root, 'untouched.txt'), 'uncommitted work')
@@ -132,15 +140,20 @@ describe('local Windows and Android release', () => {
   })
 
   it('leaves the draft unpublished when an asset upload still fails after retries', async () => {
-    failure = /gh release upload .*Lira-v1\.1\.207\.apk/
-    await expect(execute()).rejects.toThrow('simulated failure')
-    const apkUploads = calls.filter(call => call.command === 'gh' && call.args[1] === 'upload' && call.args.some(arg => arg.endsWith('.apk')))
-    expect(apkUploads).toHaveLength(3)
-    expect(calls.some(call => call.command === 'gh' && call.args.includes('edit'))).toBe(false)
-    const runs = await fs.readdir(path.join(root, '.scratch/local-releases'))
-    const state = JSON.parse(await fs.readFile(path.join(root, '.scratch/local-releases', runs[0], 'release.json'), 'utf8'))
-    expect(state).toMatchObject({ tag: 'v1.1.207', commit: sha, status: 'failed' })
-    expect(state.assets).toHaveLength(2)
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      failure = /gh release upload .*Lira-v1\.1\.207\.apk/
+      await expect(execute()).rejects.toThrow('simulated failure')
+      const apkUploads = calls.filter(call => call.command === 'gh' && call.args[1] === 'upload' && call.args.some(arg => arg.endsWith('.apk')))
+      expect(apkUploads).toHaveLength(3)
+      expect(calls.some(call => call.command === 'gh' && call.args.includes('edit'))).toBe(false)
+      const runs = await fs.readdir(path.join(root, '.scratch/local-releases'))
+      const runDir = path.join(root, '.scratch/local-releases', runs[0])
+      const state = JSON.parse(await fs.readFile(path.join(runDir, 'release.json'), 'utf8'))
+      expect(state).toMatchObject({ tag: 'v1.1.207', commit: sha, status: 'failed' })
+      expect(state.assets).toHaveLength(2)
+      expect(errors.mock.calls.flat().join('\n')).toContain(`--resume ${runDir}`)
+    } finally { errors.mockRestore() }
   })
 
   it('reuses the Windows build type check for Android', async () => {
@@ -291,5 +304,93 @@ describe('local Windows and Android release', () => {
     expect(selectVersion('1.1.117', ['v1.1.9', 'v1.1.205', 'v2.0.0-beta.1'], ['v1.1.206']).version).toBe('1.1.207')
     expect(selectVersion('1.2.0', ['v1.1.206'], []).version).toBe('1.2.0')
     expect(() => selectVersion('invalid', [], [])).toThrow()
+  })
+
+  it('resumes a failed release upload without rebuilding and skips assets already on the draft', async () => {
+    const runDir = path.join(root, '.scratch/local-releases/run-208')
+    await fs.mkdir(runDir, { recursive: true })
+    const exe = path.join(runDir, 'Lira.Setup.1.1.208.exe')
+    const apk = path.join(runDir, 'Lira-v1.1.208.apk')
+    await fs.writeFile(exe, 'windows-installer')
+    await fs.writeFile(apk, 'android-apk')
+    await fs.writeFile(path.join(runDir, 'release.json'), JSON.stringify({
+      status: 'failed', ref: 'origin/main', output: runDir,
+      assets: [exe, apk], repository: 'C1ean-dev/Lira',
+      commit: sha, tag: 'v1.1.208', version: '1.1.208', error: 'gh falhou (código 1)',
+    }))
+    releaseListResponse = JSON.stringify([{ tagName: 'v1.1.208' }])
+    releaseViewResponse = JSON.stringify({
+      isDraft: true,
+      targetCommitish: sha,
+      assets: [{ name: 'Lira.Setup.1.1.208.exe', size: Buffer.byteLength('windows-installer'), state: 'uploaded' }],
+    })
+    const result = await resumeRelease({ root, output: '.scratch/local-releases/run-208', run, platform: 'win32', uploadRetryDelayMs: 0 })
+    expect(result).toEqual({ tag: 'v1.1.208', commit: sha, url: 'https://github.com/C1ean-dev/Lira/releases/tag/v1.1.208', output: runDir })
+    expect(calls.some(call => ['npm', 'gradle'].includes(call.command))).toBe(false)
+    expect(calls.some(call => call.command === 'git' && call.args.includes('worktree'))).toBe(false)
+    expect(calls.some(call => call.command === 'gh' && call.args[1] === 'create')).toBe(false)
+    const uploads = calls.filter(call => call.command === 'gh' && call.args[1] === 'upload')
+    expect(uploads).toHaveLength(1)
+    expect(uploads[0].args).toContain(apk)
+    expect(uploads[0].env.GODEBUG).toContain('http2client=0')
+    expect(calls.some(call => call.command === 'gh' && call.args[1] === 'edit' && call.args.includes('--draft=false'))).toBe(true)
+    const updated = JSON.parse(await fs.readFile(path.join(runDir, 'release.json'), 'utf8'))
+    expect(updated.status).toBe('published')
+    expect(updated.error).toBeUndefined()
+    expect(await fs.readdir(path.join(root, '.git'))).not.toContain('lira-release.lock')
+  })
+
+  it('creates the draft when resuming a release whose draft creation failed', async () => {
+    const runDir = path.join(root, '.scratch/local-releases/run-208-no-draft')
+    await fs.mkdir(runDir, { recursive: true })
+    const exe = path.join(runDir, 'Lira.Setup.1.1.208.exe')
+    const apk = path.join(runDir, 'Lira-v1.1.208.apk')
+    await fs.writeFile(exe, 'windows-installer')
+    await fs.writeFile(apk, 'android-apk')
+    await fs.writeFile(path.join(runDir, 'release.json'), JSON.stringify({
+      status: 'failed', ref: 'origin/main', output: runDir,
+      assets: [exe, apk], repository: 'C1ean-dev/Lira',
+      commit: sha, tag: 'v1.1.208', version: '1.1.208',
+    }))
+    releaseViewResponse = new Error('release not found')
+    await resumeRelease({ root, output: runDir, run, platform: 'win32', uploadRetryDelayMs: 0 })
+    const createIndex = calls.findIndex(call => call.command === 'gh' && call.args[1] === 'create')
+    const uploads = calls.map((call, index) => ({ call, index })).filter(({ call }) => call.command === 'gh' && call.args[1] === 'upload')
+    const editIndex = calls.findIndex(call => call.command === 'gh' && call.args[1] === 'edit')
+    expect(createIndex).toBeGreaterThan(-1)
+    expect(uploads).toHaveLength(2)
+    expect(uploads[0].index).toBeGreaterThan(createIndex)
+    expect(editIndex).toBeGreaterThan(uploads[1].index)
+  })
+
+  it('refuses to resume a published release or a draft pointing to another commit', async () => {
+    const runDir = path.join(root, '.scratch/local-releases/run-guard')
+    await fs.mkdir(runDir, { recursive: true })
+    const exe = path.join(runDir, 'Lira.Setup.1.1.208.exe')
+    await fs.writeFile(exe, 'windows-installer')
+    await fs.writeFile(path.join(runDir, 'release.json'), JSON.stringify({
+      status: 'published', output: runDir, assets: [exe],
+      repository: 'C1ean-dev/Lira', commit: sha, tag: 'v1.1.208', version: '1.1.208',
+    }))
+    await expect(resumeRelease({ root, output: runDir, run, platform: 'win32', uploadRetryDelayMs: 0 })).rejects.toThrow(/publicad/i)
+
+    await fs.writeFile(path.join(runDir, 'release.json'), JSON.stringify({
+      status: 'failed', output: runDir, assets: [exe],
+      repository: 'C1ean-dev/Lira', commit: sha, tag: 'v1.1.208', version: '1.1.208',
+    }))
+    releaseListResponse = JSON.stringify([{ tagName: 'v1.1.208' }])
+    releaseViewResponse = JSON.stringify({ isDraft: false, targetCommitish: sha, assets: [] })
+    await expect(resumeRelease({ root, output: runDir, run, platform: 'win32', uploadRetryDelayMs: 0 })).rejects.toThrow(/já está publicada/i)
+
+    releaseViewResponse = JSON.stringify({ isDraft: true, targetCommitish: 'b'.repeat(40), assets: [] })
+    await expect(resumeRelease({ root, output: runDir, run, platform: 'win32', uploadRetryDelayMs: 0 })).rejects.toThrow(/outro commit/i)
+    expect(calls.some(call => call.command === 'gh' && call.args[1] === 'upload')).toBe(false)
+  })
+
+  it('parses --ref and --resume CLI flags cleanly', () => {
+    expect(parseCliArgs([])).toEqual({ mode: 'release', ref: 'origin/main' })
+    expect(parseCliArgs(['--ref', 'HEAD'])).toEqual({ mode: 'release', ref: 'HEAD' })
+    expect(parseCliArgs(['--resume', '.scratch/local-releases/run-208'])).toEqual({ mode: 'resume', output: '.scratch/local-releases/run-208' })
+    expect(() => parseCliArgs(['--unknown'])).toThrow(/Uso:/)
   })
 })
