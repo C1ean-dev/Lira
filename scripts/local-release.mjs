@@ -189,19 +189,33 @@ function requireRenderToken(env) {
 /** Refreshes the verified Render cache only after the installers are public on GitHub. */
 async function publishRenderCache({ env, tagName, fetcher }) {
   console.log(`\n[publicação] Atualizando cache da Render para ${tagName}...`)
+  const failure = detail => new Error(`Render não confirmou a atualização: ${detail}. A release no GitHub foi preservada; use --resume para tentar novamente sem recompilar.`)
+  let response
   try {
-    const response = await fetcher('https://lira-signaling.onrender.com/updates/lira/refresh', {
+    response = await fetcher('https://lira-signaling.onrender.com/updates/lira/refresh', {
       method: 'POST', redirect: 'error', signal: AbortSignal.timeout(420000),
       headers: { Authorization: `Bearer ${env.LIRA_UPDATE_PUBLISH_TOKEN}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ tag_name: tagName }),
     })
-    if (!response.ok) throw new Error('refresh failed')
-    const result = await response.json()
-    if (result.status !== 'ready' || result.tag_name !== tagName) throw new Error('unexpected release')
-  } catch {
-    // Never persist upstream response bodies, tokens, or network diagnostics in release.json.
-    throw new Error('Render não confirmou a atualização. A release no GitHub foi preservada; use --resume para tentar novamente sem recompilar.')
+  } catch (error) {
+    // Never persist upstream response bodies, tokens, or raw network diagnostics.
+    throw failure(['TimeoutError', 'AbortError'].includes(error?.name) ? 'tempo limite da solicitação excedido' : 'falha de conexão com o servidor')
   }
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => {})
+    const advice = {
+      401: 'confira se o token LIRA_UPDATE_PUBLISH_TOKEN é idêntico no computador e na Render',
+      403: 'confira a autorização do token no serviço Render',
+      404: 'faça o deploy do servidor lira-signaling com o endpoint POST /updates/lira/refresh',
+      502: 'consulte os logs de Lira Updates na Render para identificar a falha ao preparar os instaladores',
+      503: 'confira LIRA_UPDATE_PUBLISH_TOKEN no serviço Render e a disponibilidade do servidor',
+    }[response.status] || 'confira a disponibilidade e os logs do serviço Render'
+    throw failure(`HTTP ${response.status}; ${advice}`)
+  }
+  let result
+  try { result = await response.json() }
+  catch { throw failure('resposta inválida do servidor') }
+  if (result?.status !== 'ready' || result?.tag_name !== tagName) throw failure('o cache ainda não confirmou a versão esperada')
 }
 
 async function finishPublication(state, saveState, env, fetcher) {

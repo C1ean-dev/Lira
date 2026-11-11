@@ -121,6 +121,30 @@ describe('local Windows and Android release', () => {
     expect(renderFetch).not.toHaveBeenCalled()
   })
 
+  it.each([
+    [401, /HTTP 401.*token/i],
+    [404, /HTTP 404.*deploy/i],
+    [503, /HTTP 503.*LIRA_UPDATE_PUBLISH_TOKEN/i],
+    [502, /HTTP 502.*logs/i],
+  ])('reports an actionable Render HTTP %s error without recording the response body', async (status, message) => {
+    renderFetch.mockResolvedValue(new Response('publisher-secret sensitive upstream body', { status }))
+    await expect(execute()).rejects.toThrow(message)
+    const directories = await fs.readdir(path.join(root, '.scratch/local-releases'))
+    const saved = await fs.readFile(path.join(root, '.scratch/local-releases', directories[0], 'release.json'), 'utf8')
+    expect(JSON.parse(saved).error).toMatch(message)
+    expect(saved).not.toContain('publisher-secret')
+    expect(saved).not.toContain('sensitive upstream body')
+  })
+
+  it.each(['invalid-json', 'wrong-version', 'timeout', 'network'])('distinguishes Render %s from HTTP failures', async mode => {
+    if (mode === 'invalid-json') renderFetch.mockResolvedValue(new Response('publisher-secret', { status: 200 }))
+    if (mode === 'wrong-version') renderFetch.mockResolvedValue(Response.json({ status: 'ready', tag_name: 'publisher-secret' }))
+    if (mode === 'timeout') renderFetch.mockRejectedValue(new DOMException('publisher-secret', 'TimeoutError'))
+    if (mode === 'network') renderFetch.mockRejectedValue(new Error('publisher-secret'))
+    const messages = { 'invalid-json': /resposta inválida/i, 'wrong-version': /versão esperada/i, timeout: /tempo limite/i, network: /conexão/i }
+    await expect(execute()).rejects.toThrow(messages[mode])
+  })
+
   it.each(['http', 'wrong-tag', 'network'])('records a resumable failure when Render fails: %s', async mode => {
     if (mode === 'http') renderFetch.mockResolvedValue(new Response('publisher-secret', { status: 502 }))
     if (mode === 'wrong-tag') renderFetch.mockResolvedValue(Response.json({ tag_name: 'v1.1.206', status: 'ready' }))
