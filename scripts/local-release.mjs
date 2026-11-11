@@ -21,6 +21,47 @@ export function selectVersion(current, tags, releases) {
   return calculateNextVersion(current, versions[0] || '')
 }
 
+/** Disables Go's HTTP/2 client so large gh release uploads do not stall on multiplexed streams. */
+export function ghUploadEnvironment(env = process.env) {
+  const current = (env.GODEBUG || '').split(',').map(part => part.trim()).filter(Boolean)
+  if (!current.some(part => part.startsWith('http2client='))) current.push('http2client=0')
+  return { ...env, GODEBUG: current.join(',') }
+}
+
+/** Uploads one release asset sequentially with --clobber retries for transient HTTP 408 stalls. */
+async function uploadReleaseAsset(exec, { repository, tagName, asset, env, maxAttempts = 3, retryDelayMs = 5000 }) {
+  const uploadEnv = ghUploadEnvironment(env)
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await exec('gh', ['release', 'upload', tagName, asset, '--repo', repository, '--clobber'], { env: uploadEnv })
+      return
+    } catch (error) {
+      if (attempt === maxAttempts) throw error
+      console.warn(`Falha ao enviar ${path.basename(asset)} (tentativa ${attempt}/${maxAttempts}): ${error.message}. Tentando novamente...`)
+      if (retryDelayMs > 0) await new Promise(resolve => setTimeout(resolve, retryDelayMs))
+    }
+  }
+}
+
+/** Removes the temporary worktree even when Android build paths exceed Windows MAX_PATH. */
+async function cleanupTemporaryWorktree(exec, { temporary, source, worktreeAdded }) {
+  if (!temporary) return
+  const removeDirectory = target => fs.rm(target, { recursive: true, force: true, maxRetries: 4, retryDelay: 200 })
+  if (!worktreeAdded) {
+    await removeDirectory(temporary)
+    return
+  }
+  const resolved = await fs.realpath(temporary)
+  const resolvedSource = await fs.realpath(source)
+  if (resolved !== temporary || resolvedSource !== path.join(resolved, 'source')) throw new Error('Caminho de limpeza inválido')
+  let removedByGit = true
+  try { await exec('git', ['-c', 'core.longpaths=true', 'worktree', 'remove', '--force', source]) }
+  catch { removedByGit = false }
+  // Git can leave ignored files behind or abort on locked/long paths; Node handles \\?\ paths and retries.
+  await removeDirectory(resolved)
+  if (!removedByGit) await exec('git', ['worktree', 'prune'])
+}
+
 export function buildEnvironment(env, version) {
   const result = { ...env }
   for (const name of ['GITHUB_OUTPUT', 'LIRA_TARGET', 'VITEST', 'NODE_ENV', 'VITE_DEV_SERVER_URL']) delete result[name]
@@ -85,7 +126,7 @@ async function loadEnvironment(root, env) {
   return { ...configured, ...env }
 }
 
-export async function runRelease({ root = projectRoot, run, env = process.env, platform = process.platform, ref = 'origin/main' } = {}) {
+export async function runRelease({ root = projectRoot, run, env = process.env, platform = process.platform, ref = 'origin/main', uploadRetryDelayMs = 5000 } = {}) {
   if (platform !== 'win32') throw new Error('Execute esta publicação no Windows (Windows e Android).')
   if (!ref || ref.startsWith('-')) throw new Error('Referência Git inválida.')
   const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number)
@@ -137,7 +178,7 @@ export async function runRelease({ root = projectRoot, run, env = process.env, p
     await exec('powershell', ['-NoProfile', '-Command', "$v = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\\Installer\\vswhere.exe'; if (!(Test-Path -LiteralPath $v)) { throw 'Instale Visual Studio Build Tools com C++' }; $p = & $v -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath; if (!$p) { throw 'Instale o componente Desktop development with C++' }"])
     temporary = await fs.mkdtemp(path.join(await fs.realpath(tmpdir()), 'lira-publish-'))
     source = path.join(temporary, 'source')
-    await exec('git', ['worktree', 'add', '--detach', source, commit])
+    await exec('git', ['-c', 'core.longpaths=true', 'worktree', 'add', '--detach', source, commit])
     worktreeAdded = true
     const pkgFile = path.join(source, 'package.json')
     const pkg = JSON.parse(await fs.readFile(pkgFile, 'utf8'))
@@ -176,9 +217,12 @@ export async function runRelease({ root = projectRoot, run, env = process.env, p
     state.assets = [windowsAsset, androidAsset]
     for (const file of state.assets) if (!(await fs.stat(file)).size) throw new Error('Artefato vazio: ' + file)
     state.status = 'uploading'; await saveState()
-    // Draft keeps the previous public version active until both uploads succeed.
-    await exec('gh', ['release', 'create', tagName, ...state.assets, '--repo', repository,
+    // Draft keeps the previous public version active until both sequential uploads succeed.
+    await exec('gh', ['release', 'create', tagName, '--repo', repository,
       '--target', commit, '--title', releaseTitle, '--draft', '--generate-notes'])
+    for (const asset of state.assets) {
+      await uploadReleaseAsset(exec, { repository, tagName, asset, env, retryDelayMs: uploadRetryDelayMs })
+    }
     await exec('gh', ['release', 'edit', tagName, '--repo', repository, '--draft=false', '--latest'])
     state.status = 'published'; await saveState()
     const url = `https://github.com/${repository}/releases/tag/${tagName}`
@@ -192,16 +236,7 @@ export async function runRelease({ root = projectRoot, run, env = process.env, p
     throw error
   } finally {
     try {
-      if (worktreeAdded) {
-        const resolved = await fs.realpath(temporary)
-        const resolvedSource = await fs.realpath(source)
-        if (resolved !== temporary || resolvedSource !== path.join(resolved, 'source')) throw new Error('Caminho de limpeza inválido')
-        await exec('git', ['worktree', 'remove', '--force', source])
-        // Git can leave ignored files behind even after unregistering the worktree.
-        await fs.rm(resolved, { recursive: true, force: true, maxRetries: 4, retryDelay: 200 })
-      } else if (temporary) {
-        await fs.rmdir(temporary)
-      }
+      await cleanupTemporaryWorktree(exec, { temporary, source, worktreeAdded })
     } catch (error) { console.error(`Cópia temporária preservada em ${temporary}: ${error.message}`) }
     finally { await lock.close(); await fs.unlink(lockFile) }
   }

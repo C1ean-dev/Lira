@@ -3,19 +3,31 @@ import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { runRelease, buildEnvironment, selectVersion, commandInvocation, createRunner } from '../../../scripts/local-release.mjs'
+import { runRelease, buildEnvironment, selectVersion, commandInvocation, createRunner, ghUploadEnvironment } from '../../../scripts/local-release.mjs'
 
 let root: string
 let calls: { command: string; args: string[]; cwd: string; env: Record<string, string> }[]
-let failure: string
+let failure: string | RegExp
+let failOnce: Map<string | RegExp, number>
 let skipArtifact: string
 let javaOutput: string
+let createLongWorktreePath: boolean
 const sha = 'a'.repeat(40)
+
+function matchesPattern(line: string, pattern: string | RegExp) {
+  return typeof pattern === 'string' ? line.includes(pattern) : pattern.test(line)
+}
 
 async function run(command: string, args: string[], options: any = {}) {
   calls.push({ command, args, cwd: options.cwd, env: options.env })
   const line = [command, ...args].join(' ')
-  if (failure && line.includes(failure)) throw new Error('simulated failure: ' + failure)
+  for (const [pattern, remaining] of failOnce.entries()) {
+    if (matchesPattern(line, pattern) && remaining > 0) {
+      failOnce.set(pattern, remaining - 1)
+      throw new Error('transient failure: ' + pattern)
+    }
+  }
+  if (failure && matchesPattern(line, failure)) throw new Error('simulated failure: ' + failure)
   if (line.includes('rev-parse --git-common-dir')) return path.join(root, '.git')
   if (line.includes('rev-parse --verify')) return sha
   if (line.includes('gh api repos/')) return sha
@@ -28,6 +40,11 @@ async function run(command: string, args: string[], options: any = {}) {
     await fs.mkdir(dir, { recursive: true })
     await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify({ version: '1.1.117' }))
     await fs.writeFile(path.join(dir, 'package-lock.json'), JSON.stringify({ version: '1.1.117', packages: { '': { version: '1.1.117' } } }))
+    if (createLongWorktreePath) {
+      const deepDir = path.join(dir, 'android/app/build/intermediates', 'x'.repeat(110), 'y'.repeat(110))
+      await fs.mkdir(deepDir, { recursive: true })
+      await fs.writeFile(path.join(deepDir, 'asset.jar'), 'artifact')
+    }
   }
   if (line === 'npm run build') {
     expect(JSON.parse(await fs.readFile(path.join(options.cwd, 'package.json'), 'utf8')).version).toBe('1.1.207')
@@ -45,8 +62,8 @@ async function run(command: string, args: string[], options: any = {}) {
   return ''
 }
 
-function execute(extraEnv: Record<string, string> = {}) {
-  return runRelease({ root, run, platform: 'win32', env: {
+function execute(extraEnv: Record<string, string> = {}, options: Record<string, unknown> = {}) {
+  return runRelease({ root, run, platform: 'win32', uploadRetryDelayMs: 0, ...options, env: {
     ANDROID_HOME: path.join(root, 'sdk'), LIRA_KEYSTORE_PATH: path.join(root, 'release.jks'),
     VITE_TURN_USERNAME: 'relay-user', VITE_TURN_CREDENTIAL: 'relay-password',
     ...extraEnv,
@@ -55,7 +72,7 @@ function execute(extraEnv: Record<string, string> = {}) {
 
 beforeEach(async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), 'lira-release-test-'))
-  calls = []; failure = ''; skipArtifact = ''; javaOutput = 'openjdk version "21.0.7"'
+  calls = []; failure = ''; failOnce = new Map(); skipArtifact = ''; javaOutput = 'openjdk version "21.0.7"'; createLongWorktreePath = false
   for (const dir of ['.git', 'sdk/platforms/android-35', 'sdk/build-tools/35.0.0', 'sdk/platform-tools']) await fs.mkdir(path.join(root, dir), { recursive: true })
   await fs.writeFile(path.join(root, 'release.jks'), 'fixture keystore')
   await fs.writeFile(path.join(root, 'untouched.txt'), 'uncommitted work')
@@ -71,7 +88,8 @@ describe('local Windows and Android release', () => {
     const windows = lines.indexOf('npm run build')
     const androidBundle = lines.indexOf('npm exec -- vite build')
     const android = lines.findIndex(line => line.includes('assembleRelease'))
-    const upload = calls.findIndex(call => call.command === 'gh' && call.args[1] === 'create')
+    const createDraft = calls.findIndex(call => call.command === 'gh' && call.args[1] === 'create')
+    const uploads = calls.map((call, index) => ({ call, index })).filter(({ call }) => call.command === 'gh' && call.args[1] === 'upload')
     const publish = calls.findIndex(call => call.command === 'gh' && call.args[1] === 'edit')
     expect(install).toBeGreaterThan(-1)
     expect(windows).toBeGreaterThan(install)
@@ -80,15 +98,49 @@ describe('local Windows and Android release', () => {
     expect(lines.some(line => /(?:python|pip)\b/i.test(line))).toBe(false)
     expect(androidBundle).toBeGreaterThan(windows)
     expect(android).toBeGreaterThan(androidBundle)
-    expect(upload).toBeGreaterThan(android)
-    expect(publish).toBeGreaterThan(upload)
-    expect(calls[upload].args).toEqual(expect.arrayContaining(['--draft', '--target', sha, '--generate-notes']))
-    expect(calls[upload].args.filter(arg => /\.(exe|apk)$/.test(arg))).toHaveLength(2)
+    expect(createDraft).toBeGreaterThan(android)
+    expect(uploads).toHaveLength(2)
+    expect(uploads[0].index).toBeGreaterThan(createDraft)
+    expect(uploads[1].index).toBeGreaterThan(uploads[0].index)
+    expect(publish).toBeGreaterThan(uploads[1].index)
+    expect(calls[createDraft].args).toEqual(expect.arrayContaining(['--draft', '--target', sha, '--generate-notes']))
+    expect(calls[createDraft].args.filter(arg => /\.(exe|apk)$/.test(arg))).toHaveLength(0)
+    expect(uploads[0].call.args).toEqual(expect.arrayContaining(['release', 'upload', 'v1.1.207', '--repo', 'C1ean-dev/Lira', '--clobber']))
+    expect(uploads[0].call.args.filter(arg => /\.(exe|apk)$/.test(arg))).toHaveLength(1)
+    expect(uploads[1].call.args.filter(arg => /\.(exe|apk)$/.test(arg))).toHaveLength(1)
+    expect(uploads[0].call.args.find(arg => arg.endsWith('.exe'))).toBeTruthy()
+    expect(uploads[1].call.args.find(arg => arg.endsWith('.apk'))).toBeTruthy()
+    for (const { call } of uploads) expect(call.env.GODEBUG).toContain('http2client=0')
     expect(calls[publish].args).toEqual(expect.arrayContaining(['--draft=false', '--latest']))
     expect(lines.some(line => /git (?:add|commit|reset|clean|checkout)/.test(line))).toBe(false)
     expect(await fs.readFile(path.join(root, 'untouched.txt'), 'utf8')).toBe('uncommitted work')
-    expect(lines.some(line => line.includes('worktree remove'))).toBe(true)
+    expect(lines.some(line => line.includes('worktree add') && line.includes('core.longpaths=true'))).toBe(true)
+    expect(lines.some(line => line.includes('worktree remove') && line.includes('core.longpaths=true'))).toBe(true)
     expect(await fs.readdir(path.join(root, '.git'))).not.toContain('lira-release.lock')
+  })
+
+  it('retries a timed-out sequential asset upload with --clobber before publishing', async () => {
+    failOnce.set(/gh release upload .*Lira-v1\.1\.207\.apk/, 1)
+    const result = await execute()
+    expect(result.tag).toBe('v1.1.207')
+    const exeUploads = calls.filter(call => call.command === 'gh' && call.args[1] === 'upload' && call.args.some(arg => arg.endsWith('.exe')))
+    const apkUploads = calls.filter(call => call.command === 'gh' && call.args[1] === 'upload' && call.args.some(arg => arg.endsWith('.apk')))
+    expect(exeUploads).toHaveLength(1)
+    expect(apkUploads).toHaveLength(2)
+    expect(apkUploads[1].args).toContain('--clobber')
+    expect(calls.some(call => call.command === 'gh' && call.args[1] === 'edit')).toBe(true)
+  })
+
+  it('leaves the draft unpublished when an asset upload still fails after retries', async () => {
+    failure = /gh release upload .*Lira-v1\.1\.207\.apk/
+    await expect(execute()).rejects.toThrow('simulated failure')
+    const apkUploads = calls.filter(call => call.command === 'gh' && call.args[1] === 'upload' && call.args.some(arg => arg.endsWith('.apk')))
+    expect(apkUploads).toHaveLength(3)
+    expect(calls.some(call => call.command === 'gh' && call.args.includes('edit'))).toBe(false)
+    const runs = await fs.readdir(path.join(root, '.scratch/local-releases'))
+    const state = JSON.parse(await fs.readFile(path.join(root, '.scratch/local-releases', runs[0], 'release.json'), 'utf8'))
+    expect(state).toMatchObject({ tag: 'v1.1.207', commit: sha, status: 'failed' })
+    expect(state.assets).toHaveLength(2)
   })
 
   it('reuses the Windows build type check for Android', async () => {
@@ -204,8 +256,25 @@ describe('local Windows and Android release', () => {
 
   it('removes ignored files left in the temporary checkout by git worktree remove', async () => {
     await execute()
-    const worktree = calls.find(call => call.command === 'git' && call.args[1] === 'add')!.args.at(-2)!
+    const worktree = calls.find(call => call.command === 'git' && call.args.includes('add'))!.args.at(-2)!
     await expect(fs.access(path.dirname(worktree))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('removes long-path temporary worktrees via Node fallback and prunes git metadata when git worktree remove fails', async () => {
+    createLongWorktreePath = true
+    failure = 'worktree remove'
+    const result = await execute()
+    expect(result.tag).toBe('v1.1.207')
+    const worktree = calls.find(call => call.command === 'git' && call.args.includes('add'))!.args.at(-2)!
+    await expect(fs.access(path.dirname(worktree))).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(calls.some(call => call.command === 'git' && call.args.includes('worktree') && call.args.includes('prune'))).toBe(true)
+    expect(await fs.readdir(path.join(root, '.git'))).not.toContain('lira-release.lock')
+  })
+
+  it('disables HTTP/2 on gh uploads without discarding existing GODEBUG settings', () => {
+    expect(ghUploadEnvironment({}).GODEBUG).toBe('http2client=0')
+    expect(ghUploadEnvironment({ GODEBUG: 'x509sha1=1' }).GODEBUG).toBe('x509sha1=1,http2client=0')
+    expect(ghUploadEnvironment({ GODEBUG: 'http2client=1,x509sha1=1' }).GODEBUG).toBe('http2client=1,x509sha1=1')
   })
 
   it('keeps TURN settings in both builds and strips CI version outputs', () => {
