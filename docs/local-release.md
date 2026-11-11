@@ -8,7 +8,10 @@ O script busca o código mais recente de `origin/main` e as tags, escolhe a pró
 versão disponível (incluindo rascunhos) e instala as dependências com `npm ci`.
 Depois gera o instalador Windows e o APK Android assinado, verifica a assinatura
 do APK, envia ambos a um rascunho no GitHub Releases e publica a release como
-mais recente. Uma falha interrompe a sequência. A suíte de testes é independente
+mais recente. Em seguida, solicita ao servidor da Render que busque e verifique
+os dois instaladores imediatamente, sem esperar a consulta diária. A publicação
+só termina com sucesso quando a Render confirma a mesma versão. Uma falha
+interrompe a sequência. A suíte de testes é independente
 da publicação e pode ser executada com `npm run test:all`.
 
 O build acontece em um worktree temporário. Seu código não commitado, sua branch,
@@ -53,6 +56,14 @@ Secrets do GitHub não podem ser recuperados pelo script; use os valores locais
 ou o gerenciador onde você os guardou. Não coloque esses valores em arquivos
 versionados. A autenticação de publicação usa o próprio `gh`.
 
+Configure também `LIRA_UPDATE_PUBLISH_TOKEN` em `.env.release.local` e nas
+variáveis de ambiente do serviço **lira-signaling** da Render, com o mesmo segredo
+aleatório nos dois lugares. O servidor deve incluir `POST /updates/lira/refresh`;
+publique a branch correspondente de `lira-signaling` antes de usar este fluxo.
+O token é obrigatório e sua ausência interrompe o script antes dos builds. Ele
+não é enviado aos builds Windows/Android nem gravado em `release.json`. Não use
+prefixo `VITE_` para esse segredo e não o coloque em arquivos versionados.
+
 A instalação das dependências e a publicação precisam de internet. Reserve espaço
 em disco para as dependências e os dois builds.
 
@@ -74,6 +85,11 @@ o script não o publica. Confira no GitHub antes de recuperar esse rascunho. Uma
 nova execução reserva outra versão se a anterior já estiver em tags ou releases.
 Se a conexão cair na etapa final, confira o estado da release no GitHub antes de
 tentar novamente, pois a publicação pode ter sido concluída no servidor.
+
+Se o GitHub já estiver publicado e a Render falhar, o JSON guarda essa etapa.
+Execute o mesmo `--resume` para tentar novamente somente a disponibilização na
+Render, sem build, nova versão ou reenvio dos instaladores. O cache anterior da
+Render permanece disponível até que os dois arquivos novos sejam verificados.
 
 Uma trava no diretório Git comum impede duas publicações simultâneas neste clone,
 inclusive a partir de outros worktrees. Se o computador desligar ou o processo for
@@ -103,4 +119,5 @@ Build, testes e publicação deixam de usar GitHub Actions. Os workflows de Wind
 Android e triagem de issues foram removidos para não consumir minutos. O script
 de triagem `scripts/ai-issue-triage.mjs` continua no repositório, mas não é disparado
 automaticamente na abertura de issues. GitHub Releases continua hospedando os
-instaladores e atendendo a verificação de atualizações do aplicativo.
+instaladores; a Render guarda uma cópia verificada e atende a verificação e o
+download de atualizações do aplicativo.

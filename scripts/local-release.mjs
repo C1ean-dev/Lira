@@ -64,7 +64,7 @@ async function cleanupTemporaryWorktree(exec, { temporary, source, worktreeAdded
 
 export function buildEnvironment(env, version) {
   const result = { ...env }
-  for (const name of ['GITHUB_OUTPUT', 'LIRA_TARGET', 'VITEST', 'NODE_ENV', 'VITE_DEV_SERVER_URL']) delete result[name]
+  for (const name of ['GITHUB_OUTPUT', 'LIRA_TARGET', 'VITEST', 'NODE_ENV', 'VITE_DEV_SERVER_URL', 'LIRA_UPDATE_PUBLISH_TOKEN']) delete result[name]
   const [major, minor, patch] = version.split('.').map(Number)
   if (minor > 99 || patch > 999) throw new Error('Versão excede o formato de versionCode Android; incremente minor/major.')
   return { ...result, VITE_APP_VERSION: version, LIRA_VERSION_NAME: version,
@@ -175,15 +175,48 @@ async function publishDraftAssets(exec, { repository, tagName, commit, releaseTi
   await exec('gh', ['release', 'edit', tagName, '--repo', repository, '--draft=false', '--latest'])
 }
 
-function logFailure(output, assets) {
-  console.error(`Publicação interrompida. Logs e artefatos: ${output}. Se houver um rascunho no GitHub, confira os dois anexos antes de publicá-lo.`)
+function logFailure(output, assets, githubPublished = false) {
+  console.error(`Publicação interrompida. Logs e artefatos: ${output}. ${githubPublished
+    ? 'A release já está pública no GitHub; falta confirmar o cache da Render.'
+    : 'Se houver um rascunho no GitHub, confira os dois anexos antes de publicá-lo.'}`)
   if (assets?.length) console.error(`Para retomar apenas o envio dos artefatos prontos sem recompilar: npm run release -- --resume ${output}`)
 }
 
-export async function runRelease({ root = projectRoot, run, env = process.env, platform = process.platform, ref = 'origin/main', uploadRetryDelayMs = 5000 } = {}) {
+function requireRenderToken(env) {
+  if (!env.LIRA_UPDATE_PUBLISH_TOKEN?.trim()) throw new Error('Configure LIRA_UPDATE_PUBLISH_TOKEN em .env.release.local e no serviço Render antes de publicar.')
+}
+
+/** Refreshes the verified Render cache only after the installers are public on GitHub. */
+async function publishRenderCache({ env, tagName, fetcher }) {
+  console.log(`\n[publicação] Atualizando cache da Render para ${tagName}...`)
+  try {
+    const response = await fetcher('https://lira-signaling.onrender.com/updates/lira/refresh', {
+      method: 'POST', redirect: 'error', signal: AbortSignal.timeout(420000),
+      headers: { Authorization: `Bearer ${env.LIRA_UPDATE_PUBLISH_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tag_name: tagName }),
+    })
+    if (!response.ok) throw new Error('refresh failed')
+    const result = await response.json()
+    if (result.status !== 'ready' || result.tag_name !== tagName) throw new Error('unexpected release')
+  } catch {
+    // Never persist upstream response bodies, tokens, or network diagnostics in release.json.
+    throw new Error('Render não confirmou a atualização. A release no GitHub foi preservada; use --resume para tentar novamente sem recompilar.')
+  }
+}
+
+async function finishPublication(state, saveState, env, fetcher) {
+  state.githubPublished = true
+  state.status = 'updating-render'; await saveState()
+  await publishRenderCache({ env, tagName: state.tag, fetcher })
+  delete state.error
+  state.status = 'published'; await saveState()
+}
+
+export async function runRelease({ root = projectRoot, run, env = process.env, platform = process.platform, ref = 'origin/main', uploadRetryDelayMs = 5000, fetch: fetcher = globalThis.fetch } = {}) {
   validateRuntime(platform)
   if (!ref || ref.startsWith('-')) throw new Error('Referência Git inválida.')
   env = await loadEnvironment(root, env)
+  requireRenderToken(env)
   if (env.LIRA_JAVA_HOME) env.JAVA_HOME = path.resolve(root, env.LIRA_JAVA_HOME)
   const output = path.join(root, '.scratch/local-releases', new Date().toISOString().replace(/[:.]/g, '-') + '-' + process.pid)
   await fs.mkdir(output, { recursive: true })
@@ -261,7 +294,7 @@ export async function runRelease({ root = projectRoot, run, env = process.env, p
       state.assets = [windowsAsset, androidAsset]
       state.status = 'uploading'; await saveState()
       await publishDraftAssets(exec, { repository, tagName, commit, releaseTitle, assets: state.assets, env, uploadRetryDelayMs })
-      state.status = 'published'; await saveState()
+      await finishPublication(state, saveState, env, fetcher)
       const url = `https://github.com/${repository}/releases/tag/${tagName}`
       console.log(`\nAtualização publicada: ${url}`)
       return { tag: tagName, commit, url, output }
@@ -269,7 +302,7 @@ export async function runRelease({ root = projectRoot, run, env = process.env, p
       state.status = 'failed'
       state.error = error.message
       await saveState()
-      logFailure(output, state.assets)
+      logFailure(output, state.assets, state.githubPublished)
       throw error
     } finally {
       try {
@@ -280,7 +313,7 @@ export async function runRelease({ root = projectRoot, run, env = process.env, p
 }
 
 /** Resumes uploading and publishing already-built artifacts from a failed local-release directory. */
-export async function resumeRelease({ root = projectRoot, output, run, env = process.env, platform = process.platform, uploadRetryDelayMs = 5000 } = {}) {
+export async function resumeRelease({ root = projectRoot, output, run, env = process.env, platform = process.platform, uploadRetryDelayMs = 5000, fetch: fetcher = globalThis.fetch } = {}) {
   validateRuntime(platform)
   if (!output) throw new Error('Informe a pasta da publicação em .scratch/local-releases.')
   const resolved = path.resolve(root, output)
@@ -294,6 +327,7 @@ export async function resumeRelease({ root = projectRoot, output, run, env = pro
   }
   for (const file of assets) if (!existsSync(file) || !(await fs.stat(file)).size) throw new Error('Artefato ausente ou vazio: ' + file)
   env = await loadEnvironment(root, env)
+  requireRenderToken(env)
   run ||= createRunner(path.join(outputDir, 'release.log'))
   const exec = (command, args, options = {}) => run(command, args, { cwd: root, env, ...options })
   const saveState = () => fs.writeFile(statePath, JSON.stringify(state, null, 2) + '\n')
@@ -305,16 +339,19 @@ export async function resumeRelease({ root = projectRoot, output, run, env = pro
       let existingAssets = null
       if (releases.some(release => release.tagName === tagName)) {
         const existing = JSON.parse(await exec('gh', ['release', 'view', tagName, '--repo', repository, '--json', 'isDraft,targetCommitish,assets'], { quiet: true }))
-        if (!existing.isDraft) throw new Error(`A release ${tagName} já está publicada no GitHub.`)
+        if (!existing.isDraft && !state.githubPublished) throw new Error(`A release ${tagName} já está publicada no GitHub.`)
         if (existing.targetCommitish && existing.targetCommitish !== commit) throw new Error(`O rascunho ${tagName} no GitHub aponta para outro commit (${existing.targetCommitish}).`)
+        if (state.githubPublished && existing.isDraft) throw new Error(`A release ${tagName} não está mais publicada no GitHub.`)
         existingAssets = Array.isArray(existing.assets) ? existing.assets : []
       }
-      await publishDraftAssets(exec, {
-        repository, tagName, commit, releaseTitle: `Lira - v${version}`,
-        assets, env, uploadRetryDelayMs, existingAssets,
-      })
-      delete state.error
-      state.status = 'published'; await saveState()
+      if (state.githubPublished && existingAssets === null) throw new Error(`A release ${tagName} não foi encontrada no GitHub.`)
+      if (!state.githubPublished) {
+        await publishDraftAssets(exec, {
+          repository, tagName, commit, releaseTitle: `Lira - v${version}`,
+          assets, env, uploadRetryDelayMs, existingAssets,
+        })
+      }
+      await finishPublication(state, saveState, env, fetcher)
       const url = `https://github.com/${repository}/releases/tag/${tagName}`
       console.log(`\nAtualização publicada: ${url}`)
       return { tag: tagName, commit, url, output: outputDir }
@@ -322,7 +359,7 @@ export async function resumeRelease({ root = projectRoot, output, run, env = pro
       state.status = 'failed'
       state.error = error.message
       await saveState()
-      logFailure(outputDir, assets)
+      logFailure(outputDir, assets, state.githubPublished)
       throw error
     }
   })

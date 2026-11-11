@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { runRelease, resumeRelease, parseCliArgs, buildEnvironment, selectVersion, commandInvocation, createRunner, ghUploadEnvironment } from '../../../scripts/local-release.mjs'
+import { runRelease, resumeRelease as resumeReleaseImpl, parseCliArgs, buildEnvironment, selectVersion, commandInvocation, createRunner, ghUploadEnvironment } from '../../../scripts/local-release.mjs'
 
 let root: string
 let calls: { command: string; args: string[]; cwd: string; env: Record<string, string> }[]
@@ -14,7 +14,12 @@ let javaOutput: string
 let createLongWorktreePath: boolean
 let releaseViewResponse: string | Error
 let releaseListResponse: string
+let renderFetch: ReturnType<typeof vi.fn>
 const sha = 'a'.repeat(40)
+
+function resumeRelease(options: any) {
+  return resumeReleaseImpl({ env: { LIRA_UPDATE_PUBLISH_TOKEN: 'publisher-secret' }, fetch: renderFetch, ...options })
+}
 
 function matchesPattern(line: string, pattern: string | RegExp) {
   return typeof pattern === 'string' ? line.includes(pattern) : pattern.test(line)
@@ -69,9 +74,10 @@ async function run(command: string, args: string[], options: any = {}) {
 }
 
 function execute(extraEnv: Record<string, string> = {}, options: Record<string, unknown> = {}) {
-  return runRelease({ root, run, platform: 'win32', uploadRetryDelayMs: 0, ...options, env: {
+  return runRelease({ root, run, platform: 'win32', uploadRetryDelayMs: 0, fetch: renderFetch, ...options, env: {
     ANDROID_HOME: path.join(root, 'sdk'), LIRA_KEYSTORE_PATH: path.join(root, 'release.jks'),
     VITE_TURN_USERNAME: 'relay-user', VITE_TURN_CREDENTIAL: 'relay-password',
+    LIRA_UPDATE_PUBLISH_TOKEN: 'publisher-secret',
     ...extraEnv,
   } })
 }
@@ -81,6 +87,7 @@ beforeEach(async () => {
   calls = []; failure = ''; failOnce = new Map(); skipArtifact = ''; javaOutput = 'openjdk version "21.0.7"'; createLongWorktreePath = false
   releaseViewResponse = JSON.stringify({ isDraft: true, targetCommitish: sha, assets: [] })
   releaseListResponse = JSON.stringify([{ tagName: 'v1.1.206' }])
+  renderFetch = vi.fn(async (_url, options) => Response.json({ tag_name: JSON.parse(options.body).tag_name, status: 'ready' }))
   for (const dir of ['.git', 'sdk/platforms/android-35', 'sdk/build-tools/35.0.0', 'sdk/platform-tools']) await fs.mkdir(path.join(root, dir), { recursive: true })
   await fs.writeFile(path.join(root, 'release.jks'), 'fixture keystore')
   await fs.writeFile(path.join(root, 'untouched.txt'), 'uncommitted work')
@@ -88,6 +95,52 @@ beforeEach(async () => {
 afterEach(async () => { await fs.rm(root, { recursive: true, force: true }) })
 
 describe('local Windows and Android release', () => {
+  it('refreshes Render only after GitHub publication and keeps its token out of builds and saved state', async () => {
+    renderFetch.mockImplementation(async (url, options) => {
+      expect(calls.some(call => call.command === 'gh' && call.args[1] === 'edit')).toBe(true)
+      expect(url).toBe('https://lira-signaling.onrender.com/updates/lira/refresh')
+      expect(options.method).toBe('POST')
+      expect(options.headers.Authorization).toBe('Bearer publisher-secret')
+      expect(JSON.parse(options.body)).toEqual({ tag_name: 'v1.1.207' })
+      expect(options.redirect).toBe('error')
+      return Response.json({ tag_name: 'v1.1.207', status: 'ready' })
+    })
+    const result = await execute()
+    expect(renderFetch).toHaveBeenCalledTimes(1)
+    for (const call of calls.filter(call => ['npm', 'gradle'].includes(call.command))) {
+      expect(call.env.LIRA_UPDATE_PUBLISH_TOKEN).toBeUndefined()
+    }
+    const saved = await fs.readFile(path.join(result.output, 'release.json'), 'utf8')
+    expect(saved).not.toContain('publisher-secret')
+    expect(JSON.parse(saved)).toMatchObject({ status: 'published', githubPublished: true })
+  })
+
+  it('requires the Render publishing token before starting builds or publishing GitHub assets', async () => {
+    await expect(execute({ LIRA_UPDATE_PUBLISH_TOKEN: '' })).rejects.toThrow(/LIRA_UPDATE_PUBLISH_TOKEN/)
+    expect(calls).toHaveLength(0)
+    expect(renderFetch).not.toHaveBeenCalled()
+  })
+
+  it.each(['http', 'wrong-tag', 'network'])('records a resumable failure when Render fails: %s', async mode => {
+    if (mode === 'http') renderFetch.mockResolvedValue(new Response('publisher-secret', { status: 502 }))
+    if (mode === 'wrong-tag') renderFetch.mockResolvedValue(Response.json({ tag_name: 'v1.1.206', status: 'ready' }))
+    if (mode === 'network') renderFetch.mockRejectedValue(new Error('publisher-secret'))
+    await expect(execute()).rejects.toThrow(/Render/)
+    const directories = await fs.readdir(path.join(root, '.scratch/local-releases'))
+    const saved = await fs.readFile(path.join(root, '.scratch/local-releases', directories[0], 'release.json'), 'utf8')
+    expect(JSON.parse(saved)).toMatchObject({ status: 'failed', githubPublished: true })
+    expect(saved).not.toContain('publisher-secret')
+    const uploads = calls.filter(call => call.command === 'gh' && call.args[1] === 'upload').length
+    releaseListResponse = JSON.stringify([{ tagName: 'v1.1.207' }])
+    releaseViewResponse = JSON.stringify({ isDraft: false, targetCommitish: sha, assets: [] })
+    renderFetch.mockResolvedValue(Response.json({ tag_name: 'v1.1.207', status: 'ready' }))
+    await resumeRelease({ root, output: path.join(root, '.scratch/local-releases', directories[0]), run, platform: 'win32',
+      env: { LIRA_UPDATE_PUBLISH_TOKEN: 'publisher-secret' }, fetch: renderFetch })
+    expect(calls.filter(call => call.command === 'gh' && call.args[1] === 'upload')).toHaveLength(uploads)
+    expect(calls.filter(call => call.command === 'gh' && call.args[1] === 'edit')).toHaveLength(1)
+    expect(JSON.parse(await fs.readFile(path.join(root, '.scratch/local-releases', directories[0], 'release.json'), 'utf8')).status).toBe('published')
+  })
+
   it('builds both platforms without running tests before publishing the draft as latest', async () => {
     const result = await execute()
     expect(result.tag).toBe('v1.1.207')
@@ -180,6 +233,7 @@ describe('local Windows and Android release', () => {
     failure = 'gh release create'
     await expect(execute()).rejects.toThrow('simulated failure')
     expect(calls.some(call => call.command === 'gh' && call.args.includes('edit'))).toBe(false)
+    expect(renderFetch).not.toHaveBeenCalled()
     const runs = await fs.readdir(path.join(root, '.scratch/local-releases'))
     const state = JSON.parse(await fs.readFile(path.join(root, '.scratch/local-releases', runs[0], 'release.json'), 'utf8'))
     expect(state).toMatchObject({ tag: 'v1.1.207', commit: sha, status: 'failed' })
