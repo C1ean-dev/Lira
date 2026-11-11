@@ -140,6 +140,11 @@
 !macroend
 
 !macro customInstall
+  # Register on install too, so links work before the first application launch.
+  WriteRegStr HKCU "Software\Classes\lira" "" "URL:Lira Space Invitation"
+  WriteRegStr HKCU "Software\Classes\lira" "URL Protocol" ""
+  WriteRegStr HKCU "Software\Classes\lira\DefaultIcon" "" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}",0'
+  WriteRegStr HKCU "Software\Classes\lira\shell\open\command" "" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" -- "%1"'
   !insertmacro LiraStage "Finalizando instalacao"
   !insertmacro LogToInstallFile `[customInstall] Arquivos extraidos para INSTDIR: $INSTDIR`
   !insertmacro LogToInstallFile "[customInstall] Descompactando INSTDIR via compact.exe (caso esteja em particao compactada)..."
@@ -191,6 +196,10 @@
 !macro customUnInstall
   # electron-builder invokes the old uninstaller with --updated during upgrades.
   ${IfNot} ${isUpdated}
+    ReadRegStr $R0 HKCU "Software\Classes\lira\shell\open\command" ""
+    ${If} $R0 == '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" -- "%1"'
+      DeleteRegKey HKCU "Software\Classes\lira"
+    ${EndIf}
     nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\update-recovery.ps1" -Action Cleanup -InstallDir "$INSTDIR" -UserDataDir "$APPDATA\${APP_PACKAGE_NAME}"`
     Pop $0
     ${If} $0 != 0

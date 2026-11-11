@@ -17,6 +17,7 @@ import { appTrail } from '../src/utils/breadcrumbs'
 import { createErrorReporter } from '../src/utils/errorReporter'
 import { setupSingleInstanceLock } from './singleInstance'
 import { resolveAppInstance } from './appInstance'
+import { setupSpaceInviteHandling } from './spaceInviteInbox'
 import { TrayManager, AppSettings } from './trayManager'
 import { createLogWriter, installConsoleCapture, installProcessErrorCapture } from './logWriter'
 import { readNativeDataFile } from './nativeDataFile'
@@ -87,6 +88,7 @@ app.commandLine.appendSwitch(
 )
 
 let mainWindow: BrowserWindow | null = null
+setupSpaceInviteHandling(app, ipcMain, () => mainWindow, process.argv)
 function queryBrowserWindows(script: string): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
@@ -556,12 +558,17 @@ if (isMultiInstance) {
       app.exit(0)
     },
     onSecondInstance: (cb) => app.on('second-instance', cb),
-    getWindows: () => BrowserWindow.getAllWindows(),
+    getWindows: () => mainWindow ? [mainWindow] : [],
   })
 
   if (!gotSingleInstanceLock) {
     app.exit(0)
   }
+}
+
+// Development builds must never replace the installed application's handler.
+if (app.isPackaged && !isMultiInstance && !app.isDefaultProtocolClient('lira')) {
+  app.setAsDefaultProtocolClient('lira', process.execPath, ['--'])
 }
 
 
