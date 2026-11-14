@@ -2,8 +2,21 @@ import type Peer from 'peerjs'
 
 export const DIRECT_ATTEMPT_MS = 1500
 export const RELAY_ATTEMPT_MS = 3500
+export const DEGRADED_UPGRADE_COOLDOWN_MS = 45000
+export const MAX_DEGRADED_UPGRADES_PER_CALL = 1
 type RelayTier = 'cloudflare' | 'metered'
 type Options = { cloudflare: () => Promise<RTCIceServer[]>; metered: RTCIceServer[]; discovery: RTCIceServer[] }
+
+export async function forceDegradedUpgrade(target: any, reason: string): Promise<boolean> {
+  if (!target) return false
+  if (typeof target.forceDegradedUpgrade === 'function') {
+    return target.forceDegradedUpgrade(reason)
+  }
+  if (target.peerConnection && typeof target.peerConnection.forceDegradedUpgrade === 'function') {
+    return target.peerConnection.forceDegradedUpgrade(reason)
+  }
+  return false
+}
 
 // PeerJS 1.5 treats a second OFFER as a new connection, so ICE restarts must be
 // routed to the existing PC. Keep that compatibility adapter in one place.
@@ -32,6 +45,8 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
     let remoteReady = false
     const candidates: any[] = []
     let timer: ReturnType<typeof setTimeout> | undefined
+    let degradedUpgradeCount = 0
+    let lastDegradedUpgradeTime = 0
     const originator = !conn.options?._payload
     let supportsPriority = originator || conn.options?._payload?.liraIcePriorityVersion === 1
     const candidateHandler = pc.onicecandidate
@@ -41,8 +56,8 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
     const clear = () => { clearTimeout(timer); timer = undefined }
     const schedule = (delay: number) => { clear(); if (originator && tier < 1 && alive()) timer = setTimeout(() => { void advance() }, delay) }
     const serversFor = async (next: RelayTier) => next === 'cloudflare' ? options.cloudflare() : options.metered
-    const configure = (servers: RTCIceServer[]) => {
-      pc.setConfiguration({ ...pc.getConfiguration(), iceServers: [...options.discovery, ...servers], iceTransportPolicy: 'all' })
+    const configure = (servers: RTCIceServer[], forceRelayOnly = false) => {
+      pc.setConfiguration({ ...pc.getConfiguration(), iceServers: [...options.discovery, ...servers], iceTransportPolicy: forceRelayOnly ? 'relay' : 'all' })
       // PeerJS stops forwarding candidates after ICE completes. A recovered
       // connection needs its candidate sender again for the new ICE generation.
       pc.onicecandidate = candidateHandler
@@ -54,11 +69,12 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
       if (conn.options?.sdpTransform && sdp.sdp) sdp.sdp = conn.options.sdpTransform(sdp.sdp) || sdp.sdp
       return sdp
     }
-    const send = (type: 'OFFER' | 'ANSWER', sdp: RTCSessionDescriptionInit, next: RelayTier) => {
-      peer.socket.send({ type, dst: conn.peer, payload: { sdp, type: conn.type, connectionId: conn.connectionId, liraIceRestart: next } } as any)
+    const send = (type: 'OFFER' | 'ANSWER', sdp: RTCSessionDescriptionInit, next: RelayTier, forceRelay = false) => {
+      peer.socket.send({ type, dst: conn.peer, payload: { sdp, type: conn.type, connectionId: conn.connectionId, liraIceRestart: next, ...(forceRelay ? { liraIceForceRelay: 1 } : {}) } } as any)
     }
-    async function advance() {
-      if (!alive() || busy || !originator || !supportsPriority || connected()) return
+    async function advance(forceDegraded = false) {
+      if (!alive() || busy || !originator || !supportsPriority) return
+      if (!forceDegraded && connected()) return
       // Restart only after the previous offer/answer has completed; otherwise
       // a delayed initial answer could be applied to a new ICE generation.
       if (!pc.remoteDescription || pc.signalingState !== 'stable') { schedule(250); return }
@@ -68,14 +84,15 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
         while (++tier < tiers.length) {
           const next = tiers[tier]
           const servers = await serversFor(next)
-          if (!alive() || connected()) return
+          if (!alive()) return
+          if (!forceDegraded && connected()) return
           if (!servers.length) continue
-          configure(servers)
+          configure(servers, forceDegraded)
           const offer = transform(await pc.createOffer({ iceRestart: true }))
           if (!alive()) return
           await pc.setLocalDescription(offer)
           if (!alive()) return
-          send('OFFER', offer, next)
+          send('OFFER', offer, next, forceDegraded)
           schedule(RELAY_ATTEMPT_MS)
           return
         }
@@ -86,18 +103,47 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
         else if (alive()) conn.close()
       } finally { busy = false }
     }
+    async function forceDegradedUpgrade(reason: string): Promise<boolean> {
+      if (!alive() || busy) return false
+      const now = Date.now()
+      if (degradedUpgradeCount >= MAX_DEGRADED_UPGRADES_PER_CALL) {
+        return false
+      }
+      if (now - lastDegradedUpgradeTime < DEGRADED_UPGRADE_COOLDOWN_MS) {
+        return false
+      }
+      degradedUpgradeCount++
+      lastDegradedUpgradeTime = now
+      console.log(`[RTCTransportPriority] Executando upgrade forçado para relay (Cloudflare TURN): ${reason}`)
+      if (!originator) {
+        peer.socket.send({
+          type: 'CANDIDATE',
+          dst: conn.peer,
+          payload: { connectionId: conn.connectionId, liraRestartRequest: true, reason },
+        } as any)
+        return true
+      }
+      if (tier < 0) tier = -1
+      await advance(true)
+      return true
+    }
+    ;(pc as any).forceDegradedUpgrade = forceDegradedUpgrade
+    ;(conn as any).forceDegradedUpgrade = forceDegradedUpgrade
+
     async function answer(payload: any) {
-      if (!alive() || originator || answering || !payload.sdp || payload.sdp.type !== 'offer') return
+      const isForceRelay = payload?.liraIceForceRelay === 1
+      if (!alive() || answering || !payload.sdp || payload.sdp.type !== 'offer') return
+      if (originator && !isForceRelay) return
       const next = payload.liraIceRestart as RelayTier
       const index = tiers.indexOf(next)
-      if (index < tier) return
+      if (index < tier && !isForceRelay) return
       tier = index
       answering = true
       remoteReady = false
       try {
         const servers = await serversFor(next)
         if (!alive()) return
-        configure(servers)
+        configure(servers, isForceRelay)
         await pc.setRemoteDescription(payload.sdp)
         if (!alive()) return
         remoteReady = true
@@ -105,7 +151,7 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
         const sdp = transform(await pc.createAnswer())
         if (!alive()) return
         await pc.setLocalDescription(sdp)
-        if (alive()) send('ANSWER', sdp, next)
+        if (alive()) send('ANSWER', sdp, next, isForceRelay)
       } catch { if (alive()) conn.close() }
       finally { answering = false; candidates.length = 0 }
     }
@@ -138,12 +184,17 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
       pc.removeEventListener('signalingstatechange', signaling)
     })
     schedule(DIRECT_ATTEMPT_MS)
-    return { answer, setRemoteSupport: (supported: boolean) => { supportsPriority = supported; if (!supported) clear() }, queueCandidate: (message: any) => {
-      if (!answering || remoteReady) return false
-      // Bound untrusted signaling while credentials are being fetched.
-      if (candidates.length < 256) candidates.push(message)
-      return true
-    } }
+    return {
+      answer,
+      forceDegradedUpgrade,
+      setRemoteSupport: (supported: boolean) => { supportsPriority = supported; if (!supported) clear() },
+      queueCandidate: (message: any) => {
+        if (!answering || remoteReady) return false
+        // Bound untrusted signaling while credentials are being fetched.
+        if (candidates.length < 256) candidates.push(message)
+        return true
+      },
+    }
   }
 
   function prepare(conn: any) {
@@ -161,6 +212,14 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
     if (message?.type === 'ANSWER' && !payload?.liraIceRestart) {
       const conn = peer.getConnection(message.src, payload?.connectionId)
       if (conn) sessions.get(conn)?.setRemoteSupport(payload?.liraIcePriorityVersion === 1)
+    }
+    if (message?.type === 'CANDIDATE' && payload?.liraRestartRequest) {
+      const conn = peer.getConnection(message.src, payload?.connectionId)
+      const session = conn && sessions.get(conn)
+      if (session) {
+        void session.forceDegradedUpgrade(payload?.reason || 'remote_restart_request')
+      }
+      return
     }
     if (message?.type === 'CANDIDATE') {
       const conn = peer.getConnection(message.src, payload?.connectionId)

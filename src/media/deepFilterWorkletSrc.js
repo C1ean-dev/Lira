@@ -7,6 +7,8 @@ class LiraDeepFilterProcessor extends AudioWorkletProcessor {
     this.destroyed = false
     this.bypass = false
     this.slowFrames = 0
+    this.underrunCount = 0
+    this.lastUnderrunWarnTime = 0
     try {
       if (sampleRate !== 48000) throw new Error('DeepFilterNet requires 48kHz')
       initSync({ module: options.processorOptions.wasmModule })
@@ -85,12 +87,28 @@ class LiraDeepFilterProcessor extends AudioWorkletProcessor {
         this.available += clean.length
         this.filled = 0
       }
-      if (this.available < output.length) throw new Error('DeepFilterNet output underrun')
-      for (let i = 0; i < output.length; i++) {
+      const count = Math.max(0, Math.min(this.available, output.length))
+      for (let i = 0; i < count; i++) {
         output[i] = this.output[this.read]
         this.read = (this.read + 1) % this.output.length
       }
-      this.available -= output.length
+      this.available -= count
+      if (count < output.length) {
+        this.underrunCount++
+        const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now()
+        if (nowMs - this.lastUnderrunWarnTime > 2000) {
+          this.lastUnderrunWarnTime = nowMs
+          this.port.postMessage({
+            type: 'warn',
+            message: `DeepFilterNet output underrun: copied ${count}/${output.length} samples (total: ${this.underrunCount})`,
+          })
+        }
+        let lastSample = count > 0 ? output[count - 1] : 0
+        for (let i = count; i < output.length; i++) {
+          lastSample *= 0.85
+          output[i] = lastSample
+        }
+      }
     } catch (error) { output.fill(0); this.fail(error) }
     return true
   }

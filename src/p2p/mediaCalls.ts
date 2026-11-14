@@ -10,8 +10,10 @@ import {
 } from '../media/hardwareCodec'
 import { silentAudioTrack } from '../media/silentAudioTrack'
 import { djMusicSdp } from './djMusicSdp'
+import { opusVoiceSdp } from './opusVoiceSdp'
 import { buildIceServers } from './rtcIceServers'
 import { DynamicBufferManager } from '../services/DynamicBufferManager'
+import { SuperPeerVoiceRelay } from './SuperPeerVoiceRelay'
 import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
 import { logVideoCodecsOnce, watchLiveQuality } from './liveQualityLog'
 import {
@@ -122,6 +124,44 @@ export class MediaCallHandler {
         })
       }
     } catch (e) {}
+  }
+
+  public static readonly directPeerStreams: Map<string, MediaStream> = new Map()
+
+  public static switchPeerToRelayStream(peerId: string, relayStream: MediaStream): void {
+    const currentStream = useMediaStore.getState().peerStreams[peerId]
+    if (currentStream && currentStream !== relayStream) {
+      MediaCallHandler.directPeerStreams.set(peerId, currentStream)
+      // Regra 3: Silencia o áudio da rota direta para eliminar eco/comb filtering
+      currentStream.getAudioTracks().forEach((track) => {
+        track.enabled = false
+      })
+    }
+    useMediaStore.getState().setPeerStream(peerId, relayStream)
+    console.log(`[VoiceRelay] Stream de ${peerId} chaveada para relay do Super-Peer (rota direta em standby)`)
+    diagLog('p2p', 'voice-relay.switched-to-relay', { peerId })
+  }
+
+  public static restorePeerDirectStream(peerId: string): void {
+    const directStream = MediaCallHandler.directPeerStreams.get(peerId)
+    if (directStream) {
+      MediaCallHandler.directPeerStreams.delete(peerId)
+      const tracks = directStream.getAudioTracks()
+      const isDead = tracks.length === 0 || tracks.every((track) => track.readyState === 'ended')
+      if (isDead) {
+        console.warn(`[VoiceRelay] Stream direta de ${peerId} possui tracks finalizadas; descartando stream morta`)
+        SuperPeerVoiceRelay.getInstance().stopRelay(peerId)
+        return
+      }
+
+      // Regra 3 & 4: Reativa o áudio da rota direta original
+      tracks.forEach((track) => {
+        track.enabled = true
+      })
+      useMediaStore.getState().setPeerStream(peerId, directStream)
+      console.log(`[VoiceRelay] Stream direta de ${peerId} restaurada com sucesso`)
+      diagLog('p2p', 'voice-relay.restored-direct', { peerId })
+    }
   }
 
   private static buildOutboundStream(peerId?: string): MediaStream {
@@ -891,7 +931,7 @@ export class MediaCallHandler {
       } catch {}
     }
     const sdpTransform = (sdp: string) =>
-      isDjBot ? djMusicSdp(prioritizeCodecInSdp(sdp)) : prioritizeCodecInSdp(sdp)
+      isDjBot ? djMusicSdp(prioritizeCodecInSdp(sdp)) : opusVoiceSdp(prioritizeCodecInSdp(sdp))
     call.answer(streamToAnswer, { sdpTransform })
     ;(call as unknown as { __dir?: 'in' | 'out' }).__dir = 'in'
     mediaCalls.set(call.peer, call)
@@ -961,7 +1001,7 @@ export class MediaCallHandler {
         let call: MediaConnection | undefined
         try {
           call = peer.call(remotePlayer.id, streamToSend, {
-            sdpTransform: (sdp: string) => prioritizeCodecInSdp(sdp),
+            sdpTransform: (sdp: string) => opusVoiceSdp(prioritizeCodecInSdp(sdp)),
           })
         } catch (error) {
           useGameStore.getState().setCallState(remotePlayer.id, 'failed')
@@ -1418,6 +1458,13 @@ export class MediaCallHandler {
   static endMediaCall(mediaCalls: Map<string, MediaConnection>, peerId: string) {
     MediaCallHandler.clearCallRetryTimer(peerId)
     MediaCallHandler.clearIceDisconnectTimer(peerId)
+    MediaCallHandler.directPeerStreams.delete(peerId)
+    try {
+      SuperPeerVoiceRelay.getInstance().stopRelay(peerId)
+    } catch {}
+    try {
+      DynamicBufferManager.getInstance().clearPeerRoutingState(peerId)
+    } catch {}
     forgetViewer(peerId)
     const call = mediaCalls.get(peerId)
     // close can synchronously invoke the lifecycle failure handler.
@@ -1437,6 +1484,13 @@ export class MediaCallHandler {
     MediaCallHandler.callRetryCounts.clear()
     MediaCallHandler.iceDisconnectTimers.forEach((t) => clearTimeout(t))
     MediaCallHandler.iceDisconnectTimers.clear()
+    MediaCallHandler.directPeerStreams.clear()
+    try {
+      SuperPeerVoiceRelay.getInstance().reset()
+    } catch {}
+    try {
+      DynamicBufferManager.getInstance().resetForNewCall()
+    } catch {}
     forgetAllViewers()
     const peerIds: string[] = []
     const closingCalls = new Map(mediaCalls)

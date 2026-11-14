@@ -28,15 +28,20 @@ async function pipeline(moduleReady: () => Promise<void> = async () => {}) {
     }) },
     close: vi.fn(async () => {}),
   }
+  const worklets: any[] = []
   vi.stubGlobal('AudioWorkletNode', class {
     connect = vi.fn()
     disconnect = vi.fn()
     onprocessorerror: any = null
-    port = { onmessage: null as any, postMessage: vi.fn((message: any) => this.processor.port.onmessage({ data: message })), close: vi.fn() }
+    port: any
     processor: any
     constructor(_context: any, _name: string, options: any) {
-      processorPort = { onmessage: null as any, postMessage: (message: any) => this.port.onmessage?.({ data: message }) }
+      const pPort: any = { onmessage: null as any, postMessage: (message: any) => this.port.onmessage?.({ data: message }) }
+      processorPort = pPort
+      this.port = { onmessage: null as any, postMessage: vi.fn((message: any) => this.processor.port.onmessage({ data: message })), close: vi.fn() }
       this.processor = new Processor(options)
+      this.processor.port = pPort
+      worklets.push(this)
       worklet = this
     }
   })
@@ -53,11 +58,13 @@ async function pipeline(moduleReady: () => Promise<void> = async () => {}) {
     send(pcm: Int16Array, screen = false) { (screen ? receiveScreen : receive)(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength)) },
     render(frames = 128) {
       const output = [new Float32Array(frames), new Float32Array(frames)]
-      if (worklet) worklet.processor.process([], [output])
+      const activeWorklet = worklets[worklets.length - 1]
+      if (activeWorklet) activeWorklet.processor.process([], [output])
       else legacy.onaudioprocess({ outputBuffer: { length: frames, numberOfChannels: 2, getChannelData: (channel: number) => output[channel] } })
       return output
     },
-    get worklet() { return worklet },
+    get worklet() { return worklets[0] },
+    get worklets() { return worklets },
   }
 }
 
@@ -260,13 +267,12 @@ describe('Spotify tab audio pipeline', () => {
     p.capture.stop()
   })
 
-  it('leaves native screen audio on its existing low latency path', async () => {
+  it('leaves native screen audio on its dedicated thread path', async () => {
     const p = await pipeline()
     await p.capture.start('window:42:0')
     p.send(music(0), true)
     expect(p.render()[0][0]).toBe(1000 / 32768)
-    expect(p.context.createScriptProcessor).toHaveBeenCalledOnce()
-    expect(p.context.audioWorklet.addModule).not.toHaveBeenCalled()
+    expect(p.context.audioWorklet.addModule).toHaveBeenCalledOnce()
     expect(p.api.startProcessAudioCapture).toHaveBeenCalledWith('window:42:0')
     p.capture.stop()
     expect(p.api.stopSpotifyTabAudioCapture).not.toHaveBeenCalled()
