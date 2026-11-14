@@ -106,12 +106,54 @@ export class SuperPeerVoiceRelay {
       this.relayChannels.set(peerId, channel)
     }
 
+    // Intercept pc.ondatachannel to prevent PeerJS from hijacking connection.dataChannel
+    // when lira-voice-relay is received on the peer connection.
     try {
-      pc.addEventListener('datachannel', (event) => handleChannel(event.channel))
+      let currentOnDataChannel = pc.ondatachannel
+      Object.defineProperty(pc, 'ondatachannel', {
+        configurable: true,
+        enumerable: true,
+        get() {
+          return currentOnDataChannel
+        },
+        set(handler) {
+          currentOnDataChannel = (event: RTCDataChannelEvent) => {
+            if (event.channel && event.channel.label === VOICE_RELAY_CHANNEL_LABEL) {
+              handleChannel(event.channel)
+              return
+            }
+            if (typeof handler === 'function') {
+              handler.call(pc, event)
+            }
+          }
+        },
+      })
+      if (currentOnDataChannel) {
+        pc.ondatachannel = currentOnDataChannel
+      }
+    } catch {
+      if (pc.ondatachannel) {
+        const orig = pc.ondatachannel
+        pc.ondatachannel = (event: RTCDataChannelEvent) => {
+          if (event.channel && event.channel.label === VOICE_RELAY_CHANNEL_LABEL) {
+            handleChannel(event.channel)
+            return
+          }
+          orig.call(pc, event)
+        }
+      }
+    }
+
+    try {
+      pc.addEventListener('datachannel', (event) => {
+        if (event.channel && event.channel.label === VOICE_RELAY_CHANNEL_LABEL) {
+          handleChannel(event.channel)
+        }
+      })
     } catch {}
 
     // Apenas o Cliente que se conecta ao Host inicia ativamente a criação do canal.
-    // O Host recebe e configura o canal através do evento 'datachannel' registrado acima,
+    // O Host recebe e configura o canal através do evento 'datachannel' interceptado acima,
     // garantindo canal único sem colisão nem canais duplicados em direções opostas.
     if (!isHost) {
       try {

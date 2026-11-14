@@ -2,7 +2,7 @@ import { sendAtlasChunks } from '../assets/atlasChunks'
 import { getTransferAtlas } from '../assets/atlasTransferCache'
 import { IndividualLibrarySync, type LibraryMessage } from '../assets/individualLibrarySync'
 import Peer, { DataConnection, MediaConnection } from 'peerjs'
-import { NetworkMessage, SignalingTier } from '../types/p2p'
+import { NetworkMessage, SignalingTier, CURRENT_LIRA_VERSION, MIN_COMPATIBLE_VERSION } from '../types/p2p'
 import { MessageDeliveryStatus, RoomChannel } from '../types/chat'
 import { Player, RoomKnockRequest } from '../types/game'
 import { useGameStore } from '../store/useGameStore'
@@ -1391,6 +1391,8 @@ export class PeerManager {
             id: this.peer!.id,
             gameId: localPlayer.gameId || localPlayer.id,
             liveOptIn: true,
+            appVersion: CURRENT_LIRA_VERSION,
+            minCompatibleVersion: MIN_COMPATIBLE_VERSION,
           },
         },
         timestamp: Date.now(),
@@ -1449,6 +1451,8 @@ export class PeerManager {
               player: {
                 ...p,
                 isCameraOff: p.isCameraOff !== undefined ? p.isCameraOff : true,
+                appVersion: p.appVersion,
+                minCompatibleVersion: p.minCompatibleVersion,
               },
             },
             timestamp: Date.now(),

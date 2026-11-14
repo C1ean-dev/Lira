@@ -1024,6 +1024,10 @@ export class MediaCallHandler {
     const hasAudioTrack = Boolean(localStream?.getAudioTracks?.().some((track) => hasUsableAudio(track)) || hasScreenAudio)
 
     if (inSameZone) {
+      if (remotePlayer.isOutdated) {
+        // Do not auto-dial outdated peers that cannot negotiate modern voice features
+        return
+      }
       if (!existingCall && (MediaCallHandler.callRetryTimers.has(remotePlayer.id) || useGameStore.getState().callStates[remotePlayer.id] === 'failed')) return
       if (!existingCall && peer && localStream && hasAudioTrack) {
         console.log(`[Zone Call] Dialing ${remotePlayer.name} in zone ${localPlayer.currentZoneId}`)
