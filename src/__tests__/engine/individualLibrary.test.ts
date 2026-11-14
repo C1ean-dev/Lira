@@ -34,7 +34,7 @@ describe('individual image library', () => {
     }
     for (const name of catalog.images) {
       const bytes = fs.readFileSync(path.join(directory, libraryImagePath(catalog, name)))
-      expect(createHash('sha256').update(bytes).digest('hex') + '.png').toBe(name)
+      expect(createHash('sha256').update(bytes).digest('hex') + path.extname(name)).toBe(name)
     }
   })
   it('allows a legacy asset removed by an explicit saved deletion', async () => {

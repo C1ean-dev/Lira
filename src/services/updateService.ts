@@ -1,17 +1,10 @@
 import { registerPlugin } from '@capacitor/core'
 import { isAndroid } from '../utils/platform'
 
-export interface UpdateInfo {
-  hasUpdate: boolean
-  currentVersion: string
-  latestVersion: string
-  releaseName: string
-  releaseNotes: string
-  downloadUrl: string | null
-  releaseUrl: string
-  prUrl?: string | null
-  checkFailed?: boolean
-}
+import { checkCachedUpdate, GITHUB_REPO } from './updateCheck'
+import type { UpdateInfo } from './updateCheck'
+export { GITHUB_REPO, isNewerVersion } from './updateCheck'
+export type { UpdateInfo } from './updateCheck'
 
 export interface UpdateProgress {
   percent: number
@@ -35,24 +28,10 @@ export const AppUpdate = registerPlugin<AppUpdatePluginInterface>('AppUpdatePlug
 
 declare const __APP_VERSION__: string | undefined
 
-export const GITHUB_REPO = 'C1ean-dev/Lira'
 export const CURRENT_APP_VERSION =
   typeof __APP_VERSION__ !== 'undefined'
     ? __APP_VERSION__
     : '1.0.0'
-
-export function isNewerVersion(latestTag: string, currentVer: string): boolean {
-  const clean = (v: string) => v.replace(/^v/i, '').trim().split('.').map(Number)
-  const l = clean(latestTag)
-  const c = clean(currentVer)
-  for (let i = 0; i < Math.max(l.length, c.length); i++) {
-    const lNum = isNaN(l[i]) ? 0 : l[i]
-    const cNum = isNaN(c[i]) ? 0 : c[i]
-    if (lNum > cNum) return true
-    if (lNum < cNum) return false
-  }
-  return false
-}
 
 export class UpdateService {
   static async getCurrentVersion(pluginOverride?: AppUpdatePluginInterface): Promise<string> {
@@ -79,72 +58,8 @@ export class UpdateService {
 
     const currentVersion = await UpdateService.getCurrentVersion()
 
-    try {
-      const url = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`
-      const res = await fetch(url, {
-        headers: {
-          Accept: 'application/vnd.github.v3+json',
-        },
-      })
-
-      if (!res.ok) {
-        return {
-          hasUpdate: false,
-          currentVersion,
-          latestVersion: currentVersion,
-          releaseName: '',
-          releaseNotes: '',
-          downloadUrl: null,
-          releaseUrl: `https://github.com/${GITHUB_REPO}/releases`,
-          checkFailed: true,
-        }
-      }
-
-      const data = await res.json()
-      const latestTag = data.tag_name || ''
-      const hasUpdate = isNewerVersion(latestTag, currentVersion)
-
-      let downloadUrl: string | null = null
-      if (Array.isArray(data.assets)) {
-        if (isAndroid()) {
-          const apkAsset = data.assets.find(
-            (a: any) => a.name && a.name.endsWith('.apk')
-          )
-          if (apkAsset && apkAsset.browser_download_url) {
-            downloadUrl = apkAsset.browser_download_url
-          }
-        } else {
-          const exeAsset = data.assets.find(
-            (a: any) => a.name && a.name.endsWith('.exe') && !a.name.includes('blockmap')
-          )
-          if (exeAsset && exeAsset.browser_download_url) {
-            downloadUrl = exeAsset.browser_download_url
-          }
-        }
-      }
-
-      return {
-        hasUpdate,
-        currentVersion,
-        latestVersion: latestTag,
-        releaseName: data.name || latestTag,
-        releaseNotes: data.body || '',
-        downloadUrl,
-        releaseUrl: data.html_url || `https://github.com/${GITHUB_REPO}/releases`,
-        prUrl: (data.body || '').match(/https:\/\/github\.com\/(?:[^\s/]+\/[^\s/]+\/)?pull\/\d+/i)?.[0] || null,
-      }
-    } catch (e) {
-      return {
-        hasUpdate: false,
-        currentVersion,
-        latestVersion: currentVersion,
-        releaseName: '',
-        releaseNotes: '',
-        downloadUrl: null,
-        releaseUrl: `https://github.com/${GITHUB_REPO}/releases`,
-        checkFailed: true,
-      }
-    }
+    const { assetSize: _assetSize, ...info } = await checkCachedUpdate(currentVersion, isAndroid() ? 'android' : 'windows')
+    return info
   }
 
   static async downloadUpdate(downloadUrl: string | null, targetVersion?: string): Promise<boolean> {

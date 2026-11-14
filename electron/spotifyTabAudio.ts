@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { PlaybackConnection } from './spotifyPlayback'
 import { spotifyCaptureWorkletSource } from './spotifyCaptureWorklet'
+import { SpotifyPlaybackDisconnectedError } from './spotifyPlaybackTransport'
 
 // Serialized into the dedicated Spotify tab. Capture always uses the browser's share picker.
 export async function startSpotifyTabAudio(token: string, captureWorkletSource = spotifyCaptureWorkletSource): Promise<{ ok: boolean; error?: string }> {
@@ -16,7 +17,7 @@ export async function startSpotifyTabAudio(token: string, captureWorkletSource =
   let silence: GainNode | undefined
   let watchdog: ReturnType<typeof setInterval> | undefined
   const state = {
-    active: true, chunks: [] as string[], lastPoll: Date.now(),
+    token, active: true, chunks: [] as string[], lastPoll: Date.now(),
     stop: () => {
       if (!state.active) return
       state.active = false
@@ -96,13 +97,13 @@ export async function startSpotifyTabAudio(token: string, captureWorkletSource =
 
 type Deps = { connect(): Promise<PlaybackConnection>; data(chunk: Buffer): void; ended(error: string): void }
 export class SpotifyTabAudioController {
-  private connection?: PlaybackConnection
+  private capture?: { connection: PlaybackConnection; token: string }
   private timer?: ReturnType<typeof setTimeout>
   private generation = 0
 
   constructor(private deps: Deps) {}
 
-  get isActive(): boolean { return this.connection !== undefined }
+  get isActive(): boolean { return this.capture !== undefined }
 
   async start(): Promise<{ ok: boolean; error?: string }> {
     await this.stop()
@@ -110,19 +111,24 @@ export class SpotifyTabAudioController {
     try {
       const connection = await this.deps.connect()
       if (generation !== this.generation) { connection.close(); return { ok: false, error: 'Inicialização do DJ cancelada.' } }
-      this.connection = connection
+      const token = randomUUID()
+      const capture = this.capture = { connection, token }
       const response = await connection.request('Runtime.evaluate', {
-        expression: `(${startSpotifyTabAudio.toString()})(${JSON.stringify(randomUUID())}, ${JSON.stringify(spotifyCaptureWorkletSource)})`,
+        expression: `(${startSpotifyTabAudio.toString()})(${JSON.stringify(token)}, ${JSON.stringify(spotifyCaptureWorkletSource)})`,
         returnByValue: true, awaitPromise: true, userGesture: true,
       }, 120000)
       if (generation !== this.generation) return { ok: false, error: 'Inicialização do DJ cancelada.' }
       const result = response?.result?.value
       if (result?.ok !== true) throw new Error(result?.error || 'Selecione a aba do Spotify com áudio no navegador.')
-      const poll = async () => {
+      let retried = false
+      const poll = async (): Promise<void> => {
         if (generation !== this.generation) return
         const startedAt = Date.now()
         try {
-          const response = await connection.request('Runtime.evaluate', { expression: 'location.origin === "https://open.spotify.com" && window.__liraDjTabCapture ? (window.__liraDjTabCapture.lastPoll = Date.now(), {active: window.__liraDjTabCapture.active, chunks: window.__liraDjTabCapture.chunks.splice(0, 16)}) : null', returnByValue: true })
+          const response = await capture.connection.request('Runtime.evaluate', {
+            expression: `location.origin === "https://open.spotify.com" && window.__liraDjTabCapture?.token === ${JSON.stringify(token)} ? (window.__liraDjTabCapture.lastPoll = Date.now(), {active: window.__liraDjTabCapture.active, chunks: window.__liraDjTabCapture.chunks.splice(0, 16)}) : null`,
+            returnByValue: true,
+          })
           if (generation !== this.generation) return
           const state = response?.result?.value
           if (!state?.active || !Array.isArray(state.chunks)) throw new Error('O compartilhamento da aba do Spotify foi encerrado.')
@@ -132,11 +138,27 @@ export class SpotifyTabAudioController {
             if (bytes.length % 4) throw new Error('Áudio inválido recebido do navegador.')
             this.deps.data(bytes)
           }
+          retried = false
           this.timer = setTimeout(poll, Math.max(0, 20 - (Date.now() - startedAt)))
         } catch (error) {
           if (generation !== this.generation) return
+          if (error instanceof SpotifyPlaybackDisconnectedError && !retried) {
+            retried = true
+            try {
+              const replacement = await this.deps.connect()
+              if (generation !== this.generation) { replacement.close(); return }
+              capture.connection.close()
+              capture.connection = replacement
+              return poll()
+            } catch (reconnectError) {
+              error = reconnectError
+            }
+            if (generation !== this.generation) return
+          }
           await this.stop()
-          this.deps.ended(error instanceof Error ? error.message : 'Captura do Spotify interrompida.')
+          if (this.generation === generation + 1) {
+            this.deps.ended(error instanceof Error ? error.message : 'Captura do Spotify interrompida.')
+          }
         }
       }
       this.timer = setTimeout(poll, 20)
@@ -151,10 +173,16 @@ export class SpotifyTabAudioController {
     ++this.generation
     if (this.timer) clearTimeout(this.timer)
     this.timer = undefined
-    const connection = this.connection
-    this.connection = undefined
-    if (!connection) return
-    try { await connection.request('Runtime.evaluate', { expression: 'location.origin === "https://open.spotify.com" && window.__liraDjTabCapture?.stop()', returnByValue: true }) }
+    const capture = this.capture
+    this.capture = undefined
+    if (!capture) return
+    const { connection, token } = capture
+    try {
+      await connection.request('Runtime.evaluate', {
+        expression: `location.origin === "https://open.spotify.com" && window.__liraDjTabCapture?.token === ${JSON.stringify(token)} && window.__liraDjTabCapture?.stop()`,
+        returnByValue: true,
+      })
+    }
     catch { /* Navigation or closure already releases the tab stream. */ }
     finally { connection.close() }
   }

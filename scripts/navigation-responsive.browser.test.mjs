@@ -18,7 +18,7 @@ test('navigation fits the viewport and its compact menu stays legible above the 
     PeerManager: `const peerManager = { broadcast(){}, getPeerId: () => "local", scheduleSignalingReconnect(){}, sendMessageStatus(){},
       getLanInvites: async () => [], cancelDirectInvite(){}, expirePendingDirectInvites: () => 1,
       createDirectInvite: async () => 'LIRA-DIRECT:offer',
-      createAllInvite: async () => 'LIRA-ALL:fixture', acceptDirectAnswer: async () => {}, disconnect(){},
+      createAllInvite: async () => 'LIRA-ALL:eyJ2ZXJzaW9uIjoxLCJyb29tIjoiUk9PTSIsInNpZ25hbGluZyI6InJlbmRlciJ9', acceptDirectAnswer: async () => {}, disconnect(){},
       async prepareDirectJoin(code) {
         window.directAnswerCodes.push(code);
         return { answer: 'LIRA-DIRECT:answer', connected: new Promise(() => {}) };
@@ -170,7 +170,20 @@ test('navigation fits the viewport and its compact menu stays legible above the 
         } })
       })
       await page.getByRole('button', { name: 'Copiar convite completo' }).click()
-      await page.waitForFunction(() => window.copiedRoomInvite === 'LIRA-ALL:fixture')
+      await page.waitForFunction(() => window.copiedRoomInvite === 'LIRA-ALL:eyJ2ZXJzaW9uIjoxLCJyb29tIjoiUk9PTSIsInNpZ25hbGluZyI6InJlbmRlciJ9')
+      await page.evaluate(() => { delete navigator.clipboard })
+    })
+    await t.test('the host copies a link containing the complete invitation', async () => {
+      await reset({})
+      await page.evaluate(() => {
+        Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+          async write([item]) { window.copiedRoomInvite = await (await item.getType('text/plain')).text() },
+        } })
+      })
+      await page.getByRole('button', { name: 'Copiar link do convite', exact: true }).click()
+      await page.waitForFunction(() => window.copiedRoomInvite?.startsWith('https://lira-signaling.onrender.com/join#invite='))
+      const copied = new URL(await page.evaluate(() => window.copiedRoomInvite))
+      assert.equal(new URLSearchParams(copied.hash.slice(1)).get('invite'), 'LIRA-ALL:eyJ2ZXJzaW9uIjoxLCJyb29tIjoiUk9PTSIsInNpZ25hbGluZyI6InJlbmRlciJ9')
       await page.evaluate(() => { delete navigator.clipboard })
     })
     await t.test('the current room indicator stays round and contained with long names', async () => {

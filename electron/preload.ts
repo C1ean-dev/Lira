@@ -56,6 +56,7 @@ export interface SpotifySourceResult {
 }
 
 export interface IElectronAPI {
+  onSpaceInvite: (callback: (link: string) => void) => () => void
   platform: string
   configureParsecEcho: () => Promise<import('../src/types/parsecEcho').ParsecEchoResult>
   getSources: () => Promise<Array<{ id: string; name: string; thumbnail: string; appIcon: string | null }>>
@@ -136,6 +137,16 @@ export interface IElectronAPI {
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  onSpaceInvite: (callback: (link: string) => void) => {
+    const take = () => {
+      void ipcRenderer.invoke('space-invite:take').then(link => {
+        if (typeof link === 'string') callback(link)
+      }).catch(() => {})
+    }
+    ipcRenderer.on('space-invite:available', take)
+    take()
+    return () => ipcRenderer.removeListener('space-invite:available', take)
+  },
   platform: process.platform,
   configureParsecEcho: () => ipcRenderer.invoke('configure-parsec-echo'),
   getSources: () => ipcRenderer.invoke('get-sources'),

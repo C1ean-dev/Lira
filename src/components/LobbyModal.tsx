@@ -8,6 +8,7 @@ import { useSavedSpacesStore } from '../store/useSavedSpacesStore'
 import { useRoomJoinStore } from '../store/useRoomJoinStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { ALL_INVITE_PREFIX, decodeAllInvite } from '../p2p/directInvite'
+import { normalizeSpaceInvite } from '../utils/spaceInviteLink'
 import { MediaManager } from '../media/MediaManager'
 import { createEmptyWorkspace } from '../editor/templates'
 import { PublicRoomsService } from '../services/publicRoomsService'
@@ -286,6 +287,7 @@ export const LobbyModal: React.FC<Props> = ({
     setError(null)
 
     try {
+      code = normalizeSpaceInvite(code)
       const invite = code.trim().startsWith(ALL_INVITE_PREFIX) ? decodeAllInvite(code) : undefined
       useMediaStore.getState().setMuted(true)
       useMediaStore.getState().setCameraOff(true)
@@ -338,10 +340,14 @@ export const LobbyModal: React.FC<Props> = ({
 
   const pendingRoomCode = useRoomJoinStore((s) => s.pendingRoomCode)
   useEffect(() => {
-    if (!pendingRoomCode) return
+    if (!pendingRoomCode || loading) return
     useRoomJoinStore.getState().clear()
+    setRoomInput(pendingRoomCode)
+    setActiveTab('connect')
+    setDirectFallback(null)
+    if (pendingRoomCode.startsWith('LIRA-DIRECT:')) return
     handleJoinByCode(pendingRoomCode)
-  }, [pendingRoomCode])
+  }, [pendingRoomCode, loading])
 
   const beginDirectJoin = useCallback(() => {
     if (!enterGuardRef.current.tryEnter()) return false

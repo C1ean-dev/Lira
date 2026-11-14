@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { sanitizeRoomCode } from '../utils/roomCode'
+import { normalizeSpaceInvite } from '../utils/spaceInviteLink'
 
 interface RoomJoinStore {
   pendingRoomCode: string | null
@@ -10,8 +10,10 @@ interface RoomJoinStore {
 export const useRoomJoinStore = create<RoomJoinStore>((set) => ({
   pendingRoomCode: null,
   requestJoin: (roomCode) => {
-    const code = sanitizeRoomCode(roomCode)
-    if (code) set({ pendingRoomCode: code })
+    try {
+      const code = normalizeSpaceInvite(roomCode)
+      set({ pendingRoomCode: code })
+    } catch { /* Ignore malformed external invitations without leaving the current space. */ }
   },
   clear: () => set({ pendingRoomCode: null }),
 }))

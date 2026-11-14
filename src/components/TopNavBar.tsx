@@ -32,7 +32,9 @@ import { UpdateDownloadIndicator } from './common/UpdateDownloadIndicator'
 import { UpdateChangelogHover } from './common/UpdateChangelogHover'
 import { isAndroid } from '../utils/platform'
 import { useRoomPublication } from '../hooks/useRoomPublication'
+import { useInlineContentFit } from '../hooks/useInlineContentFit'
 import { DirectConnectionPanel } from './lobby/DirectConnectionPanel'
+import { createSpaceInviteLink } from '../utils/spaceInviteLink'
 
 interface Props {
   onOpenAvatarModal: () => void
@@ -94,6 +96,8 @@ export const TopNavBar: React.FC<Props> = ({
   const localQuality = useNetworkQualityStore((s) => s.localQuality)
 
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'copied' | 'error'>('idle')
+  const [linkStatus, setLinkStatus] = useState<'idle' | 'copying' | 'copied' | 'error'>('idle')
+  const [linkError, setLinkError] = useState('')
   const [showDirectConnection, setShowDirectConnection] = useState(false)
   const [autoSavedNotice, setAutoSavedNotice] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
@@ -144,6 +148,10 @@ export const TopNavBar: React.FC<Props> = ({
       ? 'Atualizar Lira'
       : 'Instalar atualização'
   const displayRoomId = isAndroidPlatform && roomId ? roomId.slice(0, 8) : roomId
+  const publicationFit = useInlineContentFit(
+    !!roomId && isRoomPublic && !isAndroidPlatform,
+    JSON.stringify([roomId, isHost, connectionStatus, publicationServers]),
+  )
 
   const handleCopyCode = async () => {
     if (!roomId || copyStatus === 'copying') return
@@ -166,13 +174,47 @@ export const TopNavBar: React.FC<Props> = ({
     }
   }
 
+  const handleCopyLink = async () => {
+    if (!roomId || linkStatus === 'copying') return
+    setLinkStatus('copying')
+    setLinkError('')
+    try {
+      const link = isHost
+        ? PeerManager.getInstance().createAllInvite().then(createSpaceInviteLink)
+        : Promise.resolve(createSpaceInviteLink(roomId))
+      if (typeof ClipboardItem !== 'undefined' && typeof navigator.clipboard.write === 'function') {
+        await navigator.clipboard.write([new ClipboardItem({
+          'text/plain': link.then(value => new Blob([value], { type: 'text/plain' })),
+        })])
+      } else await navigator.clipboard.writeText(await link)
+      setLinkStatus('copied')
+    } catch (error) {
+      setLinkStatus('error')
+      setLinkError(error instanceof Error ? error.message : 'Não foi possível copiar o link. Tente novamente.')
+    } finally {
+      setTimeout(() => setLinkStatus(current => current === 'copying' ? current : 'idle'), 3500)
+    }
+  }
+
   return (
     <header className={`h-14 shrink-0 bg-[#12151d]/90 backdrop-blur-md border-b border-[#2a3142] px-3 sm:px-4 flex items-center justify-between gap-2 select-none relative ${isMobileMenuOpen ? 'z-[80]' : 'z-30'}`}>
-      <div className="flex flex-1 min-w-0 items-center gap-1.5 sm:gap-3">
+      <div ref={publicationFit.containerRef} className="flex flex-1 min-w-0 items-center gap-1.5 sm:gap-3">
         <div className="flex shrink-0 items-center">
           <LiraLogo size={32} showText={true} className="hidden sm:inline-flex" />
           <LiraLogo size={28} showText={false} className="sm:hidden" />
         </div>
+
+        {roomId && <button type="button" onClick={handleCopyLink} disabled={linkStatus === 'copying'}
+          aria-busy={linkStatus === 'copying'}
+          aria-label={linkStatus === 'copied' ? 'Link do convite copiado' : 'Copiar link do convite'}
+          title={linkStatus === 'error' ? linkError : 'Copiar link para abrir o Lira e entrar no espaço'}
+          className="flex shrink-0 items-center gap-1.5 rounded-xl border border-indigo-500/40 bg-indigo-500/15 p-2 text-xs font-semibold text-indigo-200 enabled:hover:bg-indigo-500/25 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300">
+          {linkStatus === 'copying' ? <LoaderCircle className="h-4 w-4 animate-spin" />
+            : linkStatus === 'copied' ? <Check className="h-4 w-4 text-emerald-400" />
+            : linkStatus === 'error' ? <CircleAlert className="h-4 w-4 text-rose-300" />
+            : <Link2 className="h-4 w-4" />}
+          <span className="sr-only" role="status">{linkStatus === 'error' ? linkError : linkStatus === 'copied' ? 'Link copiado' : ''}</span>
+        </button>}
 
         {roomId && (
           <button
@@ -213,7 +255,7 @@ export const TopNavBar: React.FC<Props> = ({
           <button
             onClick={isHost ? toggleRoomPrivacy : undefined}
             disabled={!isHost}
-            className={`flex shrink-0 min-w-0 max-w-[260px] whitespace-nowrap items-center justify-center gap-1.5 ${
+            className={`relative flex shrink-0 min-w-0 overflow-hidden whitespace-nowrap items-center justify-center gap-1.5 ${
               isAndroidPlatform ? 'p-2' : 'p-2 sm:px-3 sm:py-1.5'
             } rounded-xl border text-xs font-semibold transition-all ${
               isRoomPublic
@@ -238,19 +280,26 @@ export const TopNavBar: React.FC<Props> = ({
             {!isAndroidPlatform && (
               <>
                 <span className="hidden sm:inline">{isRoomPublic ? 'Pública' : 'Privada'}</span>
-                {isRoomPublic && publicationServers.map(server => (
-                  <span
-                    key={server.host}
-                    className="hidden min-[1800px]:inline-block min-w-0 max-w-24 truncate text-[9px] border px-1.5 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                    aria-label={`Sala publicada em ${server.name}`}
-                    title={server.host}
-                  >
-                    {server.name}
-                  </span>
-                ))}
-                {isRoomPublic && publicationServers.length === 0 && (
-                  <span className="hidden min-[1800px]:inline text-[9px] text-amber-300">Aguardando publicação</span>
-                )}
+                {isRoomPublic && <span
+                  ref={publicationFit.contentRef}
+                  aria-label="Servidores de publicação"
+                  aria-hidden={!publicationFit.fits}
+                  className={`inline-flex w-max shrink-0 items-center gap-1.5 ${publicationFit.fits ? '' : 'absolute invisible pointer-events-none'}`}
+                >
+                  {publicationServers.map(server => (
+                    <span
+                      key={server.host}
+                      className="inline-block min-w-0 max-w-24 truncate text-[9px] border px-1.5 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                      aria-label={`Sala publicada em ${server.name}`}
+                      title={server.host}
+                    >
+                      {server.name}
+                    </span>
+                  ))}
+                  {publicationServers.length === 0 && (
+                    <span className="text-[9px] text-amber-300">Aguardando publicação</span>
+                  )}
+                </span>}
               </>
             )}
           </button>

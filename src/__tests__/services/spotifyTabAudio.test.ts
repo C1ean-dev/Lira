@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { startSpotifyTabAudio, SpotifyTabAudioController } from '../../../electron/spotifyTabAudio'
 import { spotifyCaptureWorkletSource } from '../../../electron/spotifyCaptureWorklet'
+import { SpotifyPlaybackDisconnectedError } from '../../../electron/spotifyPlaybackTransport'
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers() })
 
@@ -267,5 +268,44 @@ describe('silent Spotify tab capture', () => {
     expect(close).toHaveBeenCalledOnce()
     await vi.advanceTimersByTimeAsync(500)
     expect(ended).toHaveBeenCalledOnce()
+  })
+
+  it.each([true, false])('reopens the transport once when the socket closes, with original capture active=%s', async active => {
+    vi.useFakeTimers()
+    const request = vi.fn(async (_method: string, params: { expression: string; awaitPromise?: boolean }) => {
+      if (params.awaitPromise) return { result: { value: { ok: true } } }
+      if (params.expression.includes('?.stop()')) return {}
+      throw new SpotifyPlaybackDisconnectedError('The socket was closed while data was being compressed')
+    })
+    const replacement = {
+      close: vi.fn(),
+      request: vi.fn(async () => ({ result: { value: active ? { active, chunks: ['AAECAw=='] } : null } })),
+    }
+    const original = { request, close: vi.fn() }
+    const connect = vi.fn().mockResolvedValueOnce(original).mockResolvedValueOnce(replacement)
+    const data = vi.fn()
+    const ended = vi.fn()
+    const controller = new SpotifyTabAudioController({ connect, data, ended })
+
+    await controller.start()
+    await vi.advanceTimersByTimeAsync(20)
+
+    expect(connect).toHaveBeenCalledTimes(2)
+    expect(original.close).toHaveBeenCalledOnce()
+    const token = request.mock.calls[0][1].expression.match(/\)\("([a-f0-9-]{36})",/)?.[1]
+    expect(token).toBeDefined()
+    expect(replacement.request).toHaveBeenCalledWith('Runtime.evaluate', expect.objectContaining({
+      expression: expect.stringContaining(token!),
+    }))
+    expect(controller.isActive).toBe(active)
+    if (active) {
+      expect(data).toHaveBeenCalledExactlyOnceWith(Buffer.from([0, 1, 2, 3]))
+      expect(ended).not.toHaveBeenCalled()
+      await controller.stop()
+    } else {
+      expect(data).not.toHaveBeenCalled()
+      expect(ended).toHaveBeenCalledOnce()
+    }
+    expect(replacement.close).toHaveBeenCalledOnce()
   })
 })

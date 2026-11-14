@@ -229,6 +229,9 @@ export interface Player {
   }
   isDjBot?: boolean
   djOwnerId?: string
+  appVersion?: string
+  minCompatibleVersion?: string
+  isOutdated?: boolean
 }
 
 export type ConnectionStatus = 'connected' | 'connecting' | 'reconnecting' | 'disconnected'

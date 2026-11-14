@@ -1,6 +1,7 @@
 
 import { diagLog } from '../utils/diagnosticLogger'
 import spotifyPcmWorkletSrc from './spotifyPcmWorkletSrc.js?raw'
+import processAudioWorkletSrc from './processAudioWorkletSrc.js?raw'
 
 type ProcessAudioApi = {
   startProcessAudioCapture: (sourceId: string) => Promise<{ ok: boolean; error?: string }>
@@ -65,16 +66,34 @@ export class ProcessAudioCapture {
     const destination = audioContext.createMediaStreamDestination()
     this.audioContext = audioContext
     this.destination = destination
-    if (this.isSpotifyTab) {
-      destination.channelCount = CHANNELS
-      destination.channelCountMode = 'explicit'
-      try { await this.createDjProcessor(audioContext, destination) }
-      catch (error) { if (this.audioContext === audioContext) this.stop(false); throw error }
+    destination.channelCount = CHANNELS
+    destination.channelCountMode = 'explicit'
+    let engine: 'audio-worklet' | 'script-processor' = 'script-processor'
+
+    if (audioContext.audioWorklet && typeof audioContext.audioWorklet.addModule === 'function') {
+      try {
+        await this.createWorkletProcessor(audioContext, destination)
+        engine = 'audio-worklet'
+      } catch (error) {
+        if (this.isSpotifyTab) {
+          if (this.audioContext === audioContext) this.stop(false)
+          throw error
+        }
+        const processor = audioContext.createScriptProcessor(2048, 0, CHANNELS)
+        processor.onaudioprocess = (event) => this.writeAudio(event)
+        processor.connect(destination)
+        this.processor = processor
+        engine = 'script-processor'
+      }
     } else {
+      if (this.isSpotifyTab) {
+        throw new Error('AudioWorklet indisponível para captura do Spotify.')
+      }
       const processor = audioContext.createScriptProcessor(2048, 0, CHANNELS)
       processor.onaudioprocess = (event) => this.writeAudio(event)
       processor.connect(destination)
       this.processor = processor
+      engine = 'script-processor'
     }
 
     diagLog('screenshare-audio', 'web-audio-created', {
@@ -82,7 +101,7 @@ export class ProcessAudioCapture {
       actualSampleRate: audioContext.sampleRate,
       state: audioContext.state,
       channels: CHANNELS,
-      engine: this.isSpotifyTab ? 'audio-worklet' : 'script-processor',
+      engine,
     })
 
     this.unsubscribeData = (this.isSpotifyTab ? api.onSpotifyTabAudioData! : api.onProcessAudioData)((data) => this.enqueue(data))
@@ -145,28 +164,43 @@ export class ProcessAudioCapture {
     return track
   }
 
-  private async createDjProcessor(audioContext: AudioContext, destination: MediaStreamAudioDestinationNode) {
-    const url = URL.createObjectURL(new Blob([spotifyPcmWorkletSrc], { type: 'application/javascript' }))
+  private async createWorkletProcessor(audioContext: AudioContext, destination: MediaStreamAudioDestinationNode) {
+    const isSpotify = this.isSpotifyTab
+    const scriptSrc = isSpotify ? spotifyPcmWorkletSrc : processAudioWorkletSrc
+    const procName = isSpotify ? 'spotify-pcm-player' : 'process-pcm-player'
+    const url = URL.createObjectURL(new Blob([scriptSrc], { type: 'application/javascript' }))
     try { await audioContext.audioWorklet.addModule(url) }
     finally { URL.revokeObjectURL(url) }
     if (this.audioContext !== audioContext) throw new Error('Inicialização da captura cancelada.')
-    const processor = new AudioWorkletNode(audioContext, 'spotify-pcm-player', {
+    const processor = new AudioWorkletNode(audioContext, procName, {
       numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [CHANNELS],
       channelCount: CHANNELS, channelCountMode: 'explicit', channelInterpretation: 'discrete',
+      processorOptions: { targetMs: 60 },
     })
     this.djProcessor = processor
     processor.port.onmessage = ({ data }) => {
-      if (this.audioContext !== audioContext || data?.type !== 'stats') return
-      this.bufferedSamples = data.bufferedSamples
-      this.processCallbacks = data.processCallbacks
-      this.outputNonZeroSamples = data.outputNonZeroSamples
-      this.underrunCallbacks = data.underrunCallbacks
-      this.latencyResyncs = data.latencyResyncs
-      this.droppedSamples = data.droppedSamples
+      if (this.audioContext !== audioContext) return
+      if (data?.type === 'stats') {
+        if (typeof data.bufferedSamples === 'number') this.bufferedSamples = data.bufferedSamples
+        if (typeof data.processCallbacks === 'number') this.processCallbacks = data.processCallbacks
+        if (typeof data.outputNonZeroSamples === 'number') this.outputNonZeroSamples = data.outputNonZeroSamples
+        if (typeof data.underrunCallbacks === 'number') {
+          if (data.underrunCallbacks > this.underrunCallbacks) {
+            console.warn(`[LocalAudioDSP] Alerta de underrun local de captura (AudioWorklet): ${data.underrunCallbacks} callbacks com falta de amostras`)
+            diagLog('screenshare-audio', 'local-capture.underrun', {
+              underrunCallbacks: data.underrunCallbacks,
+              bufferedSamples: data.bufferedSamples,
+            })
+          }
+          this.underrunCallbacks = data.underrunCallbacks
+        }
+        if (typeof data.latencyResyncs === 'number') this.latencyResyncs = data.latencyResyncs
+        if (typeof data.droppedSamples === 'number') this.droppedSamples = data.droppedSamples
+      }
     }
     processor.onprocessorerror = () => {
       if (this.audioContext !== audioContext) return
-      diagLog('screenshare-audio', 'dj-audio-worklet-error')
+      diagLog('screenshare-audio', 'audio-worklet-error')
       this.onError?.()
     }
     processor.connect(destination)
@@ -291,7 +325,14 @@ export class ProcessAudioCapture {
     const output = event.outputBuffer
     const left = output.getChannelData(0)
     const right = output.numberOfChannels > 1 ? output.getChannelData(1) : left
-    if (this.bufferedSamples < output.length * CHANNELS) this.underrunCallbacks++
+    if (this.bufferedSamples < output.length * CHANNELS) {
+      this.underrunCallbacks++
+      console.warn('[LocalAudioDSP] Alerta de underrun local de captura (ScriptProcessor na thread principal).')
+      diagLog('screenshare-audio', 'local-capture.underrun', {
+        bufferedSamples: this.bufferedSamples,
+        needed: output.length * CHANNELS,
+      })
+    }
     for (let frame = 0; frame < output.length; frame++) {
       left[frame] = this.readSample()
       right[frame] = this.readSample()

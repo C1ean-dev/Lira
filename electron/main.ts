@@ -17,6 +17,8 @@ import { appTrail } from '../src/utils/breadcrumbs'
 import { createErrorReporter } from '../src/utils/errorReporter'
 import { setupSingleInstanceLock } from './singleInstance'
 import { resolveAppInstance } from './appInstance'
+import { setupSpaceInviteHandling } from './spaceInviteInbox'
+import { registerSpaceInviteProtocol } from './spaceInviteProtocol'
 import { TrayManager, AppSettings } from './trayManager'
 import { createLogWriter, installConsoleCapture, installProcessErrorCapture } from './logWriter'
 import { readNativeDataFile } from './nativeDataFile'
@@ -36,6 +38,7 @@ import type { SpotifyPlaybackCommand } from '../src/types/spotifyPlayback'
 import { SpotifyWindowHost } from './spotifyWindowHost'
 import { SpotifyNativeWindowBridge } from './spotifyNativeWindow'
 import { singleFlightDownload } from './updateDownload'
+import { checkCachedUpdate } from '../src/services/updateCheck'
 import { downloadUpdateFile, updateDownloadErrorMessage } from './updateFileDownload'
 import { runtimeAssetPath } from './assetPaths'
 import { getLanAddresses, startLocalSignalingServer } from './lanSignaling'
@@ -73,9 +76,13 @@ app.commandLine.appendSwitch('enable-webrtc-dscp')
 
 // Explicitly disable Windows Graphics Capture (WGC) capturer flags to avoid the OS security yellow border:
 // Screen capture uses DXGI Desktop Duplication (ScreenCapturerWinDirectx) with zero border and high performance.
+// Keep WebRTC gain processing inside the app, without changing the OS input level.
+const disabledFeatures = app.commandLine.getSwitchValue('disable-features')
 app.commandLine.appendSwitch(
   'disable-features',
-  'WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer,WebRtcAllowWgcDesktopCapturer,WebRtcWgcRequireBorder'
+  [disabledFeatures, 'WebRtcAllowInputVolumeAdjustment',
+    'WebRtcAllowWgcScreenCapturer,WebRtcAllowWgcWindowCapturer,WebRtcAllowWgcDesktopCapturer,WebRtcWgcRequireBorder']
+    .filter(Boolean).join(',')
 )
 app.commandLine.appendSwitch(
   'enable-features',
@@ -83,6 +90,16 @@ app.commandLine.appendSwitch(
 )
 
 let mainWindow: BrowserWindow | null = null
+setupSpaceInviteHandling(app, ipcMain, () => mainWindow, process.argv)
+// Each profile gets one process, including the second profile used by electron:dual.
+// Exit duplicates before sessions and background services can contend for its cache.
+if (!setupSingleInstanceLock({
+  requestLock: () => app.requestSingleInstanceLock(),
+  quit: () => app.exit(0),
+  onSecondInstance: cb => app.on('second-instance', cb),
+  getWindows: () => mainWindow ? [mainWindow] : [],
+})) app.exit(0)
+
 function queryBrowserWindows(script: string): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
@@ -177,7 +194,6 @@ let lastSelectedSourceId: string | null = null
 let lastSelectedSourceName: string | null = null
 let lastSelectedSourceTime = 0
 
-const GITHUB_REPO = 'C1ean-dev/Lira'
 const CURRENT_VERSION = app.getVersion() || '1.0.0'
 const MAIN_SESSION = `electron-${process.pid}`
 
@@ -545,20 +561,9 @@ app.on('child-process-gone', (_event, details) => {
 
 if (isMultiInstance) {
   console.log(`[Electron] Modo multi-instância ativo (Instância ${instanceId}). UserData isolado em: ${app.getPath('userData')}`)
-} else {
-  const gotSingleInstanceLock = setupSingleInstanceLock({
-    requestLock: () => app.requestSingleInstanceLock(),
-    quit: () => {
-      app.exit(0)
-    },
-    onSecondInstance: (cb) => app.on('second-instance', cb),
-    getWindows: () => BrowserWindow.getAllWindows(),
-  })
-
-  if (!gotSingleInstanceLock) {
-    app.exit(0)
-  }
 }
+
+registerSpaceInviteProtocol(app, { isMultiInstance })
 
 
 function createWindow() {
@@ -751,19 +756,6 @@ function createWindow() {
   loadApp()
 }
 
-function isNewerVersion(latestTag: string, currentVer: string): boolean {
-  const clean = (v: string) => v.replace(/^v/i, '').trim().split('.').map(Number)
-  const l = clean(latestTag)
-  const c = clean(currentVer)
-  for (let i = 0; i < Math.max(l.length, c.length); i++) {
-    const lNum = isNaN(l[i]) ? 0 : l[i]
-    const cNum = isNaN(c[i]) ? 0 : c[i]
-    if (lNum > cNum) return true
-    if (lNum < cNum) return false
-  }
-  return false
-}
-
 const GET_SOURCES_TIMEOUT_MS = 6000
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -849,76 +841,9 @@ ipcMain.handle('is-fullscreen', () => {
 })
 
 ipcMain.handle('check-update', async () => {
-  const currentVersion = app.getVersion() || '1.0.0'
-  try {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 4000)
-
-    const url = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': 'lira-updater',
-        Accept: 'application/vnd.github.v3+json',
-      },
-    })
-    clearTimeout(timeoutId)
-
-    if (!res.ok) {
-      return {
-        hasUpdate: false,
-        currentVersion,
-        latestVersion: currentVersion,
-        releaseNotes: '',
-        downloadUrl: null,
-        releaseUrl: `https://github.com/${GITHUB_REPO}/releases`,
-        checkFailed: true,
-      }
-    }
-
-    const data = await res.json()
-    const latestTag = data.tag_name || ''
-    const hasUpdate = isNewerVersion(latestTag, currentVersion)
-
-    let downloadUrl: string | null = null
-    let assetSize = 0
-    if (Array.isArray(data.assets)) {
-      const exeAsset = data.assets.find(
-        (a: any) => a.name && a.name.endsWith('.exe') && !a.name.includes('blockmap')
-      )
-      if (exeAsset && exeAsset.browser_download_url) {
-        downloadUrl = exeAsset.browser_download_url
-        if (typeof exeAsset.size === 'number' && exeAsset.size > 0) {
-          assetSize = exeAsset.size
-        }
-      }
-    }
-    latestAssetExpectedSize = assetSize
-
-    return {
-      hasUpdate,
-      currentVersion,
-      latestVersion: latestTag,
-      releaseName: data.name || latestTag,
-      releaseNotes: data.body || '',
-      downloadUrl,
-      releaseUrl: data.html_url || `https://github.com/${GITHUB_REPO}/releases`,
-      prUrl: (data.body || '').match(/https:\/\/github\.com\/(?:[^\s/]+\/[^\s/]+\/)?pull\/\d+/i)?.[0] || null,
-    }
-  } catch (err: any) {
-    if (err?.name !== 'AbortError') {
-      console.warn('[Updater] Could not check for updates (offline or timed out):', err?.message || err)
-    }
-    return {
-      hasUpdate: false,
-      currentVersion,
-      latestVersion: currentVersion,
-      releaseNotes: '',
-      downloadUrl: null,
-      releaseUrl: `https://github.com/${GITHUB_REPO}/releases`,
-      checkFailed: true,
-    }
-  }
+  const { assetSize, ...info } = await checkCachedUpdate(app.getVersion() || '1.0.0', 'windows')
+  if (!info.checkFailed) latestAssetExpectedSize = assetSize
+  return info
 })
 
 let latestAssetExpectedSize = 0

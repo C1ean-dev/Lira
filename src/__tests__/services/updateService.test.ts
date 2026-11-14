@@ -18,7 +18,7 @@ describe('Update Service & Version Checker', () => {
     expect(isNewerVersion('v0.9.9', '1.0.0')).toBe(false)
   })
 
-  it('should detect update when GitHub release tag is higher than current app version', async () => {
+  it('detects an update when the Render cache version is newer', async () => {
     const mockRelease = {
       tag_name: 'v2.0.0',
       name: 'Release v2.0.0',
@@ -27,7 +27,7 @@ describe('Update Service & Version Checker', () => {
       assets: [
         {
           name: 'Lira-Setup-2.0.0.exe',
-          browser_download_url: 'https://github.com/C1ean-dev/Lira/releases/download/v2.0.0/Lira-Setup.exe',
+          browser_download_url: 'https://lira-signaling.onrender.com/updates/lira/assets/100',
         },
       ],
     }
@@ -42,7 +42,7 @@ describe('Update Service & Version Checker', () => {
     expect(updateInfo.hasUpdate).toBe(true)
     expect(updateInfo.latestVersion).toBe('v2.0.0')
     expect(updateInfo.downloadUrl).toBe(
-      'https://github.com/C1ean-dev/Lira/releases/download/v2.0.0/Lira-Setup.exe'
+      'https://lira-signaling.onrender.com/updates/lira/assets/100'
     )
     expect(updateInfo.releaseNotes).toBe('Bug fixes and performance improvements')
   })
@@ -118,11 +118,11 @@ describe('Update Service & Version Checker', () => {
       assets: [
         {
           name: 'Lira-Setup-2.0.0.exe',
-          browser_download_url: 'https://github.com/C1ean-dev/Lira/releases/download/v2.0.0/Lira-Setup.exe',
+          browser_download_url: 'https://lira-signaling.onrender.com/updates/lira/assets/100',
         },
         {
           name: 'Lira-v2.0.0.apk',
-          browser_download_url: 'https://github.com/C1ean-dev/Lira/releases/download/v2.0.0/Lira-v2.0.0.apk',
+          browser_download_url: 'https://lira-signaling.onrender.com/updates/lira/assets/101',
         },
       ],
     }
@@ -136,7 +136,7 @@ describe('Update Service & Version Checker', () => {
 
     expect(updateInfo.hasUpdate).toBe(true)
     expect(updateInfo.downloadUrl).toBe(
-      'https://github.com/C1ean-dev/Lira/releases/download/v2.0.0/Lira-v2.0.0.apk'
+      'https://lira-signaling.onrender.com/updates/lira/assets/101'
     )
 
     isAndroidSpy.mockRestore()

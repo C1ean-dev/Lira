@@ -5,6 +5,7 @@ import { ChatDrawer } from '../../components/ChatDrawer'
 import { useGameStore } from '../../store/useGameStore'
 import { useChatStore } from '../../store/useChatStore'
 import { linkifyText, openExternalUrl } from '../../utils/chatLinks'
+import { useRoomJoinStore } from '../../store/useRoomJoinStore'
 
 vi.mock('../../p2p/PeerManager', () => ({ PeerManager: { getInstance: () => ({}) } }))
 
@@ -18,12 +19,17 @@ describe('chatClickableLinks and copy message content', () => {
   })
 
   afterEach(() => {
+    useRoomJoinStore.getState().clear()
     vi.restoreAllMocks()
     useGameStore.setState(originalGame)
     useChatStore.setState(originalChat)
   })
 
   describe('linkifyText utility', () => {
+    it('makes Lira invitations clickable while preserving the custom protocol', () => {
+      const html = renderToStaticMarkup(<>{linkifyText('Entre: lira://join?invite=ROOM-42.')}</>)
+      expect(html).toContain('href="lira://join?invite=ROOM-42"')
+    })
     it('leaves plain text intact without creating links', () => {
       const html = renderToStaticMarkup(<>{linkifyText('Mensagem comum sem nenhum link')}</>)
       expect(html).toBe('Mensagem comum sem nenhum link')
@@ -52,6 +58,16 @@ describe('chatClickableLinks and copy message content', () => {
   })
 
   describe('openExternalUrl', () => {
+    it('joins a Lira link inside the running application and ignores malformed invites', () => {
+      openExternalUrl('lira://join?invite=ROOM-42')
+      expect(useRoomJoinStore.getState().pendingRoomCode).toBe('ROOM-42')
+      openExternalUrl('lira://join?invite=<script>')
+      expect(useRoomJoinStore.getState().pendingRoomCode).toBe('ROOM-42')
+    })
+    it('opens Render HTTPS invitations inside the running application', () => {
+      openExternalUrl('https://lira-signaling.onrender.com/join#invite=ROOM-HTTPS')
+      expect(useRoomJoinStore.getState().pendingRoomCode).toBe('ROOM-HTTPS')
+    })
     it('delegates to window.electronAPI.openExternal in Electron environment', async () => {
       const openExternalMock = vi.fn().mockResolvedValue(undefined)
       const originalWindow = globalThis.window

@@ -8,6 +8,7 @@ import { decodeLanInvite, isGlobalIpv6InviteAddress } from '../../p2p/directInvi
 interface Props {
   role: 'host' | 'guest'
   invite?: string
+  guestName?: string
   onJoined?: () => void
   beginJoin?: () => boolean
   endJoin?: () => void
@@ -15,7 +16,7 @@ interface Props {
 const fieldClass = 'block w-full min-h-16 resize-y rounded-xl border border-slate-600 bg-[#12151d] p-3 font-mono text-xs text-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300'
 const buttonClass = 'min-h-10 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-semibold text-white enabled:hover:bg-indigo-500 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-300'
 
-export function DirectConnectionPanel({ role, invite, onJoined, beginJoin, endJoin }: Props) {
+export function DirectConnectionPanel({ role, invite, guestName, onJoined, beginJoin, endJoin }: Props) {
   const [input, setInput] = useState('')
   const [output, setOutput] = useState('')
   const [error, setError] = useState('')
@@ -26,7 +27,7 @@ export function DirectConnectionPanel({ role, invite, onJoined, beginJoin, endJo
   const alive = useRef(true)
   const joining = useRef(false)
   const attemptedInvite = useRef('')
-  const guestHasName = useGameStore(state => role === 'guest' && !!state.localPlayer.name.trim())
+  const guestHasName = useGameStore(state => role === 'guest' && !!(guestName ?? state.localPlayer.name).trim())
   const manager = PeerManager.getInstance()
   const canHostLan = role === 'host' && typeof window !== 'undefined' && !!window.electronAPI?.getSignalingConfig
   const finishJoin = useCallback(() => {
@@ -72,14 +73,16 @@ export function DirectConnectionPanel({ role, invite, onJoined, beginJoin, endJo
   const answer = useCallback(async (code: string) => {
     if (joining.current || attemptedInvite.current === code) return
     const player = useGameStore.getState().localPlayer
-    if (!player.name.trim() || (beginJoin && !beginJoin())) return
+    const name = (guestName ?? player.name).trim()
+    if (!name || (beginJoin && !beginJoin())) return
     attemptedInvite.current = code
     joining.current = true
     await perform('response', async () => {
       useMediaStore.getState().setMuted(true)
       useMediaStore.getState().setCameraOff(true)
       try {
-        const result = await manager.prepareDirectJoin(code, { ...player, isMuted: true, isCameraOff: true })
+        useGameStore.getState().setLocalPlayer({ name })
+        const result = await manager.prepareDirectJoin(code, { ...player, name, isMuted: true, isCameraOff: true })
         if (!alive.current) return
         setOutput(result.answer)
         setStatus('Envie esta resposta ao anfitrião e mantenha esta tela aberta até conectar.')
@@ -94,7 +97,7 @@ export function DirectConnectionPanel({ role, invite, onJoined, beginJoin, endJo
         })
       } catch (error) { finishJoin(); throw error }
     })
-  }, [beginJoin, finishJoin, manager, onJoined, perform])
+  }, [beginJoin, finishJoin, guestName, manager, onJoined, perform])
 
   const guestInvite = role === 'guest' ? (invite ?? input).trim() : ''
   useEffect(() => {

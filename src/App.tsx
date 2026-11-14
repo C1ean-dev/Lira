@@ -18,6 +18,7 @@ import { useMountOnFirstOpen } from './hooks/useMountOnFirstOpen'
 import { markStartup, reportStartupAfterPaint } from './utils/startupTrace'
 import { callNotificationService } from './services/callNotificationService'
 import { handleBedInteractionShortcut } from './services/bedInteraction'
+import { spaceInviteRoom } from './utils/spaceInviteLink'
 
 const loadSpaceShell = () => import('./components/SpaceShell').then((m) => ({ default: m.SpaceShell }))
 const loadAvatarCustomizerModal = () =>
@@ -67,6 +68,10 @@ export const App: React.FC = () => {
   }, [])
 
   useEffect(() => startAutoUpdateChecks(), [])
+
+  useEffect(() => window.electronAPI?.onSpaceInvite?.(link => {
+    useRoomJoinStore.getState().requestJoin(link)
+  }), [])
 
   useEffect(() => {
     const updates = useUpdateStore.getState()
@@ -138,7 +143,12 @@ export const App: React.FC = () => {
 
   const pendingRoomCode = useRoomJoinStore((s) => s.pendingRoomCode)
   useEffect(() => {
-    if (pendingRoomCode && !inLobby) leaveSpace()
+    if (!pendingRoomCode || inLobby) return
+    try {
+      if (spaceInviteRoom(pendingRoomCode) === useGameStore.getState().roomId) {
+        useRoomJoinStore.getState().clear()
+      } else leaveSpace()
+    } catch { useRoomJoinStore.getState().clear() }
   }, [pendingRoomCode, inLobby])
 
   return (

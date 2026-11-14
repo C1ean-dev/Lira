@@ -52,6 +52,19 @@ describe('local Spotify playback transport', () => {
     connection.close()
   })
 
+  it('identifies a socket closure during send as a transport failure', async () => {
+    const opening = connectPlayback('ws://127.0.0.1:9222/devtools/page/spotify')
+    state.socket.emit('open')
+    const connection = await opening
+    const error = new Error('The socket was closed while data was being compressed')
+    state.socket.send.mockImplementationOnce((_data: string, callback: (error: Error) => void) => callback(error))
+
+    await expect(connection.request('Runtime.evaluate', {})).rejects.toMatchObject({
+      name: 'SpotifyPlaybackDisconnectedError',
+      message: error.message,
+    })
+  })
+
   it('rejects connection failures without creating a browser', async () => {
     const failed = expect(connectPlayback('ws://127.0.0.1:9222/devtools/page/spotify')).rejects.toThrow('offline')
     state.socket.emit('error', new Error('offline'))
