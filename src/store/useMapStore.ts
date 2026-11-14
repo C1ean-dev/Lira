@@ -60,7 +60,15 @@ const initialMap = loadSavedMap() || createEmptyWorkspace()
 
 interface MapStore {
   mapData: MapData
-  setMapData: (map: MapData) => void
+  historyPast: MapData[]
+  historyFuture: MapData[]
+  undo: () => void
+  redo: () => void
+  clearHistory: () => void
+  beginHistoryGroup: () => void
+  endHistoryGroup: () => void
+  applyRemoteChange: (change: () => void) => void
+  setMapData: (map: MapData, recordHistory?: boolean) => void
 
   isEditorOpen: boolean
   toggleEditor: () => void
@@ -129,12 +137,51 @@ export const autoSaveCurrentSpace = () => {
   }
 }
 
-export const useMapStore = create<MapStore>((set, get) => ({
-  mapData: initialMap,
-
-  setMapData: (mapData) => {
+export const useMapStore = create<MapStore>((baseSet, get) => {
+  let grouping = false
+  let captured = false
+  let remote = false
+  const set = (update: Partial<MapStore> | ((state: MapStore) => Partial<MapStore>)) => baseSet(state => {
+    const next = typeof update === 'function' ? update(state) : update
+    if (!remote && state.isEditorOpen && next.mapData && next.mapData !== state.mapData && (!grouping || !captured)) {
+      captured = grouping
+      return { ...next, historyPast: [...state.historyPast, state.mapData].slice(-100), historyFuture: [] }
+    }
+    return next
+  })
+  const restore = (direction: 'undo' | 'redo') => {
+    if (!get().isEditorOpen) return
+    grouping = false; captured = false
+    const state = get()
+    const source = direction === 'undo' ? state.historyPast : state.historyFuture
+    const mapData = source[source.length - 1]
+    if (!mapData) return
     saveMap(mapData)
-    set({ mapData })
+    baseSet({ mapData, selectedPlacedFurnitureId: null, isMovingFurniture: false,
+      historyPast: direction === 'undo' ? source.slice(0, -1) : [...state.historyPast, state.mapData].slice(-100),
+      historyFuture: direction === 'redo' ? source.slice(0, -1) : [...state.historyFuture, state.mapData].slice(-100),
+    })
+    autoSaveCurrentSpace()
+    const pm = PeerManager.getInstance()
+    pm.broadcast({ type: 'MAP_SYNC', senderId: pm.getPeerId() || useGameStore.getState().localPlayer.id,
+      payload: { mapData }, timestamp: Date.now() })
+  }
+  return {
+  mapData: initialMap,
+  historyPast: [], historyFuture: [],
+  undo: () => restore('undo'), redo: () => restore('redo'),
+  clearHistory: () => { grouping = false; captured = false; baseSet({ historyPast: [], historyFuture: [] }) },
+  beginHistoryGroup: () => { if (!grouping) { grouping = true; captured = false } },
+  endHistoryGroup: () => { grouping = false; captured = false },
+  applyRemoteChange: change => {
+    remote = true
+    try { change() } finally { remote = false; get().clearHistory() }
+  },
+
+  setMapData: (mapData, recordHistory = false) => {
+    saveMap(mapData)
+    if (recordHistory) set({ mapData })
+    else { get().clearHistory(); baseSet({ mapData }) }
   },
 
   isEditorOpen: false,
@@ -230,6 +277,7 @@ export const useMapStore = create<MapStore>((set, get) => ({
   setFloorTile: (x, y, floor) =>
     set((state) => {
       if (y < 0 || y >= state.mapData.height || x < 0 || x >= state.mapData.width) return state
+      if (state.mapData.floors[y]?.[x] === floor) return state
       const floors = state.mapData.floors.map((row, rIdx) =>
         rIdx === y ? row.map((col, cIdx) => (cIdx === x ? floor : col)) : row
       )
@@ -277,6 +325,7 @@ export const useMapStore = create<MapStore>((set, get) => ({
   setWallTile: (x, y, wall) =>
     set((state) => {
       if (y < 0 || y >= state.mapData.height || x < 0 || x >= state.mapData.width) return state
+      if (state.mapData.walls[y]?.[x] === wall) return state
       const walls = state.mapData.walls.map((row, rIdx) =>
         rIdx === y ? row.map((col, cIdx) => (cIdx === x ? wall : col)) : row
       )
@@ -652,4 +701,5 @@ export const useMapStore = create<MapStore>((set, get) => ({
     saveMap(forge)
     set({ mapData: forge })
   },
-}))
+}
+})

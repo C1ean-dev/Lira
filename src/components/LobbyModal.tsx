@@ -1,3 +1,4 @@
+import { MeetingHistoryAccess } from './collaboration/MeetingHistoryAccess'
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { DoorOpen, Globe, LayoutGrid, Users, MessageSquare, RefreshCw } from 'lucide-react'
 import { useGameStore } from '../store/useGameStore'
@@ -588,6 +589,7 @@ export const LobbyModal: React.FC<Props> = ({
           <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-t-2xl sm:rounded-t-3xl">
             <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full bg-white/10 blur-2xl" />
           </div>
+          <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-30"><MeetingHistoryAccess /></div>
           <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-30">
             <UpdateChangelogHover
               updateInfo={updateInfo}

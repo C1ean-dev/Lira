@@ -1,3 +1,4 @@
+import { CollaborationButtons } from './collaboration/CollaborationButtons'
 import React, { useState } from 'react'
 import { Shield, Users, Minimize2, X, Radio, FileText } from 'lucide-react'
 import { selectTranscriptionSources } from '../media/callTranscription'
@@ -250,6 +251,7 @@ const FullScreenGridInner: React.FC = () => {
               {transcription.status === 'recording' && <span aria-label="Transcrição ativa" className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
             </button>
 
+            <CollaborationButtons />
             <button
               onClick={() => setGridCallOpen(false)}
               className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition-colors"

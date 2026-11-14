@@ -1,3 +1,4 @@
+import { receiveWhiteboardMessage } from '../services/whiteboardNetwork'
 import { applyConsumptionChange } from '../services/tabletopConsumption'
 import { AtlasChunkReceiver } from '../assets/atlasChunks'
 import { readAtlas, atlasDigest, decodeTransferredAtlas } from '../assets/atlasService'
@@ -70,6 +71,12 @@ export function processNetworkMessage(
   onDjCallRequest?: (listenerId: string) => void
 ) {
   switch (msg.type) {
+    case 'WHITEBOARD_OP':
+    case 'WHITEBOARD_REQUEST':
+    case 'WHITEBOARD_STATE': {
+      if (!receiveWhiteboardMessage(msg, peerId, isHost, myPeerId)) return
+      break
+    }
     case 'CALL_TTS': {
       if (!isDjMessageSource(msg, peerId, isHost)) return
       receiveCallTts(msg.senderId, msg.payload)
@@ -500,23 +507,27 @@ export function processNetworkMessage(
       const { action, data } = msg.payload
       if (action === 'consume_furniture') {
         if (!data || !applyConsumptionChange(data.mapId, data.id, data.expected)) return
-      } else if (action === 'set_floor') {
-        useMapStore.getState().setFloorTile(data.x, data.y, data.floor)
-      } else if (action === 'paint_floor_in_zone') {
-        useMapStore.getState().paintFloorInZone(data.zoneId, data.floor)
-      } else if (action === 'set_wall') {
-        useMapStore.getState().setWallTile(data.x, data.y, data.wall)
-      } else if (action === 'add_furniture') {
-        useMapStore.getState().addFurniture(data.furniture)
-      } else if (action === 'remove_furniture') {
-        if (typeof data.id === 'string') useMapStore.getState().removeFurnitureById(data.id)
-        else useMapStore.getState().removeFurnitureAt(data.x, data.y)
-      } else if (action === 'add_zone') {
-        useMapStore.getState().addOrUpdateZone(data.zone)
-      } else if (action === 'remove_zone') {
-        useMapStore.getState().removeZone(data.id)
-      } else if (action === 'update_zone') {
-        useMapStore.getState().updateZone(data.id, data.partial || data.zone)
+      } else {
+        useMapStore.getState().applyRemoteChange(() => {
+          if (action === 'set_floor') {
+            useMapStore.getState().setFloorTile(data.x, data.y, data.floor)
+          } else if (action === 'paint_floor_in_zone') {
+            useMapStore.getState().paintFloorInZone(data.zoneId, data.floor)
+          } else if (action === 'set_wall') {
+            useMapStore.getState().setWallTile(data.x, data.y, data.wall)
+          } else if (action === 'add_furniture') {
+            useMapStore.getState().addFurniture(data.furniture)
+          } else if (action === 'remove_furniture') {
+            if (typeof data.id === 'string') useMapStore.getState().removeFurnitureById(data.id)
+            else useMapStore.getState().removeFurnitureAt(data.x, data.y)
+          } else if (action === 'add_zone') {
+            useMapStore.getState().addOrUpdateZone(data.zone)
+          } else if (action === 'remove_zone') {
+            useMapStore.getState().removeZone(data.id)
+          } else if (action === 'update_zone') {
+            useMapStore.getState().updateZone(data.id, data.partial || data.zone)
+          }
+        })
       }
       break
     }

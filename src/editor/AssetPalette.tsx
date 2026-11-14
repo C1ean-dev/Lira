@@ -1,3 +1,4 @@
+import { EditorHistoryControls } from './EditorHistoryControls'
 import React, { useState, useMemo, useRef } from 'react'
 import {
   Layers,
@@ -169,7 +170,7 @@ export const AssetPalette: React.FC = () => {
   const handleConfirmReset = () => {
     setIsResetConfirmOpen(false)
     const emptyMap = createEmptyWorkspace()
-    useMapStore.getState().setMapData(emptyMap)
+    useMapStore.getState().setMapData(emptyMap, true)
     PeerManager.getInstance().broadcast({
       type: 'MAP_SYNC',
       senderId: 'host',
@@ -390,6 +391,7 @@ export const AssetPalette: React.FC = () => {
             <span className="font-bold text-xs sm:text-sm text-slate-100">Editor de Espaço</span>
           </div>
           <div className="flex items-center gap-1 sm:gap-1.5">
+            <EditorHistoryControls />
             <button
               onClick={() =>
                 openStudioForCreate(
