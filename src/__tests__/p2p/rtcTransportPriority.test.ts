@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installRtcTransportPriority, observeVoiceRoute, DIRECT_ATTEMPT_MS, RELAY_ATTEMPT_MS } from '../../p2p/rtcTransportPriority'
+import { installRtcTransportPriority, observeVoiceRoute, DIRECT_ATTEMPT_MS, RELAY_ATTEMPT_MS, forceDegradedUpgrade } from '../../p2p/rtcTransportPriority'
 import { MediaCallHandler } from '../../p2p/mediaCalls'
 import { appTrail } from '../../utils/breadcrumbs'
 
@@ -202,6 +202,78 @@ describe('P2P, Cloudflare, then Metered transport selection', () => {
     f.peer.socket.send({ type: 'OFFER', payload: { metadata: f.conn.metadata } })
     expect(f.send).toHaveBeenCalledWith({ type: 'OFFER', payload: { metadata: { existing: true }, liraIcePriorityVersion: 1 } })
     expect(f.conn.metadata).toEqual({ existing: true })
+  })
+
+  it('allows forced degraded upgrade to Cloudflare TURN with relay policy even when connected', async () => {
+    const f = fixture()
+    f.pc.change('connected')
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(f.pc.createOffer).not.toHaveBeenCalled()
+
+    const upgraded = await forceDegradedUpgrade(f.pc, 'sustained_packet_loss_or_jitter')
+    expect(upgraded).toBe(true)
+    expect(f.pc.setConfiguration).toHaveBeenLastCalledWith(expect.objectContaining({
+      iceServers: cloudflare,
+      iceTransportPolicy: 'relay',
+    }))
+    expect(f.pc.createOffer).toHaveBeenCalledWith({ iceRestart: true })
+    expect(f.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'OFFER',
+      payload: expect.objectContaining({
+        connectionId: 'dc_test',
+        liraIceRestart: 'cloudflare',
+        liraIceForceRelay: 1,
+      }),
+    }))
+
+    // Verifies cooldown & session limit
+    const secondAttempt = await forceDegradedUpgrade(f.pc, 'immediate_second_attempt')
+    expect(secondAttempt).toBe(false)
+    expect(f.pc.createOffer).toHaveBeenCalledTimes(1)
+  })
+
+  it('signals the originator when forceDegradedUpgrade is called on incoming non-originator connection', async () => {
+    const f = fixture(true)
+    f.pc.change('connected')
+
+    const upgraded = await forceDegradedUpgrade(f.pc, 'callee_degraded')
+    expect(upgraded).toBe(true)
+    expect(f.pc.createOffer).not.toHaveBeenCalled()
+    expect(f.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'CANDIDATE',
+      dst: 'remote',
+      payload: expect.objectContaining({
+        connectionId: 'dc_test',
+        liraRestartRequest: true,
+        reason: 'callee_degraded',
+      }),
+    }))
+  })
+
+  it('originator handles CANDIDATE with liraRestartRequest from remote callee by executing ice restart offer', async () => {
+    const f = fixture(false)
+    f.pc.change('connected')
+
+    f.peer._handleMessage({
+      type: 'CANDIDATE',
+      src: 'remote',
+      payload: { connectionId: 'dc_test', liraRestartRequest: true, reason: 'remote_callee_bad_link' },
+    })
+
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(f.pc.createOffer).toHaveBeenCalledWith({ iceRestart: true })
+    expect(f.pc.setConfiguration).toHaveBeenLastCalledWith(expect.objectContaining({
+      iceTransportPolicy: 'relay',
+    }))
+    expect(f.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'OFFER',
+      payload: expect.objectContaining({
+        connectionId: 'dc_test',
+        liraIceRestart: 'cloudflare',
+        liraIceForceRelay: 1,
+      }),
+    }))
   })
 })
 

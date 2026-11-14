@@ -36,6 +36,7 @@ import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
 import { buildIceServers } from './rtcIceServers'
 import { loadCloudflareIceServers } from './cloudflareTurn'
 import { installRtcTransportPriority } from './rtcTransportPriority'
+import { SuperPeerVoiceRelay } from './SuperPeerVoiceRelay'
 import { createOfflinePeer, getDirectSignaling, installDirectSignaling } from './directSignaling'
 import { ManualConnection } from './manualConnection'
 import { decodeDirectInvite, decodeLanInvite, encodeAllInvite, encodeDirectInvite, encodeLanInvite, isGlobalIpv6InviteAddress, type AllInvite } from './directInvite'
@@ -197,7 +198,7 @@ export class PeerManager {
   private heartbeatInterval: any = null
   private staleCheckInterval: any = null
   private roomCode: string | null = null
-  private isHost: boolean = false
+  public isHost: boolean = false
   private currentSignalingTier: SignalingTier = 'render'
   private isUsingLocalSignaling = false
   private lanEndpoint?: { host: string; port: number }
@@ -290,6 +291,26 @@ export class PeerManager {
 
   public getMediaCalls(): Map<string, MediaConnection> {
     return this.mediaCalls
+  }
+
+  public getRoomCode(): string | null {
+    return this.roomCode
+  }
+
+  public getConnection(peerId: string): DataConnection | undefined {
+    return this.connections.get(peerId)
+  }
+
+  public sendVoiceRelayControl(targetPeerId: string, payload: any): void {
+    const conn = this.connections.get(targetPeerId)
+    if (conn?.open) {
+      this.sendToPeer(conn, {
+        type: 'VOICE_RELAY_CONTROL',
+        senderId: this.peer?.id || useGameStore.getState().localPlayer.id,
+        payload,
+        timestamp: Date.now(),
+      } as any)
+    }
   }
 
   public getPeerId(): string | null {
@@ -1488,6 +1509,7 @@ export class PeerManager {
 
     const pc = (conn as any).peerConnection as RTCPeerConnection
     if (pc) {
+      SuperPeerVoiceRelay.getInstance().attachPeerConnection(conn.peer, pc, this.isHost)
       let dataConnDisconnectTimer: any = null
 
       const clearDisconnectTimer = () => {
@@ -1549,6 +1571,7 @@ export class PeerManager {
   }
 
   private removePeer(peerId: string) {
+    SuperPeerVoiceRelay.getInstance().stopRelay(peerId)
     this.alm.peerLeft(peerId)
     const departingPlayer = useGameStore.getState().remotePlayers[peerId]
     this.peerLastSeen.delete(peerId)
@@ -2101,6 +2124,10 @@ export class PeerManager {
   private handleNetworkMessage(msg: NetworkMessage, peerId: string) {
     this.peerLastSeen.set(peerId, Date.now())
     try {
+      if (msg.type === 'VOICE_RELAY_CONTROL') {
+        SuperPeerVoiceRelay.getInstance().handleControlMessage(msg.payload, peerId)
+        return
+      }
       if (msg.type === 'LIVE_ALM') {
         // Room clients may relay only through the authenticated room host.
         const host = useGameStore.getState().connectionHostId
@@ -3227,6 +3254,7 @@ export class PeerManager {
   }
 
   public disconnect() {
+    SuperPeerVoiceRelay.getInstance().reset()
     this.clearManualConnections()
     this.lanEndpoint = undefined
     this.cancelHostTransfer()

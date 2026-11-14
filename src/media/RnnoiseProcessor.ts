@@ -381,6 +381,9 @@ export class RnnoiseProcessor {
           this.readySettler = null
         } else if (data.type === 'error') {
           handleFailure(data.message ?? 'unknown worklet error')
+        } else if (data.type === 'warn') {
+          console.warn(`[LocalAudioDSP] Alerta de underrun local de DSP: ${data.message}`)
+          diagLog('audio', 'dsp.underrun-warning', { message: data.message })
         } else if (data.type === 'vad') {
           this.lastVad = typeof data.probability === 'number' ? data.probability : 0
         } else if (data.type === 'metrics') {

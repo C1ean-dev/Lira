@@ -48,6 +48,7 @@ export type NetworkMessageType =
   | 'SPOTIFY_DJ_SEARCH_ACK'
   | 'SPOTIFY_DJ_SEARCH_RESULT'
   | 'DJ_CALL_REQUEST'
+  | 'VOICE_RELAY_CONTROL'
 
 export interface NetworkMessage {
   type: NetworkMessageType

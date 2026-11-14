@@ -1,7 +1,23 @@
 import { useMediaStore } from '../store/useMediaStore'
+import { useGameStore } from '../store/useGameStore'
 import { useNetworkQualityStore } from '../store/useNetworkQualityStore'
 import { MediaCallHandler } from '../p2p/mediaCalls'
 import { PeerManager } from '../p2p/PeerManager'
+import { forceDegradedUpgrade } from '../p2p/rtcTransportPriority'
+import {
+  SuperPeerVoiceRelay,
+  RECOVERY_MIN_HOLD_TIME_MS,
+  RECOVERY_MAX_LOSS,
+  RECOVERY_MAX_JITTER_MS,
+  RECOVERY_MIN_STABLE_SAMPLES,
+} from '../p2p/SuperPeerVoiceRelay'
+import { diagLog } from '../utils/diagnosticLogger'
+
+export interface PeerRoutingState {
+  tier: 1 | 2 | 3
+  tierStartedAt: number
+  recoverySamples: Array<{ lossRate: number; jitterMs: number }>
+}
 
 export interface QualityProfile {
   resolution: '480p' | '720p' | '1080p'
@@ -48,6 +64,8 @@ export class DynamicBufferManager {
   private monitorInterval: any = null
 
   private lastStats: Map<string, TrackStatsSnapshot> = new Map()
+  private peerHealthHistory: Map<string, Array<{ lossRate: number; jitterMs: number; timestamp: number }>> = new Map()
+  private peerRoutingState: Map<string, PeerRoutingState> = new Map()
   private evaluation: Promise<{ audio: number; video: number }> | null = null
 
   private buffers: Record<'audio' | 'video', AdaptiveBuffer> = {
@@ -59,6 +77,15 @@ export class DynamicBufferManager {
 
   public getBuffers(): Record<'audio' | 'video', AdaptiveBuffer> {
     return this.buffers
+  }
+
+  public getPeerRoutingTier(peerId: string): 1 | 2 | 3 {
+    return this.peerRoutingState.get(peerId)?.tier || 1
+  }
+
+  public clearPeerRoutingState(peerId: string): void {
+    this.peerRoutingState.delete(peerId)
+    this.peerHealthHistory.delete(peerId)
   }
 
   private constructor() {
@@ -76,6 +103,8 @@ export class DynamicBufferManager {
     this.buffers.audio = { ...DYNAMIC_BUFFER_DEFAULT.audio }
     this.buffers.video = { ...DYNAMIC_BUFFER_DEFAULT.video }
     this.lastStats.clear()
+    this.peerHealthHistory.clear()
+    this.peerRoutingState.clear()
     this.hasEvaluatedOnce = false
     useNetworkQualityStore.getState().clearAll()
   }
@@ -150,28 +179,65 @@ export class DynamicBufferManager {
 
       try {
         const stats = await pc.getStats()
-        // Prefer the selected transport. Successful pairs can remain in the report
-        // after ICE changes route and must not overwrite its current RTT.
-        let selectedPairId: string | undefined
-        stats.forEach(report => {
-          if (report.type === 'transport' && report.selectedCandidatePairId) selectedPairId = report.selectedCandidatePairId
-        })
+        const candidateMap = new Map<string, any>()
+        const candidatePairMap = new Map<string, any>()
+        let selectedCandidatePairId: string | undefined
+
         stats.forEach((report) => {
-          if (
-            report.type === 'candidate-pair' &&
-            (selectedPairId ? report.id === selectedPairId : report.nominated === true && report.state === 'succeeded')
-          ) {
-            const rttSec = (report as any).currentRoundTripTime ?? (report as any).roundTripTime
-            if (typeof rttSec === 'number' && rttSec > 0) {
-              peerPingMs = Math.round(rttSec * 1000)
+          if (report.type === 'local-candidate' || report.type === 'remote-candidate') {
+            candidateMap.set(report.id, report)
+          } else if (report.type === 'transport' && (report as any).selectedCandidatePairId) {
+            selectedCandidatePairId = (report as any).selectedCandidatePairId
+          } else if (report.type === 'candidate-pair') {
+            candidatePairMap.set(report.id, report)
+          }
+        })
+
+        let activePair: any = undefined
+        if (selectedCandidatePairId && candidatePairMap.has(selectedCandidatePairId)) {
+          activePair = candidatePairMap.get(selectedCandidatePairId)
+        } else {
+          for (const pair of candidatePairMap.values()) {
+            if (pair.state === 'succeeded' && pair.nominated === true) {
+              activePair = pair
+              break
             }
           }
+        }
 
+        let isRelayRoute = false
+        if (activePair) {
+          const localCand = candidateMap.get(activePair.localCandidateId)
+          const remoteCand = candidateMap.get(activePair.remoteCandidateId)
+          if (localCand?.candidateType === 'relay' || remoteCand?.candidateType === 'relay') {
+            isRelayRoute = true
+          }
+          const rttSec = activePair.currentRoundTripTime ?? activePair.roundTripTime
+          if (typeof rttSec === 'number' && rttSec > 0) {
+            peerPingMs = Math.round(rttSec * 1000)
+          }
+        }
+
+        if (peerPingMs === 0) {
+          stats.forEach((report) => {
+            if (
+              report.type === 'candidate-pair' &&
+              ((report as any).state === 'succeeded' || (report as any).currentRoundTripTime !== undefined)
+            ) {
+              const rttSec = (report as any).currentRoundTripTime ?? (report as any).roundTripTime
+              if (typeof rttSec === 'number' && rttSec > 0) {
+                peerPingMs = Math.round(rttSec * 1000)
+              }
+            }
+          })
+        }
+
+        stats.forEach((report) => {
           if (report.type !== 'inbound-rtp') return
           const kind: 'audio' | 'video' | undefined = report.kind ?? report.mediaType
           if (kind !== 'audio' && kind !== 'video') return
 
-          const key = `${peerId}:${report.id}`
+          const key = `${peerId}:${report.id ?? kind}`
           activeStats.add(key)
           const prev = this.lastStats.get(key)
 
@@ -188,7 +254,7 @@ export class DynamicBufferManager {
 
           let lossRatio = 0
           if (prev && prev.connection === pc && packetsReceived >= prev.packetsReceived
-            && (report.timestamp ?? now) > prev.timestamp) {
+            && (report.timestamp !== undefined ? report.timestamp > prev.timestamp : true)) {
             const deltaLost = Math.max(0, packetsLost - prev.packetsLost)
             const deltaRecv = Math.max(0, packetsReceived - prev.packetsReceived)
             const total = deltaLost + deltaRecv
@@ -228,6 +294,157 @@ export class DynamicBufferManager {
           jitterMs: Math.round(peerJitterMs),
         })
 
+        const history = this.peerHealthHistory.get(peerId) || []
+        history.push({ lossRate: peerLossRatio, jitterMs: peerJitterMs, timestamp: now })
+        if (history.length > 3) history.shift()
+        this.peerHealthHistory.set(peerId, history)
+
+        let routingState = this.peerRoutingState.get(peerId)
+        if (!routingState) {
+          routingState = {
+            tier: isRelayRoute ? 3 : 1,
+            tierStartedAt: now,
+            recoverySamples: [],
+          }
+          this.peerRoutingState.set(peerId, routingState)
+        } else if (isRelayRoute && routingState.tier !== 3) {
+          routingState.tier = 3
+        }
+
+        const superPeerRelay = SuperPeerVoiceRelay.getInstance()
+
+        if (routingState.tier === 1) {
+          if (history.length === 3) {
+            const isSustainedDegradation = history.every(
+              (sample) => sample.lossRate > 0.06 || (sample.lossRate > 0.03 && sample.jitterMs > 80)
+            )
+
+            if (isSustainedDegradation && !isRelayRoute) {
+              const game = useGameStore.getState()
+              const roomCode = PeerManager.getInstance().getRoomCode()
+              const hostPeerId = game.connectionHostId || (roomCode ? `lira-${roomCode}-host` : '')
+              const hostQuality = hostPeerId ? useNetworkQualityStore.getState().peerQualities[hostPeerId] : undefined
+              const isHostLinkHealthy = !hostQuality || (hostQuality.lossPct < 2 && hostQuality.pingMs < 300)
+
+              if (superPeerRelay.isAvailable(peerId) && isHostLinkHealthy) {
+                const relayStarted = superPeerRelay.requestRelay(peerId)
+                if (relayStarted) {
+                  routingState.tier = 2
+                  routingState.tierStartedAt = now
+                  routingState.recoverySamples = []
+                  this.peerHealthHistory.delete(peerId)
+
+                  console.warn(
+                    `[LinkHealth] Degradação detectada na rota direta -> Acionando Nível 2 (Super-Peer Voice Relay) para ${peerId}`,
+                    {
+                      peerId,
+                      samples: history.map((s) => ({
+                        loss: `${(s.lossRate * 100).toFixed(1)}%`,
+                        jitter: `${Math.round(s.jitterMs)}ms`,
+                      })),
+                    }
+                  )
+                  diagLog('p2p', 'link-health.level2-relay-triggered', {
+                    peerId,
+                    reason: 'sustained_packet_loss_or_jitter',
+                    samples: history,
+                  })
+                }
+              } else {
+                const upgraded = await forceDegradedUpgrade(pc, 'sustained_packet_loss_or_jitter')
+                this.peerHealthHistory.delete(peerId)
+                if (upgraded) {
+                  routingState.tier = 3
+                  routingState.tierStartedAt = now
+                  routingState.recoverySamples = []
+                  console.warn(
+                    `[LinkHealth] Degradação de Rede detectada (Loss/Jitter) -> Migrando peer ${peerId} para túnel Cloudflare TURN`,
+                    {
+                      peerId,
+                      samples: history.map((s) => ({
+                        loss: `${(s.lossRate * 100).toFixed(1)}%`,
+                        jitter: `${Math.round(s.jitterMs)}ms`,
+                      })),
+                    }
+                  )
+                  diagLog('p2p', 'link-health.degraded-upgrade-triggered', {
+                    peerId,
+                    reason: 'sustained_packet_loss_or_jitter',
+                    samples: history,
+                  })
+                }
+              }
+            }
+          }
+        } else if (routingState.tier === 2) {
+          const game = useGameStore.getState()
+          const roomCode = PeerManager.getInstance().getRoomCode()
+          const hostPeerId = game.connectionHostId || (roomCode ? `lira-${roomCode}-host` : '')
+          const hostConn = hostPeerId ? PeerManager.getInstance().getConnection(hostPeerId) : undefined
+          const hostQuality = hostPeerId ? useNetworkQualityStore.getState().peerQualities[hostPeerId] : undefined
+          const isHostLinkFailing = !hostPeerId || !hostConn || !hostConn.open || (hostQuality && hostQuality.lossPct > 5)
+          const isRelayFailing = superPeerRelay.isRelayFailing(peerId, now)
+
+          if (isHostLinkFailing || isRelayFailing) {
+            console.warn(
+              `[LinkHealth] Nível 2 (Super-Peer) degradado -> Escalando para Nível 3 (Cloudflare TURN) para ${peerId}`,
+              { isHostLinkFailing, isRelayFailing }
+            )
+            diagLog('p2p', 'link-health.level2-to-level3-escalation', {
+              peerId,
+              isHostLinkFailing,
+              isRelayFailing,
+            })
+            superPeerRelay.stopRelay(peerId)
+            MediaCallHandler.restorePeerDirectStream(peerId)
+            const reason = isRelayFailing ? 'superpeer_relay_failing' : 'superpeer_host_link_failing'
+            const upgraded = await forceDegradedUpgrade(pc, reason)
+            if (upgraded) {
+              routingState.tier = 3
+              routingState.tierStartedAt = now
+              routingState.recoverySamples = []
+              this.peerHealthHistory.delete(peerId)
+            } else {
+              routingState.tier = 1
+              routingState.tierStartedAt = now
+              routingState.recoverySamples = []
+              this.peerHealthHistory.delete(peerId)
+            }
+          } else {
+            const holdTimeMs = now - routingState.tierStartedAt
+            if (holdTimeMs >= RECOVERY_MIN_HOLD_TIME_MS) {
+              if (peerLossRatio < RECOVERY_MAX_LOSS && peerJitterMs < RECOVERY_MAX_JITTER_MS) {
+                routingState.recoverySamples.push({ lossRate: peerLossRatio, jitterMs: peerJitterMs })
+                if (routingState.recoverySamples.length > RECOVERY_MIN_STABLE_SAMPLES) {
+                  routingState.recoverySamples.shift()
+                }
+                if (routingState.recoverySamples.length === RECOVERY_MIN_STABLE_SAMPLES) {
+                  const isStable = routingState.recoverySamples.every(
+                    (s) => s.lossRate < RECOVERY_MAX_LOSS && s.jitterMs < RECOVERY_MAX_JITTER_MS
+                  )
+                  if (isStable) {
+                    console.log(
+                      `[VoiceRelay] Sonda de recuperação: Rota direta estabilizada (<1% loss, <40ms jitter). Retornando ao Nível 1 (P2P Direto Puro) para ${peerId}`
+                    )
+                    diagLog('p2p', 'voice-relay.reverse-recovery-triggered', {
+                      peerId,
+                      samples: routingState.recoverySamples,
+                    })
+                    MediaCallHandler.restorePeerDirectStream(peerId)
+                    superPeerRelay.stopRelay(peerId)
+                    routingState.tier = 1
+                    routingState.tierStartedAt = now
+                    routingState.recoverySamples = []
+                    this.peerHealthHistory.delete(peerId)
+                  }
+                }
+              } else {
+                routingState.recoverySamples = []
+              }
+            }
+          }
+        }
+
         if (peerPingMs > 0) {
           totalPeerPing += peerPingMs
           peerPingCount++
@@ -244,6 +461,8 @@ export class DynamicBufferManager {
     for (const storedPeerId of Object.keys(storedPeerQualities)) {
       if (!mediaCalls.has(storedPeerId)) {
         useNetworkQualityStore.getState().removePeerQuality(storedPeerId)
+        this.peerHealthHistory.delete(storedPeerId)
+        this.peerRoutingState.delete(storedPeerId)
       }
     }
 
