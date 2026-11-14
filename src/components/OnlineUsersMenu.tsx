@@ -439,6 +439,7 @@ const OnlineUsersMenuInner: React.FC = () => {
                             if (friendKey) {
                               removeFriend(friendKey)
                             } else {
+                              if (isPending) return
                               sendFriendRequest({ id: playerUserId, name: player.name, avatar: player.avatar })
                               openDirectMessage({ id: playerUserId, name: player.name })
                             }
@@ -514,19 +515,28 @@ const OnlineUsersMenuInner: React.FC = () => {
                         <span>Mensagem</span>
                       </button>
 
-                      {!isFriend && (
-                        <button
-                          onClick={() => {
-                            sendFriendRequest({ id: playerUserId, name: player.name, avatar: player.avatar })
-                            openDirectMessage({ id: playerUserId, name: player.name })
-                            setSelectedUserMenuId(null)
-                          }}
-                          className="py-1.5 px-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-bold text-xs flex items-center gap-1.5 border border-emerald-500/30 transition-colors col-span-2"
-                        >
-                          <UserPlus className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>Adicionar aos Amigos</span>
-                        </button>
-                      )}
+                      {(() => {
+                        const req =
+                          getFriendRequestStatus(playerUserId) ||
+                          getFriendRequestStatus(player.id) ||
+                          getFriendRequestStatus(player.name)
+                        const isPending = req?.status === 'pending'
+                        if (isFriend || isPending) return null
+
+                        return (
+                          <button
+                            onClick={() => {
+                              sendFriendRequest({ id: playerUserId, name: player.name, avatar: player.avatar })
+                              openDirectMessage({ id: playerUserId, name: player.name })
+                              setSelectedUserMenuId(null)
+                            }}
+                            className="py-1.5 px-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-bold text-xs flex items-center gap-1.5 border border-emerald-500/30 transition-colors col-span-2"
+                          >
+                            <UserPlus className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Adicionar aos Amigos</span>
+                          </button>
+                        )
+                      })()}
                     </div>
 
                     {(isOwner || isHost) && (

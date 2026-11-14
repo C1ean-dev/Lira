@@ -76,7 +76,8 @@ export function isSameParticipant(
     ) {
       return true
     }
-    if (isUserId(participantId)) return false
+    const personUserId = getFriendUserId(person)
+    if (personUserId && isUserId(participantId)) return false
   }
   return sameName(participantName, person.name)
 }

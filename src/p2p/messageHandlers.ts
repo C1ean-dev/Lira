@@ -98,7 +98,7 @@ export function processNetworkMessage(
     case 'VERSION_INCOMPATIBLE': {
       const { minVersion, currentVersion, message } = msg.payload || {}
       useChatStore.getState().addMessage({
-        id: `version-incompatible-${Date.now()}`,
+        id: 'version-incompatible-warning',
         senderId: 'system',
         senderName: 'Sistema',
         channelId: 'general',
@@ -155,9 +155,20 @@ export function processNetworkMessage(
       const isOutdated = !isDj && (!incomingVersion || isNewerVersion(MIN_COMPATIBLE_VERSION, incomingVersion))
 
       if (isOutdated) {
-        if (!state.remotePlayers[remotePeerId]?.isOutdated) {
+        const warnId = `compat-warn-${incomingGameId || remotePeerId}`
+        const hasWarningInChat = useChatStore.getState().messages.some(
+          (m) =>
+            m.senderId === 'system' &&
+            (m.id === warnId ||
+              m.id === `compat-warn-${remotePeerId}` ||
+              m.id === `compat-warn-${peerId}` ||
+              (incomingGameId && m.id === `compat-warn-${incomingGameId}`) ||
+              (resolvedName && m.content.includes(`"${resolvedName}"`)) ||
+              (incomingName && m.content.includes(`"${incomingName}"`)))
+        )
+        if (!state.remotePlayers[remotePeerId]?.isOutdated && !hasWarningInChat) {
           useChatStore.getState().addMessage({
-            id: `compat-warn-${remotePeerId}`,
+            id: warnId,
             senderId: 'system',
             senderName: 'Sistema',
             channelId: 'general',
@@ -168,13 +179,13 @@ export function processNetworkMessage(
           })
         }
 
-        // Envia de volta para esse remotePeerId a mensagem VERSION_INCOMPATIBLE
+        // Envia de volta para esse par a mensagem VERSION_INCOMPATIBLE e CHAT_MESSAGE
         try {
           PeerManager.getInstance?.()?.sendVersionIncompatible?.(
-            remotePeerId,
+            peerId || remotePeerId,
             MIN_COMPATIBLE_VERSION,
             incomingVersion || '< 1.1.210',
-            `⚠️ Incompatibilidade de versão: este espaço exige o Lira >= v${MIN_COMPATIBLE_VERSION}. Sua versão: ${incomingVersion || '< 1.1.210'}. Por favor, atualize o aplicativo.`
+            `⚠️ Incompatibilidade de versão: este espaço exige o Lira >= v${MIN_COMPATIBLE_VERSION}. Sua versão (${incomingVersion || '< 1.1.210'}) é antiga e não suporta o protocolo de áudio atual. Por favor, atualize o aplicativo.`
           )
         } catch {}
 
@@ -184,6 +195,9 @@ export function processNetworkMessage(
           setTimeout(() => {
             try {
               removePeer(remotePeerId)
+              if (peerId && peerId !== remotePeerId) {
+                removePeer(peerId)
+              }
             } catch {}
           }, 500)
           return

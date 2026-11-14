@@ -314,15 +314,42 @@ export class PeerManager {
   }
 
   public sendVersionIncompatible(targetPeerId: string, minVersion: string, currentVersion: string, message?: string): void {
-    const conn = this.connections.get(targetPeerId)
+    let conn = this.connections.get(targetPeerId)
+    if (!conn) {
+      for (const [id, c] of this.connections.entries()) {
+        if (id === targetPeerId || c.peer === targetPeerId) {
+          conn = c
+          break
+        }
+      }
+    }
     if (conn?.open) {
+      const warningText = message || `⚠️ Incompatibilidade de versão: este espaço exige o Lira >= v${minVersion} (versão atual: ${currentVersion}). Por favor, atualize o aplicativo.`
       this.sendToPeer(conn, {
         type: 'VERSION_INCOMPATIBLE',
         senderId: this.peer?.id || useGameStore.getState().localPlayer.id,
         payload: {
           minVersion,
           currentVersion,
-          message: message || `⚠️ Incompatibilidade de versão: este espaço exige o Lira >= v${minVersion} (versão atual: ${currentVersion}). Por favor, atualize o aplicativo.`,
+          message: warningText,
+        },
+        timestamp: Date.now(),
+      })
+
+      // Also deliver as a standard CHAT_MESSAGE packet so legacy clients (< 1.1.210) receive
+      // and display the warning in their chat window (#general) instead of silently ignoring it.
+      this.sendToPeer(conn, {
+        type: 'CHAT_MESSAGE',
+        senderId: 'sistema',
+        payload: {
+          message: {
+            id: 'version-incompatible-warning',
+            senderId: 'sistema',
+            senderName: 'Sistema',
+            channelId: 'general',
+            content: warningText,
+            timestamp: Date.now(),
+          },
         },
         timestamp: Date.now(),
       })
