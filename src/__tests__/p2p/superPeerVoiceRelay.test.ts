@@ -157,18 +157,24 @@ describe('SuperPeerVoiceRelay - Regras 1, 2 e 3 (UDP Sem Head-of-Line, CoordenaÃ
       close: vi.fn(),
     }
 
-    let hostDatachannelListener: ((event: any) => void) | null = null
+    const peerJsHandler = vi.fn()
     const hostPc: any = {
       signalingState: 'stable',
       createDataChannel: vi.fn(),
-      addEventListener: vi.fn((event: string, cb: any) => {
-        if (event === 'datachannel') hostDatachannelListener = cb
-      }),
+      ondatachannel: peerJsHandler,
     }
-    // Host listens via addEventListener('datachannel') without creating a duplicate channel
+    // Host listens via ondatachannel without creating a duplicate channel
     relay.attachPeerConnection('peer-b', hostPc, true)
     expect(hostPc.createDataChannel).not.toHaveBeenCalled()
-    hostDatachannelListener?.({ channel: targetChannel })
+
+    // Dispatch voice relay channel -> intercepted by relay, blocked from PeerJS
+    hostPc.ondatachannel({ channel: targetChannel })
+    expect(peerJsHandler).not.toHaveBeenCalled()
+
+    // Dispatch normal game channel -> passes through to PeerJS
+    const gameChannel = { label: 'lira-game' }
+    hostPc.ondatachannel({ channel: gameChannel })
+    expect(peerJsHandler).toHaveBeenCalledWith({ channel: gameChannel })
 
     // Build incoming binary packet from Peer A targeting Peer B
     const encoder = new TextEncoder()
@@ -363,6 +369,48 @@ describe('SuperPeerVoiceRelay - Regras 1, 2 e 3 (UDP Sem Head-of-Line, CoordenaÃ
     expect(MediaCallHandler.directPeerStreams.has('peer-ended')).toBe(false)
     expect(stopRelaySpy).toHaveBeenCalledWith('peer-ended')
     expect(mockCall.close).toHaveBeenCalled()
+  })
+
+  it('does NOT create dataChannel for peers marked as isOutdated', () => {
+    useGameStore.setState({
+      remotePlayers: {
+        'peer-outdated': {
+          id: 'peer-outdated',
+          name: 'OldHost',
+          isOutdated: true,
+        } as any,
+      },
+    })
+
+    const mockPc: any = {
+      signalingState: 'stable',
+      createDataChannel: vi.fn(),
+      ondatachannel: null,
+    }
+
+    relay.attachPeerConnection('peer-outdated', mockPc, false)
+    expect(mockPc.createDataChannel).not.toHaveBeenCalled()
+  })
+
+  it('handleChannel is idempotent when called repeatedly with same channel', () => {
+    const mockChannel: any = {
+      label: VOICE_RELAY_CHANNEL_LABEL,
+      binaryType: 'blob',
+    }
+    const hostPc: any = {
+      signalingState: 'stable',
+      createDataChannel: vi.fn(),
+      ondatachannel: vi.fn(),
+    }
+
+    relay.attachPeerConnection('peer-idem', hostPc, true)
+    hostPc.ondatachannel({ channel: mockChannel })
+    expect(mockChannel.binaryType).toBe('arraybuffer')
+
+    // Change binaryType to check if second dispatch ignores already registered channel
+    mockChannel.binaryType = 'modified'
+    hostPc.ondatachannel({ channel: mockChannel })
+    expect(mockChannel.binaryType).toBe('modified')
   })
 
   function peerMgrNotHost() {

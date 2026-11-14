@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { avatarWithAssetReferences } from '../assets/avatarReferences'
 import { Player, PresenceStatus, PresenceInfo, sanitizePresence, STATUS_META, ReactionItem, AvatarConfig, UserRole, PlayerPermissions, ConnectionStatus, RoomKnockRequest, KnockStatus, FriendProfile } from '../types/game'
-import { SignalingTier } from '../types/p2p'
+import { SignalingTier, CURRENT_LIRA_VERSION, MIN_COMPATIBLE_VERSION } from '../types/p2p'
 import { DEFAULT_AVATAR } from '../engine/Constants'
 import { PublicRoomsService } from '../services/publicRoomsService'
 import { generateUserId, isUserId, getPlayerUserId, getFriendUserId, findFriendKey } from '../utils/userId'
@@ -506,6 +506,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
     isMuted: true,
     isCameraOff: true,
     isScreenSharing: false,
+    appVersion: CURRENT_LIRA_VERSION,
+    minCompatibleVersion: MIN_COMPATIBLE_VERSION,
+    isOutdated: false,
   },
 
   setLocalPlayer: (data) => {

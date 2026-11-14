@@ -2,7 +2,7 @@ import { sendAtlasChunks } from '../assets/atlasChunks'
 import { getTransferAtlas } from '../assets/atlasTransferCache'
 import { IndividualLibrarySync, type LibraryMessage } from '../assets/individualLibrarySync'
 import Peer, { DataConnection, MediaConnection } from 'peerjs'
-import { NetworkMessage, SignalingTier } from '../types/p2p'
+import { NetworkMessage, SignalingTier, CURRENT_LIRA_VERSION, MIN_COMPATIBLE_VERSION } from '../types/p2p'
 import { MessageDeliveryStatus, RoomChannel } from '../types/chat'
 import { Player, RoomKnockRequest } from '../types/game'
 import { useGameStore } from '../store/useGameStore'
@@ -310,6 +310,22 @@ export class PeerManager {
         payload,
         timestamp: Date.now(),
       } as any)
+    }
+  }
+
+  public sendVersionIncompatible(targetPeerId: string, minVersion: string, currentVersion: string, message?: string): void {
+    const conn = this.connections.get(targetPeerId)
+    if (conn?.open) {
+      this.sendToPeer(conn, {
+        type: 'VERSION_INCOMPATIBLE',
+        senderId: this.peer?.id || useGameStore.getState().localPlayer.id,
+        payload: {
+          minVersion,
+          currentVersion,
+          message: message || `⚠️ Incompatibilidade de versão: este espaço exige o Lira >= v${minVersion} (versão atual: ${currentVersion}). Por favor, atualize o aplicativo.`,
+        },
+        timestamp: Date.now(),
+      })
     }
   }
 
@@ -1330,6 +1346,12 @@ export class PeerManager {
     })
 
     this.peer.on('call', (call) => {
+      const remotePlayer = useGameStore.getState().remotePlayers[call.peer]
+      if (remotePlayer?.isOutdated) {
+        console.warn(`[P2P Media] Chamada de voz recusada: par ${call.peer} desatualizado.`)
+        try { call.close() } catch {}
+        return
+      }
       if ((call.metadata as { kind?: string } | undefined)?.kind === 'live-voice') {
         this.handleIncomingLiveVoiceCall(call)
         return
@@ -1391,6 +1413,8 @@ export class PeerManager {
             id: this.peer!.id,
             gameId: localPlayer.gameId || localPlayer.id,
             liveOptIn: true,
+            appVersion: CURRENT_LIRA_VERSION,
+            minCompatibleVersion: MIN_COMPATIBLE_VERSION,
           },
         },
         timestamp: Date.now(),
@@ -1449,6 +1473,8 @@ export class PeerManager {
               player: {
                 ...p,
                 isCameraOff: p.isCameraOff !== undefined ? p.isCameraOff : true,
+                appVersion: p.appVersion,
+                minCompatibleVersion: p.minCompatibleVersion,
               },
             },
             timestamp: Date.now(),

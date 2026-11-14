@@ -55,6 +55,9 @@ export class SuperPeerVoiceRelay {
   // Receiver: Solicitations initiated by this peer with timestamp
   private relayRequests: Map<string, { requestedAt: number }> = new Map()
 
+  // Track attached peer connections
+  private peerConnections: Map<string, { pc: RTCPeerConnection; isHost: boolean }> = new Map()
+
   private sequence = 0
   private textEncoder = new TextEncoder()
   private textDecoder = new TextDecoder()
@@ -82,6 +85,7 @@ export class SuperPeerVoiceRelay {
       try { ch.close() } catch {}
     })
     this.relayChannels.clear()
+    this.peerConnections.clear()
     this.activeHostRelays.clear()
     this.sequence = 0
   }
@@ -96,6 +100,7 @@ export class SuperPeerVoiceRelay {
     // Listener for incoming channel (both host and client)
     const handleChannel = (channel: RTCDataChannel) => {
       if (channel.label !== VOICE_RELAY_CHANNEL_LABEL) return
+      if (this.relayChannels.get(peerId) === channel) return
       channel.binaryType = 'arraybuffer'
       channel.onmessage = (event) => this.handleBinaryMessage(peerId, event.data, isHost)
       channel.onclose = () => {
@@ -106,14 +111,65 @@ export class SuperPeerVoiceRelay {
       this.relayChannels.set(peerId, channel)
     }
 
+    // Intercept pc.ondatachannel using native WebIDL prototype descriptor
+    // to prevent PeerJS from hijacking connection.dataChannel when lira-voice-relay is received.
     try {
-      pc.addEventListener('datachannel', (event) => handleChannel(event.channel))
+      const proto = Object.getPrototypeOf(pc)
+      const nativeDesc =
+        (proto && Object.getOwnPropertyDescriptor(proto, 'ondatachannel')) ||
+        (typeof RTCPeerConnection !== 'undefined' && Object.getOwnPropertyDescriptor(RTCPeerConnection.prototype, 'ondatachannel'))
+
+      const wrapHandler = (handler: ((ev: RTCDataChannelEvent) => any) | null | undefined) => {
+        return (event: RTCDataChannelEvent) => {
+          if (event.channel && event.channel.label === VOICE_RELAY_CHANNEL_LABEL) {
+            handleChannel(event.channel)
+            return
+          }
+          if (typeof handler === 'function') {
+            handler.call(pc, event)
+          }
+        }
+      }
+
+      if (nativeDesc?.get && nativeDesc?.set) {
+        const existing = nativeDesc.get.call(pc)
+        Object.defineProperty(pc, 'ondatachannel', {
+          configurable: true,
+          enumerable: true,
+          get() {
+            return nativeDesc.get!.call(pc)
+          },
+          set(handler) {
+            nativeDesc.set!.call(pc, wrapHandler(handler))
+          },
+        })
+        nativeDesc.set.call(pc, wrapHandler(existing))
+      } else {
+        let currentHandler = pc.ondatachannel
+        Object.defineProperty(pc, 'ondatachannel', {
+          configurable: true,
+          enumerable: true,
+          get() {
+            return currentHandler
+          },
+          set(handler) {
+            currentHandler = wrapHandler(handler)
+          },
+        })
+        if (currentHandler) {
+          pc.ondatachannel = currentHandler
+        }
+      }
     } catch {}
 
+    this.peerConnections.set(peerId, { pc, isHost })
+
     // Apenas o Cliente que se conecta ao Host inicia ativamente a criação do canal.
-    // O Host recebe e configura o canal através do evento 'datachannel' registrado acima,
-    // garantindo canal único sem colisão nem canais duplicados em direções opostas.
-    if (!isHost) {
+    // O Host recebe e configura o canal através do evento 'datachannel' interceptado acima.
+    // Não cria o canal se o par for sabidamente desatualizado, evitando derrubar Hosts antigos.
+    const remote = useGameStore.getState().remotePlayers[peerId]
+    const isPeerOutdated = remote?.isOutdated === true
+    if (!isHost && !isPeerOutdated) {
       try {
         const channel = pc.createDataChannel(VOICE_RELAY_CHANNEL_LABEL, {
           ordered: false,
@@ -124,6 +180,34 @@ export class SuperPeerVoiceRelay {
         // Ignored if channel cannot be created in current state
       }
     }
+  }
+
+  /**
+   * Ensures the voice relay data channel is created once a peer's version is verified
+   * to be compatible (>= MIN_COMPATIBLE_VERSION).
+   */
+  public ensureVoiceRelayChannel(peerId: string): void {
+    const remote = useGameStore.getState().remotePlayers[peerId]
+    if (remote?.isOutdated) return
+    const entry = this.peerConnections.get(peerId)
+    if (!entry) return
+    const { pc, isHost } = entry
+    if (isHost || this.relayChannels.has(peerId) || !pc || pc.signalingState === 'closed') return
+
+    try {
+      const channel = pc.createDataChannel(VOICE_RELAY_CHANNEL_LABEL, {
+        ordered: false,
+        maxRetransmits: 0,
+      })
+      channel.binaryType = 'arraybuffer'
+      channel.onmessage = (event) => this.handleBinaryMessage(peerId, event.data, isHost)
+      channel.onclose = () => {
+        if (this.relayChannels.get(peerId) === channel) {
+          this.relayChannels.delete(peerId)
+        }
+      }
+      this.relayChannels.set(peerId, channel)
+    } catch (err) {}
   }
 
   /**

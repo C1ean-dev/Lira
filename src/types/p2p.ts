@@ -2,6 +2,9 @@ import { Player } from './game'
 import { MapData, PlacedFurniture, PrivateZone } from './map'
 import { ChatMessage } from './chat'
 
+export const MIN_COMPATIBLE_VERSION = '1.1.210'
+export const CURRENT_LIRA_VERSION = '1.1.210'
+
 export type SignalingTier = 'render' | 'public' | 'local' | 'direct'
 
 export type NetworkMessageType =
@@ -9,6 +12,7 @@ export type NetworkMessageType =
   | 'PLAYER_LEAVE'
   | 'PLAYER_MOVE'
   | 'PLAYER_UPDATE'
+  | 'VERSION_INCOMPATIBLE'
   | 'BED_INTERACTION'
   | 'MAP_SYNC'
   | 'MAP_EDIT'
