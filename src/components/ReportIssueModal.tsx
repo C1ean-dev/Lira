@@ -36,6 +36,29 @@ export interface ReportIssueModalProps {
   initialFeedback?: ReportIssueFeedback | null
 }
 
+export function reportIssueFeedback(result: Awaited<ReturnType<typeof submitReportIssue>>): ReportIssueFeedback {
+  if (!result.ok) {
+    return { type: 'error', message: result.error || 'Ocorreu um erro ao criar a issue no GitHub.' }
+  }
+  if (result.method === 'web') {
+    return {
+      type: 'warning',
+      message: 'A issue ainda não foi publicada. Conclua o envio pelo link do GitHub.' +
+        (result.error ? ` Motivo da falha no envio automático: ${result.error}` : ''),
+      issueUrl: result.issueUrl,
+      gistUrl: result.gistUrl,
+      method: 'web',
+    }
+  }
+  return {
+    type: 'success',
+    message: 'Issue criada com sucesso no GitHub com os logs anexados!',
+    issueUrl: result.issueUrl,
+    gistUrl: result.gistUrl,
+    method: result.method,
+  }
+}
+
 export async function submitReportIssue(
   title: string,
   description: string,
@@ -45,6 +68,12 @@ export async function submitReportIssue(
   const trimmedDesc = description.trim()
   if (!trimmedTitle || !trimmedDesc) {
     return { ok: false, error: 'Título e descrição são obrigatórios.' }
+  }
+  if (trimmedTitle.length < 3 || trimmedTitle.length > 250) {
+    return { ok: false, error: 'O título deve ter entre 3 e 250 caracteres.' }
+  }
+  if (trimmedDesc.length < 5 || trimmedDesc.length > 50000) {
+    return { ok: false, error: 'A descrição deve ter entre 5 e 50000 caracteres.' }
   }
 
   const electronApi =
@@ -208,31 +237,7 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
 
     try {
       const result = await submitReportIssue(trimmedTitle, trimmedDesc, userFiles)
-      if (result.ok) {
-        if (result.method === 'web') {
-          setFeedback({
-            type: 'warning',
-            message:
-              'O envio automático pelo servidor não estava disponível no momento. Preparamos o relatório com todos os detalhes e logs para você concluir a publicação no GitHub:',
-            issueUrl: result.issueUrl,
-            gistUrl: result.gistUrl,
-            method: 'web',
-          })
-        } else {
-          setFeedback({
-            type: 'success',
-            message: 'Issue criada com sucesso no GitHub com os logs anexados!',
-            issueUrl: result.issueUrl,
-            gistUrl: result.gistUrl,
-            method: result.method,
-          })
-        }
-      } else {
-        setFeedback({
-          type: 'error',
-          message: result.error || 'Ocorreu um erro ao criar a issue no GitHub.',
-        })
-      }
+      setFeedback(reportIssueFeedback(result))
     } catch (err) {
       setFeedback({
         type: 'error',
@@ -243,7 +248,8 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
     }
   }
 
-  const isFormValid = title.trim().length > 0 && description.trim().length > 0
+  const isFormValid = title.trim().length >= 3 && title.trim().length <= 250 &&
+    description.trim().length >= 5 && description.trim().length <= 50000
 
   return (
     <div

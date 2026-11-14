@@ -8,6 +8,23 @@ import { buildGithubWebUrl, MAX_WEB_URL_LENGTH } from '../src/utils/githubIssueU
 
 export { buildGithubWebUrl, MAX_WEB_URL_LENGTH }
 
+// The backend keeps at most 500000 characters per Gist file and accepts 10 MB JSON.
+// Limit UTF-8 bytes too, preserving the most recent log records.
+export const MAX_RAW_FILE_SIZE = 500000
+const MAX_BACKEND_PAYLOAD_SIZE = 10 * 1024 * 1024
+
+export function truncateToRecentLogs(content: string, maxBytes: number = MAX_RAW_FILE_SIZE): string {
+  if (maxBytes <= 0) return ''
+  const bytes = Buffer.from(content, 'utf8')
+  if (bytes.length <= maxBytes) return content
+  let start = bytes.length - maxBytes
+  // Skip UTF-8 continuation bytes so an emoji/accent is never split.
+  while (start < bytes.length && (bytes[start] & 0xc0) === 0x80) start++
+  const newline = bytes.indexOf(10, start)
+  if (newline !== -1 && newline < bytes.length - 1) start = newline + 1
+  return bytes.subarray(start).toString('utf8')
+}
+
 export interface UserAttachment {
   name: string
   size: number
@@ -106,7 +123,7 @@ export async function collectIssueDiagnostics(
       if (content) {
         const name = `${kind}.${extension}`
         collected[kind] = content
-        rawFiles.push({ name, content })
+        rawFiles.push({ name, content: truncateToRecentLogs(content) })
       }
     }
   } catch {}
@@ -253,18 +270,45 @@ export async function submitIssueToBackend(
   fetchFn: typeof fetch = fetch
 ): Promise<{ ok: boolean; issueUrl?: string; gistUrl?: string; error?: string }> {
   try {
+    let fileLimit = MAX_RAW_FILE_SIZE
+    const prepareBody = () => JSON.stringify({
+      ...payload,
+      ...(payload.rawFiles ? { rawFiles: payload.rawFiles.map(file => ({
+        name: file.name,
+        content: truncateToRecentLogs(file.content, fileLimit),
+      })) } : {}),
+    })
+    let body = prepareBody()
+    // JSON escaping and many attachments can exceed the total limit even when
+    // each individual file fits. Share the reduction across all files.
+    while (Buffer.byteLength(body, 'utf8') > MAX_BACKEND_PAYLOAD_SIZE && fileLimit > 0 && payload.rawFiles?.length) {
+      fileLimit = Math.floor(fileLimit / 2)
+      body = prepareBody()
+    }
+    if (Buffer.byteLength(body, 'utf8') > MAX_BACKEND_PAYLOAD_SIZE) {
+      return { ok: false, error: 'O relatório excede o limite de 10 MB do servidor, mesmo após reduzir os logs.' }
+    }
     const res = await fetchFn(backendUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(12000),
+      body,
+      // Backend calls are sequential: up to 6 s for Gist + 8 s for the issue.
+      signal: AbortSignal.timeout(30000),
     })
     if (!res.ok) {
       const errText = await res.text().catch(() => '')
-      return { ok: false, error: 'Backend HTTP ' + res.status + ': ' + errText }
+      let detail = errText
+      try {
+        const parsed = JSON.parse(errText)
+        if (typeof parsed.error === 'string') detail = parsed.error
+      } catch {}
+      return { ok: false, error: 'Backend HTTP ' + res.status + ': ' + detail.slice(0, 500) }
     }
     const data = (await res.json()) as { ok?: boolean; issueUrl?: string; gistUrl?: string; error?: string }
-    return { ok: !!data.ok, issueUrl: data.issueUrl, gistUrl: data.gistUrl, error: data.error }
+    if (!data.ok || typeof data.issueUrl !== 'string' || !data.issueUrl.trim()) {
+      return { ok: false, error: data.error || 'O servidor não confirmou a criação da issue no GitHub.' }
+    }
+    return { ok: true, issueUrl: data.issueUrl, gistUrl: data.gistUrl }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
@@ -419,7 +463,7 @@ export async function createGithubIssue(options: CreateIssueOptions): Promise<Cr
       if (!att.isImage && att.base64Data) {
         try {
           const text = Buffer.from(att.base64Data, 'base64').toString('utf8')
-          diagnostics.rawFiles?.push({ name: att.name, content: text })
+          diagnostics.rawFiles?.push({ name: att.name, content: truncateToRecentLogs(text) })
           diagnostics.attachedFiles.push(att.name)
         } catch {}
       }
@@ -477,6 +521,7 @@ export async function createGithubIssue(options: CreateIssueOptions): Promise<Cr
       // 1. Tenta envio anonimo direto pelo backend no Render
       const backendUrl = options.backendUrl ?? DEFAULT_REPORT_BACKEND_URL
       const fetchFn = options.fetchFn ?? fetch
+      let backendError = 'O servidor não confirmou a criação da issue no GitHub.'
       try {
         const backendRes = await submitIssueToBackend(
           {
@@ -499,8 +544,11 @@ export async function createGithubIssue(options: CreateIssueOptions): Promise<Cr
             method: 'backend',
           }
         }
+        backendError = backendRes.error || backendError
+        console.warn('[createGithubIssue] backend submit returned error, falling back to web:', backendError)
       } catch (backendErr) {
-        console.warn('[createGithubIssue] backend submit failed, falling back to web:', backendErr)
+        backendError = backendErr instanceof Error ? backendErr.message : String(backendErr)
+        console.warn('[createGithubIssue] backend submit failed, falling back to web:', backendError)
       }
 
       // 2. Ultimo fallback: retorna URL para abertura no navegador
@@ -509,7 +557,7 @@ export async function createGithubIssue(options: CreateIssueOptions): Promise<Cr
         body: markdown,
         repo,
       })
-      return { ok: true, issueUrl: webUrl, gistUrl: gistUrl ?? undefined, method: 'web' }
+      return { ok: true, issueUrl: webUrl, gistUrl: gistUrl ?? undefined, error: backendError, method: 'web' }
     }
   } catch (err) {
     return {
