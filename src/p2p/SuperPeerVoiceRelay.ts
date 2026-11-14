@@ -106,50 +106,55 @@ export class SuperPeerVoiceRelay {
       this.relayChannels.set(peerId, channel)
     }
 
-    // Intercept pc.ondatachannel to prevent PeerJS from hijacking connection.dataChannel
-    // when lira-voice-relay is received on the peer connection.
+    // Intercept pc.ondatachannel using native WebIDL prototype descriptor
+    // to prevent PeerJS from hijacking connection.dataChannel when lira-voice-relay is received.
     try {
-      let currentOnDataChannel = pc.ondatachannel
-      Object.defineProperty(pc, 'ondatachannel', {
-        configurable: true,
-        enumerable: true,
-        get() {
-          return currentOnDataChannel
-        },
-        set(handler) {
-          currentOnDataChannel = (event: RTCDataChannelEvent) => {
-            if (event.channel && event.channel.label === VOICE_RELAY_CHANNEL_LABEL) {
-              handleChannel(event.channel)
-              return
-            }
-            if (typeof handler === 'function') {
-              handler.call(pc, event)
-            }
-          }
-        },
-      })
-      if (currentOnDataChannel) {
-        pc.ondatachannel = currentOnDataChannel
-      }
-    } catch {
-      if (pc.ondatachannel) {
-        const orig = pc.ondatachannel
-        pc.ondatachannel = (event: RTCDataChannelEvent) => {
+      const proto = Object.getPrototypeOf(pc)
+      const nativeDesc =
+        (proto && Object.getOwnPropertyDescriptor(proto, 'ondatachannel')) ||
+        (typeof RTCPeerConnection !== 'undefined' && Object.getOwnPropertyDescriptor(RTCPeerConnection.prototype, 'ondatachannel'))
+
+      const wrapHandler = (handler: ((ev: RTCDataChannelEvent) => any) | null | undefined) => {
+        return (event: RTCDataChannelEvent) => {
           if (event.channel && event.channel.label === VOICE_RELAY_CHANNEL_LABEL) {
             handleChannel(event.channel)
             return
           }
-          orig.call(pc, event)
+          if (typeof handler === 'function') {
+            handler.call(pc, event)
+          }
         }
       }
-    }
 
-    try {
-      pc.addEventListener('datachannel', (event) => {
-        if (event.channel && event.channel.label === VOICE_RELAY_CHANNEL_LABEL) {
-          handleChannel(event.channel)
+      if (nativeDesc?.get && nativeDesc?.set) {
+        const existing = nativeDesc.get.call(pc)
+        Object.defineProperty(pc, 'ondatachannel', {
+          configurable: true,
+          enumerable: true,
+          get() {
+            return nativeDesc.get!.call(pc)
+          },
+          set(handler) {
+            nativeDesc.set!.call(pc, wrapHandler(handler))
+          },
+        })
+        nativeDesc.set.call(pc, wrapHandler(existing))
+      } else {
+        let currentHandler = pc.ondatachannel
+        Object.defineProperty(pc, 'ondatachannel', {
+          configurable: true,
+          enumerable: true,
+          get() {
+            return currentHandler
+          },
+          set(handler) {
+            currentHandler = wrapHandler(handler)
+          },
+        })
+        if (currentHandler) {
+          pc.ondatachannel = currentHandler
         }
-      })
+      }
     } catch {}
 
     // Apenas o Cliente que se conecta ao Host inicia ativamente a criação do canal.
