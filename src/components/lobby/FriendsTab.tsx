@@ -45,6 +45,7 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
   const [addFeedback, setAddFeedback] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [presenceTick, setPresenceTick] = useState(0)
+  const [sendingTargetIds, setSendingTargetIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const unsub = FriendsPresenceService.getInstance().subscribe(() => {
@@ -305,7 +306,10 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                   ) : (
                     <button
                       type="button"
+                      disabled={isPending || sendingTargetIds.has(user.userId)}
                       onClick={() => {
+                        if (isPending || sendingTargetIds.has(user.userId)) return
+                        setSendingTargetIds((prev) => new Set(prev).add(user.userId))
                         sendFriendRequest({
                           id: user.userId,
                           name: user.name,
@@ -319,8 +323,15 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                           lastSeen: Date.now(),
                           statusText: 'Solicitação enviada',
                         })
+                        setTimeout(() => {
+                          setSendingTargetIds((prev) => {
+                            const next = new Set(prev)
+                            next.delete(user.userId)
+                            return next
+                          })
+                        }, 1500)
                       }}
-                      className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white rounded-lg text-[11px] font-bold shadow-sm shadow-indigo-600/30 flex items-center gap-1 shrink-0 transition-all"
+                      className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-[11px] font-bold shadow-sm shadow-indigo-600/30 flex items-center gap-1 shrink-0 transition-all"
                     >
                       <UserPlus className="w-3 h-3" />
                       <span>Adicionar</span>

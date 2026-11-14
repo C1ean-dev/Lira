@@ -25,7 +25,7 @@ interface Props {
 const QUICK_EMOJIS = ['👋', '👍', '❤️', '😂', '🚀', '🎉']
 
 export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom }) => {
-  const { localPlayer } = useGameStore()
+  const { localPlayer, friends, friendProfiles } = useGameStore()
   const {
     messages,
     addMessage,
@@ -259,6 +259,7 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
             </div>
           ) : (() => {
             const seenRequestIds = new Set<string>()
+            let seenAcceptedFriendCard = false
 
             return pagination.page.messages.map((msg) => {
               const isMe =
@@ -267,7 +268,18 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
 
               if (msg.friendRequest) {
                 const rId = msg.friendRequest.requestId
-                if (seenRequestIds.has(rId)) {
+                const req = msg.friendRequest
+                const isAccepted =
+                  req.status === 'accepted' ||
+                  friends.some((key) => {
+                    const fp = friendProfiles[key] || { id: key }
+                    return (
+                      isSameParticipant(fp, req.fromUserId, req.fromUserName) ||
+                      isSameParticipant(fp, req.toUserId, req.toUserName)
+                    )
+                  })
+
+                if (seenRequestIds.has(rId) || (isAccepted && seenAcceptedFriendCard)) {
                   if (!msg.content) return null
                   return (
                     <div
@@ -291,6 +303,9 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
                   )
                 }
                 seenRequestIds.add(rId)
+                if (isAccepted) {
+                  seenAcceptedFriendCard = true
+                }
 
                 return (
                   <div

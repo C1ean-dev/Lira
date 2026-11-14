@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { processNetworkMessage } from '../../p2p/messageHandlers'
 import { MediaCallHandler } from '../../p2p/mediaCalls'
+import { PeerManager } from '../../p2p/PeerManager'
 import { useGameStore } from '../../store/useGameStore'
 import { useChatStore } from '../../store/useChatStore'
 import { useMediaStore } from '../../store/useMediaStore'
@@ -254,5 +255,89 @@ describe('Version Compatibility & Outdated Flag', () => {
 
     expect(mockCall.close).toHaveBeenCalled()
     expect(mockCall.answer).not.toHaveBeenCalled()
+  })
+
+  it('does not spam repeated system warnings in host chat when outdated peer reconnects multiple times', () => {
+    const broadcast = vi.fn()
+    const removePeer = vi.fn()
+    const checkZoneCall = vi.fn()
+
+    const firstJoin = {
+      type: 'PLAYER_JOIN' as const,
+      senderId: 'zegary-peer-1',
+      payload: {
+        player: {
+          id: 'zegary-peer-1',
+          gameId: 'user-zegary-stable-id',
+          name: 'Zegary',
+          appVersion: '1.1.110',
+        },
+      },
+    }
+
+    // Host receives first join from outdated user
+    processNetworkMessage(firstJoin, 'zegary-peer-1', true, broadcast, removePeer, checkZoneCall, 'host-peer')
+
+    const warningsAfterFirst = useChatStore.getState().messages.filter(
+      (m) => m.senderId === 'system' && m.content.includes('"Zegary"')
+    )
+    expect(warningsAfterFirst).toHaveLength(1)
+
+    // Outdated user reconnects with a fresh peer ID after 2.5s failover
+    const secondJoin = {
+      type: 'PLAYER_JOIN' as const,
+      senderId: 'zegary-peer-2',
+      payload: {
+        player: {
+          id: 'zegary-peer-2',
+          gameId: 'user-zegary-stable-id',
+          name: 'Zegary',
+          appVersion: '1.1.110',
+        },
+      },
+    }
+
+    processNetworkMessage(secondJoin, 'zegary-peer-2', true, broadcast, removePeer, checkZoneCall, 'host-peer')
+
+    // Still only 1 warning in chat, no spam
+    const warningsAfterSecond = useChatStore.getState().messages.filter(
+      (m) => m.senderId === 'system' && m.content.includes('"Zegary"')
+    )
+    expect(warningsAfterSecond).toHaveLength(1)
+  })
+
+  it('delivers both VERSION_INCOMPATIBLE and CHAT_MESSAGE packets to ensure legacy clients receive the warning', () => {
+    const manager = PeerManager.getInstance() as any
+
+    const mockConn: any = {
+      peer: 'legacy-target-peer',
+      open: true,
+      send: vi.fn(),
+    }
+    manager.connections.set('legacy-target-peer', mockConn)
+
+    try {
+      manager.sendVersionIncompatible(
+        'legacy-target-peer',
+        '1.1.210',
+        '1.1.110',
+        '⚠️ Incompatibilidade de versão: atualize para >= v1.1.210'
+      )
+
+      expect(mockConn.send).toHaveBeenCalledTimes(2)
+
+      const packets = mockConn.send.mock.calls.map((c: any[]) => c[0])
+      const incompatPacket = packets.find((p: any) => p.type === 'VERSION_INCOMPATIBLE')
+      const chatPacket = packets.find((p: any) => p.type === 'CHAT_MESSAGE')
+
+      expect(incompatPacket).toBeDefined()
+      expect(incompatPacket.payload.minVersion).toBe('1.1.210')
+
+      expect(chatPacket).toBeDefined()
+      expect(chatPacket.payload.message.channelId).toBe('general')
+      expect(chatPacket.payload.message.content).toContain('1.1.210')
+    } finally {
+      manager.connections.delete('legacy-target-peer')
+    }
   })
 })

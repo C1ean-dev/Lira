@@ -59,7 +59,7 @@ import { MediaManager } from '../media/MediaManager'
 import { ChatContextMenu } from './chat/ChatContextMenu'
 import { RoomInviteCard } from './chat/RoomInviteCard'
 import { ConfirmModal } from './ConfirmModal'
-import { getPlayerUserId, findFriendKey } from '../utils/userId'
+import { getPlayerUserId, findFriendKey, isSameParticipant } from '../utils/userId'
 import { getChatUserFriendState } from '../utils/chatUserActions'
 import { buildChatPeople, openChatPerson, ChatPerson } from '../utils/chatPeople'
 import { ChatPersonAction, getChatPersonMenu } from '../utils/chatPersonMenu'
@@ -969,6 +969,7 @@ const ChatDrawerInner: React.FC = () => {
               </div>
             ) : (() => {
               const seenRequestIds = new Set<string>()
+              let seenAcceptedFriendCard = false
 
               return pagination.page.messages.map((msg) => {
                 const isMine =
@@ -979,7 +980,18 @@ const ChatDrawerInner: React.FC = () => {
 
                  if (msg.friendRequest) {
                   const rId = msg.friendRequest.requestId
-                  if (seenRequestIds.has(rId)) {
+                  const req = msg.friendRequest
+                  const isAccepted =
+                    req.status === 'accepted' ||
+                    friends.some((key) => {
+                      const fp = friendProfiles[key] || { id: key }
+                      return (
+                        isSameParticipant(fp, req.fromUserId, req.fromUserName) ||
+                        isSameParticipant(fp, req.toUserId, req.toUserName)
+                      )
+                    })
+
+                  if (seenRequestIds.has(rId) || (isAccepted && seenAcceptedFriendCard)) {
                     if (!msg.content) return null
                     return (
                       <div key={msg.id} onContextMenu={(e) => openUserMenu(e, msg)} className="group relative flex flex-col space-y-1">
@@ -1001,6 +1013,9 @@ const ChatDrawerInner: React.FC = () => {
                     )
                   }
                   seenRequestIds.add(rId)
+                  if (isAccepted) {
+                    seenAcceptedFriendCard = true
+                  }
 
                   return (
                     <div key={msg.id} onContextMenu={(e) => openUserMenu(e, msg)} className="group relative flex flex-col space-y-1">

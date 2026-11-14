@@ -131,14 +131,20 @@ const loadSavedDmMessages = (): ChatMessage[] => {
       if (raw) {
         const parsed: ChatMessage[] = JSON.parse(raw)
         const seenRequestIds = new Set<string>()
+        const seenAcceptedChannels = new Set<string>()
         return parsed.map((m) => {
           if (!m.friendRequest) return m
           const reqId = m.friendRequest.requestId
-          if (seenRequestIds.has(reqId)) {
+          const chId = m.channelId || ''
+          const isAccepted = m.friendRequest.status === 'accepted'
+          if (seenRequestIds.has(reqId) || (isAccepted && chId && seenAcceptedChannels.has(chId))) {
             const { friendRequest, ...rest } = m
             return rest
           }
           seenRequestIds.add(reqId)
+          if (isAccepted && chId) {
+            seenAcceptedChannels.add(chId)
+          }
           return m
         })
       }
@@ -385,6 +391,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         }
 
         if (existingReqIndex !== -1) {
+          if (!alreadyHasMessage && normalizedMessage.content) {
+            const { friendRequest, ...plainMsg } = normalizedMessage
+            nextMessages = [...nextMessages, plainMsg]
+          }
+        } else if (isAlreadyFriend) {
           if (!alreadyHasMessage && normalizedMessage.content) {
             const { friendRequest, ...plainMsg } = normalizedMessage
             nextMessages = [...nextMessages, plainMsg]
@@ -710,10 +721,39 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   sendFriendRequest: (target) => {
     const state = get()
-    const local = useGameStore.getState().localPlayer
+    const gameStore = useGameStore.getState()
+    const local = gameStore.localPlayer
     const localId = getLocalUserId()
     const targetName = target.name.trim()
     const targetId = target.id || `friend-${targetName.toLowerCase().replace(/\s+/g, '-')}`
+
+    if (
+      targetId === localId ||
+      targetId === local.id ||
+      (local.gameId && targetId === local.gameId)
+    ) {
+      return ''
+    }
+
+    const isAlreadyFriend = gameStore.friends.some((key) => {
+      const fp = gameStore.friendProfiles[key] || { id: key }
+      return (
+        key === targetId ||
+        (fp.actualUserId && fp.actualUserId === targetId) ||
+        (fp.gameId && fp.gameId === targetId) ||
+        isSameParticipant(fp, targetId, targetName)
+      )
+    })
+    if (isAlreadyFriend) {
+      state.openDirectMessage({ id: targetId, name: targetName })
+      return ''
+    }
+
+    const existingReq = state.getFriendRequestStatus(targetId) || state.getFriendRequestStatus(targetName)
+    if (existingReq?.status === 'pending') {
+      state.openDirectMessage({ id: targetId, name: targetName })
+      return existingReq.requestId
+    }
 
     const channelId = getLocalDmChannelId(targetId)
     const requestId = `freq-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`

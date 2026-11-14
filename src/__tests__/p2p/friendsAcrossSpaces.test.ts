@@ -626,6 +626,40 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
       expect(useGameStore.getState().friends).toEqual([BIA])
       expect(useChatStore.getState().getFriendRequestStatus(CAIO)?.status).toBe('pending')
     })
+
+    it('does not send a redundant friend request if already friends', () => {
+      useGameStore.getState().addFriend({ id: BIA, name: 'Bia', actualUserId: BIA, lastSeen: 1 })
+      net.open(BIA)
+      net.sent.length = 0
+
+      const reqId = useChatStore.getState().sendFriendRequest({ id: BIA, name: 'Bia' })
+      expect(reqId).toBe('')
+      expect(net.packetsTo(BIA, 'dm')).toHaveLength(0)
+    })
+
+    it('does not send a second friend request if one is already pending', () => {
+      net.open(BIA)
+      const firstReqId = useChatStore.getState().sendFriendRequest({ id: BIA, name: 'Bia' })
+      expect(firstReqId).toBeTruthy()
+      net.sent.length = 0
+
+      const secondReqId = useChatStore.getState().sendFriendRequest({ id: BIA, name: 'Bia' })
+      expect(secondReqId).toBe(firstReqId)
+      expect(net.packetsTo(BIA, 'dm')).toHaveLength(0)
+    })
+
+    it('does not add a redundant friend request card when receiving a request from an already-friend', () => {
+      useGameStore.getState().addFriend({ id: BIA, name: 'Bia', actualUserId: BIA, lastSeen: 1 })
+
+      useChatStore.getState().addMessage({
+        ...dmToMe('req-bia-dup', BIA, 'Bia', '🤝 Quer ser amigo?'),
+        friendRequest: { requestId: 'freq-bia-dup', fromUserId: BIA, fromUserName: 'Bia', toUserId: ME, toUserName: 'Alice', status: 'pending' },
+      })
+
+      const msg = useChatStore.getState().messages.find((m) => m.id === 'req-bia-dup')
+      expect(msg).toBeDefined()
+      expect(msg?.friendRequest).toBeUndefined()
+    })
   })
 
   describe('friends saved before stable ids', () => {
