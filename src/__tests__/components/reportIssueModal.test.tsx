@@ -1,7 +1,7 @@
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { ReportIssueModal, submitReportIssue } from '../../components/ReportIssueModal'
+import { ReportIssueModal, submitReportIssue, reportIssueFeedback } from '../../components/ReportIssueModal'
 
 describe('ReportIssueModal UI', () => {
   beforeEach(() => {
@@ -89,6 +89,33 @@ describe('submitReportIssue', () => {
     const result = await submitReportIssue('   ', '   ')
     expect(result.ok).toBe(false)
     expect(result.error).toMatch(/obrigatórios/i)
+  })
+
+  it.each([
+    ['ab', 'Descrição válida', /título.*3/i],
+    ['Título', '1234', /descrição.*5/i],
+    ['a'.repeat(251), 'Descrição válida', /título.*250/i],
+    ['Título', 'a'.repeat(50001), /descrição.*50000/i],
+  ])('validates backend field limits before sending (case %#)', async (title, description, error) => {
+    const reportIssue = vi.fn()
+    vi.stubGlobal('window', { electronAPI: { reportIssue } })
+    const result = await submitReportIssue(title, description)
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(error)
+    expect(reportIssue).not.toHaveBeenCalled()
+  })
+
+  it('shows the backend error and explains that the web fallback has not published the issue', () => {
+    const feedback = reportIssueFeedback({
+      ok: true, method: 'web', issueUrl: 'https://github.com/C1ean-dev/Lira/issues/new',
+      error: 'Backend HTTP 503: Issue reporting service is not configured on backend',
+    })
+    expect(feedback.type).toBe('warning')
+    expect(feedback.message).toContain('503')
+    expect(feedback.message).toContain('não foi publicada')
+    const html = renderToStaticMarkup(<ReportIssueModal isOpen onClose={() => {}} initialFeedback={feedback} />)
+    expect(html).toContain('503')
+    expect(html).toContain('Abrir e publicar no GitHub')
   })
 
   it('calls electronAPI.reportIssue with attachments when available in electron environment', async () => {

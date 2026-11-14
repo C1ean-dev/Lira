@@ -9,6 +9,8 @@ import {
   createGithubIssue,
   submitIssueToBackend,
   DEFAULT_REPORT_BACKEND_URL,
+  truncateToRecentLogs,
+  MAX_RAW_FILE_SIZE,
 } from '../../../electron/githubIssue'
 
 describe('collectIssueDiagnostics', () => {
@@ -368,6 +370,7 @@ describe('createGithubIssue', () => {
     expect(result.ok).toBe(true)
     expect(result.method).toBe('web')
     expect(result.issueUrl).toContain('https://github.com/C1ean-dev/Lira/issues/new?')
+    expect(result.error).toContain('Backend offline')
     // Must NOT automatically open browser on submit:
     expect(mockOpenExternal).not.toHaveBeenCalled()
   })
@@ -420,5 +423,80 @@ describe('createGithubIssue', () => {
 
     expect(res.ok).toBe(true)
     expect(res.issueUrl).toBe('https://github.com/C1ean-dev/Lira/issues/888')
+  })
+})
+
+describe('report delivery limits', () => {
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
+
+  it('keeps small logs and complete recent lines', () => {
+    expect(truncateToRecentLogs('ação\nrecente', 100)).toBe('ação\nrecente')
+    expect(truncateToRecentLogs('antiga\nrecente\nfinal', 15)).toBe('recente\nfinal')
+  })
+
+  it('limits UTF-8 bytes without breaking accented characters or emoji', () => {
+    const content = 'antigo\n' + 'á🎧'.repeat(100)
+    const result = truncateToRecentLogs(content, 17)
+    expect(Buffer.byteLength(result)).toBeLessThanOrEqual(17)
+    expect(result).not.toContain('\uFFFD')
+    expect(content.endsWith(result)).toBe(true)
+    expect(result).toContain('🎧')
+  })
+
+  it('sends recent logs within the backend per-file limit without mutating input', async () => {
+    const content = 'antigo\n' + 'á🎧'.repeat(100000) + '\nlinha mais recente'
+    const payload = { title: 'Falha no áudio', description: 'Relato válido', rawFiles: [{ name: 'call-debug.log', content }] }
+    const fetchFn = vi.fn(async (_url: any, _options: any) => ({
+      ok: true, json: async () => ({ ok: true, issueUrl: 'https://github.com/C1ean-dev/Lira/issues/999' }),
+    }))
+    const result = await submitIssueToBackend(payload, undefined, fetchFn as any)
+    expect(result.ok).toBe(true)
+    const sent = JSON.parse(fetchFn.mock.calls[0][1].body)
+    expect(MAX_RAW_FILE_SIZE).toBeLessThanOrEqual(500000)
+    expect(Buffer.byteLength(sent.rawFiles[0].content)).toBeLessThanOrEqual(MAX_RAW_FILE_SIZE)
+    expect(sent.rawFiles[0].content).toContain('linha mais recente')
+    expect(payload.rawFiles[0].content).toBe(content)
+  })
+
+  it('allows the sequential Gist and issue requests to take more than 12 seconds', async () => {
+    vi.useFakeTimers()
+    const fetchFn = vi.fn((_url: any, options: any) => new Promise((resolve, reject) => {
+      const timer = setTimeout(() => resolve({
+        ok: true, json: async () => ({ ok: true, issueUrl: 'https://github.com/C1ean-dev/Lira/issues/999' }),
+      }), 13000)
+      options.signal.addEventListener('abort', () => { clearTimeout(timer); reject(new Error('Timeout')) })
+    }))
+    // Mock the native timeout so the request deadline follows Vitest's clock.
+    vi.spyOn(AbortSignal, 'timeout').mockImplementation(ms => {
+      const controller = new AbortController()
+      setTimeout(() => controller.abort(), ms)
+      return controller.signal
+    })
+    const pending = submitIssueToBackend({ title: 'Teste', description: 'Descrição' }, undefined, fetchFn as any)
+    await vi.advanceTimersByTimeAsync(13000)
+    expect((await pending).ok).toBe(true)
+    vi.restoreAllMocks()
+  })
+
+  it('keeps the complete serialized request below the backend 10 MB limit', async () => {
+    const rawFiles = Array.from({ length: 24 }, (_, index) => ({
+      name: `extra-${index}.log`, content: '\\'.repeat(500000) + `recente-${index}`,
+    }))
+    const fetchFn = vi.fn(async (_url: any, _options: any) => ({
+      ok: true, json: async () => ({ ok: true, issueUrl: 'https://github.com/C1ean-dev/Lira/issues/999' }),
+    }))
+    const result = await submitIssueToBackend({ title: 'Teste', description: 'Descrição', rawFiles }, undefined, fetchFn as any)
+    expect(result.ok).toBe(true)
+    const body = fetchFn.mock.calls[0][1].body
+    expect(Buffer.byteLength(body)).toBeLessThanOrEqual(10 * 1024 * 1024)
+    expect(JSON.parse(body).rawFiles).toHaveLength(24)
+    JSON.parse(body).rawFiles.forEach((file: any, index: number) => expect(file.content).toContain(`recente-${index}`))
+  })
+
+  it('rejects a success response without a created issue URL', async () => {
+    const fetchFn = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true }) }))
+    const result = await submitIssueToBackend({ title: 'Teste', description: 'Descrição' }, undefined, fetchFn as any)
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/confirmou.*issue/i)
   })
 })
