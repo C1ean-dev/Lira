@@ -87,10 +87,15 @@ export class DirectSignaling {
   private hasLanRoute(id: string) {
     return !!this.lanPeer?.open && (this.lanRoutes.get(id) ?? 0) > Date.now()
   }
-  private canRoute(id: string) { return this.links.has(id) || (!!this.host && this.links.has(this.host)) || this.hasLanRoute(id) }
+  private dataLink(id: string) {
+    // The DJ registers its own signaling peer. The room host has no data link to it.
+    return this.links.get(id) || (this.host && !id.startsWith('dj-') ? this.links.get(this.host) : undefined)
+  }
+
+  private canRoute(id: string) { return !!this.dataLink(id) || this.hasLanRoute(id) }
   private route(packet: Packet): boolean {
     const { message } = packet
-    const send = this.links.get(message.dst) || (this.host && this.links.get(this.host))
+    const send = this.dataLink(message.dst)
     if (send) {
       try { send(packet); return true } catch { /* Try the available sockets. */ }
     }

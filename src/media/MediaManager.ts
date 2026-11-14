@@ -456,7 +456,11 @@ export class MediaManager {
         try {
           stream = await safeGetUserMedia({
             video: false,
-            audio: audio,
+            audio: audio ? {
+              echoCancellation: state.echoCancellation,
+              autoGainControl: state.autoGainControl,
+              noiseSuppression: false,
+            } : false,
           }, 2000)
         } catch (totalErr) {
           console.error('Failed to access physical microphone:', totalErr)

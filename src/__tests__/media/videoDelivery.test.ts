@@ -148,6 +148,28 @@ describe('Video Delivery & Screen Share Guarantee Tests', () => {
     expect(gum.mock.calls.every(([constraints]) => constraints?.video === false)).toBe(true)
   })
 
+  it.each([false, true])('preserves the app processing preferences in the generic microphone fallback (AGC=%s)', async (autoGainControl) => {
+    const manager = MediaManager.getInstance()
+    useMediaStore.setState({ selectedAudioInput: 'missing-mic', echoCancellation: false, autoGainControl })
+    const stream = new MockMediaStream()
+    const gum = vi.spyOn(navigator.mediaDevices, 'getUserMedia').mockReset()
+      .mockRejectedValueOnce(new Error('Selected device unavailable'))
+      .mockRejectedValueOnce(new Error('Selected device still unavailable'))
+      .mockResolvedValue(stream as any)
+    vi.spyOn(manager as any, 'runEngine').mockImplementation(async (raw) => raw)
+    vi.spyOn(manager as any, 'initDeviceWatcher').mockImplementation(() => {})
+
+    await expect(manager.startMedia(false, true)).resolves.toBe(stream)
+
+    expect(gum).toHaveBeenCalledTimes(3)
+    for (const [constraints] of gum.mock.calls) {
+      expect(constraints?.audio).toEqual(expect.objectContaining({
+        echoCancellation: false, autoGainControl, noiseSuppression: false,
+      }))
+    }
+    expect(gum.mock.calls[2][0]?.audio).not.toHaveProperty('deviceId')
+  })
+
   it('starts a new audio-only session with camera off even after a previous activation', async () => {
     const manager = MediaManager.getInstance()
     useMediaStore.setState({ isCameraOff: false })

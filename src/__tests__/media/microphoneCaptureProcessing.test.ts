@@ -34,6 +34,17 @@ describe('microphone capture processing during a call', () => {
     expect(getUserMedia).not.toHaveBeenCalled()
   })
 
+  it('applies microphone volume only to the internal audio engines', () => {
+    const gains = ['classicEngine', 'deepFilterEngine', 'rnnoiseEngine'].map(engine =>
+      vi.spyOn((manager as any)[engine], 'setInputVolume'))
+
+    manager.updateInputVolume(175)
+
+    for (const gain of gains) expect(gain).toHaveBeenCalledExactlyOnceWith(175)
+    expect(microphone.applyConstraints).not.toHaveBeenCalled()
+    expect(getUserMedia).not.toHaveBeenCalled()
+  })
+
   it('does not open the microphone when settings change outside a call', async () => {
     ;(manager as any).rawUserStream = null
 

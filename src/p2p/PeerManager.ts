@@ -46,7 +46,9 @@ export const SIGNALING_TIERS: SignalingTier[] = ['render', 'public', 'local', 'd
 export const RENDER_SIGNALING_HOST = 'lira-signaling.onrender.com'
 const HOST_TRANSPORT_TIMEOUT_MS = 30_000
 const HOST_RECONNECT_DELAY_MS = 2500
-const HOST_RECONNECT_ATTEMPTS = 6
+// Keep one attempt alive through the direct and both relay windows (8.5s).
+const HOST_RECONNECT_ATTEMPT_MS = 10_000
+const HOST_RECONNECT_ROUND_MS = 17_500
 const HOST_REGISTRATION_TIMEOUT_MS = 15_000
 const HOST_TRANSFER_PREPARE_TIMEOUT_MS = 5000
 const HOST_TRANSFER_CONFIRM_TIMEOUT_MS = 45_000
@@ -147,6 +149,7 @@ interface HostRecovery {
   hostPeerId: string
   clientPeerId: string
   attempts: number
+  reconnectDeadline: number
   candidateRank: number
   preferredCandidate: string | null
   preferenceExpiresAt: number
@@ -210,6 +213,7 @@ export class PeerManager {
   private signalingReconnectAttempts = 0
   private djPeer: Peer | null = null
   private djMediaCalls: Map<string, MediaConnection> = new Map()
+  private djCallUnreadySince = new WeakMap<MediaConnection, number>()
   private djAudioStream: MediaStream | null = null
   private djBotId: string | null = null
   private djHealthCheckTimer: any = null
@@ -1794,7 +1798,7 @@ export class PeerManager {
     }
     const recovery: HostRecovery = {
       roomCode: this.roomCode, hostPeerId, clientPeerId: myId,
-      attempts: 0, timer: null, connection: null,
+      attempts: 0, reconnectDeadline: Date.now() + HOST_RECONNECT_ROUND_MS, timer: null, connection: null,
       candidateRank: Math.max(0, candidates.indexOf(myId)), round: 0,
       preferredCandidate: preferredCandidate || null,
       preferenceExpiresAt: preferredCandidate ? Date.now() + HOST_TRANSFER_CONFIRM_TIMEOUT_MS : 0,
@@ -2002,6 +2006,7 @@ export class PeerManager {
       recovery.timer = null
       recovery.registrationFailures = 0
       recovery.attempts = 0
+      recovery.reconnectDeadline = Date.now() + HOST_RECONNECT_ROUND_MS
       const currentLocal = useGameStore.getState().localPlayer
       useGameStore.getState().setLocalPlayer({ id, gameId: currentLocal.gameId || currentLocal.id, isHost: false })
       this.setupRecoveredPeerListeners(client)
@@ -2021,19 +2026,16 @@ export class PeerManager {
     client.on('close', () => { if (isCurrent() && !registered) this.retryHostRecoveryClient(recovery, 'client-signaling-closed') })
   }
 
-  private scheduleHostReconnect(recovery: HostRecovery) {
+  private scheduleHostReconnect(recovery: HostRecovery, delayMs = HOST_RECONNECT_DELAY_MS) {
     if (!this.isCurrentHostRecovery(recovery)) return
     recovery.phase = 'waiting'
     recovery.timer = setTimeout(() => {
       recovery.timer = null
       if (!this.isCurrentHostRecovery(recovery)) return
-      const previous = recovery.connection
-      recovery.connection = null
-      try { previous?.close() } catch { }
-      const waitingForPreferred = recovery.preferredCandidate && Date.now() < recovery.preferenceExpiresAt
-      if (recovery.attempts >= HOST_RECONNECT_ATTEMPTS && !waitingForPreferred) {
+      const preferenceRemaining = recovery.preferredCandidate ? recovery.preferenceExpiresAt - Date.now() : 0
+      const waitingForPreferred = preferenceRemaining > 0
+      if (Date.now() >= recovery.reconnectDeadline && !waitingForPreferred) {
         recovery.round++
-        recovery.attempts = 0
         // Every survivor eventually gets a chance, even if the first candidate
         // was stale or frozen. The signaling server arbitrates the shared ID.
         const delay = Math.min(recovery.candidateRank, 20) * 250
@@ -2042,17 +2044,22 @@ export class PeerManager {
           recovery.timer = null
           if (this.isCurrentHostRecovery(recovery)) this.promoteToHost(recovery)
         }, delay)
-        this.reconnectToHost(recovery)
+        return
+      }
+      if (waitingForPreferred && preferenceRemaining < HOST_RECONNECT_ATTEMPT_MS) {
+        this.scheduleHostReconnect(recovery, preferenceRemaining)
         return
       }
       recovery.attempts++
       this.reconnectToHost(recovery)
-      if (this.isCurrentHostRecovery(recovery)) this.scheduleHostReconnect(recovery)
-    }, HOST_RECONNECT_DELAY_MS)
+    }, delayMs)
   }
 
   private reconnectToHost(recovery: HostRecovery) {
-    if (!this.peer || this.peer.destroyed) return
+    if (!this.peer || this.peer.destroyed) {
+      this.scheduleHostReconnect(recovery)
+      return
+    }
     const localPlayer = useGameStore.getState().localPlayer
     const minimalMetadata = {
       id: localPlayer.id,
@@ -2067,12 +2074,34 @@ export class PeerManager {
       })
     } catch (error) {
       console.warn('[P2P Failover] Could not create host connection:', error)
-      return
     }
     const conn = connection
-    if (!conn) return
+    if (!conn) {
+      diagLog('room', 'host-recovery-attempt-failed', {
+        hostPeerId: recovery.hostPeerId, round: recovery.round, attempt: recovery.attempts, reason: 'no-connection',
+      })
+      this.scheduleHostReconnect(recovery)
+      return
+    }
     if (!this.isCurrentHostRecovery(recovery)) { conn.close(); return }
     recovery.connection = conn
+    const startedAt = Date.now()
+    const pc = conn.peerConnection
+    const attempt = { hostPeerId: recovery.hostPeerId, connectionId: conn.connectionId, round: recovery.round, attempt: recovery.attempts }
+    const transport = () => ({
+      attemptMs: Date.now() - startedAt, iceState: pc?.iceConnectionState,
+      connectionState: pc?.connectionState, signalingState: pc?.signalingState,
+    })
+    const fail = (reason: string, errorType?: string) => {
+      if (!this.isCurrentHostRecovery(recovery) || recovery.connection !== conn) return
+      diagLog('room', 'host-recovery-attempt-failed', { ...attempt, ...transport(), reason, errorType })
+      this.clearHostRecoveryAttempt(recovery)
+      this.scheduleHostReconnect(recovery, reason === 'timeout' ? 0 : HOST_RECONNECT_DELAY_MS)
+    }
+    diagLog('room', 'host-recovery-dial', { ...attempt, timeoutMs: HOST_RECONNECT_ATTEMPT_MS })
+    recovery.timer = setTimeout(() => fail('timeout'), HOST_RECONNECT_ATTEMPT_MS)
+    conn.on('error', error => fail('error', error.type))
+    conn.on('close', () => fail('closed'))
     // Retire stale opens before setupDataConnection can publish a player.
     conn.on('open', () => {
       if (!this.isCurrentHostRecovery(recovery) || recovery.connection !== conn) {
@@ -2080,7 +2109,9 @@ export class PeerManager {
         return
       }
       recovery.connection = null
-      diagLog('room', 'host-recovery-connected', { roomCode: recovery.roomCode, hostPeerId: recovery.hostPeerId, round: recovery.round })
+      diagLog('room', 'host-recovery-connected', {
+        roomCode: recovery.roomCode, ...attempt, ...transport(), recoveryMs: Date.now() - recovery.startedAt,
+      })
       this.cancelHostRecovery()
       useGameStore.getState().setConnectionHostId(recovery.hostPeerId)
       useGameStore.getState().setConnected(true)
@@ -2155,7 +2186,9 @@ export class PeerManager {
         (pid) => this.removePeer(pid),
         (remotePlayer) => this.checkZoneCallEligibility(remotePlayer),
         this.peer ? this.peer.id : null,
-        (listenerId) => this.redialDjToPeer(listenerId)
+        (listenerId) => {
+          if (this.isDjBotRunning()) this.redialDjToPeer(listenerId)
+        }
       )
       const transfer = this.hostTransfer
       if (transfer?.released && transfer.roomCode === this.roomCode && msg.type === 'PLAYER_JOIN' &&
@@ -2169,13 +2202,6 @@ export class PeerManager {
       }
 
       if (msg.type === 'LIVE_VIEW') this.handleLiveView(msg)
-      if (msg.type === 'DJ_CALL_REQUEST') {
-        const listenerId = msg.payload?.listenerId || msg.senderId
-        if (listenerId && this.isDjBotRunning()) {
-          this.redialDjToPeer(listenerId)
-        }
-      }
-
       if (msg.type === 'PLAYER_UPDATE' && msg.payload?.player?.isScreenSharing !== undefined) {
         if (useMediaStore.getState().isScreenSharing) {
           try {
@@ -2616,10 +2642,10 @@ export class PeerManager {
 
       newDjPeer.on('call', (call) => {
         console.log('[PeerManager DJ] Answering call from peer:', call.peer)
+        const existing = this.djMediaCalls.get(call.peer)
+        if (existing) this.closeDjCall(call.peer, existing)
         call.answer(this.djAudioStream || new MediaStream(), { sdpTransform: djMusicSdp })
-        this.djMediaCalls.set(call.peer, call)
-        call.on('close', () => this.djMediaCalls.delete(call.peer))
-        call.on('error', () => this.djMediaCalls.delete(call.peer))
+        this.trackDjCall(call.peer, call)
       })
 
       this.recheckDjCalls()
@@ -2651,43 +2677,53 @@ export class PeerManager {
     try {
       console.log('[PeerManager DJ] Calling peer:', remotePeerId)
       const call = this.djPeer.call(remotePeerId, this.djAudioStream, { sdpTransform: djMusicSdp })
-      if (call) {
-        this.djMediaCalls.set(remotePeerId, call)
-        call.on('close', () => {
-          this.djMediaCalls.delete(remotePeerId)
-        })
-        call.on('error', (err) => {
-          console.warn('[PeerManager DJ] Call error with:', remotePeerId, err)
-          this.djMediaCalls.delete(remotePeerId)
-        })
-
-        const pc = (call as any).peerConnection as RTCPeerConnection | undefined
-        if (pc && pc.addEventListener) {
-          pc.addEventListener('connectionstatechange', () => {
-            if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
-              this.djMediaCalls.delete(remotePeerId)
-            }
-          })
-          pc.addEventListener('iceconnectionstatechange', () => {
-            if (pc.iceConnectionState === 'failed') {
-              this.djMediaCalls.delete(remotePeerId)
-            }
-          })
-        }
-      }
+      if (call) this.trackDjCall(remotePeerId, call)
     } catch (e) {
       console.warn('[PeerManager DJ] Failed to call peer:', remotePeerId, e)
     }
+  }
+
+  private trackDjCall(listenerId: string, call: MediaConnection) {
+    this.djMediaCalls.set(listenerId, call)
+    this.djCallUnreadySince.set(call, Date.now())
+    call.on('close', () => {
+      if (this.djMediaCalls.get(listenerId) === call) this.djMediaCalls.delete(listenerId)
+    })
+    call.on('error', (err) => {
+      if (this.djMediaCalls.get(listenerId) !== call) return
+      console.warn('[PeerManager DJ] Call error with:', listenerId, err)
+      this.closeDjCall(listenerId, call)
+    })
+
+    const pc = call.peerConnection
+    const closeFailed = () => {
+      if (pc.connectionState === 'failed' || pc.iceConnectionState === 'failed') {
+        this.closeDjCall(listenerId, call)
+      }
+    }
+    pc?.addEventListener?.('connectionstatechange', closeFailed)
+    pc?.addEventListener?.('iceconnectionstatechange', closeFailed)
+  }
+
+  private closeDjCall(listenerId: string, call: MediaConnection) {
+    if (this.djMediaCalls.get(listenerId) !== call) return
+    this.djMediaCalls.delete(listenerId)
+    try { call.close() } catch { }
+  }
+
+  private isDjCallConnected(call: MediaConnection) {
+    const pc = call.peerConnection
+    return pc && !['disconnected', 'failed', 'closed'].includes(pc.iceConnectionState) &&
+      !['disconnected', 'failed', 'closed'].includes(pc.connectionState) &&
+      (pc.connectionState === 'connected' || ['connected', 'completed'].includes(pc.iceConnectionState))
   }
 
   public redialDjToPeer(listenerId: string) {
     if (!this.djPeer || !this.djAudioStream || !this.djBotId) return
     const existingCall = this.djMediaCalls.get(listenerId)
     if (existingCall) {
-      try {
-        existingCall.close()
-      } catch { }
-      this.djMediaCalls.delete(listenerId)
+      if (!this.isDjCallConnected(existingCall)) return
+      this.closeDjCall(listenerId, existingCall)
     }
     this.callPeerFromDj(listenerId)
   }
@@ -2717,36 +2753,22 @@ export class PeerManager {
         localPlayer.currentZoneId !== undefined &&
         p.currentZoneId === localPlayer.currentZoneId
 
-      if (inSameZone) {
-        const existingCall = this.djMediaCalls.get(p.id)
-        const existingPc = existingCall ? ((existingCall as any).peerConnection as RTCPeerConnection | undefined) : null
-        const isDead = existingCall && (
-          (existingCall as any).open === false ||
-          (existingPc && (
-            existingPc.iceConnectionState === 'failed' ||
-            existingPc.iceConnectionState === 'closed' ||
-            existingPc.iceConnectionState === 'disconnected' ||
-            existingPc.connectionState === 'failed' ||
-            existingPc.connectionState === 'closed' ||
-            existingPc.connectionState === 'disconnected'
-          ))
-        )
-        if (isDead) {
-          try { existingCall.close() } catch { }
-          this.djMediaCalls.delete(p.id)
-        }
-
-        if (!this.djMediaCalls.has(p.id)) {
-          this.callPeerFromDj(p.id)
-        }
-      } else {
-        if (this.djMediaCalls.has(p.id)) {
-          try {
-            this.djMediaCalls.get(p.id)?.close()
-          } catch { }
-          this.djMediaCalls.delete(p.id)
+      const existingCall = this.djMediaCalls.get(p.id)
+      if (existingCall) {
+        const pc = existingCall.peerConnection
+        if (!inSameZone || pc?.connectionState === 'closed' || pc?.iceConnectionState === 'closed') {
+          this.closeDjCall(p.id, existingCall)
+        } else if (this.isDjCallConnected(existingCall)) {
+          this.djCallUnreadySince.delete(existingCall)
+        } else {
+          // Allow the offer/answer and ICE fallbacks to finish between health checks.
+          const now = Date.now()
+          const unreadySince = this.djCallUnreadySince.get(existingCall) ?? now
+          this.djCallUnreadySince.set(existingCall, unreadySince)
+          if (now - unreadySince >= 12000) this.closeDjCall(p.id, existingCall)
         }
       }
+      if (inSameZone && !this.djMediaCalls.has(p.id)) this.callPeerFromDj(p.id)
     })
   }
 

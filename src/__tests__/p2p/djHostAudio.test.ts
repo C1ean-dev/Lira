@@ -16,7 +16,7 @@ afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(
 describe('DJ host audio', () => {
   it('plays the same DJ stream to its owner through the call instead of muting the bot', async () => {
     vi.useFakeTimers()
-    const manager = Object.create(PeerManager.prototype) as any
+    const manager = new (PeerManager as any)()
     manager.roomCode = 'room'
     manager.peer = { id: 'host' }
     manager.djMediaCalls = new Map()
@@ -38,7 +38,7 @@ describe('DJ host audio', () => {
   })
 
   it('requests music stereo when the DJ dials a listener', () => {
-    const manager = Object.create(PeerManager.prototype) as any
+    const manager = new (PeerManager as any)()
     const call = { on: vi.fn() }
     manager.djPeer = { call: vi.fn(() => call) }
     manager.djAudioStream = {}
@@ -115,34 +115,86 @@ describe('DJ host audio', () => {
     expect(triedIds[0]).not.toEqual(triedIds[1])
   })
 
-  it('re-dials listener if existing DJ call iceConnectionState becomes disconnected or closed', () => {
-    const manager = Object.create(PeerManager.prototype) as any
-    manager.djPeer = { call: vi.fn(() => ({ on: vi.fn() })) }
+  function prepareListener() {
+    vi.useFakeTimers()
+    const game = useGameStore.getState()
+    const manager = new (PeerManager as any)()
+    const handlers = new Map<string, () => void>()
+    const call = {
+      open: false,
+      close: vi.fn(),
+      on: vi.fn((event: string, callback: () => void) => handlers.set(event, callback)),
+      peerConnection: { iceConnectionState: 'new', connectionState: 'new' },
+    }
+    manager.djPeer = { call: vi.fn().mockReturnValueOnce(call).mockReturnValue({ on: vi.fn() }) }
     manager.djAudioStream = {}
     manager.djBotId = 'dj-room-host-abc'
-    manager.djMediaCalls = new Map()
-    manager.callPeerFromDj = vi.fn()
-
-    const listener = { id: 'listener-1', currentZoneId: 'zone-1' }
     useGameStore.setState({
-      localPlayer: { ...useGameStore.getState().localPlayer, currentZoneId: 'zone-1' },
-      remotePlayers: {
-        'listener-1': listener as any,
-        'dj-room-host-abc': { id: 'dj-room-host-abc', currentZoneId: 'zone-1', isDjBot: true } as any,
-      },
+      localPlayer: { ...game.localPlayer, currentZoneId: 'zone-1' },
+      remotePlayers: { listener: { ...game.localPlayer, id: 'listener', currentZoneId: 'zone-1' } },
     })
+    return { manager, call, handlers, restore: () => useGameStore.setState(game) }
+  }
 
-    const staleCall = {
-      open: true,
-      close: vi.fn(),
-      peerConnection: { iceConnectionState: 'disconnected', connectionState: 'connected' },
+  it('allows an unanswered DJ call to negotiate across periodic checks and redial requests', () => {
+    const { manager, call, restore } = prepareListener()
+    try {
+      manager.recheckDjCalls()
+      vi.advanceTimersByTime(3000)
+      manager.recheckDjCalls()
+      manager.redialDjToPeer('listener')
+      vi.advanceTimersByTime(3000)
+      manager.recheckDjCalls()
+
+      expect(call.close).not.toHaveBeenCalled()
+      expect(manager.djPeer.call).toHaveBeenCalledOnce()
+    } finally {
+      restore()
     }
-    manager.djMediaCalls.set('listener-1', staleCall)
+  })
 
-    manager.recheckDjCalls()
+  it('replaces an unanswered call after the deadline and ignores callbacks from the old call', () => {
+    const { manager, call, handlers, restore } = prepareListener()
+    try {
+      manager.recheckDjCalls()
+      vi.advanceTimersByTime(12000)
+      manager.recheckDjCalls()
+      const replacement = manager.djMediaCalls.get('listener')
+      handlers.get('close')?.()
+      handlers.get('error')?.()
 
-    expect(staleCall.close).toHaveBeenCalled()
-    expect(manager.djMediaCalls.has('listener-1')).toBe(false)
-    expect(manager.callPeerFromDj).toHaveBeenCalledWith('listener-1')
+      expect(call.close).toHaveBeenCalledOnce()
+      expect(manager.djPeer.call).toHaveBeenCalledTimes(2)
+      expect(replacement).toBeDefined()
+      expect(manager.djMediaCalls.get('listener')).toBe(replacement)
+    } finally {
+      restore()
+    }
+  })
+
+  it('lets a transient ICE disconnect recover and replaces a closed call', () => {
+    const { manager, call, restore } = prepareListener()
+    try {
+      manager.recheckDjCalls()
+      call.open = true
+      call.peerConnection.connectionState = 'connected'
+      call.peerConnection.iceConnectionState = 'connected'
+      manager.recheckDjCalls()
+      vi.advanceTimersByTime(15000)
+      call.peerConnection.iceConnectionState = 'disconnected'
+      manager.recheckDjCalls()
+      vi.advanceTimersByTime(3000)
+      manager.recheckDjCalls()
+      call.peerConnection.iceConnectionState = 'connected'
+      manager.recheckDjCalls()
+
+      expect(manager.djPeer.call).toHaveBeenCalledOnce()
+      call.peerConnection.iceConnectionState = 'closed'
+      manager.recheckDjCalls()
+      expect(call.close).toHaveBeenCalledOnce()
+      expect(manager.djPeer.call).toHaveBeenCalledTimes(2)
+    } finally {
+      restore()
+    }
   })
 })
