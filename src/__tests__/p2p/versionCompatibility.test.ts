@@ -193,4 +193,66 @@ describe('Version Compatibility & Outdated Flag', () => {
     expect(msg).toBeDefined()
     expect(msg?.senderId).toBe('system')
   })
+
+  it('as Host, rejects outdated peer on PLAYER_JOIN and disconnects after 500ms', () => {
+    vi.useFakeTimers()
+    try {
+      const broadcast = vi.fn()
+      const removePeer = vi.fn()
+      const checkZoneCall = vi.fn()
+
+      const legacyMsg = {
+        type: 'PLAYER_JOIN' as const,
+        senderId: 'legacy-user',
+        payload: {
+          player: {
+            id: 'legacy-user',
+            name: 'OldUser',
+            appVersion: '1.1.200',
+          },
+        },
+      }
+
+      // isHost = true
+      processNetworkMessage(legacyMsg, 'legacy-user', true, broadcast, removePeer, checkZoneCall, 'host-peer')
+
+      // Should not be added to remotePlayers by Host
+      expect(useGameStore.getState().remotePlayers['legacy-user']).toBeUndefined()
+
+      // Timers advance by 500ms
+      vi.advanceTimersByTime(500)
+      expect(removePeer).toHaveBeenCalledWith('legacy-user')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('rejects incoming call (peer.call) from outdated peer immediately without answering', () => {
+    const mockCall: any = {
+      peer: 'outdated-peer',
+      close: vi.fn(),
+      answer: vi.fn(),
+    }
+    const mediaCalls = new Map<string, any>()
+
+    useGameStore.setState({
+      remotePlayers: {
+        'outdated-peer': {
+          id: 'outdated-peer',
+          name: 'OldUser',
+          isOutdated: true,
+        } as any,
+      },
+    })
+
+    MediaCallHandler.handleIncomingCall({
+      call: mockCall,
+      myId: 'local-peer',
+      mediaCalls,
+      endMediaCallWithPeer: vi.fn(),
+    })
+
+    expect(mockCall.close).toHaveBeenCalled()
+    expect(mockCall.answer).not.toHaveBeenCalled()
+  })
 })

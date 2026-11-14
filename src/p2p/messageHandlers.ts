@@ -10,6 +10,9 @@ import { useMapStore } from '../store/useMapStore'
 import { useChatStore } from '../store/useChatStore'
 import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import { useMediaStore } from '../store/useMediaStore'
+import { useUpdateStore } from '../store/useUpdateStore'
+import { PeerManager } from './PeerManager'
+import { SuperPeerVoiceRelay } from './SuperPeerVoiceRelay'
 import { PublicRoomsService } from '../services/publicRoomsService'
 import { MediaManager } from '../media/MediaManager'
 import { resolveUniquePlayerName } from '../utils/playerName'
@@ -102,6 +105,15 @@ export function processNetworkMessage(
         content: message || `⚠️ Incompatibilidade de versão: este espaço exige o Lira >= v${minVersion || MIN_COMPATIBLE_VERSION} (versão recebida: ${currentVersion || 'desconhecida'}). Por favor, atualize o aplicativo.`,
         timestamp: Date.now(),
       })
+      try {
+        useUpdateStore.getState().setIsUpdateScreenOpen(true)
+        useUpdateStore.getState().checkForUpdatesAndDownload()
+      } catch {}
+      setTimeout(() => {
+        try {
+          PeerManager.getInstance?.()?.disconnect?.()
+        } catch {}
+      }, 1000)
       break
     }
 
@@ -142,6 +154,66 @@ export function processNetworkMessage(
       const incomingVersion: string | undefined = incomingPlayer.appVersion
       const isOutdated = !isDj && (!incomingVersion || isNewerVersion(MIN_COMPATIBLE_VERSION, incomingVersion))
 
+      if (isOutdated) {
+        if (!state.remotePlayers[remotePeerId]?.isOutdated) {
+          useChatStore.getState().addMessage({
+            id: `compat-warn-${remotePeerId}`,
+            senderId: 'system',
+            senderName: 'Sistema',
+            channelId: 'general',
+            content: isPeerHost
+              ? `⚠️ O Host está em uma versão desatualizada do Lira (${incomingVersion || '< 1.1.210'}). Chamadas de voz e recursos de rede não funcionarão corretamente até que o Host atualize para >= v${MIN_COMPATIBLE_VERSION}.`
+              : `⚠️ O participante "${resolvedName}" está em uma versão antiga do Lira (${incomingVersion || '< 1.1.210'}) e não suporta o protocolo de áudio atual. Requer atualização para >= v${MIN_COMPATIBLE_VERSION}.`,
+            timestamp: Date.now(),
+          })
+        }
+
+        // Envia de volta para esse remotePeerId a mensagem VERSION_INCOMPATIBLE
+        try {
+          PeerManager.getInstance?.()?.sendVersionIncompatible?.(
+            remotePeerId,
+            MIN_COMPATIBLE_VERSION,
+            incomingVersion || '< 1.1.210',
+            `⚠️ Incompatibilidade de versão: este espaço exige o Lira >= v${MIN_COMPATIBLE_VERSION}. Sua versão: ${incomingVersion || '< 1.1.210'}. Por favor, atualize o aplicativo.`
+          )
+        } catch {}
+
+        // Se o nó local for o Host, fecha a conexão e remove o par desatualizado após 500ms
+        if (isHost) {
+          console.warn(`[P2P] Host rejeitando participante desatualizado: ${remotePeerId} (${incomingVersion || '< 1.1.210'})`)
+          setTimeout(() => {
+            try {
+              removePeer(remotePeerId)
+            } catch {}
+          }, 500)
+          return
+        }
+      }
+
+      if (incomingPlayer.minCompatibleVersion) {
+        const localVer = state.localPlayer.appVersion || '1.0.0'
+        if (isNewerVersion(incomingPlayer.minCompatibleVersion, localVer)) {
+          useChatStore.getState().addMessage({
+            id: `compat-local-warn-${remotePeerId}`,
+            senderId: 'system',
+            senderName: 'Sistema',
+            channelId: 'general',
+            content: `⚠️ Sua versão do Lira (v${localVer}) é anterior à versão mínima exigida pelo espaço (v${incomingPlayer.minCompatibleVersion}). Atualize seu aplicativo para conectar sem problemas.`,
+            timestamp: Date.now(),
+          })
+          try {
+            useUpdateStore.getState().setIsUpdateScreenOpen(true)
+            useUpdateStore.getState().checkForUpdatesAndDownload()
+          } catch {}
+          setTimeout(() => {
+            try {
+              PeerManager.getInstance?.()?.disconnect?.()
+            } catch {}
+          }, 1000)
+          return
+        }
+      }
+
       const player: Player = {
         ...incomingPlayer,
         isCameraOff: incomingPlayer.isCameraOff !== undefined ? incomingPlayer.isCameraOff : true,
@@ -159,31 +231,10 @@ export function processNetworkMessage(
         useGameStore.getState().setCallState(remotePeerId, 'idle')
       }
 
-      if (isOutdated && !state.remotePlayers[remotePeerId]?.isOutdated) {
-        useChatStore.getState().addMessage({
-          id: `compat-warn-${remotePeerId}`,
-          senderId: 'system',
-          senderName: 'Sistema',
-          channelId: 'general',
-          content: isPeerHost
-            ? `⚠️ O Host está em uma versão desatualizada do Lira (${incomingVersion || '< 1.1.210'}). Chamadas de voz e recursos de rede não funcionarão corretamente até que o Host atualize para >= v${MIN_COMPATIBLE_VERSION}.`
-            : `⚠️ O participante "${resolvedName}" está em uma versão antiga do Lira (${incomingVersion || '< 1.1.210'}) e não suporta o protocolo de áudio atual. Requer atualização para >= v${MIN_COMPATIBLE_VERSION}.`,
-          timestamp: Date.now(),
-        })
-      }
-
-      if (incomingPlayer.minCompatibleVersion) {
-        const localVer = state.localPlayer.appVersion || '1.0.0'
-        if (isNewerVersion(incomingPlayer.minCompatibleVersion, localVer)) {
-          useChatStore.getState().addMessage({
-            id: `compat-local-warn-${remotePeerId}`,
-            senderId: 'system',
-            senderName: 'Sistema',
-            channelId: 'general',
-            content: `⚠️ Sua versão do Lira (v${localVer}) é anterior à versão mínima exigida pelo espaço (v${incomingPlayer.minCompatibleVersion}). Atualize seu aplicativo para conectar sem problemas.`,
-            timestamp: Date.now(),
-          })
-        }
+      if (!isOutdated && !isHost) {
+        try {
+          SuperPeerVoiceRelay.getInstance().ensureVoiceRelayChannel(remotePeerId)
+        } catch {}
       }
 
       if (isHost && resolvedName !== incomingName) {

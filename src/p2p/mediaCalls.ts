@@ -880,7 +880,16 @@ export class MediaCallHandler {
     attemptRedialIfEligible?: () => void
   }) {
     console.log('[P2P Media] Incoming call from:', call.peer)
-    const isDjBot = call.peer.startsWith('dj-') || !!useGameStore.getState().remotePlayers[call.peer]?.isDjBot
+    const remotePlayer = useGameStore.getState().remotePlayers[call.peer]
+    if (remotePlayer?.isOutdated) {
+      console.warn(`[P2P Media] Recusando chamada recebida de par desatualizado: ${call.peer}`)
+      diagLog('p2p', 'call.incoming-rejected-outdated', { fromPeer: call.peer })
+      try {
+        call.close()
+      } catch {}
+      return
+    }
+    const isDjBot = call.peer.startsWith('dj-') || !!remotePlayer?.isDjBot
     const existing = mediaCalls.get(call.peer)
     if (existing && existing !== call) {
       const previousDirection = (existing as unknown as { __dir?: CallDirection }).__dir
@@ -979,8 +988,6 @@ export class MediaCallHandler {
       const answeredPc = (call as any).peerConnection as RTCPeerConnection | undefined
       if (answeredPc) prioritizeH264HardwareCodec(answeredPc)
     } catch {}
-
-    const remotePlayer = useGameStore.getState().remotePlayers[call.peer]
 
     MediaCallHandler.setupCallLifecycle({
       call,

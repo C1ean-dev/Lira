@@ -371,6 +371,48 @@ describe('SuperPeerVoiceRelay - Regras 1, 2 e 3 (UDP Sem Head-of-Line, CoordenaÃ
     expect(mockCall.close).toHaveBeenCalled()
   })
 
+  it('does NOT create dataChannel for peers marked as isOutdated', () => {
+    useGameStore.setState({
+      remotePlayers: {
+        'peer-outdated': {
+          id: 'peer-outdated',
+          name: 'OldHost',
+          isOutdated: true,
+        } as any,
+      },
+    })
+
+    const mockPc: any = {
+      signalingState: 'stable',
+      createDataChannel: vi.fn(),
+      ondatachannel: null,
+    }
+
+    relay.attachPeerConnection('peer-outdated', mockPc, false)
+    expect(mockPc.createDataChannel).not.toHaveBeenCalled()
+  })
+
+  it('handleChannel is idempotent when called repeatedly with same channel', () => {
+    const mockChannel: any = {
+      label: VOICE_RELAY_CHANNEL_LABEL,
+      binaryType: 'blob',
+    }
+    const hostPc: any = {
+      signalingState: 'stable',
+      createDataChannel: vi.fn(),
+      ondatachannel: vi.fn(),
+    }
+
+    relay.attachPeerConnection('peer-idem', hostPc, true)
+    hostPc.ondatachannel({ channel: mockChannel })
+    expect(mockChannel.binaryType).toBe('arraybuffer')
+
+    // Change binaryType to check if second dispatch ignores already registered channel
+    mockChannel.binaryType = 'modified'
+    hostPc.ondatachannel({ channel: mockChannel })
+    expect(mockChannel.binaryType).toBe('modified')
+  })
+
   function peerMgrNotHost() {
     const peerMgr = PeerManager.getInstance()
     peerMgr.isHost = false
