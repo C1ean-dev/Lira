@@ -217,6 +217,8 @@ export class PeerManager {
   private djAudioStream: MediaStream | null = null
   private djBotId: string | null = null
   private djHealthCheckTimer: any = null
+  private djSignalingReconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private djSignalingReconnectAttempts = 0
   private almSession?: AlmLive
   private get alm(): AlmLive { return this.almSession ??= new AlmLive({
     id: () => this.peer?.id ?? null,
@@ -2635,7 +2637,28 @@ export class PeerManager {
       if (!newDjPeer) {
         throw new Error('Falha ao inicializar bot DJ.')
       }
-      newDjPeer.on('error', (err) => console.warn('[PeerManager DJ Bot Peer Error]:', err))
+      newDjPeer.on('error', (err) => {
+        console.warn('[PeerManager DJ Bot Peer Error]:', err)
+        const msg = String(err?.message || err)
+        if (msg.includes('Lost connection to server') || msg.includes('lost-connection')) {
+          this.scheduleDjSignalingReconnect()
+        }
+      })
+      newDjPeer.on('disconnected', () => {
+        console.log('[PeerManager DJ] Disconnected from signaling server')
+        this.scheduleDjSignalingReconnect()
+      })
+      newDjPeer.on('open', () => {
+        console.log('[PeerManager DJ] Signaling connection opened')
+        this.djSignalingReconnectAttempts = 0
+        if (this.djSignalingReconnectTimer) {
+          clearTimeout(this.djSignalingReconnectTimer)
+          this.djSignalingReconnectTimer = null
+        }
+        if (this.isDjBotRunning()) {
+          this.recheckDjCalls()
+        }
+      })
 
       const djPlayer: Player = {
         id: djBotId,
@@ -2723,9 +2746,39 @@ export class PeerManager {
     }
   }
 
+  public scheduleDjSignalingReconnect(immediate = false) {
+    if (this.djSignalingReconnectTimer || !this.djPeer || this.djPeer.destroyed || !this.djBotId) return
+    const owner = this.djPeer
+    this.djSignalingReconnectAttempts++
+    const delay = immediate ? 0 : Math.min(8000, 1000 * Math.pow(1.5, Math.min(6, this.djSignalingReconnectAttempts - 1)))
+    console.log(`[PeerManager DJ] Scheduling signaling reconnect attempt #${this.djSignalingReconnectAttempts} in ${delay}ms...`)
+
+    this.djSignalingReconnectTimer = setTimeout(() => {
+      this.djSignalingReconnectTimer = null
+      if (this.djPeer !== owner || owner.destroyed || !this.djBotId) return
+      if (!owner.disconnected) {
+        this.djSignalingReconnectAttempts = 0
+        return
+      }
+
+      console.log('[PeerManager DJ] Calling this.djPeer.reconnect()...')
+      try {
+        owner.reconnect()
+      } catch (err) {
+        console.warn('[PeerManager DJ] djPeer.reconnect() error:', err)
+        this.scheduleDjSignalingReconnect()
+      }
+    }, delay)
+  }
+
   public callPeerFromDj(remotePeerId: string) {
     if (!this.djPeer || !this.djAudioStream || !this.djBotId) return
     if (this.djMediaCalls.has(remotePeerId)) return
+
+    if (this.djPeer.disconnected) {
+      this.scheduleDjSignalingReconnect(true)
+      return
+    }
 
     try {
       console.log('[PeerManager DJ] Calling peer:', remotePeerId)
@@ -2830,6 +2883,11 @@ export class PeerManager {
       clearInterval(this.djHealthCheckTimer)
       this.djHealthCheckTimer = null
     }
+    if (this.djSignalingReconnectTimer) {
+      clearTimeout(this.djSignalingReconnectTimer)
+      this.djSignalingReconnectTimer = null
+    }
+    this.djSignalingReconnectAttempts = 0
 
     if (this.djBotId) {
       this.broadcast({

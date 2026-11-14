@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { startSpotifyTabAudio, SpotifyTabAudioController } from '../../../electron/spotifyTabAudio'
 import { spotifyCaptureWorkletSource } from '../../../electron/spotifyCaptureWorklet'
-import { SpotifyPlaybackDisconnectedError } from '../../../electron/spotifyPlaybackTransport'
+import { SpotifyPlaybackDisconnectedError, SpotifyPlaybackTimeoutError } from '../../../electron/spotifyPlaybackTransport'
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers() })
 
@@ -306,6 +306,35 @@ describe('silent Spotify tab capture', () => {
       expect(data).not.toHaveBeenCalled()
       expect(ended).toHaveBeenCalledOnce()
     }
+    expect(replacement.close).toHaveBeenCalledOnce()
+  })
+
+  it('recovers from transient Spotify response timeout without stopping the capture', async () => {
+    vi.useFakeTimers()
+    const request = vi.fn(async (_method: string, params: { expression: string; awaitPromise?: boolean }) => {
+      if (params.awaitPromise) return { result: { value: { ok: true } } }
+      if (params.expression.includes('?.stop()')) return {}
+      throw new SpotifyPlaybackTimeoutError('O Spotify demorou para responder.')
+    })
+    const replacement = {
+      close: vi.fn(),
+      request: vi.fn(async () => ({ result: { value: { active: true, chunks: ['AAECAw=='] } } })),
+    }
+    const original = { request, close: vi.fn() }
+    const connect = vi.fn().mockResolvedValueOnce(original).mockResolvedValueOnce(replacement)
+    const data = vi.fn()
+    const ended = vi.fn()
+    const controller = new SpotifyTabAudioController({ connect, data, ended })
+
+    await controller.start()
+    await vi.advanceTimersByTimeAsync(20)
+
+    expect(connect).toHaveBeenCalledTimes(2)
+    expect(original.close).toHaveBeenCalledOnce()
+    expect(controller.isActive).toBe(true)
+    expect(data).toHaveBeenCalledWith(Buffer.from([0, 1, 2, 3]))
+    expect(ended).not.toHaveBeenCalled()
+    await controller.stop()
     expect(replacement.close).toHaveBeenCalledOnce()
   })
 })
