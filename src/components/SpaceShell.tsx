@@ -1,4 +1,9 @@
-import React from 'react'
+import React, { useEffect } from 'react'
+import { MeetingSummaryPanel } from './collaboration/MeetingSummaryPanel'
+import { WhiteboardPanel } from './collaboration/WhiteboardPanel'
+import { useGameStore } from '../store/useGameStore'
+import { useWhiteboardStore } from '../store/useWhiteboardStore'
+import { useMapStore } from '../store/useMapStore'
 import { TopNavBar } from './TopNavBar'
 import { MapViewport } from './MapViewport'
 import { AssetPalette } from '../editor/AssetPalette'
@@ -37,6 +42,12 @@ export const SpaceShell: React.FC<Props> = ({
   useSpotifyPresence()
   useSpotifyDjPlaybackSync()
   useAvatarInactivity()
+  const roomId = useGameStore(s => s.roomId)
+  useEffect(() => {
+    useWhiteboardStore.getState().selectRoom(roomId)
+    useMapStore.getState().clearHistory()
+    return () => useWhiteboardStore.getState().reset()
+  }, [roomId])
 
   return (
   <>
@@ -57,6 +68,8 @@ export const SpaceShell: React.FC<Props> = ({
     </main>
 
     <FullScreenGrid />
+    <MeetingSummaryPanel />
+    <WhiteboardPanel />
 
     <DoorKnockNotification />
     <DoorKnockPrompt />

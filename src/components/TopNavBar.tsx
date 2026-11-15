@@ -1,3 +1,4 @@
+import { CollaborationButtons } from './collaboration/CollaborationButtons'
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import {
   Copy,
@@ -198,6 +199,7 @@ export const TopNavBar: React.FC<Props> = ({
 
   return (
     <header className={`h-14 shrink-0 bg-[#12151d]/90 backdrop-blur-md border-b border-[#2a3142] px-3 sm:px-4 flex items-center justify-between gap-2 select-none relative ${isMobileMenuOpen ? 'z-[80]' : 'z-30'}`}>
+      <div className="hidden 2xl:block shrink-0"><CollaborationButtons /></div>
       <div ref={publicationFit.containerRef} className="flex flex-1 min-w-0 items-center gap-1.5 sm:gap-3">
         <div className="flex shrink-0 items-center">
           <LiraLogo size={32} showText={true} className="hidden sm:inline-flex" />
@@ -554,6 +556,7 @@ onClick={() => PeerManager.getInstance().reconnect()}
         <>
         <div className="absolute inset-x-0 top-14 h-[calc(100dvh-3.5rem)] bg-black/50 z-40 2xl:hidden" aria-hidden="true" onClick={() => setIsMobileMenuOpen(false)} />
         <div id="space-navigation-menu" role="region" aria-label="Menu do espaço" className="absolute inset-x-0 top-14 bg-[#12151d] border-b border-[#394359] p-3 sm:p-4 z-50 shadow-2xl flex flex-col gap-3 max-h-[calc(100dvh-3.5rem)] overflow-y-auto overscroll-contain select-none 2xl:hidden">
+          <CollaborationButtons showLabels onAction={() => setIsMobileMenuOpen(false)} />
           <button type="button"
             onClick={() => {
               setIsMobileMenuOpen(false)

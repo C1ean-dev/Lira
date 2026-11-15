@@ -1,3 +1,4 @@
+import { EditorHistoryControls } from './EditorHistoryControls'
 import React, { useState, useMemo, useRef } from 'react'
 import {
   Layers,
@@ -24,11 +25,9 @@ import { FloorsTab } from './palette/tabs/FloorsTab'
 import { ZonesTab } from './palette/tabs/ZonesTab'
 import { PaletteFooterActions } from './palette/PaletteFooterActions'
 import { ConfirmModal } from '../components/ConfirmModal'
-import { AvatarPixelArtModal } from './avatar/AvatarPixelArtModal'
 import { AvatarSpritesheetSlicerModal } from '../components/avatar-customizer/AvatarSpritesheetSlicerModal'
 import { AtlasImportModal } from '../components/avatar-customizer/AtlasImportModal'
 import { exportCategoryAtlas } from '../engine/avatar/avatarAtlasExporter'
-import { resolveStudioHitbox, type SpriteCollision } from '../utils/spriteHitbox'
 
 export const AssetPalette: React.FC = () => {
   const {
@@ -70,25 +69,6 @@ export const AssetPalette: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'furniture' | 'floors' | 'zones'>('furniture')
   const [furnitureCategory, setFurnitureCategory] = useState<string>(() => categories[0] || 'Geral')
   const [isCollapsed, setIsCollapsed] = useState(false)
-
-  const [pixelArtModal, setPixelArtModal] = useState<{
-    isOpen: boolean
-    category: 'furniture' | 'floor' | 'wall'
-    name: string
-    initialDataUrl?: string
-    initialDirectionalFrames?: Partial<Record<Direction, string | string[]>>
-    initialWidth?: number
-    initialHeight?: number
-    initialPixelWidth?: number
-    initialPixelHeight?: number
-    initialIsObstacle?: boolean
-    initialSubCategory?: string
-    editingId?: string
-  }>({
-    isOpen: false,
-    category: 'furniture',
-    name: '',
-  })
 
   const directSlicerInputRef = useRef<HTMLInputElement | null>(null)
   const [slicerCategory, setSlicerCategory] = useState<'furniture' | 'floor' | 'wall'>('furniture')
@@ -169,7 +149,7 @@ export const AssetPalette: React.FC = () => {
   const handleConfirmReset = () => {
     setIsResetConfirmOpen(false)
     const emptyMap = createEmptyWorkspace()
-    useMapStore.getState().setMapData(emptyMap)
+    useMapStore.getState().setMapData(emptyMap, true)
     PeerManager.getInstance().broadcast({
       type: 'MAP_SYNC',
       senderId: 'host',
@@ -182,47 +162,13 @@ export const AssetPalette: React.FC = () => {
     setIsResetConfirmOpen(true)
   }
 
-  const openStudioForCreate = (cat: 'furniture' | 'floor' | 'wall') => {
-    setPixelArtModal({
-      isOpen: true,
-      category: cat,
-      name: cat === 'furniture' ? 'Nova Mobília' : cat === 'floor' ? 'Novo Piso' : 'Nova Parede',
-      initialWidth: 1,
-      initialHeight: 1,
-      initialPixelWidth: 32,
-      initialPixelHeight: 32,
-      initialIsObstacle: cat === 'furniture' || cat === 'wall',
-      initialSubCategory:
-        cat === 'furniture' && effectiveCategory !== 'Todos' && effectiveCategory !== 'Customizados'
-          ? effectiveCategory
-          : 'Geral',
-    })
+  const openStudioForCreate = (type: 'furniture' | 'floor' | 'wall') => {
+    const category = effectiveCategory !== 'Todos' && effectiveCategory !== 'Customizados' ? effectiveCategory : 'Geral'
+    openCreateModal('draw', category, type)
   }
 
-  const openStudioForEdit = (id: string, cat: 'furniture' | 'floor' | 'wall') => {
-    const asset = customAssets.find((a) => a.id === id)
-    if (!asset) return
-    const masterFrame =
-      (typeof asset.directionalFrames?.down === 'string'
-        ? asset.directionalFrames.down
-        : asset.directionalFrames?.down?.[0]) ||
-      asset.frames?.[0] ||
-      asset.thumbnail ||
-      ''
-    setPixelArtModal({
-      isOpen: true,
-      category: cat,
-      name: asset.name,
-      initialDataUrl: masterFrame,
-      initialDirectionalFrames: asset.directionalFrames,
-      initialWidth: asset.width || 1,
-      initialHeight: asset.height || 1,
-      initialPixelWidth: asset.pixelWidth || (asset.width ? asset.width * 32 : undefined),
-      initialPixelHeight: asset.pixelHeight || (asset.height ? asset.height * 32 : undefined),
-      initialIsObstacle: asset.isObstacle !== undefined ? asset.isObstacle : true,
-      initialSubCategory: asset.category || 'Geral',
-      editingId: asset.id,
-    })
+  const openStudioForEdit = (id: string, _type: 'furniture' | 'floor' | 'wall') => {
+    openEditModal(id, 'draw')
   }
 
   const handleOpenSlicer = (cat: 'furniture' | 'floor' | 'wall', assetId?: string) => {
@@ -275,80 +221,6 @@ export const AssetPalette: React.FC = () => {
     await exportCategoryAtlas(cat, customAssets)
   }
 
-  const handleSaveFromStudio = async (
-    directionalFrames: Record<Direction, string | string[]>,
-    name: string,
-    options?: {
-      width?: number
-      height?: number
-      pixelWidth?: number
-      pixelHeight?: number
-      isObstacle?: boolean
-      category?: string
-      spriteCollision?: SpriteCollision | null
-    }
-  ) => {
-    const editingId = pixelArtModal.editingId
-    const cat = pixelArtModal.category
-    const id = editingId || `custom_${cat}_${Date.now()}`
-
-    const rawDown = directionalFrames.down
-    const previewUrl = Array.isArray(rawDown) ? rawDown[0] : (rawDown || '')
-    const frames = Array.isArray(rawDown)
-      ? rawDown.filter(Boolean)
-      : (rawDown ? [rawDown] : [])
-
-    const width = options?.width || 1
-    const height = options?.height || 1
-    const pixelWidth = options?.pixelWidth
-    const pixelHeight = options?.pixelHeight
-    const isObstacle =
-      options?.isObstacle !== undefined
-        ? options.isObstacle
-        : (cat === 'furniture' || cat === 'wall')
-    const subCategory = options?.category || (cat === 'furniture' ? effectiveCategory : cat)
-
-    const existing = editingId ? customAssets.find((a) => a.id === editingId) : null
-    const asset: CustomAsset = {
-      ...(existing || {}),
-      id,
-      name,
-      type: cat,
-      category: subCategory,
-      width,
-      height,
-      pixelWidth,
-      pixelHeight,
-      isObstacle,
-      ...(cat === 'furniture' ? resolveStudioHitbox(existing, isObstacle, options?.spriteCollision) : {}),
-      directionalFrames,
-      thumbnail: previewUrl || undefined,
-      frames: frames.length > 0 ? frames : (previewUrl ? [previewUrl] : []),
-      frameRateMs: 160,
-      createdAt: existing?.createdAt || Date.now(),
-      updatedAt: Date.now(),
-      frameLayers: undefined,
-      directionalFrameLayers: undefined,
-    }
-
-    if (editingId) {
-      await updateCustomAsset(editingId, asset)
-    } else {
-      await addCustomAsset(asset)
-    }
-    syncAllAssetsToDisk()
-
-    if (cat === 'furniture') {
-      setSelectedFurnitureDefId(id)
-      setActiveTool('place_furniture')
-    } else if (cat === 'floor') {
-      setSelectedFloor(id as any)
-      setActiveTool('paint_floor')
-    } else if (cat === 'wall') {
-      setZoneDraft({ ...zoneDraft, wallType: id, hasWalls: true })
-    }
-  }
-
   const handleSlicerSaveComplete = (createdAssets: CustomAsset[]) => {
     syncAllAssetsToDisk()
     if (createdAssets && createdAssets.length > 0) {
@@ -390,6 +262,7 @@ export const AssetPalette: React.FC = () => {
             <span className="font-bold text-xs sm:text-sm text-slate-100">Editor de Espaço</span>
           </div>
           <div className="flex items-center gap-1 sm:gap-1.5">
+            <EditorHistoryControls />
             <button
               onClick={() =>
                 openStudioForCreate(
@@ -575,24 +448,6 @@ export const AssetPalette: React.FC = () => {
         onConfirm={handleConfirmReset}
         onCancel={() => setIsResetConfirmOpen(false)}
       />
-
-      {pixelArtModal.isOpen && (
-        <AvatarPixelArtModal
-          isOpen={pixelArtModal.isOpen}
-          onClose={() => setPixelArtModal((prev) => ({ ...prev, isOpen: false }))}
-          category={pixelArtModal.category}
-          presetName={pixelArtModal.name}
-          initialDataUrl={pixelArtModal.initialDataUrl}
-          initialDirectionalFrames={pixelArtModal.initialDirectionalFrames}
-          initialWidth={pixelArtModal.initialWidth}
-          initialHeight={pixelArtModal.initialHeight}
-          initialPixelWidth={pixelArtModal.initialPixelWidth}
-          initialPixelHeight={pixelArtModal.initialPixelHeight}
-          initialIsObstacle={pixelArtModal.initialIsObstacle}
-          initialSubCategory={pixelArtModal.initialSubCategory}
-          onSave={handleSaveFromStudio}
-        />
-      )}
 
       {isDirectSlicerOpen && slicerImageSrc && (
         <AvatarSpritesheetSlicerModal

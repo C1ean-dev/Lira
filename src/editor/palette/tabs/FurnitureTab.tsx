@@ -76,10 +76,10 @@ export const FurnitureTab: React.FC<Props> = ({
           type="button"
           onClick={onOpenStudioCreate}
           className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 hover:text-white text-[10px] font-bold border border-indigo-500/30 transition-all shadow-xs"
-          title="Desenhar mobília no Estúdio Pixel Art"
+          title="Desenhar mobília no estúdio de elementos"
         >
           <Pencil className="w-3 h-3 text-indigo-400" />
-          <span>Estúdio</span>
+          <span>Criar elemento</span>
         </button>
         <button
           type="button"
@@ -206,7 +206,7 @@ export const FurnitureTab: React.FC<Props> = ({
                           onOpenStudioEdit(item.id)
                         }}
                         className="p-1 rounded-md bg-indigo-500/30 hover:bg-indigo-500/60 text-indigo-300 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                        title={`Editar pixels no Estúdio: "${item.name}"`}
+                        title={`Editar no estúdio: "${item.name}"`}
                       >
                         <Pencil className="w-2.5 h-2.5" />
                       </button>

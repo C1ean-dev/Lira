@@ -1,5 +1,5 @@
 export type Direction = 'up' | 'down' | 'left' | 'right'
-export type AvatarActivityAnimation = 'yawn' | 'sleep'
+export type AvatarActivityAnimation = 'yawn' | 'sleep' | (string & {})
 
 export type PresenceStatus = 'available' | 'busy' | 'focusing' | 'away'
 
@@ -203,6 +203,8 @@ export interface Player {
   seatedOn?: string | null
   activityAnimation?: AvatarActivityAnimation | 'none'
   activityAnimationStartedAt?: number
+  /** Local choice takes priority over inactivity until stopped or walking. */
+  activityAnimationManual?: boolean
   avatar: AvatarConfig
   status: PresenceStatus
   statusText?: string

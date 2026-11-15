@@ -2,6 +2,11 @@ import React from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CustomElementModal } from '../../editor/CustomElementModal'
 import { CompositionStudio } from '../../editor/custom-element/CompositionStudio'
+import { AssetDrawingStudio } from '../../editor/custom-element/AssetDrawingStudio'
+import { AnimationTimeline } from '../../editor/custom-element/AnimationTimeline'
+import { AssetPropertiesForm } from '../../editor/custom-element/AssetPropertiesForm'
+import { bakeLayersToDataUrl } from '../../utils/imageResize'
+import { resizeDrawingLayer } from '../../editor/custom-element/resizeDrawingLayer'
 import type { CustomAsset } from '../../types/customAsset'
 
 const mocks = vi.hoisted(() => ({
@@ -18,6 +23,7 @@ vi.mock('../../utils/imageResize', async importOriginal => ({
   ...await importOriginal<typeof import('../../utils/imageResize')>(),
   bakeLayersToDataUrl: vi.fn(async () => 'frame'), bakeLayersToDataUrlSync: vi.fn(() => 'frame'),
 }))
+vi.mock('../../editor/custom-element/resizeDrawingLayer', () => ({ resizeDrawingLayer: vi.fn(async (_source, width, height) => ({ dataUrl: 'resized-raster', width, height })) }))
 
 let slots: any[]
 let cursor: number
@@ -83,9 +89,145 @@ beforeEach(() => {
   studio().composeCanvasRef.current = { getBoundingClientRect: () => ({ left: 0, top: 0 }), getContext: () => null } as unknown as HTMLCanvasElement
 })
 
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers() })
+afterEach(() => { vi.mocked(bakeLayersToDataUrl).mockImplementation(async () => 'frame'); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('furniture seat authoring', () => {
+  it('changes the final map size without changing the drawing resolution or source pixels', async () => {
+    const properties = () => elements(tree).find(element => element.type === AssetPropertiesForm)!.props as React.ComponentProps<typeof AssetPropertiesForm>
+    expect(properties().canvasWidth).toBe(64)
+    properties().onSetPixelSize(128, 192); render()
+    expect(properties().canvasWidth).toBe(64)
+    expect(properties().canvasHeight).toBe(64)
+    elements(tree).find(element => element.props.role === 'tab' && (element.props.children as any[]).includes('Desenhar'))!.props.onClick(); render()
+    const drawing = elements(tree).find(element => element.type === AssetDrawingStudio)!.props
+    expect(drawing.width).toBe(64)
+    expect(drawing.source).toBe('frame')
+    const saved = await save()
+    expect(saved.pixelWidth).toBe(128)
+    expect(saved.pixelHeight).toBe(192)
+    expect((saved.frameLayers?.[0][0] as any).origWidth).toBe(64)
+  })
+  it('changes the drawing canvas independently and preserves its size when reopened', async () => {
+    const properties = () => elements(tree).find(element => element.type === AssetPropertiesForm)!.props as React.ComponentProps<typeof AssetPropertiesForm>
+    await properties().onSetCanvasSize(96, 128); render()
+    expect(properties().canvasWidth).toBe(96)
+    expect(properties().canvasHeight).toBe(128)
+    expect(properties().pixelWidth).toBe(64)
+    expect(properties().pixelHeight).toBe(64)
+    expect(resizeDrawingLayer).toHaveBeenCalledWith('frame', 96, 128, undefined)
+    const saved = await save()
+    expect(saved.frameLayers?.[0][0]).toMatchObject({ dataUrl: 'resized-raster', origWidth: 96, origHeight: 128 })
+    expect(saved.frameLayers?.[0][0]).toMatchObject({ width: 48, height: 64 })
+    mocks.store.editingAssetId = 'reopened'
+    mocks.store.getAssetById = () => ({ ...saved, id: 'reopened' })
+    render()
+    expect(properties().canvasWidth).toBe(96)
+    expect(properties().pixelWidth).toBe(64)
+  })
+  it('saves the full raster per layer and restores it when resizing a reopened drawing', async () => {
+    const properties = () => elements(tree).find(element => element.type === AssetPropertiesForm)!.props as React.ComponentProps<typeof AssetPropertiesForm>
+    const preservedRaster = { dataUrl: 'full-original', width: 64, height: 64, x: 0, y: 0 }
+    vi.mocked(resizeDrawingLayer).mockResolvedValueOnce({ dataUrl: 'cropped', width: 16, height: 24, preservedRaster })
+    await properties().onSetCanvasSize(16, 24); render()
+    const saved = await save()
+    expect(saved.frameLayers?.[0][0]).toMatchObject({ dataUrl: 'cropped', preservedRaster })
+    mocks.store.editingAssetId = 'reopened'
+    mocks.store.getAssetById = () => ({ ...JSON.parse(JSON.stringify(saved)), id: 'reopened' })
+    render()
+    elements(tree).find(element => element.props.role === 'tab' && (element.props.children as any[]).includes('Desenhar'))!.props.onClick(); render()
+    expect(elements(tree).find(element => element.type === AssetDrawingStudio)!.props.preservedRaster).toEqual(preservedRaster)
+    await properties().onSetCanvasSize(64, 64); render()
+    expect(resizeDrawingLayer).toHaveBeenLastCalledWith('cropped', 64, 64, preservedRaster)
+  })
+  it('keeps the existing image and both sizes when resizing the canvas fails', async () => {
+    vi.mocked(resizeDrawingLayer).mockRejectedValueOnce(new Error('Sem memória para redimensionar a tela.'))
+    const properties = () => elements(tree).find(element => element.type === AssetPropertiesForm)!.props as React.ComponentProps<typeof AssetPropertiesForm>
+    await properties().onSetCanvasSize(128, 128); render()
+    expect(properties().canvasWidth).toBe(64)
+    expect(properties().pixelWidth).toBe(64)
+    expect(elements(tree).find(element => element.props.role === 'alert')?.props.children).toContain('Sem memória')
+    expect((await save()).frameLayers?.[0][0].dataUrl).toBe('frame')
+  })
+  it('keeps pixel edits in the selected animation frame while preserving layers and directional seat/collision metadata', async () => {
+    const base = (id: string, dataUrl: string) => ({ id, clipId: id, name: id, dataUrl, x: 0, y: 0, width: 29, height: 27, flipH: false, opacity: 1 })
+    mocks.store.editingAssetId = 'layered'
+    mocks.store.getAssetById = () => ({ id: 'layered', name: 'Pedra', type: 'furniture', category: 'Geral', width: 29 / 32, height: 27 / 32,
+      pixelWidth: 29, pixelHeight: 27, frames: ['first', 'second'], frameLayers: [[base('base1', 'first')], [base('base2', 'second')]],
+      directionalFrames: { down: ['first', 'second'], left: ['left'] },
+      collisionGrid: [[true]], directionalCollisionGrids: { down: [[true]], left: [[true]] }, seatGrid: [[true]], directionalSeatGrids: { down: [[true]], left: [[true]] }, frameRateMs: 320,
+    })
+    render()
+    const timeline = () => elements(tree).find(element => element.type === AnimationTimeline)!.props as React.ComponentProps<typeof AnimationTimeline>
+    timeline().setSelectedFrameIdx(1); render()
+    const drawTab = elements(tree).find(element => element.props.role === 'tab' && elements(element.props.children).some(child => child.type === 'svg') === false && (element.props.children as any[]).includes('Desenhar'))!
+    drawTab.props.onClick(); render()
+    const drawing = () => elements(tree).find(element => element.type === AssetDrawingStudio)!.props as React.ComponentProps<typeof AssetDrawingStudio>
+    expect(drawing().source).toBe('second')
+    drawing().onChange({ dataUrl: 'painted-second', width: 29, height: 27 }); render()
+    timeline().setSelectedFrameIdx(0); render()
+    expect(drawing().source).toBe('first')
+    const saved = await save()
+    expect(saved.frameLayers?.[0][0].dataUrl).toBe('first')
+    expect(saved.frameLayers?.[1][0].dataUrl).toBe('painted-second')
+    expect(saved.directionalFrameLayers?.left?.[0][0].dataUrl).toBe('left')
+    expect(saved.seatGrid).toEqual([[true]])
+    expect(saved.collisionGrid).toEqual([[true]])
+    expect(saved.frameRateMs).toBe(320)
+    expect(saved.pixelWidth).toBe(29)
+  })
+  it('preserves the obstacle behavior of older assets without explicit collision grids', async () => {
+    mocks.store.editingAssetId = 'old-obstacle'
+    mocks.store.getAssetById = () => ({ id: 'old-obstacle', name: 'Parede de pedra', type: 'furniture', category: 'Geral', width: 1, height: 1, pixelWidth: 29, pixelHeight: 27, isObstacle: true, frames: ['stone'] })
+    render()
+    expect((await save()).isObstacle).toBe(true)
+  })
+  it('uses the first drawn direction as the base size when no front frame exists', async () => {
+    mocks.store.editingAssetId = 'left-only'
+    mocks.store.getAssetById = () => ({ id: 'left-only', name: 'Planta', type: 'furniture', category: 'Geral', width: 2, height: 2, frames: [] })
+    render()
+    studio().onSelectDirection!('left'); render()
+    elements(tree).find(element => element.type === AssetPropertiesForm)!.props.onSetPixelSize(23, 27); render()
+    elements(tree).find(element => element.props.role === 'tab' && (element.props.children as any[]).includes('Desenhar'))!.props.onClick(); render()
+    elements(tree).find(element => element.type === AssetDrawingStudio)!.props.onChange({ dataUrl: 'left-drawing', width: 23, height: 27 }); render()
+    const saved = await save()
+    expect(saved.pixelWidth).toBe(23)
+    expect(saved.pixelHeight).toBe(27)
+  })
+  it('keeps front collision active when saving from a different direction with no blocked tiles', async () => {
+    mocks.store.editingAssetId = 'direction-collision'
+    mocks.store.getAssetById = () => ({ id: 'direction-collision', name: 'Cadeira', type: 'furniture', category: 'Geral', width: 1, height: 1,
+      frames: ['front'], directionalFrames: { down: ['front'], left: ['left'] }, collisionGrid: [[true]], directionalCollisionGrids: { down: [[true]], left: [[false]] } })
+    render()
+    studio().onSelectDirection!('left'); render()
+    const saved = await save()
+    expect(saved.isObstacle).toBe(true)
+    expect(saved.collisionGrid).toEqual([[true]])
+    expect(saved.directionalCollisionGrids?.left).toEqual([[false]])
+  })
+  it('saves the new drawing even when the composition image cache still holds the old raster', async () => {
+    vi.stubGlobal('Image', class {
+      src = ''; complete = true; naturalWidth = 29; naturalHeight = 27
+      set onload(callback: () => void) { if (this.src === 'old-raster') callback() }
+    })
+    vi.mocked(bakeLayersToDataUrl).mockImplementation(async (_w, _h, layers, cache) => cache?.[layers[0]?.id || '']?.src || layers[0]?.dataUrl || '')
+    mocks.store.editingAssetId = 'cache-case'
+    mocks.store.getAssetById = () => ({ id: 'cache-case', name: 'Pedra', type: 'furniture', category: 'Geral', width: 1, height: 1, frames: ['old-raster'] })
+    render()
+    elements(tree).find(element => element.props.role === 'tab' && (element.props.children as any[]).includes('Desenhar'))!.props.onClick(); render()
+    const drawing = elements(tree).find(element => element.type === AssetDrawingStudio)!.props as React.ComponentProps<typeof AssetDrawingStudio>
+    drawing.onChange({ dataUrl: 'new-raster', width: 29, height: 27 }); render()
+    expect((await save()).frames[0]).toBe('new-raster')
+    vi.mocked(bakeLayersToDataUrl).mockImplementation(async () => 'frame')
+  })
+  it('keeps pixel and tile dimensions consistent for sizes smaller than one tile', async () => {
+    const properties = () => elements(tree).find(element => element.type === AssetPropertiesForm)!.props as React.ComponentProps<typeof AssetPropertiesForm>
+    properties().onSetPixelSize(29, 27); render()
+    expect(properties().tileWidth).toBe(29 / 32)
+    expect(properties().tileHeight).toBe(27 / 32)
+    properties().onSetBoardSizeInTiles(23 / 32, 27 / 32); render()
+    expect(properties().pixelWidth).toBe(23)
+    expect((await save()).pixelWidth).toBe(23)
+  })
   it('paints and erases seats by dragging, keeps each direction separate, and saves the grids', async () => {
     studio().setComposeTool('seat'); render()
     studio().onComposeMouseDown(event(16)); render()

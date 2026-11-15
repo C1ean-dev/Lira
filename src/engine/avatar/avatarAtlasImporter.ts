@@ -1,3 +1,4 @@
+import { parseActivityTextureName } from '../../utils/characterAnimations'
 import { AvatarAtlasManager, SubTexture } from './AvatarAtlasManager'
 import { cropContentDataUrl } from './avatarBakeService'
 import { ActivityAnimationFrames, CustomAsset } from '../../types/customAsset'
@@ -11,6 +12,7 @@ export interface ParsedAtlasPreset {
   name: string
   directionalFrames: Partial<Record<Direction, string | string[]>>
   activityAnimations?: ActivityAnimationFrames
+  activityAnimationNames?: Record<string, string>
   thumbnail?: string
   sourceImageSrc?: string
   sourceXmlContent?: string
@@ -25,7 +27,7 @@ export function formatPresetLabel(rawName: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
-export function parseSubTextureIdentifier(subName: string, category: string): { presetKey: string; direction: Direction; animation?: AvatarActivityAnimation } {
+export function parseSubTextureIdentifier(subName: string, category: string): { presetKey: string; direction: Direction; animation?: AvatarActivityAnimation; animationName?: string } {
   let clean = subName.trim()
 
   const catPrefix = `${category.toLowerCase()}_`
@@ -33,6 +35,8 @@ export function parseSubTextureIdentifier(subName: string, category: string): { 
     clean = clean.slice(catPrefix.length)
   }
 
+  const customActivity = parseActivityTextureName(clean)
+  if (customActivity) return { ...customActivity, direction: 'down' }
   if (/^(down|up|left|right)$/i.test(clean)) return { presetKey: category, direction: clean.toLowerCase() as Direction }
   const sequenceMatch = clean.match(/^(.*)[_-](yawn|sleep)(?:[_-]\d+)?$/i)
   if (sequenceMatch) return { presetKey: sequenceMatch[1], direction: 'down', animation: sequenceMatch[2].toLowerCase() as AvatarActivityAnimation }
@@ -65,9 +69,11 @@ export async function parseSparrowAtlasAndSlice(
     return doc.assets.filter(asset => ['furniture', 'floor', 'wall'].includes(category) ? asset.type === category : asset.type === 'avatar' && asset.avatarSlot === category).map(asset => ({ presetKey: asset.id, name: asset.name, directionalFrames: asset.directionalFrames || {}, thumbnail: asset.thumbnail, asset }))
   }
   const groups = new Map<string, Map<Direction, SubTexture[]>>()
+  const animationNames = new Map<string, string>()
   for (const [name, sub] of atlasData.subTextures) {
-    const { presetKey, direction, animation } = parseSubTextureIdentifier(name, category)
-    const groupKey = `${presetKey}\0${animation || 'walk'}`
+    const { presetKey, direction, animation, animationName } = parseSubTextureIdentifier(name, category)
+    const groupKey = JSON.stringify([presetKey, animation || 'walk'])
+    if (animationName) animationNames.set(groupKey, animationName)
     if (!groups.has(groupKey)) groups.set(groupKey, new Map())
     const dirs = groups.get(groupKey)!
     if (!dirs.has(direction)) dirs.set(direction, [])
@@ -75,7 +81,7 @@ export async function parseSparrowAtlasAndSlice(
   }
   const results: ParsedAtlasPreset[] = []
   for (const [groupKey, directions] of groups) {
-    const [presetKey, animation] = groupKey.split('\0')
+    const [presetKey, animation] = JSON.parse(groupKey) as [string, string]
     const frames: Partial<Record<Direction, string | string[]>> = {}
     const slots: Record<string, unknown[]> = { down: [], up: [], left: [], right: [] }
     for (const [direction, entries] of directions) {
@@ -122,6 +128,11 @@ export async function parseSparrowAtlasAndSlice(
       result.activityAnimations ||= {}
       result.activityAnimations[animation as AvatarActivityAnimation] = activitySequence<string>(Object.fromEntries(Object.entries(frames).map(([dir, urls]) => [dir, Array.isArray(urls) ? urls : [urls]])))
       const preset = result.slicerPresets![0]
+      const label = animationNames.get(groupKey)
+      if (label) {
+        result.activityAnimationNames = { ...result.activityAnimationNames, [animation]: label }
+        preset.animationNames = { ...preset.animationNames, [animation]: label }
+      }
       preset.animations ||= {}
       preset.animations[animation] = activitySequence(slots)
     }
@@ -151,7 +162,7 @@ export async function importPresetsIntoStore(
       avatarSlot: isMapAsset ? undefined : category, thumbnail: p.thumbnail,
       width: 1, height: 1, isObstacle: category === 'furniture' || category === 'wall',
       frames: [first(p.directionalFrames.down), first(p.directionalFrames.up), first(p.directionalFrames.left), first(p.directionalFrames.right)],
-      directionalFrames: p.directionalFrames, activityAnimations: p.activityAnimations, frameRateMs: 160, createdAt: Date.now(), creationSource: 'atlas',
+      directionalFrames: p.directionalFrames, activityAnimations: p.activityAnimations, activityAnimationNames: p.activityAnimationNames, frameRateMs: 160, createdAt: Date.now(), creationSource: 'atlas',
       sourceImageSrc: p.sourceImageSrc, sourceXmlContent: p.sourceXmlContent, slicerPresets: p.slicerPresets,
     } as CustomAsset
   })

@@ -12,6 +12,15 @@ export type ActivityAnimationFrames = Partial<Record<AvatarActivityAnimation, st
 
 export type CustomAssetType = 'furniture' | 'floor' | 'wall' | 'avatar'
 
+// Full editable raster and the current canvas origin inside it. PNG keeps RGBA lossless.
+export interface PreservedDrawingRaster {
+  dataUrl: string
+  width: number
+  height: number
+  x: number
+  y: number
+}
+
 export interface CustomAssetLayer {
   id: string
   clipId: string
@@ -21,6 +30,9 @@ export interface CustomAssetLayer {
   y: number
   width: number
   height: number
+  origWidth?: number
+  origHeight?: number
+  preservedRaster?: PreservedDrawingRaster
   flipH: boolean
   opacity: number
 }
@@ -54,6 +66,7 @@ export interface CustomAsset {
   bedAnimation?: { frames: string[]; frameRateMs?: number }
   directionalFrames?: Partial<Record<Direction, string | string[]>>
   activityAnimations?: ActivityAnimationFrames
+  activityAnimationNames?: Record<string, string>
   directionalFrameLayers?: Partial<Record<Direction, CustomAssetLayer[][]>>
   directionalDimensions?: Partial<Record<Direction, DirectionalDimension>>
   directionalCollisionGrids?: Partial<Record<Direction, boolean[][]>>

@@ -1,3 +1,4 @@
+import { useMeetingStore } from '../../store/useMeetingStore'
 import React, { useEffect, useRef } from 'react'
 import { X, FileText, Square, Loader2, Download } from 'lucide-react'
 import type { TranscriptEntry, TranscriptionStatus } from '../../media/callTranscription'
@@ -34,10 +35,12 @@ export const CallTranscriptPanel: React.FC<Props> = ({ status, entries, error, i
         <button type="button" disabled={status === 'stopping'} onClick={busy ? onStop : onStart}
           className="w-full flex justify-center items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/15 text-indigo-200 px-3 py-2 text-xs font-semibold hover:bg-indigo-500/25 disabled:opacity-50">
           {(status === 'loading' || status === 'stopping') ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : busy ? <Square className="w-3.5 h-3.5" /> : !installed ? <Download className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
-          {status === 'loading' ? 'Cancelar' : status === 'recording' ? 'Parar transcrição' : status === 'stopping' ? 'Finalizando falas…' : status === 'error' ? 'Tentar novamente' : !installed ? 'Baixar e iniciar transcrição' : entries.length ? 'Continuar transcrição' : 'Iniciar transcrição'}
+          {status === 'loading' ? 'Cancelar' : status === 'recording' ? 'Parar transcrição' : status === 'stopping' ? 'Finalizando falas…' : status === 'error' ? 'Tentar novamente' : !installed ? 'Baixar e iniciar transcrição' : entries.length ? 'Iniciar nova transcrição' : 'Iniciar transcrição'}
         </button>
         <p role="status" className="text-[11px] text-slate-400">{status === 'loading' ? download?.phase === 'dependencies' ? `Baixando módulo de transcrição… ${percent ?? 0}%` : download?.phase === 'model' ? `Preparando modelo de voz…${percent === undefined ? '' : ` ${percent}%`}` : 'Carregando transcrição…' : status === 'recording' ? 'Transcrevendo participantes… As falas aparecem em alguns segundos.' : status === 'stopping' ? 'Processando as últimas falas…' : 'Transcrição parada'}</p>
         {status === 'loading' && Boolean(download?.total) && <progress aria-label={download!.phase === 'dependencies' ? 'Download do módulo de transcrição' : 'Download do arquivo do modelo de voz'} value={download!.loaded} max={download!.total} className="w-full h-1.5 appearance-none overflow-hidden rounded-full bg-slate-800 [&::-webkit-progress-bar]:bg-slate-800 [&::-webkit-progress-value]:bg-indigo-400 [&::-moz-progress-bar]:bg-indigo-400" />}
+        <button type="button" onClick={() => useMeetingStore.getState().setOpen(true)} className="w-full rounded-lg bg-slate-800 p-2 text-xs text-indigo-200">Ver resumos de reuniões</button>
+        <p className="text-[11px] text-slate-400">As falas são salvas neste dispositivo para gerar o resumo após a chamada.</p>
         {error && <p role="alert" className="text-xs text-rose-300">{error}</p>}
       </div>
       <div ref={log} role="log" aria-live="polite" aria-label="Falas dos participantes" onScroll={() => {

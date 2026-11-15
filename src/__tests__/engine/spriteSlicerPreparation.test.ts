@@ -48,6 +48,7 @@ describe('opening existing sprites in the slicer', () => {
     const activityAnimations = {
       yawn: ['yawn.png'],
       sleep: ['sleep-a.png', 'sleep-b.png', 'sleep-c.png'],
+      custom: ['wave.png'],
     }
 
     const prepared = await prepareAssetForSlicer({ ...asset, activityAnimations })
@@ -57,9 +58,10 @@ describe('opening existing sprites in the slicer', () => {
       sleep: activityAnimations.sleep.map((dataUrl, index) => expect.objectContaining({
         x: index * 40, y: 240, w: 40, h: 48, dataUrl,
       })),
+      custom: [expect.objectContaining({ x: 0, y: 288, w: 40, h: 48, dataUrl: 'wave.png' })],
     })
-    expect(canvas).toMatchObject({ width: 120, height: 288 })
-    expect(draw).toHaveBeenCalledTimes(9)
+    expect(canvas).toMatchObject({ width: 120, height: 336 })
+    expect(draw).toHaveBeenCalledTimes(10)
     expect(draw).toHaveBeenCalledWith(expect.objectContaining({ src: 'sleep-c.png' }), 80, 240, 40, 48)
     expect(prepared.asset.activityAnimations).toEqual(activityAnimations)
   })

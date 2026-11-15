@@ -57,6 +57,30 @@ export const MapViewport: React.FC = () => {
   const setSelectedFurnitureDefId = useMapStore((s) => s.setSelectedFurnitureDefId)
   const setActiveTool = useMapStore((s) => s.setActiveTool)
 
+  // Capture the whole brush/furniture gesture as one history entry.
+  useEffect(() => {
+    if (!isEditorOpen) return
+    const begin = (event: Event) => {
+      if (event.target === canvasRef.current) useMapStore.getState().beginHistoryGroup()
+    }
+    const end = () => queueMicrotask(() => useMapStore.getState().endHistoryGroup())
+    window.addEventListener('mousedown', begin, true)
+    window.addEventListener('touchstart', begin, true)
+    window.addEventListener('mouseup', end)
+    window.addEventListener('touchend', end)
+    window.addEventListener('touchcancel', end)
+    window.addEventListener('blur', end)
+    return () => {
+      window.removeEventListener('mousedown', begin, true)
+      window.removeEventListener('touchstart', begin, true)
+      window.removeEventListener('mouseup', end)
+      window.removeEventListener('touchend', end)
+      window.removeEventListener('touchcancel', end)
+      window.removeEventListener('blur', end)
+      useMapStore.getState().endHistoryGroup()
+    }
+  }, [isEditorOpen])
+
   const draggedFurnitureRef = useRef<{
     id: string
     startTile: { x: number; y: number }

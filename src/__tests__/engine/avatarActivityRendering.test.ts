@@ -45,6 +45,14 @@ describe('avatar activity rendering', () => {
     vi.setSystemTime(10_160)
     expect(render({ activityAnimation: 'sleep', direction: 'right', activityAnimationStartedAt: 9760 }).drawImage.mock.calls[0][0].src).toBe('sleep0')
   })
+  it('plays a newly added activity for local and remote characters without a hardcoded menu entry', () => {
+    mocks.assets[0].activityAnimations!.dance = ['dance0', 'dance1', 'dance2']
+    for (const isLocal of [true, false]) {
+      const ctx = render({ activityAnimation: 'dance' }, isLocal)
+      expect(ctx.drawImage.mock.calls[0][0].src).toBe('dance2')
+      expect(ctx.fillText).not.toHaveBeenCalled()
+    }
+  })
   it('returns to walking immediately when moving and provides a cue for assets without sleeping frames', () => {
     expect(render({ activityAnimation: 'sleep', isMoving: true }).drawImage.mock.calls[0][0].src).toBe('walking')
     mocks.assets[0].activityAnimations = undefined

@@ -15,6 +15,9 @@ describe('the first screen', () => {
     expect(html).toContain('Conectar')
     expect(html).toContain('Salas Salvas')
   })
+  it('provides access to saved meeting summaries without entering another space', () => {
+    expect(html).toContain('Abrir resumos de reuniões')
+  })
 
   it('has nothing of the space behind it: no world canvas, no space area', () => {
     expect(html).not.toContain('<canvas')

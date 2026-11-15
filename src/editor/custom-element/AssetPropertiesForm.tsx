@@ -15,6 +15,9 @@ interface Props {
   newCategoryName: string
   setNewCategoryName: (name: string) => void
   onAddNewCategory: () => void
+  canvasWidth: number
+  canvasHeight: number
+  onSetCanvasSize: (w: number, h: number) => void | Promise<void>
   tileWidth: number
   tileHeight: number
   onSetBoardSizeInTiles: (w: number, h: number) => void
@@ -39,6 +42,9 @@ export const AssetPropertiesForm: React.FC<Props> = ({
   newCategoryName,
   setNewCategoryName,
   onAddNewCategory,
+  canvasWidth,
+  canvasHeight,
+  onSetCanvasSize,
   tileWidth,
   tileHeight,
   onSetBoardSizeInTiles,
@@ -98,48 +104,47 @@ export const AssetPropertiesForm: React.FC<Props> = ({
           <div className="flex items-center gap-1.5">
             <Maximize2 className="w-3.5 h-3.5 text-indigo-400" />
             <label className="block text-[11px] font-bold text-slate-200">
-              Tamanho Final do Elemento
+              Dimensões do elemento
             </label>
           </div>
-          <span className="text-[10px] font-mono text-emerald-400 font-bold">
-            {pixelWidth}×{pixelHeight}px
-          </span>
         </div>
 
         <div className="grid grid-cols-2 gap-2 bg-[#12151d] p-2 rounded-xl border border-[#2b2d31]">
           <div>
-            <span className="block text-[10px] font-semibold text-slate-400 mb-1">Tiles no Mapa:</span>
+            <span className="block text-[10px] font-semibold text-slate-400 mb-1">Tamanho da tela (px)</span>
             <div className="flex items-center gap-1">
               <input
                 type="number"
                 min={1}
-                max={32}
-                value={tileWidth}
+                max={4096}
+                step={1}
+                value={canvasWidth}
                 onChange={(e) => {
-                  const val = parseInt(e.target.value, 10)
-                  if (!isNaN(val)) onSetBoardSizeInTiles(Math.max(1, val), tileHeight)
+                  const val = parseFloat(e.target.value)
+                  if (!isNaN(val)) void onSetCanvasSize(Math.max(1, val), canvasHeight)
                 }}
                 className="w-full bg-[#18191c] border border-[#2b2d31] rounded-lg px-2 py-1 text-xs font-bold text-center text-white focus:outline-none focus:border-indigo-500"
-                title="Largura em tiles no mapa"
+                aria-label="Largura da tela em pixels" title="Largura da área de desenho da camada"
               />
               <span className="text-slate-500 text-xs font-bold">×</span>
               <input
                 type="number"
                 min={1}
-                max={32}
-                value={tileHeight}
+                max={4096}
+                step={1}
+                value={canvasHeight}
                 onChange={(e) => {
-                  const val = parseInt(e.target.value, 10)
-                  if (!isNaN(val)) onSetBoardSizeInTiles(tileWidth, Math.max(1, val))
+                  const val = parseFloat(e.target.value)
+                  if (!isNaN(val)) void onSetCanvasSize(canvasWidth, Math.max(1, val))
                 }}
                 className="w-full bg-[#18191c] border border-[#2b2d31] rounded-lg px-2 py-1 text-xs font-bold text-center text-white focus:outline-none focus:border-indigo-500"
-                title="Altura em tiles no mapa"
+                aria-label="Altura da tela em pixels" title="Altura da área de desenho da camada"
               />
             </div>
           </div>
 
           <div>
-            <span className="block text-[10px] font-semibold text-slate-400 mb-1">Tamanho em Pixels:</span>
+            <span className="block text-[10px] font-semibold text-slate-400 mb-1">Tamanho final no mapa (px)</span>
             <div className="flex items-center gap-1">
               <input
                 type="number"
@@ -154,7 +159,7 @@ export const AssetPropertiesForm: React.FC<Props> = ({
                   }
                 }}
                 className="w-full bg-[#18191c] border border-[#2b2d31] rounded-lg px-2 py-1 text-xs font-mono font-bold text-center text-emerald-400 focus:outline-none focus:border-indigo-500"
-                title="Largura em pixels (livre de 1px até o limite da imagem)"
+                aria-label="Largura final no mapa em pixels" title="Largura de exibição no mapa"
               />
               <span className="text-slate-500 text-xs font-bold">×</span>
               <input
@@ -170,11 +175,13 @@ export const AssetPropertiesForm: React.FC<Props> = ({
                   }
                 }}
                 className="w-full bg-[#18191c] border border-[#2b2d31] rounded-lg px-2 py-1 text-xs font-mono font-bold text-center text-emerald-400 focus:outline-none focus:border-indigo-500"
-                title="Altura em pixels (livre de 1px até o limite da imagem)"
+                aria-label="Altura final no mapa em pixels" title="Altura de exibição no mapa"
               />
             </div>
           </div>
         </div>
+
+        <p className="text-[10px] text-slate-500">Tela: resolução da camada em edição. Final: tamanho de exibição do elemento.</p>
 
         <div className="space-y-1">
           <label className="block text-[10px] font-semibold text-slate-400">Ajuste do Recorte para o Tamanho Final:</label>
@@ -217,7 +224,7 @@ export const AssetPropertiesForm: React.FC<Props> = ({
               <strong className="font-mono text-emerald-400">
                 {pixelWidth}×{pixelHeight}px
               </strong>{' '}
-              <span className="text-slate-400">({tileWidth}×{tileHeight}t)</span>
+
             </span>
           </div>
         )}
