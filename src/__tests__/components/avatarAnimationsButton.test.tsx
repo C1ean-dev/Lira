@@ -1,4 +1,5 @@
 import React from 'react'
+import { Smile } from 'lucide-react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AvatarAnimationsButton } from '../../components/AvatarAnimationsButton'
 import type { CustomAsset } from '../../types/customAsset'
@@ -36,8 +37,8 @@ beforeEach(() => {
   render()
 })
 afterEach(() => { cleanups.forEach(cleanup => cleanup()); vi.unstubAllGlobals() })
-it('opens an emoji button with every available animation, selects an action and can stop it', () => {
-  expect(find('Animações do personagem').props.children).toContain('🎭')
+it('opens a line-icon button with every available animation, selects an action and can stop it', () => {
+  expect(elements(find('Animações do personagem').props.children).some(node => node.type === Smile)).toBe(true)
   expect(find('Animações do personagem').props['aria-expanded']).toBe(false)
   find('Animações do personagem').props.onClick(); render()
   expect(elements(tree).some(node => node.props.children === 'Dormir')).toBe(true)
@@ -45,6 +46,7 @@ it('opens an emoji button with every available animation, selects an action and 
   const sleep = elements(tree).find(node => node.type === 'button' && node.props['data-animation'] === 'sleep')!
   sleep.props.onClick(); render()
   expect(mocks.player.activityAnimation).toBe('sleep')
+  expect(elements(find('Animações do personagem').props.children).some(node => node.type === Smile)).toBe(true)
   expect(mocks.send).toHaveBeenLastCalledWith({ activityAnimation: 'sleep', activityAnimationStartedAt: expect.any(Number) })
   expect(find('Animações do personagem').props['aria-expanded']).toBe(false)
   find('Animações do personagem').props.onClick(); render()
@@ -77,4 +79,14 @@ it('keeps the menu inside a small viewport above the mini display', () => {
   expect(style.left + style.width).toBeLessThanOrEqual(312)
   expect(style.bottom).toBe(58)
   expect(style.maxHeight).toBeLessThanOrEqual(184)
+})
+
+it('shows plain animation labels without decorative emoji prefixes and uses a line icon for stop', () => {
+  mocks.assets = [{ ...mocks.assets[0], activityAnimations: { ...mocks.assets[0].activityAnimations, custom: ['wave'] }, activityAnimationNames: { custom: 'Minha animação' } }]
+  find('Animações do personagem').props.onClick(); render()
+  const rows = elements(tree).filter(node => node.type === 'button' && node.props['data-animation'])
+  expect(rows).toHaveLength(3)
+  for (const row of rows) expect(elements(row.props.children).some(node => node.props['aria-hidden'])).toBe(false)
+  expect(elements(tree).some(node => node.props.children === 'Minha animação')).toBe(true)
+  expect(elements(find('Parar animação').props.children).some(node => typeof node.type !== 'string')).toBe(true)
 })

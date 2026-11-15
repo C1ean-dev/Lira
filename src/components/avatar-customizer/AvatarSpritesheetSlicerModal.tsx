@@ -1784,7 +1784,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                 onSelect={id => { setActiveAnimation(id); setWalkTick(0); setDirectionMenuIndex(null); setDraggedFrameIndex(null); setDragOverFrameIndex(null) }}
                 onChange={next => setAllPresets(previous => previous.map(preset => preset.id === next.id ? next : preset))} />}
               {activeAnimation !== 'walk' && <p className="text-[11px] text-slate-400">
-                {activeAnimation === 'yawn' ? 'Boceja a cada minuto sem interação.' : activeAnimation === 'sleep' ? 'Dorme após 5 minutos sem interação. Interaja para acordar.' : 'Adicione ou pinte os frames desta animação. Depois de salvar, ela aparece no botão 🎭 do mini display.'}
+                {activeAnimation === 'yawn' ? 'Boceja a cada minuto sem interação.' : activeAnimation === 'sleep' ? 'Dorme após 5 minutos sem interação. Interaja para acordar.' : 'Adicione ou pinte os frames desta animação. Depois de salvar, ela aparece no botão de animações do mini display.'}
               </p>}
               {activeAnimation === 'walk' && <div className="grid grid-cols-4 gap-1.5">
                 {DIRECTIONS.map((d) => {

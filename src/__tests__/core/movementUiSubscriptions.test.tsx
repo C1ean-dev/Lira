@@ -50,12 +50,12 @@ describe('interface subscriptions during player movement', () => {
     expect(snapshots.map((get, i) => Object.is(get(), before[i])).every(Boolean)).toBe(true)
   })
 
-  it('shows the emoji animation button in the mini display without opening the menu automatically', () => {
+  it('shows the line-icon animation button in the mini display without opening the menu automatically', () => {
     useGameStore.setState({ localPlayer: { ...original.localPlayer, currentZoneId: 'test-zone', activityAnimation: 'none' } })
     vi.spyOn(React, 'useSyncExternalStore').mockImplementation((_subscribe, getSnapshot) => getSnapshot())
     const html = renderToStaticMarkup(<MiniCallOverlay />)
     expect(html).toContain('aria-label="Animações do personagem"')
-    expect(html).toContain('🎭')
+    expect(html).toContain('lucide-smile')
     expect(html).not.toContain('id="avatar-animations-panel"')
   })
 

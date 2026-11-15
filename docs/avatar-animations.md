@@ -1,9 +1,9 @@
 # Animações no mini display
 
-O botão 🎭 no cabeçalho do mini display abre as animações disponíveis do personagem
-atual. Dormir e bocejar aparecem como 😴 **Dormir** e 🥱 **Bocejar** quando essas
+O botão com ícone de rosto sorridente no cabeçalho do mini display abre as animações disponíveis do personagem
+atual. Dormir e bocejar aparecem como **Dormir** e **Bocejar** quando essas
 sequências existem no personagem. As outras atividades salvas em
-`activityAnimations` aparecem automaticamente com o nome escolhido pelo usuário e o emoji 🎭.
+`activityAnimations` aparecem automaticamente com o nome escolhido pelo usuário sem emojis decorativos.
 A lista acompanha alterações do catálogo e trocas de personagem enquanto aberta.
 Personagens sem sequências apresentam uma mensagem explicativa.
 
@@ -21,7 +21,7 @@ No editor de spritesheets, **Nova animação** cria uma sequência independente.
 Digite o nome, confirme em **Criar animação** e adicione os recortes ou use
 **Pintar** para desenhar seus frames. Os frames podem ser duplicados, removidos
 ou reordenados como nas outras sequências. **Salvar Alterações** grava o personagem;
-as sequências com frames passam a aparecer no menu 🎭.
+as sequências com frames passam a aparecer no menu de animações.
 
 A animação personalizada selecionada oferece **Renomear animação** e
 **Excluir animação**. Renomear preserva a sequência e os frames. Nomes podem ter
