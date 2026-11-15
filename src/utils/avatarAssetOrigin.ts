@@ -205,11 +205,18 @@ export function convertXmlToSlicedPresets(asset: CustomAsset, xmlContent: string
     right: [],
   }
 
+  const activities = new Map<string, { label?: string; frames: Array<{ x: number; y: number; w: number; h: number; order: number }> }>()
   atlasData.subTextures.forEach((sub, name) => {
-    const { direction } = parseSubTextureIdentifier(name, category)
+    const { direction, animation, animationName } = parseSubTextureIdentifier(name, category)
     const match = name.match(/[_-](\d+)$/)
     const order = match ? parseInt(match[1], 10) : 0
 
+    if (animation) {
+      const group = activities.get(animation) || { label: animationName, frames: [] }
+      group.frames.push({ x: sub.x, y: sub.y, w: sub.width, h: sub.height, order })
+      activities.set(animation, group)
+      return
+    }
     dirFramesMap[direction].push({
       x: sub.x,
       y: sub.y,
@@ -249,6 +256,10 @@ export function convertXmlToSlicedPresets(asset: CustomAsset, xmlContent: string
     {
       id: asset.id,
       name: asset.name,
+      animations: Object.fromEntries([...activities].map(([id, group]) => [id, group.frames.sort((a, b) => a.order - b.order).map((sub, index) => ({
+        x: sub.x, y: sub.y, w: sub.w, h: sub.h, dataUrl: activitySequence(asset.activityAnimations?.[id])[index] || '',
+      }))])),
+      animationNames: { ...asset.activityAnimationNames, ...Object.fromEntries([...activities].filter(([, group]) => group.label).map(([id, group]) => [id, group.label!])) },
       directions,
     },
   ]
@@ -257,7 +268,7 @@ export function convertXmlToSlicedPresets(asset: CustomAsset, xmlContent: string
 export function convertAssetToSlicedPresets(asset: CustomAsset, xmlContent?: string): SlicedPreset[] {
   asset = normalizeAssetActivityAnimations(asset)
   if (asset.slicerPresets && asset.slicerPresets.length > 0) {
-    return asset.slicerPresets
+    return asset.activityAnimationNames ? asset.slicerPresets.map(preset => ({ ...preset, animationNames: { ...asset.activityAnimationNames, ...preset.animationNames } })) : asset.slicerPresets
   }
 
   const xml = xmlContent || asset.sourceXmlContent
@@ -302,6 +313,10 @@ export function convertAssetToSlicedPresets(asset: CustomAsset, xmlContent?: str
     {
       id: asset.id,
       name: asset.name,
+      animationNames: asset.activityAnimationNames,
+      animations: Object.fromEntries(Object.entries(asset.activityAnimations || {}).map(([id, frames], row) => [id,
+        activitySequence(frames).map((dataUrl, col) => ({ x: col * fw, y: (row + 4) * fh, w: fw, h: fh, dataUrl })),
+      ])),
       directions: {
         down: getSlots('down'),
         up: getSlots('up'),
@@ -326,8 +341,9 @@ async function generateSpritesheetFromAsset(asset: CustomAsset): Promise<{
     return asset.frames[idx] ? [asset.frames[idx]] : []
   }
 
-  const activityRows = (['yawn', 'sleep'] as const)
-    .map(animation => ({ animation, frames: activitySequence(asset.activityAnimations?.[animation]).filter(Boolean) }))
+  const activityRows = Object.entries(asset.activityAnimations || {})
+    .filter(([animation]) => animation !== 'walk' && animation !== 'none')
+    .map(([animation, frames]) => ({ animation, frames: activitySequence(frames).filter(Boolean) }))
     .filter(({ frames }) => frames.length > 0)
     .map((activity, index) => ({ ...activity, row: dirs.length + index }))
   const maxSteps = Math.max(...dirs.map((d) => getFrames(d).length), ...activityRows.map(({ frames }) => frames.length), 1)

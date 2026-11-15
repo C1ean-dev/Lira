@@ -152,7 +152,7 @@ export async function readAtlas(pair: PersistedAtlas): Promise<AtlasDocument> {
 async function prepareEditableSource(asset: CustomAsset): Promise<void> {
   if (asset.sourceImageSrc || asset.type !== 'avatar' || asset.creationSource === 'studio') return
   const sprites: { name: string; width: number; height: number; image: HTMLImageElement; dir: string; animation: string; url: string }[] = []
-  for (const animation of ['walk', 'yawn', 'sleep'] as const) {
+  for (const animation of ['walk', ...Object.keys(asset.activityAnimations || {}).filter(id => id !== 'walk' && id !== 'none')]) {
     const sourceDirections = animation === 'walk' ? ['down', 'up', 'left', 'right'] as const : ['down'] as const
     for (const [index, dir] of sourceDirections.entries()) {
       const raw = animation === 'walk' ? asset.directionalFrames?.[dir] || asset.frames[index] : asset.activityAnimations?.[animation]
@@ -178,7 +178,7 @@ async function prepareEditableSource(asset: CustomAsset): Promise<void> {
   }
   asset.sourceImageSrc = (await canvasToPngDataUrl(canvas))
   asset.sourceFileName = `${asset.id}.png`
-  asset.slicerPresets = [{ id: asset.id, name: asset.name, directions, animations }]
+  asset.slicerPresets = [{ id: asset.id, name: asset.name, directions, animations, animationNames: asset.activityAnimationNames }]
   delete asset.sourceXmlContent
 }
 

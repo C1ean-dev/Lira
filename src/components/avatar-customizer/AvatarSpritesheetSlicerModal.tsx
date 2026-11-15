@@ -1,3 +1,5 @@
+import { CharacterAnimationTabs } from './CharacterAnimationTabs'
+import { characterAnimationTabs, activityTextureName } from '../../utils/characterAnimations'
 import { RasterImage } from '../common/RasterImage'
 import { setRasterImageSource } from '../../utils/rasterImageSource'
 import React, { useState, useRef, useEffect, useCallback } from 'react'
@@ -61,6 +63,7 @@ export interface SlicedPreset {
   name: string
   directions: Record<Direction, SlicedFrameSlot[]>
   animations?: Partial<Record<AvatarActivityAnimation, SlicedFrameSlot[]>>
+  animationNames?: Record<string, string>
 }
 
 interface Props {
@@ -99,7 +102,6 @@ const DIRECTIONS: { id: Direction; label: string; icon: string }[] = [
 ]
 
 const emptyDirections = (): Record<Direction, SlicedFrameSlot[]> => ({ down: [], up: [], left: [], right: [] })
-const ANIMATIONS = [{ id: 'walk', label: 'Caminhar' }, { id: 'yawn', label: 'Bocejar' }, { id: 'sleep', label: 'Dormir' }] as const
 
 export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
   isOpen,
@@ -194,7 +196,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
   })
 
   // Existing frame editing operations work on the selected animation, while
-  // the complete preset retains the walking, yawning and sleeping sequences.
+  // the complete preset retains every sequence and its display name.
   const projectPreset = (preset: SlicedPreset): SlicedPreset => activeAnimation === 'walk' ? preset : {
     ...preset, directions: { ...emptyDirections(), down: activitySequence(preset.animations?.[activeAnimation]) },
   }
@@ -241,6 +243,9 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
   const [activePresetIndex, setActivePresetIndex] = useState<number>(0)
   const [walkingDirection, setActiveDirectionTab] = useState<Direction>('down')
   const activeDirectionTab = activeAnimation === 'walk' ? walkingDirection : 'down'
+  useEffect(() => {
+    if (!characterAnimationTabs(allPresets[activePresetIndex] || {}).some(animation => animation.id === activeAnimation)) setActiveAnimation('walk')
+  }, [activePresetIndex, allPresets, activeAnimation])
   const [showXmlModal, setShowXmlModal] = useState<boolean>(false)
   const [savedSuccessCount, setSavedSuccessCount] = useState<number | null>(null)
 
@@ -340,7 +345,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     const finalW = options?.pixelWidth || selection.w
     const finalH = options?.pixelHeight || selection.h
 
-    setPresets((prev) =>
+    const updateEditedPresets = (prev: SlicedPreset[]) =>
       prev.map((p, idx) => {
         if (idx !== activePresetIndex) return p
         return {
@@ -382,7 +387,13 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
           },
         }
       })
-    )
+    const edited = updateEditedPresets(presets)[activePresetIndex]
+    const updatedPresets = allPresets.map((preset, index) => index !== activePresetIndex ? preset : activeAnimation === 'walk' ? edited : {
+      ...preset, name: edited.name, animations: { ...preset.animations, [activeAnimation]: edited.directions.down },
+    })
+    setAllPresets(updatedPresets)
+    const activityAnimations = Object.fromEntries(Object.entries(updatedPresets[activePresetIndex]?.animations || {}).map(([id, frames]) => [id, activitySequence(frames).map(frame => frame.dataUrl)]))
+    const activityAnimationNames = updatedPresets[activePresetIndex]?.animationNames || {}
 
     if (finalW > 0 && finalH > 0) {
       setSelection((prev) => ({ ...prev, w: finalW, h: finalH }))
@@ -391,16 +402,9 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
     if (editingAsset) {
       const store = useCustomAssetsStore.getState()
       if (activeAnimation !== 'walk') {
-        const frames = toArray(newDirectionalFrames.down).map((url, index) => ({
-          x: presets[activePresetIndex]?.directions.down[index]?.x || 0,
-          y: presets[activePresetIndex]?.directions.down[index]?.y || 0,
-          w: finalW, h: finalH, dataUrl: url,
-          sheetId: presets[activePresetIndex]?.directions.down[index]?.sheetId || activeSheetId,
-        }))
-        const activityAnimations = { ...editingAsset.activityAnimations, [activeAnimation]: toArray(newDirectionalFrames.down) }
         await store.updateCustomAsset(editingAsset.id, {
-          name: newName || editingAsset.name, activityAnimations, sourceSheets,
-          slicerPresets: allPresets.map((p, index) => index === activePresetIndex ? { ...p, animations: { ...p.animations, [activeAnimation]: frames } } : p),
+          name: newName || editingAsset.name, activityAnimations, activityAnimationNames, sourceSheets,
+          slicerPresets: updatedPresets,
         })
         setSavedSuccessCount(1)
         setIsPixelStudioOpen(false)
@@ -425,6 +429,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
         ...(editingAsset.type === 'furniture' ? resolveStudioHitbox(editingAsset, isObstacle, options?.spriteCollision) : {}),
         category: options?.category || editingAsset.category,
         directionalFrames: newDirectionalFrames,
+        activityAnimations, activityAnimationNames, slicerPresets: updatedPresets, sourceSheets,
         frames: [firstDown, firstUp, firstLeft, firstRight],
       })
 
@@ -1094,14 +1099,14 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
 
     allPresets.forEach((preset) => {
       const cleanName = (preset.name || 'custom').toLowerCase().replace(/[^a-z0-9]/g, '_')
-      for (const animation of ANIMATIONS) {
+      for (const animation of characterAnimationTabs(preset)) {
         const directions: Partial<Record<Direction, SlicedFrameSlot[]>> = animation.id === 'walk' ? preset.directions : { down: activitySequence(preset.animations?.[animation.id]) }
         const frameDirections = animation.id === 'walk' ? DIRECTIONS : DIRECTIONS.filter(direction => direction.id === 'down')
         frameDirections.forEach(({ id: dir }) => {
           const frames = directions?.[dir] || []
           frames.forEach((frame, idx) => {
             subTextures.push({
-              name: animation.id === 'walk' ? `${category}_${cleanName}_${dir}_${idx}` : `${category}_${cleanName}_${animation.id}_${idx}`,
+              name: animation.id === 'walk' ? `${category}_${cleanName}_${dir}_${idx}` : activityTextureName(category, cleanName, animation.id, animation.label, idx),
               x: frame.x,
               y: frame.y + (offsets.get(frame.sheetId || 'primary') || 0),
               width: frame.w || 16,
@@ -1193,6 +1198,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
             ],
             directionalFrames,
             activityAnimations,
+            activityAnimationNames: p.animationNames || {},
             creationSource: 'slicer',
             sourceImageSrc: sourceSheets[0].src,
             sourceSheets,
@@ -1205,6 +1211,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
             thumbnail,
             directionalFrames,
             activityAnimations,
+            activityAnimationNames: p.animationNames || {},
           }
           createdAssets.push(updated)
         } else {
@@ -1233,6 +1240,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
             ],
             directionalFrames,
             activityAnimations,
+            activityAnimationNames: p.animationNames || {},
             frameRateMs: 160,
             createdAt: Date.now(),
             creationSource: 'slicer',
@@ -1264,6 +1272,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
   if (!isOpen) return null
 
   const activePreset = presets[activePresetIndex]
+  const animations = characterAnimationTabs(allPresets[activePresetIndex] || {})
   const activeDirectionFrames = activePreset?.directions[activeDirectionTab] || []
 
   const currentPreviewFrame =
@@ -1770,15 +1779,12 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
             </div>
 
             <div className="bg-[#2b2d31]/70 border border-[#383a40] p-3 rounded-2xl flex flex-col gap-3">
-              <div className="flex gap-1.5" role="group" aria-label="Animação">
-                {ANIMATIONS.map(animation => <button key={animation.id} type="button" aria-pressed={activeAnimation === animation.id}
-                  onClick={() => { setActiveAnimation(animation.id); setWalkTick(0); setDirectionMenuIndex(null) }}
-                  className={`flex-1 rounded-xl px-2 py-2 text-xs font-bold ${activeAnimation === animation.id ? 'bg-[#3b82f6] text-white' : 'bg-[#1e1f22] text-slate-300 hover:bg-[#383a40]'}`}>
-                  {animation.label}
-                </button>)}
-              </div>
+              {allPresets[activePresetIndex] && <CharacterAnimationTabs key={allPresets[activePresetIndex].id}
+                preset={allPresets[activePresetIndex]} activeAnimation={activeAnimation}
+                onSelect={id => { setActiveAnimation(id); setWalkTick(0); setDirectionMenuIndex(null); setDraggedFrameIndex(null); setDragOverFrameIndex(null) }}
+                onChange={next => setAllPresets(previous => previous.map(preset => preset.id === next.id ? next : preset))} />}
               {activeAnimation !== 'walk' && <p className="text-[11px] text-slate-400">
-                {activeAnimation === 'yawn' ? 'Boceja a cada minuto sem interação.' : 'Dorme após 5 minutos sem interação. Interaja para acordar.'}
+                {activeAnimation === 'yawn' ? 'Boceja a cada minuto sem interação.' : activeAnimation === 'sleep' ? 'Dorme após 5 minutos sem interação. Interaja para acordar.' : 'Adicione ou pinte os frames desta animação. Depois de salvar, ela aparece no botão 🎭 do mini display.'}
               </p>}
               {activeAnimation === 'walk' && <div className="grid grid-cols-4 gap-1.5">
                 {DIRECTIONS.map((d) => {
@@ -1815,10 +1821,10 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
 
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between text-[11px] text-slate-300 font-bold uppercase tracking-wider">
-                  <span>{activeAnimation === 'walk' ? `Frames de ${DIRECTIONS.find(d => d.id === activeDirectionTab)?.label}:` : `Frames de ${ANIMATIONS.find(animation => animation.id === activeAnimation)?.label}:`}</span>
+                  <span>{activeAnimation === 'walk' ? `Frames de ${DIRECTIONS.find(d => d.id === activeDirectionTab)?.label}:` : `Frames de ${animations.find(animation => animation.id === activeAnimation)?.label}:`}</span>
                   {activeDirectionFrames.length > 1 && (
                     <span className="text-emerald-400 lowercase font-semibold text-[10px]">
-                      {ANIMATIONS.find(animation => animation.id === activeAnimation)?.label.toLowerCase()} ({activeDirectionFrames.length} frames)
+                      {animations.find(animation => animation.id === activeAnimation)?.label.toLowerCase()} ({activeDirectionFrames.length} frames)
                     </span>
                   )}
                 </div>
@@ -2047,7 +2053,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                   }`}
                 >
                   {isPlayingWalk ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                  <span>{isPlayingWalk ? `${ANIMATIONS.find(animation => animation.id === activeAnimation)?.label} (Loop)` : 'Parado (Frame 0)'}</span>
+                  <span>{isPlayingWalk ? `${animations.find(animation => animation.id === activeAnimation)?.label} (Loop)` : 'Parado (Frame 0)'}</span>
                 </button>
               </div>
 

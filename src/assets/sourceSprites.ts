@@ -1,3 +1,4 @@
+import { activityTextureName } from '../utils/characterAnimations'
 import type { CustomAsset } from '../types/customAsset'
 import type { AtlasDocument } from './atlasFormat'
 import { xmlEscape } from './atlasFormat'
@@ -30,7 +31,10 @@ export function spriteXml(asset: CustomAsset, imagePath = `${asset.name}.png`): 
     if (frame) entries.push(`  <SubTexture name="${xmlEscape(name)}" x="${frame.x}" y="${frame.y}" width="${frame.width}" height="${frame.height}"/>`)
   }
   for (const dir of directions) sequence(asset.directionalFrames?.[dir]).forEach((src, i) => add(`${asset.avatarSlot || asset.type}_${asset.id}_${dir}_${i}`, src))
-  for (const [activity, frames] of Object.entries(asset.activityAnimations || {})) frames?.forEach((src, i) => add(`${asset.avatarSlot || asset.type}_${asset.id}_${activity}_down_${i}`, src))
+  for (const [activity, frames] of Object.entries(asset.activityAnimations || {})) {
+    const label = asset.activityAnimationNames?.[activity] || activity
+    frames?.forEach((src, i) => add(activityTextureName(asset.avatarSlot || asset.type, asset.id, activity, label, i), src))
+  }
   if (!entries.length) asset.frames.forEach((src, i) => add(`${asset.id}_down_${i}`, src))
   asset.bedAnimation?.frames.forEach((src, i) => add(`${asset.id}_bed_${i}`, src))
   return `<?xml version="1.0" encoding="UTF-8"?>\n<TextureAtlas imagePath="${xmlEscape(imagePath)}">\n${entries.join('\n')}\n</TextureAtlas>`
@@ -138,7 +142,7 @@ export async function compactSourceSprites(document: AtlasDocument): Promise<Atl
       const frame = readSpriteFrame(src)!
       return { x: frame.x, y: frame.y, w: frame.width, h: frame.height, sheetId: 'primary', dataUrl: src }
     }
-    next.slicerPresets = [{ id: next.id, name: next.name,
+    next.slicerPresets = [{ id: next.id, name: next.name, animationNames: next.activityAnimationNames,
       directions: Object.fromEntries(directions.map((dir, i) => [dir, sequence(next.directionalFrames?.[dir] || next.frames[i]).map(slot)])),
       animations: Object.fromEntries(Object.entries(next.activityAnimations || {}).map(([name, frames]) => [name, frames?.map(slot)])),
     }]

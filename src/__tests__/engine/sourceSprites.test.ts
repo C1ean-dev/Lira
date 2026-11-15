@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildLibrary, openLibrary } from '../../assets/individualLibrary'
 import { cropSpriteFrame, readSpriteFrame, spriteFrame } from '../../assets/spriteFrame'
 import { spriteXml, compactSourceSprites } from '../../assets/sourceSprites'
+import { parseSubTextureIdentifier } from '../../engine/avatar/avatarAtlasImporter'
+import { AvatarAtlasManager } from '../../engine/avatar/AvatarAtlasManager'
 import { loadRasterImage } from '../../utils/loadRasterImage'
 
 const png = 'data:image/png;base64,iVBORw0KGgo='
@@ -55,4 +57,14 @@ describe('raw sprite sheet and XML cuts', () => {
     expect(spriteXml(asset, '../images/chrollo.png')).toContain('imagePath="../images/chrollo.png"')
     expect(spriteXml(asset)).toContain('x="16" y="0" width="16" height="24"')
   })
+})
+
+it('retains custom animation names and frames through the saved library and source XML', async () => {
+  const character = { ...asset, activityAnimations: { custom: [asset.frames[0]] }, activityAnimationNames: { custom: 'Minha dança! 💃' } }
+  const packet = await buildLibrary({ assets: [character], categories: [] })
+  const reopened = openLibrary(packet.catalog, name => `/images/${name}`)
+  expect(reopened.assets[0].activityAnimationNames).toEqual(character.activityAnimationNames)
+  const names = [...AvatarAtlasManager.parseAtlasXml(spriteXml(character)).subTextures.keys()]
+  const parsed = names.map(name => parseSubTextureIdentifier(name, 'other')).find(entry => entry.animation === 'custom')
+  expect(parsed?.animationName).toBe('Minha dança! 💃')
 })

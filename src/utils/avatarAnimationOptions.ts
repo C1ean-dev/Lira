@@ -23,6 +23,7 @@ export function avatarAnimationOptions(avatar: AvatarConfig, assets: CustomAsset
     .filter(([id, frames]) => id !== 'none' && id !== 'walk' && activitySequence(frames).some(frame => typeof frame === 'string' && frame.length > 0))
     .map(([id]) => {
       const label = id.replace(/[_-]+/g, ' ').trim()
-      return { id, ...(Object.prototype.hasOwnProperty.call(known, id) ? known[id] : { label: label.charAt(0).toLocaleUpperCase('pt-BR') + label.slice(1), emoji: '🎭' }) }
+      const customName = asset?.activityAnimationNames?.[id]
+      return { id, ...(Object.prototype.hasOwnProperty.call(known, id) ? known[id] : { label: label.charAt(0).toLocaleUpperCase('pt-BR') + label.slice(1), emoji: '🎭' }), ...(customName ? { label: customName } : {}) }
     })
 }
