@@ -8,6 +8,11 @@ O comando de edição no menu de contexto da mobília também abre o mesmo estú
   preenchimento, conta-gotas e mover pixels. Há tamanho de pincel, zoom, grade,
   cores, aparar bordas e desfazer/refazer por gesto. Clique na tela para usar
   Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z ou Ctrl+Y. As demais camadas são preservadas.
+  O desenho começa centralizado e ajustado à área disponível. A roda do mouse
+  aproxima ou afasta mantendo o ponto sob o cursor. Arraste com o botão direito,
+  com o botão do meio ou com Espaço + esquerdo para mover a visualização. É possível
+  pressionar o direito durante um traço e depois continuar com o esquerdo sem
+  pintar o caminho da movimentação. **Ajustar desenho à área** restaura o enquadramento.
 - **Importar e recortar**: carregue uma imagem, recorte peças e remova o fundo.
   As peças ficam na biblioteca do próprio estúdio para montar o elemento.
 - **Montagem e colisão**: organize camadas, transparência, tamanho, colisões e

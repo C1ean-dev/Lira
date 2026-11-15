@@ -1,5 +1,6 @@
+import { fitPixelViewport, zoomPixelViewport, pixelFromViewport, type PixelViewport } from './pixelViewport'
 import React, { useEffect, useRef, useState } from 'react'
-import { Pencil, Eraser, PaintBucket, Pipette, Move, Undo2, Redo2, ZoomIn, ZoomOut, Grid2X2, Crop } from 'lucide-react'
+import { Pencil, Eraser, PaintBucket, Pipette, Move, Undo2, Redo2, ZoomIn, ZoomOut, Grid2X2, Crop, Maximize2 } from 'lucide-react'
 import { PixelEditor, type RGBA } from './pixelEditor'
 import type { PixelLayerEdit } from './assetStudioDraft'
 import { loadRasterImage } from '../../utils/loadRasterImage'
@@ -13,7 +14,44 @@ export const AssetDrawingStudio: React.FC<Props> = ({ width, height, source, lay
   const emitted = useRef(''), published = useRef({ width, height, x: 0, y: 0 })
   const gesture = useRef<{ start: { x: number; y: number }; last: { x: number; y: number }; pointer: number }>()
   const [tool, setTool] = useState<Tool>('pencil'), [color, setColor] = useState('#6366f1'), [size, setSize] = useState(1)
-  const [zoom, setZoom] = useState(Math.max(1, Math.min(14, Math.floor(360 / Math.max(width, height)))))
+  const viewport = useRef<HTMLDivElement>(null)
+  const [view, setView] = useState<PixelViewport>({ x: 0, y: 0, zoom: 1 })
+  const liveView = useRef(view), autoFit = useRef(true), spaceHeld = useRef(false)
+  const lastPointer = useRef<{ x: number; y: number }>()
+  const pan = useRef<{ x: number; y: number; pointer: number }>()
+  const [isPanning, setIsPanning] = useState(false)
+  const zoom = view.zoom
+  const updateView = (next: PixelViewport) => { liveView.current = next; setView(next) }
+  const fit = () => {
+    const node = viewport.current
+    if (!node) return
+    const bounds = node.getBoundingClientRect()
+    if (!bounds.width || !bounds.height) return
+    autoFit.current = true
+    updateView(fitPixelViewport(bounds.width, bounds.height, editor.current?.image.width || width, editor.current?.image.height || height))
+  }
+  const changeZoom = (nextZoom: number, cursor?: { x: number; y: number }) => {
+    const bounds = viewport.current?.getBoundingClientRect()
+    autoFit.current = false
+    updateView(zoomPixelViewport(liveView.current, cursor || { x: (bounds?.width || 0) / 2, y: (bounds?.height || 0) / 2 }, nextZoom))
+  }
+  useEffect(() => {
+    const node = viewport.current
+    if (!node) return
+    if (autoFit.current) fit()
+    const wheel = (event: WheelEvent) => {
+      event.preventDefault()
+      const bounds = node.getBoundingClientRect()
+      const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? bounds.height : 1)
+      changeZoom(liveView.current.zoom * Math.exp(-Math.max(-500, Math.min(500, delta)) * .002), { x: event.clientX - bounds.left, y: event.clientY - bounds.top })
+    }
+    // React wheel handlers can be passive. This listener must suppress scrolling
+    // and browser zoom while navigating the drawing viewport.
+    node.addEventListener('wheel', wheel, { passive: false })
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => { if (autoFit.current) fit() })
+    observer?.observe(node)
+    return () => { node.removeEventListener('wheel', wheel); observer?.disconnect() }
+  }, [width, height])
   const [grid, setGrid] = useState(true), [ready, setReady] = useState(false), [error, setError] = useState('')
   const [, render] = useState(0)
   const redraw = () => {
@@ -62,8 +100,8 @@ export const AssetDrawingStudio: React.FC<Props> = ({ width, height, source, lay
   }, [source, width, height])
   const finish = () => { if (gesture.current) { gesture.current = undefined; if (editor.current?.commit()) publish() } }
   const pixel = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const box = event.currentTarget.getBoundingClientRect(), image = editor.current!.image
-    return { x: Math.min(image.width - 1, Math.max(0, Math.floor((event.clientX - box.left) / box.width * image.width))), y: Math.min(image.height - 1, Math.max(0, Math.floor((event.clientY - box.top) / box.height * image.height))) }
+    const box = viewport.current!.getBoundingClientRect(), image = editor.current!.image
+    return pixelFromViewport(liveView.current, { x: event.clientX - box.left, y: event.clientY - box.top }, image.width, image.height)
   }
   const rgba = (): RGBA => tool === 'eraser' ? [0, 0, 0, 0] : [parseInt(color.slice(1, 3), 16), parseInt(color.slice(3, 5), 16), parseInt(color.slice(5, 7), 16), 255]
   const undo = () => { finish(); if (editor.current?.canUndo) { editor.current.undo(); publish() } }
@@ -78,8 +116,9 @@ export const AssetDrawingStudio: React.FC<Props> = ({ width, height, source, lay
       <span className="mx-1 h-6 border-l border-slate-700" />
       <button type="button" disabled={!editor.current?.canUndo} onClick={undo} aria-label="Desfazer" title="Desfazer (Ctrl/Cmd+Z)" className="p-1 disabled:opacity-30"><Undo2 size={17} /></button>
       <button type="button" disabled={!editor.current?.canRedo} onClick={redo} aria-label="Refazer" title="Refazer (Ctrl/Cmd+Shift+Z)" className="p-1 disabled:opacity-30"><Redo2 size={17} /></button>
-      <button type="button" onClick={() => setZoom(value => Math.max(.25, value / 1.5))} aria-label="Diminuir zoom"><ZoomOut size={17} /></button><span className="w-9 text-center text-xs">{Math.round(zoom * 100)}%</span>
-      <button type="button" onClick={() => setZoom(value => Math.min(32, value * 1.5))} aria-label="Aumentar zoom"><ZoomIn size={17} /></button>
+      <button type="button" onClick={() => changeZoom(liveView.current.zoom / 1.5)} aria-label="Diminuir zoom"><ZoomOut size={17} /></button><span className="w-9 text-center text-xs">{Math.round(zoom * 100)}%</span>
+      <button type="button" onClick={() => changeZoom(liveView.current.zoom * 1.5)} aria-label="Aumentar zoom"><ZoomIn size={17} /></button>
+      <button type="button" onClick={fit} aria-label="Ajustar desenho à área" title="Ajustar desenho à área" className="p-1"><Maximize2 size={17} /></button>
       <button type="button" aria-label="Grade de pixels" aria-pressed={grid} onClick={() => setGrid(value => !value)} className={`p-1 ${grid ? 'text-indigo-400' : 'text-slate-400'}`}><Grid2X2 size={17} /></button>
       <button type="button" disabled={!ready} onClick={() => { finish(); if (editor.current?.trim()) publish() }} className="flex gap-1 items-center rounded-lg bg-slate-800 p-2 text-xs disabled:opacity-30"><Crop size={15} />Aparar bordas</button>
     </div>
@@ -87,9 +126,48 @@ export const AssetDrawingStudio: React.FC<Props> = ({ width, height, source, lay
       {palette.map(value => <button type="button" key={value} aria-label={`Cor ${value}`} onClick={() => setColor(value)} style={{ backgroundColor: value }} className={`h-6 w-6 rounded-md border ${value === color ? 'border-white ring-1 ring-indigo-400' : 'border-slate-600'}`} />)}
       <label className="ml-auto">Pincel <select aria-label="Tamanho do pincel" value={size} onChange={event => setSize(Number(event.target.value))} className="rounded bg-slate-800 p-1">{[1, 2, 4, 8].map(value => <option key={value} value={value}>{value}px</option>)}</select></label>
     </div>
-    <div className="relative flex-1 min-h-40 overflow-auto rounded-2xl border border-slate-700 bg-[#111318] p-5">
-      <div className="relative m-auto w-fit" style={{ backgroundColor: '#22252e', backgroundImage: 'conic-gradient(#181a20 25%, transparent 0 50%, #181a20 0 75%, transparent 0)', backgroundSize: '16px 16px' }}>
-        <canvas ref={canvas} width={width} height={height} tabIndex={0} aria-label="Tela de desenho de pixels" className="block touch-none outline-none focus:ring-2 focus:ring-indigo-400" style={{ width: (editor.current?.image.width || width) * zoom, height: (editor.current?.image.height || height) * zoom, imageRendering: 'pixelated', cursor: tool === 'move' ? 'move' : 'crosshair' }}
+    <div ref={viewport} tabIndex={0} aria-label="Área de navegação do desenho"
+      className="relative flex-1 min-h-40 overflow-hidden rounded-2xl border border-slate-700 bg-[#111318] touch-none outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+      style={{ cursor: isPanning ? 'grabbing' : undefined }}
+      onContextMenu={event => event.preventDefault()}
+      onKeyDown={event => { if (event.code === 'Space' || event.key === ' ') { event.preventDefault(); spaceHeld.current = true } }}
+      onKeyUp={event => { if (event.code === 'Space' || event.key === ' ') { event.preventDefault(); spaceHeld.current = false } }}
+      onBlur={() => { spaceHeld.current = false; pan.current = undefined; setIsPanning(false); finish() }}
+      onPointerDownCapture={event => {
+        lastPointer.current = { x: event.clientX, y: event.clientY }
+        if (event.button !== 2 && event.button !== 1 && !(event.button === 0 && spaceHeld.current)) return
+        event.preventDefault(); event.stopPropagation()
+        event.currentTarget.focus(); event.currentTarget.setPointerCapture(event.pointerId)
+        pan.current = { x: event.clientX, y: event.clientY, pointer: event.pointerId }
+        setIsPanning(true)
+      }}
+      onPointerMoveCapture={event => {
+        const previous = lastPointer.current
+        lastPointer.current = { x: event.clientX, y: event.clientY }
+        // Chording right/middle with left produces pointermove, not pointerdown.
+        if (!(event.buttons & 6) && !(spaceHeld.current && event.buttons & 1)) {
+          pan.current = undefined; setIsPanning(false); return
+        }
+        event.preventDefault(); event.stopPropagation()
+        const start = pan.current?.pointer === event.pointerId ? pan.current : previous
+        if (start) {
+          autoFit.current = false
+          updateView({ ...liveView.current, x: liveView.current.x + event.clientX - start.x, y: liveView.current.y + event.clientY - start.y })
+        }
+        pan.current = { x: event.clientX, y: event.clientY, pointer: event.pointerId }
+        setIsPanning(true)
+        // Resume an existing left-button stroke at its new image coordinate,
+        // without drawing a diagonal line across the pan.
+        if (gesture.current && editor.current) {
+          const bounds = event.currentTarget.getBoundingClientRect()
+          gesture.current.last = pixelFromViewport(liveView.current, { x: event.clientX - bounds.left, y: event.clientY - bounds.top }, editor.current.image.width, editor.current.image.height)
+        }
+      }}
+      onPointerUp={() => { pan.current = undefined; setIsPanning(false); finish() }}
+      onPointerCancel={() => { pan.current = undefined; spaceHeld.current = false; setIsPanning(false); finish() }}
+      onLostPointerCapture={() => { pan.current = undefined; setIsPanning(false) }}>
+      <div data-pixel-board className="absolute" style={{ left: view.x, top: view.y, backgroundColor: '#22252e', backgroundImage: 'conic-gradient(#181a20 25%, transparent 0 50%, #181a20 0 75%, transparent 0)', backgroundSize: '16px 16px' }}>
+        <canvas ref={canvas} width={width} height={height} tabIndex={0} aria-label="Tela de desenho de pixels" className="block touch-none outline-none focus:ring-2 focus:ring-indigo-400" style={{ width: (editor.current?.image.width || width) * zoom, height: (editor.current?.image.height || height) * zoom, imageRendering: 'pixelated', cursor: isPanning ? 'grabbing' : tool === 'move' ? 'move' : 'crosshair' }}
           onPointerDown={event => {
             if (!ready || event.button !== 0 || !editor.current) return
             event.currentTarget.focus(); event.currentTarget.setPointerCapture(event.pointerId)
@@ -111,6 +189,7 @@ export const AssetDrawingStudio: React.FC<Props> = ({ width, height, source, lay
       </div>
     </div>
     {error && <p role="alert" className="text-xs text-rose-300">{error}</p>}
+    <p className="text-xs text-slate-400">Roda do mouse: zoom no cursor · Botão direito ou Espaço + arraste: mover a tela · Esquerdo: desenhar</p>
     <p className="text-xs text-slate-400">{layerName ? `Editando: ${layerName}.` : 'Desenhe para criar a primeira camada.'} As outras camadas, direções, animações e colisões são preservadas.</p>
   </section>
 }
