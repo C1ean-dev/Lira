@@ -62,10 +62,10 @@ describe('update checks while the app stays open', () => {
 
   describe('a check that could not reach GitHub', () => {
     it('is reported as failed by the web fallback, not as "no update"', async () => {
-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({ ok: false, status: 403 } as any)
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false, status: 403 } as any)
       expect((await UpdateService.checkForUpdates()).checkFailed).toBe(true)
 
-      vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('offline'))
+      vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'))
       expect((await UpdateService.checkForUpdates()).checkFailed).toBe(true)
 
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
