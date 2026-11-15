@@ -17,6 +17,28 @@ export interface AlmFrame {
   duration?: number
 }
 
+export interface AlmAssembly {
+  frame: AlmFrame
+  packets: readonly ArrayBuffer[]
+}
+
+function playbackFrame(header: Omit<AlmFrame, 'data'>, packets: readonly ArrayBuffer[], size: number): AlmFrame {
+  let data: Uint8Array | undefined
+  let fragments: readonly ArrayBuffer[] | null = packets
+  return {
+    ...header,
+    get data() {
+      if (!data) {
+        data = new Uint8Array(size)
+        fragments!.forEach((packet, index) => data!.set(new Uint8Array(packet, HEADER), index * PAYLOAD))
+        // The decoded frame need not retain both its payload and wire fragments.
+        fragments = null
+      }
+      return data
+    },
+  }
+}
+
 export function packetizeFrame(frame: AlmFrame): ArrayBuffer[] {
   if (!frame.data.byteLength || frame.data.byteLength > ALM_MAX_FRAME_BYTES) return []
   const count = Math.ceil(frame.data.byteLength / PAYLOAD)
@@ -42,14 +64,21 @@ export function packetizeFrame(frame: AlmFrame): ArrayBuffer[] {
 }
 
 export class AlmAssembler {
-  private pending = new Map<string, { at: number; frame: AlmFrame; parts: Set<number>; count: number }>()
+  private pending = new Map<string, {
+    at: number; frame: Omit<AlmFrame, 'data'>; size: number; bytes: number; parts: Map<number, ArrayBuffer>; count: number
+  }>()
   private bytes = 0
 
   clear(): void { this.pending.clear(); this.bytes = 0 }
 
   push(packet: ArrayBuffer, now = performance.now()): AlmFrame | null {
+    return this.pushPacket(packet, now)?.frame ?? null
+  }
+
+  /** Retain validated original fragments for forwarding; assemble only for local decoding. */
+  pushPacket(packet: ArrayBuffer, now = performance.now()): AlmAssembly | null {
     for (const [id, frame] of this.pending) {
-      if (now - frame.at > ALM_FRAME_TTL_MS) { this.bytes -= frame.frame.data.length; this.pending.delete(id) }
+      if (now - frame.at > ALM_FRAME_TTL_MS) { this.bytes -= frame.bytes; this.pending.delete(id) }
     }
     if (packet.byteLength <= HEADER || packet.byteLength > HEADER + PAYLOAD) return null
     const view = new DataView(packet)
@@ -66,24 +95,25 @@ export class AlmAssembler {
     const id = `${media}:${sequence}`
     let frame = this.pending.get(id)
     if (!frame) {
-      if (this.pending.size >= 32 || this.bytes + size > MAX_PENDING_BYTES) return null
-      frame = { at: now, frame: { sequence, timestamp, key, data: new Uint8Array(size),
+      const bytes = size + count * HEADER
+      if (this.pending.size >= 32 || this.bytes + bytes > MAX_PENDING_BYTES) return null
+      frame = { at: now, size, bytes, frame: { sequence, timestamp, key,
         ...(media ? { media: 'audio' as const } : {}),
-        ...(layers ? { temporalLayer, layerSequences } : {}), ...(duration ? { duration } : {}) }, parts: new Set(), count }
+        ...(layers ? { temporalLayer, layerSequences } : {}), ...(duration ? { duration } : {}) }, parts: new Map(), count }
       this.pending.set(id, frame)
-      this.bytes += size
+      this.bytes += bytes
     }
-    if (frame.frame.data.length !== size || frame.frame.timestamp !== timestamp || frame.frame.key !== key ||
+    if (frame.size !== size || frame.frame.timestamp !== timestamp || frame.frame.key !== key ||
       frame.frame.temporalLayer !== (layers ? temporalLayer : undefined) ||
       frame.frame.duration !== (duration || undefined) ||
       frame.frame.layerSequences?.length !== layerSequences?.length ||
       layerSequences?.some((value, layer) => value !== frame!.frame.layerSequences?.[layer]) || frame.parts.has(index)) return null
-    frame.frame.data.set(new Uint8Array(packet, HEADER), index * PAYLOAD)
-    frame.parts.add(index)
+    frame.parts.set(index, packet)
     if (frame.parts.size !== count) return null
     this.pending.delete(id)
-    this.bytes -= size
-    return frame.frame
+    this.bytes -= frame.bytes
+    const packets = Array.from({ length: count }, (_, part) => frame.parts.get(part)!)
+    return { frame: playbackFrame(frame.frame, packets, size), packets }
   }
 }
 

@@ -63,6 +63,7 @@ import { liveSharers, liveViewReporter, __resetLiveViewForTests } from '../../me
 import { VIEW_RENEW_MS, VIEW_SEND_DELAY_MS } from '../../media/liveViewReporter'
 import { useGameStore } from '../../store/useGameStore'
 import { useLiveWatchStore } from '../../store/useLiveWatchStore'
+import { CURRENT_LIRA_VERSION } from '../../types/p2p'
 
 type Conn = InstanceType<typeof FakeConn>
 
@@ -98,6 +99,7 @@ const remote = (id: string, extra: Record<string, unknown> = {}): any => ({
   isMoving: false,
   avatar: { baseId: 'char-1', shirtColor: '#e03131' },
   status: 'available',
+  appVersion: CURRENT_LIRA_VERSION,
   lastUpdated: 0,
   currentZoneId: null,
   ...extra,
@@ -161,7 +163,7 @@ describe('saying that this app waits for a click before a live', () => {
     expect(joins(conn)[0]).toMatchObject({ senderId: HOST_ID, payload: { player: { liveOptIn: true } } })
   })
 
-  it('is kept with the player, and absent for a player of a version without the click', async () => {
+  it('is kept with the player, and absent for a compatible player that does not advertise the flag', async () => {
     await host()
     const modern = new FakeConn('lira-CODE-AAA-peer-new01')
     const old = new FakeConn('lira-CODE-AAA-peer-old01')

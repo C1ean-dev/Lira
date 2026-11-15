@@ -4,7 +4,7 @@ import { processNetworkMessage } from '../../p2p/messageHandlers'
 import { useGameStore } from '../../store/useGameStore'
 import { DEFAULT_AVATAR } from '../../engine/Constants'
 import { Player } from '../../types/game'
-import { NetworkMessage } from '../../types/p2p'
+import { CURRENT_LIRA_VERSION, NetworkMessage } from '../../types/p2p'
 
 function makePlayer(id: string, name: string): Player {
   return {
@@ -16,6 +16,7 @@ function makePlayer(id: string, name: string): Player {
     isMoving: false,
     avatar: { ...DEFAULT_AVATAR },
     status: 'available',
+    appVersion: CURRENT_LIRA_VERSION,
     lastUpdated: Date.now(),
   }
 }
