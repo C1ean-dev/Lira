@@ -120,7 +120,7 @@ export class SpotifyTabAudioController {
       if (generation !== this.generation) return { ok: false, error: 'Inicialização do DJ cancelada.' }
       const result = response?.result?.value
       if (result?.ok !== true) throw new Error(result?.error || 'Selecione a aba do Spotify com áudio no navegador.')
-      let retried = false
+      let consecutiveErrors = 0
       const poll = async (): Promise<void> => {
         if (generation !== this.generation) return
         const startedAt = Date.now()
@@ -138,12 +138,12 @@ export class SpotifyTabAudioController {
             if (bytes.length % 4) throw new Error('Áudio inválido recebido do navegador.')
             this.deps.data(bytes)
           }
-          retried = false
+          consecutiveErrors = 0
           this.timer = setTimeout(poll, Math.max(0, 20 - (Date.now() - startedAt)))
         } catch (error) {
           if (generation !== this.generation) return
-          if (error instanceof SpotifyPlaybackDisconnectedError && !retried) {
-            retried = true
+          if (error instanceof SpotifyPlaybackDisconnectedError && consecutiveErrors < 3) {
+            consecutiveErrors++
             try {
               const replacement = await this.deps.connect()
               if (generation !== this.generation) { replacement.close(); return }
@@ -152,6 +152,11 @@ export class SpotifyTabAudioController {
               return poll()
             } catch (reconnectError) {
               error = reconnectError
+              if (generation !== this.generation) return
+              if (consecutiveErrors < 3) {
+                this.timer = setTimeout(poll, 250)
+                return
+              }
             }
             if (generation !== this.generation) return
           }

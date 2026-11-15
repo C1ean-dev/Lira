@@ -8,6 +8,13 @@ export class SpotifyPlaybackDisconnectedError extends Error {
   }
 }
 
+export class SpotifyPlaybackTimeoutError extends SpotifyPlaybackDisconnectedError {
+  constructor(message = 'O Spotify demorou para responder.') {
+    super(message)
+    this.name = 'SpotifyPlaybackTimeoutError'
+  }
+}
+
 export class SpotifyPlaybackProtocolError extends Error {
   readonly protocolCode: number | null
   readonly protocolMessage: string
@@ -55,7 +62,7 @@ export function connectPlayback(url: string): Promise<PlaybackConnection> {
       request: (method, params, timeoutMs = 2500) => new Promise((resolveRequest, rejectRequest) => {
         if (socket.readyState !== WebSocket.OPEN) { rejectRequest(new SpotifyPlaybackDisconnectedError('Spotify desconectado.')); return }
         const requestId = ++id
-        const timer = setTimeout(() => { pending.delete(requestId); rejectRequest(new Error('O Spotify demorou para responder.')) }, timeoutMs)
+        const timer = setTimeout(() => { pending.delete(requestId); rejectRequest(new SpotifyPlaybackTimeoutError()) }, timeoutMs)
         pending.set(requestId, { method, resolve: resolveRequest, reject: rejectRequest, timer })
         socket.send(JSON.stringify({ id: requestId, method, params }), error => {
           if (!error) return
