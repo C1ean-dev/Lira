@@ -82,6 +82,7 @@ export class AlmVideoSource {
 
   updateBitrate(bitrate: number): void {
     if (!this.config || this.encoder?.state !== 'configured') return
+    if (this.config.bitrate === bitrate) return
     this.config = { ...this.config, bitrate }
     this.encoder.configure(this.config)
     this.forceKey = true

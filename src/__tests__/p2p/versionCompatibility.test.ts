@@ -195,7 +195,7 @@ describe('Version Compatibility & Outdated Flag', () => {
     expect(msg?.senderId).toBe('system')
   })
 
-  it('as Host, rejects outdated peer on PLAYER_JOIN and disconnects after 500ms', () => {
+  it.each([undefined, '1.1.200'])('as Host, rejects peer with appVersion %s on PLAYER_JOIN and disconnects after 500ms', appVersion => {
     vi.useFakeTimers()
     try {
       const broadcast = vi.fn()
@@ -209,7 +209,7 @@ describe('Version Compatibility & Outdated Flag', () => {
           player: {
             id: 'legacy-user',
             name: 'OldUser',
-            appVersion: '1.1.200',
+            appVersion,
           },
         },
       }

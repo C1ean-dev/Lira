@@ -2,9 +2,18 @@
 
 O apresentador coordena uma árvore ALM independente por Live, com até três filhos
 por participante. Ele comprime a captura uma vez com WebCodecs. Cada retransmissor
-remonta os blocos, encaminha os mesmos bytes comprimidos aos filhos e decodifica
+valida os blocos, encaminha os mesmos bytes comprimidos aos filhos e decodifica
 somente para reprodução local. O canvas de reprodução gera uma trilha bruta;
 essa trilha nunca alimenta o transporte nem outro encoder.
+
+Os retransmissores guardam os buffers originais dos fragmentos válidos e só os
+encaminham depois de completar e validar o quadro. Não recriam os pacotes para
+cada salto. O buffer contínuo é alocado somente quando o decoder local lê os
+dados, com uma única montagem por quadro. Camadas apenas encaminhadas e quadros
+descartados pela fila de reprodução não geram essa cópia. A seleção da sequência
+local mantém esse acesso adiado sem alterar os cabeçalhos encaminhados. Os
+fragmentos pendentes, incluindo seus cabeçalhos, respeitam a reserva de 8 MiB
+da remontagem.
 
 Para 12 participantes compatíveis, são 11 arestas: o apresentador envia até três
 cópias e os demais retransmitem. A redução de upload do apresentador depende da
@@ -32,8 +41,30 @@ Clientes sem suporte ao áudio sincronizado mantêm áudio e vídeo no RTP.
   vence no prazo de 180 ms, mesmo sem chegar outro pacote. Perdas pedem
   um IDR, com pedidos limitados a um por 500 ms; a raiz também gera IDR a cada
   segundo. Não há retransmissão dos blocos perdidos.
-- Filas de envio são limitadas a 2 MiB por aresta. Uma aresta congestionada
-  descarta o quadro inteiro sem bloquear os demais filhos.
+- Cada aresta limita a admissão de vídeo a um orçamento de aproximadamente
+  200 ms da vazão entregue informada pelo filho. O orçamento varia entre
+  32 KiB e 512 KiB, com reserva adicional de 8 KiB para áudio. Sem uma amostra
+  recente (menos de 6 s), usa 8 Mbps como referência inicial, não como medição
+  da capacidade da rede. Uma amostra recente de vazão zero usa o piso de 32 KiB.
+  O limite é de admissão na fila do DataChannel, não uma garantia de latência
+  total; os pisos e os quadros de recuperação também podem exceder 200 ms.
+- Camadas temporais adicionais usam metade do orçamento de vídeo, preservando
+  espaço para a base. Um descarte suprime aquela camada e suas dependentes
+  até enviar um IDR completo com sucesso, sem bloquear áudio ou outros filhos.
+  Pedidos de recuperação são agrupados com intervalo mínimo de 500 ms.
+- Um IDR maior que o orçamento normal pode entrar sozinho, com até 8 KiB já
+  na fila. A rajada fica limitada ao dobro do orçamento normal da aresta,
+  com teto de 512 KiB de dados de vídeo e reserva adicional de 8 KiB para áudio.
+  Durante essa rajada, novos quadros de vídeo só entram quando cabem no
+  orçamento normal. Esses valores não garantem entrega imediata do áudio,
+  que compartilha o transporte, nem um prazo total de reprodução.
+- Um IDR acima do limite não envia nenhum fragmento naquela aresta. O
+  apresentador restaura RTP somente para o espectador afetado e reanexa seus
+  filhos à árvore. Relatórios dos retransmissores são aceitos apenas para
+  arestas ativas cujo pai é o remetente, na sessão atual; arestas antigas de
+  uma troca de pai são ignoradas. A volta ao RTP pode aumentar o upload do
+  apresentador, mas preserva a recuperação sem reduzir a qualidade global
+  do encoder compartilhado. Quadros não ficam retidos para envio posterior.
 - Pacotes Opus usam uma sequência separada. Se faltar um, a fila espera no máximo
   40 ms e continua no seguinte, sem redundância ou retransmissão.
 - Falta de vídeo por 10 s, áudio indisponível na inicialização ou erro no decoder
@@ -100,8 +131,10 @@ descendentes. Um retransmissor com mini display pode receber todas as camadas
 para atender um filho em tela cheia, decodificando localmente apenas a base.
 Contadores por representação distinguem descarte intencional de camadas de perda
 real de quadros. A alternância solicita IDR e mantém um único encoder de vídeo.
-Mudanças de bitrate reconfiguram o encoder existente; trocar a captura ou mudar
-suas dimensões/FPS cria uma nova sessão.
+Mudanças efetivas de bitrate reconfiguram o encoder existente e solicitam IDR.
+Repetir o mesmo bitrate não reconfigura nem cria um pedido novo, preservando
+pedidos de recuperação já pendentes. Trocar a captura ou mudar suas dimensões/FPS
+cria uma nova sessão, mesmo se o bitrate continuar igual.
 
 O relatório diagnóstico inclui `liveDistribution`, com topologia, codec, estado
 das arestas, vazão entregue, RTT, SVC, sincronização e filas. Estatísticas RTP existentes não medem o vídeo dos
@@ -113,6 +146,13 @@ Testes de árvore e pacotes:
 
 ```powershell
 npx vitest run src/__tests__/p2p/almTree.test.ts src/__tests__/p2p/almPackets.test.ts src/__tests__/p2p/almCapacity.test.ts src/__tests__/media/almClock.test.ts
+```
+
+Testes de admissão, recuperação e reutilização dos buffers nos retransmissores,
+com DataChannels simulados e sem abrir navegador:
+
+```powershell
+npx vitest run src/__tests__/p2p/almSendQueue.test.ts src/__tests__/p2p/almRelayPackets.test.ts src/__tests__/p2p/almLiveDelivery.test.ts src/__tests__/media/almVideoSource.test.ts
 ```
 
 Teste local opt-in com WebRTC/WebCodecs reais e mídia sintética (sem microfone
