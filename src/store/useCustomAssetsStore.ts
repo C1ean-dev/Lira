@@ -1,6 +1,6 @@
 import type { AtlasDocument, PersistedAtlas } from '../assets/atlasFormat'
 import { create } from 'zustand'
-import type { CustomAsset } from '../types/customAsset'
+import type { CustomAsset, CustomAssetType } from '../types/customAsset'
 import type { FurnitureDefinition } from '../types/map'
 import type { Direction } from '../types/game'
 import { PeerManager } from '../p2p/PeerManager'
@@ -175,12 +175,13 @@ interface CustomAssetsState {
   deletedAssetIds: string[]
   isCustomModalOpen: boolean
   editingAssetId: string | null
-  initialStudioMode: 'crop' | 'compose'
+  initialStudioMode: 'draw' | 'crop' | 'compose'
+  initialAssetType: CustomAssetType
   initialCategory: string
   setCustomModalOpen: (open: boolean) => void
   setEditingAssetId: (id: string | null) => void
-  openCreateModal: (mode?: 'crop' | 'compose', initialCategory?: string) => void
-  openEditModal: (id: string, mode?: 'crop' | 'compose') => void
+  openCreateModal: (mode?: 'draw' | 'crop' | 'compose', initialCategory?: string, initialAssetType?: CustomAssetType) => void
+  openEditModal: (id: string, mode?: 'draw' | 'crop' | 'compose') => void
   addCustomAsset: (asset: CustomAsset) => Promise<void>
   addCustomAssets: (assets: CustomAsset[]) => Promise<void>
   updateCustomAsset: (id: string, asset: Partial<CustomAsset>) => Promise<void>
@@ -242,12 +243,13 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
   deletedAssetIds: [],
   isCustomModalOpen: false,
   editingAssetId: null,
-  initialStudioMode: 'crop',
+  initialStudioMode: 'draw',
+  initialAssetType: 'furniture',
   initialCategory: 'Geral',
   setCustomModalOpen: open => set({ isCustomModalOpen: open, editingAssetId: open ? get().editingAssetId : null }),
   setEditingAssetId: id => set({ editingAssetId: id }),
-  openCreateModal: (mode = 'crop', initialCategory = 'Geral') => set({ isCustomModalOpen: true, editingAssetId: null, initialStudioMode: mode, initialCategory }),
-  openEditModal: (id, mode = 'compose') => set({ isCustomModalOpen: true, editingAssetId: id, initialStudioMode: mode }),
+  openCreateModal: (mode = 'draw', initialCategory = 'Geral', initialAssetType = 'furniture') => set({ isCustomModalOpen: true, editingAssetId: null, initialStudioMode: mode, initialCategory, initialAssetType }),
+  openEditModal: (id, mode = 'compose') => set({ isCustomModalOpen: true, editingAssetId: id, initialStudioMode: mode, initialAssetType: get().getAssetById(id)?.type || 'furniture' }),
   addCustomAsset: asset => addAssets([asset], true),
   addCustomAssets: assets => addAssets(assets, true),
   updateCustomAsset: (id, partial) => queue(async () => {

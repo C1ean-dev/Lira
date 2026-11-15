@@ -1,9 +1,13 @@
+import { AssetDrawingStudio } from './custom-element/AssetDrawingStudio'
+import { applyPixelLayer, frameLayersWithActiveEdits, hydrateStudioFrames, type PixelLayerEdit } from './custom-element/assetStudioDraft'
+import { generateUUID } from '../utils/uuid'
 import { setRasterImageSource } from '../utils/rasterImageSource'
 import React, { useState, useRef, useEffect } from 'react'
 import {
   X,
   Sparkles,
   Scissors,
+  Pencil,
   Check,
   RotateCcw,
 } from 'lucide-react'
@@ -43,6 +47,7 @@ export const CustomElementModal: React.FC = () => {
     setCustomModalOpen,
     editingAssetId,
     initialStudioMode,
+    initialAssetType,
     initialCategory,
     updateCustomAsset,
     getAssetById,
@@ -52,7 +57,12 @@ export const CustomElementModal: React.FC = () => {
   } = useCustomAssetsStore()
   const { setSelectedFurnitureDefId, setSelectedFloor, setSelectedWall, setActiveTool } = useMapStore()
 
-  const [studioMode, setStudioMode] = useState<'crop' | 'compose'>('crop')
+  const [studioMode, setStudioMode] = useState<'draw' | 'crop' | 'compose'>(initialStudioMode || 'draw')
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  const savingRef = useRef(false)
+  const newLayerId = useRef(generateUUID())
+  const drawRevision = useRef(0)
 
   const [sourceImage, setSourceImage] = useState<HTMLImageElement | null>(null)
   const [sourceImageSrc, setSourceImageSrc] = useState<string>('')
@@ -94,6 +104,7 @@ export const CustomElementModal: React.FC = () => {
     layerY: 0,
   })
 
+  const [collisionFromSprite, setCollisionFromSprite] = useState(false)
   const [composeTool, setComposeTool] = useState<'move' | 'collision' | 'seat'>('move')
   const [composeZoom, setComposeZoom] = useState<number>(2)
   const [showCollisionOverlay, setShowCollisionOverlay] = useState<boolean>(true)
@@ -149,10 +160,11 @@ export const CustomElementModal: React.FC = () => {
 
   const handleSelectDirection = (newDir: Direction) => {
     if (newDir === activeDirection) return
+    drawRevision.current++
 
     const currentBoardLayers = JSON.parse(JSON.stringify(compositeLayers))
     let currentFrameList = [...frames]
-    const currentFrameLayers = [...frameLayerStates]
+    const currentFrameLayers = frameLayersWithActiveEdits(frameLayerStates, selectedFrameIdx, compositeLayers)
 
     if (currentFrameList.length === 0 && currentBoardLayers.length > 0) {
       const syncBaked = bakeLayersToDataUrlSync(
@@ -218,7 +230,7 @@ export const CustomElementModal: React.FC = () => {
     setSeatGrid(updatedSeats[newDir] || Array.from({ length: Math.ceil(targetDim.tileHeight) },
       () => Array(Math.ceil(targetDim.tileWidth)).fill(false)))
 
-    if (updatedCollisions[newDir] && updatedCollisions[newDir]!.length === targetDim.tileHeight) {
+    if (updatedCollisions[newDir] && updatedCollisions[newDir]!.length === Math.ceil(targetDim.tileHeight)) {
       setCollisionGrid(updatedCollisions[newDir]!)
     } else {
       const newGrid: boolean[][] = []
@@ -319,7 +331,7 @@ export const CustomElementModal: React.FC = () => {
   }
 
   const [elementName, setElementName] = useState<string>('Meu Elemento Composto')
-  const [elementType, setElementType] = useState<CustomAssetType>('furniture')
+  const [elementType, setElementType] = useState<CustomAssetType>(initialAssetType || 'furniture')
   const [category, setCategory] = useState<string>('Geral')
   const [isCreatingNewCategory, setIsCreatingNewCategory] = useState<boolean>(false)
   const [newCategoryName, setNewCategoryName] = useState<string>('')
@@ -331,10 +343,10 @@ export const CustomElementModal: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null!)
 
   const setBoardSizeInTiles = (wTiles: number, hTiles: number) => {
-    const w = Math.max(1, Math.min(32, wTiles))
-    const h = Math.max(1, Math.min(32, hTiles))
-    const targetW = w * 32
-    const targetH = h * 32
+    const targetW = Math.max(1, Math.min(4096, Math.round(wTiles * 32)))
+    const targetH = Math.max(1, Math.min(4096, Math.round(hTiles * 32)))
+    const w = targetW / 32
+    const h = targetH / 32
     const prevW = compositeBoardWidth
     const prevH = compositeBoardHeight
     setTileWidth(w)
@@ -365,8 +377,8 @@ export const CustomElementModal: React.FC = () => {
     const h = Math.max(1, Math.min(4096, pxH))
     const prevW = compositeBoardWidth
     const prevH = compositeBoardHeight
-    const tW = Math.max(1, Math.ceil(w / 32))
-    const tH = Math.max(1, Math.ceil(h / 32))
+    const tW = w / 32
+    const tH = h / 32
     setPixelWidth(w)
     setPixelHeight(h)
     setTileWidth(tW)
@@ -426,10 +438,12 @@ export const CustomElementModal: React.FC = () => {
   }, [tileWidth, tileHeight])
 
   const handleSetAllCollision = (solid: boolean) => {
+    setCollisionFromSprite(false)
     setCollisionGrid((prev) => prev.map((row) => row.map(() => solid)))
   }
 
   const handleSetBottomHalfCollision = () => {
+    setCollisionFromSprite(false)
     setCollisionGrid((prev) =>
       prev.map((row, r) => row.map(() => r >= Math.floor(tileHeight / 2)))
     )
@@ -453,13 +467,17 @@ export const CustomElementModal: React.FC = () => {
   }
 
   useEffect(() => {
+    drawRevision.current++
     if (!isCustomModalOpen) return
 
+
+    setSaveError('')
     if (editingAssetId) {
       const asset = getAssetById(editingAssetId)
       if (asset) {
         setElementName(asset.name)
         setElementType(asset.type)
+        setCollisionFromSprite(!!asset.collisionFromSprite)
         setCategory(asset.category || 'Geral')
         setTileWidth(asset.width)
         setTileHeight(asset.height)
@@ -474,147 +492,24 @@ export const CustomElementModal: React.FC = () => {
         setSeatGrid(asset.directionalSeatGrids?.down || asset.seatGrid ||
           Array.from({ length: Math.ceil(asset.height) }, () => Array(Math.ceil(asset.width)).fill(false)))
         setDirectionalSeatGrids(asset.directionalSeatGrids || {})
-        if (asset.collisionGrid && asset.collisionGrid.length > 0) {
-          setCollisionGrid(asset.collisionGrid)
-        }
+        setCollisionGrid(asset.collisionGrid?.length ? asset.collisionGrid :
+          Array.from({ length: Math.ceil(asset.height) }, () => Array(Math.ceil(asset.width)).fill(asset.isObstacle)))
 
-        if (asset.frameLayers && asset.frameLayers.length > 0) {
-          setFrameLayerStates(asset.frameLayers)
-          const firstFrameLayers = asset.frameLayers[0] || []
-          setCompositeLayers(JSON.parse(JSON.stringify(firstFrameLayers)))
-          if (firstFrameLayers.length > 0) {
-            setSelectedLayerId(firstFrameLayers[0].id)
-          }
-
-          const existingClipsMap = new Map<string, CroppedClip>()
-          asset.frameLayers.flat().forEach((layer) => {
-            const clipKey = layer.clipId || layer.id
-            if (!existingClipsMap.has(clipKey)) {
-              existingClipsMap.set(clipKey, {
-                id: clipKey,
-                name: layer.name,
-                dataUrl: layer.dataUrl,
-                width: layer.width,
-                height: layer.height,
-              })
-            }
-          })
-          setCroppedClips(Array.from(existingClipsMap.values()))
-        } else if (asset.frames && asset.frames.length > 0) {
-          const legacyLayers: CompositeLayer[][] = asset.frames.map((f, idx) => [
-            {
-              id: `layer_edit_${idx}_0`,
-              clipId: `clip_edit_${idx}`,
-              name: `Camada Base (${idx + 1})`,
-              dataUrl: f,
-              x: 0,
-              y: 0,
-              width: asset.width * 32,
-              height: asset.height * 32,
-              flipH: false,
-              opacity: 1,
-            },
-          ])
-          setFrameLayerStates(legacyLayers)
-          setCompositeLayers(JSON.parse(JSON.stringify(legacyLayers[0])))
-          setSelectedLayerId(legacyLayers[0][0].id)
-
-          const clips: CroppedClip[] = asset.frames.map((f, idx) => ({
-            id: `clip_edit_${idx}`,
-            name: `Quadro ${idx + 1}`,
-            dataUrl: f,
-            width: asset.width * 32,
-            height: asset.height * 32,
-          }))
-          setCroppedClips(clips)
-        }
-
+        const draft = hydrateStudioFrames(asset)
+        setFrames(draft.frames)
+        setFrameLayerStates(draft.frameLayers)
+        setCompositeLayers(draft.frameLayers[0] || [])
+        setSelectedLayerId(draft.frameLayers[0]?.[0]?.id || null)
         setActiveDirection('down')
-        if (asset.directionalFrames) {
-          const dirFrames: Record<Direction, string[]> = {
-            down: [],
-            left: [],
-            up: [],
-            right: [],
-          }
-          ;(['down', 'left', 'up', 'right'] as Direction[]).forEach((d) => {
-            const val = asset.directionalFrames?.[d]
-            if (val) {
-              dirFrames[d] = Array.isArray(val) ? val : [val]
-            }
-          })
-          if (dirFrames.down.length === 0 && asset.frames && asset.frames.length > 0) {
-            dirFrames.down = asset.frames
-          }
-          setDirectionalFrames(dirFrames)
-        } else if (asset.frames && asset.frames.length > 0) {
-          setDirectionalFrames({
-            down: asset.frames,
-            left: [],
-            up: [],
-            right: [],
-          })
-        }
-
-        if (asset.directionalFrameLayers) {
-          const dirLayers: Record<Direction, CompositeLayer[][]> = {
-            down: [],
-            left: [],
-            up: [],
-            right: [],
-          }
-          ;(['down', 'left', 'up', 'right'] as Direction[]).forEach((d) => {
-            const val = asset.directionalFrameLayers?.[d]
-            if (val) {
-              dirLayers[d] = val as any
-            }
-          })
-          if (dirLayers.down.length === 0 && asset.frameLayers && asset.frameLayers.length > 0) {
-            dirLayers.down = asset.frameLayers as any
-          }
-          setDirectionalFrameLayers(dirLayers)
-        } else if (asset.frameLayers && asset.frameLayers.length > 0) {
-          setDirectionalFrameLayers({
-            down: asset.frameLayers as any,
-            left: [],
-            up: [],
-            right: [],
-          })
-        }
-
-        if (asset.directionalDimensions) {
-          const dims: Record<Direction, { tileWidth: number; tileHeight: number; pixelWidth: number; pixelHeight: number }> = {
-            down: { tileWidth: asset.width, tileHeight: asset.height, pixelWidth: asset.pixelWidth || asset.width * 32, pixelHeight: asset.pixelHeight || asset.height * 32 },
-            left: { tileWidth: asset.width, tileHeight: asset.height, pixelWidth: asset.pixelWidth || asset.width * 32, pixelHeight: asset.pixelHeight || asset.height * 32 },
-            up: { tileWidth: asset.width, tileHeight: asset.height, pixelWidth: asset.pixelWidth || asset.width * 32, pixelHeight: asset.pixelHeight || asset.height * 32 },
-            right: { tileWidth: asset.width, tileHeight: asset.height, pixelWidth: asset.pixelWidth || asset.width * 32, pixelHeight: asset.pixelHeight || asset.height * 32 },
-          }
-          ;(['down', 'left', 'up', 'right'] as Direction[]).forEach((d) => {
-            const val = asset.directionalDimensions?.[d]
-            if (val) {
-              dims[d] = {
-                tileWidth: val.width,
-                tileHeight: val.height,
-                pixelWidth: val.pixelWidth || val.width * 32,
-                pixelHeight: val.pixelHeight || val.height * 32,
-              }
-            }
-          })
-          setDirectionalDimensions(dims)
-        } else {
-          const baseDim = {
-            tileWidth: asset.width,
-            tileHeight: asset.height,
-            pixelWidth: asset.pixelWidth || asset.width * 32,
-            pixelHeight: asset.pixelHeight || asset.height * 32,
-          }
-          setDirectionalDimensions({
-            down: { ...baseDim },
-            left: { ...baseDim },
-            up: { ...baseDim },
-            right: { ...baseDim },
-          })
-        }
+        setDirectionalFrames(draft.directionalFrames)
+        setDirectionalFrameLayers(draft.directionalFrameLayers)
+        setDirectionalDimensions(draft.directionalDimensions)
+        const clips = new Map<string, CroppedClip>()
+        Object.values(draft.directionalFrameLayers).flat(2).forEach(layer => {
+          if (!clips.has(layer.clipId || layer.id)) clips.set(layer.clipId || layer.id, { id: layer.clipId || layer.id, name: layer.name,
+            dataUrl: layer.dataUrl, width: layer.origWidth || layer.width, height: layer.origHeight || layer.height })
+        })
+        setCroppedClips([...clips.values()])
 
         if (asset.directionalCollisionGrids) {
           setDirectionalCollisionGrids(asset.directionalCollisionGrids)
@@ -624,6 +519,14 @@ export const CustomElementModal: React.FC = () => {
         setStudioMode(initialStudioMode || 'compose')
       }
     } else {
+      setElementName(initialAssetType === 'floor' ? 'Novo Piso' : initialAssetType === 'wall' ? 'Nova Parede' : 'Nova Mobília')
+      setElementType(initialAssetType || 'furniture')
+      setCollisionFromSprite(false)
+      setCompositeLayers([]); setFrameLayerStates([]); setFrames([]); setCroppedClips([])
+      setSelectedLayerId(null); setSelectedFrameIdx(0)
+      setTileWidth(2); setTileHeight(2); setPixelWidth(64); setPixelHeight(64)
+      setCompositeBoardWidth(64); setCompositeBoardHeight(64)
+      setSourceImage(null); setSourceImageSrc(''); setSaveError('')
       setActiveDirection('down')
       setDirectionalFrames({ down: [], left: [], up: [], right: [] })
       setDirectionalFrameLayers({ down: [], left: [], up: [], right: [] })
@@ -642,9 +545,9 @@ export const CustomElementModal: React.FC = () => {
       }
       setCollisionGrid(emptyGrid)
       setCategory(initialCategory || 'Geral')
-      setStudioMode(initialStudioMode || 'crop')
+      setStudioMode(initialStudioMode || 'draw')
     }
-  }, [isCustomModalOpen, editingAssetId, initialStudioMode, initialCategory])
+  }, [isCustomModalOpen, editingAssetId, initialStudioMode, initialCategory, initialAssetType])
 
   useEffect(() => {
     if (!isPlayingAnim || frames.length <= 1) return
@@ -1376,6 +1279,7 @@ export const CustomElementModal: React.FC = () => {
       const tileRow = Math.floor(clickY / 32)
 
       if (tileRow >= 0 && tileRow < tileHeight && tileCol >= 0 && tileCol < tileWidth) {
+        if (composeTool === 'collision') setCollisionFromSprite(false)
         const currentValue = (composeTool === 'seat' ? seatGrid : collisionGrid)[tileRow]?.[tileCol] ?? false
         const nextValue = !currentValue
         setCollisionPaintValue(nextValue)
@@ -1637,6 +1541,17 @@ export const CustomElementModal: React.FC = () => {
     )
   }
 
+  const handleSelectFrame = (index: number | null) => {
+    if (index === null || index === selectedFrameIdx) return
+    drawRevision.current++
+    const updated = frameLayersWithActiveEdits(frameLayerStates, selectedFrameIdx, compositeLayers)
+    const next = updated[index] || []
+    setFrameLayerStates(updated)
+    setSelectedFrameIdx(index)
+    setCompositeLayers(next)
+    setSelectedLayerId(next[0]?.id || null)
+  }
+
   const handleDeleteFrame = (idx: number) => {
     setFrames((prev) => prev.filter((_, i) => i !== idx))
     setFrameLayerStates((prev) => prev.filter((_, i) => i !== idx))
@@ -1695,7 +1610,21 @@ export const CustomElementModal: React.FC = () => {
     setStudioMode('crop')
   }
 
-  const handleSaveAsset = async () => {
+  const drawingLayer = compositeLayers.find(layer => layer.id === selectedLayerId) || compositeLayers[0]
+  const handlePixelChange = (edit: PixelLayerEdit) => {
+    const next = applyPixelLayer(compositeLayers, drawingLayer?.id || newLayerId.current, edit, compositeBoardWidth, compositeBoardHeight)
+    setCompositeLayers(next)
+    setSelectedLayerId(drawingLayer?.id || next[next.length - 1].id)
+    setFrameLayerStates(previous => frameLayersWithActiveEdits(previous, selectedFrameIdx, next))
+    const revision = ++drawRevision.current
+    const index = Math.max(0, selectedFrameIdx ?? 0)
+    void bakeLayersToDataUrl(compositeBoardWidth, compositeBoardHeight, next).then(dataUrl => {
+      if (revision !== drawRevision.current || !dataUrl) return
+      setFrames(previous => { const updated = [...previous]; updated[index] = dataUrl; return updated })
+    }).catch(() => setSaveError('A prévia não pôde ser atualizada. O desenho foi preservado; tente salvar novamente.'))
+  }
+
+  const saveAssetDraft = async () => {
     let finalFrames: string[] = []
     let finalFrameLayers: CompositeLayer[][] = []
     const finalDirFrames: Partial<Record<Direction, string[]>> = {}
@@ -1706,12 +1635,12 @@ export const CustomElementModal: React.FC = () => {
 
     const isFloor = elementType === 'floor'
     const isWall = elementType === 'wall'
-    const finalIsObstacle = isFloor
+    let finalIsObstacle = isFloor
       ? false
       : isWall
       ? true
       : collisionGrid.some((row) => row.some((col) => col === true))
-    const finalCollisionGrid = isFloor ? [] : collisionGrid
+    let finalCollisionGrid = isFloor ? [] : collisionGrid
 
     let finalCategory = category.trim() || 'Geral'
     if (isCreatingNewCategory && newCategoryName.trim()) {
@@ -1723,7 +1652,7 @@ export const CustomElementModal: React.FC = () => {
       const directions: Direction[] = ['down', 'left', 'up', 'right']
 
       const currentActiveBoardLayers = JSON.parse(JSON.stringify(compositeLayers))
-      const currentActiveFrameLayers = [...frameLayerStates]
+      const currentActiveFrameLayers = frameLayersWithActiveEdits(frameLayerStates, selectedFrameIdx, compositeLayers)
       const currentActiveFrames = [...frames]
 
       const allDirLayers: Record<Direction, CompositeLayer[][]> = {
@@ -1784,8 +1713,7 @@ export const CustomElementModal: React.FC = () => {
               const bUrl = await bakeLayersToDataUrl(
                 dim.pixelWidth,
                 dim.pixelHeight,
-                frameLayer,
-                d === activeDirection ? cachedLayerImages : undefined
+                frameLayer
               )
               if (bUrl) bakedForD.push(bUrl)
             }
@@ -1816,7 +1744,15 @@ export const CustomElementModal: React.FC = () => {
         }
       }
     } else {
-      if (frames.length > 0) {
+      const updatedFrameLayers = frameLayersWithActiveEdits(frameLayerStates, selectedFrameIdx, compositeLayers)
+      if (updatedFrameLayers.some(layers => layers.length > 0)) {
+        finalFrameLayers = updatedFrameLayers
+        for (let index = 0; index < updatedFrameLayers.length; index++) {
+          const layers = updatedFrameLayers[index]
+          const baked = layers.length ? await bakeLayersToDataUrl(compositeBoardWidth, compositeBoardHeight, layers) : frames[index]
+          if (baked) finalFrames.push(baked)
+        }
+      } else if (frames.length > 0) {
         finalFrames = [...frames]
         finalFrameLayers = [...frameLayerStates]
       } else if (compositeLayers.length > 0) {
@@ -1875,14 +1811,22 @@ export const CustomElementModal: React.FC = () => {
       return
     }
 
-    const baseWidth = elementType === 'furniture' && finalDirDims.down ? (finalDirDims.down.pixelWidth ? finalDirDims.down.pixelWidth / 32 : finalDirDims.down.width) : (pixelWidth ? pixelWidth / 32 : tileWidth)
-    const baseHeight = elementType === 'furniture' && finalDirDims.down ? (finalDirDims.down.pixelHeight ? finalDirDims.down.pixelHeight / 32 : finalDirDims.down.height) : (pixelHeight ? pixelHeight / 32 : tileHeight)
-    const basePixelWidth = elementType === 'furniture' && finalDirDims.down ? (finalDirDims.down.pixelWidth || finalDirDims.down.width * 32) : (pixelWidth || tileWidth * 32)
-    const basePixelHeight = elementType === 'furniture' && finalDirDims.down ? (finalDirDims.down.pixelHeight || finalDirDims.down.height * 32) : (pixelHeight || tileHeight * 32)
+    const primaryDirection = (['down', 'left', 'up', 'right'] as Direction[]).find(direction => finalDirFrames[direction]?.length) || 'down'
+    const primaryDimensions = finalDirDims[primaryDirection]
+    if (elementType === 'furniture') {
+      finalCollisionGrid = finalDirCollisionsRecord[primaryDirection] || collisionGrid
+      finalIsObstacle = Object.values(finalDirCollisionsRecord).some(grid => grid.some(row => row.some(Boolean)))
+    }
+
+    const baseWidth = elementType === 'furniture' && primaryDimensions ? (primaryDimensions.pixelWidth ? primaryDimensions.pixelWidth / 32 : primaryDimensions.width) : (pixelWidth ? pixelWidth / 32 : tileWidth)
+    const baseHeight = elementType === 'furniture' && primaryDimensions ? (primaryDimensions.pixelHeight ? primaryDimensions.pixelHeight / 32 : primaryDimensions.height) : (pixelHeight ? pixelHeight / 32 : tileHeight)
+    const basePixelWidth = elementType === 'furniture' && primaryDimensions ? (primaryDimensions.pixelWidth || primaryDimensions.width * 32) : (pixelWidth || tileWidth * 32)
+    const basePixelHeight = elementType === 'furniture' && primaryDimensions ? (primaryDimensions.pixelHeight || primaryDimensions.height * 32) : (pixelHeight || tileHeight * 32)
 
     if (editingAssetId) {
       await updateCustomAsset(editingAssetId, {
         name: elementName.trim() || 'Elemento Customizado',
+        thumbnail: finalFrames[0],
         type: elementType,
         category: finalCategory,
         width: baseWidth,
@@ -1893,7 +1837,7 @@ export const CustomElementModal: React.FC = () => {
         collisionGrid: finalCollisionGrid,
         seatGrid: finalSeatGrids?.down,
         directionalSeatGrids: finalSeatGrids,
-        collisionFromSprite: undefined,
+        collisionFromSprite: collisionFromSprite || undefined,
         frames: finalFrames,
         frameLayers: finalFrameLayers,
         directionalFrames:
@@ -1939,6 +1883,7 @@ export const CustomElementModal: React.FC = () => {
 
     const newAsset: CustomAsset = {
       id,
+      thumbnail: finalFrames[0],
       name: elementName.trim() || (elementType === 'avatar' ? 'Skin de Avatar' : 'Elemento Customizado'),
       type: elementType,
       category: finalCategory,
@@ -1994,30 +1939,42 @@ export const CustomElementModal: React.FC = () => {
     setCustomModalOpen(false)
   }
 
+  const handleSaveAsset = async () => {
+    if (savingRef.current) return
+    savingRef.current = true; setIsSaving(true); setSaveError('')
+    try { await saveAssetDraft() }
+    catch (error) { setSaveError(error instanceof Error ? error.message : 'Não foi possível salvar. Suas alterações continuam no estúdio.') }
+    finally { savingRef.current = false; setIsSaving(false) }
+  }
+
   if (!isCustomModalOpen) return null
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-200 select-none">
-      <div className="bg-[#1e1f22] border border-[#2b2d31] rounded-3xl w-full max-w-6xl overflow-hidden shadow-2xl flex flex-col h-[90vh] max-h-[850px]">
-        <div className="flex items-center justify-between px-6 py-3 border-b border-[#2b2d31] bg-[#18191c]">
+    <div role="dialog" aria-modal="true" aria-labelledby="asset-studio-title" className="fixed inset-0 z-[110] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-200 select-none">
+      <div className="bg-[#1e1f22] border border-[#2b2d31] rounded-3xl w-full max-w-[1440px] overflow-hidden shadow-2xl flex flex-col h-[94dvh] max-h-[1000px]">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-3 border-b border-[#2b2d31] bg-[#18191c]">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-rose-500 flex items-center justify-center text-white font-black text-sm shadow">
               ✦
             </div>
             <div>
-              <h2 className="text-sm font-black text-slate-100">
-                {editingAssetId ? 'Editar Elemento Personalizado' : 'Estúdio de Criação de Elementos'}
+              <h2 id="asset-studio-title" className="text-sm font-black text-slate-100">
+                Estúdio de Elementos
               </h2>
               <p className="text-[11px] text-slate-400">
-                Recorte sprites, componha camadas e pinte colisões físicas para seu espaço virtual
+                Desenhe, importe imagens e monte seus elementos em um único lugar
               </p>
             </div>
           </div>
 
-          <div className="flex bg-[#12151d] p-1 rounded-2xl border border-[#2b2d31]">
+          <div role="tablist" aria-label="Ferramentas do estúdio" className="flex flex-wrap bg-[#12151d] p-1 rounded-2xl border border-[#2b2d31]">
+            <button type="button" role="tab" aria-selected={studioMode === 'draw'} onClick={() => setStudioMode('draw')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 ${studioMode === 'draw' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+              <Pencil className="w-3.5 h-3.5" />Desenhar
+            </button>
             <button
               type="button"
-              onClick={() => setStudioMode('crop')}
+              role="tab" aria-selected={studioMode === 'crop'} onClick={() => setStudioMode('crop')}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
                 studioMode === 'crop'
                   ? 'bg-indigo-600 text-white shadow-md'
@@ -2025,12 +1982,12 @@ export const CustomElementModal: React.FC = () => {
               }`}
             >
               <Scissors className="w-3.5 h-3.5" />
-              <span>1. Recortar Imagem</span>
+              <span>Importar e recortar</span>
             </button>
 
             <button
               type="button"
-              onClick={() => setStudioMode('compose')}
+              role="tab" aria-selected={studioMode === 'compose'} onClick={() => setStudioMode('compose')}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
                 studioMode === 'compose'
                   ? 'bg-indigo-600 text-white shadow-md'
@@ -2038,7 +1995,7 @@ export const CustomElementModal: React.FC = () => {
               }`}
             >
               <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
-              <span>3. Montagem & Colisão</span>
+              <span>Montagem e colisão</span>
             </button>
           </div>
 
@@ -2050,9 +2007,14 @@ export const CustomElementModal: React.FC = () => {
           </button>
         </div>
 
-        <div className="flex flex-1 overflow-hidden">
-          <div className="flex-1 p-4 flex flex-col gap-3 overflow-hidden">
-            {studioMode === 'crop' ? (
+        <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-y-auto lg:overflow-hidden">
+          <div className="flex-1 min-h-[420px] min-w-0 p-4 flex flex-col gap-3 overflow-hidden">
+            {studioMode === 'draw' ? (
+              <AssetDrawingStudio key={drawingLayer?.id || newLayerId.current}
+                width={Math.max(1, Math.round(drawingLayer?.origWidth || drawingLayer?.width || compositeBoardWidth))}
+                height={Math.max(1, Math.round(drawingLayer?.origHeight || drawingLayer?.height || compositeBoardHeight))}
+                source={drawingLayer?.dataUrl} layerName={drawingLayer?.name} onChange={handlePixelChange} />
+            ) : studioMode === 'crop' ? (
               <CropStudio
                 sourceImage={sourceImage}
                 sourceImageSrc={sourceImageSrc}
@@ -2120,7 +2082,7 @@ export const CustomElementModal: React.FC = () => {
             )}
           </div>
 
-          <div className="w-96 bg-[#18191c] border-l border-[#2b2d31] p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
+          <div className="w-full lg:w-80 xl:w-96 bg-[#18191c] border-l border-[#2b2d31] p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
             <AssetPropertiesForm
               elementName={elementName}
               setElementName={setElementName}
@@ -2152,7 +2114,21 @@ export const CustomElementModal: React.FC = () => {
               selection={selection}
             />
 
-            <TransparencyControls
+            <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-[#12151d] p-3 text-xs text-slate-300">
+              <input type="checkbox" checked={elementType === 'wall' || elementType !== 'floor' && collisionGrid.some(row => row.some(Boolean))}
+                disabled={elementType === 'floor' || elementType === 'wall'}
+                onChange={event => { handleSetAllCollision(event.target.checked); setDirectionalCollisionGrids({}) }} />
+              Obstáculo com colisão
+              <span className="ml-auto text-[10px] text-slate-500">Ajuste por tile em Montagem</span>
+            </label>
+
+            {studioMode === 'draw' && elementType === 'furniture' && <div className="rounded-xl border border-slate-700 p-3">
+              <p className="text-xs text-slate-400 mb-2">Direção do desenho</p>
+              <div className="grid grid-cols-4 gap-1">{(['down', 'left', 'up', 'right'] as Direction[]).map((direction, index) =>
+                <button type="button" key={direction} aria-pressed={direction === activeDirection} onClick={() => { drawRevision.current++; handleSelectDirection(direction) }} className={`rounded-lg px-1 py-2 text-[11px] ${direction === activeDirection ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'}`}>{['Frente', 'Esquerda', 'Costas', 'Direita'][index]}</button>)}</div>
+            </div>}
+
+            {studioMode === 'crop' && <TransparencyControls
               enableBgRemoval={enableBgRemoval}
               setEnableBgRemoval={setEnableBgRemoval}
               targetColor={targetColor}
@@ -2163,7 +2139,7 @@ export const CustomElementModal: React.FC = () => {
               setRemoveWhiteFringe={setRemoveWhiteFringe}
               isEyedropperActive={isEyedropperActive}
               setIsEyedropperActive={setIsEyedropperActive}
-            />
+            />}
 
             <CroppedClipsList
               croppedClips={croppedClips}
@@ -2171,7 +2147,7 @@ export const CustomElementModal: React.FC = () => {
               onDeleteClip={handleDeleteClip}
             />
 
-            {studioMode === 'compose' && (
+            {studioMode !== 'crop' && (
               <LayerManager
                 compositeLayers={compositeLayers}
                 selectedLayerId={selectedLayerId}
@@ -2188,7 +2164,7 @@ export const CustomElementModal: React.FC = () => {
             <AnimationTimeline
               frames={frames}
               selectedFrameIdx={selectedFrameIdx}
-              setSelectedFrameIdx={setSelectedFrameIdx}
+              setSelectedFrameIdx={handleSelectFrame}
               onCaptureFrame={handleBakeCompositionToFrame}
               onDeleteFrame={handleDeleteFrame}
               isPlayingAnim={isPlayingAnim}
@@ -2200,7 +2176,8 @@ export const CustomElementModal: React.FC = () => {
           </div>
         </div>
 
-        <div className="p-4 border-t border-[#2b2d31] bg-[#18191c] flex items-center justify-between">
+        {saveError && <p role="alert" className="px-4 py-2 text-xs text-rose-300 bg-rose-950/30">{saveError}</p>}
+        <div className="p-4 border-t border-[#2b2d31] bg-[#18191c] flex flex-wrap gap-2 items-center justify-between">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -2221,10 +2198,11 @@ export const CustomElementModal: React.FC = () => {
             </button>
             <button
               onClick={handleSaveAsset}
+              disabled={isSaving}
               className="px-6 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-lg shadow-indigo-600/30 transition-all active:scale-95 flex items-center gap-1.5"
             >
               <Check className="w-4 h-4" />
-              <span>Salvar Elemento no Catálogo</span>
+              <span>{isSaving ? 'Salvando…' : 'Salvar Elemento no Catálogo'}</span>
             </button>
           </div>
         </div>

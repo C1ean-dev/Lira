@@ -112,12 +112,13 @@ export const AssetPropertiesForm: React.FC<Props> = ({
             <div className="flex items-center gap-1">
               <input
                 type="number"
-                min={1}
-                max={32}
+                min={1 / 32}
+                max={128}
+                step={1 / 32}
                 value={tileWidth}
                 onChange={(e) => {
-                  const val = parseInt(e.target.value, 10)
-                  if (!isNaN(val)) onSetBoardSizeInTiles(Math.max(1, val), tileHeight)
+                  const val = parseFloat(e.target.value)
+                  if (!isNaN(val)) onSetBoardSizeInTiles(Math.max(1 / 32, val), tileHeight)
                 }}
                 className="w-full bg-[#18191c] border border-[#2b2d31] rounded-lg px-2 py-1 text-xs font-bold text-center text-white focus:outline-none focus:border-indigo-500"
                 title="Largura em tiles no mapa"
@@ -125,12 +126,13 @@ export const AssetPropertiesForm: React.FC<Props> = ({
               <span className="text-slate-500 text-xs font-bold">×</span>
               <input
                 type="number"
-                min={1}
-                max={32}
+                min={1 / 32}
+                max={128}
+                step={1 / 32}
                 value={tileHeight}
                 onChange={(e) => {
-                  const val = parseInt(e.target.value, 10)
-                  if (!isNaN(val)) onSetBoardSizeInTiles(tileWidth, Math.max(1, val))
+                  const val = parseFloat(e.target.value)
+                  if (!isNaN(val)) onSetBoardSizeInTiles(tileWidth, Math.max(1 / 32, val))
                 }}
                 className="w-full bg-[#18191c] border border-[#2b2d31] rounded-lg px-2 py-1 text-xs font-bold text-center text-white focus:outline-none focus:border-indigo-500"
                 title="Altura em tiles no mapa"
