@@ -17,6 +17,9 @@ O comando de edição no menu de contexto da mobília também abre o mesmo estú
   tamanho do lápis/borracha, região conectada do preenchimento, pixel do conta-gotas
   ou área visível a mover. A prévia acompanha a grade e o zoom, não é salva na imagem
   e fica oculta durante a navegação da tela.
+  Cada ferramenta tem seu próprio cursor: lápis, borracha, balde de tinta,
+  conta-gotas e mover pixels. A ponta do ícone acompanha o pixel da operação;
+  ao arrastar a visualização, o cursor muda para a mão.
 - **Importar e recortar**: carregue uma imagem, recorte peças e remova o fundo.
   As peças ficam na biblioteca do próprio estúdio para montar o elemento.
 - **Montagem e colisão**: organize camadas, transparência, tamanho, colisões e

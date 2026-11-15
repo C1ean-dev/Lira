@@ -75,6 +75,21 @@ it('does not create a blank drawing when undo is pressed with an empty history',
   expect(changes).not.toHaveBeenCalled()
 })
 
+it('switches the custom mouse icon with the active tool and keeps the hand while panning', () => {
+  const node = () => elements(tree).find(element => element.type === 'canvas')!
+  const cursors = new Set<string>()
+  for (const label of ['Lápis', 'Borracha', 'Preencher', 'Conta-gotas', 'Mover pixels']) {
+    elements(tree).find(element => element.props['aria-label'] === label)!.props.onClick(); render()
+    expect(node().props.style.cursor).toMatch(/^url\(/)
+    expect(node().props.style.cursor).not.toContain('crosshair')
+    cursors.add(node().props.style.cursor)
+  }
+  expect(cursors.size).toBe(5)
+  elements(tree).find(element => element.props['aria-label'] === 'Área de navegação do desenho')!.props.onPointerDownCapture({ button: 2, pointerId: 1, clientX: 200, clientY: 200, currentTarget: viewport, preventDefault: vi.fn(), stopPropagation: vi.fn() }); render()
+  expect(node().props.style.cursor).toBe('grabbing')
+  expect(changes).not.toHaveBeenCalled()
+})
+
 it('shows a subtle grid-aligned footprint for pencil and eraser without modifying the bitmap', () => {
   const node = () => elements(tree).find(element => element.type === 'canvas')!
   const board = () => elements(tree).find(element => element.props['data-pixel-board'])!

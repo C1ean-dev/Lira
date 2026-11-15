@@ -1,4 +1,5 @@
 import { pixelToolPreview, type PixelPreviewRect } from './pixelToolPreview'
+import { drawingToolCursor } from './drawingToolCursor'
 import { fitPixelViewport, zoomPixelViewport, pixelFromViewport, type PixelViewport } from './pixelViewport'
 import React, { useEffect, useRef, useState } from 'react'
 import { Pencil, Eraser, PaintBucket, Pipette, Move, Undo2, Redo2, ZoomIn, ZoomOut, Grid2X2, Crop, Maximize2 } from 'lucide-react'
@@ -199,7 +200,7 @@ export const AssetDrawingStudio: React.FC<Props> = ({ width, height, source, lay
       onPointerCancel={() => { pan.current = undefined; spaceHeld.current = false; setIsPanning(false); finish() }}
       onLostPointerCapture={() => { pan.current = undefined; setIsPanning(false) }}>
       <div data-pixel-board className="absolute" style={{ left: view.x, top: view.y, backgroundColor: '#22252e', backgroundImage: 'conic-gradient(#181a20 25%, transparent 0 50%, #181a20 0 75%, transparent 0)', backgroundSize: '16px 16px' }}>
-        <canvas ref={canvas} width={width} height={height} tabIndex={0} aria-label="Tela de desenho de pixels" className="block touch-none outline-none focus:ring-2 focus:ring-indigo-400" style={{ width: (editor.current?.image.width || width) * zoom, height: (editor.current?.image.height || height) * zoom, imageRendering: 'pixelated', cursor: isPanning ? 'grabbing' : tool === 'move' ? 'move' : 'crosshair' }}
+        <canvas ref={canvas} width={width} height={height} tabIndex={0} aria-label="Tela de desenho de pixels" className="block touch-none outline-none focus:ring-2 focus:ring-indigo-400" style={{ width: (editor.current?.image.width || width) * zoom, height: (editor.current?.image.height || height) * zoom, imageRendering: 'pixelated', cursor: isPanning ? 'grabbing' : drawingToolCursor(tool) }}
           onPointerEnter={trackHover} onPointerLeave={hideHover}
           onPointerDown={event => {
             trackHover(event)
