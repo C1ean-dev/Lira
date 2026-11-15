@@ -13,6 +13,10 @@ O comando de edição no menu de contexto da mobília também abre o mesmo estú
   com o botão do meio ou com Espaço + esquerdo para mover a visualização. É possível
   pressionar o direito durante um traço e depois continuar com o esquerdo sem
   pintar o caminho da movimentação. **Ajustar desenho à área** restaura o enquadramento.
+  Ao passar o cursor, um destaque suave mostra os pixels afetados pela ferramenta:
+  tamanho do lápis/borracha, região conectada do preenchimento, pixel do conta-gotas
+  ou área visível a mover. A prévia acompanha a grade e o zoom, não é salva na imagem
+  e fica oculta durante a navegação da tela.
 - **Importar e recortar**: carregue uma imagem, recorte peças e remova o fundo.
   As peças ficam na biblioteca do próprio estúdio para montar o elemento.
 - **Montagem e colisão**: organize camadas, transparência, tamanho, colisões e

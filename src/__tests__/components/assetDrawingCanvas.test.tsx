@@ -75,6 +75,38 @@ it('does not create a blank drawing when undo is pressed with an empty history',
   expect(changes).not.toHaveBeenCalled()
 })
 
+it('shows a subtle grid-aligned footprint for pencil and eraser without modifying the bitmap', () => {
+  const node = () => elements(tree).find(element => element.type === 'canvas')!
+  const board = () => elements(tree).find(element => element.props['data-pixel-board'])!
+  const preview = () => elements(tree).find(element => element.props['data-pixel-preview'])
+  elements(tree).find(element => element.props['aria-label'] === 'Tamanho do pincel')!.props.onChange({ target: { value: '4' } }); render()
+  const zoom = node().props.style.width / 5
+  node().props.onPointerMove({ buttons: 0, pointerId: 1, clientX: board().props.style.left + 2.5 * zoom, clientY: board().props.style.top + 2.5 * zoom, currentTarget: canvas }); render()
+  expect(preview()).toBeDefined()
+  expect(preview()!.props['aria-hidden']).toBe(true)
+  expect(preview()!.props.className).toContain('pointer-events-none')
+  expect(preview()!.props['data-tool']).toBe('pencil')
+  const rect = elements(preview()!.props.children).find(element => element.type === 'rect')!
+  expect(rect.props).toMatchObject({ x: 0, y: 0, width: 4, height: 4 })
+  expect(Number(preview()!.props.fillOpacity)).toBeLessThanOrEqual(.2)
+  elements(tree).find(element => element.props['aria-label'] === 'Borracha')!.props.onClick(); render()
+  expect(preview()!.props['data-tool']).toBe('eraser')
+  expect(changes).not.toHaveBeenCalled()
+  expect(pixels.every(value => value === 0)).toBe(true)
+  node().props.onPointerLeave(); render()
+  expect(preview()).toBeUndefined()
+})
+
+it('hides the pixel preview while panning the view', () => {
+  const node = () => elements(tree).find(element => element.type === 'canvas')!
+  const board = elements(tree).find(element => element.props['data-pixel-board'])!
+  node().props.onPointerMove({ buttons: 0, clientX: board.props.style.left + 10, clientY: board.props.style.top + 10, currentTarget: canvas }); render()
+  expect(elements(tree).some(element => element.props['data-pixel-preview'])).toBe(true)
+  elements(tree).find(element => element.props['aria-label'] === 'Área de navegação do desenho')!.props.onPointerDownCapture({ button: 2, pointerId: 1, clientX: 200, clientY: 200, currentTarget: viewport, preventDefault: vi.fn(), stopPropagation: vi.fn() }); render()
+  expect(elements(tree).some(element => element.props['data-pixel-preview'])).toBe(false)
+  expect(changes).not.toHaveBeenCalled()
+})
+
 it('places a free color selector and brush size in the top toolbar and paints the selected color', () => {
   const toolbar = elements(tree).find(node => node.props.role === 'toolbar' && node.props['aria-label'] === 'Ferramentas de desenho')
   expect(toolbar).toBeDefined()
