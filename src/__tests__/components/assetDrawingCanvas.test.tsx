@@ -1,6 +1,8 @@
 import React from 'react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AssetDrawingStudio } from '../../editor/custom-element/AssetDrawingStudio'
+import { loadRasterImage } from '../../utils/loadRasterImage'
+vi.mock('../../utils/loadRasterImage', () => ({ loadRasterImage: vi.fn() }))
 
 const hooks = vi.hoisted(() => ({ state: vi.fn(), ref: vi.fn(), effect: vi.fn() }))
 vi.mock('react', async original => ({ ...await original<typeof import('react')>(), useState: hooks.state, useRef: hooks.ref, useEffect: hooks.effect }))
@@ -8,6 +10,7 @@ let slots: any[], cursor: number, dirty: boolean, effects: Array<() => void>, tr
 let props: React.ComponentProps<typeof AssetDrawingStudio>, pixels: Uint8ClampedArray, canvas: any
 let lastWidth: number | undefined, lastHeight: number | undefined, sequence: number
 let viewport: any, listeners: Map<string, (event: any) => void>
+let encoded: Map<string, { width: number; height: number; data: Uint8ClampedArray }>
 const changes = vi.fn()
 function elements(node: React.ReactNode): React.ReactElement[] {
   if (Array.isArray(node)) return node.flatMap(elements)
@@ -43,20 +46,28 @@ beforeEach(() => {
     if (!previous || deps.some((value, i) => !Object.is(value, previous[i]))) { slots[index] = deps; effects.push(effect) }
   })
   vi.stubGlobal('ImageData', class { constructor(public data: Uint8ClampedArray, public width: number, public height: number) {} })
+  encoded = new Map()
+  vi.mocked(loadRasterImage).mockImplementation(async source => encoded.get(source)! as unknown as HTMLImageElement)
   let width = 5, height = 5
   pixels = new Uint8ClampedArray(100)
-  const context = { putImageData: (image: ImageData) => { pixels = image.data.slice() }, getImageData: () => ({ data: pixels.slice() }), imageSmoothingEnabled: false }
+  const context = { putImageData: (image: ImageData) => { pixels = image.data.slice() }, getImageData: () => ({ data: pixels.slice() }), drawImage: (source: any, dx: number, dy: number) => {
+    for (let y = 0; y < source.height; y++) for (let x = 0; x < source.width; x++) {
+      if (x + dx < 0 || y + dy < 0 || x + dx >= width || y + dy >= height) continue
+      const offset = (y * source.width + x) * 4
+      pixels.set(source.data.subarray(offset, offset + 4), ((y + dy) * width + x + dx) * 4)
+    }
+  }, imageSmoothingEnabled: false }
   canvas = { get width() { return width }, set width(value: number) { width = value; pixels = new Uint8ClampedArray(width * height * 4) },
     get height() { return height }, set height(value: number) { height = value; pixels = new Uint8ClampedArray(width * height * 4) },
     getContext: () => context, getBoundingClientRect: () => ({ left: 0, top: 0, width, height }), focus: vi.fn(), setPointerCapture: vi.fn(),
-    toDataURL: () => `png-${++sequence}`,
+    toDataURL: () => { const url = `png-${++sequence}`; encoded.set(url, { width, height, data: pixels.slice() }); return url },
   }
   listeners = new Map()
   viewport = { getBoundingClientRect: () => ({ left: 0, top: 0, width: 640, height: 480 }), clientWidth: 640, clientHeight: 480,
     addEventListener: vi.fn((name, callback) => listeners.set(name, callback)), removeEventListener: vi.fn(),
     focus: vi.fn(), setPointerCapture: vi.fn(),
   }
-  props = { width: 5, height: 5, onChange: edit => { changes(edit); props = { ...props, width: edit.width, height: edit.height, source: edit.dataUrl } } }
+  props = { width: 5, height: 5, onChange: edit => { changes(edit); props = { ...props, width: edit.width, height: edit.height, source: edit.dataUrl, preservedRaster: edit.preservedRaster } } }
   render()
 })
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks() })
@@ -201,4 +212,34 @@ it('resumes drawing after a right-button pan without painting the path of the ca
   expect(pixels[(1 * 5 + 1) * 4 + 3]).toBe(255)
   expect(pixels[(1 * 5 + 2) * 4 + 3]).toBe(255)
   expect(pixels[3]).toBe(0)
+})
+
+it('retains hidden pixels through drawing, erasing and undo in a reduced canvas', async () => {
+  const data = new Uint8ClampedArray(4 * 3 * 4)
+  data.set([255, 0, 0, 255], 0)
+  data.set([4, 5, 6, 128], (2 * 4 + 3) * 4)
+  encoded.set('full', { width: 4, height: 3, data })
+  props = { ...props, width: 2, height: 1, source: 'visible', preservedRaster: { dataUrl: 'full', width: 4, height: 3, x: 0, y: 0 } }
+  render(); await Promise.resolve(); render()
+  const node = () => elements(tree).find(element => element.type === 'canvas')!
+  const stroke = (x: number) => {
+    const board = elements(tree).find(element => element.props['data-pixel-board'])!
+    const scale = node().props.style.width / 2
+    node().props.onPointerDown({ button: 0, pointerId: 1, clientX: board.props.style.left + (x + .5) * scale, clientY: board.props.style.top + .5 * scale, currentTarget: canvas })
+    node().props.onPointerUp(); render()
+  }
+  const raster = () => encoded.get(changes.mock.calls.at(-1)![0].preservedRaster.dataUrl)!.data
+  elements(tree).find(element => element.props['aria-label'] === 'Borracha')!.props.onClick(); render()
+  stroke(0)
+  expect(raster()[3]).toBe(0)
+  expect(raster().slice(-4)).toEqual(data.slice(-4))
+  elements(tree).find(element => element.props['aria-label'] === 'Lápis')!.props.onClick(); render()
+  stroke(1)
+  expect(raster().slice(4, 8)).toEqual(new Uint8ClampedArray([99, 102, 241, 255]))
+  elements(tree).find(element => element.props['aria-label'] === 'Desfazer')!.props.onClick(); render()
+  expect(raster().slice(4, 8)).toEqual(new Uint8ClampedArray(4))
+  expect(raster().slice(-4)).toEqual(data.slice(-4))
+  elements(tree).find(element => element.props['aria-label'] === 'Refazer')!.props.onClick(); render()
+  expect(raster().slice(4, 8)).toEqual(new Uint8ClampedArray([99, 102, 241, 255]))
+  expect(raster().slice(-4)).toEqual(data.slice(-4))
 })

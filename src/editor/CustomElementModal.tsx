@@ -1650,7 +1650,7 @@ export const CustomElementModal: React.FC = () => {
     const revision = ++resizeRevision.current, layerId = currentDrawing.current.layerId
     setPendingCanvasSize({ width, height }); setIsResizingCanvas(true); setSaveError('')
     try {
-      const edit = await resizeDrawingLayer(drawingLayer?.dataUrl, width, height)
+      const edit = await resizeDrawingLayer(drawingLayer?.dataUrl, width, height, drawingLayer?.preservedRaster)
       if (revision !== resizeRevision.current || layerId !== currentDrawing.current.layerId) return
       setBlankCanvasSize({ width, height })
       currentDrawing.current.apply(edit, true)
@@ -2050,7 +2050,7 @@ export const CustomElementModal: React.FC = () => {
               <AssetDrawingStudio key={drawingLayer?.id || newLayerId.current}
                 width={Math.max(1, Math.round(drawingLayer?.origWidth || drawingLayer?.width || blankCanvasSize.width))}
                 height={Math.max(1, Math.round(drawingLayer?.origHeight || drawingLayer?.height || blankCanvasSize.height))}
-                source={drawingLayer?.dataUrl} layerName={drawingLayer?.name} onChange={handlePixelChange} />
+                source={drawingLayer?.dataUrl} preservedRaster={drawingLayer?.preservedRaster} layerName={drawingLayer?.name} onChange={handlePixelChange} />
             ) : studioMode === 'crop' ? (
               <CropStudio
                 sourceImage={sourceImage}

@@ -34,8 +34,11 @@ com uma camada base por quadro e direção.
 O painel apresenta dois controles em pixels: **Tamanho da tela**, que define a
 resolução da camada em edição, e **Tamanho final no mapa**, que define a exibição
 do elemento. Os tamanhos são independentes. Ao ampliar a tela, os pixels existentes
-são mantidos e a área nova fica transparente; ao reduzir, as bordas direita e
-inferior são recortadas. O ajuste proporcional ou esticado continua disponível
+são mantidos; ao reduzir, as bordas direita e inferior ficam apenas ocultas.
+A imagem completa é preservada em PNG junto da camada, inclusive depois de salvar
+e reabrir o elemento. Ampliar novamente recupera os pixels ocultos; áreas que nunca
+tiveram conteúdo ficam transparentes. Desenhar ou apagar na área visível mantém
+os pixels de fora da tela intactos. O ajuste proporcional ou esticado continua disponível
 para a exibição final. A resolução de desenho fica salva com as camadas.
 
 A conversão para tiles continua interna: um tile corresponde a 32 pixels, sem

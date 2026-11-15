@@ -1,18 +1,18 @@
 import type { CompositeLayer } from './CompositionStudio'
 import type { TrimBounds } from './pixelEditor'
 import { generateUUID } from '../../utils/uuid'
-import type { CustomAsset } from '../../types/customAsset'
+import type { CustomAsset, PreservedDrawingRaster } from '../../types/customAsset'
 import type { Direction } from '../../types/game'
-export interface PixelLayerEdit { dataUrl: string; width: number; height: number; bounds?: TrimBounds }
+export interface PixelLayerEdit { dataUrl: string; width: number; height: number; bounds?: TrimBounds; preservedRaster?: PreservedDrawingRaster }
 export function applyPixelLayer(layers: CompositeLayer[], selectedId: string | null, edit: PixelLayerEdit, boardWidth: number, boardHeight: number): CompositeLayer[] {
   const selected = layers.find(layer => layer.id === selectedId)
   if (!selected) return [...layers, { id: selectedId || generateUUID(), clipId: generateUUID(), name: 'Desenho', dataUrl: edit.dataUrl,
-    x: 0, y: 0, width: boardWidth, height: boardHeight, origWidth: edit.width, origHeight: edit.height, flipH: false, opacity: 1 }]
+    x: 0, y: 0, width: boardWidth, height: boardHeight, origWidth: edit.width, origHeight: edit.height, preservedRaster: edit.preservedRaster, flipH: false, opacity: 1 }]
   return layers.map(layer => {
     if (layer.id !== selectedId) return layer
     const bounds = edit.bounds
     const scaleX = bounds ? layer.width / bounds.sourceWidth : 1, scaleY = bounds ? layer.height / bounds.sourceHeight : 1
-    return { ...layer, dataUrl: edit.dataUrl, origWidth: edit.width, origHeight: edit.height,
+    return { ...layer, dataUrl: edit.dataUrl, origWidth: edit.width, origHeight: edit.height, preservedRaster: edit.preservedRaster,
       ...(bounds ? { x: layer.x + (layer.flipH ? bounds.sourceWidth - bounds.x - bounds.width : bounds.x) * scaleX,
         y: layer.y + bounds.y * scaleY, width: bounds.width * scaleX, height: bounds.height * scaleY } : {}),
     }

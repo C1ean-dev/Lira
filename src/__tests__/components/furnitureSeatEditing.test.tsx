@@ -114,7 +114,7 @@ describe('furniture seat authoring', () => {
     expect(properties().canvasHeight).toBe(128)
     expect(properties().pixelWidth).toBe(64)
     expect(properties().pixelHeight).toBe(64)
-    expect(resizeDrawingLayer).toHaveBeenCalledWith('frame', 96, 128)
+    expect(resizeDrawingLayer).toHaveBeenCalledWith('frame', 96, 128, undefined)
     const saved = await save()
     expect(saved.frameLayers?.[0][0]).toMatchObject({ dataUrl: 'resized-raster', origWidth: 96, origHeight: 128 })
     expect(saved.frameLayers?.[0][0]).toMatchObject({ width: 48, height: 64 })
@@ -123,6 +123,21 @@ describe('furniture seat authoring', () => {
     render()
     expect(properties().canvasWidth).toBe(96)
     expect(properties().pixelWidth).toBe(64)
+  })
+  it('saves the full raster per layer and restores it when resizing a reopened drawing', async () => {
+    const properties = () => elements(tree).find(element => element.type === AssetPropertiesForm)!.props as React.ComponentProps<typeof AssetPropertiesForm>
+    const preservedRaster = { dataUrl: 'full-original', width: 64, height: 64, x: 0, y: 0 }
+    vi.mocked(resizeDrawingLayer).mockResolvedValueOnce({ dataUrl: 'cropped', width: 16, height: 24, preservedRaster })
+    await properties().onSetCanvasSize(16, 24); render()
+    const saved = await save()
+    expect(saved.frameLayers?.[0][0]).toMatchObject({ dataUrl: 'cropped', preservedRaster })
+    mocks.store.editingAssetId = 'reopened'
+    mocks.store.getAssetById = () => ({ ...JSON.parse(JSON.stringify(saved)), id: 'reopened' })
+    render()
+    elements(tree).find(element => element.props.role === 'tab' && (element.props.children as any[]).includes('Desenhar'))!.props.onClick(); render()
+    expect(elements(tree).find(element => element.type === AssetDrawingStudio)!.props.preservedRaster).toEqual(preservedRaster)
+    await properties().onSetCanvasSize(64, 64); render()
+    expect(resizeDrawingLayer).toHaveBeenLastCalledWith('cropped', 64, 64, preservedRaster)
   })
   it('keeps the existing image and both sizes when resizing the canvas fails', async () => {
     vi.mocked(resizeDrawingLayer).mockRejectedValueOnce(new Error('Sem memória para redimensionar a tela.'))

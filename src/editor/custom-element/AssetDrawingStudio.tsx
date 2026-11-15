@@ -1,3 +1,5 @@
+import { mergeDrawingRaster, type DrawingRasterPixels } from './losslessDrawingRaster'
+import type { PreservedDrawingRaster } from '../../types/customAsset'
 import { pixelToolPreview, type PixelPreviewRect } from './pixelToolPreview'
 import { drawingToolCursor } from './drawingToolCursor'
 import { fitPixelViewport, zoomPixelViewport, pixelFromViewport, type PixelViewport } from './pixelViewport'
@@ -7,11 +9,12 @@ import { PixelEditor, type RGBA } from './pixelEditor'
 import type { PixelLayerEdit } from './assetStudioDraft'
 import { loadRasterImage } from '../../utils/loadRasterImage'
 
-interface Props { width: number; height: number; source?: string; layerName?: string; onChange(edit: PixelLayerEdit): void }
+interface Props { width: number; height: number; source?: string; preservedRaster?: PreservedDrawingRaster; layerName?: string; onChange(edit: PixelLayerEdit): void }
 type Tool = 'pencil' | 'eraser' | 'fill' | 'picker' | 'move'
 const tools = [{ id: 'pencil', name: 'Lápis', icon: Pencil }, { id: 'eraser', name: 'Borracha', icon: Eraser }, { id: 'fill', name: 'Preencher', icon: PaintBucket }, { id: 'picker', name: 'Conta-gotas', icon: Pipette }, { id: 'move', name: 'Mover pixels', icon: Move }] as const
-export const AssetDrawingStudio: React.FC<Props> = ({ width, height, source, layerName, onChange }) => {
+export const AssetDrawingStudio: React.FC<Props> = ({ width, height, source, preservedRaster, layerName, onChange }) => {
   const canvas = useRef<HTMLCanvasElement>(null), editor = useRef<PixelEditor>()
+  const backing = useRef<DrawingRasterPixels>(), rasterOrigin = useRef({ x: 0, y: 0 })
   const emitted = useRef(''), published = useRef({ width, height, x: 0, y: 0 })
   const gesture = useRef<{ start: { x: number; y: number }; last: { x: number; y: number }; pointer: number }>()
   const [tool, setTool] = useState<Tool>('pencil'), [color, setColor] = useState('#6366f1'), [size, setSize] = useState(1)
@@ -88,9 +91,26 @@ export const AssetDrawingStudio: React.FC<Props> = ({ width, height, source, lay
     const image = editor.current.image, previous = published.current
     const bounds = image.width !== previous.width || image.height !== previous.height || image.x !== previous.x || image.y !== previous.y
       ? { x: image.x - previous.x, y: image.y - previous.y, width: image.width, height: image.height, sourceWidth: previous.width, sourceHeight: previous.height } : undefined
+    let preserved: PreservedDrawingRaster | undefined
+    if (backing.current) {
+      const merged = mergeDrawingRaster(backing.current, image, rasterOrigin.current.x + image.x, rasterOrigin.current.y + image.y)
+      backing.current = merged
+      rasterOrigin.current = { x: merged.x - image.x, y: merged.y - image.y }
+      if (merged.width !== image.width || merged.height !== image.height || merged.x || merged.y) {
+        // Encode the full raster using the existing canvas, then restore the visible
+        // bitmap immediately. Hidden pixels never enter the displayed composition.
+        const node = canvas.current
+        node.width = merged.width; node.height = merged.height
+        const context = node.getContext('2d')
+        if (!context) { setError('Não foi possível preservar a imagem completa.'); return }
+        context.putImageData(new ImageData(merged.data, merged.width, merged.height), 0, 0)
+        preserved = { dataUrl: node.toDataURL('image/png'), width: merged.width, height: merged.height, x: merged.x, y: merged.y }
+        redraw()
+      }
+    }
     emitted.current = canvas.current.toDataURL('image/png')
     published.current = { width: image.width, height: image.height, x: image.x, y: image.y }
-    onChange({ dataUrl: emitted.current, width: image.width, height: image.height, bounds })
+    onChange({ dataUrl: emitted.current, width: image.width, height: image.height, bounds, preservedRaster: preserved })
   }
   useEffect(() => {
     if (source && source === emitted.current && editor.current?.image.width === width && editor.current?.image.height === height) {
@@ -103,22 +123,33 @@ export const AssetDrawingStudio: React.FC<Props> = ({ width, height, source, lay
     setReady(false); setError('')
     void (async () => {
       try {
-        const image = source ? await loadRasterImage(source) : null
+        const rasterSource = preservedRaster?.dataUrl || source
+        const image = rasterSource ? await loadRasterImage(rasterSource) : null
         if (cancelled) return
         const node = canvas.current
         if (!node) return
-        node.width = width; node.height = height
+        node.width = preservedRaster?.width || width; node.height = preservedRaster?.height || height
         const ctx = node.getContext('2d', { willReadFrequently: true })
         if (!ctx) throw new Error('Canvas indisponível')
         ctx.imageSmoothingEnabled = false
-        if (image) ctx.drawImage(image, 0, 0, width, height)
+        if (preservedRaster) {
+          if (image) ctx.drawImage(image, 0, 0)
+          backing.current = { width: node.width, height: node.height, data: ctx.getImageData(0, 0, node.width, node.height).data.slice() }
+          rasterOrigin.current = { x: preservedRaster.x, y: preservedRaster.y }
+          node.width = width; node.height = height
+          if (image) ctx.drawImage(image, -preservedRaster.x, -preservedRaster.y)
+        } else {
+          if (image) ctx.drawImage(image, 0, 0, width, height)
+          backing.current = { width, height, data: ctx.getImageData(0, 0, width, height).data.slice() }
+          rasterOrigin.current = { x: 0, y: 0 }
+        }
         editor.current = new PixelEditor(width, height, ctx.getImageData(0, 0, width, height).data)
         published.current = { width, height, x: 0, y: 0 }
         setReady(true); redraw()
       } catch { if (!cancelled) setError('Não foi possível carregar esta camada. A imagem original foi preservada.') }
     })()
     return () => { cancelled = true }
-  }, [source, width, height])
+  }, [source, width, height, preservedRaster])
   const finish = () => { if (gesture.current) { gesture.current = undefined; if (editor.current?.commit()) publish() } }
   const pixel = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const box = viewport.current!.getBoundingClientRect(), image = editor.current!.image

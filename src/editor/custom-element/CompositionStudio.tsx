@@ -12,7 +12,7 @@ import {
   Copy,
   FlipHorizontal,
 } from 'lucide-react'
-import { CustomAssetType } from '../../types/customAsset'
+import { CustomAssetType, type PreservedDrawingRaster } from '../../types/customAsset'
 import { Direction } from '../../types/game'
 
 export interface CompositeLayer {
@@ -26,6 +26,7 @@ export interface CompositeLayer {
   height: number
   origWidth?: number
   origHeight?: number
+  preservedRaster?: PreservedDrawingRaster
   flipH: boolean
   opacity: number
 }
