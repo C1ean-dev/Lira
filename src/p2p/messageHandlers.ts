@@ -1,4 +1,5 @@
 import { receiveWhiteboardMessage } from '../services/whiteboardNetwork'
+import { receiveBoardPointer } from '../services/boardPointerNetwork'
 import { applyConsumptionChange } from '../services/tabletopConsumption'
 import { AtlasChunkReceiver } from '../assets/atlasChunks'
 import { readAtlas, atlasDigest, decodeTransferredAtlas } from '../assets/atlasService'
@@ -71,6 +72,10 @@ export function processNetworkMessage(
   onDjCallRequest?: (listenerId: string) => void
 ) {
   switch (msg.type) {
+    case 'WHITEBOARD_POINTER': {
+      if (!receiveBoardPointer(msg, peerId, isHost)) return
+      break
+    }
     case 'WHITEBOARD_OP':
     case 'WHITEBOARD_REQUEST':
     case 'WHITEBOARD_STATE': {

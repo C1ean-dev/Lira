@@ -5,12 +5,32 @@ import { useWhiteboardStore } from '../../store/useWhiteboardStore'
 import { useGameStore } from '../../store/useGameStore'
 import { PeerManager } from '../../p2p/PeerManager'
 import { requestWhiteboard } from '../../services/whiteboardNetwork'
+import { getWhiteboardElements, getWhiteboardFiles } from '../../collaboration/boardScene'
 
 const stroke = (actor = 'a', clock = 1) => ({ id: `${actor}-${clock}`, actor, clock, kind: 'stroke' as const, color: '#111111', width: 3, points: [{ x: .1, y: .2 }, { x: .3, y: .4 }] })
 const original = useGameStore.getState()
 afterEach(() => { useGameStore.setState(original); useWhiteboardStore.getState().reset(); vi.restoreAllMocks() })
 
 describe('collaborative whiteboard', () => {
+  it('relays Native objects and includes their images in authenticated late-join snapshots', () => {
+    useGameStore.setState({ roomId: 'ROOM' })
+    const send = vi.fn(), relay = vi.fn()
+    vi.spyOn(PeerManager, 'getInstance').mockReturnValue({ broadcast: send, getPeerId: () => 'host' } as any)
+    const receive = (type: any, payload: any) => processNetworkMessage({ type, senderId: 'a', timestamp: 1, payload }, 'a', true, relay, vi.fn(), vi.fn(), 'host')
+    const file = { id: 'f', mimeType: 'image/png', dataURL: 'data:image/png;base64,AA==', created: 1 }
+    const element = { id: 'e', type: 'image', fileId: 'f', x: 0, y: 0, width: 10, height: 10, version: 1, versionNonce: 1, isDeleted: false }
+    receive('WHITEBOARD_OP', { roomId: 'ROOM', operation: { id: 'a:f', actor: 'a', clock: 1, kind: 'file', file } })
+    receive('WHITEBOARD_OP', { roomId: 'ROOM', operation: { id: 'a:e', actor: 'a', clock: 2, kind: 'element', element } })
+    expect(relay).toHaveBeenCalledTimes(2)
+    receive('WHITEBOARD_REQUEST', { roomId: 'ROOM' })
+    const payload = send.mock.calls[0][0].payload
+    useWhiteboardStore.getState().reset()
+    useGameStore.setState({ connectionHostId: 'host' })
+    processNetworkMessage({ type: 'WHITEBOARD_STATE', senderId: 'host', timestamp: 1, payload }, 'host', false, relay, vi.fn(), vi.fn(), 'a')
+    expect(getWhiteboardElements(useWhiteboardStore.getState().document)).toEqual([element])
+    expect(getWhiteboardFiles(useWhiteboardStore.getState().document)).toEqual({ f: file })
+    expect(useWhiteboardStore.getState().synchronized).toBe(true)
+  })
   it('converges for concurrent strokes, duplicate delivery and removal before the stroke', () => {
     const a = stroke(), b = stroke('b')
     const removal = { id: 'a-2', actor: 'a', clock: 2, kind: 'remove' as const, targetId: a.id }
@@ -82,3 +102,4 @@ describe('collaborative whiteboard', () => {
     expect(visibleStrokes(useWhiteboardStore.getState().document)).toHaveLength(1)
   })
 })
+
