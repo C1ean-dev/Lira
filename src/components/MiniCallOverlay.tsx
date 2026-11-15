@@ -74,6 +74,7 @@ import { PlayerAvatar } from './common/PlayerAvatar'
 import { RemoteAudio } from './common/RemoteAudio'
 import { CallPanelBody } from './common/CallPanelBody'
 import { SpotifyIcon } from './common/SpotifyIcon'
+import { AvatarAnimationsButton } from './AvatarAnimationsButton'
 import { PetApiSettings } from './pets/PetApiSettings'
 import { LiveWatchPrompt } from './LiveWatchPrompt'
 import { useLiveGate } from '../hooks/useLiveGate'
@@ -898,6 +899,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                 )}
               </button>
 
+              <AvatarAnimationsButton />
               {roomId && isRoomOwner && <PetApiSettings roomId={roomId} />}
               <button
                 onClick={() => setGridCallOpen(true)}
