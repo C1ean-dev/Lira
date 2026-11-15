@@ -6,7 +6,6 @@ import type { PixelLayerEdit } from './assetStudioDraft'
 import { loadRasterImage } from '../../utils/loadRasterImage'
 
 interface Props { width: number; height: number; source?: string; layerName?: string; onChange(edit: PixelLayerEdit): void }
-const palette = ['#000000', '#1e293b', '#64748b', '#cbd5e1', '#ffffff', '#7f1d1d', '#ef4444', '#fb923c', '#facc15', '#84cc16', '#10b981', '#06b6d4', '#3b82f6', '#6366f1', '#a855f7', '#ec4899']
 type Tool = 'pencil' | 'eraser' | 'fill' | 'picker' | 'move'
 const tools = [{ id: 'pencil', name: 'Lápis', icon: Pencil }, { id: 'eraser', name: 'Borracha', icon: Eraser }, { id: 'fill', name: 'Preencher', icon: PaintBucket }, { id: 'picker', name: 'Conta-gotas', icon: Pipette }, { id: 'move', name: 'Mover pixels', icon: Move }] as const
 export const AssetDrawingStudio: React.FC<Props> = ({ width, height, source, layerName, onChange }) => {
@@ -111,7 +110,7 @@ export const AssetDrawingStudio: React.FC<Props> = ({ width, height, source, lay
     if (event.key.toLowerCase() === 'z') { event.preventDefault(); event.stopPropagation(); event.shiftKey ? redo() : undo() }
     if (event.key.toLowerCase() === 'y') { event.preventDefault(); event.stopPropagation(); redo() }
   }}>
-    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-700 bg-[#18191c] p-2">
+    <div role="toolbar" aria-label="Ferramentas de desenho" className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-700 bg-[#18191c] p-2">
       {tools.map(item => <button type="button" key={item.id} aria-label={item.name} title={item.name} aria-pressed={tool === item.id} onClick={() => setTool(item.id)} className={`rounded-lg p-2 ${tool === item.id ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-700'}`}><item.icon size={17} /></button>)}
       <span className="mx-1 h-6 border-l border-slate-700" />
       <button type="button" disabled={!editor.current?.canUndo} onClick={undo} aria-label="Desfazer" title="Desfazer (Ctrl/Cmd+Z)" className="p-1 disabled:opacity-30"><Undo2 size={17} /></button>
@@ -121,10 +120,12 @@ export const AssetDrawingStudio: React.FC<Props> = ({ width, height, source, lay
       <button type="button" onClick={fit} aria-label="Ajustar desenho à área" title="Ajustar desenho à área" className="p-1"><Maximize2 size={17} /></button>
       <button type="button" aria-label="Grade de pixels" aria-pressed={grid} onClick={() => setGrid(value => !value)} className={`p-1 ${grid ? 'text-indigo-400' : 'text-slate-400'}`}><Grid2X2 size={17} /></button>
       <button type="button" disabled={!ready} onClick={() => { finish(); if (editor.current?.trim()) publish() }} className="flex gap-1 items-center rounded-lg bg-slate-800 p-2 text-xs disabled:opacity-30"><Crop size={15} />Aparar bordas</button>
-    </div>
-    <div className="flex flex-wrap items-center gap-2 text-xs"><label className="flex items-center gap-2">Cor do desenho <input type="color" value={color} onChange={event => setColor(event.target.value)} className="h-7 w-8" /></label>
-      {palette.map(value => <button type="button" key={value} aria-label={`Cor ${value}`} onClick={() => setColor(value)} style={{ backgroundColor: value }} className={`h-6 w-6 rounded-md border ${value === color ? 'border-white ring-1 ring-indigo-400' : 'border-slate-600'}`} />)}
-      <label className="ml-auto">Pincel <select aria-label="Tamanho do pincel" value={size} onChange={event => setSize(Number(event.target.value))} className="rounded bg-slate-800 p-1">{[1, 2, 4, 8].map(value => <option key={value} value={value}>{value}px</option>)}</select></label>
+      <label className="ml-auto flex items-center gap-2 text-xs text-slate-300">
+        Cor do desenho
+        <input type="color" aria-label="Escolher cor do desenho" title="Escolher qualquer cor para desenhar" value={color} onChange={event => setColor(event.target.value)} className="h-7 w-9 cursor-pointer rounded border border-slate-600 bg-transparent" />
+        <span className="font-mono text-[11px] text-slate-400">{color.toUpperCase()}</span>
+      </label>
+      <label className="flex items-center gap-1 text-xs text-slate-300">Pincel <select aria-label="Tamanho do pincel" value={size} onChange={event => setSize(Number(event.target.value))} className="rounded bg-slate-800 p-1">{[1, 2, 4, 8].map(value => <option key={value} value={value}>{value}px</option>)}</select></label>
     </div>
     <div ref={viewport} tabIndex={0} aria-label="Área de navegação do desenho"
       className="relative flex-1 min-h-40 overflow-hidden rounded-2xl border border-slate-700 bg-[#111318] touch-none outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"

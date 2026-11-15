@@ -75,6 +75,22 @@ it('does not create a blank drawing when undo is pressed with an empty history',
   expect(changes).not.toHaveBeenCalled()
 })
 
+it('places a free color selector and brush size in the top toolbar and paints the selected color', () => {
+  const toolbar = elements(tree).find(node => node.props.role === 'toolbar' && node.props['aria-label'] === 'Ferramentas de desenho')
+  expect(toolbar).toBeDefined()
+  const color = elements(toolbar!.props.children).find(node => node.type === 'input' && node.props.type === 'color')
+  expect(color).toBeDefined()
+  expect(elements(toolbar!.props.children).some(node => node.props['aria-label'] === 'Tamanho do pincel')).toBe(true)
+  expect(elements(tree).some(node => /^Cor #/.test(node.props['aria-label'] || ''))).toBe(false)
+  color!.props.onChange({ target: { value: '#12ab34' } }); render()
+  const node = elements(tree).find(element => element.type === 'canvas')!
+  const board = elements(tree).find(element => element.props['data-pixel-board'])!
+  const scale = node.props.style.width / 5
+  node.props.onPointerDown({ button: 0, pointerId: 1, clientX: board.props.style.left + 2.5 * scale, clientY: board.props.style.top + 2.5 * scale, currentTarget: canvas })
+  node.props.onPointerUp(); render()
+  expect([...pixels.slice((2 * 5 + 2) * 4, (2 * 5 + 2) * 4 + 4)]).toEqual([18, 171, 52, 255])
+})
+
 it('zooms with the mouse wheel without scrolling the page or changing pixels', () => {
   const wheel = listeners.get('wheel')
   expect(wheel).toBeTypeOf('function')
