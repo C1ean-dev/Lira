@@ -197,4 +197,27 @@ describe('DJ host audio', () => {
       restore()
     }
   })
+
+  it('reconnects djPeer to signaling when disconnected and defers calls until reconnected', () => {
+    vi.useFakeTimers()
+    const manager = new (PeerManager as any)()
+    const reconnect = vi.fn()
+    manager.djPeer = { call: vi.fn(), reconnect, disconnected: true, destroyed: false, id: 'dj-bot' }
+    manager.djAudioStream = {}
+    manager.djBotId = 'dj-room-host'
+    manager.djMediaCalls = new Map()
+
+    // When disconnected, callPeerFromDj should not attempt to call, but trigger reconnect
+    manager.callPeerFromDj('listener')
+    expect(manager.djPeer.call).not.toHaveBeenCalled()
+
+    // Advance timer to trigger scheduleDjSignalingReconnect
+    vi.advanceTimersByTime(100)
+    expect(reconnect).toHaveBeenCalledOnce()
+
+    // When peer becomes connected, callPeerFromDj succeeds
+    manager.djPeer.disconnected = false
+    manager.callPeerFromDj('listener')
+    expect(manager.djPeer.call).toHaveBeenCalledWith('listener', manager.djAudioStream, expect.anything())
+  })
 })
