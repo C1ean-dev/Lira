@@ -31,10 +31,16 @@ atualizam o quadro selecionado; os outros quadros, direções e configurações
 permanecem no documento. Elementos antigos sem camadas editáveis são abertos
 com uma camada base por quadro e direção.
 
-Tamanhos em pixels e tiles são equivalentes: um tile corresponde a 32 pixels.
-Por exemplo, 29×27 px corresponde a 0,90625×0,84375 tiles, sem arredondamento
-para um tile inteiro. A ferramenta **Aparar bordas** recorta a camada selecionada
-e mantém sua posição visual na composição.
+O painel apresenta dois controles em pixels: **Tamanho da tela**, que define a
+resolução da camada em edição, e **Tamanho final no mapa**, que define a exibição
+do elemento. Os tamanhos são independentes. Ao ampliar a tela, os pixels existentes
+são mantidos e a área nova fica transparente; ao reduzir, as bordas direita e
+inferior são recortadas. O ajuste proporcional ou esticado continua disponível
+para a exibição final. A resolução de desenho fica salva com as camadas.
+
+A conversão para tiles continua interna: um tile corresponde a 32 pixels, sem
+arredondar elementos pequenos para um tile inteiro. A ferramenta **Aparar bordas**
+recorta a camada selecionada e mantém sua posição visual na composição.
 
 O editor de pixels usado para roupas, avatares e pets continua disponível nesses
 fluxos. A importação de atlas e o fatiamento de várias imagens continuam como

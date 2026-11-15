@@ -1,3 +1,4 @@
+import { resizeDrawingLayer } from './custom-element/resizeDrawingLayer'
 import { AssetDrawingStudio } from './custom-element/AssetDrawingStudio'
 import { applyPixelLayer, frameLayersWithActiveEdits, hydrateStudioFrames, type PixelLayerEdit } from './custom-element/assetStudioDraft'
 import { generateUUID } from '../utils/uuid'
@@ -63,6 +64,10 @@ export const CustomElementModal: React.FC = () => {
   const savingRef = useRef(false)
   const newLayerId = useRef(generateUUID())
   const drawRevision = useRef(0)
+  const resizeRevision = useRef(0)
+  const [isResizingCanvas, setIsResizingCanvas] = useState(false)
+  const [pendingCanvasSize, setPendingCanvasSize] = useState<{ width: number; height: number } | null>(null)
+  const [blankCanvasSize, setBlankCanvasSize] = useState({ width: 64, height: 64 })
 
   const [sourceImage, setSourceImage] = useState<HTMLImageElement | null>(null)
   const [sourceImageSrc, setSourceImageSrc] = useState<string>('')
@@ -468,6 +473,8 @@ export const CustomElementModal: React.FC = () => {
 
   useEffect(() => {
     drawRevision.current++
+    resizeRevision.current++
+    setPendingCanvasSize(null); setIsResizingCanvas(false)
     if (!isCustomModalOpen) return
 
 
@@ -521,6 +528,7 @@ export const CustomElementModal: React.FC = () => {
     } else {
       setElementName(initialAssetType === 'floor' ? 'Novo Piso' : initialAssetType === 'wall' ? 'Nova Parede' : 'Nova Mobília')
       setElementType(initialAssetType || 'furniture')
+      setBlankCanvasSize({ width: 64, height: 64 })
       setCollisionFromSprite(false)
       setCompositeLayers([]); setFrameLayerStates([]); setFrames([]); setCroppedClips([])
       setSelectedLayerId(null); setSelectedFrameIdx(0)
@@ -1611,8 +1619,17 @@ export const CustomElementModal: React.FC = () => {
   }
 
   const drawingLayer = compositeLayers.find(layer => layer.id === selectedLayerId) || compositeLayers[0]
-  const handlePixelChange = (edit: PixelLayerEdit) => {
-    const next = applyPixelLayer(compositeLayers, drawingLayer?.id || newLayerId.current, edit, compositeBoardWidth, compositeBoardHeight)
+  const handlePixelChange = (edit: PixelLayerEdit, fitCanvas = false) => {
+    let next = applyPixelLayer(compositeLayers, drawingLayer?.id || newLayerId.current, edit, compositeBoardWidth, compositeBoardHeight)
+    if (fitCanvas) {
+      const layerId = drawingLayer?.id || newLayerId.current
+      const bounds = drawingLayer || { x: 0, y: 0, width: compositeBoardWidth, height: compositeBoardHeight }
+      next = next.map(layer => {
+        if (layer.id !== layerId) return layer
+        const fitted = fitLayerToBounds(layer, bounds.width, bounds.height, scaleFitMode)
+        return { ...fitted, x: bounds.x + fitted.x, y: bounds.y + fitted.y }
+      })
+    }
     setCompositeLayers(next)
     setSelectedLayerId(drawingLayer?.id || next[next.length - 1].id)
     setFrameLayerStates(previous => frameLayersWithActiveEdits(previous, selectedFrameIdx, next))
@@ -1622,6 +1639,26 @@ export const CustomElementModal: React.FC = () => {
       if (revision !== drawRevision.current || !dataUrl) return
       setFrames(previous => { const updated = [...previous]; updated[index] = dataUrl; return updated })
     }).catch(() => setSaveError('A prévia não pôde ser atualizada. O desenho foi preservado; tente salvar novamente.'))
+  }
+
+  const canvasWidth = pendingCanvasSize?.width || drawingLayer?.origWidth || drawingLayer?.width || blankCanvasSize.width
+  const canvasHeight = pendingCanvasSize?.height || drawingLayer?.origHeight || drawingLayer?.height || blankCanvasSize.height
+  const currentDrawing = useRef({ apply: handlePixelChange, layerId: drawingLayer?.id || newLayerId.current })
+  currentDrawing.current = { apply: handlePixelChange, layerId: drawingLayer?.id || newLayerId.current }
+  const setDrawingCanvasSize = async (requestedWidth: number, requestedHeight: number) => {
+    const width = Math.max(1, Math.min(4096, Math.round(requestedWidth))), height = Math.max(1, Math.min(4096, Math.round(requestedHeight)))
+    const revision = ++resizeRevision.current, layerId = currentDrawing.current.layerId
+    setPendingCanvasSize({ width, height }); setIsResizingCanvas(true); setSaveError('')
+    try {
+      const edit = await resizeDrawingLayer(drawingLayer?.dataUrl, width, height)
+      if (revision !== resizeRevision.current || layerId !== currentDrawing.current.layerId) return
+      setBlankCanvasSize({ width, height })
+      currentDrawing.current.apply(edit, true)
+    } catch (error) {
+      if (revision === resizeRevision.current) setSaveError(error instanceof Error ? error.message : 'Não foi possível redimensionar a tela.')
+    } finally {
+      if (revision === resizeRevision.current) { setPendingCanvasSize(null); setIsResizingCanvas(false) }
+    }
   }
 
   const saveAssetDraft = async () => {
@@ -1940,7 +1977,7 @@ export const CustomElementModal: React.FC = () => {
   }
 
   const handleSaveAsset = async () => {
-    if (savingRef.current) return
+    if (savingRef.current || isResizingCanvas) return
     savingRef.current = true; setIsSaving(true); setSaveError('')
     try { await saveAssetDraft() }
     catch (error) { setSaveError(error instanceof Error ? error.message : 'Não foi possível salvar. Suas alterações continuam no estúdio.') }
@@ -2011,8 +2048,8 @@ export const CustomElementModal: React.FC = () => {
           <div className="flex-1 min-h-[420px] min-w-0 p-4 flex flex-col gap-3 overflow-hidden">
             {studioMode === 'draw' ? (
               <AssetDrawingStudio key={drawingLayer?.id || newLayerId.current}
-                width={Math.max(1, Math.round(drawingLayer?.origWidth || drawingLayer?.width || compositeBoardWidth))}
-                height={Math.max(1, Math.round(drawingLayer?.origHeight || drawingLayer?.height || compositeBoardHeight))}
+                width={Math.max(1, Math.round(drawingLayer?.origWidth || drawingLayer?.width || blankCanvasSize.width))}
+                height={Math.max(1, Math.round(drawingLayer?.origHeight || drawingLayer?.height || blankCanvasSize.height))}
                 source={drawingLayer?.dataUrl} layerName={drawingLayer?.name} onChange={handlePixelChange} />
             ) : studioMode === 'crop' ? (
               <CropStudio
@@ -2084,6 +2121,7 @@ export const CustomElementModal: React.FC = () => {
 
           <div className="w-full lg:w-80 xl:w-96 bg-[#18191c] border-l border-[#2b2d31] p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
             <AssetPropertiesForm
+              canvasWidth={Math.round(canvasWidth)} canvasHeight={Math.round(canvasHeight)} onSetCanvasSize={setDrawingCanvasSize}
               elementName={elementName}
               setElementName={setElementName}
               elementType={elementType}
@@ -2176,6 +2214,7 @@ export const CustomElementModal: React.FC = () => {
           </div>
         </div>
 
+        {isResizingCanvas && <p role="status" className="px-4 py-2 text-xs text-indigo-300">Redimensionando a tela…</p>}
         {saveError && <p role="alert" className="px-4 py-2 text-xs text-rose-300 bg-rose-950/30">{saveError}</p>}
         <div className="p-4 border-t border-[#2b2d31] bg-[#18191c] flex flex-wrap gap-2 items-center justify-between">
           <div className="flex items-center gap-2">
@@ -2198,7 +2237,7 @@ export const CustomElementModal: React.FC = () => {
             </button>
             <button
               onClick={handleSaveAsset}
-              disabled={isSaving}
+              disabled={isSaving || isResizingCanvas}
               className="px-6 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-lg shadow-indigo-600/30 transition-all active:scale-95 flex items-center gap-1.5"
             >
               <Check className="w-4 h-4" />

@@ -116,57 +116,6 @@ export const CompositionStudio: React.FC<Props> = ({
   return (
     <div className="flex-1 flex flex-col bg-[#12151d] rounded-2xl border border-[#2b2d31] overflow-hidden">
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b2d31] bg-[#18191c]/80 shrink-0 flex-wrap gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-slate-300">Tamanho no Mapa:</span>
-          <div className="flex items-center gap-2 bg-[#12151d] px-2.5 py-1 rounded-xl border border-[#2b2d31]">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] text-slate-400 font-semibold">Largura:</span>
-              <input
-                type="number"
-                min={1}
-                max={32}
-                value={tileWidth}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10)
-                  if (!isNaN(val)) {
-                    setBoardSizeInTiles(val, tileHeight)
-                  }
-                }}
-                className="w-12 bg-[#18191c] border border-[#2b2d31] rounded-lg px-1.5 py-0.5 text-xs font-bold text-center text-white focus:outline-none focus:border-indigo-500"
-              />
-              <span className="text-[10px] text-slate-400 font-mono">
-                ({pixelWidth ? `${pixelWidth}px` : `${tileWidth * 32}px`})
-              </span>
-            </div>
-
-            <span className="text-slate-600 font-bold">×</span>
-
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] text-slate-400 font-semibold">Altura:</span>
-              <input
-                type="number"
-                min={1}
-                max={32}
-                value={tileHeight}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10)
-                  if (!isNaN(val)) {
-                    setBoardSizeInTiles(tileWidth, val)
-                  }
-                }}
-                className="w-12 bg-[#18191c] border border-[#2b2d31] rounded-lg px-1.5 py-0.5 text-xs font-bold text-center text-white focus:outline-none focus:border-indigo-500"
-              />
-              <span className="text-[10px] text-slate-400 font-mono">
-                ({pixelHeight ? `${pixelHeight}px` : `${tileHeight * 32}px`})
-              </span>
-            </div>
-          </div>
-
-          <span className="text-xs font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-800/60 font-mono">
-            {pixelWidth}×{pixelHeight}px
-          </span>
-        </div>
-
         <div className="flex items-center gap-1.5">
           <div className="flex bg-[#12151d] p-1 rounded-xl border border-[#2b2d31]">
             <button

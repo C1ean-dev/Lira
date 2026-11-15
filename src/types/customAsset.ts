@@ -21,6 +21,8 @@ export interface CustomAssetLayer {
   y: number
   width: number
   height: number
+  origWidth?: number
+  origHeight?: number
   flipH: boolean
   opacity: number
 }

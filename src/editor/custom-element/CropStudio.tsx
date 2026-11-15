@@ -490,9 +490,7 @@ export const CropStudio: React.FC<Props> = ({
                 <strong className="font-mono text-emerald-400 text-xs">
                   {pixelWidth || (tileWidth ? tileWidth * 32 : 32)}×{pixelHeight || (tileHeight ? tileHeight * 32 : 32)}px
                 </strong>
-                {tileWidth && tileHeight && (
-                  <span className="text-[10px] text-slate-400 font-mono">({tileWidth}×{tileHeight}t)</span>
-                )}
+
               </div>
             )}
           </div>

@@ -38,7 +38,7 @@ export function hydrateStudioFrames(asset: CustomAsset) {
     const layers = asset.directionalFrameLayers?.[direction] || (direction === 'down' ? asset.frameLayers : undefined)
     directionalFrameLayers[direction] = layers?.length ? layers.map(frame => frame.map(layer => ({ ...layer }))) :
       directionalFrames[direction].map((dataUrl, index) => [{ id: `${asset.id}-${direction}-${index}`, clipId: `${asset.id}-${direction}-${index}`, name: `Camada Base (${index + 1})`,
-        dataUrl, x: 0, y: 0, width: pixelWidth, height: pixelHeight, flipH: false, opacity: 1 }])
+        dataUrl, x: 0, y: 0, width: pixelWidth, height: pixelHeight, origWidth: pixelWidth, origHeight: pixelHeight, flipH: false, opacity: 1 }])
   }
   return { frames: directionalFrames.down, frameLayers: directionalFrameLayers.down, directionalFrames, directionalFrameLayers, directionalDimensions }
 }

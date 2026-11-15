@@ -6,6 +6,7 @@ import { AssetDrawingStudio } from '../../editor/custom-element/AssetDrawingStud
 import { AnimationTimeline } from '../../editor/custom-element/AnimationTimeline'
 import { AssetPropertiesForm } from '../../editor/custom-element/AssetPropertiesForm'
 import { bakeLayersToDataUrl } from '../../utils/imageResize'
+import { resizeDrawingLayer } from '../../editor/custom-element/resizeDrawingLayer'
 import type { CustomAsset } from '../../types/customAsset'
 
 const mocks = vi.hoisted(() => ({
@@ -22,6 +23,7 @@ vi.mock('../../utils/imageResize', async importOriginal => ({
   ...await importOriginal<typeof import('../../utils/imageResize')>(),
   bakeLayersToDataUrl: vi.fn(async () => 'frame'), bakeLayersToDataUrlSync: vi.fn(() => 'frame'),
 }))
+vi.mock('../../editor/custom-element/resizeDrawingLayer', () => ({ resizeDrawingLayer: vi.fn(async (_source, width, height) => ({ dataUrl: 'resized-raster', width, height })) }))
 
 let slots: any[]
 let cursor: number
@@ -90,6 +92,47 @@ beforeEach(() => {
 afterEach(() => { vi.mocked(bakeLayersToDataUrl).mockImplementation(async () => 'frame'); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe('furniture seat authoring', () => {
+  it('changes the final map size without changing the drawing resolution or source pixels', async () => {
+    const properties = () => elements(tree).find(element => element.type === AssetPropertiesForm)!.props as React.ComponentProps<typeof AssetPropertiesForm>
+    expect(properties().canvasWidth).toBe(64)
+    properties().onSetPixelSize(128, 192); render()
+    expect(properties().canvasWidth).toBe(64)
+    expect(properties().canvasHeight).toBe(64)
+    elements(tree).find(element => element.props.role === 'tab' && (element.props.children as any[]).includes('Desenhar'))!.props.onClick(); render()
+    const drawing = elements(tree).find(element => element.type === AssetDrawingStudio)!.props
+    expect(drawing.width).toBe(64)
+    expect(drawing.source).toBe('frame')
+    const saved = await save()
+    expect(saved.pixelWidth).toBe(128)
+    expect(saved.pixelHeight).toBe(192)
+    expect((saved.frameLayers?.[0][0] as any).origWidth).toBe(64)
+  })
+  it('changes the drawing canvas independently and preserves its size when reopened', async () => {
+    const properties = () => elements(tree).find(element => element.type === AssetPropertiesForm)!.props as React.ComponentProps<typeof AssetPropertiesForm>
+    await properties().onSetCanvasSize(96, 128); render()
+    expect(properties().canvasWidth).toBe(96)
+    expect(properties().canvasHeight).toBe(128)
+    expect(properties().pixelWidth).toBe(64)
+    expect(properties().pixelHeight).toBe(64)
+    expect(resizeDrawingLayer).toHaveBeenCalledWith('frame', 96, 128)
+    const saved = await save()
+    expect(saved.frameLayers?.[0][0]).toMatchObject({ dataUrl: 'resized-raster', origWidth: 96, origHeight: 128 })
+    expect(saved.frameLayers?.[0][0]).toMatchObject({ width: 48, height: 64 })
+    mocks.store.editingAssetId = 'reopened'
+    mocks.store.getAssetById = () => ({ ...saved, id: 'reopened' })
+    render()
+    expect(properties().canvasWidth).toBe(96)
+    expect(properties().pixelWidth).toBe(64)
+  })
+  it('keeps the existing image and both sizes when resizing the canvas fails', async () => {
+    vi.mocked(resizeDrawingLayer).mockRejectedValueOnce(new Error('Sem memória para redimensionar a tela.'))
+    const properties = () => elements(tree).find(element => element.type === AssetPropertiesForm)!.props as React.ComponentProps<typeof AssetPropertiesForm>
+    await properties().onSetCanvasSize(128, 128); render()
+    expect(properties().canvasWidth).toBe(64)
+    expect(properties().pixelWidth).toBe(64)
+    expect(elements(tree).find(element => element.props.role === 'alert')?.props.children).toContain('Sem memória')
+    expect((await save()).frameLayers?.[0][0].dataUrl).toBe('frame')
+  })
   it('keeps pixel edits in the selected animation frame while preserving layers and directional seat/collision metadata', async () => {
     const base = (id: string, dataUrl: string) => ({ id, clipId: id, name: id, dataUrl, x: 0, y: 0, width: 29, height: 27, flipH: false, opacity: 1 })
     mocks.store.editingAssetId = 'layered'
