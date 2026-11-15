@@ -8,6 +8,7 @@ export const CURRENT_LIRA_VERSION = '1.1.210'
 export type SignalingTier = 'render' | 'public' | 'local' | 'direct'
 
 export type NetworkMessageType =
+  | 'WHITEBOARD_POINTER'
   | 'PLAYER_JOIN'
   | 'PLAYER_LEAVE'
   | 'PLAYER_MOVE'

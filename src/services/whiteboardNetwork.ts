@@ -5,16 +5,19 @@ import { useWhiteboardStore } from '../store/useWhiteboardStore'
 import { validWhiteboardOperation, type WhiteboardOperation } from '../collaboration/whiteboard'
 
 export function sendWhiteboardOperation(operation: WhiteboardOperation): boolean {
-  const roomId = useGameStore.getState().roomId
-  if (!roomId || !useWhiteboardStore.getState().synchronized || !useWhiteboardStore.getState().apply(roomId, operation)) return false
-  PeerManager.getInstance().broadcast({ type: 'WHITEBOARD_OP', senderId: operation.actor, payload: { roomId, operation }, timestamp: Date.now() })
+  const { roomId, isConnected } = useGameStore.getState()
+  if (!roomId || (isConnected && !useWhiteboardStore.getState().synchronized) || !useWhiteboardStore.getState().apply(roomId, operation)) return false
+  const snapshot = useWhiteboardStore.getState().document.operations[operation.id]
+  if (isConnected) PeerManager.getInstance().broadcast({ type: 'WHITEBOARD_OP', senderId: operation.actor, payload: { roomId, operation: snapshot }, timestamp: Date.now() })
   return true
 }
 export function requestWhiteboard(): void {
   const roomId = useGameStore.getState().roomId
   if (!roomId) return
   useWhiteboardStore.getState().selectRoom(roomId)
-  useWhiteboardStore.getState().setSynchronized(useGameStore.getState().isHost)
+  const { isHost, isConnected } = useGameStore.getState()
+  useWhiteboardStore.getState().setSynchronized(isHost || !isConnected)
+  if (!isConnected) return
   const pm = PeerManager.getInstance()
   pm.broadcast({ type: 'WHITEBOARD_REQUEST', senderId: pm.getPeerId() || useGameStore.getState().localPlayer.id, payload: { roomId }, timestamp: Date.now() })
 }
