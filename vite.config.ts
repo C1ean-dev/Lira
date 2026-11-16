@@ -68,7 +68,7 @@ export default defineConfig({
             outDir: 'out',
             sourcemap: 'hidden',
             // Keep ws optional native dependencies inside Node's runtime try/catch.
-            rollupOptions: { external: ['ws'], output: { sourcemapExcludeSources: true } },
+            rollupOptions: { external: ['ws', 'electron-log/node'], output: { sourcemapExcludeSources: true } },
           },
         },
       },

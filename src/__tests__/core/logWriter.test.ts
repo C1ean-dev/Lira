@@ -18,7 +18,7 @@ let dir: string
 const DAY1 = new Date('2026-10-04T10:00:00.000Z')
 const DAY2 = new Date('2026-10-05T00:30:00.000Z')
 
-const read = (name: string) => fs.readFileSync(path.join(dir, name), 'utf-8')
+const read = (name: string) => fs.readFileSync(path.join(dir, name), 'utf-8').replace(/\r\n/g, '\n')
 const exists = (name: string) => fs.existsSync(path.join(dir, name))
 
 beforeEach(() => {

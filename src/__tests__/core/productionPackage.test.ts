@@ -9,7 +9,7 @@ const required = ['package.json', 'out/main.js', 'out/preload.js', 'dist/index.h
 
 describe('production package boundaries', () => {
   it('allows compiled application files and the main process dependency', () => {
-    expect(() => verifyProductionFiles([...required, 'out/module-abc.js', 'dist/assets/app.js', 'node_modules/ws/index.js'])).not.toThrow()
+    expect(() => verifyProductionFiles([...required, 'out/module-abc.js', 'dist/assets/app.js', 'node_modules/ws/index.js', 'node_modules/electron-log/node.js'])).not.toThrow()
   })
 
   it.each(['src/App.tsx', 'public/icon.png', 'scripts/generate-assets.js', 'android/app.apk', 'dist/__tests__/test.js', 'node_modules/onnxruntime-node/bin/win32/x64/onnxruntime.dll', 'node_modules/@huggingface/transformers/dist/transformers.js', 'dist/assets/ort-wasm-simd-threaded.wasm'])(
@@ -37,7 +37,7 @@ describe('production package boundaries', () => {
 
   it('keeps the Windows package on x64 and uses an explicit production allowlist', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
-    expect(Object.keys(pkg.dependencies)).toEqual(['ws'])
+    expect(Object.keys(pkg.dependencies).sort()).toEqual(['electron-log', 'ws'])
     expect(pkg.build.files).toEqual(['dist/**/*', 'out/*.{js,mjs,cjs,map}', 'package.json'])
     expect(pkg.build.win.target).toEqual([{ target: 'nsis', arch: ['x64'] }])
     expect(pkg.build.afterPack).toBe('scripts/verify-production-package.cjs')

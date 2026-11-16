@@ -38,6 +38,7 @@
     "build": "powershell -ExecutionPolicy Bypass -File scripts/build-process-audio.ps1 && tsc && vite build && electron-builder --win --x64"
   },
   "dependencies": {
+    "electron-log": "5.4.4",
     "ws": "^8.22.0"
   },
   "devDependencies": {

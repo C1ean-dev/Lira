@@ -136,13 +136,13 @@ isolada e Render. Sem brokers reais. Suítes: `publicRoomsServer`, `publicRoomsR
 Testar em jsdom: mouse/teclado, seleção, fechamento, retorno de foco, rótulos
 acessíveis e diálogos. Sem navegador. Manter regressões dos componentes consumidores.
 
-### [ ] 9. Logs com electron-log
+### [x] 9. Logs com electron-log
 
-- [ ] Preservar interfaces, formatos, relatórios e IPC estruturado existentes.
-- [ ] Delegar escrita e disparo de rotação ao transporte de arquivo.
-- [ ] Preservar diretórios por instância, arquivos diários, 5 MB e três rotações.
-- [ ] Preservar fingerprints, contexto, agrupamento e anexos; evitar dupla captura.
-- [ ] Declarar `electron-log` como dependência externa de produção e acrescentar
+- [x] Preservar interfaces, formatos, relatórios e IPC estruturado existentes.
+- [x] Delegar escrita e disparo de rotação ao transporte de arquivo.
+- [x] Preservar diretórios por instância, arquivos diários, 5 MB e três rotações.
+- [x] Preservar fingerprints, contexto, agrupamento e anexos; evitar dupla captura.
+- [x] Declarar `electron-log` como dependência externa de produção e acrescentar
   somente seu diretório à allowlist. Incorporar as demais bibliotecas aos bundles.
 
 Testar: formatos, rotação, sessões/instâncias, falhas de escrita, duplicação,
@@ -209,7 +209,8 @@ preexistentes do usuário indiscriminadamente.
 | 6 | Concluída | TDD vermelho; 27 testes / 5 arquivos aprovados | Commit semver | Migrar MQTT |
 | 7 | Concluída | TDD vermelho; 38 testes / 7 arquivos aprovados | Commit MQTT | Migrar dropdowns |
 | 8 | Concluída | TDD vermelho; 32 testes / 4 arquivos aprovados em jsdom e Node | Commit Radix | Migrar logs |
-| 9–12 | Pendentes | Não executados | — | Seguir dependências descritas acima |
+| 9 | Concluída | TDD vermelho; 82 testes / 6 arquivos aprovados | Commit electron-log | Migrar quadro versão 2 |
+| 10–12 | Pendentes | Não executados | — | Seguir dependências descritas acima |
 
 - Baseline isolada: os quatro arquivos anteriores passaram (44 testes, `--maxWorkers=1`); as falhas iniciais não foram reproduzidas isoladamente.
 - Etapa 1: contratos estruturais Zod nas entradas P2P, descoberta e contatos; validadores especializados continuam responsáveis pelas regras de domínio. Fixtures de rede passam a incluir timestamp e payload completo.
