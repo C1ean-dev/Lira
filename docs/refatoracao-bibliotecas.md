@@ -76,12 +76,12 @@ Testar: formatos existentes, reinicialização, corrupção, indisponibilidade, 
 e ausência de gravações durante movimento/FPS. Suítes: `storeStorageFailures`,
 `liraStorageKeys`, `storageReport`, reuniões, espaços e preferências.
 
-### [ ] 3. IndexedDB com idb
+### [x] 3. IndexedDB com idb
 
-- [ ] Migrar biblioteca de imagens e cache da transcrição para `idb`.
-- [ ] Manter bancos, versões, object stores e chaves existentes.
-- [ ] Aguardar conclusão das transações e manter catálogo/imagens atômicos.
-- [ ] Preservar downloads, hashes e cache de URLs fora do adaptador.
+- [x] Migrar biblioteca de imagens e cache da transcrição para `idb`.
+- [x] Manter bancos, versões, object stores e chaves existentes.
+- [x] Aguardar conclusão das transações e manter catálogo/imagens atômicos.
+- [x] Preservar downloads, hashes e cache de URLs fora do adaptador.
 
 Testar com `fake-indexeddb`: bancos existentes, blobs, abortos e catálogo anterior
 preservado se faltar imagem. Suítes: `individualLibraryStorage`, `transcriptionModule`.
@@ -203,7 +203,8 @@ preexistentes do usuário indiscriminadamente.
 | 0 | Concluída | 4.006 aprovados; 4 falhas anteriores e 4 pendentes | Commit de preparação | Iniciar contratos Zod |
 | 1 | Concluída | TDD vermelho registrado; contratos/tipos aprovados; 50 testes das 6 suítes ajustadas aprovados | Commit de validação | Migrar persistência |
 | 2 | Concluída | TDD vermelho; 38 testes / 9 arquivos aprovados, incluindo tipos | Commit de persistência | Migrar IndexedDB |
-| 3–12 | Pendentes | Não executados | — | Seguir dependências descritas acima |
+| 3 | Concluída | TDD vermelho; 13 testes / 4 arquivos aprovados | Commit de IndexedDB | Migrar ZIP |
+| 4–12 | Pendentes | Não executados | — | Seguir dependências descritas acima |
 
 - Baseline isolada: os quatro arquivos anteriores passaram (44 testes, `--maxWorkers=1`); as falhas iniciais não foram reproduzidas isoladamente.
 - Etapa 1: contratos estruturais Zod nas entradas P2P, descoberta e contatos; validadores especializados continuam responsáveis pelas regras de domínio. Fixtures de rede passam a incluir timestamp e payload completo.

@@ -1,5 +1,6 @@
+import { openImageLibrary, writeImageLibrary } from './libraryDatabase'
 import hasBundledLibrary from 'virtual:lira-individual-library'
-import { buildLibrary, openLibrary, imageDataUrl, knownLibraryImage, libraryImagePath, type LibraryCatalog, type LibraryLocation, type LibraryPacket } from './individualLibrary'
+import { buildLibrary, openLibrary, imageDataUrl, knownLibraryImage, libraryImagePath, type LibraryLocation, type LibraryPacket } from './individualLibrary'
 import type { AtlasDocument } from './atlasFormat'
 import { compactSourceSprites } from './sourceSprites'
 import { addBuiltInFurniture } from './builtInFurniture'
@@ -14,12 +15,7 @@ const openLocation = (location: LibraryLocation) => {
     : location.baseUrl
   return openLibrary(location.catalog, name => new URL(libraryImagePath(location.catalog, name).split('/').map(encodeURIComponent).join('/'), imageBase).href)
 }
-const database = (): Promise<IDBDatabase> => new Promise((resolve, reject) => {
-  const request = indexedDB.open('lira-image-library', 1)
-  request.onupgradeneeded = () => { request.result.createObjectStore('catalog'); request.result.createObjectStore('images') }
-  request.onsuccess = () => resolve(request.result)
-  request.onerror = () => reject(request.error)
-})
+const database = openImageLibrary
 export async function loadBundledLibrary(): Promise<AtlasDocument | null> {
   if (!hasBundledLibrary) return null
   const response = await fetch(new URL('catalog.json', baseUrl()), { cache: 'no-store' })
@@ -43,20 +39,14 @@ export async function loadStoredLibrary(): Promise<AtlasDocument | null> {
   }
   const db = await database()
   try {
-    const catalog = await new Promise<LibraryCatalog | undefined>((resolve, reject) => {
-      const req = db.transaction('catalog').objectStore('catalog').get('library')
-      req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error)
-    })
+    const catalog = await db.get('catalog', 'library')
     if (!catalog) return null
     const urls = new Map<string, string>()
     for (const name of catalog.images) {
       const cached = indexedImageUrls.get(name)
       if (cached) { urls.set(name, cached); continue }
-      const blob = await new Promise<Blob>((resolve, reject) => {
-        const req = db.transaction('images').objectStore('images').get(name)
-        req.onsuccess = () => req.result ? resolve(req.result) : reject(new Error('Imagem salva ausente'))
-        req.onerror = () => reject(req.error)
-      })
+      const blob = await db.get('images', name)
+      if (!blob) throw new Error('Imagem salva ausente')
       const url = URL.createObjectURL(blob)
       indexedImageUrls.set(name, url)
       urls.set(name, url)
@@ -82,10 +72,7 @@ async function saveIndexedLibrary(packet: LibraryPacket) {
     const sources = { ...packet.images }
     for (const name of packet.catalog.images) {
       if (sources[name]) continue
-      const exists = await new Promise<boolean>((resolve, reject) => {
-        const req = db.transaction('images').objectStore('images').getKey(name)
-        req.onsuccess = () => resolve(req.result !== undefined); req.onerror = () => reject(req.error)
-      })
+      const exists = await db.getKey('images', name) !== undefined
       if (!exists) {
         const source = knownLibraryImage(name)
         if (!source) throw new Error('Imagem para salvar ausente')
@@ -93,18 +80,6 @@ async function saveIndexedLibrary(packet: LibraryPacket) {
       }
     }
     const blobs = await Promise.all(Object.entries(sources).map(async ([name, data]) => [name, await (await fetch(data)).blob()] as const))
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(['catalog', 'images'], 'readwrite')
-      const images = tx.objectStore('images')
-      for (const [name, blob] of blobs) images.put(blob, name)
-      for (const name of packet.catalog.images) {
-        const req = images.getKey(name)
-        req.onsuccess = () => { if (!req.result) tx.abort() }
-      }
-      tx.objectStore('catalog').put(packet.catalog, 'library')
-      tx.oncomplete = () => resolve()
-      tx.onerror = () => reject(tx.error)
-      tx.onabort = () => reject(tx.error || new Error('Imagem ausente; catálogo anterior preservado'))
-    })
+    await writeImageLibrary(packet.catalog, blobs)
   } finally { db.close() }
 }

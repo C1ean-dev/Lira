@@ -1,3 +1,4 @@
+import { openDB, type IDBPDatabase, type DBSchema } from 'idb'
 export const TRANSCRIPTION_VERSION = '3.8.1'
 export const TRANSCRIPTION_CACHE = `transcription/${TRANSCRIPTION_VERSION}/`
 export const TRANSCRIPTION_ASSETS = [
@@ -20,36 +21,19 @@ export interface ModuleStore {
 
 // IndexedDB also works in Electron's file renderer, where CacheStorage cannot
 // reliably be used. Versioned dependencies and model files share one store.
-let database: Promise<IDBDatabase> | undefined
-function openDatabase(): Promise<IDBDatabase> {
-  if (!database) database = new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open('lira-optional-modules', 1)
-    request.onupgradeneeded = () => request.result.createObjectStore('files')
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
+interface OptionalModules extends DBSchema { files: { key: string; value: Blob } }
+let database: Promise<IDBPDatabase<OptionalModules>> | undefined
+function openDatabase() {
+  if (!database) database = openDB<OptionalModules>('lira-optional-modules', 1, {
+    upgrade(db) { db.createObjectStore('files') },
+    blocking() { const pending = database; database = undefined; void pending?.then(db => db.close()) },
+    terminated() { database = undefined },
   }).catch(error => { database = undefined; throw error })
   return database
 }
-
 export const transcriptionStore: ModuleStore = {
-  async get(key) {
-    const db = await openDatabase()
-    return new Promise((resolve, reject) => {
-      const request = db.transaction('files').objectStore('files').get(TRANSCRIPTION_CACHE + key)
-      request.onsuccess = () => resolve(request.result)
-      request.onerror = () => reject(request.error)
-    })
-  },
-  async put(key, value) {
-    const db = await openDatabase()
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction('files', 'readwrite')
-      transaction.objectStore('files').put(value, TRANSCRIPTION_CACHE + key)
-      transaction.oncomplete = () => resolve()
-      transaction.onerror = () => reject(transaction.error)
-      transaction.onabort = () => reject(transaction.error || new Error('Download interrompido'))
-    })
-  },
+  async get(key) { return (await openDatabase()).get('files', TRANSCRIPTION_CACHE + key) },
+  async put(key, value) { await (await openDatabase()).put('files', value, TRANSCRIPTION_CACHE + key) },
 }
 
 export async function isTranscriptionInstalled(store = transcriptionStore): Promise<boolean> {
