@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import zlib from 'node:zlib'
-import { buildZip, crc32 } from '../../../electron/zipWriter'
+import { buildZip } from '../../../electron/zipWriter'
+
+const crc32 = zlib.crc32
 
 const readZip = (zip: Buffer) => {
   const end = zip.length - 22
@@ -30,9 +32,11 @@ const readZip = (zip: Buffer) => {
 
     expect(zip.readUInt32LE(localOffset)).toBe(0x04034b50)
     expect(zip.readUInt16LE(localOffset + 8)).toBe(method)
-    expect(zip.readUInt32LE(localOffset + 14)).toBe(crc)
-    expect(zip.readUInt32LE(localOffset + 18)).toBe(compressedSize)
-    expect(zip.readUInt32LE(localOffset + 22)).toBe(size)
+    if (!(flags & 8)) {
+      expect(zip.readUInt32LE(localOffset + 14)).toBe(crc)
+      expect(zip.readUInt32LE(localOffset + 18)).toBe(compressedSize)
+      expect(zip.readUInt32LE(localOffset + 22)).toBe(size)
+    }
     const localNameLength = zip.readUInt16LE(localOffset + 26)
     const localExtraLength = zip.readUInt16LE(localOffset + 28)
     expect(zip.subarray(localOffset + 30, localOffset + 30 + localNameLength).toString('utf8')).toBe(name)
@@ -127,5 +131,10 @@ describe('buildZip', () => {
   it('refuses a file without a usable name', async () => {
     await expect(buildZip([{ name: '', data: Buffer.from('a') }])).rejects.toThrow('name')
     await expect(buildZip([{ name: '../..', data: Buffer.from('a') }])).rejects.toThrow('name')
+  })
+
+  it('refuses duplicate sanitized names instead of silently replacing an attachment', async () => {
+    await expect(buildZip([{ name: '../same.txt', data: Buffer.from('one') },
+      { name: 'same.txt', data: Buffer.from('two') }])).rejects.toThrow(/duplicate/i)
   })
 })
