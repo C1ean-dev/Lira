@@ -104,12 +104,12 @@ múltiplos/vazios e nomes inválidos. Suítes: `zipWriter`, `logBundle`, `errorR
 Testar: posições, nomes, caminhos, múltiplas consultas, mapas ausentes/corrompidos.
 Suítes: `sourceMapLookup`, `stackSymbolicator`, relatórios de erros.
 
-### [ ] 6. Versões com semver
+### [x] 6. Versões com semver
 
-- [ ] Centralizar normalização, comparação e incremento, preservando interfaces.
-- [ ] Aceitar `v`/espaços; versão inválida não anuncia atualização.
-- [ ] Preservar exclusão de drafts/prereleases nas atualizações estáveis.
-- [ ] Na etapa do quadro, incrementar patch da maior versão declarada entre pacote
+- [x] Centralizar normalização, comparação e incremento, preservando interfaces.
+- [x] Aceitar `v`/espaços; versão inválida não anuncia atualização.
+- [x] Preservar exclusão de drafts/prereleases nas atualizações estáveis.
+- [x] Na etapa do quadro, incrementar patch da maior versão declarada entre pacote
   e constantes, alinhando versão do aplicativo e mínimo exigido.
 
 Testar: igualdade, ordenação numérica, incremento, entradas inválidas, prereleases
@@ -206,9 +206,12 @@ preexistentes do usuário indiscriminadamente.
 | 3 | Concluída | TDD vermelho; 13 testes / 4 arquivos aprovados | Commit de IndexedDB | Migrar ZIP |
 | 4 | Concluída | TDD vermelho para colisões; 35 testes / 4 arquivos aprovados | Commit ZIP | Migrar source maps |
 | 5 | Concluída | 27 testes antes; 57 testes / 4 arquivos após, incluindo tipos | Commit source maps | Migrar versões |
-| 6–12 | Pendentes | Não executados | — | Seguir dependências descritas acima |
+| 6 | Concluída | TDD vermelho; 27 testes / 5 arquivos aprovados | Commit semver | Migrar MQTT |
+| 7–12 | Pendentes | Não executados | — | Seguir dependências descritas acima |
 
 - Baseline isolada: os quatro arquivos anteriores passaram (44 testes, `--maxWorkers=1`); as falhas iniciais não foram reproduzidas isoladamente.
 - Etapa 1: contratos estruturais Zod nas entradas P2P, descoberta e contatos; validadores especializados continuam responsáveis pelas regras de domínio. Fixtures de rede passam a incluir timestamp e payload completo.
 
 - ZIP: nomes sanitizados duplicados são rejeitados para não perder anexos. Leitor independente valida CRC via Node e aceita descritores de dados do formato ZIP.
+
+- A versão mínima do novo quadro será alinhada na etapa 10; o utilitário semver já está migrado.
