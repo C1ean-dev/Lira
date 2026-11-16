@@ -95,11 +95,11 @@ preservado se faltar imagem. Suítes: `individualLibraryStorage`, `transcription
 Testar com leitor independente: CRC/conteúdo, binários, Unicode, datas, arquivos
 múltiplos/vazios e nomes inválidos. Suítes: `zipWriter`, `logBundle`, `errorReportsScript`.
 
-### [ ] 5. Source maps com @jridgewell/trace-mapping
+### [x] 5. Source maps com @jridgewell/trace-mapping
 
-- [ ] Preservar interface, cache, nomes, caminhos e identificação minificada.
-- [ ] Substituir Base64/VLQ e adaptar convenções de linhas/colunas.
-- [ ] Em mapa inválido, preservar o quadro original do erro sem interromper logs.
+- [x] Preservar interface, cache, nomes, caminhos e identificação minificada.
+- [x] Substituir Base64/VLQ e adaptar convenções de linhas/colunas.
+- [x] Em mapa inválido, preservar o quadro original do erro sem interromper logs.
 
 Testar: posições, nomes, caminhos, múltiplas consultas, mapas ausentes/corrompidos.
 Suítes: `sourceMapLookup`, `stackSymbolicator`, relatórios de erros.
@@ -205,7 +205,8 @@ preexistentes do usuário indiscriminadamente.
 | 2 | Concluída | TDD vermelho; 38 testes / 9 arquivos aprovados, incluindo tipos | Commit de persistência | Migrar IndexedDB |
 | 3 | Concluída | TDD vermelho; 13 testes / 4 arquivos aprovados | Commit de IndexedDB | Migrar ZIP |
 | 4 | Concluída | TDD vermelho para colisões; 35 testes / 4 arquivos aprovados | Commit ZIP | Migrar source maps |
-| 5–12 | Pendentes | Não executados | — | Seguir dependências descritas acima |
+| 5 | Concluída | 27 testes antes; 57 testes / 4 arquivos após, incluindo tipos | Commit source maps | Migrar versões |
+| 6–12 | Pendentes | Não executados | — | Seguir dependências descritas acima |
 
 - Baseline isolada: os quatro arquivos anteriores passaram (44 testes, `--maxWorkers=1`); as falhas iniciais não foram reproduzidas isoladamente.
 - Etapa 1: contratos estruturais Zod nas entradas P2P, descoberta e contatos; validadores especializados continuam responsáveis pelas regras de domínio. Fixtures de rede passam a incluir timestamp e payload completo.
