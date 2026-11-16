@@ -1,3 +1,5 @@
+import { z } from 'zod'
+import { createStoredState } from './persistedState'
 import { create } from 'zustand'
 import { MapData } from '../types/map'
 import { RoomChannel } from '../types/chat'
@@ -20,6 +22,7 @@ export interface SavedSpace {
 
 const STORAGE_KEY = 'lira_saved_spaces'
 const ACTIVE_SPACE_ID_KEY = 'lira_active_space_id'
+const savedSpaceStorage = createStoredState<Record<string, any>[]>(STORAGE_KEY, z.array(z.object({}).passthrough()), [])
 
 const serializeSpacesForStorage = (spaces: SavedSpace[]) => {
   return spaces.map((s) => ({
@@ -68,9 +71,8 @@ const loadSavedSpaces = (): SavedSpace[] => {
   let savedSpaces: SavedSpace[] = []
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
-      const raw = window.localStorage.getItem(STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw)
+      {
+        const parsed = savedSpaceStorage.getState()
         if (Array.isArray(parsed) && parsed.length > 0) {
           savedSpaces = parsed
             .filter((s: any) => s && typeof s === 'object' && s.id !== 'space-default' && s.name !== 'Meu Espaço Principal')
@@ -103,14 +105,7 @@ const loadSavedSpaces = (): SavedSpace[] => {
 }
 
 const persistSpaces = (spaces: SavedSpace[]) => {
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const serialized = serializeSpacesForStorage(spaces)
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(serialized))
-    }
-  } catch (e) {
-    console.error('Failed to save spaces:', e)
-  }
+  savedSpaceStorage.setState(serializeSpacesForStorage(spaces), true)
 }
 
 interface SavedSpacesState {

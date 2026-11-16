@@ -1,3 +1,5 @@
+import { z } from 'zod'
+import { createStoredState } from './persistedState'
 import { create } from 'zustand'
 import { MapData, FloorType, WallType, PlacedFurniture, PrivateZone, EditorTool, EraserTarget } from '../types/map'
 import { Direction } from '../types/game'
@@ -10,51 +12,18 @@ import { useGameStore } from './useGameStore'
 import { useCustomAssetsStore } from './useCustomAssetsStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { hydrateMapData, compressMapDataForStorage } from '../utils/mapSerialization'
-import { reportStorageFailure } from '../utils/storageReport'
 
 const MAP_STORAGE_KEY = 'lira_custom_map'
 
-const getStorage = () => {
-  if (typeof window !== 'undefined' && window.localStorage) {
-    return window.localStorage
-  }
-  if (typeof globalThis !== 'undefined' && (globalThis as any).localStorage) {
-    return (globalThis as any).localStorage
-  }
-  return null
-}
-
+type StoredMap = ReturnType<typeof compressMapDataForStorage>
+const storedMapSchema = z.custom<StoredMap>(value => !!value && typeof value === 'object' && !Array.isArray(value) && typeof (value as StoredMap).id === 'string')
+const mapPreferences = createStoredState(MAP_STORAGE_KEY, storedMapSchema.nullable(), null)
 const loadSavedMap = (): MapData | null => {
-  try {
-    const storage = getStorage()
-    if (storage) {
-      const raw = storage.getItem(MAP_STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        if (parsed && typeof parsed === 'object') {
-          if (parsed.id === 'blacksmith_workshop') {
-            return createEmptyWorkspace()
-          }
-          return hydrateMapData(parsed)
-        }
-      }
-    }
-  } catch (e) {
-    reportStorageFailure('read', MAP_STORAGE_KEY, e)
-  }
-  return null
+  const saved = mapPreferences.getState()
+  if (!saved) return null
+  return saved.id === 'blacksmith_workshop' ? createEmptyWorkspace() : hydrateMapData(saved)
 }
-
-const saveMap = (mapData: MapData) => {
-  try {
-    const storage = getStorage()
-    if (storage) {
-      storage.setItem(MAP_STORAGE_KEY, JSON.stringify(compressMapDataForStorage(mapData)))
-    }
-  } catch (e) {
-    reportStorageFailure('write', MAP_STORAGE_KEY, e)
-  }
-}
+const saveMap = (mapData: MapData) => mapPreferences.setState(compressMapDataForStorage(mapData), true)
 
 const initialMap = loadSavedMap() || createEmptyWorkspace()
 

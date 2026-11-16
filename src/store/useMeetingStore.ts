@@ -1,3 +1,5 @@
+import { z } from 'zod'
+import { createStoredState } from './persistedState'
 import { generateUUID } from '../utils/uuid'
 import { create } from 'zustand'
 import type { TranscriptEntry } from '../media/callTranscription'
@@ -26,12 +28,14 @@ interface MeetingStore {
 
 // Transcripts and summaries stay on this device; API keys are never persisted.
 const KEY = 'lira_meeting_history'
+const meetingSchema = z.object({ id: z.string(), roomId: z.string(), zoneId: z.string(), title: z.string(),
+  startedAt: z.number().finite(), endedAt: z.number().finite().optional(), entries: z.array(z.object({ id: z.number().finite(), speakerId: z.string(), speakerName: z.string(), text: z.string(), timestamp: z.number().finite() }).passthrough()), summary: z.string().optional(),
+}).passthrough() as z.ZodType<Meeting>
+const history = createStoredState(KEY, z.array(meetingSchema), [], {
+  onWrite: error => { if (useMeetingStore.getState().storageError !== !!error) useMeetingStore.setState({ storageError: !!error }) },
+})
 function load(): Meeting[] {
-  try {
-    const data = JSON.parse(globalThis.localStorage?.getItem(KEY) || '[]')
-    return Array.isArray(data) ? data.filter(m => typeof m?.id === 'string' && typeof m.title === 'string' && Array.isArray(m.entries))
-      .slice(0, 20).map(m => ({ ...m, endedAt: m.endedAt || Date.now() })) : []
-  } catch { return [] }
+  return history.getState().slice(0, 20).map(m => ({ ...m, endedAt: m.endedAt || Date.now() }))
 }
 export const useMeetingStore = create<MeetingStore>((set) => ({
   meetings: load(), isOpen: false, storageError: false,
@@ -50,10 +54,5 @@ export const useMeetingStore = create<MeetingStore>((set) => ({
 }))
 useMeetingStore.subscribe((state, previous) => {
   if (state.meetings === previous.meetings) return
-  try {
-    globalThis.localStorage?.setItem(KEY, JSON.stringify(state.meetings))
-    if (state.storageError) useMeetingStore.setState({ storageError: false })
-  } catch {
-    if (!state.storageError) useMeetingStore.setState({ storageError: true })
-  }
+  history.setState(state.meetings, true)
 })

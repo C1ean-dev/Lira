@@ -1,3 +1,6 @@
+import { z } from 'zod'
+import { createStoredState } from './persistedState'
+import { chatMessageSchema } from '../validation/schemas'
 import { create } from 'zustand'
 import { Channel, ChatMessage, FriendRequestData, MessageDeliveryStatus, RoomChannel } from '../types/chat'
 import { useGameStore, getLocalUserId } from './useGameStore'
@@ -19,7 +22,6 @@ import {
   validateChannelName,
 } from '../utils/roomChannels'
 import { buildRoomInviteMessage } from '../utils/roomInvite'
-import { reportStorageFailure } from '../utils/storageReport'
 import { isPersonMentioned } from '../utils/chatMentions'
 
 export const getDmChannelId = (userId1: string, userId2: string): string => {
@@ -104,93 +106,32 @@ const SAVED_DMS_STORAGE_KEY = 'lira_saved_dms'
 const SAVED_DM_CHANNELS_STORAGE_KEY = 'lira_saved_dm_channels'
 const SAVED_LAST_READ_KEY = 'lira_saved_last_read_dms'
 
-const getStorage = () => {
-  if (typeof window !== 'undefined' && window.localStorage) return window.localStorage
-  if (typeof globalThis !== 'undefined' && (globalThis as any).localStorage) return (globalThis as any).localStorage
-  return null
-}
-
-const loadSavedDmChannels = (): Channel[] => {
-  try {
-    const storage = getStorage()
-    if (storage) {
-      const raw = storage.getItem(SAVED_DM_CHANNELS_STORAGE_KEY)
-      if (raw) return JSON.parse(raw)
-    }
-  } catch (e) {
-    reportStorageFailure('read', SAVED_DM_CHANNELS_STORAGE_KEY, e)
-  }
-  return []
-}
+const channelSchema = z.custom<Channel>(value => !!value && typeof value === 'object' && typeof (value as Channel).id === 'string')
+const savedDmChannels = createStoredState(SAVED_DM_CHANNELS_STORAGE_KEY, z.array(channelSchema), [])
+const savedDmMessages = createStoredState(SAVED_DMS_STORAGE_KEY, z.array(chatMessageSchema), [])
+const lastReadPreferences = createStoredState(SAVED_LAST_READ_KEY, z.record(z.string(), z.number().finite()), {})
+const loadSavedDmChannels = () => savedDmChannels.getState()
 
 const loadSavedDmMessages = (): ChatMessage[] => {
-  try {
-    const storage = getStorage()
-    if (storage) {
-      const raw = storage.getItem(SAVED_DMS_STORAGE_KEY)
-      if (raw) {
-        const parsed: ChatMessage[] = JSON.parse(raw)
-        const seenRequestIds = new Set<string>()
-        const seenAcceptedChannels = new Set<string>()
-        return parsed.map((m) => {
-          if (!m.friendRequest) return m
-          const reqId = m.friendRequest.requestId
-          const chId = m.channelId || ''
-          const isAccepted = m.friendRequest.status === 'accepted'
-          if (seenRequestIds.has(reqId) || (isAccepted && chId && seenAcceptedChannels.has(chId))) {
-            const { friendRequest, ...rest } = m
-            return rest
-          }
-          seenRequestIds.add(reqId)
-          if (isAccepted && chId) {
-            seenAcceptedChannels.add(chId)
-          }
-          return m
-        })
-      }
+  const seenRequestIds = new Set<string>()
+  const seenAcceptedChannels = new Set<string>()
+  return savedDmMessages.getState().map(m => {
+    if (!m.friendRequest) return m
+    const reqId = m.friendRequest.requestId, chId = m.channelId || ''
+    if (seenRequestIds.has(reqId) || (m.friendRequest.status === 'accepted' && chId && seenAcceptedChannels.has(chId))) {
+      const { friendRequest, ...rest } = m
+      return rest
     }
-  } catch (e) {
-    reportStorageFailure('read', SAVED_DMS_STORAGE_KEY, e)
-  }
-  return []
+    seenRequestIds.add(reqId)
+    if (m.friendRequest.status === 'accepted' && chId) seenAcceptedChannels.add(chId)
+    return m
+  })
 }
-
-const loadSavedLastRead = (): Record<string, number> => {
-  try {
-    const storage = getStorage()
-    if (storage) {
-      const raw = storage.getItem(SAVED_LAST_READ_KEY)
-      if (raw) return JSON.parse(raw)
-    }
-  } catch (e) {
-    reportStorageFailure('read', SAVED_LAST_READ_KEY, e)
-  }
-  return {}
-}
-
-const saveLastRead = (data: Record<string, number>) => {
-  try {
-    const storage = getStorage()
-    if (storage) {
-      storage.setItem(SAVED_LAST_READ_KEY, JSON.stringify(data))
-    }
-  } catch (e) {
-    reportStorageFailure('write', SAVED_LAST_READ_KEY, e)
-  }
-}
-
+const loadSavedLastRead = () => lastReadPreferences.getState()
+const saveLastRead = (data: Record<string, number>) => lastReadPreferences.setState(data, true)
 const persistDmsAndChannels = (messages: ChatMessage[], channels: Channel[]) => {
-  try {
-    const storage = getStorage()
-    if (storage) {
-      const dmMessages = messages.filter((m) => m.channelId?.startsWith('dm-') || !!m.recipientId).slice(-300)
-      const dmChannels = channels.filter((c) => c.type === 'dm')
-      storage.setItem(SAVED_DMS_STORAGE_KEY, JSON.stringify(dmMessages))
-      storage.setItem(SAVED_DM_CHANNELS_STORAGE_KEY, JSON.stringify(dmChannels))
-    }
-  } catch (e) {
-    reportStorageFailure('write', SAVED_DMS_STORAGE_KEY, e)
-  }
+  savedDmMessages.setState(messages.filter(m => m.channelId?.startsWith('dm-') || !!m.recipientId).slice(-300), true)
+  savedDmChannels.setState(channels.filter(c => c.type === 'dm'), true)
 }
 
 const savedChannels = loadSavedDmChannels()

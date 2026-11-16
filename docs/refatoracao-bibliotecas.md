@@ -62,15 +62,15 @@ Testar: mensagens válidas, campos ausentes, números inválidos, limites, tipos
 desconhecidos e remetentes sem autorização; pacotes inválidos não alteram estado.
 Suítes: serviços de armazenamento/salas, P2P, colaboração e tipos de produção.
 
-### [ ] 2. Persistência com Zustand
+### [x] 2. Persistência com Zustand
 
-- [ ] Migrar preferências gráficas/áudio, reuniões e espaços salvos para `persist`.
-- [ ] Separar dados persistentes dos dados de sessão nos stores de jogo/chat,
+- [x] Migrar preferências gráficas/áudio, reuniões e espaços salvos para `persist`.
+- [x] Separar dados persistentes dos dados de sessão nos stores de jogo/chat,
   preservando as fachadas públicas.
-- [ ] Centralizar schemas, armazenamento, falhas e importação dos formatos antigos.
-- [ ] Preservar chaves, compactação, precedência dos espaços e arquivos nativos.
-- [ ] Não persistir FPS, posições, streams, conexões, painéis nem chaves de API.
-- [ ] Preservar agrupamento das gravações de áudio e evitar escritas transitórias.
+- [x] Centralizar schemas, armazenamento, falhas e importação dos formatos antigos.
+- [x] Preservar chaves, compactação, precedência dos espaços e arquivos nativos.
+- [x] Não persistir FPS, posições, streams, conexões, painéis nem chaves de API.
+- [x] Preservar agrupamento das gravações de áudio e evitar escritas transitórias.
 
 Testar: formatos existentes, reinicialização, corrupção, indisponibilidade, quota
 e ausência de gravações durante movimento/FPS. Suítes: `storeStorageFailures`,
@@ -202,7 +202,8 @@ preexistentes do usuário indiscriminadamente.
 | --- | --- | --- | --- | --- |
 | 0 | Concluída | 4.006 aprovados; 4 falhas anteriores e 4 pendentes | Commit de preparação | Iniciar contratos Zod |
 | 1 | Concluída | TDD vermelho registrado; contratos/tipos aprovados; 50 testes das 6 suítes ajustadas aprovados | Commit de validação | Migrar persistência |
-| 2–12 | Pendentes | Não executados | — | Seguir dependências descritas acima |
+| 2 | Concluída | TDD vermelho; 38 testes / 9 arquivos aprovados, incluindo tipos | Commit de persistência | Migrar IndexedDB |
+| 3–12 | Pendentes | Não executados | — | Seguir dependências descritas acima |
 
 - Baseline isolada: os quatro arquivos anteriores passaram (44 testes, `--maxWorkers=1`); as falhas iniciais não foram reproduzidas isoladamente.
 - Etapa 1: contratos estruturais Zod nas entradas P2P, descoberta e contatos; validadores especializados continuam responsáveis pelas regras de domínio. Fixtures de rede passam a incluir timestamp e payload completo.
