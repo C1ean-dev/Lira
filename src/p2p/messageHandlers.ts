@@ -1,4 +1,6 @@
+import { parseNetworkMessage } from '../validation/schemas'
 import { receiveWhiteboardMessage } from '../services/whiteboardNetwork'
+import { receiveBoardPointer } from '../services/boardPointerNetwork'
 import { applyConsumptionChange } from '../services/tabletopConsumption'
 import { AtlasChunkReceiver } from '../assets/atlasChunks'
 import { readAtlas, atlasDigest, decodeTransferredAtlas } from '../assets/atlasService'
@@ -61,7 +63,7 @@ function isDjMessageSource(msg: NetworkMessage, peerId: string, isHost: boolean)
 }
 
 export function processNetworkMessage(
-  msg: NetworkMessage,
+  raw: unknown,
   peerId: string,
   isHost: boolean,
   broadcast: (msg: NetworkMessage, excludePeerId?: string) => void,
@@ -70,7 +72,13 @@ export function processNetworkMessage(
   myPeerId?: string | null,
   onDjCallRequest?: (listenerId: string) => void
 ) {
+  const msg = parseNetworkMessage(raw)
+  if (!msg) return
   switch (msg.type) {
+    case 'WHITEBOARD_POINTER': {
+      if (!receiveBoardPointer(msg, peerId, isHost)) return
+      break
+    }
     case 'WHITEBOARD_OP':
     case 'WHITEBOARD_REQUEST':
     case 'WHITEBOARD_STATE': {
@@ -236,6 +244,7 @@ export function processNetworkMessage(
       }
 
       const player: Player = {
+        x: 0, y: 0, direction: 'down', isMoving: false, avatar: { ...DEFAULT_AVATAR }, status: 'available', lastUpdated: Date.now(),
         ...incomingPlayer,
         isCameraOff: incomingPlayer.isCameraOff !== undefined ? incomingPlayer.isCameraOff : true,
         name: resolvedName,
@@ -478,7 +487,7 @@ export function processNetworkMessage(
         }
         break
       }
-      if (msg.payload.atlas) { receiveAtlas(msg.payload.atlas, msg.payload.digest); break }
+      if (msg.payload.atlas && msg.payload.digest) { receiveAtlas(msg.payload.atlas, msg.payload.digest); break }
       if (msg.payload.customAssets) {
         useCustomAssetsStore.getState().syncRemoteCustomAssets(
           msg.payload.customAssets,
@@ -489,7 +498,7 @@ export function processNetworkMessage(
     }
 
     case 'CUSTOM_ASSET_ADD_OR_UPDATE': {
-      if (msg.payload.atlas) { receiveAtlas(msg.payload.atlas, msg.payload.digest); break }
+      if (msg.payload.atlas && msg.payload.digest) { receiveAtlas(msg.payload.atlas, msg.payload.digest); break }
       if (msg.payload.asset) {
         useCustomAssetsStore.getState().syncRemoteAssetAddOrUpdate(msg.payload.asset)
       }
@@ -519,13 +528,13 @@ export function processNetworkMessage(
             useMapStore.getState().addFurniture(data.furniture)
           } else if (action === 'remove_furniture') {
             if (typeof data.id === 'string') useMapStore.getState().removeFurnitureById(data.id)
-            else useMapStore.getState().removeFurnitureAt(data.x, data.y)
+            else if (data.x !== undefined && data.y !== undefined) useMapStore.getState().removeFurnitureAt(data.x, data.y)
           } else if (action === 'add_zone') {
             useMapStore.getState().addOrUpdateZone(data.zone)
           } else if (action === 'remove_zone') {
             useMapStore.getState().removeZone(data.id)
           } else if (action === 'update_zone') {
-            useMapStore.getState().updateZone(data.id, data.partial || data.zone)
+            useMapStore.getState().updateZone(data.id, data.partial || data.zone || {})
           }
         })
       }

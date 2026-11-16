@@ -42,7 +42,7 @@ describe('Version Compatibility & Outdated Flag', () => {
     const checkZoneCall = vi.fn()
 
     const legacyMsg = {
-      type: 'PLAYER_JOIN' as const,
+      type: 'PLAYER_JOIN' as const, timestamp: 1,
       senderId: 'legacy-peer',
       payload: {
         player: {
@@ -73,7 +73,7 @@ describe('Version Compatibility & Outdated Flag', () => {
     const checkZoneCall = vi.fn()
 
     const outdatedMsg = {
-      type: 'PLAYER_JOIN' as const,
+      type: 'PLAYER_JOIN' as const, timestamp: 1,
       senderId: 'outdated-peer',
       payload: {
         player: {
@@ -98,7 +98,7 @@ describe('Version Compatibility & Outdated Flag', () => {
     const checkZoneCall = vi.fn()
 
     const compatibleMsg = {
-      type: 'PLAYER_JOIN' as const,
+      type: 'PLAYER_JOIN' as const, timestamp: 1,
       senderId: 'modern-peer',
       payload: {
         player: {
@@ -127,7 +127,7 @@ describe('Version Compatibility & Outdated Flag', () => {
     const checkZoneCall = vi.fn()
 
     const djMsg = {
-      type: 'PLAYER_JOIN' as const,
+      type: 'PLAYER_JOIN' as const, timestamp: 1,
       senderId: 'dj-bot-1',
       payload: {
         player: {
@@ -179,7 +179,7 @@ describe('Version Compatibility & Outdated Flag', () => {
     const checkZoneCall = vi.fn()
 
     const incompatMsg = {
-      type: 'VERSION_INCOMPATIBLE' as const,
+      type: 'VERSION_INCOMPATIBLE' as const, timestamp: 1,
       senderId: 'lira-TEST-host',
       payload: {
         minVersion: '1.2.0',
@@ -203,7 +203,7 @@ describe('Version Compatibility & Outdated Flag', () => {
       const checkZoneCall = vi.fn()
 
       const legacyMsg = {
-        type: 'PLAYER_JOIN' as const,
+        type: 'PLAYER_JOIN' as const, timestamp: 1,
         senderId: 'legacy-user',
         payload: {
           player: {
@@ -263,7 +263,7 @@ describe('Version Compatibility & Outdated Flag', () => {
     const checkZoneCall = vi.fn()
 
     const firstJoin = {
-      type: 'PLAYER_JOIN' as const,
+      type: 'PLAYER_JOIN' as const, timestamp: 1,
       senderId: 'zegary-peer-1',
       payload: {
         player: {
@@ -285,7 +285,7 @@ describe('Version Compatibility & Outdated Flag', () => {
 
     // Outdated user reconnects with a fresh peer ID after 2.5s failover
     const secondJoin = {
-      type: 'PLAYER_JOIN' as const,
+      type: 'PLAYER_JOIN' as const, timestamp: 1,
       senderId: 'zegary-peer-2',
       payload: {
         player: {

@@ -97,6 +97,7 @@ export function receiveBedInteraction(message: NetworkMessage): boolean {
     putSession(session.furnitureId, session)
     return true
   }
+  if (!payload.furnitureId) return false
   const session = useBedStore.getState().sessions[payload.furnitureId]
   if (!session || session.id !== payload.sessionId || !isCurrent(session)) return false
   if (payload.action === 'accept') {
@@ -112,7 +113,7 @@ export function receiveBedInteraction(message: NetworkMessage): boolean {
   return false
 }
 
-function send(payload: NetworkMessage['payload']) {
+function send(payload: NetworkMessage<'BED_INTERACTION'>['payload']) {
   const peerId = PeerManager.getInstance().getPeerId?.()
   const senderId = peerId || useGameStore.getState().localPlayer.id
   const message: NetworkMessage = { type: 'BED_INTERACTION', senderId, timestamp: Date.now(), payload }

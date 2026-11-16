@@ -7,7 +7,7 @@ vi.mock('../../services/petNetwork', () => ({ receivePetNetworkMessage: vi.fn() 
 const original = useGameStore.getState()
 const broadcast = vi.fn()
 const call = (senderId: string, peerId: string, isHost: boolean) => processNetworkMessage(
-  { type: 'PET_QUESTION', senderId, payload: { id: '1' }, timestamp: 1 }, peerId, isHost, broadcast, vi.fn(), vi.fn(), 'local')
+  { type: 'PET_QUESTION', senderId, payload: { id: '1', targetId: 'pet', zoneId: 'zone', question: 'Olá' }, timestamp: 1 }, peerId, isHost, broadcast, vi.fn(), vi.fn(), 'local')
 afterEach(() => { useGameStore.setState(original); vi.clearAllMocks() })
 
 describe('pet P2P authentication and relay', () => {

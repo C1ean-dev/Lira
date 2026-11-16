@@ -1,3 +1,4 @@
+import { parseNetworkMessage } from '../validation/schemas'
 import { sendAtlasChunks } from '../assets/atlasChunks'
 import { getTransferAtlas } from '../assets/atlasTransferCache'
 import { IndividualLibrarySync, type LibraryMessage } from '../assets/individualLibrarySync'
@@ -1692,7 +1693,7 @@ export class PeerManager {
     await this.startHostTransfer(targetPeerId)
   }
 
-  private startHostTransfer(targetPeerId: string, id = crypto.randomUUID()): Promise<void> {
+  private startHostTransfer(targetPeerId: string, id: string = crypto.randomUUID()): Promise<void> {
     const state = useGameStore.getState()
     const target = targetPeerId === state.localPlayer.id ? state.localPlayer : state.remotePlayers[targetPeerId]
     const hostPeerId = `lira-${this.roomCode}-host`
@@ -1764,7 +1765,7 @@ export class PeerManager {
     this.preparedHostTransfer = null
   }
 
-  private handleHostTransfer(msg: NetworkMessage, peerId: string) {
+  private handleHostTransfer(msg: NetworkMessage<'HOST_TRANSFER'>, peerId: string) {
     const payload = msg.payload
     if (!this.peer || !this.roomCode || typeof payload?.id !== 'string' || !payload.id || payload.id.length > 128 || msg.senderId !== peerId) return
     const connection = this.connections.get(peerId)
@@ -2176,7 +2177,9 @@ export class PeerManager {
     this.setupDataConnection(conn)
   }
 
-  private handleNetworkMessage(msg: NetworkMessage, peerId: string) {
+  private handleNetworkMessage(raw: unknown, peerId: string) {
+    const msg = parseNetworkMessage(raw)
+    if (!msg) return
     this.peerLastSeen.set(peerId, Date.now())
     try {
       if (msg.type === 'VOICE_RELAY_CONTROL') {
@@ -2217,7 +2220,7 @@ export class PeerManager {
       if (msg.type === 'INDIVIDUAL_LIBRARY') {
         const connection = this.connections.get(peerId)
         if (connection?.open && this.peer) {
-          if (msg.payload?.catalogVersion === 3 || msg.payload?.catalog?.version === 3) this.individualLibraryVersions.set(connection, 3)
+          if ((msg.payload.kind === 'hello' && msg.payload.catalogVersion === 3) || (msg.payload.kind === 'offer' && msg.payload.catalog.version === 3)) this.individualLibraryVersions.set(connection, 3)
           else if (!this.individualLibraryVersions.has(connection)) this.individualLibraryVersions.set(connection, 2)
           this.individualLibraryPeers.add(connection)
           for (const ready of this.individualLibraryReady.get(connection) || []) ready()
@@ -2275,7 +2278,7 @@ export class PeerManager {
     }
   }
 
-  private handleLiveView(msg: NetworkMessage) {
+  private handleLiveView(msg: NetworkMessage<'LIVE_VIEW'>) {
     const myId = this.peer?.id
     const payload = msg.payload
     if (!myId || !payload || typeof payload !== 'object' || payload.to !== myId) return
@@ -2558,7 +2561,7 @@ export class PeerManager {
     }
   }
 
-  public handlePeerUnreachableReport(msg: NetworkMessage) {
+  public handlePeerUnreachableReport(msg: NetworkMessage<'PEER_UNREACHABLE_REPORT'>) {
     if (!this.isHost) return
     const targetPeerId = msg.payload?.peerId
     if (typeof targetPeerId !== 'string' || !targetPeerId) return
@@ -3169,15 +3172,15 @@ export class PeerManager {
     })
   }
 
-  public sendMapEdit(action: string, data: any) {
+  public sendMapEdit(action: string, data: unknown) {
     if (!this.peer) return
-    const msg: NetworkMessage = {
+    const msg = parseNetworkMessage({
       type: 'MAP_EDIT',
       senderId: this.peer.id,
       payload: { action, data },
       timestamp: Date.now(),
-    }
-    this.broadcast(msg)
+    })
+    if (msg) this.broadcast(msg)
   }
 
   public sendChatMessage(message: any) {

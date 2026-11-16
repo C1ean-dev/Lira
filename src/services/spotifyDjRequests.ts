@@ -118,6 +118,7 @@ export function requestDjSong(zoneId: string, text: string, track?: SpotifySearc
 // The DJ owns the queue. Listeners submit requests; the resulting status snapshot
 // synchronizes additions/removals and is also sent to peers joining later.
 export function receiveDjRequestMessage(msg: NetworkMessage): boolean {
+  if (msg.type !== 'SPOTIFY_DJ_REQUEST' && msg.type !== 'SPOTIFY_DJ_REQUEST_RESULT') return false
   const payload = msg.payload || {}
   const dj = typeof payload.zoneId === 'string' ? activeDj(payload.zoneId) : null
   if (!matches(dj, payload) || typeof payload.requestId !== 'string' || !payload.requestId || payload.requestId.length > 128) return false

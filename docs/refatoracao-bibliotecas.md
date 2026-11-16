@@ -50,13 +50,13 @@ Adicionar versões exatas e atualizar o lockfile na etapa que usa a biblioteca.
 
 Aceite: linha de base registrada e ambiente de testes pronto.
 
-### [ ] 1. Validação e tipos com Zod
+### [x] 1. Validação e tipos com Zod
 
-- [ ] Criar schemas para dados persistidos, arquivos e mensagens externas.
-- [ ] Migrar preferências/arquivos, depois salas públicas, presença, chat,
+- [x] Criar schemas para dados persistidos, arquivos e mensagens externas.
+- [x] Migrar preferências/arquivos, depois salas públicas, presença, chat,
   colaboração e controle de mídia.
-- [ ] Transformar `NetworkMessage` em união discriminada por `type`.
-- [ ] Validar `unknown` antes de handlers e stores; manter autorização separada.
+- [x] Transformar `NetworkMessage` em união discriminada por `type`.
+- [x] Validar `unknown` antes de handlers e stores; manter autorização separada.
 
 Testar: mensagens válidas, campos ausentes, números inválidos, limites, tipos
 desconhecidos e remetentes sem autorização; pacotes inválidos não alteram estado.
@@ -201,4 +201,8 @@ preexistentes do usuário indiscriminadamente.
 | Etapa | Estado | Testes / resultado | Commit | Próxima ação |
 | --- | --- | --- | --- | --- |
 | 0 | Concluída | 4.006 aprovados; 4 falhas anteriores e 4 pendentes | Commit de preparação | Iniciar contratos Zod |
-| 1–12 | Pendentes | Não executados | — | Seguir dependências descritas acima |
+| 1 | Concluída | TDD vermelho registrado; contratos/tipos aprovados; 50 testes das 6 suítes ajustadas aprovados | Commit de validação | Migrar persistência |
+| 2–12 | Pendentes | Não executados | — | Seguir dependências descritas acima |
+
+- Baseline isolada: os quatro arquivos anteriores passaram (44 testes, `--maxWorkers=1`); as falhas iniciais não foram reproduzidas isoladamente.
+- Etapa 1: contratos estruturais Zod nas entradas P2P, descoberta e contatos; validadores especializados continuam responsáveis pelas regras de domínio. Fixtures de rede passam a incluir timestamp e payload completo.

@@ -1,3 +1,4 @@
+import { hubMessageSchema } from '../validation/schemas'
 import { PublicRoomInfo } from '../types/game'
 import { publicRoomMetadata } from './publicRoomMetadata'
 
@@ -484,7 +485,10 @@ export class PublicRoomsService {
     if (publicationChanged) this.notifyListeners()
   }
 
-  private handleIncomingMessage(msg: HubMessage, relay?: BrokerRelay) {
+  private handleIncomingMessage(raw: unknown, relay?: BrokerRelay) {
+    const parsed = hubMessageSchema.safeParse(raw)
+    if (!parsed.success) return
+    const msg = parsed.data
     if (!msg || !msg.type) return
 
     const now = Date.now()

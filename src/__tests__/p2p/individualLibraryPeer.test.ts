@@ -17,7 +17,7 @@ function setup() {
 describe('individual image protocol integration', () => {
   it('advertises only metadata and sends requested bytes without building an atlas', async () => {
     const { manager, connection } = setup()
-    manager.handleNetworkMessage({ type: 'INDIVIDUAL_LIBRARY', senderId: 'other', payload: { kind: 'hello', id: 'hello' } }, 'other')
+    manager.handleNetworkMessage({ type: 'INDIVIDUAL_LIBRARY', timestamp: 1, senderId: 'other', payload: { kind: 'hello', id: 'hello' } }, 'other')
     manager.sendCustomAssetAddOrUpdate(asset)
     await manager.assetTransferQueue
     expect(buildAtlas).not.toHaveBeenCalled()
@@ -25,7 +25,7 @@ describe('individual image protocol integration', () => {
     expect(offer.type).toBe('INDIVIDUAL_LIBRARY')
     expect(offer.payload.catalog.version).toBe(2)
     expect(JSON.stringify(offer)).not.toContain('data:image')
-    manager.handleNetworkMessage({ type: 'INDIVIDUAL_LIBRARY', senderId: 'other', payload: { kind: 'request', id: offer.payload.id, names: offer.payload.catalog.images } }, 'other')
+    manager.handleNetworkMessage({ type: 'INDIVIDUAL_LIBRARY', timestamp: 1, senderId: 'other', payload: { kind: 'request', id: offer.payload.id, names: offer.payload.catalog.images } }, 'other')
     await manager.individualLibrarySession(connection).queue
     expect(connection.send.mock.calls.some(([message]: any[]) => message.payload.kind === 'image')).toBe(true)
   })
@@ -38,7 +38,7 @@ describe('individual image protocol integration', () => {
   })
   it('uses source-sheet catalogs only after the remote participant explicitly announces v3', async () => {
     const { manager, connection } = setup()
-    manager.handleNetworkMessage({ type: 'INDIVIDUAL_LIBRARY', senderId: 'other', payload: { kind: 'hello', id: 'hello', catalogVersion: 3 } }, 'other')
+    manager.handleNetworkMessage({ type: 'INDIVIDUAL_LIBRARY', timestamp: 1, senderId: 'other', payload: { kind: 'hello', id: 'hello', catalogVersion: 3 } }, 'other')
     manager.sendCustomAssetAddOrUpdate(asset)
     await manager.assetTransferQueue
     const offer = connection.send.mock.calls.find(([message]: any[]) => message.payload.kind === 'offer')![0]
@@ -56,7 +56,7 @@ describe('individual image protocol integration', () => {
     manager.setupDataConnection(connected)
     handlers.open()
     await vi.advanceTimersByTimeAsync(100)
-    if (supportsV2) manager.handleNetworkMessage({ type: 'INDIVIDUAL_LIBRARY', senderId: 'other', payload: { kind: 'hello', id: 'v2' } }, 'other')
+    if (supportsV2) manager.handleNetworkMessage({ type: 'INDIVIDUAL_LIBRARY', timestamp: 1, senderId: 'other', payload: { kind: 'hello', id: 'v2' } }, 'other')
     await vi.advanceTimersByTimeAsync(1000)
     await manager.assetTransferQueue
     const messages = connection.send.mock.calls.map(([message]: any[]) => message)

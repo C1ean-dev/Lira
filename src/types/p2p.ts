@@ -8,6 +8,7 @@ export const CURRENT_LIRA_VERSION = '1.1.210'
 export type SignalingTier = 'render' | 'public' | 'local' | 'direct'
 
 export type NetworkMessageType =
+  | 'WHITEBOARD_POINTER'
   | 'PLAYER_JOIN'
   | 'PLAYER_LEAVE'
   | 'PLAYER_MOVE'
@@ -57,12 +58,7 @@ export type NetworkMessageType =
   | 'DJ_CALL_REQUEST'
   | 'VOICE_RELAY_CONTROL'
 
-export interface NetworkMessage {
-  type: NetworkMessageType
-  senderId: string
-  payload: any
-  timestamp: number
-}
+export type NetworkMessage<T extends NetworkMessageType = NetworkMessageType> = Extract<import('../validation/schemas').ValidatedNetworkMessage, { type: T }>
 
 export interface PlayerMovePayload {
   x: number

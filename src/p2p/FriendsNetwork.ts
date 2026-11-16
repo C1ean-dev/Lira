@@ -1,3 +1,4 @@
+import { friendPacketSchema } from '../validation/schemas'
 import Peer from 'peerjs'
 import { SHARED_RTC_CONFIG } from './mediaCalls'
 import {
@@ -454,8 +455,9 @@ export class FriendsNetwork {
     if (!this.lastHeard.has(conn)) return
     this.lastHeard.set(conn, Date.now())
 
-    const packet = data as FriendPacket | null
-    if (!packet || typeof packet !== 'object' || typeof packet.t !== 'string') return
+    const parsed = friendPacketSchema.safeParse(data)
+    if (!parsed.success) return
+    const packet = parsed.data as FriendPacket
     if (packet.t === 'ping') return
     if (packet.t === 'bye') {
       this.closeLinks(userId)
