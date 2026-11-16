@@ -127,11 +127,11 @@ Testar clientes simulados: anúncio/recebimento, reconexão, online/offline, fal
 isolada e Render. Sem brokers reais. Suítes: `publicRoomsServer`, `publicRoomsRender`,
 `publicHubPerformance`, presença e publicação de salas.
 
-### [ ] 8. Dropdowns com Radix Select
+### [x] 8. Dropdowns com Radix Select
 
-- [ ] Preservar props e aparência de `CustomDropdown`, ícones, cores e tamanhos.
-- [ ] Delegar foco, teclado, busca, Escape e posicionamento à biblioteca.
-- [ ] Preservar estado sem opções e funcionamento em diálogos.
+- [x] Preservar props e aparência de `CustomDropdown`, ícones, cores e tamanhos.
+- [x] Delegar foco, teclado, busca, Escape e posicionamento à biblioteca.
+- [x] Preservar estado sem opções e funcionamento em diálogos.
 
 Testar em jsdom: mouse/teclado, seleção, fechamento, retorno de foco, rótulos
 acessíveis e diálogos. Sem navegador. Manter regressões dos componentes consumidores.
@@ -208,7 +208,8 @@ preexistentes do usuário indiscriminadamente.
 | 5 | Concluída | 27 testes antes; 57 testes / 4 arquivos após, incluindo tipos | Commit source maps | Migrar versões |
 | 6 | Concluída | TDD vermelho; 27 testes / 5 arquivos aprovados | Commit semver | Migrar MQTT |
 | 7 | Concluída | TDD vermelho; 38 testes / 7 arquivos aprovados | Commit MQTT | Migrar dropdowns |
-| 8–12 | Pendentes | Não executados | — | Seguir dependências descritas acima |
+| 8 | Concluída | TDD vermelho; 32 testes / 4 arquivos aprovados em jsdom e Node | Commit Radix | Migrar logs |
+| 9–12 | Pendentes | Não executados | — | Seguir dependências descritas acima |
 
 - Baseline isolada: os quatro arquivos anteriores passaram (44 testes, `--maxWorkers=1`); as falhas iniciais não foram reproduzidas isoladamente.
 - Etapa 1: contratos estruturais Zod nas entradas P2P, descoberta e contatos; validadores especializados continuam responsáveis pelas regras de domínio. Fixtures de rede passam a incluir timestamp e payload completo.
