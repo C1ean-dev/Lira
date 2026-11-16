@@ -1,3 +1,4 @@
+import { connect, type MqttClient } from 'mqtt'
 import { hubMessageSchema } from '../validation/schemas'
 import { PublicRoomInfo } from '../types/game'
 import { publicRoomMetadata } from './publicRoomMetadata'
@@ -6,7 +7,6 @@ const STORAGE_KEY = 'lira_public_hub_cache'
 const BROADCAST_CHANNEL_NAME = 'lira_public_hub_channel'
 const HEARTBEAT_INTERVAL_MS = 4000
 const STALE_ROOM_THRESHOLD_MS = 20000
-const utf8Encoder = new TextEncoder()
 const utf8Decoder = new TextDecoder('utf-8', { fatal: true })
 const legacyDecoder = new TextDecoder('windows-1252')
 
@@ -40,7 +40,7 @@ interface BrokerRelay {
   protocol: 'mqtt' | 'json'
   status: BrokerConnectionStatus
   ws: WebSocket | null
-  mqttBuffer: Uint8Array
+  mqtt: MqttClient | null
   connectTimeout: ReturnType<typeof setTimeout> | null
   reconnectTimer: ReturnType<typeof setTimeout> | null
 }
@@ -52,7 +52,7 @@ export class PublicRoomsService {
   private listeners: Set<(rooms: PublicRoomInfo[]) => void> = new Set()
   private broadcastChannel: BroadcastChannel | null = null
   private relays: BrokerRelay[] = ROOM_BROKERS.map(broker => ({
-    ...broker, status: 'disconnected', ws: null, mqttBuffer: new Uint8Array(0),
+    ...broker, status: 'disconnected', ws: null, mqtt: null,
     connectTimeout: null, reconnectTimer: null,
   }))
   private networkOnline = true
@@ -183,7 +183,9 @@ export class PublicRoomsService {
     if (relay.reconnectTimer !== null) clearTimeout(relay.reconnectTimer)
     relay.connectTimeout = null
     relay.reconnectTimer = null
-    relay.mqttBuffer = new Uint8Array(0)
+    const mqtt = relay.mqtt
+    relay.mqtt = null
+    if (mqtt) { mqtt.removeAllListeners(); mqtt.end(true) }
     const ws = relay.ws
     relay.ws = null
     if (this.currentHosting) this.roomSources.get(this.currentHosting.code)?.delete(relay.host)
@@ -211,6 +213,10 @@ export class PublicRoomsService {
   private initWebSocketRelay(retryDisconnected: boolean = false) {
     if (!this.networkOnline || typeof window === 'undefined' || !('WebSocket' in window)) return
     for (const relay of this.relays) {
+      if (relay.protocol === 'mqtt' && relay.mqtt) {
+        if (retryDisconnected && relay.status === 'disconnected') relay.mqtt.reconnect()
+        continue
+      }
       if (relay.ws && (relay.ws.readyState === WebSocket.OPEN || relay.ws.readyState === WebSocket.CONNECTING)) continue
       if (relay.reconnectTimer !== null) {
         if (!retryDisconnected) continue
@@ -225,27 +231,18 @@ export class PublicRoomsService {
     if (!this.networkOnline) return
     this.closeRelay(relay)
     this.setRelayStatus(relay, 'connecting')
+    if (relay.protocol === 'mqtt') { this.connectMqtt(relay); return }
     try {
-      const ws = relay.protocol === 'json' ? new WebSocket(relay.url) : new WebSocket(relay.url, ['mqtt'])
+      const ws = new WebSocket(relay.url)
       relay.ws = ws
       ws.binaryType = 'arraybuffer'
       const isCurrent = () => relay.ws === ws && this.networkOnline
       relay.connectTimeout = setTimeout(() => {
         if (isCurrent() && relay.status === 'connecting') this.scheduleReconnect(relay)
       }, relay.protocol === 'json' ? 60000 : 7000)
-      ws.onopen = () => {
-        if (!isCurrent()) return
-        // Render confirms its discovery protocol before it is marked available.
-        if (relay.protocol === 'json') return
-        if (relay.connectTimeout !== null) clearTimeout(relay.connectTimeout)
-        relay.connectTimeout = null
-        this.setRelayStatus(relay, 'connected')
-        this.sendMqttConnect(relay)
-      }
+      ws.onopen = () => { /* Wait for Render's protocol acknowledgement. */ }
       ws.onmessage = event => {
-        if (!isCurrent()) return
-        if (relay.protocol === 'json') return this.handleJsonRelayMessage(event.data, relay, ws)
-        return this.handleMqttMessage(event.data, relay, ws)
+        if (isCurrent()) return this.handleJsonRelayMessage(event.data, relay, ws)
       }
       ws.onerror = ws.onclose = () => {
         if (isCurrent()) this.scheduleReconnect(relay)
@@ -302,148 +299,41 @@ export class PublicRoomsService {
     } catch {}
   }
 
-  private sendMqttConnect(relay: BrokerRelay) {
-    const ws = relay.ws
-    if (!ws || ws.readyState !== WebSocket.OPEN) return
+  private connectMqtt(relay: BrokerRelay) {
     try {
-      const clientId = 'lira_hub_' + Math.random().toString(36).substring(2, 10)
-      ws.send(this.encodeMqttConnect(clientId))
-      // CONNACK sends the subscription; SUBACK starts discovery below.
-    } catch (e) {
-      console.warn('[PublicRoomsHub] MQTT framing failed:', e)
-      this.scheduleReconnect(relay)
-    }
-  }
-
-  private encodeMqttConnect(clientId: string): Uint8Array {
-    const protocolName = 'MQTT'
-    const protoLen = protocolName.length
-    const clientLen = clientId.length
-    const varHeader = [0, protoLen, ...Array.from(protocolName).map((c) => c.charCodeAt(0)), 4, 2, 0, 60]
-    const payload = [0, clientLen, ...Array.from(clientId).map((c) => c.charCodeAt(0))]
-    const remainingLength = varHeader.length + payload.length
-    return new Uint8Array([0x10, remainingLength, ...varHeader, ...payload])
-  }
-
-  private encodeMqttSubscribe(topic: string, packetId: number): Uint8Array {
-    const topicLen = topic.length
-    const varHeader = [packetId >> 8, packetId & 0xff]
-    const payload = [0, topicLen, ...Array.from(topic).map((c) => c.charCodeAt(0)), 0]
-    const remainingLength = varHeader.length + payload.length
-    return new Uint8Array([0x82, remainingLength, ...varHeader, ...payload])
-  }
-
-  private encodeMqttPublish(topic: string, message: string): Uint8Array {
-    const topicBytes = utf8Encoder.encode(topic)
-    const msgBytes = utf8Encoder.encode(message)
-    const remainingLength = 2 + topicBytes.length + msgBytes.length
-
-    const lengthBytes: number[] = []
-    let len = remainingLength
-    do {
-      let encodedByte = len % 128
-      len = Math.floor(len / 128)
-      if (len > 0) encodedByte |= 128
-      lengthBytes.push(encodedByte)
-    } while (len > 0)
-
-    // Allocate bytes directly instead of expanding megabyte strings into JS
-    // character/number arrays and spreading them into another array.
-    const packet = new Uint8Array(1 + lengthBytes.length + remainingLength)
-    packet[0] = 0x30
-    packet.set(lengthBytes, 1)
-    const offset = 1 + lengthBytes.length
-    packet[offset] = topicBytes.length >> 8
-    packet[offset + 1] = topicBytes.length & 0xff
-    packet.set(topicBytes, offset + 2)
-    packet.set(msgBytes, offset + 2 + topicBytes.length)
-    return packet
-  }
-
-  private async handleMqttMessage(data: any, relay: BrokerRelay, expectedSocket?: WebSocket) {
-    try {
-      let bytes: Uint8Array | null = null
-
-      if (data instanceof ArrayBuffer) {
-        bytes = new Uint8Array(data)
-      } else if (data instanceof Uint8Array) {
-        bytes = data
-      } else if (typeof Blob !== 'undefined' && data instanceof Blob) {
-        bytes = new Uint8Array(await data.arrayBuffer())
+      const client = connect(relay.url, { clientId: 'lira_hub_' + crypto.randomUUID(),
+        protocolVersion: 4, clean: true, keepalive: 60, connectTimeout: 7000,
+        reconnectPeriod: 10000, reconnectOnConnackError: true, resubscribe: false,
+      })
+      relay.mqtt = client
+      const current = () => relay.mqtt === client && this.networkOnline
+      client.on('connect', () => {
+        if (!current()) return
+        client.subscribe('lira_public_hub/events', { qos: 0 }, error => {
+          if (!current()) return
+          if (error) { this.setRelayStatus(relay, 'disconnected'); return }
+          this.setRelayStatus(relay, 'connected')
+          this.queryRelay(relay)
+        })
+      })
+      client.on('reconnect', () => { if (current()) this.setRelayStatus(relay, 'connecting') })
+      const disconnected = () => {
+        if (!current()) return
+        if (this.currentHosting) this.roomSources.get(this.currentHosting.code)?.delete(relay.host)
+        this.setRelayStatus(relay, 'disconnected')
       }
-
-      if (expectedSocket && relay.ws !== expectedSocket) return
-      if (bytes && bytes.length > 0) {
-        if (relay.mqttBuffer.length) {
-          const combined = new Uint8Array(relay.mqttBuffer.length + bytes.length)
-          combined.set(relay.mqttBuffer)
-          combined.set(bytes, relay.mqttBuffer.length)
-          bytes = combined
-        }
-        relay.mqttBuffer = new Uint8Array(0)
-        let offset = 0
-        while (offset < bytes.length) {
-          let index = offset + 1
-          let remainingLength = 0
-          let multiplier = 1
-          let completeLength = false
-          for (let count = 0; count < 4; count++) {
-            if (index >= bytes.length) {
-              relay.mqttBuffer = bytes.slice(offset)
-              return
-            }
-            const byte = bytes[index++]
-            remainingLength += (byte & 0x7f) * multiplier
-            if (!(byte & 0x80)) {
-              completeLength = true
-              break
-            }
-            multiplier *= 128
-          }
-          if (!completeLength) return
-          const end = index + remainingLength
-          if (end > bytes.length) {
-            relay.mqttBuffer = bytes.slice(offset)
-            return
-          }
-          try {
-            this.handleMqttPacket(bytes[offset], bytes.subarray(index, end), relay)
-          } catch {
-            // A malformed message must not discard the next framed packet.
-          }
-          offset = end
-        }
-      } else if (typeof data === 'string') {
-        const msg = JSON.parse(data) as HubMessage
-        this.handleIncomingMessage(msg, relay)
-      }
-    } catch (e) {
-    }
-  }
-
-  private handleMqttPacket(header: number, body: Uint8Array, relay: BrokerRelay) {
-    const packetType = header & 0xf0
-    if (packetType === 0x20) {
-      if (relay.ws && relay.ws.readyState === WebSocket.OPEN) {
-        relay.ws.send(this.encodeMqttSubscribe('lira_public_hub/events', 1))
-      }
-    } else if (packetType === 0x90) {
-      this.queryRelay(relay)
-    } else if (packetType === 0x30 && body.length >= 2) {
-      const topicLength = (body[0] << 8) | body[1]
-      const qos = (header >> 1) & 3
-      const payloadOffset = 2 + topicLength + (qos ? 2 : 0)
-      if (qos === 3 || payloadOffset > body.length) return
-      const payload = body.subarray(payloadOffset)
-      let text: string
-      try {
-        text = utf8Decoder.decode(payload)
-      } catch {
-        // Older Lira senders used single-byte characters instead of UTF-8.
-        text = legacyDecoder.decode(payload)
-      }
-      this.handleIncomingMessage(JSON.parse(text) as HubMessage, relay)
-    }
+      client.on('close', disconnected)
+      client.on('offline', disconnected)
+      client.on('error', disconnected)
+      client.on('message', (topic, payload) => {
+        if (!current() || topic !== 'lira_public_hub/events') return
+        try {
+          let text: string
+          try { text = utf8Decoder.decode(payload) } catch { text = legacyDecoder.decode(payload) }
+          this.handleIncomingMessage(JSON.parse(text), relay)
+        } catch { /* A malformed announcement must not affect the next message. */ }
+      })
+    } catch { this.setRelayStatus(relay, 'disconnected') }
   }
 
   private broadcastMessage(msg: HubMessage) {
@@ -458,20 +348,19 @@ export class PublicRoomsService {
   }
 
   private publishToRelays(msg: HubMessage, relays = this.relays) {
-    let packet: Uint8Array | undefined
+    let mqttJson: string | undefined
     let json: string | undefined
     let publicationChanged = false
     for (const relay of relays) {
-      if (!relay.ws || relay.ws.readyState !== WebSocket.OPEN) continue
-      if (relay.protocol === 'json' && relay.status !== 'connected') continue
+      if (relay.status !== 'connected') continue
+      if (relay.protocol === 'json' ? !relay.ws || relay.ws.readyState !== WebSocket.OPEN : !relay.mqtt?.connected) continue
       try {
         if (relay.protocol === 'json') {
           json ??= JSON.stringify(msg.roomInfo ? { ...msg, roomInfo: publicRoomMetadata(msg.roomInfo) } : msg)
-          relay.ws.send(json)
+          relay.ws!.send(json)
         } else {
-          // Share one encoded packet across MQTT connections, including avatars.
-          packet ??= this.encodeMqttPublish('lira_public_hub/events', JSON.stringify(msg))
-          relay.ws.send(packet)
+          mqttJson ??= JSON.stringify(msg)
+          relay.mqtt!.publish('lira_public_hub/events', mqttJson, { qos: 0 })
         }
         if (msg.roomInfo && this.currentHosting?.code === msg.roomInfo.code &&
           (msg.type === 'ANNOUNCE_ROOM' || msg.type === 'HEARTBEAT')) {

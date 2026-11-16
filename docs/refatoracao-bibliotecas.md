@@ -115,13 +115,13 @@ Suítes: `sourceMapLookup`, `stackSymbolicator`, relatórios de erros.
 Testar: igualdade, ordenação numérica, incremento, entradas inválidas, prereleases
 e compatibilidade. Suítes: `updateService`, `bumpVersion`, `versionCompatibility`.
 
-### [ ] 7. MQTT com MQTT.js
+### [x] 7. MQTT com MQTT.js
 
-- [ ] Usar build de navegador, um cliente por broker, mantendo estados da UI.
-- [ ] Remover parser/codificador MQTT e timers duplicados.
-- [ ] Preservar transporte JSON Render, descoberta, anúncio, heartbeat,
+- [x] Usar build de navegador, um cliente por broker, mantendo estados da UI.
+- [x] Remover parser/codificador MQTT e timers duplicados.
+- [x] Preservar transporte JSON Render, descoberta, anúncio, heartbeat,
   expiração, múltiplas fontes e comunicação local.
-- [ ] Configurar timeout/keepalive/reconexão e encerramento dos clientes.
+- [x] Configurar timeout/keepalive/reconexão e encerramento dos clientes.
 
 Testar clientes simulados: anúncio/recebimento, reconexão, online/offline, falha
 isolada e Render. Sem brokers reais. Suítes: `publicRoomsServer`, `publicRoomsRender`,
@@ -207,7 +207,8 @@ preexistentes do usuário indiscriminadamente.
 | 4 | Concluída | TDD vermelho para colisões; 35 testes / 4 arquivos aprovados | Commit ZIP | Migrar source maps |
 | 5 | Concluída | 27 testes antes; 57 testes / 4 arquivos após, incluindo tipos | Commit source maps | Migrar versões |
 | 6 | Concluída | TDD vermelho; 27 testes / 5 arquivos aprovados | Commit semver | Migrar MQTT |
-| 7–12 | Pendentes | Não executados | — | Seguir dependências descritas acima |
+| 7 | Concluída | TDD vermelho; 38 testes / 7 arquivos aprovados | Commit MQTT | Migrar dropdowns |
+| 8–12 | Pendentes | Não executados | — | Seguir dependências descritas acima |
 
 - Baseline isolada: os quatro arquivos anteriores passaram (44 testes, `--maxWorkers=1`); as falhas iniciais não foram reproduzidas isoladamente.
 - Etapa 1: contratos estruturais Zod nas entradas P2P, descoberta e contatos; validadores especializados continuam responsáveis pelas regras de domínio. Fixtures de rede passam a incluir timestamp e payload completo.
@@ -215,3 +216,5 @@ preexistentes do usuário indiscriminadamente.
 - ZIP: nomes sanitizados duplicados são rejeitados para não perder anexos. Leitor independente valida CRC via Node e aceita descritores de dados do formato ZIP.
 
 - A versão mínima do novo quadro será alinhada na etapa 10; o utilitário semver já está migrado.
+
+- MQTT: testes de framing do parser removido foram substituídos por contratos dos clientes; nenhuma conexão com brokers reais foi usada. O pacote resolve seu build de navegador pelo export browser.
