@@ -36,17 +36,37 @@ modelo dependem do provedor e da chave.
 
 ## Quadro branco colaborativo
 
-Abra o ícone do quadro na barra do espaço ou na chamada. Desenhe com mouse,
-toque ou caneta, escolha cor e espessura, desfaça seus traços ou exporte SVG.
-Limpar o quadro pede confirmação e afeta todos os participantes do espaço.
-O quadro pertence ao espaço inteiro, inclusive participantes em outras zonas.
+Abra o ícone do quadro na barra do espaço ou na chamada. O painel carrega o
+Excalidraw sob demanda, em português. Desenho, seleção, transformação e histórico
+local usam o SDK. Os atalhos ficam dentro do painel; temas claro/escuro e laser
+compartilhado continuam disponíveis. Limpar pede confirmação e afeta todos.
 
-As operações são transmitidas por P2P. Ao abrir o quadro, um participante recebe
-o histórico do anfitrião antes de desenhar. Operações repetidas, concorrentes e
-fora de ordem são mescladas; pacotes antigos não restauram traços já apagados.
-O estado fica na sessão, sem persistência em disco. Para guardar os desenhos,
-exporte antes de sair. O limite é de 1.000 operações entre limpezas; ao atingi-lo,
-limpe o quadro para continuar. Todos devem usar uma versão com suporte ao quadro.
+**Abrir quadro** aceita arquivos antigos `lira-whiteboard` e `.excalidraw`. A
+importação substitui a cena com uma barreira de limpeza sincronizada. O menu do
+editor exporta `.excalidraw`, SVG e PNG. Imagens precisam estar incorporadas no
+arquivo; URLs remotas e embeds não são aceitos. As fontes acompanham o aplicativo,
+sem necessidade de CDN; recursos de IA e serviços externos não são habilitados.
+
+O quadro pertence ao espaço inteiro, inclusive participantes em outras zonas.
+As operações e imagens continuam usando o P2P do Lira. Ao abrir, o participante
+aguarda o estado do anfitrião antes de editar; arquivos de imagem já presentes
+não precisam ser enviados novamente. Alterações repetidas, concorrentes e fora
+de ordem são mescladas por objeto. Exclusões e limpezas preservam barreiras contra
+pacotes antigos. Mudanças remotas não criam ações no histórico local nem retornam
+à rede como edições locais.
+
+Os documentos versão 2 ficam em IndexedDB, separados por sala, inclusive offline.
+Na primeira abertura, o Lira converte os dados antigos usando a restauração do
+SDK, grava o novo documento e conserva a cópia original do localStorage. Se a
+gravação falhar, o desenho continua na memória e aparece um aviso para exportar.
+Veja [Armazenamento e recuperação](armazenamento.md) antes de remover dados locais.
+
+O limite continua em 1.000 operações compactadas, incluindo imagens, exclusões e
+a barreira da última limpeza. Revisões de um objeto substituem sua revisão anterior.
+Arquivos importados reservam espaço para a barreira. Limpar permite continuar ao
+atingir o limite; uma imagem pode ocupar até 2.000.000 caracteres de data URL.
+Todos os participantes precisam da versão **1.1.211 ou superior**. Os payloads usam
+`schemaVersion: 2`; não há comunicação com o editor anterior.
 
 ## Validação
 

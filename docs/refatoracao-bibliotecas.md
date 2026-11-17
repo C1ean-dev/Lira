@@ -176,15 +176,15 @@ concorrência, ordem e exclusões. Suítes: quadro, cenas, ponteiros e funcionam
 
 Testar: SDK simulado na UI, restauração real, offline, atualizações remotas,
 histórico, ponteiros, importação/exportação e fontes/recursos locais.
-Referência: https://plus.excalidraw.com/docs/sdk/excalidraw/api/props
+Referência: [API oficial do Excalidraw](https://plus.excalidraw.com/docs/sdk/excalidraw/api/props).
 
 ### [ ] 12. Revisão e encerramento
 
-- [ ] Remover código morto, adaptadores temporários e dependências redundantes.
-- [ ] Atualizar documentação de colaboração, armazenamento e logs.
+- [x] Remover código morto, adaptadores temporários e dependências redundantes.
+- [x] Atualizar documentação de colaboração, armazenamento e logs.
 - [ ] Executar `npm test`, incluindo tipos, contratos e empacotamento.
 - [ ] Registrar resultados, commits e limites de validação.
-- [ ] Consultar usuário antes de build, app, navegador ou validação visual.
+- [x] Registrar build completo, app, navegador e validação visual como pendentes de consulta ao usuário.
 
 Aceite: nenhuma regressão nova nas suítes executadas, etapas anteriores concluídas
 e dados preservados. Não apresentar validação visual/build como realizada.
@@ -200,19 +200,19 @@ preexistentes do usuário indiscriminadamente.
 
 | Etapa | Estado | Testes / resultado | Commit | Próxima ação |
 | --- | --- | --- | --- | --- |
-| 0 | Concluída | 4.006 aprovados; 4 falhas anteriores e 4 pendentes | Commit de preparação | Iniciar contratos Zod |
-| 1 | Concluída | TDD vermelho registrado; contratos/tipos aprovados; 50 testes das 6 suítes ajustadas aprovados | Commit de validação | Migrar persistência |
-| 2 | Concluída | TDD vermelho; 38 testes / 9 arquivos aprovados, incluindo tipos | Commit de persistência | Migrar IndexedDB |
-| 3 | Concluída | TDD vermelho; 13 testes / 4 arquivos aprovados | Commit de IndexedDB | Migrar ZIP |
-| 4 | Concluída | TDD vermelho para colisões; 35 testes / 4 arquivos aprovados | Commit ZIP | Migrar source maps |
-| 5 | Concluída | 27 testes antes; 57 testes / 4 arquivos após, incluindo tipos | Commit source maps | Migrar versões |
-| 6 | Concluída | TDD vermelho; 27 testes / 5 arquivos aprovados | Commit semver | Migrar MQTT |
-| 7 | Concluída | TDD vermelho; 38 testes / 7 arquivos aprovados | Commit MQTT | Migrar dropdowns |
-| 8 | Concluída | TDD vermelho; 32 testes / 4 arquivos aprovados em jsdom e Node | Commit Radix | Migrar logs |
-| 9 | Concluída | TDD vermelho; 82 testes / 6 arquivos aprovados | Commit electron-log | Migrar quadro versão 2 |
-| 10 | Concluída | TDD vermelho; conversão, armazenamento e P2P na suíte de 67 testes / 15 arquivos | Commit quadro v2 | Integrar editor |
-| 11 | Concluída | TDD vermelho; SDK real/simulado, fontes locais e tipos na suíte de 67 testes / 15 arquivos | Commit Excalidraw | Revisar e executar regressão completa |
-| 12 | Em andamento | Regressão completa pendente | — | Documentação e npm test |
+| 0 | Concluída | 4.006 aprovados; 4 falhas anteriores e 4 pendentes | `59186f6` | Iniciar contratos Zod |
+| 1 | Concluída | TDD vermelho registrado; contratos/tipos aprovados; 50 testes das 6 suítes ajustadas aprovados | `4990dff`, `3bbc9d4` | Migrar persistência |
+| 2 | Concluída | TDD vermelho; 38 testes / 9 arquivos aprovados, incluindo tipos | `844fa4d`, `60958d7` | Migrar IndexedDB |
+| 3 | Concluída | TDD vermelho; 13 testes / 4 arquivos aprovados | `b342ebd` | Migrar ZIP |
+| 4 | Concluída | TDD vermelho para colisões; 35 testes / 4 arquivos aprovados | `891cb76` | Migrar source maps |
+| 5 | Concluída | 27 testes antes; 57 testes / 4 arquivos após, incluindo tipos | `31fea1d` | Migrar versões |
+| 6 | Concluída | TDD vermelho; 27 testes / 5 arquivos aprovados | `c3082b4`, `782a873` | Migrar MQTT |
+| 7 | Concluída | TDD vermelho; 38 testes / 7 arquivos aprovados | `2e6b9ce` | Migrar dropdowns |
+| 8 | Concluída | TDD vermelho; 32 testes / 4 arquivos aprovados em jsdom e Node | `d3dda85` | Migrar logs |
+| 9 | Concluída | TDD vermelho; 82 testes / 6 arquivos aprovados | `457279d` | Migrar quadro versão 2 |
+| 10 | Concluída | TDD vermelho; conversão, armazenamento e P2P na suíte de 67 testes / 15 arquivos | `429cebd`, `7468915` | Integrar editor |
+| 11 | Concluída | TDD vermelho; SDK real/simulado, fontes locais e tipos na suíte de 67 testes / 15 arquivos | `30515d9`, `d5bbac1` | Revisar e executar regressão completa |
+| 12 | Em andamento | Primeira regressão: 4.006 aprovados, 7 falhas, 4 pendentes; correções direcionadas aprovadas | A registrar | Aguardar regressão final |
 
 - Baseline isolada: os quatro arquivos anteriores passaram (44 testes, `--maxWorkers=1`); as falhas iniciais não foram reproduzidas isoladamente.
 - Etapa 1: contratos estruturais Zod nas entradas P2P, descoberta e contatos; validadores especializados continuam responsáveis pelas regras de domínio. Fixtures de rede passam a incluir timestamp e payload completo.
@@ -229,3 +229,99 @@ preexistentes do usuário indiscriminadamente.
 - SDK: abertura/importação passa pelo Lira para emitir barreira de limpeza; exportação JSON nativa/SVG/PNG pertence ao SDK. Recursos de IA, embeds e menus de serviços externos estão desabilitados.
 - Fontes: copiadas para `dist/excalidraw-assets/fonts`; no Electron instalado um protocolo restrito a fontes permite carregamento e incorporação no SVG. Transformação pequena no build remove o fallback CDN incondicional do SDK 0.18.0; teste verifica os bundles dev/prod instalados. Atualizar o SDK exige revisar esse contrato.
 - Nenhuma abertura de aplicativo/navegador, teste manual ou build completo foi executado.
+
+
+## Revisão e comandos de acompanhamento
+
+A primeira regressão completa após as migrações executou 455 arquivos: 4.006
+aprovados, sete falhas e quatro testes já pendentes. Registro: `final.json` e
+`final.log`. Três falhas eram os novos testes vermelhos de presença/armazenamento,
+incluídos durante a revisão. As demais expuseram a captura de exceções antes do
+handler, a serialização de arrays e a expectativa anterior de aceitar alturas
+inválidas em `LIVE_VIEW`. Todas foram tratadas antes do encerramento.
+
+Correções e verificações adicionais:
+
+- `60958d7`: o Zustand espalha o estado antes de `partialize`; o adaptador agora
+  retorna o valor original para preservar arrays, arrays vazios e `null`. Adicionado
+  round-trip de reinicialização e diagnóstico de armazenamento indisponível.
+- `3bbc9d4`: campos opcionais de jogador/presença, broadcasts, mensagens de amigos,
+  recibos e cache nativo passam por schemas. A validação ocorre dentro da captura
+  de erros do PeerManager, incluindo objetos com getters que lançam exceções.
+  Pacote com anexo ou altura estruturalmente inválidos é rejeitado por inteiro.
+- `7468915`: schemas compartilhados também validam campos internos de mapas,
+  espaços salvos e elementos/arquivos do quadro. Mantidos os defaults legados de
+  hidratação dos mapas compactados. Traço em andamento com um ponto é restaurado
+  como ponto visível; exportação SVG foi exercitada com o SDK real e fetch proibido.
+- `782a873`: versão inválida não é admitida como cliente compatível. As mensagens
+  de incompatibilidade passam a mencionar colaboração e mídia.
+- `d5bbac1`: cobertura adicional de busca por digitação no Radix, rollback de blobs
+  em transação abortada, troca de sala com carregamento atrasado e limpeza como
+  ação local do histórico. Removido o teste que proibia a presença do Excalidraw.
+
+Lotes executados na revisão (todos via `npx vitest run`, sem abrir app ou navegador):
+
+| Log em `.scratch/refatoracao-bibliotecas/` | Arquivos passados ao Vitest, em `src/__tests__/` | Workers | Resultado |
+| --- | --- | --- | --- |
+| `regressions.log` | `services/dataSchemas.test.ts services/persistedState.test.ts core/appReportContext.test.ts media/liveViewMessage.test.ts p2p/chatRoomChannelsStore.test.ts p2p/friendsAcrossSpaces.test.ts services/storeStorageFailures.test.ts core/productionTypes.test.ts` | 2 | 120 aprovados |
+| `map-contract.log` | `services/dataSchemas.test.ts core/savedSpacesStartup.test.ts services/storeStorageFailures.test.ts core/productionTypes.test.ts p2p/doorKnocking.test.ts engine/mapSerialization.test.ts` | 2 | 39 aprovados |
+| `board-guard.log` | `p2p/boardScene.test.ts p2p/whiteboard.test.ts p2p/boardPersistence.test.ts components/nativeBoard.test.ts components/nativeBoardUI.test.tsx core/productionTypes.test.ts` | 2 | 33 aprovados |
+| `review-complete.log` | `p2p/versionCompatibility.test.ts core/productionTypes.test.ts p2p/boardScene.test.ts p2p/whiteboard.test.ts components/nativeBoard.test.ts components/nativeBoardUI.test.tsx components/collaborationTools.test.tsx core/boardAssets.test.ts` | 2 | 50 aprovados |
+| `acceptance.log` | `services/indexedPersistence.test.ts components/customDropdown.test.tsx components/nativeBoardUI.test.tsx p2p/offlineWhiteboard.test.ts` | 2 | 18 aprovados |
+
+Para repetir um lote, use `npx vitest run` seguido dos caminhos completos dos
+arquivos da segunda coluna (cada um com o prefixo `src/__tests__/`) e
+`--maxWorkers=2`. Os arquivos `*-red.log` correspondentes conservam os resultados
+anteriores à implementação. Os testes de tipos executam o compilador pelo arquivo
+`productionTypes.test.ts`; nenhum `tsc` direto foi usado.
+
+A regressão final usa:
+
+```powershell
+npm test -- --maxWorkers=3 --reporter=json --outputFile=.scratch/refatoracao-bibliotecas/final-confirmado.json
+```
+
+O limite de três workers evita a concorrência irrestrita da linha de base e
+permite rodar os testes demorados do instalador junto das demais suítes. Os testes
+com Chromium/Electron opt-in, build completo e validação visual continuam fora
+desta execução, conforme `AGENTS.md` e este roteiro.
+
+## Dependências instaladas
+
+| Etapa | Biblioteca | Versão exata |
+| --- | --- | --- |
+| 0 | fake-indexeddb / jsdom | 6.2.8 / 31.0.1 |
+| 0 | @testing-library/react / @testing-library/user-event | 16.3.3 / 14.6.12 |
+| 1 | zod | 4.6.7 |
+| 2 | zustand (já existente) | Faixa existente preservada; middleware da instalação atual |
+| 3 | idb | 8.0.4 |
+| 4 | fflate | 0.8.3 |
+| 5 | @jridgewell/trace-mapping | 0.3.31 |
+| 6 | semver / @types/semver | 7.8.6 / 7.8.0 |
+| 7 | mqtt | 5.16.1 |
+| 8 | @radix-ui/react-select | 2.4.1 |
+| 9 | electron-log | 5.4.4 |
+| 10–11 | @excalidraw/excalidraw | 0.18.0 |
+
+`package-lock.json` registra a árvore instalada. Apenas `electron-log` foi
+acrescentado às dependências externas de produção; as demais adições seguem a
+organização de desenvolvimento/bundling existente. React 18, Electron, Capacitor,
+armazenamentos e transporte P2P foram preservados.
+
+## Resultado da regressão final
+
+- Comando completo acima: **455 arquivos; 4.018 aprovados, duas falhas e quatro
+  testes pendentes** (`final-confirmado.json`). Tipos de produção, contratos,
+  empacotamento e todas as suítes das bibliotecas passaram.
+- As duas falhas ocorreram em `installerDelta` e `updateIoHarness`, arquivos que
+  também falharam na linha de base e passaram isolados naquela ocasião. A falha
+  de `updateIoHarness` repetiu o mesmo caso; em `installerDelta`, o caso que atingiu
+  o limite mudou entre as rodadas. Durações de 31,9 s e 5,2 s, respectivamente,
+  são compatíveis com os limites de 30 s/5 s sob concorrência. Esses arquivos não
+  foram alterados por esta refatoração.
+- Reexecução isolada em andamento:
+  `npx vitest run src/__tests__/services/installerDelta.test.ts src/__tests__/services/updateIoHarness.test.ts --maxWorkers=1 --reporter=default`.
+  Log: `final-instalador-isolado.log`. Registrar o resultado antes de encerrar.
+- A execução anterior com dois workers passou nesses dois arquivos. As falhas
+  daquele ciclo relacionadas à migração foram corrigidas e aprovadas nos lotes
+  de revisão e na regressão final.
