@@ -11,6 +11,23 @@ describe('SDK scene file migration', () => {
     expect(scene.elements[0]).toHaveProperty('groupIds')
     expect(parseBoardFile(JSON.stringify({ type: 'lira-whiteboard', elements: [shape], files: {} }))).toEqual(scene)
   })
+  it('keeps an in-progress one-point SDK stroke when restoring a scene', async () => {
+    const { restoreSceneElements } = await import('../../collaboration/boardRestore')
+    const dot = { ...shape, type: 'freedraw', points: [[0, 0]] }
+    expect(restoreSceneElements([dot] as any)).toMatchObject([{ id: 'shape', points: [[0, 0], [0, 0]] }])
+  })
+  it('exports restored geometry with the real SVG exporter without fetching assets', async () => {
+    const { parseBoardFile } = await import('../../collaboration/boardFile')
+    const { exportToSvg } = await import('@excalidraw/excalidraw')
+    const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('external resource'))
+    try {
+      const scene = parseBoardFile(JSON.stringify({ type: 'lira-whiteboard', elements: [shape], files: {} }))
+      const svg = await exportToSvg({ elements: scene.elements, appState: {}, files: scene.files })
+      expect(svg.tagName.toLowerCase()).toBe('svg')
+      expect(svg.querySelector('path')).not.toBeNull()
+      expect(fetch).not.toHaveBeenCalled()
+    } finally { fetch.mockRestore() }
+  })
   it('round-trips a restored scene through the native Excalidraw serialization', async () => {
     const { parseBoardFile } = await import('../../collaboration/boardFile')
     const { serializeAsJSON } = await import('@excalidraw/excalidraw')

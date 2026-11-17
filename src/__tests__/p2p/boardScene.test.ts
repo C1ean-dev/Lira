@@ -54,7 +54,7 @@ describe('Native shared scene', () => {
   })
   it('rejects malformed and oversized elements', () => {
     expect(validWhiteboardOperation(edit('a:1', 1))).toBe(true)
-    for (const value of [{ ...element(), x: NaN }, { ...element(), type: 'unknown' }, { ...element(), version: -1 }, { ...element(), text: 'a'.repeat(300000) }]) {
+    for (const value of [{ ...element(), x: NaN }, { ...element(), type: 'unknown' }, { ...element(), version: -1 }, { ...element(), type: 'freedraw' }, { ...element(), groupIds: true }, { ...element(), text: 'a'.repeat(300000) }]) {
       expect(validWhiteboardOperation(edit('a:1', 1, value))).toBe(false)
     }
   })

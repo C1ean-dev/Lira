@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import type { BoardElement, BoardFile } from './boardEditor'
 export type Point = { x: number; y: number }
 type Base = { id: string; actor: string; clock: number }
@@ -9,32 +10,32 @@ export type WhiteboardDocument = { schemaVersion: 2; operations: Record<string, 
 export const createWhiteboard = (): WhiteboardDocument => ({ schemaVersion: 2, operations: {}, clock: 0 })
 export const MAX_WHITEBOARD_OPERATIONS = 1000
 export const MAX_WHITEBOARD_FILE_SIZE = 2_000_000
-const elementTypes = new Set(['rectangle', 'diamond', 'ellipse', 'arrow', 'line', 'freedraw', 'text', 'image', 'frame'])
+const finite = z.number().finite()
+const base = { id: z.string().min(1).max(160), actor: z.string().min(1).max(128), clock: finite.int().min(1).max(1e12) }
+const elementSchema = z.object({
+  id: z.string().min(1).max(160), type: z.enum(['rectangle', 'diamond', 'ellipse', 'arrow', 'line', 'freedraw', 'text', 'image', 'frame']),
+  x: finite, y: finite, width: finite, height: finite, version: finite.int().min(1), versionNonce: finite.int(), isDeleted: z.boolean(),
+  points: z.array(z.tuple([finite, finite])).max(10000).optional(), text: z.string().optional(),
+  strokeWidth: finite.optional(), fontSize: finite.optional(), opacity: finite.optional(), angle: finite.optional(),
+  strokeColor: z.string().optional(), backgroundColor: z.string().optional(),
+  groupIds: z.array(z.string()).optional(), boundElements: z.array(z.object({ id: z.string(), type: z.string() })).nullable().optional(),
+  fileId: z.string().nullable().optional(),
+}).passthrough().refine(element => !['arrow', 'line', 'freedraw'].includes(element.type) || !!element.points?.length,
+  'A line must include its points').refine(element => { try { return JSON.stringify(element).length <= 250_000 } catch { return false } }, 'Element too large')
+const fileSchema = z.object({ id: z.string().min(1).max(160), created: finite,
+  mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']), dataURL: z.string().max(MAX_WHITEBOARD_FILE_SIZE),
+}).passthrough().refine(file => file.dataURL.startsWith(`data:${file.mimeType};base64,`), 'Images must be inline data')
+export const whiteboardOperationSchema = z.discriminatedUnion('kind', [
+  z.object({ ...base, kind: z.literal('clear') }),
+  z.object({ ...base, kind: z.literal('remove'), targetId: z.string().min(1).max(160) }),
+  z.object({ ...base, kind: z.literal('element'), element: elementSchema }),
+  z.object({ ...base, kind: z.literal('file'), file: fileSchema }),
+  z.object({ ...base, kind: z.literal('stroke'), color: z.string().regex(/^#[a-f\d]{6}$/i), width: finite.min(1).max(20),
+    points: z.array(z.object({ x: finite.min(0).max(1), y: finite.min(0).max(1) })).min(1).max(512) }),
+]) as unknown as z.ZodType<WhiteboardOperation>
 
-export function validWhiteboardOperation(op: any): op is WhiteboardOperation {
-  if (!op || typeof op.id !== 'string' || !op.id || op.id.length > 160 || typeof op.actor !== 'string' ||
-      !op.actor || op.actor.length > 128 || !Number.isSafeInteger(op.clock) || op.clock < 1 || op.clock > 1e12) return false
-  if (op.kind === 'clear') return true
-  if (op.kind === 'remove') return typeof op.targetId === 'string' && op.targetId.length > 0 && op.targetId.length <= 160
-  if (op.kind === 'element') {
-    const e = op.element
-    if (!e || typeof e.id !== 'string' || !e.id || e.id.length > 160 || !elementTypes.has(e.type) ||
-      !['x', 'y', 'width', 'height'].every(key => Number.isFinite(e[key])) ||
-      !Number.isSafeInteger(e.version) || e.version < 1 || !Number.isSafeInteger(e.versionNonce) || typeof e.isDeleted !== 'boolean') return false
-    if (e.points !== undefined && (!Array.isArray(e.points) || e.points.length > 10000 || !e.points.every((p: any) => Array.isArray(p) && p.length === 2 && p.every(Number.isFinite)))) return false
-    if (e.text !== undefined && typeof e.text !== 'string') return false
-    for (const key of ['strokeWidth', 'fontSize', 'opacity', 'angle']) if (e[key] !== undefined && !Number.isFinite(e[key])) return false
-    try { return JSON.stringify(e).length <= 250_000 } catch { return false }
-  }
-  if (op.kind === 'file') {
-    const f = op.file
-    return !!f && typeof f.id === 'string' && f.id.length > 0 && f.id.length <= 160 && Number.isFinite(f.created) &&
-      ['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(f.mimeType) &&
-      typeof f.dataURL === 'string' && f.dataURL.startsWith(`data:${f.mimeType};base64,`) && f.dataURL.length <= MAX_WHITEBOARD_FILE_SIZE
-  }
-  return op.kind === 'stroke' && /^#[a-f\d]{6}$/i.test(op.color) && Number.isFinite(op.width) && op.width >= 1 && op.width <= 20 &&
-    Array.isArray(op.points) && op.points.length > 0 && op.points.length <= 512 &&
-    op.points.every((p: any) => p && Number.isFinite(p.x) && Number.isFinite(p.y) && p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1)
+export function validWhiteboardOperation(op: unknown): op is WhiteboardOperation {
+  return whiteboardOperationSchema.safeParse(op).success
 }
 export function applyWhiteboardOperation(doc: WhiteboardDocument, op: unknown): WhiteboardDocument {
   if (!validWhiteboardOperation(op) || Object.prototype.hasOwnProperty.call(doc.operations, op.id)) return doc

@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { storedMapSchema } from '../validation/schemas'
 import { createStoredState } from './persistedState'
 import { create } from 'zustand'
 import { MapData, FloorType, WallType, PlacedFurniture, PrivateZone, EditorTool, EraserTarget } from '../types/map'
@@ -15,8 +15,6 @@ import { hydrateMapData, compressMapDataForStorage } from '../utils/mapSerializa
 
 const MAP_STORAGE_KEY = 'lira_custom_map'
 
-type StoredMap = ReturnType<typeof compressMapDataForStorage>
-const storedMapSchema = z.custom<StoredMap>(value => !!value && typeof value === 'object' && !Array.isArray(value) && typeof (value as StoredMap).id === 'string')
 const mapPreferences = createStoredState(MAP_STORAGE_KEY, storedMapSchema.nullable(), null)
 const loadSavedMap = (): MapData | null => {
   const saved = mapPreferences.getState()

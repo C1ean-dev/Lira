@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { savedSpaceSchema } from '../validation/schemas'
 import { createStoredState } from './persistedState'
 import { create } from 'zustand'
 import { MapData } from '../types/map'
@@ -22,7 +23,7 @@ export interface SavedSpace {
 
 const STORAGE_KEY = 'lira_saved_spaces'
 const ACTIVE_SPACE_ID_KEY = 'lira_active_space_id'
-const savedSpaceStorage = createStoredState<Record<string, any>[]>(STORAGE_KEY, z.array(z.object({}).passthrough()), [])
+const savedSpaceStorage = createStoredState<Record<string, any>[]>(STORAGE_KEY, z.array(savedSpaceSchema), [])
 
 const serializeSpacesForStorage = (spaces: SavedSpace[]) => {
   return spaces.map((s) => ({

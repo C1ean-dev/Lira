@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import type { Player, PublicRoomInfo, ReactionItem, RoomKnockRequest } from '../types/game'
 import type { ChatMessage, RoomChannel } from '../types/chat'
-import type { MapData, PlacedFurniture, PrivateZone, FloorType, WallType } from '../types/map'
+import type { MapData, StoredMapData, PlacedFurniture, PrivateZone, FloorType, WallType } from '../types/map'
 import type { CustomAsset } from '../types/customAsset'
 import type { PersistedAtlas } from '../assets/atlasFormat'
 import type { AtlasChunk } from '../assets/atlasChunks'
@@ -10,7 +10,7 @@ import type { ZoneJamSession, SharedSpotifyTrack, SpotifyDjState } from '../type
 import type { SpotifyPlaybackCommand, SpotifyPlaybackResult } from '../types/spotifyPlayback'
 import type { SpotifySearchResult, SpotifySearchTrack } from '../types/spotifySearch'
 import type { SpotifyDjRequestResult } from '../types/spotifyDjRequests'
-import type { WhiteboardOperation } from '../collaboration/whiteboard'
+import { whiteboardOperationSchema } from '../collaboration/whiteboard'
 
 const finite = z.number().finite()
 const id = z.string().min(1).max(512)
@@ -69,12 +69,16 @@ export const playerSchema = domain<Partial<Player>>(z.object({
   spotifyActivity: z.object({ track: text, artist: text, isPlaying: z.boolean(), startedAt: optionalFinite }).optional(),
   isDjBot: optionalBool, djOwnerId: text.optional(), appVersion: text.optional(), minCompatibleVersion: text.optional(), isOutdated: optionalBool,
 }).passthrough())
-const furniture = domain<PlacedFurniture>(z.object({ id, defId: id, x: finite, y: finite }).passthrough())
-const zone = domain<PrivateZone>(z.object({ id, name: text, x: finite, y: finite, width: finite.positive(), height: finite.positive() }).passthrough())
-export const mapSchema = domain<MapData>(z.object({ id, name: text, width: finite.positive(), height: finite.positive(),
-  tileSize: finite.positive(), spawnPoint: z.object({ x: finite, y: finite }),
+const furniture = domain<PlacedFurniture>(z.object({ id, defId: id, x: finite, y: finite, rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(), direction: directionSchema.optional(), tintColor: text.optional(), consumptionStage: finite.int().min(0).max(3).optional() }).passthrough())
+const zoneWireSchema = z.object({ id, name: text, color: text.optional(), x: finite, y: finite, width: finite.positive(), height: finite.positive(), description: text.optional(), maxCapacity: optionalFinite, hasWalls: optionalBool, wallType: text.optional(), admins: z.array(id).optional(), members: z.array(id).optional(), authorizedPeers: z.array(id).optional(), isLocked: optionalBool, allowKnock: optionalBool, welcomeMessage: text.optional() }).passthrough()
+const zone = domain<PrivateZone>(zoneWireSchema)
+const mapWireSchema = z.object({ id, name: text, width: finite.positive(), height: finite.positive(),
+  tileSize: finite.positive(), defaultFloor: text.optional(), floorRectangles: z.array(z.object({ x: finite, y: finite, width: finite.positive(), height: finite.positive(), floor: text })).optional(), floorOverrides: z.record(text, text).optional(), wallOverrides: z.record(text, text.nullable()).optional(), spawnPoint: z.object({ x: finite, y: finite }),
   furniture: z.array(furniture), zones: z.array(zone), floors: z.array(z.array(text)), walls: z.array(z.array(text.nullable())),
-}).passthrough())
+}).passthrough()
+export const mapSchema = domain<MapData>(mapWireSchema)
+export const storedMapSchema = domain<StoredMapData>(mapWireSchema.partial().required({ id: true }))
+export const savedSpaceSchema = z.object({ id: text.optional(), roomCode: text.optional(), name: text.optional(), description: text.optional(), color: text.optional(), createdAt: optionalFinite, updatedAt: optionalFinite, mapData: storedMapSchema.optional(), channels: z.array(z.object({ id, name: text, description: text.optional() })).optional() }).passthrough()
 const channel = domain<RoomChannel>(z.object({ id, name: text, description: text.optional() }))
 const mapEdit = z.discriminatedUnion('action', [
   z.object({ action: z.literal('consume_furniture'), data: z.object({ mapId: id, id, expected: finite.int() }) }),
@@ -85,7 +89,7 @@ const mapEdit = z.discriminatedUnion('action', [
   z.object({ action: z.literal('remove_furniture'), data: z.object({ id: id.optional(), x: optionalFinite, y: optionalFinite }) }),
   z.object({ action: z.literal('add_zone'), data: z.object({ zone }) }),
   z.object({ action: z.literal('remove_zone'), data: z.object({ id }) }),
-  z.object({ action: z.literal('update_zone'), data: z.object({ id, partial: domain<Partial<PrivateZone>>(object).optional(), zone: zone.optional() }) }),
+  z.object({ action: z.literal('update_zone'), data: z.object({ id, partial: domain<Partial<PrivateZone>>(zoneWireSchema.partial()).optional(), zone: zone.optional() }) }),
 ])
 const atlas = domain<PersistedAtlas>(object)
 const asset = domain<CustomAsset>(z.object({ id, name: text, type: text }).passthrough())
@@ -110,7 +114,7 @@ export const networkPayloadSchemas = {
   CHAT_MESSAGE_STATUS: z.object({ senderId: id.optional(), senderName: text.optional(), recipientId: text.optional(), messageId: id.optional(),
     channelId: text.optional(), status: z.enum(['sent', 'delivered', 'read']), upToTimestamp: optionalFinite, timestamp: optionalFinite }),
   CHANNELS_SYNC: z.object({ channels: z.array(channel).max(100) }),
-  REACTION: z.object({ reaction: domain<ReactionItem>(z.object({ id }).passthrough()) }), REQUEST_MAP: object,
+  REACTION: z.object({ reaction: domain<ReactionItem>(z.object({ id, playerId: id, emoji: text, x: finite, y: finite, createdAt: finite }).passthrough()) }), REQUEST_MAP: object,
   HEARTBEAT: object, HEARTBEAT_ACK: z.object({ clientTimestamp: finite }),
   HOST_TRANSFER: z.object({ kind: z.enum(['request', 'prepare', 'release', 'reject', 'confirm', 'ready', 'cancel', 'rejected']), id, targetPeerId: id.optional(),
     targetGameId: text.optional(), message: text.optional(), room: z.object({ roomName: text, roomDescription: text, isPublic: z.boolean(), maxPlayers: finite, color: text }).optional(),
@@ -138,9 +142,9 @@ export const networkPayloadSchemas = {
   BED_INTERACTION: z.object({ action: z.enum(['invite', 'accept', 'decline', 'cancel', 'finish']), furnitureId: text.optional(),
     session: z.object({ id, roomId: id, furnitureId: id, initiatorId: id, targetId: id, createdAt: finite, stage: z.enum(['invited', 'active']).optional(), acceptedAt: optionalFinite }).optional(),
   }).passthrough(),
-  WHITEBOARD_OP: z.object({ ...boardBase, operation: domain<WhiteboardOperation>(object) }),
+  WHITEBOARD_OP: z.object({ ...boardBase, operation: whiteboardOperationSchema }),
   WHITEBOARD_REQUEST: z.object({ ...boardBase, fileIds: z.array(id).max(1000).optional() }),
-  WHITEBOARD_STATE: z.object({ ...boardBase, to: id, operations: z.array(domain<WhiteboardOperation>(object)).max(16), complete: optionalBool }),
+  WHITEBOARD_STATE: z.object({ ...boardBase, to: id, operations: z.array(whiteboardOperationSchema).max(16), complete: optionalBool }),
   WHITEBOARD_POINTER: z.object({ ...boardBase, point: z.object({ x: finite, y: finite }).nullable(), seq: finite.int().nonnegative() }),
 } as const
 
