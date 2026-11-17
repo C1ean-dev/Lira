@@ -2178,10 +2178,13 @@ export class PeerManager {
   }
 
   private handleNetworkMessage(raw: unknown, peerId: string) {
-    const msg = parseNetworkMessage(raw)
-    if (!msg) return
-    this.peerLastSeen.set(peerId, Date.now())
+    let type = 'none'
     try {
+      const descriptor = raw && typeof raw === 'object' ? Object.getOwnPropertyDescriptor(raw, 'type') : undefined
+      if (typeof descriptor?.value === 'string') type = descriptor.value.slice(0, 40)
+      const msg = parseNetworkMessage(raw)
+      if (!msg) throw new Error('Invalid network message')
+      this.peerLastSeen.set(peerId, Date.now())
       if (msg.type === 'VOICE_RELAY_CONTROL') {
         SuperPeerVoiceRelay.getInstance().handleControlMessage(msg.payload, peerId)
         return
@@ -2269,7 +2272,6 @@ export class PeerManager {
         }
       }
     } catch (error) {
-      const type = typeof (msg as { type?: unknown } | null)?.type === 'string' ? String(msg.type).slice(0, 40) : 'none'
       reportError(error, {
         scope: 'P2P Message',
         message: `handler failed for ${type}`,

@@ -34,20 +34,40 @@ export const audioSettingsSchema = z.object({
 }).catchall(z.union([text, finite, z.boolean(), z.null(), z.array(finite), object]))
 export const attachmentSchema = z.object({ id, name: text, size: finite.nonnegative(), type: text,
   dataUrl: text.startsWith('data:') }).passthrough()
-export const chatMessageSchema = domain<ChatMessage>(z.object({ id, senderId: id, senderName: text, channelId: id,
+const chatWireSchema = z.object({ id, senderId: id, senderName: text, channelId: id,
   content: text, timestamp: finite.nonnegative(), attachment: attachmentSchema.optional(),
   recipientId: text.optional(), status: z.enum(['sent', 'delivered', 'read']).optional(),
   mentions: z.array(z.object({ kind: z.enum(['person', 'pet']), id, name: text,
     start: finite.int().nonnegative(), end: finite.int().nonnegative() })).optional(),
-}).passthrough())
+}).passthrough()
+export const chatMessageSchema = domain<ChatMessage>(chatWireSchema)
 export const publicRoomSchema = domain<PublicRoomInfo>(z.object({ id, code: id, name: text,
   hostId: id, hostName: text, playerCount: finite.int().nonnegative(), maxPlayers: finite.int().positive(),
   color: text, createdAt: finite.default(0), lastHeartbeat: finite.default(0),
 }).passthrough())
+const directionSchema = z.enum(['up', 'down', 'left', 'right'])
+const presenceStatusSchema = z.enum(['available', 'busy', 'focusing', 'away'])
+const avatarSchema = z.object({
+  ...Object.fromEntries(['skinTone', 'skinColor', 'skinDetail', 'eyeType', 'eyeColor', 'hairStyle', 'hairColor', 'facialHair', 'facialHairColor', 'topType', 'shirtType', 'topColor', 'shirtColor', 'jacketType', 'jacketColor', 'bottomType', 'bottomColor', 'pantsColor', 'shoesType', 'shoesColor', 'hatType', 'hatColor', 'glassesType', 'glassesColor', 'accessory', 'accessoryColor', 'otherType', 'otherColor', 'customSkinUrl', 'customAvatarId'].map(key => [key, text.optional()])),
+  pet: z.object({ type: z.enum(['none', 'dog', 'cat', 'meowth', 'slime', 'chick', 'custom']), name: text.optional(), personality: text.optional(), color: text.optional(), customAssetId: text.optional(),
+    directionalFrames: z.record(directionSchema, z.union([text, z.array(text)]).optional()).optional() }).optional(),
+  customComponents: z.record(text, z.union([text, z.record(directionSchema, z.union([text, z.array(text)]).optional())])).optional(),
+}).passthrough()
 export const playerSchema = domain<Partial<Player>>(z.object({
-  id: id.optional(), gameId: id.optional(), name: text.optional(), x: optionalFinite, y: optionalFinite,
-  direction: z.enum(['up', 'down', 'left', 'right']).optional(), isMoving: optionalBool,
-  currentZoneId: text.nullable().optional(), avatar: object.optional(),
+  id: id.optional(), gameId: id.optional(), name: text.optional(), profilePicture: text.optional(),
+  x: optionalFinite, y: optionalFinite, targetX: optionalFinite, targetY: optionalFinite,
+  direction: directionSchema.optional(), isMoving: optionalBool, seatedOn: text.nullable().optional(),
+  activityAnimation: text.optional(), activityAnimationStartedAt: optionalFinite, activityAnimationManual: optionalBool,
+  currentZoneId: text.nullable().optional(), avatar: avatarSchema.optional(),
+  status: presenceStatusSchema.optional(), statusText: text.optional(), statusEmoji: text.optional(),
+  lastUpdated: optionalFinite, ping: optionalFinite, isOwner: optionalBool, isHost: optionalBool,
+  role: z.enum(['owner', 'host', 'admin', 'member', 'guest']).optional(),
+  permissions: z.object({ canEditMap: optionalBool, canManageRoles: optionalBool, canMuteOthers: optionalBool, canKick: optionalBool }).optional(),
+  isMuted: optionalBool, isMutedByAdmin: optionalBool, isDeafened: optionalBool, isCameraOff: optionalBool,
+  isScreenSharing: optionalBool, liveOptIn: optionalBool,
+  callState: z.enum(['idle', 'connecting', 'connected', 'reconnecting', 'failed']).optional(),
+  spotifyActivity: z.object({ track: text, artist: text, isPlaying: z.boolean(), startedAt: optionalFinite }).optional(),
+  isDjBot: optionalBool, djOwnerId: text.optional(), appVersion: text.optional(), minCompatibleVersion: text.optional(), isOutdated: optionalBool,
 }).passthrough())
 const furniture = domain<PlacedFurniture>(z.object({ id, defId: id, x: finite, y: finite }).passthrough())
 const zone = domain<PrivateZone>(z.object({ id, name: text, x: finite, y: finite, width: finite.positive(), height: finite.positive() }).passthrough())
@@ -102,7 +122,7 @@ export const networkPayloadSchemas = {
   USER_AUDIO_ISOLATION: z.object({ targetUserId: text, sourceUserId: text, sourceUserName: text.optional(), isSilenced: z.boolean() }),
   ADMIN_MUTE_PARTICIPANT: z.object({ targetUserId: text.optional(), targetGameId: text.optional(), targetUserName: text.optional(), mute: z.boolean(), adminName: text.optional() }),
   ADMIN_DEAFEN_PARTICIPANT: z.object({ targetUserId: text.optional(), targetGameId: text.optional(), targetUserName: text.optional(), deafen: z.boolean(), adminName: text.optional() }),
-  LIVE_VIEW: z.object({ to: id, watch: z.boolean(), h: finite.nullable() }), LIVE_ALM: z.object({ to: id }).passthrough(),
+  LIVE_VIEW: z.object({ to: id, watch: z.boolean(), h: finite.nonnegative().nullable() }), LIVE_ALM: z.object({ to: id }).passthrough(),
   SPOTIFY_JAM_SYNC: z.object({ zoneId: id.optional(), session: domain<ZoneJamSession>(object).nullable() }),
   SPOTIFY_TRACK_SHARE: z.object({ zoneId: id, track: domain<SharedSpotifyTrack>(object) }),
   SPOTIFY_DJ_STATUS: z.object({ zoneId: id, djState: domain<SpotifyDjState>(object).nullable() }),
@@ -139,4 +159,24 @@ export function parseNetworkMessage(raw: unknown): ValidatedNetworkMessage | nul
 
 export const hubMessageSchema = z.object({ type: z.enum(['ANNOUNCE_ROOM', 'UNREGISTER_ROOM', 'QUERY_ROOMS', 'HEARTBEAT']),
   roomId: id.optional(), roomInfo: publicRoomSchema.optional(), timestamp: finite.default(0) })
-export const friendPacketSchema = z.object({ t: z.enum(['ping', 'bye', 'presence', 'dm', 'receipt']) }).passthrough()
+const presenceFields = {
+  userId: id, gameId: text.optional(), name: text, profilePicture: text.optional(), avatar: avatarSchema.optional(),
+  status: presenceStatusSchema.optional(), statusText: text.optional(), statusEmoji: text.optional(),
+  roomCode: text.nullable().optional(), roomName: text.nullable().optional(), inRoom: z.boolean(), lastHeartbeat: finite,
+}
+export const userPresenceSchema = z.object(presenceFields)
+const receiptSchema = z.object({ receiptId: text.optional(), senderId: id, senderName: text.optional(), recipientId: id,
+  recipientName: text.optional(), channelId: text.optional(), messageId: text.optional(), messageIds: z.array(id).optional(),
+  status: z.enum(['sent', 'delivered', 'read']), timestamp: finite, upToTimestamp: optionalFinite })
+export const presenceMessageSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('PRESENCE_HEARTBEAT'), presence: userPresenceSchema, timestamp: finite.default(0) }),
+  z.object({ type: z.literal('PRESENCE_OFFLINE'), userId: id, timestamp: finite.default(0) }),
+  z.object({ type: z.literal('DIRECT_MESSAGE'), message: chatMessageSchema, timestamp: finite.default(0) }),
+  z.object({ type: z.literal('MESSAGE_STATUS'), statusReceipt: receiptSchema, timestamp: finite.default(0) }),
+])
+export const friendPacketSchema = z.discriminatedUnion('t', [
+  z.object({ t: z.literal('ping') }), z.object({ t: z.literal('bye') }),
+  z.object({ t: z.literal('presence'), presence: userPresenceSchema.partial().nullable() }),
+  z.object({ t: z.literal('dm'), message: chatWireSchema.partial().required({ id: true }) }),
+  z.object({ t: z.literal('receipt'), receipt: receiptSchema.partial().required({ status: true }) }),
+])

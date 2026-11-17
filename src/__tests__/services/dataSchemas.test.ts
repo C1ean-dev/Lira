@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { graphicsSettingsSchema, audioSettingsSchema, chatMessageSchema, publicRoomSchema, parseNetworkMessage } from '../../validation/schemas'
+import { graphicsSettingsSchema, audioSettingsSchema, chatMessageSchema, publicRoomSchema, parseNetworkMessage, presenceMessageSchema, friendPacketSchema } from '../../validation/schemas'
 
 describe('external data schemas', () => {
   it('accepts existing preferences and rejects non-finite or wrongly typed values', () => {
@@ -16,6 +16,26 @@ describe('external data schemas', () => {
     expect(chatMessageSchema.safeParse({ ...message, attachment: { dataUrl: 'https://example.com' } }).success).toBe(false)
   })
 
+  it('rejects malformed optional player fields before handlers can change state', async () => {
+    const { processNetworkMessage } = await import('../../p2p/messageHandlers')
+    const { useGameStore } = await import('../../store/useGameStore')
+    const before = useGameStore.getState()
+    const envelope = { type: 'PLAYER_UPDATE', senderId: 'invalid-peer', timestamp: 1 }
+    for (const player of [{ appVersion: 123 }, { isMuted: 'false' }, { targetX: Infinity }, { status: 'unknown' }, { permissions: { canEditMap: 'yes' } }, { avatar: { pet: { type: 'cat', name: 123 } } }]) {
+      const packet = { ...envelope, payload: { player } }
+      expect(parseNetworkMessage(packet)).toBeNull()
+      expect(() => processNetworkMessage(packet, 'invalid-peer', true, () => {}, () => {}, () => {}, 'self')).not.toThrow()
+      expect(useGameStore.getState()).toBe(before)
+    }
+  })
+  it('rejects malformed broadcast and friend presence packets', () => {
+    const presence = { userId: 'friend', name: 'Ana', inRoom: false, lastHeartbeat: 1 }
+    expect(presenceMessageSchema.safeParse({ type: 'PRESENCE_HEARTBEAT', presence, timestamp: 1 }).success).toBe(true)
+    expect(presenceMessageSchema.safeParse({ type: 'PRESENCE_HEARTBEAT', presence: { ...presence, name: 2 }, timestamp: 1 }).success).toBe(false)
+    expect(friendPacketSchema.safeParse({ t: 'presence', presence: { name: 'Ana', inRoom: 'false' } }).success).toBe(false)
+    expect(friendPacketSchema.safeParse({ t: 'dm', message: { id: 'm', timestamp: Infinity } }).success).toBe(false)
+    expect(friendPacketSchema.safeParse({ t: 'receipt', receipt: { status: 'unknown' } }).success).toBe(false)
+  })
   it('rejects malformed announcements and network envelopes', () => {
     expect(publicRoomSchema.safeParse({ code: 'room', playerCount: -1 }).success).toBe(false)
     const envelope = { type: 'PLAYER_MOVE', senderId: 'p', timestamp: 1, payload: { x: 1, y: 2, direction: 'down', isMoving: true } }
