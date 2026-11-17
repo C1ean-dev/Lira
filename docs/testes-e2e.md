@@ -36,6 +36,7 @@ WebRTC, quadros reproduzidos e níveis de áudio.
 | Câmera | Receber RTP, reproduzir quadros e sincronizar ligar/desligar. |
 | Ensurdecer | Silenciar a saída local de reprodução e restaurá-la. |
 | Live | Vídeo e áudio recebidos, voz separada, mute independente, estatísticas do ALM (em tela cheia no modo visível) e encerramento. |
+| Recuperação da live | Simula o diagnóstico de um decodificador H.264 com falha e confirma que o Electron reproduz o vídeo com VP8 em uma nova conexão real. |
 | Supressor | Trocar DSP, RNNoise e DeepFilterNet reais; áudio decodificado e identificação explícita de fallback. |
 | Configurar sala | Nome e boas-vindas chegam ao outro participante; chat da zona funciona. |
 | Transcrições | O painel oferece início pelo mapa, sem abrir a grade da chamada. |

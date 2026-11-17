@@ -7,6 +7,7 @@ let deps: LiveViewDeps = { send: () => {} }
 export const liveViewReporter = new LiveViewReporter({
   send: (sharerId, watch, h) => deps.send(sharerId, watch, h),
   stats: (sharerId) => deps.stats?.(sharerId),
+  decoderFailed: (sharerId) => deps.decoderFailed?.(sharerId),
 })
 
 export function connectLiveView(next: LiveViewDeps): void {

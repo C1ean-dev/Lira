@@ -51,7 +51,7 @@ interface Session {
   sink?: AlmVideoSink
   queue?: AlmFrameQueue
   input?: string
-  lastFrame: number
+  lastRenderedAt: number
   lastKeyRequest: number
   lastRenew: number
   tree?: AlmTree
@@ -296,7 +296,7 @@ export class AlmLive {
   }
 
   private makeSession(root: string, epoch: string, config: AlmVideoConfig): Session {
-    return { root, epoch, config, revision: 0, edges: [], links: new Map(), lastFrame: Date.now(),
+    return { root, epoch, config, revision: 0, edges: [], links: new Map(), lastRenderedAt: Date.now(),
       lastKeyRequest: 0, lastRenew: Date.now(), viewers: new Map(), playing: new Set(), retired: new Map(), lastShed: 0,
       clock: new AlmPlayoutClock(), localLayer: this.layerFor(this.wantedHeights.get(root) ?? null, config),
       viewHeights: new Map(), capacity: new AlmCapacity(), lastSample: performance.now(), createdAt: Date.now(), audioFrames: 0, renderedFrames: 0 }
@@ -330,6 +330,7 @@ export class AlmLive {
     }
     session.sink = new AlmVideoSink(session.config, timestamp => {
       session.videoTimestamp = timestamp
+      session.lastRenderedAt = Date.now()
       session.renderedFrames++
       notify()
     },
@@ -338,7 +339,7 @@ export class AlmLive {
     // RemoteAudio controls this same scheduled audio graph directly.
     markAlmStream(session.sink.stream, session.audioSink)
     session.queue = new AlmFrameQueue(frame => {
-      try { session.sink?.decode(frame) } catch (error) { this.fallback(session, error) }
+      try { return session.sink?.decode(frame) } catch (error) { this.fallback(session, error) }
     }, () => this.requestKey(session))
   }
 
@@ -441,7 +442,6 @@ export class AlmLive {
         session.inputTimestamp = frame.timestamp
         session.queue?.reset()
       }
-      if (frame.media !== 'audio') session.lastFrame = Date.now()
       this.forward(session, frame)
       if (frame.media === 'audio') { session.audioFrames++; session.audioQueue?.push(frame) }
       else if ((frame.temporalLayer ?? 0) <= session.localLayer)
@@ -551,7 +551,7 @@ export class AlmLive {
   private fallback(session: Session, error: unknown): void {
     if (this.sessions.get(session.root) !== session) return
     this.deps.log('fallback', { root: session.root, error: String(error), audioFrames: session.audioFrames,
-      videoAgeMs: Date.now() - session.lastFrame })
+      videoAgeMs: Date.now() - session.lastRenderedAt })
     this.send(session.root, session, { kind: 'fallback' })
     this.dispose(session)
   }
@@ -579,7 +579,7 @@ export class AlmLive {
         if (session.audioSink && !session.audioSink.played && now - session.createdAt > 12_000) {
           this.fallback(session, new Error('Audio playback unavailable')); continue
         }
-        if (now - session.lastFrame > 10_000) { this.fallback(session, new Error('No video received')); continue }
+        if (now - session.lastRenderedAt > 10_000) { this.fallback(session, new Error('No video played')); continue }
       }
       for (const link of session.links.values()) {
         if (link.channel?.readyState !== 'open' && now - link.openedAt > 12_000) this.linkFailed(session, link.edge, new Error('Channel timeout'))

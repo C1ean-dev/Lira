@@ -20,6 +20,7 @@ import { MediaCallHandler, ICE_CONNECT_TIMEOUT_MS, SHARED_RTC_CONFIG, resolveCal
 import { VideoDegradation, setAlmViewer, findVideoSender, syncScreenCaps } from './videoSendPolicy'
 import { prioritizeH264HardwareCodec, isHardwareAccelerationEnabled } from '../media/hardwareCodec'
 import { AlmLive } from './almLive'
+import { isAlmStream } from '../media/almStreams'
 import { useLiveWatchStore } from '../store/useLiveWatchStore'
 import { MediaManager } from '../media/MediaManager'
 import { silentAudioTrack } from '../media/silentAudioTrack'
@@ -272,9 +273,11 @@ export class PeerManager {
     connectLiveView({
       send: (sharerId, watch, h) => this.sendLiveView(sharerId, watch, h),
       stats: (sharerId) => {
-        const pc = (this.mediaCalls.get(sharerId) as any)?.peerConnection as RTCPeerConnection | undefined
-        return pc && typeof pc.getStats === 'function' ? pc.getStats() : null
+        const pc = this.mediaCalls.get(sharerId)?.peerConnection
+        if (!pc || typeof pc.getStats !== 'function') return null
+        return pc.getStats().then(stats => this.mediaCalls.get(sharerId)?.peerConnection === pc ? stats : null)
       },
+      decoderFailed: (sharerId) => this.recoverLiveVideo(sharerId),
     })
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       const handleBufferChanged = (e: any) => {
@@ -1636,6 +1639,7 @@ export class PeerManager {
 
   private removePeer(peerId: string) {
     SuperPeerVoiceRelay.getInstance().stopRelay(peerId)
+    MediaCallHandler.clearVideoPreference(this.mediaCalls, peerId)
     this.alm.peerLeft(peerId)
     const departingPlayer = useGameStore.getState().remotePlayers[peerId]
     this.peerLastSeen.delete(peerId)
@@ -1974,6 +1978,7 @@ export class PeerManager {
     this.incomingLiveVoiceCalls?.forEach(call => { try { call.close() } catch { } })
     this.incomingLiveVoiceCalls?.clear()
     this.mediaCalls.forEach(call => { try { call.close() } catch { } })
+    MediaCallHandler.clearVideoPreference(this.mediaCalls)
     this.mediaCalls.clear()
     useMediaStore.getState().clearAllPeerStreams()
     try {
@@ -2312,6 +2317,19 @@ export class PeerManager {
   private onMediaCallConnected(peerId: string) {
     liveViewReporter.callConnected(peerId)
     if (useMediaStore.getState().isScreenSharing) this.startLiveVoiceCall(peerId)
+  }
+
+  private recoverLiveVideo(sharerId: string): void {
+    const { localPlayer, remotePlayers } = useGameStore.getState()
+    const sharer = remotePlayers[sharerId]
+    if (!this.peer?.open || !this.mediaCalls.has(sharerId) || !sharer?.isScreenSharing ||
+      localPlayer.currentZoneId == null || sharer.currentZoneId !== localPlayer.currentZoneId ||
+      !useLiveWatchStore.getState().watching[sharerId]) return
+    const live = useMediaStore.getState().peerScreenStreams[sharerId]
+    if (live && isAlmStream(live)) return
+    if (!MediaCallHandler.preferVp8ForPeer(this.mediaCalls, sharerId)) return
+    diagLog('screenshare', 'decoder-retry', { fromPeer: sharerId, codec: 'VP8' })
+    this.retryZoneCall(sharerId)
   }
 
   private handleIncomingLiveVoiceCall(call: MediaConnection): void {

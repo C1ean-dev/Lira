@@ -12,6 +12,7 @@ import { almAudioOutput, isAlmStream } from '../../src/media/almStreams'
 
 SHARED_RTC_CONFIG.iceServers = []
 const meters = new WeakMap<MediaStream, AnalyserNode>()
+const trackProcessor = Object.getOwnPropertyDescriptor(globalThis, 'MediaStreamTrackProcessor')
 let audioContext: AudioContext | undefined
 const received: unknown[] = [], observed = new WeakSet<object>()
 setInterval(() => {
@@ -57,9 +58,34 @@ Object.assign(window, { liraE2E: {
   },
   async rtp() {
     const calls = [...PeerManager.getInstance().mediaCalls.values()]
-    const reports = await Promise.all(calls.map(call => call.peerConnection.getStats()))
-    return reports.flatMap(report => [...report.values()].filter(row =>
-      row.type === 'inbound-rtp' || row.type === 'outbound-rtp'))
+    return (await Promise.all(calls.map(async call => {
+      const report = await call.peerConnection.getStats()
+      return [...report.values()].filter(row => row.type === 'inbound-rtp' || row.type === 'outbound-rtp')
+        .map(row => ({ ...row, connectionId: call.connectionId, codec: report.get(row.codecId)?.mimeType }))
+    }))).flat()
+  },
+  useRtpOnly(enabled: boolean) {
+    if (enabled) Object.defineProperty(globalThis, 'MediaStreamTrackProcessor', { value: undefined, configurable: true })
+    else if (trackProcessor) Object.defineProperty(globalThis, 'MediaStreamTrackProcessor', trackProcessor)
+    else Reflect.deleteProperty(globalThis, 'MediaStreamTrackProcessor')
+  },
+  simulateRtpDecoderFailure() {
+    const call = [...PeerManager.getInstance().mediaCalls.values()][0]
+    const pc = call.peerConnection
+    const getStats = pc.getStats.bind(pc)
+    pc.getStats = async selector => {
+      const report = await getStats(selector)
+      if (selector) return report
+      const sample = new Map(report)
+      for (const [id, row] of report) {
+        if (row.type !== 'inbound-rtp' || row.kind !== 'video' || !row.bytesReceived) continue
+        sample.set('e2e-failed-codec', { id: 'e2e-failed-codec', type: 'codec', mimeType: 'video/H264' })
+        sample.set(id, { ...row, codecId: 'e2e-failed-codec', decoderImplementation: 'NullVideoDecoder',
+          framesDecoded: 0, frameWidth: undefined, frameHeight: undefined, framesPerSecond: undefined })
+      }
+      return sample as unknown as RTCStatsReport
+    }
+    return call.connectionId
   },
   async audio() {
     const media = useMediaStore.getState()

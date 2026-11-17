@@ -249,6 +249,25 @@ test('dois usuários percorrem o Lira pela interface com mídia P2P real', {
       await bruno.waitForFunction(() => !window.liraE2E.snapshot().peers[0].isScreenSharing)
       await bruno.waitForFunction(() => window.liraE2E.playback().some(video => video.width > 0 && video.height !== 360 && video.frames > 5))
     })
+    await step('uma falha de decodificação H.264 refaz a chamada da live com VP8', async () => {
+      await bruno.evaluate(() => window.liraE2E.useRtpOnly(true))
+      try {
+        await ana.getByTitle('Compartilhar Tela / Janela', { exact: true }).click()
+        await ana.getByRole('button', { name: 'Iniciar Apresentação', exact: true }).click()
+        await bruno.getByRole('button', { name: /Assistir/ }).first().click()
+        await bruno.waitForFunction(() => window.liraE2E.playback().some(video => !video.alm && video.width === 640 && video.frames > 5))
+        const replaced = await bruno.evaluate(() => window.liraE2E.simulateRtpDecoderFailure())
+        await bruno.waitForFunction(async oldId => (await window.liraE2E.rtp()).some(row =>
+          row.type === 'inbound-rtp' && row.kind === 'video' && row.connectionId !== oldId && row.codec === 'video/VP8' &&
+          row.frameWidth === 640 && row.framesDecoded > 5), replaced, { timeout: 60000 })
+        await call(ana).getByTitle('Opções da Transmissão (Ao Vivo)', { exact: true }).click()
+        await call(ana).getByRole('button', { name: 'Encerrar transmissão', exact: true }).click()
+        await bruno.waitForFunction(() => !window.liraE2E.snapshot().peers[0].isScreenSharing)
+      } finally {
+        await bruno.evaluate(() => window.liraE2E.useRtpOnly(false))
+      }
+    })
+
     await step('trocar os motores mantém áudio e identifica qualquer fallback', async () => {
       for (const [label, mode, status] of [['DSP Clássico', 'classic', null], ['RNNoise Neural', 'rnnoise', 'rnnoise'], ['DeepFilterNet', 'deepfilter', 'deepfilter']]) {
         await call(ana).getByTitle(/Ativar \/ Configurar Supressor de Ruído|Supressor de Ruído Ativo/).click()

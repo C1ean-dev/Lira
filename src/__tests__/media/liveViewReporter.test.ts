@@ -492,6 +492,24 @@ describe('what a viewer tells who is live', () => {
       expect(await log()).toEqual([])
     })
 
+    it('requests recovery when H.264 packets arrive at a failed decoder', async () => {
+      const decoderFailed = vi.fn()
+      const stats = inbound(1)
+      const video = stats.get('in-video')!
+      Object.assign(video, { decoderImplementation: 'NullVideoDecoder (fallback from: ExternalDecoder (D3D11VideoDecoder))',
+        frameWidth: undefined, frameHeight: undefined, framesPerSecond: undefined, framesDecoded: 0 })
+      const reporter = new LiveViewReporter({ send: vi.fn(), stats: async () => stats, decoderFailed })
+      reporter.setSharers(['ana'])
+      await vi.advanceTimersByTimeAsync(VIEW_RENEW_MS)
+      expect(decoderFailed).not.toHaveBeenCalled()
+      reporter.setWatching(['ana'])
+      await vi.advanceTimersByTimeAsync(VIEW_RENEW_MS)
+      expect(decoderFailed).toHaveBeenCalledExactlyOnceWith('ana')
+      video.decoderImplementation = 'OpenH264'
+      await vi.advanceTimersByTimeAsync(VIEW_RENEW_MS)
+      expect(decoderFailed).toHaveBeenCalledTimes(1)
+    })
+
     it('starts the comparison over at each click', async () => {
       const log = captureDiag()
       let reads = 0

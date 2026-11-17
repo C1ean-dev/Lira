@@ -4,6 +4,7 @@ import { useGameStore } from '../store/useGameStore'
 import { useMediaStore } from '../store/useMediaStore'
 import {
   prioritizeH264HardwareCodec,
+  fallbackVideoToVp8,
   prioritizeCodecInSdp,
   isConnectionSendingH264,
   isHardwareAccelerationEnabled,
@@ -472,6 +473,24 @@ export class MediaCallHandler {
   }
 
   public static readonly callRetryCounts = new Map<string, number>()
+  private static readonly vp8Peers = new WeakMap<Map<string, MediaConnection>, Set<string>>()
+
+  static preferVp8ForPeer(mediaCalls: Map<string, MediaConnection>, peerId: string): boolean {
+    const peers = this.vp8Peers.get(mediaCalls) ?? new Set<string>()
+    if (peers.has(peerId)) return false
+    peers.add(peerId)
+    this.vp8Peers.set(mediaCalls, peers)
+    return true
+  }
+
+  static clearVideoPreference(mediaCalls: Map<string, MediaConnection>, peerId?: string): void {
+    if (peerId === undefined) this.vp8Peers.delete(mediaCalls)
+    else this.vp8Peers.get(mediaCalls)?.delete(peerId)
+  }
+
+  private static zoneVideoSdp(sdp: string, mediaCalls: Map<string, MediaConnection>, peerId: string): string {
+    return this.vp8Peers.get(mediaCalls)?.has(peerId) ? fallbackVideoToVp8(sdp) : prioritizeCodecInSdp(sdp)
+  }
   public static readonly callRetryTimers = new Map<string, any>()
   public static readonly iceDisconnectTimers = new Map<string, any>()
 
@@ -980,7 +999,7 @@ export class MediaCallHandler {
       } catch {}
     }
     const sdpTransform = (sdp: string) =>
-      isDjBot ? djMusicSdp(prioritizeCodecInSdp(sdp)) : opusVoiceSdp(prioritizeCodecInSdp(sdp))
+      isDjBot ? djMusicSdp(prioritizeCodecInSdp(sdp)) : opusVoiceSdp(MediaCallHandler.zoneVideoSdp(sdp, mediaCalls, call.peer))
     call.answer(streamToAnswer, { sdpTransform })
     ;(call as unknown as { __dir?: 'in' | 'out' }).__dir = 'in'
     mediaCalls.set(call.peer, call)
@@ -1052,7 +1071,7 @@ export class MediaCallHandler {
         let call: MediaConnection | undefined
         try {
           call = peer.call(remotePlayer.id, streamToSend, {
-            sdpTransform: (sdp: string) => opusVoiceSdp(prioritizeCodecInSdp(sdp)),
+            sdpTransform: (sdp: string) => opusVoiceSdp(MediaCallHandler.zoneVideoSdp(sdp, mediaCalls, remotePlayer.id)),
           })
         } catch (error) {
           useGameStore.getState().setCallState(remotePlayer.id, 'failed')
@@ -1238,7 +1257,7 @@ export class MediaCallHandler {
           prioritizeH264HardwareCodec(pc)
           const videoSender = findVideoSender(pc)
 
-          const hwEnabled = isHardwareAccelerationEnabled()
+          const hwEnabled = !MediaCallHandler.vp8Peers.get(mediaCalls)?.has(peerId) && isHardwareAccelerationEnabled()
           const isH264 = isConnectionSendingH264(pc)
           if (toScreen && ((isH264 !== null && hwEnabled !== isH264) || !videoSender)) {
             if (onRedialNeeded) {
@@ -1582,6 +1601,7 @@ export class MediaCallHandler {
   }
 
   static endAllMediaCalls(mediaCalls: Map<string, MediaConnection>) {
+    MediaCallHandler.clearVideoPreference(mediaCalls)
     MediaCallHandler.callRetryTimers.forEach((t) => clearTimeout(t))
     MediaCallHandler.callRetryTimers.clear()
     MediaCallHandler.callRetryCounts.clear()

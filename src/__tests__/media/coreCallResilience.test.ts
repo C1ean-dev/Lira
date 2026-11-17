@@ -24,7 +24,7 @@ function fakeCall() {
 }
 function setup() {
   const calls = new Map<string, any>()
-  const peer = { call: vi.fn(() => fakeCall()) }
+  const peer = { call: vi.fn((_peerId: string, _stream: MediaStream, _options: { sdpTransform: (sdp: string) => string }) => fakeCall()) }
   const end = (id: string) => MediaCallHandler.endMediaCall(calls, id)
   const check = () => MediaCallHandler.checkZoneCallEligibility(useGameStore.getState().remotePlayers.remote, peer as any, calls, end)
   return { calls, peer, end, check, fail: () => calls.get('remote').emit('error', new Error('network interrupted')) }
@@ -45,6 +45,30 @@ afterEach(() => {
 })
 
 describe('core call retry contract', () => {
+  it('renegotiates the affected peer with VP8 while keeping the audio and its payload mappings', () => {
+    const fixture = setup()
+    fixture.check()
+    const offer = [
+      'v=0',
+      'm=audio 9 UDP/TLS/RTP/SAVPF 111 102',
+      'a=rtpmap:111 opus/48000/2',
+      'a=rtpmap:102 telephone-event/8000',
+      'm=video 9 UDP/TLS/RTP/SAVPF 102 121 96 97',
+      'a=rtpmap:102 H264/90000', 'a=rtpmap:121 rtx/90000', 'a=fmtp:121 apt=102',
+      'a=rtpmap:96 VP8/90000', 'a=rtpmap:97 rtx/90000', 'a=fmtp:97 apt=96',
+      'a=rtcp-fb:* nack', '',
+    ].join('\r\n')
+    expect(fixture.peer.call.mock.calls[0][2].sdpTransform(offer)).toContain('H264/90000')
+    expect(MediaCallHandler.preferVp8ForPeer(fixture.calls, 'remote')).toBe(true)
+    expect(MediaCallHandler.preferVp8ForPeer(fixture.calls, 'remote')).toBe(false)
+    MediaCallHandler.retryCall(useGameStore.getState().remotePlayers.remote, fixture.peer as any, fixture.calls, fixture.end)
+    const downgraded = fixture.peer.call.mock.calls[1][2].sdpTransform(offer)
+    expect(downgraded).not.toMatch(/H264\/90000|a=(?:rtpmap|fmtp):121 /)
+    expect(downgraded).toContain('m=video 9 UDP/TLS/RTP/SAVPF 96 97')
+    expect(downgraded).toContain('a=fmtp:97 apt=96')
+    expect(downgraded).toContain('a=rtpmap:102 telephone-event/8000')
+    expect(downgraded).toContain('a=rtcp-fb:* nack')
+  })
   it('preserves the ICE servers already selected by the transport controller', () => {
     const fixture = setup()
     const call = fakeCall()
