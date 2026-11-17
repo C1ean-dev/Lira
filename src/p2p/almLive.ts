@@ -5,6 +5,7 @@ import { AlmAudioSource, AlmAudioSink, supportsAlmAudio } from '../media/almAudi
 import { AlmCaptureClock, AlmPlayoutClock } from '../media/almClock'
 import { markAlmStream } from '../media/almStreams'
 import { AlmCapacity } from './almCapacity'
+import { AlmSendQueue } from './almSendQueue'
 
 export interface AlmEdge { id: string; parent: string; child: string; maxLayer?: number }
 interface Link {
@@ -13,6 +14,7 @@ interface Link {
   channel?: RTCDataChannel
   candidates: RTCIceCandidateInit[]
   assembler: AlmAssembler
+  sendQueue: AlmSendQueue
   seen: Set<string>
   openedAt: number
   blocked: number
@@ -23,6 +25,7 @@ interface Link {
   rttMs: number | null
   statsPending: boolean
   receiptAt: number
+  fallbackRequested: boolean
 }
 interface Session {
   root: string
@@ -232,6 +235,11 @@ export class AlmLive {
         this.removeViewer(session, from)
         return
       }
+      if (message.kind === 'edge-fallback') {
+        const edge = session.edges.find(edge => edge.id === message.edge && edge.parent === from)
+        if (edge) this.rejectRecovery(session, edge)
+        return
+      }
       if (message.kind === 'key') {
         if (Date.now() - session.lastKeyRequest > 500) { session.source?.requestKey(); session.lastKeyRequest = Date.now() }
         return
@@ -379,8 +387,9 @@ export class AlmLive {
     // Register synchronously so duplicate signals cannot create parallel links.
     if (session.links.has(edge.id)) return session.links.get(edge.id)!
     const pc = new RTCPeerConnection({ bundlePolicy: 'max-bundle', iceCandidatePoolSize: 0 })
-    const link: Link = { edge, pc, candidates: [], assembler: new AlmAssembler(), seen: new Set(), openedAt: Date.now(), blocked: 0, sent: 0,
-      received: 0, reportedBytes: 0, deliveredBps: null, rttMs: null, statsPending: false, receiptAt: 0 }
+    const link: Link = { edge, pc, candidates: [], assembler: new AlmAssembler(), sendQueue: new AlmSendQueue(() => this.requestKey(session)),
+      seen: new Set(), openedAt: Date.now(), blocked: 0, sent: 0,
+      received: 0, reportedBytes: 0, deliveredBps: null, rttMs: null, statsPending: false, receiptAt: 0, fallbackRequested: false }
     session.links.set(edge.id, link)
     const other = offer ? edge.child : edge.parent
     pc.onicecandidate = event => {
@@ -417,8 +426,9 @@ export class AlmLive {
       if (link.edge.child !== this.deps.id() || !(event.data instanceof ArrayBuffer) ||
         this.sessions.get(session.root) !== session || !this.deps.watching(session.root)) return
       link.received += event.data.byteLength
-      const frame = link.assembler.push(event.data)
-      if (!frame) return
+      const assembly = link.assembler.pushPacket(event.data)
+      if (!assembly) return
+      const { frame, packets } = assembly
       const frameId = `${frame.media ?? 'video'}:${frame.sequence}`
       if (link.seen.has(frameId)) return
       link.seen.add(frameId)
@@ -433,26 +443,47 @@ export class AlmLive {
         session.queue?.reset()
       }
       if (frame.media !== 'audio') session.lastFrame = Date.now()
-      this.forward(session, frame)
+      this.forward(session, frame, packets)
       if (frame.media === 'audio') { session.audioFrames++; session.audioQueue?.push(frame) }
-      else if ((frame.temporalLayer ?? 0) <= session.localLayer)
-        session.queue?.push({ ...frame, sequence: frame.layerSequences?.[session.localLayer] ?? frame.sequence })
+      else if ((frame.temporalLayer ?? 0) <= session.localLayer) {
+        // Forwarding is finished. Remap only this local frame, keeping its data
+        // getter lazy through reordering and drops until the decoder reads it.
+        frame.sequence = frame.layerSequences?.[session.localLayer] ?? frame.sequence
+        session.queue?.push(frame)
+      }
     }
   }
 
-  private forward(session: Session, frame: AlmFrame): void {
-    const packets = packetizeFrame(frame)
-    for (const link of session.links.values()) {
+  private forward(session: Session, frame: AlmFrame, receivedPackets?: readonly ArrayBuffer[]): void {
+    let packets = receivedPackets
+    // A rejected source edge can change the topology while handling this frame.
+    for (const link of [...session.links.values()]) {
+      if (session.links.get(link.edge.id) !== link) continue
       if (link.edge.parent !== this.deps.id() || link.channel?.readyState !== 'open') continue
+      if (link.fallbackRequested && frame.media !== 'audio') continue
       if (frame.media !== 'audio' && (frame.temporalLayer ?? 0) > (link.edge.maxLayer ?? 2)) continue
-      const bytes = packets.reduce((sum, packet) => sum + packet.byteLength, 0)
-      // Never build an unbounded queue. Drop a whole frame on this edge only.
-      if (link.channel.bufferedAmount + bytes > 2 * 1024 * 1024) { link.blocked++; continue }
-      try {
-        for (const packet of packets) link.channel.send(packet)
-        link.sent += bytes
-      } catch { link.blocked++ }
+      // The source packetizes once, only if there are children. Relays reuse
+      // received buffers after complete-frame validation, before local sequence remapping.
+      packets ??= packetizeFrame(frame)
+      const deliveredBps = Date.now() - link.receiptAt < 6000 ? link.deliveredBps : null
+      const result = link.sendQueue.send(frame, packets, link.channel, deliveredBps)
+      if (result === 'sent') link.sent += packets.reduce((sum, packet) => sum + packet.byteLength, 0)
+      else if (result === 'blocked') link.blocked++
+      else if (result === 'oversized-key') {
+        link.blocked++
+        link.fallbackRequested = true
+        if (session.tree) this.rejectRecovery(session, link.edge)
+        else this.send(session.root, session, { kind: 'edge-fallback', edge: link.edge.id })
+      }
     }
+  }
+
+  private rejectRecovery(session: Session, edge: AlmEdge): void {
+    // Ignore retired handoff edges: the new parent may already be delivering.
+    if (!session.tree || !session.edges.some(active => active.id === edge.id)) return
+    this.deps.log('recovery-too-large', { edge: edge.id, parent: edge.parent, child: edge.child })
+    this.send(edge.child, session, { kind: 'stop' })
+    this.removeViewer(session, edge.child)
   }
 
   private async signal(session: Session, from: string, message: any): Promise<void> {
@@ -504,10 +535,10 @@ export class AlmLive {
   }
 
   private requestKey(session: Session): void {
-    if (session.tree) { session.source?.requestKey(); return }
     if (Date.now() - session.lastKeyRequest < 500) return
     session.lastKeyRequest = Date.now()
-    this.send(session.root, session, { kind: 'key' })
+    if (session.tree) session.source?.requestKey()
+    else this.send(session.root, session, { kind: 'key' })
   }
 
   private linkFailed(session: Session, edge: AlmEdge, error: unknown): void {
