@@ -6,7 +6,7 @@ import { AtlasChunkReceiver } from '../assets/atlasChunks'
 import { readAtlas, atlasDigest, decodeTransferredAtlas } from '../assets/atlasService'
 import type { AtlasDocument, PersistedAtlas } from '../assets/atlasFormat'
 import { NetworkMessage, PlayerMovePayload, MIN_COMPATIBLE_VERSION } from '../types/p2p'
-import { isNewerVersion } from '../services/updateCheck'
+import { isNewerVersion, normalizeVersion } from '../utils/versionUtils'
 import { Player } from '../types/game'
 import { useGameStore } from '../store/useGameStore'
 import { useMapStore } from '../store/useMapStore'
@@ -167,7 +167,7 @@ export function processNetworkMessage(
       const incomingPlayer = msg.payload.player || {}
       const isDj = !!incomingPlayer.isDjBot || remotePeerId.startsWith('dj-')
       const incomingVersion: string | undefined = incomingPlayer.appVersion
-      const isOutdated = !isDj && (!incomingVersion || isNewerVersion(MIN_COMPATIBLE_VERSION, incomingVersion))
+      const isOutdated = !isDj && (!incomingVersion || !normalizeVersion(incomingVersion) || isNewerVersion(MIN_COMPATIBLE_VERSION, incomingVersion))
 
       if (isOutdated) {
         const warnId = `compat-warn-${incomingGameId || remotePeerId}`
@@ -188,8 +188,8 @@ export function processNetworkMessage(
             senderName: 'Sistema',
             channelId: 'general',
             content: isPeerHost
-              ? `⚠️ O Host está em uma versão desatualizada do Lira (${incomingVersion || '< 1.1.210'}). Chamadas de voz e recursos de rede não funcionarão corretamente até que o Host atualize para >= v${MIN_COMPATIBLE_VERSION}.`
-              : `⚠️ O participante "${resolvedName}" está em uma versão antiga do Lira (${incomingVersion || '< 1.1.210'}) e não suporta o protocolo de áudio atual. Requer atualização para >= v${MIN_COMPATIBLE_VERSION}.`,
+              ? `⚠️ O Host está em uma versão desatualizada do Lira (${incomingVersion || 'desconhecida'}). Chamadas de voz e recursos de rede não funcionarão corretamente até que o Host atualize para >= v${MIN_COMPATIBLE_VERSION}.`
+              : `⚠️ O participante "${resolvedName}" está em uma versão antiga do Lira (${incomingVersion || 'desconhecida'}) e não suporta o protocolo atual de colaboração e mídia. Requer atualização para >= v${MIN_COMPATIBLE_VERSION}.`,
             timestamp: Date.now(),
           })
         }
@@ -199,14 +199,14 @@ export function processNetworkMessage(
           PeerManager.getInstance?.()?.sendVersionIncompatible?.(
             peerId || remotePeerId,
             MIN_COMPATIBLE_VERSION,
-            incomingVersion || '< 1.1.210',
-            `⚠️ Incompatibilidade de versão: este espaço exige o Lira >= v${MIN_COMPATIBLE_VERSION}. Sua versão (${incomingVersion || '< 1.1.210'}) é antiga e não suporta o protocolo de áudio atual. Por favor, atualize o aplicativo.`
+            incomingVersion || 'desconhecida',
+            `⚠️ Incompatibilidade de versão: este espaço exige o Lira >= v${MIN_COMPATIBLE_VERSION}. Sua versão (${incomingVersion || 'desconhecida'}) é antiga e não suporta o protocolo atual de colaboração e mídia. Por favor, atualize o aplicativo.`
           )
         } catch {}
 
         // Se o nó local for o Host, fecha a conexão e remove o par desatualizado após 500ms
         if (isHost) {
-          console.warn(`[P2P] Host rejeitando participante desatualizado: ${remotePeerId} (${incomingVersion || '< 1.1.210'})`)
+          console.warn(`[P2P] Host rejeitando participante desatualizado: ${remotePeerId} (${incomingVersion || 'desconhecida'})`)
           setTimeout(() => {
             try {
               removePeer(remotePeerId)
@@ -389,7 +389,7 @@ export function processNetworkMessage(
         if (fallbackKey) {
           const isPeerHost = !fallbackKey.startsWith('dj-') && fallbackKey.endsWith('-host')
           const isDj = !!updated.isDjBot || fallbackKey.startsWith('dj-')
-          const fallbackOutdated = !isDj && (!updated.appVersion || isNewerVersion(MIN_COMPATIBLE_VERSION, updated.appVersion))
+          const fallbackOutdated = !isDj && (!updated.appVersion || !normalizeVersion(updated.appVersion) || isNewerVersion(MIN_COMPATIBLE_VERSION, updated.appVersion))
           const nextPlayer: Player = {
             id: fallbackKey,
             gameId: updated.gameId || fallbackKey,

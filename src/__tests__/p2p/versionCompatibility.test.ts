@@ -67,6 +67,11 @@ describe('Version Compatibility & Outdated Flag', () => {
     expect(warningMsg?.content).toContain(MIN_COMPATIBLE_VERSION)
   })
 
+  it('does not admit a participant with an invalid version as a compatible client', () => {
+    processNetworkMessage({ type: 'PLAYER_JOIN', senderId: 'invalid-version-peer', timestamp: 1, payload: { player: { id: 'invalid-version-peer', name: 'Unknown version', appVersion: 'invalid' } } }, 'invalid-version-peer', true, vi.fn(), vi.fn(), vi.fn(), 'host')
+    expect(useGameStore.getState().remotePlayers['invalid-version-peer']).toBeUndefined()
+    expect(useChatStore.getState().messages.some(message => message.id === 'compat-warn-invalid-version-peer')).toBe(true)
+  })
   it('marks incoming peer with older appVersion (1.1.209) as outdated', () => {
     const broadcast = vi.fn()
     const removePeer = vi.fn()
@@ -92,7 +97,7 @@ describe('Version Compatibility & Outdated Flag', () => {
     expect(remote.appVersion).toBe('1.1.209')
   })
 
-  it('accepts incoming peer with compatible appVersion (>= 1.1.210) as not outdated', () => {
+  it('accepts incoming peer with compatible appVersion (>= minimum) as not outdated', () => {
     const broadcast = vi.fn()
     const removePeer = vi.fn()
     const checkZoneCall = vi.fn()
