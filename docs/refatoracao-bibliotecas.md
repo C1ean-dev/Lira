@@ -178,12 +178,12 @@ Testar: SDK simulado na UI, restauração real, offline, atualizações remotas,
 histórico, ponteiros, importação/exportação e fontes/recursos locais.
 Referência: [API oficial do Excalidraw](https://plus.excalidraw.com/docs/sdk/excalidraw/api/props).
 
-### [ ] 12. Revisão e encerramento
+### [x] 12. Revisão e encerramento
 
 - [x] Remover código morto, adaptadores temporários e dependências redundantes.
 - [x] Atualizar documentação de colaboração, armazenamento e logs.
-- [ ] Executar `npm test`, incluindo tipos, contratos e empacotamento.
-- [ ] Registrar resultados, commits e limites de validação.
+- [x] Executar `npm test`, incluindo tipos, contratos e empacotamento.
+- [x] Registrar resultados, commits e limites de validação.
 - [x] Registrar build completo, app, navegador e validação visual como pendentes de consulta ao usuário.
 
 Aceite: nenhuma regressão nova nas suítes executadas, etapas anteriores concluídas
@@ -212,7 +212,7 @@ preexistentes do usuário indiscriminadamente.
 | 9 | Concluída | TDD vermelho; 82 testes / 6 arquivos aprovados | `457279d` | Migrar quadro versão 2 |
 | 10 | Concluída | TDD vermelho; conversão, armazenamento e P2P na suíte de 67 testes / 15 arquivos | `429cebd`, `7468915` | Integrar editor |
 | 11 | Concluída | TDD vermelho; SDK real/simulado, fontes locais e tipos na suíte de 67 testes / 15 arquivos | `30515d9`, `d5bbac1` | Revisar e executar regressão completa |
-| 12 | Em andamento | Primeira regressão: 4.006 aprovados, 7 falhas, 4 pendentes; correções direcionadas aprovadas | A registrar | Aguardar regressão final |
+| 12 | Concluída | 4.018 aprovados no lote final; 31 aprovados no reteste isolado dos dois arquivos instáveis; 4 pendentes anteriores | `6ee5ff1` + commit de encerramento deste documento | Build/visual somente após consulta |
 
 - Baseline isolada: os quatro arquivos anteriores passaram (44 testes, `--maxWorkers=1`); as falhas iniciais não foram reproduzidas isoladamente.
 - Etapa 1: contratos estruturais Zod nas entradas P2P, descoberta e contatos; validadores especializados continuam responsáveis pelas regras de domínio. Fixtures de rede passam a incluir timestamp e payload completo.
@@ -319,9 +319,34 @@ armazenamentos e transporte P2P foram preservados.
   o limite mudou entre as rodadas. Durações de 31,9 s e 5,2 s, respectivamente,
   são compatíveis com os limites de 30 s/5 s sob concorrência. Esses arquivos não
   foram alterados por esta refatoração.
-- Reexecução isolada em andamento:
+- Reexecução isolada concluída:
   `npx vitest run src/__tests__/services/installerDelta.test.ts src/__tests__/services/updateIoHarness.test.ts --maxWorkers=1 --reporter=default`.
-  Log: `final-instalador-isolado.log`. Registrar o resultado antes de encerrar.
+  Resultado: **31 testes aprovados, dois arquivos aprovados**, em 315,66 s.
+  Log: `final-instalador-isolado.log`. Ambos os casos que falharam sob concorrência
+  passaram isolados, sem alterar código ou elevar timeouts dos testes.
 - A execução anterior com dois workers passou nesses dois arquivos. As falhas
   daquele ciclo relacionadas à migração foram corrigidas e aprovadas nos lotes
   de revisão e na regressão final.
+
+
+## Encerramento
+
+Etapas 0–12 concluídas em 2026-11-16. Os 4.020 casos executáveis foram aprovados
+considerando a suíte completa e o reteste isolado; quatro testes permaneceram
+pendentes como na linha de base. A execução completa com três workers terminou
+com código 1 pelos dois limites de tempo registrados acima; o reteste isolado
+terminou com código 0. Não confundir essa evidência combinada com uma rodada
+completa sem falhas sob concorrência. Não foi detectada regressão nova nas suítes
+executadas.
+
+Os fontes e testes não foram alterados entre a regressão final e o reteste isolado.
+Os commits da implementação estão registrados por etapa; `6ee5ff1` reúne as
+atualizações de documentação e o último commit desta branch registra este resultado.
+Mudanças preexistentes em assets, dados e transcrição permanecem no diretório de
+trabalho. Arquivos de colaboração que receberam migração foram incorporados de
+forma explícita, com as cópias anteriores preservadas no inventário inicial.
+
+Pendências de validação: build completo, abertura do aplicativo, avaliação visual
+e testes opt-in com navegador/Electron. A execução dessas verificações exige
+consulta ao usuário conforme `AGENTS.md`; nenhuma foi apresentada como realizada.
+Não houve criação de PR ou publicação de versão.
