@@ -8,6 +8,7 @@ import tailwindConfig from '../tailwind.config.js'
 
 export async function buildTestPanelCss(output, content = [
   './src/components/grid/CallTranscriptPanel.tsx',
+  './src/components/grid/TranscriptionControls.tsx',
   { raw: 'flex justify-end h-screen bg-slate-950', extension: 'html' },
 ]) {
   await build({

@@ -1,11 +1,12 @@
 import { AlmTree } from './almTree'
-import { AlmAssembler, AlmFrameQueue, packetizeFrame, type AlmFrame } from './almPackets'
+import { AlmAssembler, AlmFrameQueue, packetizeFrame, type AlmAssembly, type AlmFrame } from './almPackets'
 import { AlmVideoSink, AlmVideoSource, supportsAlmVideo, type AlmVideoConfig } from '../media/almVideo'
 import { AlmAudioSource, AlmAudioSink, supportsAlmAudio } from '../media/almAudio'
 import { AlmCaptureClock, AlmPlayoutClock } from '../media/almClock'
 import { markAlmStream } from '../media/almStreams'
 import { AlmCapacity } from './almCapacity'
 import { AlmSendQueue } from './almSendQueue'
+import type { AlmTransmissionCounters } from '../media/liveTransmissionStats'
 
 export interface AlmEdge { id: string; parent: string; child: string; maxLayer?: number }
 interface Link {
@@ -20,6 +21,8 @@ interface Link {
   blocked: number
   sent: number
   received: number
+  videoBytes: number
+  videoFramesSent: number
   reportedBytes: number
   deliveredBps: number | null
   rttMs: number | null
@@ -38,6 +41,7 @@ interface Session {
   clock: AlmPlayoutClock
   localLayer: number
   videoTimestamp?: number
+  renderedFrames: number
   viewHeights: Map<string, number | null>
   capacity: AlmCapacity
   measured?: ReturnType<AlmCapacity['observe']>
@@ -50,7 +54,7 @@ interface Session {
   sink?: AlmVideoSink
   queue?: AlmFrameQueue
   input?: string
-  lastFrame: number
+  lastRenderedAt: number
   lastKeyRequest: number
   lastRenew: number
   tree?: AlmTree
@@ -300,10 +304,10 @@ export class AlmLive {
   }
 
   private makeSession(root: string, epoch: string, config: AlmVideoConfig): Session {
-    return { root, epoch, config, revision: 0, edges: [], links: new Map(), lastFrame: Date.now(),
+    return { root, epoch, config, revision: 0, edges: [], links: new Map(), lastRenderedAt: Date.now(),
       lastKeyRequest: 0, lastRenew: Date.now(), viewers: new Map(), playing: new Set(), retired: new Map(), lastShed: 0,
       clock: new AlmPlayoutClock(), localLayer: this.layerFor(this.wantedHeights.get(root) ?? null, config),
-      viewHeights: new Map(), capacity: new AlmCapacity(), lastSample: performance.now(), createdAt: Date.now(), audioFrames: 0 }
+      viewHeights: new Map(), capacity: new AlmCapacity(), lastSample: performance.now(), createdAt: Date.now(), audioFrames: 0, renderedFrames: 0 }
   }
 
   private validHeight(height: unknown): number | null {
@@ -332,13 +336,18 @@ export class AlmLive {
         try { session.audioSink?.decode(frame) } catch (error) { this.fallback(session, error) }
       }, () => {}, { independent: true, ttlMs: 40 })
     }
-    session.sink = new AlmVideoSink(session.config, timestamp => { session.videoTimestamp = timestamp; notify() },
+    session.sink = new AlmVideoSink(session.config, timestamp => {
+      session.videoTimestamp = timestamp
+      session.lastRenderedAt = Date.now()
+      session.renderedFrames++
+      notify()
+    },
       error => this.fallback(session, error), session.clock)
     // Keep the raw canvas video out of the browser's separate live-audio buffer.
     // RemoteAudio controls this same scheduled audio graph directly.
     markAlmStream(session.sink.stream, session.audioSink)
     session.queue = new AlmFrameQueue(frame => {
-      try { session.sink?.decode(frame) } catch (error) { this.fallback(session, error) }
+      try { return session.sink?.decode(frame) } catch (error) { this.fallback(session, error) }
     }, () => this.requestKey(session))
   }
 
@@ -389,7 +398,7 @@ export class AlmLive {
     const pc = new RTCPeerConnection({ bundlePolicy: 'max-bundle', iceCandidatePoolSize: 0 })
     const link: Link = { edge, pc, candidates: [], assembler: new AlmAssembler(), sendQueue: new AlmSendQueue(() => this.requestKey(session)),
       seen: new Set(), openedAt: Date.now(), blocked: 0, sent: 0,
-      received: 0, reportedBytes: 0, deliveredBps: null, rttMs: null, statsPending: false, receiptAt: 0, fallbackRequested: false }
+      received: 0, videoBytes: 0, videoFramesSent: 0, reportedBytes: 0, deliveredBps: null, rttMs: null, statsPending: false, receiptAt: 0, fallbackRequested: false }
     session.links.set(edge.id, link)
     const other = offer ? edge.child : edge.parent
     pc.onicecandidate = event => {
@@ -428,10 +437,11 @@ export class AlmLive {
       link.received += event.data.byteLength
       const assembly = link.assembler.pushPacket(event.data)
       if (!assembly) return
-      const { frame, packets } = assembly
+      const { frame, payloadBytes } = assembly
       const frameId = `${frame.media ?? 'video'}:${frame.sequence}`
       if (link.seen.has(frameId)) return
       link.seen.add(frameId)
+      if (frame.media !== 'audio') link.videoBytes += payloadBytes
       if (link.seen.size > 256) link.seen.delete(link.seen.values().next().value!)
       if (session.input !== link.edge.id) {
         if (frame.media === 'audio') return
@@ -442,8 +452,7 @@ export class AlmLive {
         session.inputTimestamp = frame.timestamp
         session.queue?.reset()
       }
-      if (frame.media !== 'audio') session.lastFrame = Date.now()
-      this.forward(session, frame, packets)
+      this.forward(session, frame, assembly)
       if (frame.media === 'audio') { session.audioFrames++; session.audioQueue?.push(frame) }
       else if ((frame.temporalLayer ?? 0) <= session.localLayer) {
         // Forwarding is finished. Remap only this local frame, keeping its data
@@ -454,8 +463,8 @@ export class AlmLive {
     }
   }
 
-  private forward(session: Session, frame: AlmFrame, receivedPackets?: readonly ArrayBuffer[]): void {
-    let packets = receivedPackets
+  private forward(session: Session, frame: AlmFrame, received?: AlmAssembly): void {
+    let packets = received?.packets
     // A rejected source edge can change the topology while handling this frame.
     for (const link of [...session.links.values()]) {
       if (session.links.get(link.edge.id) !== link) continue
@@ -467,8 +476,13 @@ export class AlmLive {
       packets ??= packetizeFrame(frame)
       const deliveredBps = Date.now() - link.receiptAt < 6000 ? link.deliveredBps : null
       const result = link.sendQueue.send(frame, packets, link.channel, deliveredBps)
-      if (result === 'sent') link.sent += packets.reduce((sum, packet) => sum + packet.byteLength, 0)
-      else if (result === 'blocked') link.blocked++
+      if (result === 'sent') {
+        link.sent += packets.reduce((sum, packet) => sum + packet.byteLength, 0)
+        if (frame.media !== 'audio') {
+          link.videoBytes += received?.payloadBytes ?? frame.data.byteLength
+          link.videoFramesSent++
+        }
+      } else if (result === 'blocked') link.blocked++
       else if (result === 'oversized-key') {
         link.blocked++
         link.fallbackRequested = true
@@ -569,7 +583,7 @@ export class AlmLive {
   private fallback(session: Session, error: unknown): void {
     if (this.sessions.get(session.root) !== session) return
     this.deps.log('fallback', { root: session.root, error: String(error), audioFrames: session.audioFrames,
-      videoAgeMs: Date.now() - session.lastFrame })
+      videoAgeMs: Date.now() - session.lastRenderedAt })
     this.send(session.root, session, { kind: 'fallback' })
     this.dispose(session)
   }
@@ -597,7 +611,7 @@ export class AlmLive {
         if (session.audioSink && !session.audioSink.played && now - session.createdAt > 12_000) {
           this.fallback(session, new Error('Audio playback unavailable')); continue
         }
-        if (now - session.lastFrame > 10_000) { this.fallback(session, new Error('No video received')); continue }
+        if (now - session.lastRenderedAt > 10_000) { this.fallback(session, new Error('No video played')); continue }
       }
       for (const link of session.links.values()) {
         if (link.channel?.readyState !== 'open' && now - link.openedAt > 12_000) this.linkFailed(session, link.edge, new Error('Channel timeout'))
@@ -617,8 +631,8 @@ export class AlmLive {
         rttMs: rtts.length ? Math.max(...rtts) : null,
       }, outgoing.length)
       session.measured = measured
-      for (const link of outgoing) {
-        link.blocked = 0; link.sent = 0
+      for (const link of outgoing) { link.blocked = 0; link.sent = 0 }
+      for (const link of [...outgoing, ...incoming]) {
         if (!link.statsPending && typeof link.pc.getStats === 'function') {
           link.statsPending = true
           void link.pc.getStats().then(stats => {
@@ -675,6 +689,26 @@ export class AlmLive {
         deliveredBps: link.deliveredBps, rttMs: link.rttMs,
       })),
     }))
+  }
+
+  transmissionCounters(stream: MediaStream, local: boolean): AlmTransmissionCounters | undefined {
+    for (const session of this.sessions.values()) {
+      const track = session.capture?.track
+      if (local ? !track || !stream.getVideoTracks().some(video => video.id === track.id) : session.sink?.stream !== stream) continue
+      const links = [...session.links.values()].filter(link => link.videoBytes > 0 && (local
+        ? link.edge.parent === session.root && session.playing.has(link.edge.child)
+        : link.edge.id === session.confirmedInput))
+      return {
+        peers: local ? session.playing : new Set([session.root]),
+        rows: links.map(link => ({
+          id: `alm:${session.epoch}:${link.edge.id}`, peerId: local ? link.edge.child : session.root,
+          width: session.config.codedWidth ?? null, height: session.config.codedHeight ?? null,
+          codec: session.config.codec.startsWith('avc1.') ? 'H.264' : session.config.codec.toUpperCase(),
+          bytes: link.videoBytes, frames: local ? link.videoFramesSent : session.renderedFrames,
+          rttMs: link.rttMs,
+        })),
+      }
+    }
   }
 
   stopSource(): void {

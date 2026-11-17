@@ -24,7 +24,8 @@ export default function ExcalidrawBoard() {
   const [error, setError] = useState(''), [confirmClear, setConfirmClear] = useState(false)
   const [view, setView] = useState({ x: 0, y: 0, zoom: 1 })
   const openFile = useRef<HTMLInputElement>(null), applyingRemote = useRef(false), laserActive = useRef(false)
-  const elements = useMemo(() => restoreSceneElements(getWhiteboardElements(document)), [document])
+  const storedElements = useMemo(() => getWhiteboardElements(document), [document])
+  const elements = useMemo(() => restoreSceneElements(storedElements), [storedElements])
   const files = useMemo(() => getWhiteboardFiles(document) as BinaryFiles, [document])
   const initialData = useRef({ elements, files, appState: { theme: dark ? 'dark' as const : 'light' as const } })
   const base = () => {
@@ -49,8 +50,10 @@ export default function ExcalidrawBoard() {
   useEffect(() => {
     if (!api) return
     const current = api.getSceneElementsIncludingDeleted()
-    const same = current.length === elements.length && current.every((element, i) => {
-      const other = elements[i]
+    // Restoration drops zero-size shapes while the SDK is still drawing them.
+    // Compare saved revisions first so a local change is not echoed into the gesture.
+    const same = current.length === storedElements.length && current.every((element, i) => {
+      const other = storedElements[i]
       return element.id === other.id && element.version === other.version && element.versionNonce === other.versionNonce && element.isDeleted === other.isDeleted
     })
     const missing = Object.values(files).filter(file => !api.getFiles()[file.id])
@@ -59,7 +62,7 @@ export default function ExcalidrawBoard() {
     applyingRemote.current = true
     try { api.updateScene({ elements, captureUpdate: CaptureUpdateAction.NEVER }) }
     finally { applyingRemote.current = false }
-  }, [api, elements, files])
+  }, [api, storedElements, elements, files])
   useEffect(() => () => { if (laserActive.current) sendBoardPointer(null) }, [])
   const onChange: ExcalidrawProps['onChange'] = (next, appState, nextFiles) => {
     if (appState.theme !== (dark ? 'dark' : 'light')) setDark(appState.theme === 'dark')

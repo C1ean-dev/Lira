@@ -32,7 +32,7 @@ describe('Encoded live packets', () => {
   it('waits for an IDR, reorders frames, and requests another IDR after loss', () => {
     const displayed: number[] = []
     let requests = 0
-    const queue = new AlmFrameQueue(frame => displayed.push(frame.sequence), () => requests++)
+    const queue = new AlmFrameQueue(frame => { displayed.push(frame.sequence) }, () => requests++)
     queue.push(frame(1), 0)
     expect(displayed).toEqual([])
     queue.push(frame(2, true), 1)
@@ -52,7 +52,7 @@ describe('Encoded live packets', () => {
     vi.useFakeTimers()
     let now = 0, requests = 0
     const displayed: number[] = []
-    const queue = new AlmFrameQueue(frame => displayed.push(frame.sequence), () => requests++, { now: () => now })
+    const queue = new AlmFrameQueue(frame => { displayed.push(frame.sequence) }, () => requests++, { now: () => now })
     queue.push(frame(0, true))
     queue.push(frame(2))
     now = 179; vi.advanceTimersByTime(179)
@@ -65,11 +65,28 @@ describe('Encoded live packets', () => {
     queue.reset()
   })
 
+  it('waits for a new keyframe when the decoder cannot take more frames', () => {
+    const requests = vi.fn()
+    const decoded: number[] = []
+    const queue = new AlmFrameQueue(frame => {
+      if (frame.sequence === 2) return false
+      decoded.push(frame.sequence)
+    }, requests)
+    queue.push(frame(1, true), 0)
+    queue.push(frame(2), 1)
+    queue.push(frame(3), 2)
+    expect(requests).toHaveBeenCalled()
+    expect(decoded).toEqual([1])
+    queue.push(frame(4, true), 3)
+    queue.push(frame(5), 4)
+    expect(decoded).toEqual([1, 4, 5])
+  })
+
   it('drops a missing independent audio packet and continues within 40 ms', () => {
     vi.useFakeTimers()
     let now = 0
     const displayed: number[] = []
-    const queue = new AlmFrameQueue(frame => displayed.push(frame.sequence), () => {}, { now: () => now, independent: true, ttlMs: 40 })
+    const queue = new AlmFrameQueue(frame => { displayed.push(frame.sequence) }, () => {}, { now: () => now, independent: true, ttlMs: 40 })
     queue.push(frame(0, true)); queue.push(frame(2, true))
     now = 40; vi.advanceTimersByTime(40)
     expect(displayed).toEqual([0, 2])

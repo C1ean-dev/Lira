@@ -225,6 +225,30 @@ export function prioritizeCodecInSdp(sdp: string, forceH264?: boolean): string {
   return useHw ? prioritizeH264InSdp(sdp) : prioritizeVP8InSdp(sdp)
 }
 
+export function fallbackVideoToVp8(sdp: string): string {
+  const separator = sdp.includes('\r\n') ? '\r\n' : '\n'
+  return sdp.split(/(?=^m=)/m).map(section => {
+    if (!section.startsWith('m=video ')) return section
+    const [media, ...attributes] = section.split(separator)
+    const [kind, port, protocol, ...payloads] = media.split(' ')
+    const vp8 = new Set(attributes.flatMap(line => {
+      const match = /^a=rtpmap:(\d+) VP8\//i.exec(line)
+      return match && payloads.includes(match[1]) ? [match[1]] : []
+    }))
+    if (!vp8.size) return section
+    const selected = new Set(vp8)
+    for (const line of attributes) {
+      const match = /^a=fmtp:(\d+)\s+.*\bapt=(\d+)\b/.exec(line)
+      if (match && vp8.has(match[2])) selected.add(match[1])
+    }
+    return [[kind, port, protocol, ...payloads.filter(payload => selected.has(payload))].join(' '),
+      ...attributes.filter(line => {
+        const match = /^a=(?:rtpmap|fmtp|rtcp-fb):(\d+)\b/.exec(line)
+        return !match || selected.has(match[1])
+      })].join(separator)
+  }).join('')
+}
+
 export function installHardwareCodecInterceptor() {
 }
 

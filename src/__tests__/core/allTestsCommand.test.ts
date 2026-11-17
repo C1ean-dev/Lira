@@ -13,6 +13,9 @@ describe('complete local test command', () => {
 
   it('enables the opt-in runtime suites instead of silently skipping them', () => {
     for (const [name, flag, file] of [
+      ['test:e2e', 'LIRA_RUN_SYSTEM_E2E', 'scripts/system.e2e.test.mjs'],
+      ['test:whiteboard:browser', 'LIRA_RUN_WHITEBOARD_TESTS', 'scripts/whiteboard-editor.browser.test.mjs'],
+      ['test:transcription:map', 'LIRA_RUN_SPACE_TRANSCRIPTION_TESTS', 'scripts/space-transcription.browser.test.mjs'],
       ['test:core:browser', 'LIRA_RUN_BROWSER_TESTS', 'scripts/core-realtime.browser.test.mjs'],
       ['test:navigation:browser', 'LIRA_RUN_NAVIGATION_TESTS', 'scripts/navigation-responsive.browser.test.mjs'],
       ['test:invites:electron', 'LIRA_RUN_INVITE_TESTS', 'scripts/space-invite.electron.test.mjs'],

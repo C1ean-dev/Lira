@@ -3,7 +3,7 @@ import { MapData, PlacedFurniture, PrivateZone } from './map'
 import { ChatMessage } from './chat'
 
 export const MIN_COMPATIBLE_VERSION = '1.1.211'
-export const CURRENT_LIRA_VERSION = '1.1.211'
+export { CURRENT_APP_VERSION as CURRENT_LIRA_VERSION } from '../utils/appVersion'
 
 export type SignalingTier = 'render' | 'public' | 'local' | 'direct'
 

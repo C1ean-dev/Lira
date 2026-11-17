@@ -21,6 +21,7 @@ export const AppUpdateScreen: React.FC<AppUpdateScreenProps> = (props) => {
   const storeStatus = useUpdateStore((s) => s.status)
   const storeProgress = useUpdateStore((s) => s.progress)
   const storeError = useUpdateStore((s) => s.error)
+  const lastCheckFailed = useUpdateStore((s) => s.lastCheckFailed)
   const setIsUpdateScreenOpen = useUpdateStore((s) => s.setIsUpdateScreenOpen)
   const checkForUpdatesAndDownload = useUpdateStore((s) => s.checkForUpdatesAndDownload)
   const openManualDownload = useUpdateStore((s) => s.openManualDownload)
@@ -39,6 +40,9 @@ export const AppUpdateScreen: React.FC<AppUpdateScreenProps> = (props) => {
   const isDownloading = status === 'downloading'
   const isError = status === 'error'
   const isReady = status === 'ready'
+  const isIdle = status === 'idle'
+  const canInstall = isReady || (isIdle && updateInfo?.hasUpdate && !lastCheckFailed)
+  const showProgress = isDownloading || isInstalling
 
   const percent = Math.min(100, Math.max(0, Math.round(progress?.percent || (isInstalling ? 100 : 0))))
   const downloadedMB = progress?.downloaded ? (progress.downloaded / (1024 * 1024)).toFixed(1) : null
@@ -101,19 +105,13 @@ export const AppUpdateScreen: React.FC<AppUpdateScreenProps> = (props) => {
             <p className="text-sm font-semibold text-emerald-300">Atualização pronta para instalar</p>
           )}
 
-          {!isDownloading && !isInstalling && !isError && !isReady && (
-            <>
-              <p className="text-sm font-semibold text-slate-200">
-                Preparando atualização...
-              </p>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Aguarde um momento.
-              </p>
-            </>
-          )}
+          {status === 'checking' && <p role="status" className="text-sm font-semibold text-slate-200">Verificando atualizações...</p>}
+          {isIdle && <p role="status" className="text-sm font-semibold text-slate-200">
+            {lastCheckFailed ? 'Não foi possível verificar atualizações.' : canInstall ? 'Atualização disponível' : 'Nenhuma atualização disponível'}
+          </p>}
         </div>
 
-        {!isError && !isReady && (
+        {showProgress && (
           <div className="w-full mt-6 space-y-2">
             <div className="w-full h-3 bg-[#181d2a] rounded-full p-0.5 border border-[#2a3142] overflow-hidden shadow-inner">
               <div
@@ -176,18 +174,21 @@ export const AppUpdateScreen: React.FC<AppUpdateScreenProps> = (props) => {
           </div>
         )}
 
-        {isReady && (
+        {!showProgress && !isError && (
           <div className="flex items-center gap-2 mt-6">
-            <button type="button" onClick={() => applyUpdate()} className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs cursor-pointer">
+            {canInstall && <button type="button" onClick={() => applyUpdate()} className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs cursor-pointer">
               Atualizar agora
-            </button>
+            </button>}
+            {isIdle && lastCheckFailed && <button type="button" onClick={() => handleRetry()} className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer">
+              Tentar novamente
+            </button>}
             <button type="button" onClick={handleClose} className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer">
               Fechar
             </button>
           </div>
         )}
 
-        {!isError && !isReady && (
+        {showProgress && (
           <p className="text-[11px] text-slate-500 mt-8 tracking-wide">
             Por favor, não feche o aplicativo enquanto a atualização é concluída.
           </p>

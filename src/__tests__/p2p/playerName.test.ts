@@ -10,13 +10,13 @@ function makePlayer(id: string, name: string): Player {
   return {
     id,
     name,
+    appVersion: CURRENT_LIRA_VERSION,
     x: 10,
     y: 10,
     direction: 'down',
     isMoving: false,
     avatar: { ...DEFAULT_AVATAR },
     status: 'available',
-    appVersion: CURRENT_LIRA_VERSION,
     lastUpdated: Date.now(),
   }
 }

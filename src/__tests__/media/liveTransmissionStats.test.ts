@@ -73,4 +73,25 @@ describe('live transmission statistics', () => {
     expect(await sample(new Map([['camera', { peerConnection: pc }], ['broken', { peerConnection: broken }]]), stream, true)).toEqual([])
     expect(pc.getStats).not.toHaveBeenCalled()
   })
+
+  it('samples the displayed ALM stream and ignores the old RTP connection for the same viewer', async () => {
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(1000)
+    try {
+      const pc = connection(report())
+      const calls = new Map([['host', { peerConnection: pc }]])
+      const sample = createTransmissionSampler()
+      const source = { id: 'edge-1', peerId: 'host', width: 640, height: 360, codec: 'H.264', rttMs: 12, bytes: 100000, frames: 30 }
+      const counters = { peers: new Set(['host']), rows: [source] }
+      expect((await sample(calls, stream, false, counters))[0]).toMatchObject({ bitrateKbps: null, fps: null })
+      clock.mockReturnValue(2000)
+      expect((await sample(calls, stream, false, { ...counters, rows: [{ ...source, bytes: 225000, frames: 60 }] }))[0])
+        .toMatchObject({ width: 640, height: 360, bitrateKbps: 1000, fps: 30, bytes: 225000, jitterMs: null, lossPct: null })
+      clock.mockReturnValue(3000)
+      expect((await sample(calls, stream, false, { ...counters, rows: [{ ...source, id: 'edge-2', bytes: 5000 }] }))[0])
+        .toMatchObject({ bitrateKbps: null, fps: null })
+      expect(pc.getStats).not.toHaveBeenCalled()
+    } finally {
+      clock.mockRestore()
+    }
+  })
 })

@@ -8,6 +8,7 @@ export const VIEW_RENEW_MS = 10_000
 export interface LiveViewDeps {
   send: (sharerId: string, watch: boolean, h: number | null) => void
   stats?: (sharerId: string) => Promise<any> | null | undefined
+  decoderFailed?: (sharerId: string) => void
 }
 
 interface Ask {
@@ -217,6 +218,9 @@ export class LiveViewReporter {
             const reading = readViewStats(stats, this.viewCounters.get(sharerId) ?? null)
             if (!reading) return
             this.viewCounters.set(sharerId, reading.counters)
+            const { codec, decoder } = reading.sample
+            if (codec === 'H264' && typeof decoder === 'string' && decoder.startsWith('NullVideoDecoder') &&
+              (reading.counters.bytes ?? 0) > 0) this.deps.decoderFailed?.(sharerId)
             diagLog('screenshare', 'view-stats', {
               fromPeer: sharerId,
               askH: this.sent.get(sharerId)?.h ?? null,

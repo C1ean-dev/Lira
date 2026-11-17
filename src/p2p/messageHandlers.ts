@@ -112,6 +112,9 @@ export function processNetworkMessage(
 
     case 'VERSION_INCOMPATIBLE': {
       const { minVersion, currentVersion, message } = msg.payload || {}
+      const localVersion = useGameStore.getState().localPlayer.appVersion
+      const requiredVersion = normalizeVersion(minVersion || MIN_COMPATIBLE_VERSION)
+      if (requiredVersion && localVersion && normalizeVersion(localVersion) && !isNewerVersion(requiredVersion, localVersion)) return
       useChatStore.getState().addMessage({
         id: 'version-incompatible-warning',
         senderId: 'system',

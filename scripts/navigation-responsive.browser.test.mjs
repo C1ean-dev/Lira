@@ -94,6 +94,7 @@ test('navigation fits the viewport and its compact menu stays legible above the 
       for (const viewport of [{ width: 1920, height: 580 }, { width: 375, height: 320 }]) {
         await page.setViewportSize(viewport)
         await reset({})
+        if (viewport.width < 520) await openMenu()
         const trigger = page.getByRole('button', { name: 'Convites individuais', exact: true })
         await trigger.click()
         const dialog = page.getByRole('dialog', { name: 'Convites individuais' })
@@ -153,12 +154,13 @@ test('navigation fits the viewport and its compact menu stays legible above the 
     await t.test('the host invitation actions stay next to each other with labels where they fit', async () => {
       for (const width of [320, 375, 520, 900, 1536, 1920]) {
         await page.setViewportSize({ width, height: 768 }); await reset({})
+        if (width < 520) await openMenu()
         const complete = page.getByRole('button', { name: 'Copiar convite completo', exact: true })
         const individual = page.getByRole('button', { name: 'Convites individuais', exact: true })
         assert.ok(await complete.isVisible() && await individual.isVisible())
         assert.equal(await complete.evaluate(button => button.nextElementSibling?.getAttribute('aria-label')), 'Convites individuais')
-        assert.equal(await complete.getByText('Convite completo', { exact: true }).isVisible(), width >= 520)
-        assert.equal(await individual.getByText('Convites individuais', { exact: true }).isVisible(), width >= 520)
+        assert.equal(await complete.getByText('Convite completo', { exact: true }).isVisible(), width < 520 || width >= 1024)
+        assert.equal(await individual.getByText('Convites individuais', { exact: true }).isVisible(), width < 520 || width >= 1024)
       }
     })
     await t.test('the host copies a complete invitation from the invitation button', async () => {
@@ -304,8 +306,9 @@ test('navigation fits the viewport and its compact menu stays legible above the 
         assert.ok(await name.isVisible())
       }
     })
-    for (const width of [375, 1240, 1536]) {
+    for (const width of [320, 375, 520, 640, 900, 1024, 1240, 1366, 1536, 1920]) {
       await page.setViewportSize({ width, height: 768 }); await reset({})
+      await page.locator('header').screenshot({ path: path.join(screenshots, `header-${width}.png`) })
       if (width < 1536) await openMenu()
       await page.screenshot({ path: path.join(screenshots, `${width}.png`) })
     }
