@@ -379,3 +379,29 @@ Não foi alterado o timeout global nem reduzido o número de verificações.
   Esta rodada completa sem falhas substitui a limitação de validação registrada no encerramento anterior.
   Aplicativo, navegador e suítes opt-in de Electron/Chromium não foram abertos.
   Alterações preexistentes em assets, dados e transcrição foram preservadas.
+
+
+## Correção posterior — abertura do aplicativo e MQTT no navegador
+
+Branch: `codex/fix-mqtt-browser-import`. Commit: `70fc33e`.
+
+Os logs de inicialização de 2026-11-17 registraram que o módulo MQTT otimizado
+pelo Vite não oferecia a exportação nomeada `connect`. O entry point Node do
+pacote oferece exportações nomeadas, mas o bundle de navegador do MQTT.js 5.16.1
+oferece uma exportação padrão. Isso impedia o carregamento de `bootstrap.tsx` e
+mantinha a mensagem de falha na abertura.
+
+`publicRoomsService.ts` agora importa o objeto padrão e chama `mqtt.connect`.
+Os quatro mocks de MQTT passaram a reproduzir o formato do navegador. O novo
+`core/mqttBrowserImport.test.ts` usa o pacote instalado real, resolve o entry
+point de navegador, compila o consumidor e carrega o resultado em Node para
+verificar a API. Não instancia o serviço nem abre broker, navegador ou Electron.
+
+- Antes da correção: o novo teste falhou com `No matching export ... for import "connect"`, reproduzindo o erro dos logs. Registro: `.scratch/mqtt-browser-import/before.log`.
+- Após a correção: **35 testes aprovados em oito arquivos**, incluindo o contrato
+  real de navegador, descoberta MQTT/Render, inicialização e tipos de produção.
+  Registro: `.scratch/mqtt-browser-import/confirmed.log`.
+- Comando: `npx vitest run src/__tests__/core/mqttBrowserImport.test.ts src/__tests__/services/mqttClientMigration.test.ts src/__tests__/services/publicRoomsServer.test.ts src/__tests__/services/publicRoomsRender.test.ts src/__tests__/services/publicHubPerformance.test.ts src/__tests__/core/mainStartup.test.ts src/__tests__/core/startupWiring.test.ts src/__tests__/core/productionTypes.test.ts --maxWorkers=2 --reporter=default`.
+- A suíte completa não foi repetida nesta correção; as verificações acima cobrem
+  os consumidores alterados e a falha real de importação. A abertura visual do
+  aplicativo continua pendente de consulta ao usuário conforme `AGENTS.md`.
