@@ -5,6 +5,7 @@ import { useWhiteboardStore } from '../../store/useWhiteboardStore'
 import { useGameStore } from '../../store/useGameStore'
 import { sendWhiteboardOperation, requestWhiteboard } from '../../services/whiteboardNetwork'
 import { PeerManager } from '../../p2p/PeerManager'
+import { createWhiteboard, applyWhiteboardOperation, type WhiteboardDocument } from '../../collaboration/whiteboard'
 import * as persistence from '../../collaboration/boardPersistence'
 const original = useGameStore.getState()
 beforeEach(() => { localStorage.clear(); vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ filter: 'none', measureText: (text: string) => ({ width: text.length * 10 }) } as any) })
@@ -30,6 +31,16 @@ describe('offline version 2 boards', () => {
     await useWhiteboardStore.getState().flushWrites()
     expect(useWhiteboardStore.getState().storageError).toBe(true)
     expect(Object.keys(useWhiteboardStore.getState().document.operations)).toEqual(['me:1'])
+  })
+  it('does not apply a delayed load from the previous room after switching rooms', async () => {
+    const resolve = new Map<string, (value: WhiteboardDocument) => void>()
+    vi.spyOn(persistence, 'loadBoardRoom').mockImplementation(room => new Promise(done => { resolve.set(room, done) }))
+    const first = useWhiteboardStore.getState().selectRoom('first')
+    const second = useWhiteboardStore.getState().selectRoom('second')
+    resolve.get('second')!(createWhiteboard()); await second
+    resolve.get('first')!(applyWhiteboardOperation(createWhiteboard(), operation())); await first
+    expect(useWhiteboardStore.getState().roomId).toBe('second')
+    expect(useWhiteboardStore.getState().document.operations).toEqual({})
   })
   it('opens corrupted legacy data as an empty usable board while retaining the original', async () => {
     const room = crypto.randomUUID(); localStorage.setItem('lira_whiteboard_' + room, '{invalid')

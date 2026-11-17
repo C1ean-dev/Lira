@@ -9,9 +9,10 @@ describe('existing IndexedDB databases', () => {
     const old = await openDB('lira-image-library', 1, { upgrade(db) { db.createObjectStore('catalog'); db.createObjectStore('images') } })
     const original = { version: 3 as const, document: 'old', images: [] }
     await old.put('catalog', original, 'library'); old.close()
-    await expect(writeImageLibrary({ ...original, document: 'new', images: ['missing.png'] }, [])).rejects.toThrow()
+    await expect(writeImageLibrary({ ...original, document: 'new', images: ['partial.png', 'missing.png'] }, [['partial.png', new Blob(['partial'])]])).rejects.toThrow()
     const db = await openImageLibrary()
     expect(await db.get('catalog', 'library')).toEqual(original)
+    expect(await db.get('images', 'partial.png')).toBeUndefined()
     db.close()
   })
   it('commits image bytes and the catalog in the same transaction', async () => {

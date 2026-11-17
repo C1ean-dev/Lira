@@ -73,6 +73,7 @@ describe('embedded Excalidraw integration', () => {
     expect(Object.values(useWhiteboardStore.getState().document.operations)[0].kind).toBe('element')
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar limpeza' }))
     expect(Object.values(useWhiteboardStore.getState().document.operations).some(op => op.kind === 'clear')).toBe(true)
+    expect(sdk.updateScene).toHaveBeenCalledWith(expect.objectContaining({ captureUpdate: 'IMMEDIATELY' }))
   })
   it('imports a scene with a deletion barrier and keeps invalid imports from clearing existing content', async () => {
     const { container } = render(<ExcalidrawBoard />)

@@ -33,6 +33,13 @@ describe('accessible dropdown integration', () => {
     await user.keyboard('[End][Enter]')
     expect(change).toHaveBeenCalledWith('g')
   })
+  it('finds an option by typing its label', async () => {
+    const user = userEvent.setup(), change = vi.fn()
+    render(<CustomDropdown value="a" options={options} onChange={change} />)
+    await user.click(screen.getByRole('combobox'))
+    await user.keyboard('b[Enter]')
+    expect(change).toHaveBeenCalledWith('b')
+  })
   it('closes on Escape without changing the selected value', async () => {
     const user = userEvent.setup(), change = vi.fn()
     render(<CustomDropdown value="a" options={options} onChange={change} />)

@@ -6,4 +6,3 @@ export type BoardElement = ExcalidrawElement
 export type BoardFile = BinaryFileData
 export type BoardFiles = BinaryFiles
 export type BoardPoint = { x: number; y: number }
-export type BoardView = { x: number; y: number; zoom: number }

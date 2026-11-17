@@ -9,3 +9,6 @@
 .board-confirm { padding:24px; max-width:90%; border-radius:12px; border:1px solid var(--board-border); background:var(--board-panel); color:var(--board-text); }
 .board-confirm p { margin-bottom:16px; }
 .board-confirm button { padding:8px 14px; margin-right:10px; border:1px solid var(--board-border); border-radius:8px; }
+
+/* These integrations require external services; the embedded editor stays local. */
+.lira-board .library-menu-browse-button, .lira-board [data-testid="toolbar-embeddable"] { display:none; }
