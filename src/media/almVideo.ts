@@ -154,7 +154,10 @@ export class AlmVideoSink {
 
   decode(frame: AlmFrame): false | void {
     if (this.closed) return
-    if (this.decoder.decodeQueueSize > 8) return false
+    if (this.decoder.decodeQueueSize > 8) {
+      this.clock.dropVideoFrame()
+      return false
+    }
     this.decoder.decode(new EncodedVideoChunk({ type: frame.key ? 'key' : 'delta', timestamp: frame.timestamp, data: frame.data }))
   }
 

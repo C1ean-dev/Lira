@@ -60,6 +60,7 @@ interface Session {
   tree?: AlmTree
   viewers: Map<string, number>
   playing: Set<string>
+  rtpOnly: Set<string>
   retired: Map<string, { edge: AlmEdge; until: number }>
   source?: AlmVideoSource
   capture?: { track: MediaStreamTrack; fps: number; hardware: boolean; audio?: MediaStreamTrack }
@@ -170,7 +171,7 @@ export class AlmLive {
       return
     }
     if (message.kind === 'join') {
-      if (root === me && session?.tree && from !== me) {
+      if (root === me && session?.tree && from !== me && !session.rtpOnly.has(from)) {
         const height = this.validHeight(message.h)
         if (session.tree.parents.has(from) && session.viewHeights.get(from) !== height) {
           session.viewHeights.set(from, height); this.publish(session)
@@ -215,6 +216,7 @@ export class AlmLive {
     if (message.kind === 'stop' && from === root) { this.dispose(session); return }
     if (session.tree) {
       if (message.kind === 'ready') {
+        if (session.rtpOnly.has(from)) return
         session.viewers.set(from, Date.now())
         // Do not fill a slot still occupied by a retiring edge during handoff.
         if (!session.retired.size && session.tree.add(from)) this.publish(session)
@@ -305,7 +307,7 @@ export class AlmLive {
 
   private makeSession(root: string, epoch: string, config: AlmVideoConfig): Session {
     return { root, epoch, config, revision: 0, edges: [], links: new Map(), lastRenderedAt: Date.now(),
-      lastKeyRequest: 0, lastRenew: Date.now(), viewers: new Map(), playing: new Set(), retired: new Map(), lastShed: 0,
+      lastKeyRequest: 0, lastRenew: Date.now(), viewers: new Map(), playing: new Set(), rtpOnly: new Set(), retired: new Map(), lastShed: 0,
       clock: new AlmPlayoutClock(), localLayer: this.layerFor(this.wantedHeights.get(root) ?? null, config),
       viewHeights: new Map(), capacity: new AlmCapacity(), lastSample: performance.now(), createdAt: Date.now(), audioFrames: 0, renderedFrames: 0 }
   }
@@ -495,6 +497,8 @@ export class AlmLive {
   private rejectRecovery(session: Session, edge: AlmEdge): void {
     // Ignore retired handoff edges: the new parent may already be delivering.
     if (!session.tree || !session.edges.some(active => active.id === edge.id)) return
+    // Watch renewals would otherwise immediately recreate the edge that rejected the recovery frame.
+    session.rtpOnly.add(edge.child)
     this.deps.log('recovery-too-large', { edge: edge.id, parent: edge.parent, child: edge.child })
     this.send(edge.child, session, { kind: 'stop' })
     this.removeViewer(session, edge.child)
@@ -698,6 +702,7 @@ export class AlmLive {
       const links = [...session.links.values()].filter(link => link.videoBytes > 0 && (local
         ? link.edge.parent === session.root && session.playing.has(link.edge.child)
         : link.edge.id === session.confirmedInput))
+      const playback = local ? undefined : session.clock.videoStats()
       return {
         peers: local ? session.playing : new Set([session.root]),
         rows: links.map(link => ({
@@ -706,6 +711,7 @@ export class AlmLive {
           codec: session.config.codec.startsWith('avc1.') ? 'H.264' : session.config.codec.toUpperCase(),
           bytes: link.videoBytes, frames: local ? link.videoFramesSent : session.renderedFrames,
           rttMs: link.rttMs,
+          ...playback,
         })),
       }
     }

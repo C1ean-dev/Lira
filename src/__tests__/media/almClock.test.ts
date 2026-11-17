@@ -55,3 +55,36 @@ it('delays both tracks together when the selected audio device needs more output
   expect(clock.describe().playoutLeadMs).toBe(540)
   clock.close()
 })
+
+it('counts gaps between played frames as freezes while accepting a steady lower frame rate', () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+  const clock = new AlmPlayoutClock()
+  const show = vi.fn()
+  for (let frame = 0; frame < 6; frame++) {
+    clock.schedule(frame * 40_000, show, vi.fn())
+    vi.advanceTimersByTime(40)
+  }
+  vi.advanceTimersByTime(120)
+  expect(clock.videoStats()).toMatchObject({ freezeCount: 0, freezeDurationSec: 0, droppedFrames: 0 })
+
+  clock.schedule(500_000, show, vi.fn())
+  vi.advanceTimersByTime(260)
+  expect(show).toHaveBeenCalledTimes(7)
+  expect(clock.videoStats()).toMatchObject({ freezeCount: 1, freezeDurationSec: 0.3 })
+  clock.close()
+})
+
+it('counts cancelled playout frames and frames that arrive too late without counting them as played', () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
+  const clock = new AlmPlayoutClock()
+  const release = vi.fn(), show = vi.fn()
+  clock.schedule(0, show, release)
+  clock.ensureLead(240)
+  clock.schedule(500_000, show, release)
+  vi.advanceTimersByTime(740)
+  clock.schedule(0, show, release)
+  expect(show).toHaveBeenCalledOnce()
+  expect(release).toHaveBeenCalledTimes(3)
+  expect(clock.videoStats()).toMatchObject({ droppedFrames: 2, freezeCount: 0 })
+  clock.close()
+})

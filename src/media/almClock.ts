@@ -17,6 +17,10 @@ export class AlmPlayoutClock {
   private listeners = new Set<() => void>()
   private lastAudio: { source: number; local: number; duration: number } | null = null
   private lastVideo: { source: number; local: number } | null = null
+  private frameIntervals: number[] = []
+  private freezeCount = 0
+  private freezeDurationMs = 0
+  private droppedFrames = 0
   private resets = 0
   private minimumLead: number
 
@@ -51,10 +55,18 @@ export class AlmPlayoutClock {
 
   schedule(timestamp: number, show: () => void, release: () => void): void {
     const target = this.target(timestamp)
-    if (target === null || this.pending.size >= 32) { release(); return }
+    if (target === null || this.pending.size >= 32) {
+      this.dropVideoFrame()
+      release()
+      return
+    }
     const timer = setTimeout(() => {
       this.pending.delete(timer)
-      try { this.lastVideo = { source: timestamp, local: this.now() }; show() } finally { release() }
+      const local = this.now()
+      try {
+        show()
+        this.recordVideoFrame(timestamp, local)
+      } finally { release() }
     }, Math.max(0, target - this.now()))
     this.pending.set(timer, release)
   }
@@ -65,6 +77,30 @@ export class AlmPlayoutClock {
 
   onReset(listener: () => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener) }
 
+  private recordVideoFrame(source: number, local: number): void {
+    const previous = this.lastVideo
+    this.lastVideo = { source, local }
+    if (!previous) return
+    const interval = local - previous.local
+    if (interval <= 0) return
+    if (this.frameIntervals.length) {
+      const average = this.frameIntervals.reduce((sum, time) => sum + time, 0) / this.frameIntervals.length
+      // Match the WebRTC freeze threshold against the prior playback cadence.
+      if (interval >= Math.max(3 * average, average + 150)) {
+        this.freezeCount++
+        this.freezeDurationMs += interval
+      }
+    }
+    this.frameIntervals.push(interval)
+    if (this.frameIntervals.length > 30) this.frameIntervals.shift()
+  }
+
+  dropVideoFrame(): void { this.droppedFrames++ }
+
+  videoStats() {
+    return { freezeCount: this.freezeCount, freezeDurationSec: this.freezeDurationMs / 1000, droppedFrames: this.droppedFrames }
+  }
+
   describe() {
     const audio = this.lastAudio, video = this.lastVideo
     const fresh = audio && video && this.now() - audio.local < 1000 && this.now() - video.local < 1000
@@ -73,6 +109,7 @@ export class AlmPlayoutClock {
   }
 
   private cancel(): void {
+    this.droppedFrames += this.pending.size
     for (const [timer, release] of this.pending) { clearTimeout(timer); release() }
     this.pending.clear()
   }

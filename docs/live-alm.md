@@ -63,7 +63,9 @@ Clientes sem suporte ao áudio sincronizado mantêm áudio e vídeo no RTP.
   apresentador restaura RTP somente para o espectador afetado e reanexa seus
   filhos à árvore. Relatórios dos retransmissores são aceitos apenas para
   arestas ativas cujo pai é o remetente, na sessão atual; arestas antigas de
-  uma troca de pai são ignoradas. A volta ao RTP pode aumentar o upload do
+  uma troca de pai são ignoradas. O espectador permanece no RTP até a próxima
+  sessão da Live, inclusive quando o cliente renovar a intenção de assistir.
+  A volta ao RTP pode aumentar o upload do
   apresentador, mas preserva a recuperação sem reduzir a qualidade global
   do encoder compartilhado. Quadros não ficam retidos para envio posterior.
 - Pacotes Opus usam uma sequência separada. Se faltar um, a fila espera no máximo
@@ -99,6 +101,11 @@ Ao detectar uma linha temporal atrasada, o receptor cancela os agendamentos das
 duas mídias e as realinha juntas. Quadros antigos são descartados. O diagnóstico
 `audioVideoSkewMs` mede os prazos internos de reprodução; não mede fisicamente
 o atraso de um monitor, caixa de som ou dispositivo Bluetooth.
+
+O painel de estatísticas da ALM mede os FPS pelos quadros enviados ao canvas
+de reprodução, conta as pausas entre quadros exibidos e registra os descartes
+locais pelo decoder ou pela fila de reprodução. Os congelamentos são registrados
+quando a reprodução retoma, usando o limiar de intervalo do WebRTC.
 
 ## Partial shedding
 
