@@ -212,7 +212,7 @@ preexistentes do usuário indiscriminadamente.
 | 9 | Concluída | TDD vermelho; 82 testes / 6 arquivos aprovados | `457279d` | Migrar quadro versão 2 |
 | 10 | Concluída | TDD vermelho; conversão, armazenamento e P2P na suíte de 67 testes / 15 arquivos | `429cebd`, `7468915` | Integrar editor |
 | 11 | Concluída | TDD vermelho; SDK real/simulado, fontes locais e tipos na suíte de 67 testes / 15 arquivos | `30515d9`, `d5bbac1` | Revisar e executar regressão completa |
-| 12 | Concluída | 4.018 aprovados no lote final; 31 aprovados no reteste isolado dos dois arquivos instáveis; 4 pendentes anteriores | `6ee5ff1` + commit de encerramento deste documento | Build/visual somente após consulta |
+| 12 | Concluída | 4.018 aprovados no lote final; 31 aprovados no reteste isolado dos dois arquivos instáveis; 4 pendentes anteriores | `6ee5ff1`, `33e926b` | Build/visual somente após consulta |
 
 - Baseline isolada: os quatro arquivos anteriores passaram (44 testes, `--maxWorkers=1`); as falhas iniciais não foram reproduzidas isoladamente.
 - Etapa 1: contratos estruturais Zod nas entradas P2P, descoberta e contatos; validadores especializados continuam responsáveis pelas regras de domínio. Fixtures de rede passam a incluir timestamp e payload completo.
@@ -341,7 +341,7 @@ executadas.
 
 Os fontes e testes não foram alterados entre a regressão final e o reteste isolado.
 Os commits da implementação estão registrados por etapa; `6ee5ff1` reúne as
-atualizações de documentação e o último commit desta branch registra este resultado.
+atualizações de documentação e `33e926b` registra esse encerramento.
 Mudanças preexistentes em assets, dados e transcrição permanecem no diretório de
 trabalho. Arquivos de colaboração que receberam migração foram incorporados de
 forma explícita, com as cópias anteriores preservadas no inventário inicial.
@@ -350,3 +350,32 @@ Pendências de validação: build completo, abertura do aplicativo, avaliação 
 e testes opt-in com navegador/Electron. A execução dessas verificações exige
 consulta ao usuário conforme `AGENTS.md`; nenhuma foi apresentada como realizada.
 Não houve criação de PR ou publicação de versão.
+
+
+## Correção posterior — timeout do helper de atualização
+
+Branch: `codex/fix-update-io-test-timeout`.
+
+O comando completo voltou a acusar timeout em `updateIoHarness.test.ts`. O caso
+executa dois processos PowerShell independentes para verificar o isolamento do
+estado estático e a passagem literal de argumentos. O limite unitário padrão de
+5 segundos era insuficiente sob concorrência. O teste e seu preparo agora têm
+um orçamento local de 30 segundos, como os testes de integração do instalador;
+as asserções e o helper de produção permanecem com o mesmo comportamento.
+Não foi alterado o timeout global nem reduzido o número de verificações.
+
+- Antes da alteração: `npx vitest run src/__tests__/services/updateIoHarness.test.ts src/__tests__/core/productionTypes.test.ts --maxWorkers=2 --reporter=default`.
+  Dois testes aprovados; o caso do helper levou 3.349 ms isolado nessa rodada,
+  confirmando a pouca margem do limite anterior. Log: `.scratch/update-io-timeout/before.log`.
+- Correção: `d5d2a92`.
+- Verificação direcionada: `npx vitest run src/__tests__/services/updateIoHarness.test.ts src/__tests__/services/installerIo.test.ts src/__tests__/core/productionTypes.test.ts src/__tests__/components/nativeBoard.test.ts src/__tests__/components/nativeBoardInteractions.test.tsx --maxWorkers=2 --reporter=default`.
+  **20 testes aprovados em cinco arquivos**. Log: `.scratch/update-io-timeout/after.log`.
+- `3c05606`: incluído no controle de versão `src/collaboration/boardFile.ts`, que
+  ficou fora dos commits anteriores. Os testes reais de importação já exercitam
+  esse arquivo; nenhuma outra mudança preexistente foi adicionada ao commit.
+- Suíte unitária completa: `npm test -- --maxWorkers=2 --reporter=json --outputFile=.scratch/update-io-timeout/full.json`.
+  **455 arquivos; 4.020 testes aprovados, nenhuma falha e quatro pendentes; código 0.**
+  O caso do helper passou também nesse lote, com 3.289 ms. Logs: `.scratch/update-io-timeout/full.log` e `full.json`.
+  Esta rodada completa sem falhas substitui a limitação de validação registrada no encerramento anterior.
+  Aplicativo, navegador e suítes opt-in de Electron/Chromium não foram abertos.
+  Alterações preexistentes em assets, dados e transcrição foram preservadas.
