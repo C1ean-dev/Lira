@@ -1,3 +1,4 @@
+import { copyBoardFonts, boardFontPath, localizeBoardFontFallback } from './build/boardFonts'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import electron from 'vite-plugin-electron'
@@ -21,6 +22,30 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    {
+      name: 'local-board-fonts',
+      enforce: 'pre',
+      transform(code, id) {
+        if (id.replaceAll('\\', '/').includes('/@excalidraw/excalidraw/dist/') && id.endsWith('.js')) {
+          return { code: localizeBoardFontFallback(code), map: null }
+        }
+      },
+      writeBundle(output) {
+        if (output.dir) copyBoardFonts(path.resolve(__dirname, 'node_modules/@excalidraw/excalidraw/dist/prod/fonts'), path.resolve(output.dir))
+      },
+      configureServer(server) {
+        server.middlewares.use((request, response, next) => {
+          if (!request.url?.startsWith('/excalidraw-assets/fonts/')) { next(); return }
+          const file = boardFontPath(path.resolve(__dirname, 'node_modules/@excalidraw/excalidraw/dist/prod/fonts'), request.url)
+          if (!file || !['GET', 'HEAD'].includes(request.method || '')) { response.statusCode = 404; response.end(); return }
+          fs.promises.readFile(file).then(bytes => {
+            response.setHeader('Content-Type', file.endsWith('.woff2') ? 'font/woff2' : 'font/woff')
+            response.setHeader('Cache-Control', 'public, max-age=3600')
+            response.end(request.method === 'HEAD' ? undefined : bytes)
+          }).catch(() => { response.statusCode = 404; response.end() })
+        })
+      },
+    },
     {
       name: 'asset-atlas-index',
       resolveId(id) { if (['virtual:lira-asset-atlases', 'virtual:lira-individual-library'].includes(id)) return '\0' + id },
@@ -188,7 +213,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['@jitsi/rnnoise-wasm'],
+    exclude: ['@jitsi/rnnoise-wasm', '@excalidraw/excalidraw'],
   },
   assetsInclude: ['**/*.wasm'],
   worker: { format: 'es' },
@@ -209,6 +234,7 @@ export default defineConfig({
     },
   },
   test: {
+    server: { deps: { inline: [/@excalidraw\/excalidraw/, /open-color/] } },
     include: ['src/__tests__/**/*.test.{ts,tsx,js,mjs}'],
     exclude: ['**/node_modules/**', '**/.claude/**', '**/dist/**'],
   },

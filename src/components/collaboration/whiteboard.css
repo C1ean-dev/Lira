@@ -1,0 +1,11 @@
+.lira-board { --board-panel:#fff; --board-text:#34313f; --board-border:#e7e5ed; position:relative; width:100%; height:100%; overflow:hidden; color:var(--board-text); font:12px system-ui,sans-serif; color-scheme:light; }
+.lira-board-dark { --board-panel:#25232e; --board-text:#ebe7f3; --board-border:#45404f; color-scheme:dark; }
+.board-remote-pointers { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:3; }
+.board-lira-actions { display:flex; gap:6px; }
+.board-lira-actions button { border:1px solid var(--board-border); border-radius:8px; padding:6px 10px; background:var(--board-panel); color:var(--board-text); font:12px system-ui,sans-serif; }
+.board-lira-actions button:disabled { opacity:.5; }
+.board-storage-warning, .board-sync-status { position:absolute; bottom:55px; left:20px; right:20px; z-index:4; padding:8px; background:var(--board-panel); color:var(--board-text); border:1px solid var(--board-border); border-radius:8px; }
+.board-confirm-backdrop { position:absolute; inset:0; z-index:100; display:grid; place-items:center; background:#0006; }
+.board-confirm { padding:24px; max-width:90%; border-radius:12px; border:1px solid var(--board-border); background:var(--board-panel); color:var(--board-text); }
+.board-confirm p { margin-bottom:16px; }
+.board-confirm button { padding:8px 14px; margin-right:10px; border:1px solid var(--board-border); border-radius:8px; }
