@@ -76,10 +76,11 @@ Clientes sem suporte ao áudio sincronizado mantêm áudio e vídeo no RTP.
 - O vídeo RTP duplicado e o áudio original da Live só são substituídos após a
   confirmação de reprodução ALM. A voz auxiliar permanece independente.
   Clientes sem WebCodecs/captura de canvas usam RTP.
-- No envio RTP direto, duas amostras válidas de sobrecarga de CPU com FPS baixo
-  e codificação lenta reduzem o teto do vídeo daquele espectador para 720p ou
-  540p. O envio passa a priorizar a taxa de quadros e mantém o teto até a
-  próxima captura.
+- No envio RTP direto, **Priorizar Qualidade** pede ao WebRTC para preservar a
+  resolução e reduzir FPS sob sobrecarga. Em **Priorizar Fluidez**, duas amostras
+  válidas de sobrecarga de CPU com FPS baixo e codificação lenta podem reduzir
+  o teto do vídeo daquele espectador para 720p ou 540p. Voltar ao modo Qualidade
+  remove esse teto de sobrecarga durante a transmissão.
 
 ## Sincronização de áudio e vídeo
 

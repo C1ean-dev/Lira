@@ -88,6 +88,7 @@ let captureTrack: MediaStreamTrack | null = null
 let configuredScreenDegradation: VideoDegradation = 'maintain-resolution'
 
 export function setScreenDegradationPreference(degradation: VideoDegradation): void {
+  if (configuredScreenDegradation !== degradation) encoderLimits.clear()
   configuredScreenDegradation = degradation
 }
 
@@ -250,6 +251,7 @@ function resetEncoderPressure(peerId: string): void {
 }
 
 export function adaptScreenToEncoder(peerId: string, sample: EncoderSample | null): number | undefined {
+  if (configuredScreenDegradation !== 'maintain-framerate') return
   if (!sample) {
     resetEncoderPressure(peerId)
     return

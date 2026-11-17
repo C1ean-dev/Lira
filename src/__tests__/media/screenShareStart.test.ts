@@ -7,6 +7,7 @@ import {
   SCREEN_START_HOLD_MS,
   activeScreenCaps,
   watchScreenShareRamp,
+  type VideoDegradation,
   __resetVideoSendPolicyForTests,
 } from '../../p2p/videoSendPolicy'
 import { useGameStore } from '../../store/useGameStore'
@@ -73,7 +74,7 @@ describe('screen share start', () => {
   })
 
   describe('sustained encoder overload', () => {
-    function share() {
+    function share(preference: VideoDegradation = 'maintain-framerate') {
       const a = fakeCall()
       const b = fakeCall()
       const calls = callsOf(['a', a], ['b', b])
@@ -98,7 +99,7 @@ describe('screen share start', () => {
           qualityLimitationReason: limit, encoderImplementation: 'OpenH264', powerEfficientEncoder: false,
         }]])
       }
-      const start = () => MediaCallHandler.replaceVideoTrack(calls, track, true, 15_000_000, 60, 'maintain-resolution')
+      const start = () => MediaCallHandler.replaceVideoTrack(calls, track, true, 15_000_000, 60, preference)
       start()
       return {
         a, b, calls, start,
@@ -111,7 +112,7 @@ describe('screen share start', () => {
       }
     }
 
-    it('lowers the resolution and bitrate for the affected peer while still targeting 60 FPS', async () => {
+    it('lowers the resolution and bitrate for the affected peer in smoothness mode', async () => {
       const { a, b } = share()
       await vi.advanceTimersByTimeAsync(2 * LIVE_QUALITY_INTERVAL_MS)
       expect(a.last()).toMatchObject({ scaleResolutionDownBy: 1, maxBitrate: 15_000_000 })
@@ -123,6 +124,32 @@ describe('screen share start', () => {
       })
       expect(b.last()).toMatchObject({ scaleResolutionDownBy: 1, maxBitrate: 15_000_000 })
       expect(a.sender.replaceTrack).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps the requested resolution and lets WebRTC lower FPS on CPU overload in quality mode', async () => {
+      const { a } = share('maintain-resolution')
+      await vi.advanceTimersByTimeAsync(8 * LIVE_QUALITY_INTERVAL_MS)
+      expect(a.last()).toMatchObject({
+        scaleResolutionDownBy: 1, maxBitrate: 15_000_000, degradationPreference: 'maintain-resolution',
+      })
+    })
+
+    it('restores resolution when switching to quality and requires fresh overload samples after switching back', async () => {
+      const { a, calls } = share()
+      await vi.advanceTimersByTimeAsync(3 * LIVE_QUALITY_INTERVAL_MS)
+      expect(a.last().scaleResolutionDownBy).toBe(1.5)
+
+      MediaCallHandler.updateScreenDegradationPreference(calls, 'maintain-resolution')
+      expect(a.last()).toMatchObject({
+        scaleResolutionDownBy: 1, maxBitrate: 15_000_000, degradationPreference: 'maintain-resolution',
+      })
+      await vi.advanceTimersByTimeAsync(3 * LIVE_QUALITY_INTERVAL_MS)
+      expect(a.last().scaleResolutionDownBy).toBe(1)
+      MediaCallHandler.updateScreenDegradationPreference(calls, 'maintain-framerate')
+      await vi.advanceTimersByTimeAsync(LIVE_QUALITY_INTERVAL_MS)
+      expect(a.last().scaleResolutionDownBy).toBe(1)
+      await vi.advanceTimersByTimeAsync(LIVE_QUALITY_INTERVAL_MS)
+      expect(a.last().scaleResolutionDownBy).toBe(1.5)
     })
 
     it('keeps adapting down to 540p, retains the new cap through viewer renewals, and resets on a new live', async () => {
