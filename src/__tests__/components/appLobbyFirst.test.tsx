@@ -16,7 +16,7 @@ describe('the first screen', () => {
     expect(html).toContain('Salas Salvas')
   })
   it('provides access to saved meeting summaries without entering another space', () => {
-    expect(html).toContain('Abrir resumos de reuniões')
+    expect(html).toContain('Abrir transcrições e resumo')
   })
 
   it('has nothing of the space behind it: no world canvas, no space area', () => {

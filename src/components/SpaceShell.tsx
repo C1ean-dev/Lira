@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react'
 import { MeetingSummaryPanel } from './collaboration/MeetingSummaryPanel'
 import { WhiteboardPanel } from './collaboration/WhiteboardPanel'
+import { SpaceTranscriptionProvider } from './collaboration/SpaceTranscriptionProvider'
 import { useGameStore } from '../store/useGameStore'
 import { useWhiteboardStore } from '../store/useWhiteboardStore'
 import { useMapStore } from '../store/useMapStore'
@@ -50,7 +51,7 @@ export const SpaceShell: React.FC<Props> = ({
   }, [roomId])
 
   return (
-  <>
+  <SpaceTranscriptionProvider>
     <TopNavBar
       onOpenAvatarModal={onOpenAvatarModal}
       onApplyUpdate={onApplyUpdate}
@@ -82,6 +83,6 @@ export const SpaceShell: React.FC<Props> = ({
     <SpotifyDjAudio />
     <SpotifyJamSideDisplay />
     <SpotifyJamModal />
-  </>
+  </SpaceTranscriptionProvider>
   )
 }

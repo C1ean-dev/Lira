@@ -214,6 +214,17 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ['@jitsi/rnnoise-wasm', '@excalidraw/excalidraw'],
+    // Keep the SDK available to the local font transform, but prebundle its CJS imports.
+    include: [
+      '@excalidraw/excalidraw > @braintree/sanitize-url',
+      '@excalidraw/excalidraw > es6-promise-pool',
+      '@excalidraw/excalidraw > fuzzy',
+      '@excalidraw/excalidraw > lodash.debounce',
+      '@excalidraw/excalidraw > lodash.throttle',
+      '@excalidraw/excalidraw > png-chunk-text',
+      '@excalidraw/excalidraw > png-chunks-encode',
+      '@excalidraw/excalidraw > png-chunks-extract',
+    ],
   },
   assetsInclude: ['**/*.wasm'],
   worker: { format: 'es' },
@@ -234,6 +245,8 @@ export default defineConfig({
     },
   },
   test: {
+    // Node 25+ Web Storage shadows jsdom's storage in Vitest 4 (vitest#10867).
+    execArgv: Number(process.versions.node.split('.')[0]) >= 25 ? ['--no-experimental-webstorage'] : [],
     server: { deps: { inline: [/@excalidraw\/excalidraw/, /open-color/] } },
     include: ['src/__tests__/**/*.test.{ts,tsx,js,mjs}'],
     exclude: ['**/node_modules/**', '**/.claude/**', '**/dist/**'],

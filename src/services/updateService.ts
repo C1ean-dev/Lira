@@ -1,5 +1,6 @@
 import { registerPlugin } from '@capacitor/core'
 import { isAndroid } from '../utils/platform'
+import { CURRENT_APP_VERSION } from '../utils/appVersion'
 
 import { checkCachedUpdate, GITHUB_REPO } from './updateCheck'
 import type { UpdateInfo } from './updateCheck'
@@ -26,12 +27,7 @@ export interface AppUpdatePluginInterface {
 
 export const AppUpdate = registerPlugin<AppUpdatePluginInterface>('AppUpdatePlugin')
 
-declare const __APP_VERSION__: string | undefined
-
-export const CURRENT_APP_VERSION =
-  typeof __APP_VERSION__ !== 'undefined'
-    ? __APP_VERSION__
-    : '1.0.0'
+export { CURRENT_APP_VERSION } from '../utils/appVersion'
 
 export class UpdateService {
   static async getCurrentVersion(pluginOverride?: AppUpdatePluginInterface): Promise<string> {

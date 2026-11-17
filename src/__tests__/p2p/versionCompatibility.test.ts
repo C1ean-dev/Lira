@@ -5,6 +5,7 @@ import { PeerManager } from '../../p2p/PeerManager'
 import { useGameStore } from '../../store/useGameStore'
 import { useChatStore } from '../../store/useChatStore'
 import { useMediaStore } from '../../store/useMediaStore'
+import { useUpdateStore } from '../../store/useUpdateStore'
 import { MIN_COMPATIBLE_VERSION, CURRENT_LIRA_VERSION } from '../../types/p2p'
 import { Player } from '../../types/game'
 
@@ -198,6 +199,24 @@ describe('Version Compatibility & Outdated Flag', () => {
     const msg = chatMessages.find((m) => m.content.includes('1.2.0'))
     expect(msg).toBeDefined()
     expect(msg?.senderId).toBe('system')
+  })
+
+  it('ignores an outdated rejection when the running client already meets the minimum', () => {
+    const check = vi.fn(async () => {})
+    const previous = useUpdateStore.getState()
+    useUpdateStore.setState({ isUpdateScreenOpen: false, checkForUpdatesAndDownload: check })
+    useGameStore.getState().setLocalPlayer({ appVersion: '1.1.215' })
+    try {
+      processNetworkMessage({
+        type: 'VERSION_INCOMPATIBLE', timestamp: 1, senderId: 'lira-TEST-host',
+        payload: { minVersion: '1.1.211', currentVersion: '1.1.210' },
+      }, 'lira-TEST-host', false, vi.fn(), vi.fn(), vi.fn(), 'local-peer')
+      expect(useUpdateStore.getState().isUpdateScreenOpen).toBe(false)
+      expect(check).not.toHaveBeenCalled()
+      expect(useChatStore.getState().messages).toHaveLength(0)
+    } finally {
+      useUpdateStore.setState(previous)
+    }
   })
 
   it('as Host, rejects outdated peer on PLAYER_JOIN and disconnects after 500ms', () => {

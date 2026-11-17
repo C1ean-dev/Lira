@@ -575,6 +575,7 @@ function createWindow() {
   const yOffset = isMultiInstance && instNum > 1 ? 40 + (instNum - 1) * 60 : undefined
 
   mainWindow = new BrowserWindow({
+    show: !process.argv.includes('--hidden'),
     width: 1280,
     height: 800,
     minWidth: 900,

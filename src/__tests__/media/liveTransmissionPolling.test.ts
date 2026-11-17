@@ -9,7 +9,9 @@ vi.mock('react', () => ({
   useState: () => [[], hooks.setStats],
   useEffect: (effect: () => void) => { hooks.effect = effect },
 }))
-vi.mock('../../p2p/PeerManager', () => ({ PeerManager: { getInstance: () => ({ getMediaCalls: hooks.getMediaCalls }) } }))
+vi.mock('../../p2p/PeerManager', () => ({ PeerManager: { getInstance: () => ({
+  getMediaCalls: hooks.getMediaCalls, getAlmTransmissionCounters: () => undefined,
+}) } }))
 
 const track = { id: 'screen', kind: 'video', readyState: 'live' } as MediaStreamTrack
 const stream = { getVideoTracks: () => [track] } as MediaStream

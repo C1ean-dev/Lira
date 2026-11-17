@@ -56,6 +56,24 @@ describe('embedded Excalidraw integration', () => {
     expect(Object.values(useWhiteboardStore.getState().document.operations)).toMatchObject([{ kind: 'element', element: { id: 'shape' } }])
     expect(peer).not.toHaveBeenCalled()
   })
+  it('does not replace an in-progress local shape when restoration drops its initial zero size', async () => {
+    const editor = await import('@excalidraw/excalidraw')
+    vi.spyOn(editor, 'restoreElements').mockImplementation(elements => (elements || []).filter(element => element.width || element.height) as any)
+    render(<ExcalidrawBoard />)
+    sdk.updateScene.mockClear()
+    const starting = { ...element(), width: 0, height: 0 }
+    act(() => {
+      sdk.elements = [starting]
+      sdk.props.onChange(sdk.elements, sdk.appState, {})
+    })
+    expect(sdk.updateScene).not.toHaveBeenCalled()
+    act(() => {
+      sdk.elements = [element(2)]
+      sdk.props.onChange(sdk.elements, sdk.appState, {})
+    })
+    expect(sdk.updateScene).not.toHaveBeenCalled()
+    expect(Object.values(useWhiteboardStore.getState().document.operations)).toMatchObject([{ kind: 'element', element: element(2) }])
+  })
   it('applies remote revisions without echoing them or adding them to local history', () => {
     useGameStore.setState({ isConnected: true }); useWhiteboardStore.setState({ synchronized: true })
     const broadcast = vi.fn(); vi.spyOn(PeerManager, 'getInstance').mockReturnValue({ broadcast, getPeerId: () => 'self' } as any)

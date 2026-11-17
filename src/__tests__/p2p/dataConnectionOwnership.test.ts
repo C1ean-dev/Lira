@@ -43,6 +43,17 @@ afterEach(() => {
 function open(conn: any) { pm.setupDataConnection(conn); conn.emit('open') }
 
 describe('data connection ownership', () => {
+  it('sends the initial player and map when early data arrives before the open event', () => {
+    pm.isHost = true
+    const current = connection()
+    current.open = false
+    pm.setupDataConnection(current)
+    current.emit('data', { type: 'HEARTBEAT', senderId: 'remote', timestamp: 1, payload: {} })
+    current.open = true
+    current.emit('open')
+    expect(current.send.mock.calls.map(([packet]: any[]) => packet.type)).toContain('PLAYER_JOIN')
+    expect(current.send.mock.calls.map(([packet]: any[]) => packet.type)).toContain('MAP_SYNC')
+  })
   it.each(['close', 'failed', 'ice-failed', 'timer'])('ignores %s from a connection replaced by a healthy one', (event) => {
     const old = connection()
     open(old)

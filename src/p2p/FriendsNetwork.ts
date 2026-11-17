@@ -1,4 +1,5 @@
 import { friendPacketSchema } from '../validation/schemas'
+import { omitUndefinedFields } from './wireData'
 import Peer from 'peerjs'
 import { SHARED_RTC_CONFIG } from './mediaCalls'
 import {
@@ -184,7 +185,7 @@ export class FriendsNetwork {
     for (const conn of set) {
       if (!conn.open) continue
       try {
-        conn.send(packet)
+        conn.send(omitUndefinedFields(packet))
         return true
       } catch (err) {
         console.warn('[Friends] Failed to send over link:', err)

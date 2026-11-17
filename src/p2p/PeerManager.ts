@@ -1,4 +1,5 @@
 import { parseNetworkMessage } from '../validation/schemas'
+import { omitUndefinedFields } from './wireData'
 import { sendAtlasChunks } from '../assets/atlasChunks'
 import { getTransferAtlas } from '../assets/atlasTransferCache'
 import { IndividualLibrarySync, type LibraryMessage } from '../assets/individualLibrarySync'
@@ -294,6 +295,10 @@ export class PeerManager {
 
   public getMediaCalls(): Map<string, MediaConnection> {
     return this.mediaCalls
+  }
+
+  public getAlmTransmissionCounters(stream: MediaStream, local: boolean) {
+    return this.almSession?.transmissionCounters(stream, local)
   }
 
   public getRoomCode(): string | null {
@@ -1416,7 +1421,6 @@ export class PeerManager {
     let removeDirectLink: (() => void) | undefined
     const handleOpen = () => {
       if (openHandled) return
-      openHandled = true
       if (!isCurrentSession()) { conn.close(); return }
       // Record the actual host transport before processing its first relayed message.
       // A data event can arrive before PeerJS emits the connection's open event.
@@ -1427,6 +1431,10 @@ export class PeerManager {
       console.log('[P2P Data] Connected to peer:', conn.peer)
       useGameStore.getState().setConnectionStatus('connected')
       this.connections.set(conn.peer, conn)
+      // Early inbound data can precede PeerJS's writable/open state. Register
+      // ownership now, but let the open event send the initial state once.
+      if (!conn.open) return
+      openHandled = true
       if (getDirectSignaling(owner)) conn.send({ __liraSignalHello: 1 })
       this.peerLastSeen.set(conn.peer, Date.now())
       this.sendToPeer(conn, { type: 'INDIVIDUAL_LIBRARY', senderId: this.peer!.id,
@@ -2485,7 +2493,7 @@ export class PeerManager {
   private sendToPeer(conn: DataConnection, msg: NetworkMessage) {
     if (conn.open) {
       try {
-        conn.send(msg)
+        conn.send(omitUndefinedFields(msg))
       } catch (err) {
         console.warn(`[P2P Data] Failed to send ${msg.type} to ${conn.peer}:`, err)
       }

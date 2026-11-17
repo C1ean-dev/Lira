@@ -29,10 +29,37 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Resolve release tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ inputs.tag_name }}
+        run: |
+          TAG="$INPUT_TAG"
+          if [ -z "$TAG" ]; then
+            TAG=$(gh release view --json tagName -q .tagName)
+          fi
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid Lira release tag: $TAG" >&2
+            exit 1
+          fi
+          git checkout --detach "refs/tags/$TAG"
+          echo "tag_name=$TAG" >> "$GITHUB_OUTPUT"
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          # Calculate monotonic numeric versionCode: e.g. 1.1.98 -> 101098
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+          MAJOR=${MAJOR:-1}
+          MINOR=${MINOR:-0}
+          PATCH=${PATCH:-0}
+          VERSION_CODE=$(( (MAJOR * 100000) + (MINOR * 1000) + PATCH ))
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: '.node-version'
           cache: 'npm'
 
       - name: Setup Java
@@ -48,28 +75,6 @@ jobs:
           # the step. Install what android/variables.gradle compiles against instead.
           packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
 
-      - name: Resolve release tag
-        id: tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_TAG: ${{ inputs.tag_name }}
-        run: |
-          TAG="$INPUT_TAG"
-          if [ -z "$TAG" ]; then
-            TAG=$(gh release view --json tagName -q .tagName)
-          fi
-          echo "tag_name=$TAG" >> "$GITHUB_OUTPUT"
-          VERSION="${TAG#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-          # Calculate monotonic numeric versionCode: e.g. 1.1.98 -> 101098
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-          MAJOR=${MAJOR:-1}
-          MINOR=${MINOR:-0}
-          PATCH=${PATCH:-0}
-          VERSION_CODE=$(( (MAJOR * 100000) + (MINOR * 1000) + PATCH ))
-          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
-
       - name: Install dependencies
         env:
           ONNXRUNTIME_NODE_INSTALL_CUDA: skip
@@ -84,9 +89,7 @@ jobs:
           VITE_TURN_USERNAME: ${{ secrets.VITE_TURN_USERNAME }}
           VITE_TURN_CREDENTIAL: ${{ secrets.VITE_TURN_CREDENTIAL }}
           VITE_TURN_CREDENTIALS_URL: ${{ secrets.VITE_TURN_CREDENTIALS_URL }}
-        run: |
-          node -e "const fs = require('fs'); const p = JSON.parse(fs.readFileSync('package.json', 'utf8')); p.version = '${{ steps.tag.outputs.version }}'; fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');"
-          npx tsc && npx vite build
+        run: npx tsc && npx vite build
 
       - name: Sync Capacitor Android project
         run: npx cap sync android
