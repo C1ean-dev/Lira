@@ -27,7 +27,9 @@ export function createStoredState<T>(key: string, schema: z.ZodType<T>, defaults
     },
     setItem(_name, { state }) {
       try {
-        getLocalStorage()?.setItem(key, JSON.stringify(state))
+        const target = getLocalStorage()
+        if (!target) throw new Error('Armazenamento local indisponível')
+        target.setItem(key, JSON.stringify(state))
         options.onWrite?.(null)
       } catch (error) {
         reportStorageFailure('write', key, error)
@@ -39,8 +41,11 @@ export function createStoredState<T>(key: string, schema: z.ZodType<T>, defaults
       catch (error) { reportStorageFailure('write', key, error) }
     },
   }
-  return createStore<T>()(persist(() => defaults, {
+  let current = () => defaults
+  return createStore<T>()(persist((_set, get) => { current = get; return defaults }, {
     name: key, storage, version: 1,
+    // persist spreads its state before partialize; retain arrays/null exactly.
+    partialize: () => current(),
     merge: (saved, current) => saved === undefined ? current :
       Array.isArray(saved) || saved === null ? saved as T : { ...current, ...saved as T },
   }))

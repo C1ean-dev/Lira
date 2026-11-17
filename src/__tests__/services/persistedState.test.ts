@@ -16,6 +16,19 @@ describe('persistent state adapter', () => {
     expect(createStoredState('preferences', schema, { volume: 100 }).getState()).toEqual({ volume: 30 })
   })
 
+  it('preserves arrays, empty arrays and null as raw JSON across restarts', () => {
+    const data: Record<string, string> = {}
+    vi.stubGlobal('localStorage', { getItem: (key: string) => data[key] ?? null, setItem: (key: string, value: string) => { data[key] = value } })
+    const list = createStoredState('list', z.array(z.string()), [])
+    list.setState(['one'], true)
+    expect(JSON.parse(data.list)).toEqual(['one'])
+    expect(createStoredState('list', z.array(z.string()), []).getState()).toEqual(['one'])
+    list.setState([], true)
+    expect(JSON.parse(data.list)).toEqual([])
+    const nullable = createStoredState<string | null>('nullable', z.string().nullable(), null)
+    nullable.setState(null, true)
+    expect(data.nullable).toBe('null')
+  })
   it('keeps defaults on corrupt data and reports refused writes without losing the in-memory update', () => {
     const onWrite = vi.fn()
     vi.stubGlobal('localStorage', { getItem: () => '{broken', setItem: () => { throw new Error('quota') } })
@@ -26,6 +39,14 @@ describe('persistent state adapter', () => {
     expect(onWrite).toHaveBeenCalledWith(expect.any(Error))
   })
 
+  it('reports unavailable storage without losing the in-memory update', () => {
+    vi.stubGlobal('window', undefined); vi.stubGlobal('localStorage', undefined)
+    const onWrite = vi.fn()
+    const state = createStoredState('unavailable', z.object({ volume: z.number() }), { volume: 100 }, { onWrite })
+    state.setState({ volume: 20 })
+    expect(state.getState()).toEqual({ volume: 20 })
+    expect(onWrite).toHaveBeenCalledWith(expect.any(Error))
+  })
   it('does not persist graphics updates that only change the current FPS', async () => {
     vi.resetModules()
     const setItem = vi.fn()
