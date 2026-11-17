@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mqttMock, FakeRoomSocket, roomSockets } from '../helpers/mockMqtt'
 import { PublicRoomsService } from '../../services/publicRoomsService'
-vi.mock('mqtt', async () => ({ connect: (await import('../helpers/mockMqtt')).mqttMock.connect }))
+vi.mock('mqtt', async () => ({ default: { connect: (await import('../helpers/mockMqtt')).mqttMock.connect } }))
 const room = { id: 'test', code: 'TEST', name: 'Sala', hostId: 'host', hostName: 'Ana', playerCount: 1, maxPlayers: 12, color: '#fff' }
 let service: PublicRoomsService
 const listeners = new Map<string, () => void>()

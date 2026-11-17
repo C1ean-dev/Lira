@@ -1,4 +1,4 @@
-import { connect, type MqttClient } from 'mqtt'
+import mqtt, { type MqttClient } from 'mqtt'
 import { hubMessageSchema } from '../validation/schemas'
 import { PublicRoomInfo } from '../types/game'
 import { publicRoomMetadata } from './publicRoomMetadata'
@@ -301,7 +301,7 @@ export class PublicRoomsService {
 
   private connectMqtt(relay: BrokerRelay) {
     try {
-      const client = connect(relay.url, { clientId: 'lira_hub_' + crypto.randomUUID(),
+      const client = mqtt.connect(relay.url, { clientId: 'lira_hub_' + crypto.randomUUID(),
         protocolVersion: 4, clean: true, keepalive: 60, connectTimeout: 7000,
         reconnectPeriod: 10000, reconnectOnConnackError: true, resubscribe: false,
       })
