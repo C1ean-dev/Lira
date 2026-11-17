@@ -494,7 +494,7 @@ function logSessionStart() {
     logs: getLogsDirectory(),
   })
   app
-    .getGPUInfo('basic')
+    .getGPUInfo('complete')
     .then((info) => console.info('[Session] gpu', summarizeGpu(info, app.getGPUFeatureStatus())))
     .catch((error) => console.warn('[Session] could not read the GPU info:', error))
 }

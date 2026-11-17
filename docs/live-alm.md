@@ -31,8 +31,9 @@ Clientes sem suporte ao áudio sincronizado mantêm áudio e vídeo no RTP.
   `maxRetransmits: 0`. É SCTP/DTLS sobre ICE, com controle de congestionamento,
   e não UDP puro. STUN, Cloudflare e Metered configurados ficam disponíveis para
   ICE; estas conexões nativas não usam os prazos de escalonamento do PeerJS.
-- A raiz prefere H.264 High, depois Baseline, depois VP8, consultando o suporte
-  WebCodecs antes de criar o encoder. Hardware é uma preferência, não garantia.
+- A raiz consulta o suporte WebCodecs antes de criar o encoder. Em cada tentativa,
+  prefere H.264 High, depois Baseline e depois VP8. Com aceleração solicitada,
+  testa primeiro os encoders de hardware e recorre aos de software se necessário.
   H.264 usa Annex B; os IDRs incluem os parâmetros necessários ao decoder.
   O encoder consulta os modos temporais L1T3, L1T2 e L1T1 em ordem de preferência.
 - Quadros são fragmentados em mensagens de até 12.048 bytes. A remontagem tem
@@ -73,6 +74,10 @@ Clientes sem suporte ao áudio sincronizado mantêm áudio e vídeo no RTP.
 - O vídeo RTP duplicado e o áudio original da Live só são substituídos após a
   confirmação de reprodução ALM. A voz auxiliar permanece independente.
   Clientes sem WebCodecs/captura de canvas usam RTP.
+- No envio RTP direto, duas amostras válidas de sobrecarga de CPU com FPS baixo
+  e codificação lenta reduzem o teto do vídeo daquele espectador para 720p ou
+  540p. O envio passa a priorizar a taxa de quadros e mantém o teto até a
+  próxima captura.
 
 ## Sincronização de áudio e vídeo
 

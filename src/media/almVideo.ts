@@ -34,24 +34,30 @@ export class AlmVideoSource {
     const width = Math.max(2, Math.floor((settings.width || 1920) / 2) * 2)
     const height = Math.max(2, Math.floor((settings.height || 1080) / 2) * 2)
     let selected: VideoEncoderConfig | null = null
+    // Chromium probes only hardware for prefer-hardware. Probe software separately as a fallback.
+    const preferences: HardwareAcceleration[] = hardware ? ['prefer-hardware', 'prefer-software'] : ['prefer-software']
     // Annex B keyframes include SPS/PPS, allowing a new branch to start at any IDR.
-    for (const codec of ['avc1.640033', 'avc1.420033', 'vp8']) {
-      for (const scalabilityMode of ['L1T3', 'L1T2', 'L1T1']) {
-      const config: VideoEncoderConfig = {
-        codec, width, height, bitrate, framerate: fps, latencyMode: 'realtime',
-        scalabilityMode,
-        hardwareAcceleration: hardware ? 'prefer-hardware' : 'prefer-software',
-        ...(codec.startsWith('avc1') ? { avc: { format: 'annexb' as const } } : {}),
-      }
-      try {
-        const support = await VideoEncoder.isConfigSupported(config)
-        if (support.supported && support.config?.scalabilityMode === scalabilityMode &&
-          (await VideoDecoder.isConfigSupported({ codec, codedWidth: width, codedHeight: height })).supported) {
-          selected = config; this.temporalLayers = Number(scalabilityMode.slice(-1)); break
+    findEncoder: for (const hardwareAcceleration of preferences) {
+      for (const codec of ['avc1.640033', 'avc1.420033', 'vp8']) {
+        for (const scalabilityMode of ['L1T3', 'L1T2', 'L1T1']) {
+          if (this.stopped) break findEncoder
+          const config: VideoEncoderConfig = {
+            codec, width, height, bitrate, framerate: fps, latencyMode: 'realtime',
+            scalabilityMode,
+            hardwareAcceleration,
+            ...(codec.startsWith('avc1') ? { avc: { format: 'annexb' as const } } : {}),
+          }
+          try {
+            const support = await VideoEncoder.isConfigSupported(config)
+            if (support.supported && support.config?.scalabilityMode === scalabilityMode &&
+              (await VideoDecoder.isConfigSupported({ codec, codedWidth: width, codedHeight: height })).supported) {
+              selected = config
+              this.temporalLayers = Number(scalabilityMode.slice(-1))
+              break findEncoder
+            }
+          } catch { /* Try the next configuration without creating an encoder. */ }
         }
-      } catch { /* Try the next codec without creating an encoder. */ }
       }
-      if (selected) break
     }
     if (!selected || this.stopped) throw new Error('No compatible ALM encoder')
     this.encoder = new VideoEncoder({

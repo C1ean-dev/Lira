@@ -56,12 +56,18 @@ function scaleFor(sourceHeight: number, lines: number): number {
   return scale
 }
 
-export function layerFor(caps: LayerCaps, sourceHeight: number | null | undefined, need: number | null): LiveLayer {
+export function layerFor(
+  caps: LayerCaps,
+  sourceHeight: number | null | undefined,
+  need: number | null,
+  maxHeight?: number,
+): LiveLayer {
   const full: LiveLayer = { scale: 1, maxBitrate: caps.maxBitrate, maxFramerate: caps.maxFramerate }
-  if (need === null || !(typeof sourceHeight === 'number' && sourceHeight > 0)) return full
+  if (!(typeof sourceHeight === 'number' && sourceHeight > 0)) return full
+  const minimumScale = maxHeight === undefined ? 1 : Math.max(1, sourceHeight / maxHeight)
 
-  if (!(need > 0)) {
-    const scale = scaleFor(sourceHeight, HIDDEN_LAYER_HEIGHT)
+  if (need !== null && !(need > 0)) {
+    const scale = Math.max(minimumScale, scaleFor(sourceHeight, HIDDEN_LAYER_HEIGHT))
     const bitrate = roundBitrate(scaledBitrate(caps, scale) * HIDDEN_LAYER_BITRATE_SHARE)
     return {
       scale,
@@ -70,7 +76,7 @@ export function layerFor(caps: LayerCaps, sourceHeight: number | null | undefine
     }
   }
 
-  const scale = scaleFor(sourceHeight, need * VIEW_MARGIN)
+  const scale = need === null ? minimumScale : Math.max(minimumScale, scaleFor(sourceHeight, need * VIEW_MARGIN))
   if (scale === 1) return full
   return {
     scale,

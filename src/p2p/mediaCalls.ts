@@ -23,6 +23,7 @@ import {
   isAlmViewer,
   VideoDegradation,
   activeScreenCaps,
+  adaptScreenToEncoder,
   applyCameraCaps,
   applyScreenCaps,
   applyVideoCaps,
@@ -1388,6 +1389,14 @@ export class MediaCallHandler {
         if (takeExpiredRequest(peerId)) diagLog('screenshare', 'viewer-expired', { peer: peerId }, peerId)
         const videoSender = findVideoSender(pc)
         if (videoSender) syncScreenCaps(videoSender, peerId)
+      },
+      onEncoderSample: (sample) => {
+        const videoSender = findVideoSender(pc)
+        if (!videoSender) return
+        const maxHeight = adaptScreenToEncoder(peerId, sample)
+        if (maxHeight === undefined) return
+        syncScreenCaps(videoSender, peerId)
+        diagLog('screenshare', 'encoder-overload', { peer: peerId, maxHeight, ...sample })
       },
       viewer: () => ({ mode: viewerMode(peerId), askH: askedHeight(peerId) }),
     })

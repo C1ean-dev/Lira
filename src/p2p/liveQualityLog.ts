@@ -1,5 +1,5 @@
 import { diagLog } from '../utils/diagnosticLogger'
-import { setPeerNegotiatedCodec } from './videoSendPolicy'
+import { setPeerNegotiatedCodec, type EncoderSample } from './videoSendPolicy'
 
 export const LIVE_QUALITY_INTERVAL_MS = 10_000
 
@@ -8,6 +8,7 @@ export interface LiveQualityWatch {
   peerId: string
   isActive: () => boolean
   onTick?: () => void
+  onEncoderSample?: (sample: EncoderSample | null) => void
   viewer?: () => { mode: string; askH: number | null }
 }
 
@@ -57,7 +58,7 @@ const oneDecimal = (value: number): number => Math.round(value * 10) / 10
 const delta = (now: number | null, before: number | null | undefined): number | null =>
   now === null || before === null || before === undefined ? null : now - before
 
-export function watchLiveQuality({ pc, peerId, isActive, onTick, viewer }: LiveQualityWatch): void {
+export function watchLiveQuality({ pc, peerId, isActive, onTick, onEncoderSample, viewer }: LiveQualityWatch): void {
   if (!pc) return
   const token = ++watchSeq
   watchTokens.set(pc, token)
@@ -65,6 +66,13 @@ export function watchLiveQuality({ pc, peerId, isActive, onTick, viewer }: LiveQ
 
   let last: Counters | null = null
   let idleLogged = false
+  let missedRead = false
+
+  const missing = () => {
+    if (!current()) return
+    missedRead = true
+    try { onEncoderSample?.(null) } catch {}
+  }
 
   const sample = () => {
     if (typeof pc.getStats !== 'function') return
@@ -86,7 +94,7 @@ export function watchLiveQuality({ pc, peerId, isActive, onTick, viewer }: LiveQ
                 if (!pair || (r.nominated && !pair.nominated)) pair = r
               }
             })
-            if (!video) return
+            if (!video) { missing(); return }
 
             const now: Counters = {
               at: num(video.timestamp) ?? Date.now(),
@@ -106,7 +114,14 @@ export function watchLiveQuality({ pc, peerId, isActive, onTick, viewer }: LiveQ
             const qpSum = delta(now.qpSum, before?.qpSum)
             const encodeTime = delta(now.encodeTime, before?.encodeTime)
             const sentKbps = bytes !== null && elapsed > 0 ? Math.round((bytes * 8) / elapsed) : null
-
+            const fps = num(video.framesPerSecond)
+            const height = num(video.frameHeight)
+            const limitation = typeof video.qualityLimitationReason === 'string' ? video.qualityLimitationReason : null
+            const encodeMs = encodeTime !== null && encodeTime >= 0 && frames !== null && frames > 0 && elapsed > 0
+              ? (encodeTime / frames) * 1000
+              : null
+            const recentEncodeMs = missedRead ? null : encodeMs
+            missedRead = false
             const state = viewer ? viewer() : null
             if (state?.mode === 'off' && !sentKbps) {
               if (idleLogged) return
@@ -120,6 +135,12 @@ export function watchLiveQuality({ pc, peerId, isActive, onTick, viewer }: LiveQ
             if (peerId && codecReport?.mimeType) {
               setPeerNegotiatedCodec(peerId, codecReport.mimeType)
             }
+            onEncoderSample?.({
+              fps: fps ?? (frames !== null && elapsed > 0 ? frames * 1000 / elapsed : null),
+              height,
+              encodeMs: recentEncodeMs,
+              limitation: video.active === false ? null : limitation,
+            })
             diagLog('screenshare', 'quality-stats', {
               toPeer: peerId,
               mode: state?.mode ?? null,
@@ -128,24 +149,24 @@ export function watchLiveQuality({ pc, peerId, isActive, onTick, viewer }: LiveQ
               encoder: typeof video.encoderImplementation === 'string' ? video.encoderImplementation : null,
               hw: typeof video.powerEfficientEncoder === 'boolean' ? video.powerEfficientEncoder : null,
               w: num(video.frameWidth),
-              h: num(video.frameHeight),
-              fps: num(video.framesPerSecond) === null ? null : Math.round(video.framesPerSecond),
+              h: height,
+              fps: fps === null ? null : Math.round(fps),
               sentKbps,
               targetKbps: toKbps(video.targetBitrate),
               estimateKbps: toKbps(pair?.availableOutgoingBitrate),
               qp: qpSum !== null && frames ? oneDecimal(qpSum / frames) : null,
-              encodeMs: encodeTime !== null && frames ? oneDecimal((encodeTime / frames) * 1000) : null,
+              encodeMs: encodeMs === null ? null : oneDecimal(encodeMs),
               keyFrames: delta(now.keyFrames, before?.keyFrames),
               pli: delta(now.pli, before?.pli),
-              limit: typeof video.qualityLimitationReason === 'string' ? video.qualityLimitationReason : null,
+              limit: limitation,
               lostPct: num(remote?.fractionLost) === null ? null : oneDecimal(remote.fractionLost * 100),
               rttMs: num(remote?.roundTripTime) === null ? null : Math.round(remote.roundTripTime * 1000),
             })
-          } catch {}
+          } catch { missing() }
         },
-        () => {}
+        missing,
       )
-    } catch {}
+    } catch { missing() }
   }
 
   const arm = () => {

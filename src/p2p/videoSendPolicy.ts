@@ -19,9 +19,13 @@ export const SCREEN_DEFAULT_MIN_BITRATE = 2_500_000
 
 const peerNegotiatedCodecs = new Map<string, string>()
 const almViewers = new Set<string>()
+const encoderLimits = new Map<string, { consecutive: number; maxHeight?: number }>()
+const ENCODER_FALLBACK_HEIGHTS = [720, 540]
+const ENCODER_OVERLOAD_SAMPLES = 2
 
 /** Suppress duplicate RTP video/audio only after synchronized ALM playback. */
 export function setAlmViewer(peerId: string, playing: boolean): void {
+  if (playing !== almViewers.has(peerId)) resetEncoderPressure(peerId)
   if (playing) almViewers.add(peerId)
   else almViewers.delete(peerId)
 }
@@ -114,6 +118,7 @@ export function activeScreenCaps(): VideoCaps | null {
 
 export function beginScreenShare(caps: VideoCaps): void {
   activeShare = { ...caps }
+  encoderLimits.clear()
   shareEpoch++
 }
 
@@ -124,6 +129,7 @@ export function endScreenShare(): void {
   captureTrack = null
   viewRequests.clear()
   peerNegotiatedCodecs.clear()
+  encoderLimits.clear()
 }
 
 export function setCaptureSource(track: MediaStreamTrack | null): void {
@@ -178,6 +184,7 @@ export function noteViewRequest(peerId: string, watch: boolean, height: number |
       ? Math.min(MAX_VIEW_HEIGHT, Math.round(height))
       : null
   const before = viewRequests.get(peerId)
+  if (!watching) resetEncoderPressure(peerId)
   viewRequests.set(peerId, { watch: watching, height: wanted, at: Date.now() })
   return (
     !before || before.watch !== watching || before.height !== wanted || (before.watch && requestRanOut(before))
@@ -195,10 +202,12 @@ export function forgetViewer(peerId: string): void {
   almViewers.delete(peerId)
   viewRequests.delete(peerId)
   peerNegotiatedCodecs.delete(peerId)
+  encoderLimits.delete(peerId)
 }
 
 export function forgetAllViewers(): void {
   viewRequests.clear()
+  encoderLimits.clear()
 }
 
 export function askedHeight(peerId: string | undefined): number | null {
@@ -215,7 +224,8 @@ function planFor(peerId: string | undefined): SendPlan | null {
   const effectiveMinBitrate = Math.min(baseMinBitrate, maxAllowedBitrate)
   if (viewerMode(peerId) === 'off' || (peerId && almViewers.has(peerId))) return { active: false, scale: 1, ...activeShare, maxBitrate: maxAllowedBitrate, minBitrate: effectiveMinBitrate }
   const effectiveShare = maxAllowedBitrate !== activeShare.maxBitrate ? { ...activeShare, maxBitrate: maxAllowedBitrate, minBitrate: effectiveMinBitrate } : activeShare
-  const layer = layerFor(effectiveShare, captureHeight(), askedHeight(peerId))
+  const maxHeight = peerId ? encoderLimits.get(peerId)?.maxHeight : undefined
+  const layer = layerFor(effectiveShare, captureHeight(), askedHeight(peerId), maxHeight)
   const scaledMinBitrate = layer.scale > 1 ? Math.min(Math.round(effectiveMinBitrate / (layer.scale * layer.scale)), layer.maxBitrate) : effectiveMinBitrate
   return {
     active: true,
@@ -224,6 +234,47 @@ function planFor(peerId: string | undefined): SendPlan | null {
     maxFramerate: layer.maxFramerate,
     minBitrate: scaledMinBitrate,
   }
+}
+
+export interface EncoderSample {
+  fps: number | null
+  height: number | null
+  encodeMs: number | null
+  limitation: string | null
+}
+
+function resetEncoderPressure(peerId: string): void {
+  const state = encoderLimits.get(peerId)
+  if (state?.maxHeight) state.consecutive = 0
+  else encoderLimits.delete(peerId)
+}
+
+export function adaptScreenToEncoder(peerId: string, sample: EncoderSample | null): number | undefined {
+  if (!sample) {
+    resetEncoderPressure(peerId)
+    return
+  }
+  const plan = planFor(peerId)
+  const sourceHeight = captureHeight()
+  const state = encoderLimits.get(peerId) ?? { consecutive: 0 }
+  const maxHeight = ENCODER_FALLBACK_HEIGHTS.find(height =>
+    sample.height !== null && height < sample.height && height < (state.maxHeight ?? Infinity),
+  )
+  // Static content can have a low FPS even while Chromium reports an earlier CPU limitation.
+  if (!plan?.active || sourceHeight === null || maxHeight === undefined || sourceHeight / plan.scale <= maxHeight ||
+    sample.limitation !== 'cpu' || sample.fps === null || sample.fps <= 0 ||
+    sample.fps >= plan.maxFramerate * 0.8 || sample.encodeMs === null || sample.encodeMs < 1000 / plan.maxFramerate) {
+    resetEncoderPressure(peerId)
+    return
+  }
+
+  state.consecutive++
+  encoderLimits.set(peerId, state)
+  if (state.consecutive < ENCODER_OVERLOAD_SAMPLES) return
+  // Keep the cap for this share so full-screen renewals cannot restart the overload.
+  state.consecutive = 0
+  state.maxHeight = maxHeight
+  return maxHeight
 }
 
 export function viewerSend(peerId: string): {
@@ -315,13 +366,18 @@ export function applyScreenCaps(sender: RTCRtpSender, peerId?: string): void {
   }
   const token = ++holdSeq
   holdTokens.set(sender, token)
-  applyVideoCaps(sender, plan, 'maintain-resolution', plan.scale)
+  applyVideoCaps(sender, plan, screenDegradationFor(peerId, true), plan.scale)
   setTimeout(() => {
     if (!activeShare || holdTokens.get(sender) !== token) return
     holdTokens.delete(sender)
     const now = planFor(peerId)
-    if (now && now.active) applyVideoCaps(sender, now, configuredScreenDegradation, now.scale)
+    if (now && now.active) applyVideoCaps(sender, now, screenDegradationFor(peerId, false), now.scale)
   }, SCREEN_START_HOLD_MS)
+}
+
+function screenDegradationFor(peerId: string | undefined, inStartupHold: boolean): VideoDegradation {
+  if (peerId && encoderLimits.get(peerId)?.maxHeight !== undefined) return 'maintain-framerate'
+  return inStartupHold ? 'maintain-resolution' : configuredScreenDegradation
 }
 
 export function syncScreenCaps(sender: RTCRtpSender, peerId?: string): SendChange {
@@ -351,7 +407,7 @@ export function syncScreenCaps(sender: RTCRtpSender, peerId?: string): SendChang
     return 'more'
   }
 
-  const degradation: VideoDegradation = holdTokens.has(sender) ? 'maintain-resolution' : configuredScreenDegradation
+  const degradation = screenDegradationFor(peerId, holdTokens.has(sender))
   if (
     scale === plan.scale &&
     encoding.maxBitrate === plan.maxBitrate &&
@@ -425,6 +481,7 @@ export function watchScreenShareRamp(pc: RTCPeerConnection, peerId: string, phas
 
 export function __resetVideoSendPolicyForTests(): void {
   almViewers.clear()
+  encoderLimits.clear()
   activeShare = null
   shareEpoch++
   captureTrack = null
