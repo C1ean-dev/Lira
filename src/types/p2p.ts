@@ -2,8 +2,8 @@ import { Player } from './game'
 import { MapData, PlacedFurniture, PrivateZone } from './map'
 import { ChatMessage } from './chat'
 
-export const MIN_COMPATIBLE_VERSION = '1.1.210'
-export const CURRENT_LIRA_VERSION = '1.1.210'
+export const MIN_COMPATIBLE_VERSION = '1.1.211'
+export { CURRENT_APP_VERSION as CURRENT_LIRA_VERSION } from '../utils/appVersion'
 
 export type SignalingTier = 'render' | 'public' | 'local' | 'direct'
 
@@ -58,12 +58,7 @@ export type NetworkMessageType =
   | 'DJ_CALL_REQUEST'
   | 'VOICE_RELAY_CONTROL'
 
-export interface NetworkMessage {
-  type: NetworkMessageType
-  senderId: string
-  payload: any
-  timestamp: number
-}
+export type NetworkMessage<T extends NetworkMessageType = NetworkMessageType> = Extract<import('../validation/schemas').ValidatedNetworkMessage, { type: T }>
 
 export interface PlayerMovePayload {
   x: number

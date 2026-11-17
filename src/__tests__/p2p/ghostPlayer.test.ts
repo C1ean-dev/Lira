@@ -11,13 +11,13 @@ function makePlayer(overrides: Partial<Player> = {}): Player {
   return {
     id: LOCAL_ID,
     name: 'Self',
+    appVersion: CURRENT_LIRA_VERSION,
     x: 5,
     y: 5,
     direction: 'down',
     isMoving: false,
     avatar: { ...DEFAULT_AVATAR },
     status: 'available',
-    appVersion: CURRENT_LIRA_VERSION,
     lastUpdated: Date.now(),
     ...overrides,
   }

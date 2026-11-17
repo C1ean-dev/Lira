@@ -5,7 +5,7 @@ const { getRawHeader } = require('@electron/asar')
 function verifyProductionFiles(files) {
   const hasCatalog = files.includes('dist/assets/library/catalog.json')
   for (const file of files) {
-    assert.match(file, /^(?:dist\/|out\/[^/]+\.(?:js|mjs|cjs|map)$|package\.json$|node_modules\/ws\/)/, `Arquivo fora do pacote de produção: ${file}`)
+    assert.match(file, /^(?:dist\/|out\/[^/]+\.(?:js|mjs|cjs|map)$|package\.json$|node_modules\/(?:ws|electron-log)\/)/, `Arquivo fora do pacote de produção: ${file}`)
     assert.doesNotMatch(file, /(?:^|\/)(?:__tests__|scripts|fixtures|node_modules\/(?:onnxruntime[^/]*|@huggingface|@img|sharp))(?:\/|$)/, `Dependência ou arquivo desnecessário: ${file}`)
     assert.doesNotMatch(file, /(?:^|\/)ort-wasm[^/]*\.wasm$/, `WASM da transcrição deve ser baixado sob demanda: ${file}`)
     if (hasCatalog) assert.doesNotMatch(file, /^dist\/assets\/library\/(?:library\.xml|library(?:-[a-f0-9]{64})?\.png)$/, `Atlas legado duplicado no pacote: ${file}`)
@@ -27,6 +27,6 @@ module.exports = async context => {
   }
   visit(getRawHeader(path.join(context.appOutDir, 'resources', 'app.asar')).header)
   verifyProductionFiles(files)
-  console.log(`[Production package] Validated ${files.length} files: compiled app and ws only.`)
+  console.log(`[Production package] Validated ${files.length} files: compiled app, ws and electron-log only.`)
 }
 module.exports.verifyProductionFiles = verifyProductionFiles

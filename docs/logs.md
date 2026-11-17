@@ -180,3 +180,21 @@ Um espectador com `mode: off` aparece uma vez em `quality-stats`, com `sentKbps`
 - No app instalado, o nome da função em cada quadro (`fn`) é o do pacote minificado. Arquivo e linha são os do código-fonte.
 - Os arquivos ficam só na máquina. Nada é enviado.
 - Os relatórios trazem códigos de sala, ids de conexão e rótulos de botões. Leve isso em conta antes de mandar um arquivo para alguém.
+
+## Bibliotecas e transporte de escrita
+
+O transporte de arquivo de `electron-log/node` escreve e dispara a rotação. O
+Lira continua definindo os caminhos por instância, os nomes diários, os formatos
+de texto/JSONL, a sessão, os fingerprints, o contexto e as três cópias rotacionadas.
+Não é usado o mecanismo de captura/IPC automático da biblioteca: os registros do
+renderer passam uma única vez pelo IPC estruturado existente.
+
+O gerador de anexos usa `fflate` com compressão assíncrona e mantém a interface
+`buildZip(entries): Promise<Buffer>`. A consulta aos source maps usa
+`@jridgewell/trace-mapping`, adaptando as colunas ao formato dos relatórios; uma
+falha na tradução preserva a posição original. O leitor de relatórios continua
+compatível com os arquivos já produzidos.
+
+`electron-log` é uma dependência externa de produção. A verificação do pacote
+permite seu diretório e o de `ws`, além dos artefatos compilados; as outras
+bibliotecas desta refatoração são incorporadas aos bundles.

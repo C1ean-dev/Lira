@@ -9,6 +9,8 @@ export function getWhiteboardElements(doc: WhiteboardDocument): BoardElement[] {
     if (ids.has(stroke.id)) continue
     const x = stroke.points[0].x * 1000, y = stroke.points[0].y * 600
     const points = stroke.points.map<[number, number]>(p => [p.x * 1000 - x, p.y * 600 - y])
+    // A legacy click is a visible dot. The SDK requires at least two points.
+    if (points.length === 1) points.push([...points[0]])
     elements.push({ id: stroke.id, type: 'freedraw', x, y,
       width: Math.max(...points.map(p => p[0])) - Math.min(...points.map(p => p[0])),
       height: Math.max(...points.map(p => p[1])) - Math.min(...points.map(p => p[1])),
@@ -17,7 +19,7 @@ export function getWhiteboardElements(doc: WhiteboardDocument): BoardElement[] {
       opacity: 100, angle: 0, version: 1, versionNonce: 0, isDeleted: false,
       groupIds: [], locked: false,
       index: null,
-    })
+    } as unknown as BoardElement)
   }
   return elements.sort((a, b) => {
     const ai = a.index || '', bi = b.index || ''

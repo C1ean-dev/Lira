@@ -1,9 +1,10 @@
+import { presenceMessageSchema, userPresenceSchema, friendPacketSchema } from '../validation/schemas'
 import { FriendProfile, PublicRoomInfo, PresenceStatus } from '../types/game'
 import { ChatAttachment, ChatMessage, MessageDeliveryStatus } from '../types/chat'
 import { useGameStore, getLocalUserId } from '../store/useGameStore'
 import { useChatStore, getLocalDmChannelId } from '../store/useChatStore'
 import { PublicRoomsService } from './publicRoomsService'
-import { FriendsNetwork, FriendPacket } from '../p2p/FriendsNetwork'
+import { FriendsNetwork } from '../p2p/FriendsNetwork'
 import { isUserId, getPlayerUserId, getFriendUserId, findFriendKey } from '../utils/userId'
 import { readRoomInvite } from '../utils/roomInvite'
 
@@ -108,7 +109,8 @@ export class FriendsPresenceService {
       if (typeof window !== 'undefined' && window.localStorage) {
         const raw = window.localStorage.getItem(STORAGE_CACHE_KEY)
         if (raw) {
-          const parsed: UserPresence[] = JSON.parse(raw)
+          const cached: unknown = JSON.parse(raw)
+          const parsed = Array.isArray(cached) ? cached.flatMap(item => { const value = userPresenceSchema.safeParse(item); return value.success ? [value.data] : [] }) : []
           const now = Date.now()
           parsed.forEach((p) => {
             if (now - p.lastHeartbeat < STALE_PRESENCE_THRESHOLD_MS) {
@@ -252,7 +254,10 @@ export class FriendsPresenceService {
     this.notifyListeners()
   }
 
-  private handleLinkPacket(userId: string, packet: FriendPacket) {
+  private handleLinkPacket(userId: string, raw: unknown) {
+    const parsed = friendPacketSchema.safeParse(raw)
+    if (!parsed.success) return
+    const packet = parsed.data
     if (packet.t === 'presence') {
       this.handleLinkPresence(userId, packet.presence)
     } else if (packet.t === 'dm') {
@@ -441,8 +446,10 @@ export class FriendsPresenceService {
     }
   }
 
-  private handleIncomingMessage(msg: PresenceMessage) {
-    if (!msg || !msg.type) return
+  private handleIncomingMessage(raw: unknown) {
+    const parsed = presenceMessageSchema.safeParse(raw)
+    if (!parsed.success) return
+    const msg = parsed.data
 
     if (msg.type === 'PRESENCE_HEARTBEAT' && msg.presence) {
       const p = msg.presence
@@ -609,7 +616,10 @@ export class FriendsPresenceService {
         const list = await (window as any).electronAPI.broadcastPresence(presence)
         if (Array.isArray(list)) {
           let changed = false
-          list.forEach((p: UserPresence) => {
+          list.forEach((raw: unknown) => {
+            const parsed = userPresenceSchema.safeParse(raw)
+            if (!parsed.success) return
+            const p = parsed.data
             if (!this.isSelf(p.userId)) {
               const prev = this.presenceMap.get(p.userId)
               if (!prev || prev.lastHeartbeat !== p.lastHeartbeat) {

@@ -1,15 +1,20 @@
-import fs from 'node:fs'
-import { describe, expect, it } from 'vitest'
-
-describe('independent local board', () => {
-  it('ships without the external editor dependency or network fallback', () => {
-    for (const file of ['package.json', 'package-lock.json', 'vite.config.ts', 'electron/main.ts',
-      'src/components/collaboration/NativeBoard.tsx', 'src/components/collaboration/WhiteboardPanel.tsx',
-      'src/collaboration/boardEditor.ts', 'src/collaboration/boardFile.ts', 'src/collaboration/boardScene.ts', 'src/collaboration/whiteboard.ts']) {
-      expect(fs.readFileSync(file, 'utf8'), file).not.toMatch(/excalidraw/i)
-    }
-    for (const file of ['src/components/collaboration/NativeBoard.tsx', 'src/collaboration/boardFile.ts']) {
-      expect(fs.readFileSync(file, 'utf8'), file).not.toMatch(/\bfetch\s*\(|\bWebSocket\b|sendBeacon|@font-face/)
-    }
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { prepareBoardAssets } from '../../collaboration/boardAssets'
+afterEach(() => vi.unstubAllGlobals())
+describe('self-hosted drawing SDK resources', () => {
+  it('loads web fonts from the current application origin', () => {
+    vi.stubGlobal('window', { location: { protocol: 'https:', href: 'https://lira.example/space/' } })
+    prepareBoardAssets()
+    expect((window as any).EXCALIDRAW_ASSET_PATH).toBe('https://lira.example/excalidraw-assets/')
+  })
+  it('supports local font fetches for SVG export in installed Electron', () => {
+    vi.stubGlobal('window', { electronAPI: {}, location: { protocol: 'file:', href: 'file:///C:/Lira/dist/index.html' } })
+    prepareBoardAssets()
+    expect((window as any).EXCALIDRAW_ASSET_PATH).toBe('lira-board-font://local/')
+  })
+  it('loads installed desktop fonts from the distribution without a CDN', () => {
+    vi.stubGlobal('window', { location: { protocol: 'file:', href: 'file:///C:/Lira/dist/index.html' } })
+    prepareBoardAssets()
+    expect((window as any).EXCALIDRAW_ASSET_PATH).toBe('file:///C:/Lira/dist/excalidraw-assets/')
   })
 })

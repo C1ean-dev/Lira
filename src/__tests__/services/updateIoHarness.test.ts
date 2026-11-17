@@ -4,13 +4,17 @@ import os from 'node:os'
 import path from 'node:path'
 import { createUpdateIoHarness } from '../helpers/updateIoHarness'
 
+// Compilation and two fresh PowerShell processes need the installer integration
+// budget, especially while the remaining unit suites are running in parallel.
+const WINDOWS_INTEGRATION_TIMEOUT_MS = 30_000
+
 let root: string
 let harness: ReturnType<typeof createUpdateIoHarness>
 beforeAll(() => {
   if (process.platform !== 'win32') return
   root = mkdtempSync(path.join(os.tmpdir(), 'lira-io-harness-'))
   harness = createUpdateIoHarness(root)
-})
+}, WINDOWS_INTEGRATION_TIMEOUT_MS)
 afterAll(() => { if (root) rmSync(root, { recursive: true, force: true }) })
 
 it.skipIf(process.platform !== 'win32')('reuses the compiled production helper while isolating process state and passing literal arguments', () => {
@@ -25,4 +29,4 @@ $previous = [LiraUpdateIO]::FilesCopied
   for (let attempt = 0; attempt < 2; attempt++) {
     expect(JSON.parse(harness.run(script, { Value: value }))).toEqual({ Previous: 0, Value: value })
   }
-})
+}, WINDOWS_INTEGRATION_TIMEOUT_MS)

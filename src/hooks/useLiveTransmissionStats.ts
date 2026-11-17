@@ -12,7 +12,8 @@ export function useLiveTransmissionStats(open: boolean, stream: MediaStream | nu
     const sample = createTransmissionSampler()
     const update = async () => {
       try {
-        const rows = await sample(PeerManager.getInstance().getMediaCalls(), stream, local)
+        const manager = PeerManager.getInstance()
+        const rows = await sample(manager.getMediaCalls(), stream, local, manager.getAlmTransmissionCounters(stream, local))
         if (!disposed) setStats(rows)
       } catch {
         if (!disposed) setStats([])

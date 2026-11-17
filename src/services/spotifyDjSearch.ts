@@ -61,10 +61,11 @@ export function searchDjSongs(zoneId: string, text: string): Promise<SpotifySear
 }
 
 export function receiveDjSearchMessage(msg: NetworkMessage): boolean {
+  if (msg.type !== 'SPOTIFY_DJ_SEARCH' && msg.type !== 'SPOTIFY_DJ_SEARCH_ACK' && msg.type !== 'SPOTIFY_DJ_SEARCH_RESULT') return false
   const payload = msg.payload || {}
   if (typeof payload.ownerId !== 'string' || typeof payload.startedAt !== 'number'
     || typeof payload.requestId !== 'string' || !payload.requestId || payload.requestId.length > 128
-    || !normalizeDjSongQuery(payload.query) || payload.query.length < 2) return false
+    || typeof payload.query !== 'string' || !normalizeDjSongQuery(payload.query) || payload.query.length < 2) return false
   const current = context(payload)
   if (!current) return false
   if (msg.type === 'SPOTIFY_DJ_SEARCH_ACK' || msg.type === 'SPOTIFY_DJ_SEARCH_RESULT') {

@@ -67,16 +67,18 @@ export function commandDjPlayback(zoneId: string, command: SpotifyPlaybackComman
 }
 
 export function receiveDjPlaybackMessage(msg: NetworkMessage): void {
-  const payload = msg.payload || {}
   if (msg.type === 'SPOTIFY_DJ_COMMAND_RESULT') {
+    const payload = msg.payload
     const request = pending.get(payload.requestId)
     if (request?.owner === msg.senderId && typeof payload.result?.ok === 'boolean') request.finish(payload.result)
     return
   }
+  if (msg.type !== 'SPOTIFY_DJ_COMMAND') return
+  const payload = msg.payload
   const dj = localOwner(payload.zoneId)
   const sender = useGameStore.getState().remotePlayers[msg.senderId]
   if (!dj || payload.ownerId !== dj.djPeerId || payload.startedAt !== dj.startedAt || !sender
-    || sender.isDjBot || sender.currentZoneId !== payload.zoneId || typeof payload.requestId !== 'string') return
+    || !payload.command || sender.isDjBot || sender.currentZoneId !== payload.zoneId || typeof payload.requestId !== 'string') return
   if (receivedCommands.has(payload.requestId)) return
   receivedCommands.add(payload.requestId)
   if (receivedCommands.size > 128) receivedCommands.delete(receivedCommands.values().next().value!)

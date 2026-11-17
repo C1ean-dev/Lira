@@ -18,6 +18,16 @@ export interface TransmissionStats {
   limitation: string | null
 }
 
+type AlmTransmissionRow = Pick<TransmissionStats, 'id' | 'peerId' | 'width' | 'height' | 'codec' | 'rttMs'> & {
+  bytes: number
+  frames: number
+}
+
+export interface AlmTransmissionCounters {
+  peers: ReadonlySet<string>
+  rows: AlmTransmissionRow[]
+}
+
 type Report = Record<string, any>
 const number = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null
 const delta = (current: unknown, previous: unknown): number | null => {
@@ -30,14 +40,34 @@ const milliseconds = (seconds: unknown) => number(seconds) === null ? null : (se
 // counter resets must not turn into negative rates or another viewer's bitrate.
 export function createTransmissionSampler() {
   const previous = new WeakMap<RTCPeerConnection, Map<string, Report>>()
+  let previousAlm = new Map<string, AlmTransmissionRow & { timestamp: number }>()
   return async (
     calls: Map<string, { peerConnection?: RTCPeerConnection }>,
     stream: MediaStream | null,
     local: boolean,
+    alm?: AlmTransmissionCounters,
   ): Promise<TransmissionStats[]> => {
     const trackIds = new Set(stream?.getVideoTracks().filter(track => track.readyState !== 'ended').map(track => track.id))
     if (!trackIds.size) return []
+    const timestamp = performance.now()
+    const nextAlm = new Map<string, AlmTransmissionRow & { timestamp: number }>()
+    const almRows = (alm?.rows ?? []).map(({ frames, ...row }): TransmissionStats => {
+      const before = previousAlm.get(row.id)
+      nextAlm.set(row.id, { ...row, frames, timestamp })
+      const elapsed = delta(timestamp, before?.timestamp)
+      const bytes = delta(row.bytes, before?.bytes)
+      const count = delta(frames, before?.frames)
+      return {
+        ...row, bufferKind: local ? 'send' : 'playback',
+        fps: count !== null && elapsed ? count * 1000 / elapsed : null,
+        bitrateKbps: bytes !== null && elapsed ? bytes * 8 / elapsed : null,
+        bufferMs: null, jitterMs: null, lossPct: null, droppedFrames: null,
+        freezeCount: null, freezeDurationSec: null, limitation: null,
+      }
+    })
+    previousAlm = nextAlm
     const results = await Promise.allSettled([...calls].map(async ([peerId, call]) => {
+      if (alm?.peers.has(peerId)) return []
       const pc = call.peerConnection
       if (!pc || pc.connectionState === 'closed') return []
       const endpoints = local ? pc.getSenders() : pc.getReceivers()
@@ -88,6 +118,6 @@ export function createTransmissionSampler() {
       previous.set(pc, next)
       return rows
     }))
-    return results.flatMap(result => result.status === 'fulfilled' ? result.value : [])
+    return [...almRows, ...results.flatMap(result => result.status === 'fulfilled' ? result.value : [])]
   }
 }

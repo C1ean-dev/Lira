@@ -14,6 +14,7 @@ export function isStoppedDjSession(zoneId: string, dj: SpotifyDjState): boolean 
 }
 
 export function receiveDjStopMessage(msg: NetworkMessage): boolean {
+  if (msg.type !== 'SPOTIFY_DJ_STOP') return false
   const { zoneId, ownerId, startedAt } = msg.payload || {}
   const game = useGameStore.getState()
   const sender = msg.senderId === game.localPlayer.id ? game.localPlayer : game.remotePlayers[msg.senderId]

@@ -1,3 +1,6 @@
+import { z } from 'zod'
+import { createStoredState, getLocalStorage } from './persistedState'
+import { playerSchema } from '../validation/schemas'
 import { create } from 'zustand'
 import { avatarWithAssetReferences } from '../assets/avatarReferences'
 import { Player, PresenceStatus, PresenceInfo, sanitizePresence, STATUS_META, ReactionItem, AvatarConfig, UserRole, PlayerPermissions, ConnectionStatus, RoomKnockRequest, KnockStatus, FriendProfile } from '../types/game'
@@ -25,42 +28,14 @@ interface SavedProfile {
   statusEmoji?: string
 }
 
-const getStorage = () => {
-  if (typeof window !== 'undefined' && window.localStorage) {
-    return window.localStorage
-  }
-  if (typeof globalThis !== 'undefined' && (globalThis as any).localStorage) {
-    return (globalThis as any).localStorage
-  }
-  return null
-}
-
-const loadSavedProfile = (): SavedProfile | null => {
-  try {
-    const storage = getStorage()
-    if (storage) {
-      const raw = storage.getItem(PROFILE_STORAGE_KEY)
-      if (raw) {
-        return JSON.parse(raw)
-      }
-    }
-  } catch (e) {
-    reportStorageFailure('read', PROFILE_STORAGE_KEY, e)
-  }
-  return null
-}
-
+const getStorage = getLocalStorage
+const profilePreferences = createStoredState<SavedProfile>(PROFILE_STORAGE_KEY, playerSchema, {})
+const friendsPreferences = createStoredState(FRIENDS_STORAGE_KEY, z.array(z.string()), [])
+const friendProfileSchema = z.custom<FriendProfile>(value => !!value && typeof value === 'object' && typeof (value as FriendProfile).id === 'string' && typeof (value as FriendProfile).name === 'string')
+const friendProfilesPreferences = createStoredState(FRIEND_PROFILES_STORAGE_KEY, z.record(z.string(), friendProfileSchema), {})
+const loadSavedProfile = () => profilePreferences.getState()
 const saveProfile = (data: Partial<SavedProfile>) => {
-  try {
-    const storage = getStorage()
-    if (storage) {
-      const current = loadSavedProfile() || {}
-      const updates = Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined))
-      storage.setItem(PROFILE_STORAGE_KEY, JSON.stringify({ ...current, ...updates }))
-    }
-  } catch (e) {
-    reportStorageFailure('write', PROFILE_STORAGE_KEY, e)
-  }
+  profilePreferences.setState(Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined)))
 }
 
 const syncPublicRoomRegistration = (roomId: string | null, isPublic: boolean, roomName?: string) => {
@@ -221,31 +196,8 @@ const loadSavedMapViewMode = (): 'immersive' | 'simplified' => {
   return 'immersive'
 }
 
-const loadSavedFriends = (): string[] => {
-  try {
-    const storage = getStorage()
-    if (storage) {
-      const raw = storage.getItem(FRIENDS_STORAGE_KEY)
-      if (raw) return JSON.parse(raw)
-    }
-  } catch (e) {
-    reportStorageFailure('read', FRIENDS_STORAGE_KEY, e)
-  }
-  return []
-}
-
-const loadSavedFriendProfiles = (): Record<string, FriendProfile> => {
-  try {
-    const storage = getStorage()
-    if (storage) {
-      const raw = storage.getItem(FRIEND_PROFILES_STORAGE_KEY)
-      if (raw) return JSON.parse(raw)
-    }
-  } catch (e) {
-    reportStorageFailure('read', FRIEND_PROFILES_STORAGE_KEY, e)
-  }
-  return {}
-}
+const loadSavedFriends = () => friendsPreferences.getState()
+const loadSavedFriendProfiles = () => friendProfilesPreferences.getState()
 
 export const useGameStore = create<GameStore>((set, get) => ({
   mapViewMode: loadSavedMapViewMode(),
@@ -313,8 +265,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       try {
         const storage = getStorage()
         if (storage) {
-          storage.setItem(FRIENDS_STORAGE_KEY, JSON.stringify(nextFriends))
-          storage.setItem(FRIEND_PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles))
+          friendsPreferences.setState(nextFriends, true)
+          friendProfilesPreferences.setState(nextProfiles, true)
         }
       } catch (e) {
         reportStorageFailure('write', FRIENDS_STORAGE_KEY, e)
@@ -364,8 +316,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       try {
         const storage = getStorage()
         if (storage) {
-          storage.setItem(FRIENDS_STORAGE_KEY, JSON.stringify(nextFriends))
-          storage.setItem(FRIEND_PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles))
+          friendsPreferences.setState(nextFriends, true)
+          friendProfilesPreferences.setState(nextProfiles, true)
         }
       } catch (e) {
         reportStorageFailure('write', FRIENDS_STORAGE_KEY, e)
@@ -380,8 +332,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
       try {
         const storage = getStorage()
         if (storage) {
-          storage.setItem(FRIENDS_STORAGE_KEY, JSON.stringify(nextFriends))
-          storage.setItem(FRIEND_PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles))
+          friendsPreferences.setState(nextFriends, true)
+          friendProfilesPreferences.setState(nextProfiles, true)
         }
       } catch (e) {
         reportStorageFailure('write', FRIENDS_STORAGE_KEY, e)
@@ -399,7 +351,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       try {
         const storage = getStorage()
         if (storage) {
-          storage.setItem(FRIEND_PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles))
+          friendProfilesPreferences.setState(nextProfiles, true)
         }
       } catch (e) {
         reportStorageFailure('write', FRIEND_PROFILES_STORAGE_KEY, e)
@@ -645,7 +597,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         try {
           const storage = getStorage()
           if (storage) {
-            storage.setItem(FRIEND_PROFILES_STORAGE_KEY, JSON.stringify(nextProfiles))
+            friendProfilesPreferences.setState(nextProfiles, true)
           }
         } catch (e) {
           reportStorageFailure('write', FRIEND_PROFILES_STORAGE_KEY, e)

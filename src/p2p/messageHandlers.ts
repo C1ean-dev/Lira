@@ -1,3 +1,4 @@
+import { parseNetworkMessage } from '../validation/schemas'
 import { receiveWhiteboardMessage } from '../services/whiteboardNetwork'
 import { receiveBoardPointer } from '../services/boardPointerNetwork'
 import { applyConsumptionChange } from '../services/tabletopConsumption'
@@ -5,7 +6,7 @@ import { AtlasChunkReceiver } from '../assets/atlasChunks'
 import { readAtlas, atlasDigest, decodeTransferredAtlas } from '../assets/atlasService'
 import type { AtlasDocument, PersistedAtlas } from '../assets/atlasFormat'
 import { NetworkMessage, PlayerMovePayload, MIN_COMPATIBLE_VERSION } from '../types/p2p'
-import { isNewerVersion } from '../services/updateCheck'
+import { isNewerVersion, normalizeVersion } from '../utils/versionUtils'
 import { Player } from '../types/game'
 import { useGameStore } from '../store/useGameStore'
 import { useMapStore } from '../store/useMapStore'
@@ -62,7 +63,7 @@ function isDjMessageSource(msg: NetworkMessage, peerId: string, isHost: boolean)
 }
 
 export function processNetworkMessage(
-  msg: NetworkMessage,
+  raw: unknown,
   peerId: string,
   isHost: boolean,
   broadcast: (msg: NetworkMessage, excludePeerId?: string) => void,
@@ -71,6 +72,8 @@ export function processNetworkMessage(
   myPeerId?: string | null,
   onDjCallRequest?: (listenerId: string) => void
 ) {
+  const msg = parseNetworkMessage(raw)
+  if (!msg) return
   switch (msg.type) {
     case 'WHITEBOARD_POINTER': {
       if (!receiveBoardPointer(msg, peerId, isHost)) return
@@ -109,6 +112,9 @@ export function processNetworkMessage(
 
     case 'VERSION_INCOMPATIBLE': {
       const { minVersion, currentVersion, message } = msg.payload || {}
+      const localVersion = useGameStore.getState().localPlayer.appVersion
+      const requiredVersion = normalizeVersion(minVersion || MIN_COMPATIBLE_VERSION)
+      if (requiredVersion && localVersion && normalizeVersion(localVersion) && !isNewerVersion(requiredVersion, localVersion)) return
       useChatStore.getState().addMessage({
         id: 'version-incompatible-warning',
         senderId: 'system',
@@ -164,7 +170,7 @@ export function processNetworkMessage(
       const incomingPlayer = msg.payload.player || {}
       const isDj = !!incomingPlayer.isDjBot || remotePeerId.startsWith('dj-')
       const incomingVersion: string | undefined = incomingPlayer.appVersion
-      const isOutdated = !isDj && (!incomingVersion || isNewerVersion(MIN_COMPATIBLE_VERSION, incomingVersion))
+      const isOutdated = !isDj && (!incomingVersion || !normalizeVersion(incomingVersion) || isNewerVersion(MIN_COMPATIBLE_VERSION, incomingVersion))
 
       if (isOutdated) {
         const warnId = `compat-warn-${incomingGameId || remotePeerId}`
@@ -185,8 +191,8 @@ export function processNetworkMessage(
             senderName: 'Sistema',
             channelId: 'general',
             content: isPeerHost
-              ? `⚠️ O Host está em uma versão desatualizada do Lira (${incomingVersion || '< 1.1.210'}). Chamadas de voz e recursos de rede não funcionarão corretamente até que o Host atualize para >= v${MIN_COMPATIBLE_VERSION}.`
-              : `⚠️ O participante "${resolvedName}" está em uma versão antiga do Lira (${incomingVersion || '< 1.1.210'}) e não suporta o protocolo de áudio atual. Requer atualização para >= v${MIN_COMPATIBLE_VERSION}.`,
+              ? `⚠️ O Host está em uma versão desatualizada do Lira (${incomingVersion || 'desconhecida'}). Chamadas de voz e recursos de rede não funcionarão corretamente até que o Host atualize para >= v${MIN_COMPATIBLE_VERSION}.`
+              : `⚠️ O participante "${resolvedName}" está em uma versão antiga do Lira (${incomingVersion || 'desconhecida'}) e não suporta o protocolo atual de colaboração e mídia. Requer atualização para >= v${MIN_COMPATIBLE_VERSION}.`,
             timestamp: Date.now(),
           })
         }
@@ -196,14 +202,14 @@ export function processNetworkMessage(
           PeerManager.getInstance?.()?.sendVersionIncompatible?.(
             peerId || remotePeerId,
             MIN_COMPATIBLE_VERSION,
-            incomingVersion || '< 1.1.210',
-            `⚠️ Incompatibilidade de versão: este espaço exige o Lira >= v${MIN_COMPATIBLE_VERSION}. Sua versão (${incomingVersion || '< 1.1.210'}) é antiga e não suporta o protocolo de áudio atual. Por favor, atualize o aplicativo.`
+            incomingVersion || 'desconhecida',
+            `⚠️ Incompatibilidade de versão: este espaço exige o Lira >= v${MIN_COMPATIBLE_VERSION}. Sua versão (${incomingVersion || 'desconhecida'}) é antiga e não suporta o protocolo atual de colaboração e mídia. Por favor, atualize o aplicativo.`
           )
         } catch {}
 
         // Se o nó local for o Host, fecha a conexão e remove o par desatualizado após 500ms
         if (isHost) {
-          console.warn(`[P2P] Host rejeitando participante desatualizado: ${remotePeerId} (${incomingVersion || '< 1.1.210'})`)
+          console.warn(`[P2P] Host rejeitando participante desatualizado: ${remotePeerId} (${incomingVersion || 'desconhecida'})`)
           setTimeout(() => {
             try {
               removePeer(remotePeerId)
@@ -241,6 +247,7 @@ export function processNetworkMessage(
       }
 
       const player: Player = {
+        x: 0, y: 0, direction: 'down', isMoving: false, avatar: { ...DEFAULT_AVATAR }, status: 'available', lastUpdated: Date.now(),
         ...incomingPlayer,
         isCameraOff: incomingPlayer.isCameraOff !== undefined ? incomingPlayer.isCameraOff : true,
         name: resolvedName,
@@ -385,7 +392,7 @@ export function processNetworkMessage(
         if (fallbackKey) {
           const isPeerHost = !fallbackKey.startsWith('dj-') && fallbackKey.endsWith('-host')
           const isDj = !!updated.isDjBot || fallbackKey.startsWith('dj-')
-          const fallbackOutdated = !isDj && (!updated.appVersion || isNewerVersion(MIN_COMPATIBLE_VERSION, updated.appVersion))
+          const fallbackOutdated = !isDj && (!updated.appVersion || !normalizeVersion(updated.appVersion) || isNewerVersion(MIN_COMPATIBLE_VERSION, updated.appVersion))
           const nextPlayer: Player = {
             id: fallbackKey,
             gameId: updated.gameId || fallbackKey,
@@ -483,7 +490,7 @@ export function processNetworkMessage(
         }
         break
       }
-      if (msg.payload.atlas) { receiveAtlas(msg.payload.atlas, msg.payload.digest); break }
+      if (msg.payload.atlas && msg.payload.digest) { receiveAtlas(msg.payload.atlas, msg.payload.digest); break }
       if (msg.payload.customAssets) {
         useCustomAssetsStore.getState().syncRemoteCustomAssets(
           msg.payload.customAssets,
@@ -494,7 +501,7 @@ export function processNetworkMessage(
     }
 
     case 'CUSTOM_ASSET_ADD_OR_UPDATE': {
-      if (msg.payload.atlas) { receiveAtlas(msg.payload.atlas, msg.payload.digest); break }
+      if (msg.payload.atlas && msg.payload.digest) { receiveAtlas(msg.payload.atlas, msg.payload.digest); break }
       if (msg.payload.asset) {
         useCustomAssetsStore.getState().syncRemoteAssetAddOrUpdate(msg.payload.asset)
       }
@@ -524,13 +531,13 @@ export function processNetworkMessage(
             useMapStore.getState().addFurniture(data.furniture)
           } else if (action === 'remove_furniture') {
             if (typeof data.id === 'string') useMapStore.getState().removeFurnitureById(data.id)
-            else useMapStore.getState().removeFurnitureAt(data.x, data.y)
+            else if (data.x !== undefined && data.y !== undefined) useMapStore.getState().removeFurnitureAt(data.x, data.y)
           } else if (action === 'add_zone') {
             useMapStore.getState().addOrUpdateZone(data.zone)
           } else if (action === 'remove_zone') {
             useMapStore.getState().removeZone(data.id)
           } else if (action === 'update_zone') {
-            useMapStore.getState().updateZone(data.id, data.partial || data.zone)
+            useMapStore.getState().updateZone(data.id, data.partial || data.zone || {})
           }
         })
       }

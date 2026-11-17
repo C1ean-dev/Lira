@@ -19,6 +19,7 @@ export interface AlmFrame {
 
 export interface AlmAssembly {
   frame: AlmFrame
+  payloadBytes: number
   packets: readonly ArrayBuffer[]
 }
 
@@ -113,7 +114,7 @@ export class AlmAssembler {
     this.pending.delete(id)
     this.bytes -= frame.bytes
     const packets = Array.from({ length: count }, (_, part) => frame.parts.get(part)!)
-    return { frame: playbackFrame(frame.frame, packets, size), packets }
+    return { frame: playbackFrame(frame.frame, packets, size), packets, payloadBytes: size }
   }
 }
 
@@ -124,7 +125,7 @@ export class AlmFrameQueue {
   private keyNeeded = true
   private timer: ReturnType<typeof setTimeout> | undefined
 
-  constructor(private output: (frame: AlmFrame) => void, private requestKey: () => void,
+  constructor(private output: (frame: AlmFrame) => false | void, private requestKey: () => void,
     private options: { now?: () => number; ttlMs?: number; independent?: boolean } = {}) {}
 
   reset(): void {
@@ -148,7 +149,7 @@ export class AlmFrameQueue {
     while (this.expected !== null && this.frames.has(this.expected)) {
       const entry = this.frames.get(this.expected)!
       this.frames.delete(this.expected++)
-      this.output(entry.frame)
+      if (this.output(entry.frame) === false) { this.lose(); return }
     }
     const ttl = this.options.ttlMs ?? ALM_FRAME_TTL_MS
     const oldest = Math.min(...[...this.frames.values()].map(entry => entry.at))

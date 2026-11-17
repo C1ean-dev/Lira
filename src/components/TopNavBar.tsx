@@ -34,6 +34,7 @@ import { UpdateChangelogHover } from './common/UpdateChangelogHover'
 import { isAndroid } from '../utils/platform'
 import { useRoomPublication } from '../hooks/useRoomPublication'
 import { useInlineContentFit } from '../hooks/useInlineContentFit'
+import { useHeaderActionsFit } from '../hooks/useHeaderActionsFit'
 import { DirectConnectionPanel } from './lobby/DirectConnectionPanel'
 import { createSpaceInviteLink } from '../utils/spaceInviteLink'
 
@@ -124,7 +125,7 @@ export const TopNavBar: React.FC<Props> = ({
     const desktop = window.matchMedia('(min-width: 1536px)')
     const closeOnDesktop = () => { if (desktop.matches) setIsMobileMenuOpen(false) }
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
+      if (event.key !== 'Escape' || directConnectionDialogRef.current?.open) return
       setIsMobileMenuOpen(false)
       menuButtonRef.current?.focus()
     }
@@ -198,9 +199,8 @@ export const TopNavBar: React.FC<Props> = ({
   }
 
   return (
-    <header className={`h-14 shrink-0 bg-[#12151d]/90 backdrop-blur-md border-b border-[#2a3142] px-3 sm:px-4 flex items-center justify-between gap-2 select-none relative ${isMobileMenuOpen ? 'z-[80]' : 'z-30'}`}>
-      <div className="hidden 2xl:block shrink-0"><CollaborationButtons /></div>
-      <div ref={publicationFit.containerRef} className="flex flex-1 min-w-0 items-center gap-1.5 sm:gap-3">
+    <header className={`h-14 shrink-0 bg-[#12151d]/90 backdrop-blur-md border-b border-[#2a3142] px-2 sm:px-4 flex items-center justify-between gap-1 sm:gap-2 select-none relative ${isMobileMenuOpen ? 'z-[80]' : 'z-30'}`}>
+      <div ref={publicationFit.containerRef} className="flex flex-1 min-w-0 items-center gap-1 sm:gap-3">
         <div className="flex shrink-0 items-center">
           <LiraLogo size={32} showText={true} className="hidden sm:inline-flex" />
           <LiraLogo size={28} showText={false} className="sm:hidden" />
@@ -218,13 +218,15 @@ export const TopNavBar: React.FC<Props> = ({
           <span className="sr-only" role="status">{linkStatus === 'error' ? linkError : linkStatus === 'copied' ? 'Link copiado' : ''}</span>
         </button>}
 
+        <CollaborationButtons onAction={() => setIsMobileMenuOpen(false)} />
+
         {roomId && (
           <button
             onClick={handleCopyCode}
             disabled={copyStatus === 'copying'}
             aria-busy={copyStatus === 'copying'}
             aria-label={copyStatus === 'copying' ? 'Preparando convite' : copyStatus === 'error' ? 'Falha ao copiar. Tente novamente.' : isHost ? 'Copiar convite completo' : 'Copiar ID do espaço'}
-            className={`flex min-w-0 max-w-[360px] items-center gap-1.5 rounded-xl border px-2 py-2 text-xs font-semibold transition-all sm:px-3 ${
+            className={`hidden min-[520px]:flex min-w-0 max-w-[360px] items-center gap-1.5 rounded-xl border px-2 py-2 text-xs font-semibold transition-all sm:px-3 ${
               isHost ? 'shrink-0 border-indigo-500/40 bg-indigo-500/15 text-indigo-200 hover:bg-indigo-500/25' : 'border-[#2a3142] bg-[#1b202c] text-slate-200 hover:bg-slate-800'
             }`}
             title={isHost ? 'Copiar convite completo' : `ID do Espaço: ${roomId}\nClique para copiar o ID`}
@@ -239,7 +241,7 @@ export const TopNavBar: React.FC<Props> = ({
               <Copy className="h-4 w-4 shrink-0" />
             )}
             {isHost ? (
-              <span className="hidden whitespace-nowrap min-[520px]:inline">{copyStatus === 'copied' ? 'Convite copiado' : 'Convite completo'}</span>
+              <span className="hidden whitespace-nowrap lg:inline">{copyStatus === 'copied' ? 'Convite copiado' : 'Convite completo'}</span>
             ) : (
               <span className="min-w-0 truncate font-mono font-bold text-indigo-300">{displayRoomId}</span>
             )}
@@ -247,17 +249,17 @@ export const TopNavBar: React.FC<Props> = ({
         )}
 
         {roomId && isHost && <button type="button" onClick={() => setShowDirectConnection(true)}
-          className="flex shrink-0 items-center gap-1.5 rounded-xl border border-indigo-500/40 p-2 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/20 sm:px-3"
+          className="hidden min-[520px]:flex shrink-0 items-center gap-1.5 rounded-xl border border-indigo-500/40 p-2 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/20 sm:px-3"
           aria-label="Convites individuais" title="Convites individuais">
           <Link2 className="h-4 w-4 shrink-0" />
-          <span className="hidden whitespace-nowrap min-[520px]:inline">Convites individuais</span>
+          <span className="hidden whitespace-nowrap lg:inline">Convites individuais</span>
         </button>}
 
         {roomId && (
           <button
             onClick={isHost ? toggleRoomPrivacy : undefined}
             disabled={!isHost}
-            className={`relative flex shrink-0 min-w-0 overflow-hidden whitespace-nowrap items-center justify-center gap-1.5 ${
+            className={`relative hidden sm:flex shrink-0 min-w-0 overflow-hidden whitespace-nowrap items-center justify-center gap-1.5 ${
               isAndroidPlatform ? 'p-2' : 'p-2 sm:px-3 sm:py-1.5'
             } rounded-xl border text-xs font-semibold transition-all ${
               isRoomPublic
@@ -497,7 +499,7 @@ onClick={() => PeerManager.getInstance().reconnect()}
         )}
       </div>
 
-      <div className="flex 2xl:hidden shrink-0 items-center gap-1.5">
+      <div className="flex 2xl:hidden shrink-0 items-center gap-1 sm:gap-1.5">
         <button
           onClick={() => { setIsMobileMenuOpen(false); toggleChat() }}
           className={`relative p-2 rounded-xl border transition-all ${
@@ -556,7 +558,19 @@ onClick={() => PeerManager.getInstance().reconnect()}
         <>
         <div className="absolute inset-x-0 top-14 h-[calc(100dvh-3.5rem)] bg-black/50 z-40 2xl:hidden" aria-hidden="true" onClick={() => setIsMobileMenuOpen(false)} />
         <div id="space-navigation-menu" role="region" aria-label="Menu do espaço" className="absolute inset-x-0 top-14 bg-[#12151d] border-b border-[#394359] p-3 sm:p-4 z-50 shadow-2xl flex flex-col gap-3 max-h-[calc(100dvh-3.5rem)] overflow-y-auto overscroll-contain select-none 2xl:hidden">
-          <CollaborationButtons showLabels onAction={() => setIsMobileMenuOpen(false)} />
+          {roomId && <div className="flex flex-wrap items-center gap-2 min-[520px]:hidden">
+            <button type="button" onClick={handleCopyCode} disabled={copyStatus === 'copying'} aria-busy={copyStatus === 'copying'}
+              aria-label={isHost ? 'Copiar convite completo' : 'Copiar ID do espaço'}
+              className="flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/15 p-2 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/25 disabled:opacity-50">
+              {copyStatus === 'copied' ? <Check size={16} /> : copyStatus === 'copying' ? <LoaderCircle size={16} className="animate-spin" /> : <Copy size={16} />}
+              <span>{copyStatus === 'copied' ? 'Convite copiado' : isHost ? 'Convite completo' : 'Copiar ID do espaço'}</span>
+            </button>
+            {isHost && <button type="button" onClick={() => setShowDirectConnection(true)} aria-label="Convites individuais"
+              className="flex items-center gap-2 rounded-xl border border-indigo-500/40 p-2 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/20">
+              <Link2 size={16} /><span>Convites individuais</span>
+            </button>}
+            <span className="sr-only" role="status">{copyStatus === 'error' ? 'Falha ao copiar. Tente novamente.' : copyStatus === 'copied' ? 'Convite copiado' : ''}</span>
+          </div>}
           <button type="button"
             onClick={() => {
               setIsMobileMenuOpen(false)

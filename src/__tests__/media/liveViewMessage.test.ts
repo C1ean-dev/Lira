@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { CURRENT_LIRA_VERSION } from '../../types/p2p'
 
 const { FakePeer, FakeConn } = vi.hoisted(() => {
   class FakeConn {
@@ -63,7 +64,6 @@ import { liveSharers, liveViewReporter, __resetLiveViewForTests } from '../../me
 import { VIEW_RENEW_MS, VIEW_SEND_DELAY_MS } from '../../media/liveViewReporter'
 import { useGameStore } from '../../store/useGameStore'
 import { useLiveWatchStore } from '../../store/useLiveWatchStore'
-import { CURRENT_LIRA_VERSION } from '../../types/p2p'
 
 type Conn = InstanceType<typeof FakeConn>
 
@@ -93,13 +93,13 @@ const join = async () => {
 const remote = (id: string, extra: Record<string, unknown> = {}): any => ({
   id,
   name: id,
+  appVersion: CURRENT_LIRA_VERSION,
   x: 1,
   y: 1,
   direction: 'down',
   isMoving: false,
   avatar: { baseId: 'char-1', shirtColor: '#e03131' },
   status: 'available',
-  appVersion: CURRENT_LIRA_VERSION,
   lastUpdated: 0,
   currentZoneId: null,
   ...extra,
@@ -163,7 +163,7 @@ describe('saying that this app waits for a click before a live', () => {
     expect(joins(conn)[0]).toMatchObject({ senderId: HOST_ID, payload: { player: { liveOptIn: true } } })
   })
 
-  it('is kept with the player, and absent for a compatible player that does not advertise the flag', async () => {
+  it('keeps an explicit live opt-in and leaves an omitted flag unset for compatible players', async () => {
     await host()
     const modern = new FakeConn('lira-CODE-AAA-peer-new01')
     const old = new FakeConn('lira-CODE-AAA-peer-old01')
@@ -260,16 +260,16 @@ describe('the message of a viewer to who is live', () => {
       ])
     })
 
-    it('asks for everything when the height is missing or is not a height', () => {
+    it('accepts the explicit full-resolution sentinel and rejects malformed heights', () => {
       for (const h of [null, undefined, 'big', Number.NaN, -5, Number.POSITIVE_INFINITY]) {
         hostConn.emit('data', liveView('viewer', myId, true, h))
       }
-      expect(apply.mock.calls.map((c) => c[3])).toEqual([null, null, null, null, null, null])
+      expect(apply.mock.calls.map((c) => c[3])).toEqual([null])
     })
 
     it('only watches on a clear yes', () => {
       for (const watch of ['yes', 1, undefined, null]) hostConn.emit('data', liveView('viewer', myId, watch, 180))
-      expect(apply.mock.calls.every((c) => c[2] === false)).toBe(true)
+      expect(apply).not.toHaveBeenCalled()
     })
 
     it('is ignored when it is for somebody else', () => {

@@ -9,7 +9,7 @@ import { processNetworkMessage } from '../../p2p/messageHandlers'
 const original = useGameStore.getState()
 afterEach(() => { useGameStore.setState(original); useWhiteboardStore.getState().reset(); useBoardPointerStore.getState().reset(); vi.restoreAllMocks() })
 const receive = (senderId: string, peerId: string, roomId = 'room', point: any = { x: 50, y: 80 }, seq = 1, host = true, relay = vi.fn()) => {
-  processNetworkMessage({ type: 'WHITEBOARD_POINTER', senderId, timestamp: Date.now(), payload: { roomId, point, seq } }, peerId, host, relay, vi.fn(), vi.fn(), 'self')
+  processNetworkMessage({ type: 'WHITEBOARD_POINTER', senderId, timestamp: Date.now(), payload: { schemaVersion: 2, roomId, point, seq } }, peerId, host, relay, vi.fn(), vi.fn(), 'self')
   return relay
 }
 describe('shared transient laser pointers', () => {

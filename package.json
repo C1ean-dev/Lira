@@ -1,11 +1,11 @@
 {
   "name": "lira",
-  "version": "1.1.117",
+  "version": "1.1.211",
   "description": "Lira - Espaço Virtual e Comunicação em Tempo Real",
   "main": "out/main.js",
   "type": "module",
   "engines": {
-    "node": ">=22.12.0"
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "overrides": {
     "@electron/asar": "$@electron/asar",
@@ -15,7 +15,33 @@
     },
     "fetch-blob": {
       "node-domexception": "file:../../packages/compat/native-domexception"
+    },
+    "png-chunks-encode": {
+      "sliced": "file:../../packages/compat/native-slice"
+    },
+    "@huggingface/transformers": {
+      "sharp": "0.35.5"
+    },
+    "@excalidraw/excalidraw": {
+      "nanoid": "3.3.18",
+      "@excalidraw/mermaid-to-excalidraw": "3.6.0"
+    },
+    "@excalidraw/mermaid-to-excalidraw": {
+      "nanoid": "5.1.16"
+    },
+    "app-builder-lib": {
+      "minimatch": "11.0.9"
+    },
+    "@electron/universal": {
+      "minimatch": "11.0.9"
     }
+  },
+  "allowScripts": {
+    "electron-winstaller@5.4.0": true,
+    "esbuild@0.25.12": true,
+    "fsevents@2.3.3": true,
+    "onnxruntime-node@1.21.0": true,
+    "protobufjs@7.6.6": true
   },
   "scripts": {
     "test": "vitest run src/__tests__",
@@ -23,6 +49,11 @@
     "teste:all": "npm run test:all",
     "test:migration": "python scripts/test_migrate_individual_library.py",
     "test:core": "vitest run src/__tests__/p2p src/__tests__/media",
+    "test:e2e": "cross-env LIRA_RUN_SYSTEM_E2E=1 node --test --test-force-exit scripts/system.e2e.test.mjs",
+    "test:e2e:visible": "cross-env LIRA_E2E_HEADED=1 npm run test:e2e",
+    "test:dependencies:browser": "cross-env LIRA_RUN_DEPENDENCY_TESTS=1 node --test scripts/dependency-compatibility.browser.test.mjs",
+    "test:whiteboard:browser": "cross-env LIRA_RUN_WHITEBOARD_TESTS=1 node --test scripts/whiteboard-editor.browser.test.mjs",
+    "test:transcription:map": "cross-env LIRA_RUN_SPACE_TRANSCRIPTION_TESTS=1 node --test scripts/space-transcription.browser.test.mjs",
     "test:core:browser": "cross-env LIRA_RUN_BROWSER_TESTS=1 node --test --test-force-exit scripts/core-realtime.browser.test.mjs scripts/chat-scroll.browser.test.mjs",
     "test:navigation:browser": "cross-env LIRA_RUN_NAVIGATION_TESTS=1 node --test scripts/navigation-responsive.browser.test.mjs",
     "test:invites:electron": "cross-env LIRA_RUN_INVITE_TESTS=1 node --test scripts/space-invite.electron.test.mjs",
@@ -38,48 +69,69 @@
     "build": "powershell -ExecutionPolicy Bypass -File scripts/build-process-audio.ps1 && tsc && vite build && electron-builder --win --x64"
   },
   "dependencies": {
+    "electron-log": "5.4.4",
     "ws": "^8.22.0"
   },
   "devDependencies": {
     "@capacitor/android": "^7.6.9",
     "@capacitor/cli": "^7.6.9",
     "@capacitor/core": "^7.6.9",
-    "@electron/asar": "4.3.1",
+    "@electron/asar": "4.3.2",
+    "@excalidraw/excalidraw": "0.18.1",
     "@huggingface/transformers": "3.8.1",
     "@jitsi/rnnoise-wasm": "^0.2.1",
+    "@jridgewell/trace-mapping": "0.3.31",
     "@lofcz/deepfilternet-web": "0.1.0",
+    "@radix-ui/react-select": "2.4.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.12",
     "@types/node": "^22.13.4",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "@types/semver": "7.8.0",
     "@vitejs/plugin-react": "^4.3.4",
-    "@vitest/coverage-v8": "4.1.11",
+    "@vitest/coverage-v8": "4.1.12",
     "autoprefixer": "^10.4.20",
     "clsx": "^2.1.1",
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
-    "electron": "^33.2.0",
+    "electron": "42.11.18",
     "electron-builder": "^26.15.3",
+    "fake-indexeddb": "6.2.8",
+    "fflate": "0.8.3",
+    "idb": "8.0.4",
+    "jsdom": "31.0.1",
     "lucide-react": "^0.475.0",
+    "mqtt": "5.16.1",
     "peer": "^1.0.2",
     "peerjs": "^1.5.4",
     "playwright": "^1.64.1",
     "postcss": "^8.5.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "semver": "7.8.6",
     "tailwind-merge": "^3.0.1",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3",
-    "vite": "^6.1.0",
+    "vite": "6.4.6",
     "vite-plugin-electron": "^0.29.0",
     "vite-plugin-electron-renderer": "^0.14.6",
-    "vitest": "^4.1.11",
+    "vitest": "4.1.12",
     "wait-on": "^8.0.2",
+    "zod": "4.6.7",
     "zustand": "^5.0.3"
   },
   "build": {
     "appId": "com.lira.app",
     "productName": "Lira",
-    "protocols": [{ "name": "Convite para um espaço Lira", "schemes": ["lira"] }],
+    "protocols": [
+      {
+        "name": "Convite para um espaço Lira",
+        "schemes": [
+          "lira"
+        ]
+      }
+    ],
     "directories": {
       "output": "release"
     },

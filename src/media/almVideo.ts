@@ -146,9 +146,9 @@ export class AlmVideoSink {
     this.decoder.configure(config)
   }
 
-  decode(frame: AlmFrame): void {
+  decode(frame: AlmFrame): false | void {
     if (this.closed) return
-    if (this.decoder.decodeQueueSize > 8) throw new Error('ALM decoder overloaded')
+    if (this.decoder.decodeQueueSize > 8) return false
     this.decoder.decode(new EncodedVideoChunk({ type: frame.key ? 'key' : 'delta', timestamp: frame.timestamp, data: frame.data }))
   }
 

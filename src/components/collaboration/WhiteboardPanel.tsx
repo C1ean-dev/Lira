@@ -1,9 +1,10 @@
 import React, { lazy, Suspense, useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 import { useWhiteboardStore } from '../../store/useWhiteboardStore'
+import { prepareBoardAssets } from '../../collaboration/boardAssets'
 import { useGameStore } from '../../store/useGameStore'
 
-const NativeBoard = lazy(() => import('./NativeBoard'))
+const ExcalidrawBoard = lazy(() => { prepareBoardAssets(); return import('./ExcalidrawBoard') })
 
 class EditorBoundary extends React.Component<React.PropsWithChildren, { failed: boolean }> {
   state = { failed: false }
@@ -36,7 +37,7 @@ export const WhiteboardPanel: React.FC = () => {
       </header>
       <div className="relative min-h-0 flex-1">
         <EditorBoundary><Suspense fallback={<p role="status" className="p-8 text-center text-sm text-slate-500">Carregando editor…</p>}>
-          <NativeBoard key={roomId} />
+          <ExcalidrawBoard key={roomId} />
         </Suspense></EditorBoundary>
       </div>
     </div>

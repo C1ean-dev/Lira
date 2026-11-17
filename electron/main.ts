@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, session, shell, screen, Notification, powerMonitor, Tray, Menu, nativeImage, clipboard } from 'electron'
+import { app, BrowserWindow, ipcMain, desktopCapturer, session, shell, screen, Notification, powerMonitor, Tray, Menu, nativeImage, clipboard, protocol } from 'electron'
+import { createBoardFontHandler } from './boardFontProtocol'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
@@ -47,6 +48,8 @@ import { createParsecEchoHandler } from './parsecEchoIpc'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+
+protocol.registerSchemesAsPrivileged([{ scheme: 'lira-board-font', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }])
 
 // Select the profile before Chromium sessions, logging or the instance lock use it.
 const defaultUserData = app.getPath('userData')
@@ -572,6 +575,7 @@ function createWindow() {
   const yOffset = isMultiInstance && instNum > 1 ? 40 + (instNum - 1) * 60 : undefined
 
   mainWindow = new BrowserWindow({
+    show: !process.argv.includes('--hidden'),
     width: 1280,
     height: 800,
     minWidth: 900,
@@ -2006,6 +2010,7 @@ app.on('before-quit', event => {
 })
 
 app.whenReady().then(async () => {
+  protocol.handle('lira-board-font', createBoardFontHandler(path.join(__dirname, '../dist/excalidraw-assets/fonts')))
   if (process.platform === 'win32') {
     app.setAppUserModelId(appInstance.appUserModelId)
   }

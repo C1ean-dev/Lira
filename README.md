@@ -48,6 +48,11 @@ STUN/TURN configurados. Quando a rota IPv6 direta funciona, TURN não é necess�
 
 ## Testes locais
 
+`npm run test:e2e` percorre o aplicativo completo em duas instâncias isoladas do
+Electron, com serviços locais e mídia simulada transmitida por WebRTC real.
+Use `npm run test:e2e:visible` para acompanhar as duas janelas. Veja a
+[cobertura, execução e relatórios](docs/testes-e2e.md).
+
 
 
 Os testes são executados localmente para economizar a cota do GitHub Actions. O projeto possui **387 suítes de teste e mais de 3.550 testes automatizados** cobrindo P2P Mesh, processamento digital de áudio (DSP), motores neurais WASM, renderização de salas, componentes de UI, IA em cascata e integração Electron.
@@ -606,9 +611,9 @@ O projeto é estruturado segundo princípios de modularidade e separação de re
 
 | **Motor de Renderização 2D** | HTML5 Canvas 2D Engine | Pixel art fluido a 60 FPS com dynamic viewport culling, ordenação por profundidade Y, paredes direcionais e static layer cache |
 
-| **Plataformas Desktop & Mobile** | Electron 33, Capacitor 7 (Android), Web | Suporte multiplataforma (Windows Desktop com tray/notificações, Android nativo e Web) |
+| **Plataformas Desktop & Mobile** | Electron 42, Capacitor 7 (Android), Web | Suporte multiplataforma (Windows Desktop com tray/notificações, Android nativo e Web) |
 
-| **Build, Bundler & Ferramentas** | Vite 6.1, `vite-plugin-electron`, Node.js 22.12+, Python 3 | Empacotamento de alta performance, Hot Module Replacement (HMR) e automação de compilação |
+| **Build, Bundler & Ferramentas** | Vite 6.4, `vite-plugin-electron`, Node.js 26, Python 3 | Empacotamento de alta performance, Hot Module Replacement (HMR) e automação de compilação |
 
 | **Comunicação em Tempo Real** | WebRTC, PeerJS 1.5, WebSockets (`ws`) | Topologia híbrida descentralizada (estrela para estado/chat e malha direta P2P para mídia por zonas acústicas) |
 
@@ -636,7 +641,7 @@ O projeto é estruturado segundo princípios de modularidade e separação de re
 
 ### Pré-requisitos
 
-- Node.js versão 22.12 ou superior.
+- Node.js 26, na versão registrada em `.node-version` (26.13.1). Atualize o Node antes de instalar as dependências; o jsdom 31 exige no mínimo 22.22.2, 24.15.0 ou 26.0.0 nas respectivas séries.
 
 - Git instalado.
 

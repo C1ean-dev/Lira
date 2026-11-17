@@ -15,10 +15,11 @@ export function sendBoardPointer(point: BoardPoint | null): void {
   lastSent = point ? now : -Infinity; lastRoom = roomId; sequence = Math.max(sequence + 1, now)
   const pm = PeerManager.getInstance()
   pm.broadcast({ type: 'WHITEBOARD_POINTER', senderId: pm.getPeerId() || localPlayer.id, timestamp: now,
-    payload: { roomId, point, seq: sequence } })
+    payload: { schemaVersion: 2, roomId, point, seq: sequence } })
 }
 
 export function receiveBoardPointer(msg: NetworkMessage, peerId: string, isHost: boolean): boolean {
+  if (msg.type !== 'WHITEBOARD_POINTER') return false
   const game = useGameStore.getState(), payload = msg.payload
   if (!game.roomId || payload?.roomId !== game.roomId || typeof msg.senderId !== 'string' || !msg.senderId || msg.senderId.length > 128 ||
     (isHost ? msg.senderId !== peerId : msg.senderId !== peerId && peerId !== game.connectionHostId) ||

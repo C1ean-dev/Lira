@@ -1,3 +1,5 @@
+import { parseNetworkMessage } from '../validation/schemas'
+import { omitUndefinedFields } from './wireData'
 import { sendAtlasChunks } from '../assets/atlasChunks'
 import { getTransferAtlas } from '../assets/atlasTransferCache'
 import { IndividualLibrarySync, type LibraryMessage } from '../assets/individualLibrarySync'
@@ -18,6 +20,7 @@ import { MediaCallHandler, ICE_CONNECT_TIMEOUT_MS, SHARED_RTC_CONFIG, resolveCal
 import { VideoDegradation, setAlmViewer, findVideoSender, syncScreenCaps } from './videoSendPolicy'
 import { prioritizeH264HardwareCodec, isHardwareAccelerationEnabled } from '../media/hardwareCodec'
 import { AlmLive } from './almLive'
+import { isAlmStream } from '../media/almStreams'
 import { useLiveWatchStore } from '../store/useLiveWatchStore'
 import { MediaManager } from '../media/MediaManager'
 import { silentAudioTrack } from '../media/silentAudioTrack'
@@ -270,9 +273,11 @@ export class PeerManager {
     connectLiveView({
       send: (sharerId, watch, h) => this.sendLiveView(sharerId, watch, h),
       stats: (sharerId) => {
-        const pc = (this.mediaCalls.get(sharerId) as any)?.peerConnection as RTCPeerConnection | undefined
-        return pc && typeof pc.getStats === 'function' ? pc.getStats() : null
+        const pc = this.mediaCalls.get(sharerId)?.peerConnection
+        if (!pc || typeof pc.getStats !== 'function') return null
+        return pc.getStats().then(stats => this.mediaCalls.get(sharerId)?.peerConnection === pc ? stats : null)
       },
+      decoderFailed: (sharerId) => this.recoverLiveVideo(sharerId),
     })
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       const handleBufferChanged = (e: any) => {
@@ -293,6 +298,10 @@ export class PeerManager {
 
   public getMediaCalls(): Map<string, MediaConnection> {
     return this.mediaCalls
+  }
+
+  public getAlmTransmissionCounters(stream: MediaStream, local: boolean) {
+    return this.almSession?.transmissionCounters(stream, local)
   }
 
   public getRoomCode(): string | null {
@@ -1415,7 +1424,6 @@ export class PeerManager {
     let removeDirectLink: (() => void) | undefined
     const handleOpen = () => {
       if (openHandled) return
-      openHandled = true
       if (!isCurrentSession()) { conn.close(); return }
       // Record the actual host transport before processing its first relayed message.
       // A data event can arrive before PeerJS emits the connection's open event.
@@ -1426,6 +1434,10 @@ export class PeerManager {
       console.log('[P2P Data] Connected to peer:', conn.peer)
       useGameStore.getState().setConnectionStatus('connected')
       this.connections.set(conn.peer, conn)
+      // Early inbound data can precede PeerJS's writable/open state. Register
+      // ownership now, but let the open event send the initial state once.
+      if (!conn.open) return
+      openHandled = true
       if (getDirectSignaling(owner)) conn.send({ __liraSignalHello: 1 })
       this.peerLastSeen.set(conn.peer, Date.now())
       this.sendToPeer(conn, { type: 'INDIVIDUAL_LIBRARY', senderId: this.peer!.id,
@@ -1627,6 +1639,7 @@ export class PeerManager {
 
   private removePeer(peerId: string) {
     SuperPeerVoiceRelay.getInstance().stopRelay(peerId)
+    MediaCallHandler.clearVideoPreference(this.mediaCalls, peerId)
     this.alm.peerLeft(peerId)
     const departingPlayer = useGameStore.getState().remotePlayers[peerId]
     this.peerLastSeen.delete(peerId)
@@ -1692,7 +1705,7 @@ export class PeerManager {
     await this.startHostTransfer(targetPeerId)
   }
 
-  private startHostTransfer(targetPeerId: string, id = crypto.randomUUID()): Promise<void> {
+  private startHostTransfer(targetPeerId: string, id: string = crypto.randomUUID()): Promise<void> {
     const state = useGameStore.getState()
     const target = targetPeerId === state.localPlayer.id ? state.localPlayer : state.remotePlayers[targetPeerId]
     const hostPeerId = `lira-${this.roomCode}-host`
@@ -1764,7 +1777,7 @@ export class PeerManager {
     this.preparedHostTransfer = null
   }
 
-  private handleHostTransfer(msg: NetworkMessage, peerId: string) {
+  private handleHostTransfer(msg: NetworkMessage<'HOST_TRANSFER'>, peerId: string) {
     const payload = msg.payload
     if (!this.peer || !this.roomCode || typeof payload?.id !== 'string' || !payload.id || payload.id.length > 128 || msg.senderId !== peerId) return
     const connection = this.connections.get(peerId)
@@ -1965,6 +1978,7 @@ export class PeerManager {
     this.incomingLiveVoiceCalls?.forEach(call => { try { call.close() } catch { } })
     this.incomingLiveVoiceCalls?.clear()
     this.mediaCalls.forEach(call => { try { call.close() } catch { } })
+    MediaCallHandler.clearVideoPreference(this.mediaCalls)
     this.mediaCalls.clear()
     useMediaStore.getState().clearAllPeerStreams()
     try {
@@ -2176,9 +2190,14 @@ export class PeerManager {
     this.setupDataConnection(conn)
   }
 
-  private handleNetworkMessage(msg: NetworkMessage, peerId: string) {
-    this.peerLastSeen.set(peerId, Date.now())
+  private handleNetworkMessage(raw: unknown, peerId: string) {
+    let type = 'none'
     try {
+      const descriptor = raw && typeof raw === 'object' ? Object.getOwnPropertyDescriptor(raw, 'type') : undefined
+      if (typeof descriptor?.value === 'string') type = descriptor.value.slice(0, 40)
+      const msg = parseNetworkMessage(raw)
+      if (!msg) throw new Error('Invalid network message')
+      this.peerLastSeen.set(peerId, Date.now())
       if (msg.type === 'VOICE_RELAY_CONTROL') {
         SuperPeerVoiceRelay.getInstance().handleControlMessage(msg.payload, peerId)
         return
@@ -2217,7 +2236,7 @@ export class PeerManager {
       if (msg.type === 'INDIVIDUAL_LIBRARY') {
         const connection = this.connections.get(peerId)
         if (connection?.open && this.peer) {
-          if (msg.payload?.catalogVersion === 3 || msg.payload?.catalog?.version === 3) this.individualLibraryVersions.set(connection, 3)
+          if ((msg.payload.kind === 'hello' && msg.payload.catalogVersion === 3) || (msg.payload.kind === 'offer' && msg.payload.catalog.version === 3)) this.individualLibraryVersions.set(connection, 3)
           else if (!this.individualLibraryVersions.has(connection)) this.individualLibraryVersions.set(connection, 2)
           this.individualLibraryPeers.add(connection)
           for (const ready of this.individualLibraryReady.get(connection) || []) ready()
@@ -2266,7 +2285,6 @@ export class PeerManager {
         }
       }
     } catch (error) {
-      const type = typeof (msg as { type?: unknown } | null)?.type === 'string' ? String(msg.type).slice(0, 40) : 'none'
       reportError(error, {
         scope: 'P2P Message',
         message: `handler failed for ${type}`,
@@ -2275,7 +2293,7 @@ export class PeerManager {
     }
   }
 
-  private handleLiveView(msg: NetworkMessage) {
+  private handleLiveView(msg: NetworkMessage<'LIVE_VIEW'>) {
     const myId = this.peer?.id
     const payload = msg.payload
     if (!myId || !payload || typeof payload !== 'object' || payload.to !== myId) return
@@ -2299,6 +2317,19 @@ export class PeerManager {
   private onMediaCallConnected(peerId: string) {
     liveViewReporter.callConnected(peerId)
     if (useMediaStore.getState().isScreenSharing) this.startLiveVoiceCall(peerId)
+  }
+
+  private recoverLiveVideo(sharerId: string): void {
+    const { localPlayer, remotePlayers } = useGameStore.getState()
+    const sharer = remotePlayers[sharerId]
+    if (!this.peer?.open || !this.mediaCalls.has(sharerId) || !sharer?.isScreenSharing ||
+      localPlayer.currentZoneId == null || sharer.currentZoneId !== localPlayer.currentZoneId ||
+      !useLiveWatchStore.getState().watching[sharerId]) return
+    const live = useMediaStore.getState().peerScreenStreams[sharerId]
+    if (live && isAlmStream(live)) return
+    if (!MediaCallHandler.preferVp8ForPeer(this.mediaCalls, sharerId)) return
+    diagLog('screenshare', 'decoder-retry', { fromPeer: sharerId, codec: 'VP8' })
+    this.retryZoneCall(sharerId)
   }
 
   private handleIncomingLiveVoiceCall(call: MediaConnection): void {
@@ -2480,7 +2511,7 @@ export class PeerManager {
   private sendToPeer(conn: DataConnection, msg: NetworkMessage) {
     if (conn.open) {
       try {
-        conn.send(msg)
+        conn.send(omitUndefinedFields(msg))
       } catch (err) {
         console.warn(`[P2P Data] Failed to send ${msg.type} to ${conn.peer}:`, err)
       }
@@ -2558,7 +2589,7 @@ export class PeerManager {
     }
   }
 
-  public handlePeerUnreachableReport(msg: NetworkMessage) {
+  public handlePeerUnreachableReport(msg: NetworkMessage<'PEER_UNREACHABLE_REPORT'>) {
     if (!this.isHost) return
     const targetPeerId = msg.payload?.peerId
     if (typeof targetPeerId !== 'string' || !targetPeerId) return
@@ -3169,15 +3200,15 @@ export class PeerManager {
     })
   }
 
-  public sendMapEdit(action: string, data: any) {
+  public sendMapEdit(action: string, data: unknown) {
     if (!this.peer) return
-    const msg: NetworkMessage = {
+    const msg = parseNetworkMessage({
       type: 'MAP_EDIT',
       senderId: this.peer.id,
       payload: { action, data },
       timestamp: Date.now(),
-    }
-    this.broadcast(msg)
+    })
+    if (msg) this.broadcast(msg)
   }
 
   public sendChatMessage(message: any) {

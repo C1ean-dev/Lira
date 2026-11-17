@@ -24,7 +24,7 @@ it.skipIf(process.platform !== 'win32' || !cached)('packages the custom selectiv
   try {
     const files = await build({ projectDir: root, prepackaged: app, targets: Platform.WINDOWS.createTarget('nsis', Arch.x64), publish: 'never',
       config: {
-        appId: 'com.lira.installer-fixture', productName: 'Lira', electronVersion: '33.4.11',
+        appId: 'com.lira.installer-fixture', productName: 'Lira', electronVersion: require('electron/package.json').version,
         directories: { output: path.join(root, 'output'), buildResources: path.resolve('build') },
         artifactBuildStarted,
         nsis: { oneClick: true, perMachine: false, runAfterFinish: false, include: path.resolve('build/installer.nsh'), script: '.scratch/windows-installer/installer.nsi' },

@@ -5,6 +5,7 @@ import { PeerManager } from '../../p2p/PeerManager'
 import { useGameStore } from '../../store/useGameStore'
 import { useChatStore } from '../../store/useChatStore'
 import { useMediaStore } from '../../store/useMediaStore'
+import { useUpdateStore } from '../../store/useUpdateStore'
 import { MIN_COMPATIBLE_VERSION, CURRENT_LIRA_VERSION } from '../../types/p2p'
 import { Player } from '../../types/game'
 
@@ -42,7 +43,7 @@ describe('Version Compatibility & Outdated Flag', () => {
     const checkZoneCall = vi.fn()
 
     const legacyMsg = {
-      type: 'PLAYER_JOIN' as const,
+      type: 'PLAYER_JOIN' as const, timestamp: 1,
       senderId: 'legacy-peer',
       payload: {
         player: {
@@ -67,13 +68,18 @@ describe('Version Compatibility & Outdated Flag', () => {
     expect(warningMsg?.content).toContain(MIN_COMPATIBLE_VERSION)
   })
 
+  it('does not admit a participant with an invalid version as a compatible client', () => {
+    processNetworkMessage({ type: 'PLAYER_JOIN', senderId: 'invalid-version-peer', timestamp: 1, payload: { player: { id: 'invalid-version-peer', name: 'Unknown version', appVersion: 'invalid' } } }, 'invalid-version-peer', true, vi.fn(), vi.fn(), vi.fn(), 'host')
+    expect(useGameStore.getState().remotePlayers['invalid-version-peer']).toBeUndefined()
+    expect(useChatStore.getState().messages.some(message => message.id === 'compat-warn-invalid-version-peer')).toBe(true)
+  })
   it('marks incoming peer with older appVersion (1.1.209) as outdated', () => {
     const broadcast = vi.fn()
     const removePeer = vi.fn()
     const checkZoneCall = vi.fn()
 
     const outdatedMsg = {
-      type: 'PLAYER_JOIN' as const,
+      type: 'PLAYER_JOIN' as const, timestamp: 1,
       senderId: 'outdated-peer',
       payload: {
         player: {
@@ -92,20 +98,20 @@ describe('Version Compatibility & Outdated Flag', () => {
     expect(remote.appVersion).toBe('1.1.209')
   })
 
-  it('accepts incoming peer with compatible appVersion (>= 1.1.210) as not outdated', () => {
+  it('accepts incoming peer with compatible appVersion (>= minimum) as not outdated', () => {
     const broadcast = vi.fn()
     const removePeer = vi.fn()
     const checkZoneCall = vi.fn()
 
     const compatibleMsg = {
-      type: 'PLAYER_JOIN' as const,
+      type: 'PLAYER_JOIN' as const, timestamp: 1,
       senderId: 'modern-peer',
       payload: {
         player: {
           id: 'modern-peer',
           name: 'Alice',
-          appVersion: '1.1.210',
-          minCompatibleVersion: '1.1.210',
+          appVersion: MIN_COMPATIBLE_VERSION,
+          minCompatibleVersion: MIN_COMPATIBLE_VERSION,
         },
       },
     }
@@ -115,7 +121,7 @@ describe('Version Compatibility & Outdated Flag', () => {
     const remote = useGameStore.getState().remotePlayers['modern-peer']
     expect(remote).toBeDefined()
     expect(remote.isOutdated).toBe(false)
-    expect(remote.appVersion).toBe('1.1.210')
+    expect(remote.appVersion).toBe(MIN_COMPATIBLE_VERSION)
 
     const warningMsg = useChatStore.getState().messages.find((m) => m.id === 'compat-warn-modern-peer')
     expect(warningMsg).toBeUndefined()
@@ -127,7 +133,7 @@ describe('Version Compatibility & Outdated Flag', () => {
     const checkZoneCall = vi.fn()
 
     const djMsg = {
-      type: 'PLAYER_JOIN' as const,
+      type: 'PLAYER_JOIN' as const, timestamp: 1,
       senderId: 'dj-bot-1',
       payload: {
         player: {
@@ -179,11 +185,11 @@ describe('Version Compatibility & Outdated Flag', () => {
     const checkZoneCall = vi.fn()
 
     const incompatMsg = {
-      type: 'VERSION_INCOMPATIBLE' as const,
+      type: 'VERSION_INCOMPATIBLE' as const, timestamp: 1,
       senderId: 'lira-TEST-host',
       payload: {
         minVersion: '1.2.0',
-        currentVersion: '1.1.210',
+        currentVersion: MIN_COMPATIBLE_VERSION,
       },
     }
 
@@ -195,6 +201,24 @@ describe('Version Compatibility & Outdated Flag', () => {
     expect(msg?.senderId).toBe('system')
   })
 
+  it('ignores an outdated rejection when the running client already meets the minimum', () => {
+    const check = vi.fn(async () => {})
+    const previous = useUpdateStore.getState()
+    useUpdateStore.setState({ isUpdateScreenOpen: false, checkForUpdatesAndDownload: check })
+    useGameStore.getState().setLocalPlayer({ appVersion: '1.1.215' })
+    try {
+      processNetworkMessage({
+        type: 'VERSION_INCOMPATIBLE', timestamp: 1, senderId: 'lira-TEST-host',
+        payload: { minVersion: '1.1.211', currentVersion: '1.1.210' },
+      }, 'lira-TEST-host', false, vi.fn(), vi.fn(), vi.fn(), 'local-peer')
+      expect(useUpdateStore.getState().isUpdateScreenOpen).toBe(false)
+      expect(check).not.toHaveBeenCalled()
+      expect(useChatStore.getState().messages).toHaveLength(0)
+    } finally {
+      useUpdateStore.setState(previous)
+    }
+  })
+
   it.each([undefined, '1.1.200'])('as Host, rejects peer with appVersion %s on PLAYER_JOIN and disconnects after 500ms', appVersion => {
     vi.useFakeTimers()
     try {
@@ -203,7 +227,7 @@ describe('Version Compatibility & Outdated Flag', () => {
       const checkZoneCall = vi.fn()
 
       const legacyMsg = {
-        type: 'PLAYER_JOIN' as const,
+        type: 'PLAYER_JOIN' as const, timestamp: 1,
         senderId: 'legacy-user',
         payload: {
           player: {
@@ -263,7 +287,7 @@ describe('Version Compatibility & Outdated Flag', () => {
     const checkZoneCall = vi.fn()
 
     const firstJoin = {
-      type: 'PLAYER_JOIN' as const,
+      type: 'PLAYER_JOIN' as const, timestamp: 1,
       senderId: 'zegary-peer-1',
       payload: {
         player: {
@@ -285,7 +309,7 @@ describe('Version Compatibility & Outdated Flag', () => {
 
     // Outdated user reconnects with a fresh peer ID after 2.5s failover
     const secondJoin = {
-      type: 'PLAYER_JOIN' as const,
+      type: 'PLAYER_JOIN' as const, timestamp: 1,
       senderId: 'zegary-peer-2',
       payload: {
         player: {
@@ -319,9 +343,9 @@ describe('Version Compatibility & Outdated Flag', () => {
     try {
       manager.sendVersionIncompatible(
         'legacy-target-peer',
-        '1.1.210',
+        MIN_COMPATIBLE_VERSION,
         '1.1.110',
-        '⚠️ Incompatibilidade de versão: atualize para >= v1.1.210'
+        `⚠️ Incompatibilidade de versão: atualize para >= v${MIN_COMPATIBLE_VERSION}`
       )
 
       expect(mockConn.send).toHaveBeenCalledTimes(2)
@@ -331,11 +355,11 @@ describe('Version Compatibility & Outdated Flag', () => {
       const chatPacket = packets.find((p: any) => p.type === 'CHAT_MESSAGE')
 
       expect(incompatPacket).toBeDefined()
-      expect(incompatPacket.payload.minVersion).toBe('1.1.210')
+      expect(incompatPacket.payload.minVersion).toBe(MIN_COMPATIBLE_VERSION)
 
       expect(chatPacket).toBeDefined()
       expect(chatPacket.payload.message.channelId).toBe('general')
-      expect(chatPacket.payload.message.content).toContain('1.1.210')
+      expect(chatPacket.payload.message.content).toContain(MIN_COMPATIBLE_VERSION)
     } finally {
       manager.connections.delete('legacy-target-peer')
     }

@@ -1,3 +1,5 @@
+import { createStoredState } from './persistedState'
+import { audioSettingsSchema } from '../validation/schemas'
 import { create } from 'zustand'
 import { SensitivityMode, AudioProcessorMode, SoundTheme, NoiseEngineStatus, normalizeAudioProcessorMode } from '../types/audio'
 import { useGameStore } from './useGameStore'
@@ -9,7 +11,6 @@ import {
 } from '../media/hardwareCodec'
 import { MediaManager } from '../media/MediaManager'
 import { PeerManager } from '../p2p/PeerManager'
-import { reportStorageFailure } from '../utils/storageReport'
 import { playSoundEffect, setSoundEffectsOptionsProvider } from '../utils/soundEffects'
 import { isAlmStream } from '../media/almStreams'
 
@@ -168,38 +169,12 @@ interface MediaStore {
 
 const STORAGE_KEY = 'lira_audio_settings'
 
-const loadSavedAudioSettings = () => {
-  try {
-    if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
-      const raw = window.localStorage.getItem(STORAGE_KEY)
-      if (raw) {
-        return JSON.parse(raw)
-      }
-    }
-  } catch (e) {
-    reportStorageFailure('read', STORAGE_KEY, e)
-  }
-  return null
+const audioPreferences = createStoredState<Record<string, any>>(STORAGE_KEY, audioSettingsSchema, {})
+const saved = audioPreferences.getState()
+if (saved.isHardwareAccelerationEnabled !== undefined) {
+  try { setHwCodecEnabled(Boolean(saved.isHardwareAccelerationEnabled)) } catch {}
 }
-
-const saved = loadSavedAudioSettings() || {}
-
-if (saved && saved.isHardwareAccelerationEnabled !== undefined) {
-  try {
-    setHwCodecEnabled(Boolean(saved.isHardwareAccelerationEnabled))
-  } catch {}
-}
-
-const saveAudioSettings = (settings: Record<string, any>) => {
-  try {
-    if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
-      const current = loadSavedAudioSettings() || {}
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...settings }))
-    }
-  } catch (e) {
-    reportStorageFailure('write', STORAGE_KEY, e)
-  }
-}
+const saveAudioSettings = (settings: Record<string, any>) => audioPreferences.setState(settings)
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 let pendingPersist: Record<string, any> = {}

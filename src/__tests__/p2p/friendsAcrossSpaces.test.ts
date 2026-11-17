@@ -453,7 +453,7 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
       expect(useChatStore.getState().getUnreadCountForFriend(biaFriend)).toBe(0)
     })
 
-    it('only keeps attachments that are inline data', () => {
+    it('rejects the entire packet when its attachment is not inline data', () => {
       net.open(BIA)
       const attachment = { id: 'a', name: 'foto.png', size: 10, type: 'image/png' }
       net.receive(BIA, { t: 'dm', message: { ...dmToMe('dm-att-ok', BIA, 'Bia'), attachment: { ...attachment, dataUrl: 'data:image/png;base64,AAAA' } } })
@@ -461,7 +461,7 @@ describe('Friends outside the same space (home screen / different rooms)', () =>
 
       const find = (id: string) => useChatStore.getState().messages.find((m) => m.id === id)!
       expect(find('dm-att-ok').attachment?.dataUrl).toBe('data:image/png;base64,AAAA')
-      expect(find('dm-att-bad').attachment).toBeUndefined()
+      expect(find('dm-att-bad')).toBeUndefined()
     })
 
     it('never mixes a stranger with the same name into a friend conversation', () => {

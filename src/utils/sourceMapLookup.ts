@@ -1,3 +1,5 @@
+import { TraceMap, originalPositionFor } from '@jridgewell/trace-mapping'
+
 
 export interface RawSourceMap {
   sources?: unknown
@@ -14,129 +16,41 @@ export interface OriginalPosition {
   name?: string
 }
 
-const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-const DIGIT = new Int8Array(128).fill(-1)
-for (let i = 0; i < BASE64.length; i++) DIGIT[BASE64.charCodeAt(i)] = i
+const cache = new WeakMap<RawSourceMap, { trace: TraceMap; lines: number }>()
 
-const COMMA = 44
-const SEMICOLON = 59
-
-function wholePositive(value: number): boolean {
-  return Number.isInteger(value) && value >= 1
-}
-
-export function lookupPositions(
-  map: RawSourceMap | null | undefined,
-  targets: { line: number; col: number }[]
-): (OriginalPosition | null)[] {
-  const results: (OriginalPosition | null)[] = targets.map(() => null)
-  if (!map || typeof map.mappings !== 'string' || !Array.isArray(map.sources) || map.sections !== undefined) return results
-  const mappings = map.mappings
-  const sources = map.sources as unknown[]
-  const names = Array.isArray(map.names) ? (map.names as unknown[]) : []
-  const root = typeof map.sourceRoot === 'string' && map.sourceRoot ? map.sourceRoot.replace(/\/+$/, '') + '/' : ''
-
-  const order = targets
-    .map((target, index) => ({ index, line: target.line - 1, col: target.col - 1 }))
-    .filter((target) => wholePositive(target.line + 1) && wholePositive(target.col + 1))
-    .sort((a, b) => a.line - b.line || a.col - b.col)
-  if (order.length === 0) return results
-
-  let generatedLine = 0
-  let generatedColumn = 0
-  let source = 0
-  let line = 0
-  let column = 0
-  let name = 0
-
-  let covered = false
-  let coveredSource = 0
-  let coveredLine = 0
-  let coveredColumn = 0
-  let coveredName = -1
-
-  let next = 0
-  const answer = (target: { index: number }) => {
-    if (!covered) return
-    const file = sources[coveredSource]
-    if (typeof file !== 'string') return
-    const symbol = coveredName >= 0 ? names[coveredName] : undefined
-    results[target.index] = {
-      source: root + file,
-      line: coveredLine + 1,
-      col: coveredColumn + 1,
-      ...(typeof symbol === 'string' ? { name: symbol } : {}),
+export function lookupPositions(map: RawSourceMap | null | undefined, targets: { line: number; col: number }[]): (OriginalPosition | null)[] {
+  if (!map || typeof map.mappings !== 'string' || !Array.isArray(map.sources) || map.sections !== undefined) return targets.map(() => null)
+  try {
+    let entry = cache.get(map)
+    if (!entry) {
+      // Validate VLQ framing only; numerical decoding is entirely the library's job.
+      // Keep valid preceding lines when a downloaded map has a truncated suffix.
+      const lines = map.mappings.split(';')
+      let validLines = 0
+      for (const line of lines) {
+        const valid = !line || line.split(',').every(segment => {
+          if (!segment) return true
+          if (!/^(?:[g-z0-9+/]*[A-Za-f])+$/.test(segment)) return false
+          const fields = (segment.match(/[A-Za-f]/g) || []).length
+          return fields === 1 || fields === 4 || fields === 5
+        })
+        if (!valid) break
+        validLines++
+      }
+      entry = { trace: new TraceMap({ version: 3, sources: map.sources.map(source => typeof source === 'string' ? source : ''),
+        names: Array.isArray(map.names) ? map.names.map(name => typeof name === 'string' ? name : '') : [],
+        mappings: lines.slice(0, validLines).join(';'),
+      }), lines: validLines }
+      cache.set(map, entry)
     }
-  }
-  const endLine = () => {
-    while (next < order.length && order[next].line === generatedLine) answer(order[next++])
-    generatedLine++
-    generatedColumn = 0
-    covered = false
-  }
-
-  const length = mappings.length
-  let position = 0
-  while (next < order.length) {
-    if (position >= length) {
-      endLine()
-      break
-    }
-    const code = mappings.charCodeAt(position)
-    if (code === SEMICOLON) {
-      position++
-      endLine()
-      continue
-    }
-    if (code === COMMA) {
-      position++
-      continue
-    }
-
-    let fields = 0
-    let first = 0
-    let second = 0
-    let third = 0
-    let fourth = 0
-    let fifth = 0
-    while (position < length) {
-      const start = mappings.charCodeAt(position)
-      if (start === COMMA || start === SEMICOLON) break
-      let value = 0
-      let shift = 0
-      let digit: number
-      do {
-        if (position >= length) return results
-        const char = mappings.charCodeAt(position++)
-        digit = char < 128 ? DIGIT[char] : -1
-        if (digit < 0) return results
-        value |= (digit & 31) << shift
-        shift += 5
-      } while (digit & 32)
-      const signed = value & 1 ? -(value >>> 1) : value >>> 1
-      if (fields === 0) first = signed
-      else if (fields === 1) second = signed
-      else if (fields === 2) third = signed
-      else if (fields === 3) fourth = signed
-      else if (fields === 4) fifth = signed
-      fields++
-    }
-
-    generatedColumn += first
-    while (next < order.length && order[next].line === generatedLine && order[next].col < generatedColumn) answer(order[next++])
-    if (fields >= 4) {
-      source += second
-      line += third
-      column += fourth
-      if (fields >= 5) name += fifth
-      covered = true
-      coveredSource = source
-      coveredLine = line
-      coveredColumn = column
-      coveredName = fields >= 5 ? name : -1
-    } else {
-      covered = false
-    }
-  }
-  return results
+    const root = typeof map.sourceRoot === 'string' && map.sourceRoot ? map.sourceRoot.replace(/\/+$/, '') + '/' : ''
+    return targets.map(({ line, col }) => {
+      if (!Number.isInteger(line) || !Number.isInteger(col) || line < 1 || col < 1 || line > entry.lines) return null
+      const result = originalPositionFor(entry.trace, { line, column: col - 1 })
+      return typeof result.source === 'string' && result.source && result.line !== null && result.column !== null ? {
+        source: root + result.source, line: result.line, col: result.column + 1,
+        ...(result.name ? { name: result.name } : {}),
+      } : null
+    })
+  } catch { return targets.map(() => null) }
 }

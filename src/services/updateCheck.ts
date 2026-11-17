@@ -1,3 +1,5 @@
+import { isNewerVersion } from '../utils/versionUtils'
+export { isNewerVersion } from '../utils/versionUtils'
 export const GITHUB_REPO = 'C1ean-dev/Lira'
 export const UPDATE_CACHE_URL = 'https://lira-signaling.onrender.com/updates/lira/latest'
 const ASSET_PREFIX = 'https://lira-signaling.onrender.com/updates/lira/assets/'
@@ -12,18 +14,6 @@ export interface UpdateInfo {
   releaseUrl: string
   prUrl?: string | null
   checkFailed?: boolean
-}
-
-export function isNewerVersion(latestTag: string, currentVer: string): boolean {
-  const clean = (v: string) => v.replace(/^v/i, '').trim().split('.').map(Number)
-  const latest = clean(latestTag)
-  const current = clean(currentVer)
-  for (let i = 0; i < Math.max(latest.length, current.length); i++) {
-    const l = Number.isNaN(latest[i]) || latest[i] === undefined ? 0 : latest[i]
-    const c = Number.isNaN(current[i]) || current[i] === undefined ? 0 : current[i]
-    if (l !== c) return l > c
-  }
-  return false
 }
 
 /** Prefer Render's verified installers; query GitHub if Render cannot confirm the latest release. */

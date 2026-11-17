@@ -1,3 +1,4 @@
+import electronLog from 'electron-log/node'
 import fs from 'node:fs'
 import path from 'node:path'
 import {
@@ -38,8 +39,8 @@ export interface LogWriterOptions {
   symbolicate?: (report: ErrorReport) => void
 }
 
-function rotate(filePath: string, maxBytes: number, keep: number) {
-  if (!fs.existsSync(filePath) || fs.statSync(filePath).size < maxBytes) return
+function archive(filePath: string, keep: number) {
+  if (!fs.existsSync(filePath)) return
   const oldest = `${filePath}.${keep}`
   if (fs.existsSync(oldest)) fs.unlinkSync(oldest)
   for (let i = keep - 1; i >= 1; i--) {
@@ -49,15 +50,31 @@ function rotate(filePath: string, maxBytes: number, keep: number) {
   fs.renameSync(filePath, `${filePath}.1`)
 }
 
+let loggerSequence = 0
+
 export function createLogWriter(options: LogWriterOptions): LogWriter {
   const now = options.now ?? (() => new Date())
   const maxBytes = options.maxBytes ?? 5 * 1024 * 1024
   const keep = options.keep ?? 3
 
+  const transports = new Map<string, ReturnType<typeof electronLog.create>>()
   const append = (file: string, lines: string[]) => {
     if (lines.length === 0) return
-    rotate(file, maxBytes, keep)
-    fs.appendFileSync(file, lines.join('\n') + '\n', 'utf-8')
+    let logger = transports.get(file)
+    if (!logger) {
+      logger = electronLog.create({ logId: `lira-file-${++loggerSequence}` })
+      logger.transports.console.level = false
+      if (logger.transports.ipc) logger.transports.ipc.level = false
+      logger.transports.remote.level = false
+      logger.transports.file.format = '{text}'
+      logger.transports.file.sync = true
+      logger.transports.file.maxSize = maxBytes
+      logger.transports.file.resolvePathFn = () => file
+      logger.transports.file.archiveLogFn = old => archive(old.path, keep)
+      logger.transports.file.getFile().on('error', error => options.onFailure?.(error))
+      transports.set(file, logger)
+    }
+    logger.info(lines.join('\n'))
   }
 
   const writeBatch = (records: LogRecord[]) => {

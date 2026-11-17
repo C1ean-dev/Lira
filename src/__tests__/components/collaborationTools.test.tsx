@@ -46,7 +46,6 @@ describe('collaboration tools UI', () => {
     useWhiteboardStore.setState({ isOpen: true, roomId: 'room' })
     const html = renderToStaticMarkup(<WhiteboardPanel />)
     expect(html).toContain('Quadro branco')
-    expect(html).not.toMatch(/excalidraw/i)
     expect(html).toContain('role="dialog"')
     expect(html).not.toContain('<dialog')
     expect(html).toContain('Carregando editor')

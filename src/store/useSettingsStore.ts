@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { reportStorageFailure } from '../utils/storageReport'
+import { createStoredState } from './persistedState'
+import { graphicsSettingsSchema } from '../validation/schemas'
 
 const SETTINGS_STORAGE_KEY = 'lira_graphics_settings'
 
@@ -21,25 +22,14 @@ interface SettingsStore extends GraphicsSettings {
   setShowNameTags: (show: boolean) => void
 }
 
-const loadSavedSettings = (): Partial<GraphicsSettings> => {
-  try {
-    if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
-      const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY)
-      if (raw) return JSON.parse(raw)
-    }
-  } catch (e) {
-    reportStorageFailure('read', SETTINGS_STORAGE_KEY, e)
-  }
-  return {}
-}
-
-const saved = loadSavedSettings()
+const preferences = createStoredState(SETTINGS_STORAGE_KEY, graphicsSettingsSchema, {})
+const saved = preferences.getState()
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
-  targetFps: 0,
-  showFpsCounter: false,
-  enableCulling: true,
-  moveSpeed: 8.0,
+  targetFps: saved.targetFps ?? 0,
+  showFpsCounter: saved.showFpsCounter ?? false,
+  enableCulling: saved.enableCulling ?? true,
+  moveSpeed: saved.moveSpeed ?? 8.0,
   currentFps: 60,
   showNameTags: saved.showNameTags ?? true,
 
@@ -70,12 +60,5 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 }))
 
 function saveSettings(partial: Partial<GraphicsSettings>) {
-  try {
-    if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
-      const current = loadSavedSettings()
-      window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ ...current, ...partial }))
-    }
-  } catch (e) {
-    reportStorageFailure('write', SETTINGS_STORAGE_KEY, e)
-  }
+  preferences.setState(graphicsSettingsSchema.parse(partial))
 }

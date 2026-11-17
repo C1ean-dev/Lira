@@ -1,8 +1,7 @@
 import { CollaborationButtons } from './collaboration/CollaborationButtons'
 import React, { useState } from 'react'
 import { Shield, Users, Minimize2, X, Radio, FileText } from 'lucide-react'
-import { selectTranscriptionSources } from '../media/callTranscription'
-import { useCallTranscription } from '../hooks/useCallTranscription'
+import { useSpaceTranscription } from '../hooks/useSpaceTranscription'
 import { CallTranscriptPanel } from './grid/CallTranscriptPanel'
 import { useMediaStore } from '../store/useMediaStore'
 import { useGameStore } from '../store/useGameStore'
@@ -148,8 +147,7 @@ const FullScreenGridInner: React.FC = () => {
   ])
 
   const activePresenter = allInMeeting.find((u) => u.screenStream || u.isScreenSharing)
-  const transcriptionSources = React.useMemo(() => selectTranscriptionSources(allInMeeting, peerVoiceStreams), [allInMeeting, peerVoiceStreams])
-  const transcription = useCallTranscription(transcriptionSources, localPlayer.currentZoneId)
+  const transcription = useSpaceTranscription()
   const focusedUser = focusedUserId
     ? allInMeeting.find((u) => u.id === focusedUserId)
     : activePresenter || (allInMeeting.length > 0 ? allInMeeting[0] : null)
@@ -173,7 +171,7 @@ const FullScreenGridInner: React.FC = () => {
 
   return (
     <>
-      <div className="fixed inset-0 z-50 bg-[#0c0e14] flex flex-col justify-between p-3 select-none animate-in fade-in duration-200">
+      <div role="region" aria-label="Chamada da sala" className="fixed inset-0 z-50 bg-[#0c0e14] flex flex-col justify-between p-3 select-none animate-in fade-in duration-200">
         <div className="flex items-center justify-between px-4 py-2 bg-[#12151d]/90 backdrop-blur-md rounded-2xl border border-[#2a3142] shrink-0 mb-2">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
@@ -241,6 +239,7 @@ const FullScreenGridInner: React.FC = () => {
             {localPlayer.currentZoneId && roomId && isOwner && <PetApiSettings roomId={roomId} />}
             <button type="button"
               onClick={() => setIsTranscriptOpen(open => !open)}
+              disabled={!transcription}
               aria-expanded={isTranscriptOpen}
               aria-controls="call-transcript"
               title="Transcrição da chamada por participante"
@@ -248,7 +247,7 @@ const FullScreenGridInner: React.FC = () => {
             >
               <FileText className="w-3.5 h-3.5" />
               <span>Transcrição</span>
-              {transcription.status === 'recording' && <span aria-label="Transcrição ativa" className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+              {transcription?.status === 'recording' && <span aria-label="Transcrição ativa" className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
             </button>
 
             <CollaborationButtons />
@@ -298,7 +297,7 @@ const FullScreenGridInner: React.FC = () => {
               ))}
             </div>
           )}
-          {isTranscriptOpen && <CallTranscriptPanel {...transcription} onStart={transcription.start} onStop={transcription.stop} onClose={() => setIsTranscriptOpen(false)} />}
+          {isTranscriptOpen && transcription && <CallTranscriptPanel {...transcription} onStart={transcription.start} onStop={transcription.stop} onClose={() => setIsTranscriptOpen(false)} />}
         </div>
 
         <CallControlsBar

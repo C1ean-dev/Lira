@@ -1,3 +1,5 @@
+import { friendPacketSchema } from '../validation/schemas'
+import { omitUndefinedFields } from './wireData'
 import Peer from 'peerjs'
 import { SHARED_RTC_CONFIG } from './mediaCalls'
 import {
@@ -183,7 +185,7 @@ export class FriendsNetwork {
     for (const conn of set) {
       if (!conn.open) continue
       try {
-        conn.send(packet)
+        conn.send(omitUndefinedFields(packet))
         return true
       } catch (err) {
         console.warn('[Friends] Failed to send over link:', err)
@@ -454,8 +456,9 @@ export class FriendsNetwork {
     if (!this.lastHeard.has(conn)) return
     this.lastHeard.set(conn, Date.now())
 
-    const packet = data as FriendPacket | null
-    if (!packet || typeof packet !== 'object' || typeof packet.t !== 'string') return
+    const parsed = friendPacketSchema.safeParse(data)
+    if (!parsed.success) return
+    const packet = parsed.data as FriendPacket
     if (packet.t === 'ping') return
     if (packet.t === 'bye') {
       this.closeLinks(userId)
