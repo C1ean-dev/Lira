@@ -149,29 +149,29 @@ Testar: formatos, rotação, sessões/instâncias, falhas de escrita, duplicaç�
 leitura dos relatórios e allowlist. Suítes: `logWriter`, `rendererLogger`,
 `logBundle`, `errorReportsScript`, `productionPackage`.
 
-### [ ] 10. Dados e sincronização do quadro branco
+### [x] 10. Dados e sincronização do quadro branco
 
-- [ ] Adotar tipos de elementos/arquivos do SDK e preservar transporte P2P.
-- [ ] Persistir documento versão 2 por sala em IndexedDB.
-- [ ] Converter traços, operações, objetos e imagens com restauração do SDK.
-- [ ] Manter originais até conversão validada e gravação concluída; ser idempotente.
-- [ ] Exigir `schemaVersion: 2` nos payloads; não implementar protocolo misto.
-- [ ] Preservar autorização, sincronização inicial, exclusões, resolução
+- [x] Adotar tipos de elementos/arquivos do SDK e preservar transporte P2P.
+- [x] Persistir documento versão 2 por sala em IndexedDB.
+- [x] Converter traços, operações, objetos e imagens com restauração do SDK.
+- [x] Manter originais até conversão validada e gravação concluída; ser idempotente.
+- [x] Exigir `schemaVersion: 2` nos payloads; não implementar protocolo misto.
+- [x] Preservar autorização, sincronização inicial, exclusões, resolução
   determinística, barreira de limpeza e limites; enviar imagens só quando necessário.
 
 Testar: conversão, falha de gravação, salas isoladas, entrada tardia, duplicação,
 concorrência, ordem e exclusões. Suítes: quadro, cenas, ponteiros e funcionamento offline.
 
-### [ ] 11. Editor com Excalidraw
+### [x] 11. Editor com Excalidraw
 
-- [ ] Carregar componente React sob demanda, em português, no painel do Lira.
-- [ ] Integrar `initialData`, `onChange` e atualização de cena; alterações remotas
+- [x] Carregar componente React sob demanda, em português, no painel do Lira.
+- [x] Integrar `initialData`, `onChange` e atualização de cena; alterações remotas
   não entram no histórico local nem causam retransmissão em ciclo.
-- [ ] Delegar desenho, seleção, transformação, histórico e exportação ao SDK.
-- [ ] Preservar offline, temas, imagens, laser, atalhos isolados e confirmação de limpeza.
-- [ ] Empacotar fontes/recursos locais e desabilitar embutidos/serviços remotos.
-- [ ] Exportar `.excalidraw`, SVG/PNG e importar arquivos antigos do Lira.
-- [ ] Substituir testes que proíbem Excalidraw por contratos de integração/offline;
+- [x] Delegar desenho, seleção, transformação, histórico e exportação ao SDK.
+- [x] Preservar offline, temas, imagens, laser, atalhos isolados e confirmação de limpeza.
+- [x] Empacotar fontes/recursos locais e desabilitar embutidos/serviços remotos.
+- [x] Exportar `.excalidraw`, SVG/PNG e importar arquivos antigos do Lira.
+- [x] Substituir testes que proíbem Excalidraw por contratos de integração/offline;
   remover o editor anterior após a migração.
 
 Testar: SDK simulado na UI, restauração real, offline, atualizações remotas,
@@ -210,13 +210,22 @@ preexistentes do usuário indiscriminadamente.
 | 7 | Concluída | TDD vermelho; 38 testes / 7 arquivos aprovados | Commit MQTT | Migrar dropdowns |
 | 8 | Concluída | TDD vermelho; 32 testes / 4 arquivos aprovados em jsdom e Node | Commit Radix | Migrar logs |
 | 9 | Concluída | TDD vermelho; 82 testes / 6 arquivos aprovados | Commit electron-log | Migrar quadro versão 2 |
-| 10–12 | Pendentes | Não executados | — | Seguir dependências descritas acima |
+| 10 | Concluída | TDD vermelho; conversão, armazenamento e P2P na suíte de 67 testes / 15 arquivos | Commit quadro v2 | Integrar editor |
+| 11 | Concluída | TDD vermelho; SDK real/simulado, fontes locais e tipos na suíte de 67 testes / 15 arquivos | Commit Excalidraw | Revisar e executar regressão completa |
+| 12 | Em andamento | Regressão completa pendente | — | Documentação e npm test |
 
 - Baseline isolada: os quatro arquivos anteriores passaram (44 testes, `--maxWorkers=1`); as falhas iniciais não foram reproduzidas isoladamente.
 - Etapa 1: contratos estruturais Zod nas entradas P2P, descoberta e contatos; validadores especializados continuam responsáveis pelas regras de domínio. Fixtures de rede passam a incluir timestamp e payload completo.
 
 - ZIP: nomes sanitizados duplicados são rejeitados para não perder anexos. Leitor independente valida CRC via Node e aceita descritores de dados do formato ZIP.
 
-- A versão mínima do novo quadro será alinhada na etapa 10; o utilitário semver já está migrado.
+- Quadro: pacote e versões atual/mínima alinhados em `1.1.211` (patch da maior declaração anterior, `1.1.210`). Pacotes sem `schemaVersion: 2` são rejeitados.
 
 - MQTT: testes de framing do parser removido foram substituídos por contratos dos clientes; nenhuma conexão com brokers reais foi usada. O pacote resolve seu build de navegador pelo export browser.
+
+- Etapas 10–11: comando `npx vitest run` nos 15 arquivos `boardPersistence`, `whiteboard`, `boardScene`, `boardPointers`, `offlineWhiteboard`, `versionCompatibility`, `nativeBoard*`, `boardPointerOverlay`, `collaborationTools`, `boardAssets` e `productionTypes`, com `--maxWorkers=2`. Resultado: 67 aprovados; log `board-complete.log`.
+- Conversão: banco novo `lira-whiteboards`, versão 1, store `documents`, documento `schemaVersion: 2` por sala. Os bytes de `lira_whiteboard_<sala>` permanecem intactos. Restauração conserva IDs, revisões e pontos isolados. Repetir a conversão produz a mesma cena.
+- Recuperação do quadro: exportar primeiro os desenhos novos; reverter os commits 10/11 e restaurar os originais preservados para voltar ao editor anterior. A cópia localStorage só representa o estado anterior à migração. Não apagar IndexedDB para recuperar dados novos.
+- SDK: abertura/importação passa pelo Lira para emitir barreira de limpeza; exportação JSON nativa/SVG/PNG pertence ao SDK. Recursos de IA, embeds e menus de serviços externos estão desabilitados.
+- Fontes: copiadas para `dist/excalidraw-assets/fonts`; no Electron instalado um protocolo restrito a fontes permite carregamento e incorporação no SVG. Transformação pequena no build remove o fallback CDN incondicional do SDK 0.18.0; teste verifica os bundles dev/prod instalados. Atualizar o SDK exige revisar esse contrato.
+- Nenhuma abertura de aplicativo/navegador, teste manual ou build completo foi executado.

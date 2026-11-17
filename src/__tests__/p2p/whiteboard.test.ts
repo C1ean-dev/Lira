@@ -5,12 +5,43 @@ import { useWhiteboardStore } from '../../store/useWhiteboardStore'
 import { useGameStore } from '../../store/useGameStore'
 import { PeerManager } from '../../p2p/PeerManager'
 import { requestWhiteboard } from '../../services/whiteboardNetwork'
+import { getWhiteboardElements, getWhiteboardFiles } from '../../collaboration/boardScene'
 
 const stroke = (actor = 'a', clock = 1) => ({ id: `${actor}-${clock}`, actor, clock, kind: 'stroke' as const, color: '#111111', width: 3, points: [{ x: .1, y: .2 }, { x: .3, y: .4 }] })
 const original = useGameStore.getState()
 afterEach(() => { useGameStore.setState(original); useWhiteboardStore.getState().reset(); vi.restoreAllMocks() })
 
 describe('collaborative whiteboard', () => {
+  it('relays Native objects and includes their images in authenticated late-join snapshots', async () => {
+    useGameStore.setState({ roomId: 'ROOM', isHost: true })
+    const send = vi.fn(), relay = vi.fn()
+    vi.spyOn(PeerManager, 'getInstance').mockReturnValue({ broadcast: send, getPeerId: () => 'host' } as any)
+    const receive = (type: any, payload: any) => processNetworkMessage({ type, senderId: 'a', timestamp: 1, payload: { schemaVersion: 2, ...payload } }, 'a', true, relay, vi.fn(), vi.fn(), 'host')
+    const file = { id: 'f', mimeType: 'image/png', dataURL: 'data:image/png;base64,AA==', created: 1 }
+    const element = { id: 'e', type: 'image', fileId: 'f', x: 0, y: 0, width: 10, height: 10, version: 1, versionNonce: 1, isDeleted: false }
+    receive('WHITEBOARD_OP', { roomId: 'ROOM', operation: { id: 'a:f', actor: 'a', clock: 1, kind: 'file', file } })
+    receive('WHITEBOARD_OP', { roomId: 'ROOM', operation: { id: 'a:e', actor: 'a', clock: 2, kind: 'element', element } })
+    expect(relay).toHaveBeenCalledTimes(2)
+    await useWhiteboardStore.getState().selectRoom('ROOM')
+    receive('WHITEBOARD_REQUEST', { schemaVersion: 2, roomId: 'ROOM' })
+    const payload = send.mock.calls[0][0].payload
+    send.mockClear()
+    receive('WHITEBOARD_REQUEST', { roomId: 'ROOM', fileIds: ['f'] })
+    expect(send.mock.calls.flatMap(call => call[0].payload.operations).some(operation => operation.kind === 'file')).toBe(false)
+    useWhiteboardStore.getState().reset()
+    useGameStore.setState({ connectionHostId: 'host' })
+    processNetworkMessage({ type: 'WHITEBOARD_STATE', senderId: 'host', timestamp: 1, payload }, 'host', false, relay, vi.fn(), vi.fn(), 'a')
+    expect(getWhiteboardElements(useWhiteboardStore.getState().document)).toEqual([element])
+    expect(getWhiteboardFiles(useWhiteboardStore.getState().document)).toEqual({ f: file })
+    expect(useWhiteboardStore.getState().synchronized).toBe(true)
+  })
+  it('rejects missing or incompatible schema versions without changing state', () => {
+    useGameStore.setState({ roomId: 'ROOM', isHost: true })
+    const before = useWhiteboardStore.getState().document, relay = vi.fn()
+    for (const schemaVersion of [undefined, 1, 3]) processNetworkMessage({ type: 'WHITEBOARD_OP', senderId: 'a', timestamp: 1, payload: { schemaVersion, roomId: 'ROOM', operation: stroke() } }, 'a', true, relay, vi.fn(), vi.fn(), 'host')
+    expect(useWhiteboardStore.getState().document).toBe(before)
+    expect(relay).not.toHaveBeenCalled()
+  })
   it('converges for concurrent strokes, duplicate delivery and removal before the stroke', () => {
     const a = stroke(), b = stroke('b')
     const removal = { id: 'a-2', actor: 'a', clock: 2, kind: 'remove' as const, targetId: a.id }
@@ -36,7 +67,7 @@ describe('collaborative whiteboard', () => {
     useGameStore.setState({ roomId: 'ROOM', connectionHostId: 'host' })
     useWhiteboardStore.getState().apply('ROOM', stroke('self', 3))
     const receive = (peer: string, operations: any[]) => processNetworkMessage({
-      type: 'WHITEBOARD_STATE', senderId: peer, timestamp: 1, payload: { roomId: 'ROOM', to: 'self', operations },
+      type: 'WHITEBOARD_STATE', senderId: peer, timestamp: 1, payload: { schemaVersion: 2, roomId: 'ROOM', to: 'self', operations },
     }, peer, false, vi.fn(), vi.fn(), vi.fn(), 'self')
     receive('forged', [stroke('bad', 2)])
     receive('host', [stroke('a', 2)])
@@ -48,7 +79,7 @@ describe('collaborative whiteboard', () => {
     requestWhiteboard()
     expect(useWhiteboardStore.getState().synchronized).toBe(false)
     const receive = (complete: boolean) => processNetworkMessage({ type: 'WHITEBOARD_STATE', senderId: 'host', timestamp: 1,
-      payload: { roomId: 'ROOM', to: 'self', operations: [stroke('a', complete ? 5 : 2)], complete },
+      payload: { schemaVersion: 2, roomId: 'ROOM', to: 'self', operations: [stroke('a', complete ? 5 : 2)], complete },
     }, 'host', false, vi.fn(), vi.fn(), vi.fn(), 'self')
     receive(false)
     expect(useWhiteboardStore.getState().synchronized).toBe(false)
@@ -61,24 +92,26 @@ describe('collaborative whiteboard', () => {
     expect(applyWhiteboardOperation(doc, { ...stroke(), points: [{ x: NaN, y: 0 }] })).toBe(doc)
     expect(applyWhiteboardOperation(doc, { ...stroke(), points: Array(513).fill({ x: 0, y: 0 }) })).toBe(doc)
     expect(applyWhiteboardOperation(doc, { ...stroke(), color: 'url(javascript:alert(1))' })).toBe(doc)
-    useGameStore.setState({ roomId: 'ROOM' })
+    useGameStore.setState({ roomId: 'ROOM', isHost: true })
     const broadcast = vi.fn()
-    processNetworkMessage({ type: 'WHITEBOARD_OP', senderId: 'forged', timestamp: 1, payload: { roomId: 'ROOM', operation: stroke('forged') } }, 'peer', true, broadcast, vi.fn(), vi.fn(), 'self')
+    processNetworkMessage({ type: 'WHITEBOARD_OP', senderId: 'forged', timestamp: 1, payload: { schemaVersion: 2, roomId: 'ROOM', operation: stroke('forged') } }, 'peer', true, broadcast, vi.fn(), vi.fn(), 'self')
     expect(broadcast).not.toHaveBeenCalled()
     expect(visibleStrokes(useWhiteboardStore.getState().document)).toEqual([])
   })
-  it('relays authenticated strokes and provides snapshots to late joiners', () => {
-    useGameStore.setState({ roomId: 'ROOM' })
+  it('relays authenticated strokes and provides snapshots to late joiners', async () => {
+    useGameStore.setState({ roomId: 'ROOM', isHost: true })
     const send = vi.fn()
     vi.spyOn(PeerManager, 'getInstance').mockReturnValue({ broadcast: send, getPeerId: () => 'host' } as any)
     const relay = vi.fn()
-    const receive = (type: any, payload: any) => processNetworkMessage({ type, senderId: 'a', timestamp: 1, payload }, 'a', true, relay, vi.fn(), vi.fn(), 'host')
+    const receive = (type: any, payload: any) => processNetworkMessage({ type, senderId: 'a', timestamp: 1, payload: { schemaVersion: 2, ...payload } }, 'a', true, relay, vi.fn(), vi.fn(), 'host')
     receive('WHITEBOARD_OP', { roomId: 'ROOM', operation: stroke() })
     expect(visibleStrokes(useWhiteboardStore.getState().document)).toHaveLength(1)
     expect(relay).toHaveBeenCalledOnce()
-    receive('WHITEBOARD_REQUEST', { roomId: 'ROOM' })
+    await useWhiteboardStore.getState().selectRoom('ROOM')
+    receive('WHITEBOARD_REQUEST', { schemaVersion: 2, roomId: 'ROOM' })
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'WHITEBOARD_STATE', payload: expect.objectContaining({ to: 'a', roomId: 'ROOM' }) }))
     receive('WHITEBOARD_OP', { roomId: 'OTHER', operation: stroke('a', 4) })
     expect(visibleStrokes(useWhiteboardStore.getState().document)).toHaveLength(1)
   })
 })
+

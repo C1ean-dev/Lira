@@ -1,6 +1,6 @@
 {
   "name": "lira",
-  "version": "1.1.117",
+  "version": "1.1.211",
   "description": "Lira - Espaço Virtual e Comunicação em Tempo Real",
   "main": "out/main.js",
   "type": "module",
@@ -46,6 +46,7 @@
     "@capacitor/cli": "^7.6.9",
     "@capacitor/core": "^7.6.9",
     "@electron/asar": "4.3.1",
+    "@excalidraw/excalidraw": "0.18.0",
     "@huggingface/transformers": "3.8.1",
     "@jitsi/rnnoise-wasm": "^0.2.1",
     "@jridgewell/trace-mapping": "0.3.31",

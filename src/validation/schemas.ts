@@ -74,7 +74,7 @@ const djPayload = z.object({ ...sessionEnvelope, query: text.optional(), recipie
   track: domain<SpotifySearchTrack>(object).optional(), result: domain<SpotifySearchResult & SpotifyDjRequestResult & SpotifyPlaybackResult>(object).optional(),
   command: domain<SpotifyPlaybackCommand>(z.object({ action: z.enum(['shuffle', 'previous', 'playpause', 'next', 'repeat', 'seek']), fraction: optionalFinite })).optional(),
 }).passthrough()
-const boardBase = { roomId: id, schemaVersion: z.literal(2).optional() }
+const boardBase = { roomId: id, schemaVersion: z.literal(2) }
 
 export const networkPayloadSchemas = {
   PLAYER_JOIN: z.object({ player: playerSchema }),
@@ -119,7 +119,7 @@ export const networkPayloadSchemas = {
     session: z.object({ id, roomId: id, furnitureId: id, initiatorId: id, targetId: id, createdAt: finite, stage: z.enum(['invited', 'active']).optional(), acceptedAt: optionalFinite }).optional(),
   }).passthrough(),
   WHITEBOARD_OP: z.object({ ...boardBase, operation: domain<WhiteboardOperation>(object) }),
-  WHITEBOARD_REQUEST: z.object(boardBase),
+  WHITEBOARD_REQUEST: z.object({ ...boardBase, fileIds: z.array(id).max(1000).optional() }),
   WHITEBOARD_STATE: z.object({ ...boardBase, to: id, operations: z.array(domain<WhiteboardOperation>(object)).max(16), complete: optionalBool }),
   WHITEBOARD_POINTER: z.object({ ...boardBase, point: z.object({ x: finite, y: finite }).nullable(), seq: finite.int().nonnegative() }),
 } as const

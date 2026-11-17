@@ -104,8 +104,8 @@ describe('Version Compatibility & Outdated Flag', () => {
         player: {
           id: 'modern-peer',
           name: 'Alice',
-          appVersion: '1.1.210',
-          minCompatibleVersion: '1.1.210',
+          appVersion: MIN_COMPATIBLE_VERSION,
+          minCompatibleVersion: MIN_COMPATIBLE_VERSION,
         },
       },
     }
@@ -115,7 +115,7 @@ describe('Version Compatibility & Outdated Flag', () => {
     const remote = useGameStore.getState().remotePlayers['modern-peer']
     expect(remote).toBeDefined()
     expect(remote.isOutdated).toBe(false)
-    expect(remote.appVersion).toBe('1.1.210')
+    expect(remote.appVersion).toBe(MIN_COMPATIBLE_VERSION)
 
     const warningMsg = useChatStore.getState().messages.find((m) => m.id === 'compat-warn-modern-peer')
     expect(warningMsg).toBeUndefined()
@@ -183,7 +183,7 @@ describe('Version Compatibility & Outdated Flag', () => {
       senderId: 'lira-TEST-host',
       payload: {
         minVersion: '1.2.0',
-        currentVersion: '1.1.210',
+        currentVersion: MIN_COMPATIBLE_VERSION,
       },
     }
 
@@ -319,9 +319,9 @@ describe('Version Compatibility & Outdated Flag', () => {
     try {
       manager.sendVersionIncompatible(
         'legacy-target-peer',
-        '1.1.210',
+        MIN_COMPATIBLE_VERSION,
         '1.1.110',
-        '⚠️ Incompatibilidade de versão: atualize para >= v1.1.210'
+        `⚠️ Incompatibilidade de versão: atualize para >= v${MIN_COMPATIBLE_VERSION}`
       )
 
       expect(mockConn.send).toHaveBeenCalledTimes(2)
@@ -331,11 +331,11 @@ describe('Version Compatibility & Outdated Flag', () => {
       const chatPacket = packets.find((p: any) => p.type === 'CHAT_MESSAGE')
 
       expect(incompatPacket).toBeDefined()
-      expect(incompatPacket.payload.minVersion).toBe('1.1.210')
+      expect(incompatPacket.payload.minVersion).toBe(MIN_COMPATIBLE_VERSION)
 
       expect(chatPacket).toBeDefined()
       expect(chatPacket.payload.message.channelId).toBe('general')
-      expect(chatPacket.payload.message.content).toContain('1.1.210')
+      expect(chatPacket.payload.message.content).toContain(MIN_COMPATIBLE_VERSION)
     } finally {
       manager.connections.delete('legacy-target-peer')
     }

@@ -15,7 +15,7 @@ export function sendBoardPointer(point: BoardPoint | null): void {
   lastSent = point ? now : -Infinity; lastRoom = roomId; sequence = Math.max(sequence + 1, now)
   const pm = PeerManager.getInstance()
   pm.broadcast({ type: 'WHITEBOARD_POINTER', senderId: pm.getPeerId() || localPlayer.id, timestamp: now,
-    payload: { roomId, point, seq: sequence } })
+    payload: { schemaVersion: 2, roomId, point, seq: sequence } })
 }
 
 export function receiveBoardPointer(msg: NetworkMessage, peerId: string, isHost: boolean): boolean {
