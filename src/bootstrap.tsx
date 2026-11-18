@@ -5,12 +5,14 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { markStartup } from './utils/startupTrace'
 import './index.css'
 import { initializeCustomAssets } from './store/useCustomAssetsStore'
+import { initializeSavedSpaces } from './store/useSavedSpacesStore'
 
 markStartup('graph')
 
 async function start() {
   await initializeCustomAssets()
   markStartup('assets')
+  await initializeSavedSpaces()
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <ErrorBoundary>

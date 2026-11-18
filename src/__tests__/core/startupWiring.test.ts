@@ -31,6 +31,7 @@ describe('start-up measurements', () => {
     const bootstrap = read('src/bootstrap.tsx')
     expect(bootstrap).toMatch(/markStartup\('graph'\)/)
     expect(bootstrap).toMatch(/await initializeCustomAssets\(\)\s*markStartup\('assets'\)/)
+    expect(bootstrap).toMatch(/await initializeSavedSpaces\(\)\s*ReactDOM\.createRoot/)
     expect(bootstrap).toMatch(/createRoot\(document\.getElementById\('root'\)!\)\.render\(/)
     expect(bootstrap).toMatch(/<ErrorBoundary>\s*<App \/>\s*<\/ErrorBoundary>/)
     expect(bootstrap).toMatch(/import '\.\/index\.css'/)
