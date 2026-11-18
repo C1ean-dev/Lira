@@ -32,6 +32,7 @@ describe('external data schemas', () => {
     const base = { senderId: 'peer', timestamp: 1 }
     expect(parseNetworkMessage({ ...base, type: 'MAP_EDIT', payload: { action: 'update_zone', data: { id: 'zone', partial: { isLocked: 'false' } } } })).toBeNull()
     expect(parseNetworkMessage({ ...base, type: 'MAP_EDIT', payload: { action: 'add_furniture', data: { furniture: { id: 'f', defId: 'chair', x: 1, y: 1, rotation: Infinity } } } })).toBeNull()
+    expect(parseNetworkMessage({ ...base, type: 'MAP_EDIT', payload: { action: 'add_furniture', data: { furniture: { id: 'f', defId: '', x: 1, y: 1 } } } })).toBeNull()
     expect(parseNetworkMessage({ ...base, type: 'REACTION', payload: { reaction: { id: 'r', playerId: 'peer', emoji: 'a', x: NaN, y: 0, createdAt: 1 } } })).toBeNull()
   })
   it('rejects malformed broadcast and friend presence packets', () => {

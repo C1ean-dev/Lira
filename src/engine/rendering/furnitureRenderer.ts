@@ -1,4 +1,4 @@
-import { PlacedFurniture, FurnitureDefinition } from '../../types/map'
+import { MISSING_FURNITURE_DEF_ID, type PlacedFurniture, type FurnitureDefinition } from '../../types/map'
 import { Direction } from '../../types/game'
 import { CustomAsset } from '../../types/customAsset'
 import { FURNITURE_CATALOG, TILE_SIZE } from '../Constants'
@@ -107,6 +107,16 @@ export function resolveFurnitureFrames(
 
 export class FurnitureRenderer {
   static drawFurniture(ctx: CanvasRenderingContext2D, furn: PlacedFurniture) {
+    if (furn.defId === MISSING_FURNITURE_DEF_ID) {
+      ctx.save()
+      ctx.strokeStyle = furn.tintColor || '#94a3b8'
+      ctx.lineWidth = 2
+      ctx.setLineDash([4, 3])
+      ctx.strokeRect(furn.x * TILE_SIZE + 2, furn.y * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4)
+      ctx.restore()
+      return
+    }
+
     const customAsset = useCustomAssetsStore.getState().getAssetById(furn.defId)
     if (customAsset && ((customAsset.frames && customAsset.frames.length > 0) || customAsset.directionalFrames)) {
       const { targetW, targetH } = resolveFurnitureDimensions(furn, customAsset)

@@ -2,6 +2,7 @@ import { z } from 'zod'
 import type { Player, PublicRoomInfo, ReactionItem, RoomKnockRequest } from '../types/game'
 import type { ChatMessage, RoomChannel } from '../types/chat'
 import type { MapData, StoredMapData, PlacedFurniture, PrivateZone, FloorType, WallType } from '../types/map'
+import { MISSING_FURNITURE_DEF_ID } from '../types/map'
 import type { CustomAsset } from '../types/customAsset'
 import type { PersistedAtlas } from '../assets/atlasFormat'
 import type { AtlasChunk } from '../assets/atlasChunks'
@@ -70,7 +71,8 @@ export const playerSchema = domain<Partial<Player>>(z.object({
   spotifyActivity: z.object({ track: text, artist: text, isPlaying: z.boolean(), startedAt: optionalFinite }).optional(),
   isDjBot: optionalBool, djOwnerId: text.optional(), appVersion: text.optional(), minCompatibleVersion: text.optional(), isOutdated: optionalBool,
 }).passthrough())
-const furniture = domain<PlacedFurniture>(z.object({ id, defId: id, x: finite, y: finite, rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(), direction: directionSchema.optional(), tintColor: text.optional(), consumptionStage: finite.int().min(0).max(3).optional() }).passthrough())
+const furnitureWireSchema = z.object({ id, defId: id, x: finite, y: finite, rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(), direction: directionSchema.optional(), tintColor: text.optional(), consumptionStage: finite.int().min(0).max(3).optional() }).passthrough()
+const furniture = domain<PlacedFurniture>(furnitureWireSchema)
 const zoneWireSchema = z.object({ id, name: text, color: text.optional(), x: finite, y: finite, width: finite.positive(), height: finite.positive(), description: text.optional(), maxCapacity: optionalFinite, hasWalls: optionalBool, wallType: text.optional(), admins: z.array(id).optional(), members: z.array(id).optional(), authorizedPeers: z.array(id).optional(), isLocked: optionalBool, allowKnock: optionalBool, welcomeMessage: text.optional() }).passthrough()
 const zone = domain<PrivateZone>(zoneWireSchema)
 const mapWireSchema = z.object({ id, name: text, width: finite.positive(), height: finite.positive(),
@@ -81,8 +83,15 @@ export const mapSchema = domain<MapData>(mapWireSchema)
 const storedZoneSchema = zoneWireSchema.extend({
   welcomeMessage: text.nullish().transform(message => message ?? undefined),
 })
+const storedFurnitureSchema = furnitureWireSchema.extend({
+  defId: z.preprocess(value => {
+    if (value == null || (typeof value === 'string' && value.trim() === '')) return MISSING_FURNITURE_DEF_ID
+    return value
+  }, id),
+})
 export const storedMapSchema = domain<StoredMapData>(mapWireSchema.partial().extend({
   id: id.default('custom_map'),
+  furniture: z.array(storedFurnitureSchema).optional(),
   zones: z.array(storedZoneSchema).optional(),
 }))
 export const savedSpaceSchema = z.object({ id: text.optional(), roomCode: text.optional(), name: text.optional(), description: text.optional(), color: text.optional(), createdAt: optionalFinite, updatedAt: optionalFinite, mapData: storedMapSchema.optional(), channels: z.array(z.object({ id, name: text, description: text.optional() })).optional() }).passthrough()

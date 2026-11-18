@@ -35,6 +35,8 @@ export interface FurnitureDefinition {
   iconColor: string
 }
 
+export const MISSING_FURNITURE_DEF_ID = 'lira:missing-furniture'
+
 export interface PlacedFurniture {
   id: string
   defId: string

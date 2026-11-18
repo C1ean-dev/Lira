@@ -24,7 +24,7 @@ export interface SavedSpace {
 
 const STORAGE_KEY = 'lira_saved_spaces'
 const ACTIVE_SPACE_ID_KEY = 'lira_active_space_id'
-const savedSpaceStorage = createStoredState(STORAGE_KEY, z.array(z.unknown()), [])
+const savedSpaceStorage = createStoredState<unknown[] | null>(STORAGE_KEY, z.array(z.unknown()), null)
 
 const serializeSpacesForStorage = (spaces: SavedSpace[]) => {
   return spaces.map((s) => ({
@@ -63,7 +63,7 @@ const syncSpacesToNativeFile = async (serialized: unknown[]): Promise<boolean> =
   }
 }
 
-const loadSavedSpaces = () => {
+const loadSavedSpaces = (storedSpaces: unknown[]) => {
   const nativeSpaces: SavedSpace[] = ((nativeSpacesData as any[]) || []).map((s: any) => ({
     ...s,
     roomCode: s.roomCode || generateUUID(),
@@ -71,7 +71,6 @@ const loadSavedSpaces = () => {
   }))
   const savedSpaces: SavedSpace[] = []
   const unreadableSpaces: unknown[] = []
-  const storedSpaces = typeof window === 'undefined' ? [] : savedSpaceStorage.getState()
 
   for (const [index, entry] of storedSpaces.entries()) {
     try {
@@ -103,6 +102,19 @@ const loadSavedSpaces = () => {
   return { spaces: Array.from(map.values()), unreadableSpaces }
 }
 
+function resolveActiveSpaceId(spaces: SavedSpace[]): string | null {
+  let savedActiveId: string | null = null
+  try {
+    savedActiveId = typeof window === 'undefined' ? null : window.localStorage?.getItem(ACTIVE_SPACE_ID_KEY) ?? null
+  } catch (error) {
+    reportStorageFailure('read', ACTIVE_SPACE_ID_KEY, error)
+  }
+  return spaces.some(space => space.id === savedActiveId) ? savedActiveId : spaces[0]?.id ?? null
+}
+
+const initial = loadSavedSpaces(typeof window === 'undefined' ? [] : savedSpaceStorage.getState() ?? [])
+let unreadableSpaces = initial.unreadableSpaces
+
 interface SavedSpacesState {
   savedSpaces: SavedSpace[]
   activeSpaceId: string | null
@@ -116,26 +128,15 @@ interface SavedSpacesState {
 }
 
 export const useSavedSpacesStore = create<SavedSpacesState>((set, get) => {
-  const { spaces: initialSpaces, unreadableSpaces } = loadSavedSpaces()
   const persistSpaces = (spaces: SavedSpace[]) => {
     // Keep unreadable records available for recovery when another room is saved.
     const serialized = [...unreadableSpaces, ...serializeSpacesForStorage(spaces)]
     savedSpaceStorage.setState(serialized, true)
     void syncSpacesToNativeFile(serialized)
   }
-  const savedActiveId =
-    typeof window !== 'undefined' && window.localStorage
-      ? window.localStorage.getItem(ACTIVE_SPACE_ID_KEY)
-      : null
-
-  const activeSpaceId =
-    savedActiveId && initialSpaces.some((s) => s.id === savedActiveId)
-      ? savedActiveId
-      : initialSpaces[0]?.id || null
-
   return {
-    savedSpaces: initialSpaces,
-    activeSpaceId,
+    savedSpaces: initial.spaces,
+    activeSpaceId: resolveActiveSpaceId(initial.spaces),
 
     setActiveSpaceId: (id) => {
       if (typeof window !== 'undefined' && window.localStorage) {
@@ -244,4 +245,24 @@ export const useSavedSpacesStore = create<SavedSpacesState>((set, get) => {
     },
   }
 })
+
+export async function initializeSavedSpaces(): Promise<void> {
+  const electron = typeof window === 'undefined' ? undefined : window.electronAPI
+  // An empty array is a valid save and may reflect an intentional deletion.
+  if (savedSpaceStorage.getState() !== null || !electron?.loadNativeSpaces) return
+
+  try {
+    const records = await electron.loadNativeSpaces()
+    if (!Array.isArray(records) || records.length === 0 || savedSpaceStorage.getState() !== null) return
+
+    const recovered = loadSavedSpaces(records)
+    unreadableSpaces = recovered.unreadableSpaces
+    useSavedSpacesStore.setState({
+      savedSpaces: recovered.spaces,
+      activeSpaceId: resolveActiveSpaceId(recovered.spaces),
+    })
+  } catch (error) {
+    reportStorageFailure('read', STORAGE_KEY, error, { source: 'nativeSpaces.json' })
+  }
+}
 
