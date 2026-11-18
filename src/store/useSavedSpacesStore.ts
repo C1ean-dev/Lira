@@ -8,6 +8,7 @@ import { createEmptyWorkspace } from '../editor/templates'
 import nativeSpacesData from '../data/nativeSpaces.json'
 import { generateUUID } from '../utils/uuid'
 import { hydrateMapData, compressMapDataForStorage } from '../utils/mapSerialization'
+import { reportStorageFailure } from '../utils/storageReport'
 
 export interface SavedSpace {
   id: string
@@ -23,7 +24,7 @@ export interface SavedSpace {
 
 const STORAGE_KEY = 'lira_saved_spaces'
 const ACTIVE_SPACE_ID_KEY = 'lira_active_space_id'
-const savedSpaceStorage = createStoredState<Record<string, any>[]>(STORAGE_KEY, z.array(savedSpaceSchema), [])
+const savedSpaceStorage = createStoredState(STORAGE_KEY, z.array(z.unknown()), [])
 
 const serializeSpacesForStorage = (spaces: SavedSpace[]) => {
   return spaces.map((s) => ({
@@ -32,10 +33,9 @@ const serializeSpacesForStorage = (spaces: SavedSpace[]) => {
   }))
 }
 
-const syncSpacesToNativeFile = async (spaces: SavedSpace[]): Promise<boolean> => {
+const syncSpacesToNativeFile = async (serialized: unknown[]): Promise<boolean> => {
   try {
     if (typeof window === 'undefined') return false
-    const serialized = serializeSpacesForStorage(spaces)
     let saved = false
     if ((window as any).electronAPI?.saveNativeSpaces) {
       try {
@@ -63,50 +63,44 @@ const syncSpacesToNativeFile = async (spaces: SavedSpace[]): Promise<boolean> =>
   }
 }
 
-const loadSavedSpaces = (): SavedSpace[] => {
+const loadSavedSpaces = () => {
   const nativeSpaces: SavedSpace[] = ((nativeSpacesData as any[]) || []).map((s: any) => ({
     ...s,
     roomCode: s.roomCode || generateUUID(),
     mapData: hydrateMapData(s.mapData),
   }))
-  let savedSpaces: SavedSpace[] = []
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      {
-        const parsed = savedSpaceStorage.getState()
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          savedSpaces = parsed
-            .filter((s: any) => s && typeof s === 'object' && s.id !== 'space-default' && s.name !== 'Meu Espaço Principal')
-            .map((s: any) => {
-              const mapData = hydrateMapData(s.mapData)
+  const savedSpaces: SavedSpace[] = []
+  const unreadableSpaces: unknown[] = []
+  const storedSpaces = typeof window === 'undefined' ? [] : savedSpaceStorage.getState()
 
-              return {
-                id: s.id || 'space-' + Math.random().toString(36).substring(2, 9),
-                roomCode: s.roomCode || generateUUID(),
-                name: s.name || 'Meu Espaço',
-                description: s.description || '',
-                createdAt: s.createdAt || Date.now(),
-                updatedAt: s.updatedAt || Date.now(),
-                mapData,
-                color: s.color || '#4c6ef5',
-                channels: Array.isArray(s.channels) ? s.channels : undefined,
-              }
-            })
-        }
+  for (const [index, entry] of storedSpaces.entries()) {
+    try {
+      const space = savedSpaceSchema.parse(entry)
+      if (space.id === 'space-default' || space.name === 'Meu Espaço Principal') continue
+
+      savedSpaces.push({
+        id: space.id || 'space-' + Math.random().toString(36).substring(2, 9),
+        roomCode: space.roomCode || generateUUID(),
+        name: space.name || 'Meu Espaço',
+        description: space.description || '',
+        createdAt: space.createdAt || Date.now(),
+        updatedAt: space.updatedAt || Date.now(),
+        mapData: hydrateMapData(space.mapData),
+        color: space.color || '#4c6ef5',
+        channels: space.channels,
+      })
+    } catch (error) {
+      if (unreadableSpaces.length === 0) {
+        reportStorageFailure('read', STORAGE_KEY, error, { roomIndex: index })
       }
+      unreadableSpaces.push(entry)
     }
-  } catch (e) {
-    console.error('Failed to load saved spaces:', e)
   }
 
   const map = new Map<string, SavedSpace>()
   nativeSpaces.forEach((s) => map.set(s.id, s))
   savedSpaces.forEach((s) => map.set(s.id, s))
-  return Array.from(map.values())
-}
-
-const persistSpaces = (spaces: SavedSpace[]) => {
-  savedSpaceStorage.setState(serializeSpacesForStorage(spaces), true)
+  return { spaces: Array.from(map.values()), unreadableSpaces }
 }
 
 interface SavedSpacesState {
@@ -122,7 +116,13 @@ interface SavedSpacesState {
 }
 
 export const useSavedSpacesStore = create<SavedSpacesState>((set, get) => {
-  const initialSpaces = loadSavedSpaces()
+  const { spaces: initialSpaces, unreadableSpaces } = loadSavedSpaces()
+  const persistSpaces = (spaces: SavedSpace[]) => {
+    // Keep unreadable records available for recovery when another room is saved.
+    const serialized = [...unreadableSpaces, ...serializeSpacesForStorage(spaces)]
+    savedSpaceStorage.setState(serialized, true)
+    void syncSpacesToNativeFile(serialized)
+  }
   const savedActiveId =
     typeof window !== 'undefined' && window.localStorage
       ? window.localStorage.getItem(ACTIVE_SPACE_ID_KEY)
@@ -170,7 +170,6 @@ export const useSavedSpacesStore = create<SavedSpacesState>((set, get) => {
         window.localStorage.setItem(ACTIVE_SPACE_ID_KEY, newSpace.id)
       }
       set({ savedSpaces: updated, activeSpaceId: newSpace.id })
-      syncSpacesToNativeFile(updated)
       return newSpace
     },
 
@@ -187,7 +186,6 @@ export const useSavedSpacesStore = create<SavedSpacesState>((set, get) => {
       })
       persistSpaces(updated)
       set({ savedSpaces: updated })
-      syncSpacesToNativeFile(updated)
     },
 
     saveCurrentMapToSpace: (spaceId, mapData) => {
@@ -203,7 +201,6 @@ export const useSavedSpacesStore = create<SavedSpacesState>((set, get) => {
       })
       persistSpaces(updated)
       set({ savedSpaces: updated })
-      syncSpacesToNativeFile(updated)
     },
 
     duplicateSavedSpace: (id) => {
@@ -222,7 +219,6 @@ export const useSavedSpacesStore = create<SavedSpacesState>((set, get) => {
       const updated = [duplicated, ...get().savedSpaces]
       persistSpaces(updated)
       set({ savedSpaces: updated })
-      syncSpacesToNativeFile(updated)
       return duplicated
     },
 
@@ -241,7 +237,6 @@ export const useSavedSpacesStore = create<SavedSpacesState>((set, get) => {
         savedSpaces: updated,
         activeSpaceId: nextActiveId,
       })
-      syncSpacesToNativeFile(updated)
     },
 
     getSpaceById: (id) => {
