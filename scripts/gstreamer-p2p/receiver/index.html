@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lira · Teste GStreamer P2P</title>
+  <style>
+    :root { color-scheme: dark; font: 16px system-ui, sans-serif; background: #10131a; color: #edf1fa; }
+    body { margin: 0 auto; max-width: 1400px; padding: clamp(16px, 3vw, 36px); }
+    header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+    h1 { font-size: clamp(1.3rem, 4vw, 2rem); margin: 0; }
+    button { font: inherit; background: #35466e; border: 1px solid #64759d; border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+    button:disabled { background: #242b3c; color: #a6adc0; cursor: default; }
+    video { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 70vh; background: #050608; border-radius: 10px; }
+    #status { color: #bbc6de; }
+    dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 8px; }
+    dl div { background: #1b2231; border-radius: 8px; padding: 10px 12px; }
+    dt { color: #bec9e0; font-size: .8rem; }
+    dd { margin: 4px 0 0; font-variant-numeric: tabular-nums; }
+  </style>
+  <script type="module" src="./viewer.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Teste GStreamer P2P</h1>
+    <div>
+      <button id="connect">Conectar</button>
+      <button id="download" disabled>Baixar métricas</button>
+    </div>
+  </header>
+  <video playsinline autoplay muted controls aria-label="Vídeo da transmissão de teste"></video>
+  <p id="status" role="status">Desconectado</p>
+  <dl aria-label="Métricas da reprodução">
+    <div><dt>Resolução</dt><dd data-stat="resolution">—</dd></div>
+    <div><dt>FPS exibido</dt><dd data-stat="presentedFps">—</dd></div>
+    <div><dt>FPS decodificado</dt><dd data-stat="decodedFps">—</dd></div>
+    <div><dt>Bitrate recebido</dt><dd data-stat="bitrate">—</dd></div>
+    <div><dt>Congelamentos</dt><dd data-stat="frozen">—</dd></div>
+    <div><dt>Tempo congelado</dt><dd data-stat="freezeSeconds">—</dd></div>
+    <div><dt>Quadros descartados</dt><dd data-stat="dropped">—</dd></div>
+    <div><dt>RTT</dt><dd data-stat="rtt">—</dd></div>
+    <div><dt>Jitter</dt><dd data-stat="jitter">—</dd></div>
+    <div><dt>Codec</dt><dd data-stat="codec">—</dd></div>
+    <div><dt>Rota</dt><dd data-stat="route">—</dd></div>
+  </dl>
+</body>
+</html>
