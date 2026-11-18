@@ -78,7 +78,13 @@ const mapWireSchema = z.object({ id, name: text, width: finite.positive(), heigh
   furniture: z.array(furniture), zones: z.array(zone), floors: z.array(z.array(text)), walls: z.array(z.array(text.nullable())),
 }).passthrough()
 export const mapSchema = domain<MapData>(mapWireSchema)
-export const storedMapSchema = domain<StoredMapData>(mapWireSchema.partial().required({ id: true }))
+const storedZoneSchema = zoneWireSchema.extend({
+  welcomeMessage: text.nullish().transform(message => message ?? undefined),
+})
+export const storedMapSchema = domain<StoredMapData>(mapWireSchema.partial().extend({
+  id: id.default('custom_map'),
+  zones: z.array(storedZoneSchema).optional(),
+}))
 export const savedSpaceSchema = z.object({ id: text.optional(), roomCode: text.optional(), name: text.optional(), description: text.optional(), color: text.optional(), createdAt: optionalFinite, updatedAt: optionalFinite, mapData: storedMapSchema.optional(), channels: z.array(z.object({ id, name: text, description: text.optional() })).optional() }).passthrough()
 const channel = domain<RoomChannel>(z.object({ id, name: text, description: text.optional() }))
 const mapEdit = z.discriminatedUnion('action', [
