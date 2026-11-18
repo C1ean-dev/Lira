@@ -16,6 +16,7 @@ export interface TransmissionStats {
   freezeDurationSec: number | null
   codec: string | null
   limitation: string | null
+  videoEngine?: 'GStreamer'
 }
 
 type AlmTransmissionRow = Pick<TransmissionStats, 'id' | 'peerId' | 'width' | 'height' | 'codec' | 'rttMs'> &

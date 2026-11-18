@@ -1,6 +1,8 @@
 const path = require('node:path')
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
 const { getRawHeader } = require('@electron/asar')
+const { runtimeFiles } = require('./prepare-gstreamer-runtime.cjs')
 
 function verifyProductionFiles(files) {
   const hasCatalog = files.includes('dist/assets/library/catalog.json')
@@ -27,6 +29,11 @@ module.exports = async context => {
   }
   visit(getRawHeader(path.join(context.appOutDir, 'resources', 'app.asar')).header)
   verifyProductionFiles(files)
+  if (context.electronPlatformName === 'win32') {
+    const runtime = path.join(context.appOutDir, 'resources', 'gstreamer')
+    for (const file of [...runtimeFiles, 'UPSTREAM.txt', 'versions.txt'])
+      assert(fs.existsSync(path.join(runtime, file)), `Arquivo do runtime GStreamer ausente no pacote: ${file}`)
+  }
   console.log(`[Production package] Validated ${files.length} files: compiled app, ws and electron-log only.`)
 }
 module.exports.verifyProductionFiles = verifyProductionFiles

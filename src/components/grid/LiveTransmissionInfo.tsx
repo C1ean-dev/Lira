@@ -69,6 +69,7 @@ export function LiveTransmissionInfo({ stream, local, peerName, onOpenSettings, 
             <dt>Tempo congelado</dt><dd>{row.freezeDurationSec === null || row.freezeDurationSec === undefined ? '—' : row.freezeDurationSec < 1 ? measure(row.freezeDurationSec * 1000, 'ms', 0) : measure(row.freezeDurationSec, 's', 1)}</dd>
           </>}
           <dt>Codec</dt><dd>{row.codec || '—'}</dd>
+          {row.videoEngine && <><dt>Motor de vídeo</dt><dd>{row.videoEngine}</dd></>}
           {local && <><dt>Limitação de qualidade</dt><dd>{row.limitation ? limits[row.limitation] || row.limitation : '—'}</dd></>}
         </dl>
       </div>)}

@@ -19,6 +19,7 @@ export const SCREEN_DEFAULT_MIN_BITRATE = 2_500_000
 
 const peerNegotiatedCodecs = new Map<string, string>()
 const almViewers = new Set<string>()
+const nativeViewers = new Set<string>()
 const encoderLimits = new Map<string, { consecutive: number; maxHeight?: number }>()
 const ENCODER_FALLBACK_HEIGHTS = [720, 540]
 const ENCODER_OVERLOAD_SAMPLES = 2
@@ -31,6 +32,12 @@ export function setAlmViewer(peerId: string, playing: boolean): void {
 }
 
 export function isAlmViewer(peerId: string | undefined): boolean { return !!peerId && almViewers.has(peerId) }
+
+export function setNativeLiveViewer(peerId: string, playing: boolean): void {
+  if (playing !== nativeViewers.has(peerId)) resetEncoderPressure(peerId)
+  if (playing) nativeViewers.add(peerId)
+  else nativeViewers.delete(peerId)
+}
 
 export function setPeerNegotiatedCodec(peerId: string, codec: string | null | undefined): void {
   if (!peerId) return
@@ -125,6 +132,7 @@ export function beginScreenShare(caps: VideoCaps): void {
 
 export function endScreenShare(): void {
   almViewers.clear()
+  nativeViewers.clear()
   activeShare = null
   shareEpoch++
   captureTrack = null
@@ -201,6 +209,7 @@ export function takeExpiredRequest(peerId: string): boolean {
 
 export function forgetViewer(peerId: string): void {
   almViewers.delete(peerId)
+  nativeViewers.delete(peerId)
   viewRequests.delete(peerId)
   peerNegotiatedCodecs.delete(peerId)
   encoderLimits.delete(peerId)
@@ -223,7 +232,7 @@ function planFor(peerId: string | undefined): SendPlan | null {
   const maxAllowedBitrate = isVp8 ? Math.min(activeShare.maxBitrate, VP8_SCREEN_MAX_BITRATE) : activeShare.maxBitrate
   const baseMinBitrate = activeShare.minBitrate ?? SCREEN_DEFAULT_MIN_BITRATE
   const effectiveMinBitrate = Math.min(baseMinBitrate, maxAllowedBitrate)
-  if (viewerMode(peerId) === 'off' || (peerId && almViewers.has(peerId))) return { active: false, scale: 1, ...activeShare, maxBitrate: maxAllowedBitrate, minBitrate: effectiveMinBitrate }
+  if (viewerMode(peerId) === 'off' || (peerId && (almViewers.has(peerId) || nativeViewers.has(peerId)))) return { active: false, scale: 1, ...activeShare, maxBitrate: maxAllowedBitrate, minBitrate: effectiveMinBitrate }
   const effectiveShare = maxAllowedBitrate !== activeShare.maxBitrate ? { ...activeShare, maxBitrate: maxAllowedBitrate, minBitrate: effectiveMinBitrate } : activeShare
   const maxHeight = peerId ? encoderLimits.get(peerId)?.maxHeight : undefined
   const layer = layerFor(effectiveShare, captureHeight(), askedHeight(peerId), maxHeight)
@@ -483,6 +492,7 @@ export function watchScreenShareRamp(pc: RTCPeerConnection, peerId: string, phas
 
 export function __resetVideoSendPolicyForTests(): void {
   almViewers.clear()
+  nativeViewers.clear()
   encoderLimits.clear()
   activeShare = null
   shareEpoch++

@@ -13,8 +13,10 @@ export function useLiveTransmissionStats(open: boolean, stream: MediaStream | nu
     const update = async () => {
       try {
         const manager = PeerManager.getInstance()
-        const rows = await sample(manager.getMediaCalls(), stream, local, manager.getAlmTransmissionCounters(stream, local))
-        if (!disposed) setStats(rows)
+        const native = local ? undefined : manager.getGStreamerConnection(stream)
+        const calls = native ? new Map([[native.id, native]]) : manager.getMediaCalls(local)
+        const rows = await sample(calls, stream, local, native ? undefined : manager.getAlmTransmissionCounters(stream, local))
+        if (!disposed) setStats(native ? rows.map(row => ({ ...row, videoEngine: 'GStreamer' })) : rows)
       } catch {
         if (!disposed) setStats([])
       }

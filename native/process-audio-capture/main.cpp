@@ -16,6 +16,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <cwchar>
 #include <iostream>
 #include <map>
@@ -630,6 +631,21 @@ int RunScreenCapture(int left, int top, int width, int height, DWORD excludedPro
 }  // namespace
 
 int wmain(int argc, wchar_t* argv[]) {
+  // The live launcher resolves the Electron display to a physical point.
+  // Never substitute the nearest monitor if the selected point disappeared.
+  if (argc == 4 && wcscmp(argv[1], L"--monitor-handle-at") == 0) {
+    wchar_t* endX = nullptr;
+    wchar_t* endY = nullptr;
+    const long x = wcstol(argv[2], &endX, 10);
+    const long y = wcstol(argv[3], &endY, 10);
+    if (endX == argv[2] || endY == argv[3] || *endX || *endY) return 2;
+    SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    const HMONITOR monitor = MonitorFromPoint(POINT{x, y}, MONITOR_DEFAULTTONULL);
+    if (!monitor) return 1;
+    std::cout << reinterpret_cast<std::uintptr_t>(monitor) << '\n';
+    return 0;
+  }
+
   // Fast path: Redraw window frame after capture stops to ensure DWM drops the yellow border.
   if (argc >= 3 && wcscmp(argv[1], L"--refresh-window") == 0) {
     HWND targetWindow = nullptr;

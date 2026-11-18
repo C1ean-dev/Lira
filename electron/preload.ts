@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { SpotifyPlaybackCommand, SpotifyPlaybackResult } from '../src/types/spotifyPlayback'
+import type { GStreamerCaptureAPI, GStreamerSignal } from '../src/media/gstreamerProtocol'
 
 export interface UpdateInfo {
   hasUpdate: boolean
@@ -55,7 +56,7 @@ export interface SpotifySourceResult {
   isBrowserPlayer?: boolean
 }
 
-export interface IElectronAPI {
+export interface IElectronAPI extends GStreamerCaptureAPI {
   onSpaceInvite: (callback: (link: string) => void) => () => void
   platform: string
   configureParsecEcho: () => Promise<import('../src/types/parsecEcho').ParsecEchoResult>
@@ -153,6 +154,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setScreenSource: (sourceId: string | null, withAudio: boolean = true, captureMethod = 'auto', sourceName?: string | null) =>
     ipcRenderer.invoke('set-screen-source', { sourceId, withAudio, captureMethod, sourceName }),
   stopScreenCapture: () => ipcRenderer.invoke('stop-screen-capture'),
+  startGStreamerCapture: (id, capture) => ipcRenderer.invoke('gstreamer-start', id, capture),
+  stopGStreamerCapture: id => ipcRenderer.invoke('gstreamer-stop', id),
+  sendGStreamerSignal: (id, signal) => ipcRenderer.invoke('gstreamer-signal', id, signal),
+  onGStreamerSignal: listener => {
+    const onSignal = (_event: Electron.IpcRendererEvent, id: string, signal: GStreamerSignal | null) => listener(id, signal)
+    ipcRenderer.on('gstreamer-signal', onSignal)
+    return () => ipcRenderer.removeListener('gstreamer-signal', onSignal)
+  },
   startProcessAudioCapture: (sourceId: string) => ipcRenderer.invoke('start-process-audio-capture', sourceId),
   getProcessAudioCaptureInfo: () => ipcRenderer.invoke('get-process-audio-capture-info'),
   stopProcessAudioCapture: () => ipcRenderer.invoke('stop-process-audio-capture'),

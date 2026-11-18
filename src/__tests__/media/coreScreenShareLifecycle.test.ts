@@ -4,6 +4,7 @@ import { PeerManager } from '../../p2p/PeerManager'
 import { useGameStore } from '../../store/useGameStore'
 import { useMediaStore } from '../../store/useMediaStore'
 import { ProcessAudioCapture } from '../../media/ProcessAudioCapture'
+import { NativeGStreamerCapture } from '../../media/gstreamerReceiver'
 
 vi.mock('../../data/nativeAssets.json', () => ({ default: { assets: [], categories: [] } }))
 class Track {
@@ -44,6 +45,46 @@ afterEach(() => {
   useGameStore.setState(originalGame); useMediaStore.setState(originalMedia)
 })
 describe('core screen capture lifetime', () => {
+  it.each([true, false])('uses the native stream when ready and Chromium on startup failure (%s)', async nativeReady => {
+    const api = {
+      setScreenSource: vi.fn(async () => true), startGStreamerCapture: vi.fn(), stopGStreamerCapture: vi.fn(async () => {}),
+      sendGStreamerSignal: vi.fn(), onGStreamerSignal: vi.fn(() => vi.fn()),
+    }
+    vi.stubGlobal('window', { electronAPI: api })
+    useMediaStore.setState({ isHardwareAccelerationEnabled: true })
+    peer.setGStreamerCapture = vi.fn()
+    const native = new Stream([new Track('video', 'native')])
+    const chromium = new Stream([new Track('video', 'chromium')])
+    const start = vi.spyOn(NativeGStreamerCapture.prototype, 'start').mockResolvedValue(nativeReady ? native as any : null)
+    capture.mockResolvedValue(chromium)
+    const result = await manager.startScreenShare({ sourceId: 'window:123:0', fps: 60, resolution: '1080p', optimizationMode: 'quality' })
+    expect(start).toHaveBeenCalledWith({ sourceId: 'window:123:0', width: 1920, height: 1080, fps: 60 })
+    expect(result).toBe(nativeReady ? native : chromium)
+    expect(capture).toHaveBeenCalledTimes(nativeReady ? 0 : 1)
+    if (nativeReady) expect(peer.setGStreamerCapture).toHaveBeenCalledWith(expect.any(NativeGStreamerCapture))
+    manager.stopScreenShare()
+    expect(api.stopGStreamerCapture).toHaveBeenCalledOnce()
+  })
+
+  it('falls back to the explicitly selected video even after native startup consumes the user gesture', async () => {
+    const api = {
+      setScreenSource: vi.fn(async () => true), startGStreamerCapture: vi.fn(), stopGStreamerCapture: vi.fn(async () => {}),
+      sendGStreamerSignal: vi.fn(), onGStreamerSignal: vi.fn(() => vi.fn()),
+    }
+    vi.stubGlobal('window', { electronAPI: api })
+    useMediaStore.setState({ isHardwareAccelerationEnabled: true })
+    vi.spyOn(NativeGStreamerCapture.prototype, 'start').mockResolvedValue(null)
+    const fallback = new Stream([new Track('video')])
+    const getUserMedia = vi.fn(async () => fallback)
+    vi.stubGlobal('navigator', { mediaDevices: { getDisplayMedia: capture, getUserMedia } })
+    capture.mockRejectedValue(new DOMException('No transient activation', 'InvalidStateError'))
+    expect(await manager.startScreenShare({ sourceId: 'window:123:0', fps: 60, resolution: '1080p', optimizationMode: 'quality' })).toBe(fallback)
+    expect(getUserMedia).toHaveBeenCalledExactlyOnceWith({
+      audio: false,
+      video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: 'window:123:0', maxWidth: 1920, maxHeight: 1080, maxFrameRate: 60 } },
+    })
+  })
+
   it('publishes only one processed application audio track, never the raw capture alongside it', async () => {
     const raw = new Track('audio', 'browser-app-audio')
     const output = new Track('audio', 'processed-app-audio')

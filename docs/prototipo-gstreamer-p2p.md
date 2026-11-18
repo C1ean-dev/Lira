@@ -1,5 +1,35 @@
 # Protótipo GStreamer P2P
 
+## Integração no Lira para Windows
+
+Ao iniciar uma transmissão com aceleração de hardware e **Priorizar
+qualidade**, o Lira tenta usar captura D3D11 e o encoder AMD AMF. A captura
+de janela usa Windows Graphics Capture e a captura de um monitor usa DXGI.
+Em 1080p a 60 FPS, o alvo do encoder é 8 Mbps. A resolução e o FPS
+selecionados são aplicados ao iniciar ou reiniciar a captura.
+
+O vídeo vai direto do apresentador ao espectador por WebRTC. Ofertas e
+candidatos passam pela sinalização da sala, com acesso limitado aos
+espectadores da mesma zona. O áudio do aplicativo e o microfone continuam
+nas chamadas de áudio do Lira. Quando o espectador confirma vídeo
+decodificado, o Lira pausa o envio de vídeo pelo caminho anterior para
+aquele espectador. O painel de recepção mostra **Motor de vídeo –
+GStreamer** e mede os quadros, o bitrate e os congelamentos dessa conexão.
+
+**Priorizar fluidez**, GPU ou driver incompatível, falha de captura, cliente
+antigo e conexões que precisam de retransmissão via TURN usam o caminho
+anterior. O caminho AMD usa configuração fixa de bitrate e FPS. Durante a
+recepção por GStreamer, consulte as métricas de vídeo no espectador.
+
+O instalador do Lira inclui o runtime privado Windows x64. O preparo
+seleciona os plugins necessários e suas DLLs a partir da distribuição
+oficial do GStreamer 1.28.8. O processo de captura é iniciado ao
+compartilhar e encerrado ao parar a live. Quem só assiste usa o player
+WebRTC. Durante o desenvolvimento, o Electron localiza a instalação do
+GStreamer no Windows ou a pasta indicada por `LIRA_GSTREAMER_ROOT`.
+
+## Executar o protótipo independente
+
 O apresentador usa GStreamer no Windows. Na captura real, a imagem passa da
 captura D3D11 para a conversão NV12 e para o encoder H.264 AMD AMF. O
 `webrtcsink` entrega o vídeo por WebRTC diretamente ao navegador do
