@@ -29,6 +29,10 @@ int main() {
   check(capture({{20, second}, {30, first}}) == std::set<DWORD>{30}, "remove a process when its window moves out");
   check(capture({{20, first}, {20, second}, {30, first}}) == std::set<DWORD>{30}, "mute the shared process across monitors");
   check(capture({{20, first}, {20, first}}) == std::set<DWORD>{20}, "restore a shared process once its windows are on the selected monitor");
+  check(capture({{20, first}, {20, first, false}}) == std::set<DWORD>{20}, "a minimized window on the same monitor must not mute the visible one");
+  check(capture({{20, first, false}}).empty(), "a minimized window alone must not start monitor capture");
+  check(capture({{20, first}, {20, second, false}, {30, first}}) == std::set<DWORD>{30},
+        "a minimized browser window from another monitor can still play audio through the shared process");
   check(capture({{20, first}, {20, nullptr}}).empty(), "do not include audio from a shared hidden window");
   check(capture({{20, first}, {21, second}}).empty(), "exclude an available root whose loopback includes a window on another monitor");
   check(capture({{20, second}, {21, first}}) == std::set<DWORD>{21}, "a child loopback does not include its off-monitor parent");
@@ -38,6 +42,6 @@ int main() {
   std::map<DWORD, DWORD> snapshot;
   check(ReadProcessParents(&snapshot), "must read Windows process snapshot");
   check(snapshot.count(GetCurrentProcessId()) == 1, "snapshot must include this test process");
-  if (!failures) std::cout << "19 native audio policy checks passed\n";
+  if (!failures) std::cout << "22 native audio policy checks passed\n";
   return failures ? 1 : 0;
 }

@@ -177,7 +177,8 @@ export function viewerMode(peerId: string | undefined): ViewerMode {
 }
 
 export function watchesLive(peerId: string | undefined): boolean {
-  return viewerMode(peerId) !== 'off'
+  // The GStreamer session carries only video. Its confirmed viewers still need RTP audio.
+  return (peerId !== undefined && nativeViewers.has(peerId)) || viewerMode(peerId) !== 'off'
 }
 
 const requestRanOut = (request: ViewRequest) => Date.now() - request.at > VIEW_REQUEST_TTL_MS

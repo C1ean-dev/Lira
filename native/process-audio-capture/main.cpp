@@ -248,6 +248,7 @@ std::unique_ptr<ProcessSession> CreateProcessSession(DWORD pid, const WAVEFORMAT
 struct WindowAudioLocation {
   DWORD pid;
   HMONITOR monitor;
+  bool presented = true;
 };
 
 bool ReadProcessParents(std::map<DWORD, DWORD>* parents) {
@@ -291,7 +292,8 @@ std::set<DWORD> SelectMonitorAudioProcesses(const std::vector<WindowAudioLocatio
   std::set<DWORD> elsewhere;
   for (const auto& window : windows) {
     if (!window.pid) continue;
-    (window.monitor == targetMonitor ? onMonitor : elsewhere).insert(window.pid);
+    if (window.monitor != targetMonitor) elsewhere.insert(window.pid);
+    else if (window.presented) onMonitor.insert(window.pid);
   }
 
   std::set<DWORD> eligible;
@@ -335,6 +337,13 @@ BOOL CALLBACK ScanWindowsProc(HWND hwnd, LPARAM lParam) {
 
   DWORD pid = 0;
   if (!GetWindowThreadProcessId(hwnd, &pid) || !pid) return TRUE;
+  auto* windows = reinterpret_cast<std::vector<WindowAudioLocation>*>(lParam);
+
+  if (IsIconic(hwnd)) {
+    // Minimized windows have an offscreen frame. The window API retains their original monitor.
+    windows->push_back({pid, MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL), false});
+    return TRUE;
+  }
 
   RECT bounds = {};
   if (FAILED(DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &bounds, sizeof(bounds))) &&
@@ -344,8 +353,8 @@ BOOL CALLBACK ScanWindowsProc(HWND hwnd, LPARAM lParam) {
   DWORD cloaked = 0;
   DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked));
   // Assign a window to the monitor containing most of its visible frame.
-  const HMONITOR monitor = cloaked || IsIconic(hwnd) ? nullptr : MonitorFromRect(&bounds, MONITOR_DEFAULTTONULL);
-  reinterpret_cast<std::vector<WindowAudioLocation>*>(lParam)->push_back({pid, monitor});
+  const HMONITOR monitor = cloaked ? nullptr : MonitorFromRect(&bounds, MONITOR_DEFAULTTONULL);
+  windows->push_back({pid, monitor, !cloaked});
   return TRUE;
 }
 

@@ -248,6 +248,7 @@ export class PeerManager {
         const pc = this.mediaCalls.get(id)?.peerConnection
         const sender = pc && findVideoSender(pc)
         if (sender) syncScreenCaps(sender, id)
+        MediaCallHandler.syncViewerAudio(this.mediaCalls, id)
       },
     })
   }
