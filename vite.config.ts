@@ -1,10 +1,11 @@
 import { copyBoardFonts, boardFontPath, localizeBoardFontFallback } from './build/boardFonts'
-import { defineConfig } from 'vite'
+import { defineConfig, normalizePath } from 'vite'
 import react from '@vitejs/plugin-react'
 import electron from 'vite-plugin-electron'
 import renderer from 'vite-plugin-electron-renderer'
 import path from 'path'
 import fs from 'fs'
+import { createRequire } from 'node:module'
 import { readAssetAtlas, writeAssetAtlasLatest } from './electron/assetAtlasFile'
 import { readIndividualLibrary, writeIndividualLibraryLatest } from './electron/individualLibraryFile'
 import { ensureNativeSpacesFile, writeNativeSpacesFileLatest } from './electron/nativeSpacesFile'
@@ -15,6 +16,7 @@ ensureNativeSpacesFile(path.resolve(__dirname, 'src/data/nativeSpaces.json'))
 const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, './package.json'), 'utf-8'))
 const appVersion = process.env.VITE_APP_VERSION || process.env.LIRA_VERSION_NAME || pkg.version || '1.0.0'
 const enableElectron = !process.env.VITEST && process.env.LIRA_TARGET !== 'web'
+const require = createRequire(import.meta.url)
 
 export default defineConfig({
   define: {
@@ -22,6 +24,17 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    {
+      name: 'audio-dependency-assets',
+      configureServer(server) {
+        // Vitest sets its own fs.allow. Add the audio assets after the server config is resolved.
+        const audioEntries = ['@jitsi/rnnoise-wasm/dist/rnnoise-sync.js', '@lofcz/deepfilternet-web/worklet']
+        for (const entry of audioEntries) {
+          const directory = normalizePath(path.dirname(require.resolve(entry)))
+          server.config.server.fs.allow.push(directory)
+        }
+      },
+    },
     {
       name: 'local-board-fonts',
       enforce: 'pre',
