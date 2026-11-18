@@ -5,6 +5,11 @@ import { fileURLToPath } from 'node:url'
 import { optionsFrom, pipeline, receiverUrl, requiredElements } from './publish.mjs'
 import { createNegotiation, measure, videoSnapshot } from './receiver/probe.js'
 
+const playableAnswer = {
+  type: 'answer',
+  sdp: 'v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=rtpmap:96 H264/90000\r\na=recvonly\r\n',
+}
+
 test('the publisher CLI exposes its options without requiring GStreamer', () => {
   const entry = fileURLToPath(new URL('./publish.mjs', import.meta.url))
   const result = spawnSync(process.execPath, [entry, '--help'], { encoding: 'utf8', timeout: 5000 })
@@ -62,7 +67,7 @@ test('uses the official default signaller protocol and orders SDP before queued 
   const peer = {
     async setRemoteDescription(sdp) { applied.push(sdp); this.remoteDescription = sdp },
     async addIceCandidate(ice) { applied.push(ice) },
-    async createAnswer() { return { type: 'answer', sdp: 'v=0 answer' } },
+    async createAnswer() { return playableAnswer },
     async setLocalDescription(sdp) { this.localDescription = sdp; negotiation.ice(ourCandidate) },
   }
   const negotiation = createNegotiation(peer, message => sent.push(message))
@@ -84,6 +89,56 @@ test('uses the official default signaller protocol and orders SDP before queued 
     { type: 'peer', sessionId: 'live', sdp: peer.localDescription },
     { type: 'peer', sessionId: 'live', ice: ourCandidate },
   ])
+})
+
+test('normalizes the AMD Baseline flags in the H.264 offer before the browser matches codecs', async () => {
+  const sent = []
+  const peer = {
+    async setRemoteDescription(description) { this.remoteDescription = description },
+    async createAnswer() { return playableAnswer },
+    async setLocalDescription(description) { this.localDescription = description },
+  }
+  const negotiation = createNegotiation(peer, message => sent.push(message))
+  await negotiation.receive({ type: 'list', producers: [{ id: 'gst' }] })
+  await negotiation.receive({ type: 'sessionStarted', peerId: 'gst', sessionId: 'live' })
+  const sdp = [
+    'v=0',
+    'm=video 9 UDP/TLS/RTP/SAVPF 96 97 99',
+    'a=rtpmap:96 H264/90000',
+    'a=fmtp:96 packetization-mode=1;profile-level-id=42042a;level-asymmetry-allowed=1',
+    'a=rtpmap:97 H264/90000',
+    'a=fmtp:97 packetization-mode=1;profile-level-id=42e02a',
+    'a=rtpmap:99 rtx/90000',
+    'a=fmtp:99 apt=96;profile-level-id=42042a',
+    'm=audio 9 UDP/TLS/RTP/SAVPF 96',
+    'a=rtpmap:96 opus/48000/2',
+    'a=fmtp:96 profile-level-id=42042a',
+    '',
+  ].join('\r\n')
+  await negotiation.receive({ type: 'peer', sessionId: 'live', sdp: { type: 'offer', sdp } })
+  assert.equal(peer.remoteDescription.sdp, sdp.replace('profile-level-id=42042a', 'profile-level-id=42002a'))
+  assert.deepEqual(sent.at(-1).sdp, playableAnswer)
+})
+
+test('reports a rejected video section without sending an SDP answer that has no usable H.264', async () => {
+  for (const sdp of [
+    'v=0\r\nm=video 0 UDP/TLS/RTP/SAVPF 96\r\na=rtpmap:96 H264/90000\r\n',
+    'v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 97 98\r\na=rtpmap:97 red/90000\r\na=rtpmap:98 ulpfec/90000\r\n',
+  ]) {
+    const sent = []
+    const peer = {
+      async setRemoteDescription() {},
+      async createAnswer() { return { type: 'answer', sdp } },
+      async setLocalDescription(description) { this.localDescription = description },
+    }
+    const negotiation = createNegotiation(peer, message => sent.push(message))
+    await negotiation.receive({ type: 'list', producers: [{ id: 'gst' }] })
+    await negotiation.receive({ type: 'sessionStarted', peerId: 'gst', sessionId: 'live' })
+    await assert.rejects(negotiation.receive({
+      type: 'peer', sessionId: 'live', sdp: { type: 'offer', sdp: 'v=0' },
+    }), /navegador não aceitou.*H\.264/i)
+    assert.deepEqual(sent, [{ type: 'startSession', peerId: 'gst' }])
+  }
 })
 
 test('distinguishes 35 displayed FPS from 60 decoded FPS and verifies the selected direct route', () => {

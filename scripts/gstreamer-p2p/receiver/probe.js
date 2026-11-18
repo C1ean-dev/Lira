@@ -1,3 +1,30 @@
+function h264Payloads(media) {
+  return [...media.matchAll(/^a=rtpmap:(\d+)[ \t]+H264\/90000[ \t]*\r?$/gim)].map(match => match[1])
+}
+
+function normalizeAmfOffer(description) {
+  const sdp = description.sdp.split(/(?=^m=)/m).map(media => {
+    if (!media.startsWith('m=video ')) return media
+    const payloads = h264Payloads(media)
+    return media.replace(/^a=fmtp:(\d+)[ \t]+[^\r\n]+/gm, (line, payload) => {
+      if (!payloads.includes(payload)) return line
+      // AMF sets constraint_set5 on Baseline, where it imposes no profile constraint.
+      // libwebrtc's Baseline SDP matching requires that bit to be clear.
+      return line.replace(/(\bprofile-level-id[ \t]*=[ \t]*)4204([\da-f]{2})(?=[; \t]|$)/gi,
+        (_value, prefix, level) => `${prefix}4200${level}`)
+    })
+  }).join('')
+  return { ...description, sdp }
+}
+
+function acceptsH264(sdp) {
+  return sdp.split(/(?=^m=)/m).some(media => {
+    if (!media.startsWith('m=video ') || /^a=inactive\r?$/m.test(media)) return false
+    const [, port, , ...payloads] = media.split(/\r?\n/, 1)[0].trim().split(/\s+/)
+    return Number(port) > 0 && h264Payloads(media).some(payload => payloads.includes(payload))
+  })
+}
+
 // Consumer messages for the default gst-plugins-rs WebRTC signaller.
 export function createNegotiation(peer, send) {
   let producer = null
@@ -40,9 +67,11 @@ export function createNegotiation(peer, send) {
         if (!sessionId || message.sessionId !== sessionId) break
         if (message.sdp?.type === 'offer') {
           answered = false
-          await peer.setRemoteDescription(message.sdp)
+          await peer.setRemoteDescription(normalizeAmfOffer(message.sdp))
           for (const candidate of waitingRemoteIce.splice(0)) await peer.addIceCandidate(candidate)
-          await peer.setLocalDescription(await peer.createAnswer())
+          const answer = await peer.createAnswer()
+          if (!acceptsH264(answer.sdp)) throw new Error('O navegador não aceitou o vídeo H.264 desta transmissão.')
+          await peer.setLocalDescription(answer)
           const { type, sdp } = peer.localDescription
           send({ type: 'peer', sessionId, sdp: { type, sdp } })
           answered = true
