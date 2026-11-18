@@ -36,7 +36,8 @@ export class GStreamerRoom {
   constructor(private readonly deps: Dependencies) {}
 
   setCapture(capture?: Capture): void {
-    for (const id of this.viewers.keys()) this.endViewer(id, true)
+    const previous = this.capture
+    if (capture === previous) return
     this.capture = capture
     capture?.activate(signal => {
       if (capture !== this.capture) return
@@ -50,6 +51,7 @@ export class GStreamerRoom {
         break
       }
     })
+    for (const id of [...this.viewers.keys()]) this.endViewer(id, true, previous, !!capture)
   }
 
   watch(id: string, watch: boolean): void {
@@ -70,7 +72,11 @@ export class GStreamerRoom {
   async receive(id: string, signal: GStreamerSignal): Promise<void> {
     const sub = this.subscriptions.get(id)
     if (sub?.session === signal.session) {
-      if (!this.deps.watching(id) || signal.kind === 'end') { this.endSubscription(id, false); return }
+      if (!this.deps.watching(id) || signal.kind === 'end') {
+        this.endSubscription(id, false)
+        if (signal.kind === 'end' && signal.retry) this.watch(id, true)
+        return
+      }
       if (signal.kind === 'ice' && !sub.receiver && sub.ice.length < 100) sub.ice.push(signal)
       if (signal.kind === 'sdp' && signal.description.type === 'offer' && !sub.receiver) {
         try {
@@ -135,15 +141,15 @@ export class GStreamerRoom {
     for (const id of this.subscriptions.keys()) this.endSubscription(id, true)
   }
 
-  private endViewer(id: string, notify: boolean): void {
+  private endViewer(id: string, notify: boolean, capture = this.capture, retry = false): void {
     const viewer = this.viewers.get(id)
     if (!viewer) return
     this.viewers.delete(id)
     clearTimeout(viewer.expiry)
-    const signal: GStreamerSignal = { kind: 'end', session: viewer.session }
-    void this.capture?.signal(signal)
+    const signal = { kind: 'end', session: viewer.session } as const
+    void capture?.signal(signal)
     if (viewer.playing) this.deps.rtp(id, false)
-    if (notify) this.deps.send(id, signal)
+    if (notify) this.deps.send(id, retry ? { ...signal, retry: true } : signal)
   }
 
   private endSubscription(id: string, notify: boolean): void {

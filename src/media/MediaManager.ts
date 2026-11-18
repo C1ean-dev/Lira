@@ -56,6 +56,7 @@ export class MediaManager {
   private activeEngine: AudioEngine | null = null
   private mediaGeneration = 0
   private screenShareGeneration = 0
+  private screenShareSelection?: number
   private rawUserStream: MediaStream | null = null
   private rawScreenStream: MediaStream | null = null
   private nativeScreenCapture?: NativeGStreamerCapture
@@ -1022,6 +1023,7 @@ export class MediaManager {
 
   public async startScreenShare(config: ScreenShareConfig = {}, useChromium = false): Promise<MediaStream | null> {
     const generation = this.screenShareGeneration = (this.screenShareGeneration || 0) + 1
+    this.screenShareSelection = generation
     const isCurrent = () => generation === this.screenShareGeneration
     let acquired: MediaStream | null = null
     let nativeCapture: NativeGStreamerCapture | undefined
@@ -1101,23 +1103,25 @@ export class MediaManager {
             }),
       }
 
-      if (sourceId && electronAPI?.startGStreamerCapture && !useChromium && !this.nativeScreenCapture &&
+      if (sourceId && electronAPI?.startGStreamerCapture && !useChromium &&
           captureMethod === 'auto' && optimizationMode === 'quality' && useMediaStore.getState().isHardwareAccelerationEnabled) {
         triedNative = true
         const candidate = nativeCapture = new NativeGStreamerCapture(electronAPI, () => {
-          if (this.nativeScreenCapture !== candidate) return
-          const active = this.activeScreenConfig
-          if (active) void this.restartNativeScreenShare(active, true)
+          this.recoverFailedNativeScreenShare(candidate)
         })
         this.pendingNativeCapture = candidate
         screenStream = await candidate.start({ sourceId, width, height, fps: effectiveFps })
         if (this.pendingNativeCapture === candidate) this.pendingNativeCapture = undefined
-        if (!isCurrent()) { candidate.close(); return null }
+        if (!isCurrent()) {
+          candidate.close()
+          if (screenStream) this.releaseScreenCapture(screenStream)
+          return null
+        }
         if (!candidate.available || !screenStream) {
           candidate.close()
           nativeCapture = undefined
           screenStream = null
-          diagLog('screenshare', 'gstreamer-fallback', {})
+          diagLog('screenshare', 'gstreamer-fallback', { sourceId })
         }
       }
 
@@ -1153,6 +1157,7 @@ export class MediaManager {
       const capturedVideo = screenStream.getVideoTracks()[0]
       if (!capturedVideo || capturedVideo.readyState === 'ended') throw new Error('A captura não disponibilizou uma faixa de vídeo ativa.')
       this.replaceNativeScreenCapture(nativeCapture)
+      if (nativeCapture) diagLog('screenshare', 'gstreamer-started', { sourceId })
       const previousCaptures = new Set([this.rawScreenStream, useMediaStore.getState().localScreenStream])
       for (const previous of previousCaptures) {
         if (previous && previous !== screenStream) this.releaseScreenCapture(previous)
@@ -1315,6 +1320,12 @@ export class MediaManager {
       }
       if (acquired) this.releaseScreenCapture(acquired)
       return null
+    } finally {
+      if (this.screenShareSelection === generation) {
+        this.screenShareSelection = undefined
+        const active = this.nativeScreenCapture
+        if (active && !active.available) this.recoverFailedNativeScreenShare(active)
+      }
     }
   }
 
@@ -1323,8 +1334,14 @@ export class MediaManager {
     if (previous === next) return
     this.nativeScreenCapture = next
     PeerManager.getInstance().setGStreamerCapture(next)
-    if (next) diagLog('screenshare', 'gstreamer-started', {})
     previous?.close()
+  }
+
+  private recoverFailedNativeScreenShare(capture: NativeGStreamerCapture): void {
+    if (this.nativeScreenCapture !== capture || this.screenShareSelection !== undefined || !this.activeScreenConfig) return
+    const config = this.activeScreenConfig
+    this.replaceNativeScreenCapture()
+    void this.restartNativeScreenShare(config, true)
   }
 
   private releaseScreenCapture(stream: MediaStream): void {
@@ -1560,6 +1577,7 @@ export class MediaManager {
 
   public stopScreenShare() {
     this.screenShareGeneration = (this.screenShareGeneration || 0) + 1
+    this.screenShareSelection = undefined
     const wasScreenSharing = useMediaStore.getState().isScreenSharing
     this.isStoppingScreenShare = true
     this.activeScreenConfig = null
@@ -1842,10 +1860,9 @@ export class MediaManager {
   }
 
   private async restartNativeScreenShare(config: ScreenShareConfig, useChromium = false): Promise<void> {
-    this.replaceNativeScreenCapture()
     const starting = this.startScreenShare(config, useChromium)
     const generation = this.screenShareGeneration
-    if (!await starting && this.screenShareGeneration === generation) this.stopScreenShare()
+    if (!await starting && this.screenShareGeneration === generation && !this.nativeScreenCapture?.available) this.stopScreenShare()
   }
 
   public stopAllMedia() {

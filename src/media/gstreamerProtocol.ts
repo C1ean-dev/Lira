@@ -3,7 +3,7 @@ import { z } from 'zod'
 const session = z.uuid()
 export const gstreamerSignalSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('watch'), session }),
-  z.object({ kind: z.literal('end'), session }),
+  z.object({ kind: z.literal('end'), session, retry: z.literal(true).optional() }),
   z.object({ kind: z.literal('ready'), session }),
   z.object({
     kind: z.literal('sdp'), session,

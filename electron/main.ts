@@ -95,12 +95,16 @@ app.commandLine.appendSwitch(
 )
 
 let mainWindow: BrowserWindow | null = null
-let nativeLive: { id: string; capture?: ReturnType<typeof launchGStreamer> } | undefined
+const nativeLives = new Map<string, { capture?: ReturnType<typeof launchGStreamer> }>()
 
-function stopNativeLive() {
-  const previous = nativeLive
-  nativeLive = undefined
-  previous?.capture?.stop()
+function stopNativeLive(id: string) {
+  const entry = nativeLives.get(id)
+  nativeLives.delete(id)
+  entry?.capture?.stop()
+}
+
+function stopAllNativeLives() {
+  for (const id of nativeLives.keys()) stopNativeLive(id)
 }
 setupSpaceInviteHandling(app, ipcMain, () => mainWindow, process.argv)
 // Each profile gets one process, including the second profile used by electron:dual.
@@ -575,15 +579,16 @@ ipcMain.handle('gstreamer-start', async (event, id: unknown, request: unknown) =
       (capture.fps !== 30 && capture.fps !== 60)) return false
   const width = capture.height === 1080 ? 1920 : capture.height === 720 ? 1280 : capture.height === 480 ? 854 : 0
   if (!width || capture.width !== width) return false
-  stopNativeLive()
-  const pending: NonNullable<typeof nativeLive> = { id }
-  nativeLive = pending
+  // Keep the active capture alive while a replacement proves it can deliver video.
+  if (nativeLives.has(id) || nativeLives.size >= 2) return false
+  const pending: { capture?: ReturnType<typeof launchGStreamer> } = {}
+  nativeLives.set(id, pending)
   try {
     const sources = await desktopCapturer.getSources({
       types: [capture.sourceId.startsWith('window:') ? 'window' : 'screen'],
       thumbnailSize: { width: 0, height: 0 },
     })
-    if (nativeLive !== pending) return false
+    if (nativeLives.get(id) !== pending) return false
     const displays = screen.getAllDisplays()
     let source = resolveGStreamerSource(capture.sourceId, sources, displays)
     if (source && 'displayId' in source) {
@@ -596,34 +601,40 @@ ipcMain.handle('gstreamer-start', async (event, id: unknown, request: unknown) =
       const mappedDisplay = screen.getDisplayNearestPoint(screen.screenToDipPoint(point))
       const monitorHandle = mappedDisplay.id === displayId
         ? await getGStreamerMonitorHandle(getProcessAudioHelperPath(), point) : null
-      if (nativeLive !== pending) return false
+      if (nativeLives.get(id) !== pending) return false
       source = monitorHandle ? { monitorHandle } : null
     }
-    if (!source) { stopNativeLive(); return false }
+    if (!source) {
+      writeMainDiagnostic('screenshare', 'gstreamer-source-unavailable', { sourceId: capture.sourceId })
+      stopNativeLive(id)
+      return false
+    }
     const handle = launchGStreamer(root, path.join(app.getPath('userData'), 'gstreamer-registry.bin'), source,
       { width, height: capture.height!, fps: capture.fps }, signal => {
-        if (nativeLive !== pending || event.sender.isDestroyed()) return
-        if (signal === null) stopNativeLive()
+        if (nativeLives.get(id) !== pending || event.sender.isDestroyed()) return
+        if (signal === null) stopNativeLive(id)
         event.sender.send('gstreamer-signal', id, signal)
-      }, error => writeMainDiagnostic('screenshare', 'gstreamer-unavailable', { error }))
+      }, error => writeMainDiagnostic('screenshare', 'gstreamer-unavailable', { sourceId: capture.sourceId, error }))
     pending.capture = handle
     const ready = await handle.ready
-    if (nativeLive !== pending) return false
-    if (!ready) stopNativeLive()
+    if (nativeLives.get(id) !== pending) return false
+    if (!ready) stopNativeLive(id)
     return ready
   } catch (error) {
-    if (nativeLive === pending) stopNativeLive()
-    writeMainDiagnostic('screenshare', 'gstreamer-unavailable', { error: String(error) })
+    if (nativeLives.get(id) === pending) stopNativeLive(id)
+    writeMainDiagnostic('screenshare', 'gstreamer-unavailable', { sourceId: capture.sourceId, error: String(error) })
     return false
   }
 })
 ipcMain.handle('gstreamer-signal', (event, id: unknown, input: unknown) => {
-  if (!isNativeLiveOwner(event) || !nativeLive || nativeLive.id !== id) return false
+  if (!isNativeLiveOwner(event) || typeof id !== 'string') return false
+  const capture = nativeLives.get(id)?.capture
+  if (!capture) return false
   const signal = gstreamerSignalSchema.safeParse(input)
-  return signal.success && (nativeLive.capture?.signal(signal.data) ?? false)
+  return signal.success && capture.signal(signal.data)
 })
 ipcMain.handle('gstreamer-stop', (event, id: unknown) => {
-  if (isNativeLiveOwner(event) && nativeLive?.id === id) stopNativeLive()
+  if (isNativeLiveOwner(event) && typeof id === 'string') stopNativeLive(id)
 })
 
 app.whenReady().then(logSessionStart)
@@ -803,12 +814,12 @@ function createWindow() {
   })
 
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
-    stopNativeLive()
+    stopAllNativeLives()
     logProcessGone('renderer', details)
   })
-  mainWindow.webContents.on('will-navigate', stopNativeLive)
-  mainWindow.webContents.on('did-start-loading', stopNativeLive)
-  mainWindow.webContents.once('destroyed', stopNativeLive)
+  mainWindow.webContents.on('will-navigate', stopAllNativeLives)
+  mainWindow.webContents.on('did-start-loading', stopAllNativeLives)
+  mainWindow.webContents.once('destroyed', stopAllNativeLives)
 
   const loadApp = () => {
     if (process.env.VITE_DEV_SERVER_URL) {
@@ -2064,7 +2075,7 @@ ipcMain.handle('get-system-idle-time', () => {
 let spotifyQuitCleanup: Promise<void> | null = null
 let spotifyQuitReady = false
 app.on('before-quit', event => {
-  stopNativeLive()
+  stopAllNativeLives()
   spotifyLogin.cancel()
   if (!spotifyQuitReady && (spotifyWindowHost.browser || spotifyPlayer.isOpen || spotifyPlayer.isOpening)) {
     event.preventDefault()

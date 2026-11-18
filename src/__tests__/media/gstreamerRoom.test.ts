@@ -39,4 +39,29 @@ describe('GStreamer room routing', () => {
     expect(rtp).not.toHaveBeenCalled()
     room.close()
   })
+
+  it('requests a fresh native session immediately when the presenter switches sources', async () => {
+    const send = vi.fn()
+    const viewer = new GStreamerRoom({ send, rtp: vi.fn(), eligible: () => false, watching: () => true, stream: vi.fn(), rtc: {} })
+    viewer.watch('presenter', true)
+    const previous = send.mock.calls[0][1].session
+    const presenter = new GStreamerRoom({
+      send: (_id, signal) => { void viewer.receive('presenter', signal) },
+      rtp: vi.fn(), eligible: () => true, watching: () => false, stream: vi.fn(), rtc: {},
+    })
+    const first = { activate: vi.fn(), signal: vi.fn(async () => true) }
+    const second = { activate: vi.fn(), signal: vi.fn(async () => true) }
+    presenter.setCapture(first)
+    await presenter.receive('viewer', { kind: 'watch', session: previous })
+    presenter.setCapture(second)
+    expect(first.signal).toHaveBeenLastCalledWith({ kind: 'end', session: previous })
+    expect(send).toHaveBeenCalledTimes(2)
+    const next = send.mock.calls[1][1]
+    expect(next).toMatchObject({ kind: 'watch' })
+    expect(next.session).not.toBe(previous)
+    await presenter.receive('viewer', next)
+    expect(second.signal).toHaveBeenCalledWith(next)
+    presenter.close()
+    viewer.close()
+  })
 })

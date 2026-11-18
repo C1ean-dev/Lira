@@ -85,6 +85,36 @@ describe('core screen capture lifetime', () => {
     })
   })
 
+  it.each([true, false])('keeps the native window until the selected monitor is ready (%s)', async ready => {
+    const api = {
+      setScreenSource: vi.fn(async () => true), startGStreamerCapture: vi.fn(), stopGStreamerCapture: vi.fn(async () => {}),
+      sendGStreamerSignal: vi.fn(), onGStreamerSignal: vi.fn(() => vi.fn()),
+    }
+    vi.stubGlobal('window', { electronAPI: api })
+    useMediaStore.setState({ isHardwareAccelerationEnabled: true })
+    peer.setGStreamerCapture = vi.fn()
+    const windowTrack = new Track('video', 'window')
+    const windowStream = new Stream([windowTrack])
+    const monitorStream = new Stream([new Track('video', 'monitor')])
+    const monitor = deferred<MediaStream | null>()
+    const start = vi.spyOn(NativeGStreamerCapture.prototype, 'start')
+      .mockResolvedValueOnce(windowStream as unknown as MediaStream)
+      .mockReturnValueOnce(monitor.promise)
+    capture.mockRejectedValue(Object.assign(new Error('Cancelled'), { name: 'NotAllowedError' }))
+    const config = { fps: 60, resolution: '1080p', optimizationMode: 'quality' } as const
+    await manager.startScreenShare({ ...config, sourceId: 'window:123:0' })
+    const selecting = manager.startScreenShare({ ...config, sourceId: 'screen:2:0' })
+    expect(start).toHaveBeenLastCalledWith({ sourceId: 'screen:2:0', width: 1920, height: 1080, fps: 60 })
+    expect(windowTrack.readyState).toBe('live')
+    expect(api.stopGStreamerCapture).not.toHaveBeenCalled()
+    monitor.resolve(ready ? monitorStream as unknown as MediaStream : null)
+    expect(await selecting).toBe(ready ? monitorStream : null)
+    expect(useMediaStore.getState().localScreenStream).toBe(ready ? monitorStream : windowStream)
+    expect(windowTrack.readyState).toBe(ready ? 'ended' : 'live')
+    expect(capture).toHaveBeenCalledTimes(ready ? 0 : 1)
+    expect(api.stopGStreamerCapture).toHaveBeenCalledOnce()
+  })
+
   it('publishes only one processed application audio track, never the raw capture alongside it', async () => {
     const raw = new Track('audio', 'browser-app-audio')
     const output = new Track('audio', 'processed-app-audio')
