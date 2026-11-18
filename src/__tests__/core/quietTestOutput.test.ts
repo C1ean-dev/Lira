@@ -187,8 +187,23 @@ if __name__ == '__main__':
     expect(scripts['teste:all']).toBe('npm run test:all')
     expect(scripts.test).not.toContain('quiet')
     const suites = testSuites()
-    expect(suites.map(suite => suite.name)).toEqual(['unit', 'migration', 'noise:guards', 'core:browser', 'navigation:browser', 'invites:electron', 'sprites:electron', 'noise:dynamics', 'transcription:electron'])
-    for (const [name, flag] of [['core:browser', 'LIRA_RUN_BROWSER_TESTS'], ['navigation:browser', 'LIRA_RUN_NAVIGATION_TESTS'], ['invites:electron', 'LIRA_RUN_INVITE_TESTS'], ['sprites:electron', 'LIRA_RUN_SPRITE_TESTS'], ['transcription:electron', 'LIRA_RUN_TRANSCRIPTION_TESTS']]) {
+    const expectedSuites = [
+      ['unit'],
+      ['migration'],
+      ['noise:guards'],
+      ['core:browser', 'LIRA_RUN_BROWSER_TESTS'],
+      ['system:e2e', 'LIRA_RUN_SYSTEM_E2E'],
+      ['whiteboard:browser', 'LIRA_RUN_WHITEBOARD_TESTS'],
+      ['transcription:map', 'LIRA_RUN_SPACE_TRANSCRIPTION_TESTS'],
+      ['navigation:browser', 'LIRA_RUN_NAVIGATION_TESTS'],
+      ['invites:electron', 'LIRA_RUN_INVITE_TESTS'],
+      ['sprites:electron', 'LIRA_RUN_SPRITE_TESTS'],
+      ['noise:dynamics'],
+      ['transcription:electron', 'LIRA_RUN_TRANSCRIPTION_TESTS'],
+    ] as const
+    expect(suites.map(suite => suite.name)).toEqual(expectedSuites.map(([name]) => name))
+    for (const [name, flag] of expectedSuites) {
+      if (flag === undefined) continue
       const suite = suites.find(suite => suite.name === name)!
       expect(suite.env[flag]).toBe('1')
       expect(suite.args).toContain('--test-reporter')
