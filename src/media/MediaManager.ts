@@ -1192,7 +1192,7 @@ export class MediaManager {
       this.processAudioCapture?.stop()
       this.processAudioCapture = null
 
-      const processAudioSourceId = audioSourceId || sourceId
+      const processAudioSourceId = sourceId?.startsWith('screen:') ? sourceId : audioSourceId || sourceId
       const nativeAudioSupported = ProcessAudioCapture.isSupported()
       diagLog('screenshare-audio', 'native-capability', {
         isElectron: isElectronCapture,

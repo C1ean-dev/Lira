@@ -145,6 +145,21 @@ describe('core screen capture lifetime', () => {
     expect(useMediaStore.getState().localStream!.getAudioTracks()[0].readyState).toBe('live')
   })
 
+  it.each([
+    ['screen:2:0', 'screen:2:0'],
+    ['window:123:0', 'window:456:0'],
+  ])('uses the video monitor for desktop audio and honors separate audio sources for windows (%s)', async (sourceId, expectedAudioSource) => {
+    vi.stubGlobal('window', { electronAPI: { setScreenSource: vi.fn(async () => true) } })
+    vi.spyOn(ProcessAudioCapture, 'isSupported').mockReturnValue(true)
+    const audio = new Track('audio', 'native')
+    const start = vi.spyOn(ProcessAudioCapture.prototype, 'start').mockResolvedValue(audio as unknown as MediaStreamTrack)
+    vi.spyOn(ProcessAudioCapture.prototype, 'stop').mockImplementation(() => {})
+    vi.spyOn(manager as any, 'createLiveAudioTrack').mockResolvedValue(audio)
+    capture.mockResolvedValue(new Stream([new Track('video')]))
+    await manager.startScreenShare({ sourceId, audioSourceId: 'window:456:0' })
+    expect(start).toHaveBeenCalledExactlyOnceWith(expectedAudioSource)
+  })
+
   it('never reactivates a capture resolved after the user stopped sharing', async () => {
     const pending = deferred<Stream>()
     capture.mockReturnValue(pending.promise)

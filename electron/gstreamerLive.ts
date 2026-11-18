@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { createRequire } from 'node:module'
 import { join, delimiter } from 'node:path'
+import { findCaptureDisplay } from './captureDisplay'
 import { gstreamerSignalSchema, type GStreamerCapture, type GStreamerSignal } from '../src/media/gstreamerProtocol'
 
 type Source = { windowHandle: string } | { monitorIndex: number } | { monitorHandle: string }
@@ -18,8 +19,7 @@ export function resolveGStreamerSource(
   if (!source) return null
   const win = /^window:([1-9]\d{0,15}):\d+$/.exec(source.id)
   if (win) return { windowHandle: win[1] }
-  if (!source.id.startsWith('screen:')) return null
-  const display = displays.find(item => String(item.id) === source.display_id)
+  const display = findCaptureDisplay(sourceId, sources, displays)
   if (!display) return null
   // Electron display IDs are not DXGI monitor indices.
   return displays.length === 1 ? { monitorIndex: 0 } : { displayId: display.id }

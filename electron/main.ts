@@ -7,6 +7,7 @@ import dgram from 'dgram'
 import { spawn, exec, execSync, execFile } from 'child_process'
 import { release as getOsRelease } from 'os'
 import { guardIpcMain } from './ipcGuard'
+import { findCaptureDisplay, getCaptureDisplayPoint } from './captureDisplay'
 import { findGStreamerRuntime, getGStreamerMonitorHandle, launchGStreamer, resolveGStreamerSource } from './gstreamerLive'
 import { gstreamerSignalSchema } from '../src/media/gstreamerProtocol'
 import { createLogBundle } from './logBundle'
@@ -200,6 +201,7 @@ Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; pu
 })
 let trayManager: TrayManager | null = null
 let processAudioCapture: ReturnType<typeof spawn> | null = null
+let processAudioCaptureGeneration = 0
 let processAudioCaptureSourceId: string | null = null
 let processAudioCaptureBytes = 0
 let processAudioCaptureChunks = 0
@@ -275,6 +277,7 @@ function getProcessAudioCaptureInfo(): ProcessAudioCaptureInfo {
 }
 
 function stopProcessAudioCapture() {
+  processAudioCaptureGeneration++
   const child = processAudioCapture
   const sourceId = processAudioCaptureSourceId
   processAudioCapture = null
@@ -297,33 +300,13 @@ function stopProcessAudioCapture() {
   }
 }
 
-async function resolveScreenBounds(sourceId: string): Promise<{ x: number; y: number; width: number; height: number } | null> {
+async function resolveScreenAudioPoint(sourceId: string): Promise<Electron.Point | null> {
   try {
-    const displays = screen.getAllDisplays()
-    if (!displays || displays.length === 0) return null
-
-    const parts = sourceId.split(':')
-    const candidateId = parts[1]
-
-    const byId = displays.find((d) => String(d.id) === candidateId)
-    if (byId) return byId.bounds
-
     const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 }, fetchWindowIcons: false })
-    const found = sources.find((s) => s.id === sourceId)
-    const displayId = found && (found as any).display_id
-    if (displayId !== undefined && displayId !== null && String(displayId).length > 0) {
-      const matchedDisplay = displays.find((d) => String(d.id) === String(displayId))
-      if (matchedDisplay) return matchedDisplay.bounds
-    }
-
-    const idx = parseInt(candidateId, 10)
-    if (!isNaN(idx) && idx >= 0 && idx < displays.length) {
-      return displays[idx].bounds
-    }
-
-    return screen.getPrimaryDisplay().bounds
+    const display = findCaptureDisplay(sourceId, sources, screen.getAllDisplays())
+    return display ? getCaptureDisplayPoint(display, screen) : null
   } catch (err) {
-    console.warn('[Electron] Could not resolve screen bounds for', sourceId, err)
+    console.warn('[Electron] Could not resolve the audio capture monitor for', sourceId, err)
     return null
   }
 }
@@ -349,16 +332,18 @@ async function startProcessAudioCapture(sourceId: string): Promise<ProcessAudioC
     return { ok: true }
   }
   stopProcessAudioCapture()
+  const generation = processAudioCaptureGeneration
 
   const spawnArgs = ['--source-id', sourceId, '--exclude-process-tree', String(process.pid)]
   if (isScreen) {
-    const bounds = await resolveScreenBounds(sourceId)
-    if (bounds) {
-      spawnArgs.push('--screen-bounds', String(bounds.x), String(bounds.y), String(bounds.width), String(bounds.height))
-      writeMainAudioDiagnostic('screen-bounds', { sourceId, bounds })
-    } else {
-      writeMainAudioDiagnostic('screen-bounds-unresolved', { sourceId })
+    const point = await resolveScreenAudioPoint(sourceId)
+    if (generation !== processAudioCaptureGeneration) return { ok: false, error: 'Captura de áudio cancelada.' }
+    if (!point) {
+      writeMainAudioDiagnostic('screen-monitor-unresolved', { sourceId })
+      return { ok: false, error: 'Não foi possível identificar o monitor selecionado para capturar o áudio.' }
     }
+    spawnArgs.push('--screen-point', String(point.x), String(point.y))
+    writeMainAudioDiagnostic('screen-monitor-point', { sourceId, point })
   }
 
   return new Promise<ProcessAudioCaptureResult>((resolve) => {
@@ -394,6 +379,7 @@ async function startProcessAudioCapture(sourceId: string): Promise<ProcessAudioC
 
       let stderrBuffer = ''
       child.stdout?.on('data', (data: Buffer) => {
+        if (processAudioCapture !== child) return
         processAudioCaptureBytes += data.byteLength
         processAudioCaptureChunks++
         if (!settled) {
@@ -406,11 +392,13 @@ async function startProcessAudioCapture(sourceId: string): Promise<ProcessAudioC
         }
       })
       child.stderr?.on('data', (data: Buffer) => {
+        if (processAudioCapture !== child) return
         const text = data.toString('utf8')
-        stderrBuffer += text
         const detail = text.trim()
         if (!detail) return
         writeMainAudioDiagnostic('helper-stderr', { sourceId, detail: detail.slice(0, 2000) })
+        if (settled) return
+        stderrBuffer = (stderrBuffer + text).slice(-4096)
         if (stderrBuffer.includes('READY')) {
           emitProcessAudioStatus('started')
           finish({ ok: true })
@@ -421,26 +409,21 @@ async function startProcessAudioCapture(sourceId: string): Promise<ProcessAudioC
       child.once('error', (error) => {
         writeMainAudioDiagnostic('helper-error', { sourceId, error: error.message })
         if (processAudioCapture === child) {
-          processAudioCapture = null
-          processAudioCaptureSourceId = null
+          stopProcessAudioCapture()
+          emitProcessAudioStatus('error', error.message)
         }
-        emitProcessAudioStatus('error', error.message)
         finish({ ok: false, error: error.message })
       })
       child.once('exit', (code, signal) => {
+        if (processAudioCapture !== child) {
+          finish({ ok: false, error: 'Captura de áudio cancelada.' })
+          return
+        }
         writeMainAudioDiagnostic('helper-exit', { sourceId, code, signal, bytes: processAudioCaptureBytes, chunks: processAudioCaptureChunks })
-        if (processAudioCaptureStatsTimer) {
-          clearInterval(processAudioCaptureStatsTimer)
-          processAudioCaptureStatsTimer = null
-        }
-        const wasActive = processAudioCapture === child
-        if (wasActive) {
-          processAudioCapture = null
-          processAudioCaptureSourceId = null
-          const detail = `O capturador de áudio foi encerrado inesperadamente (${code ?? signal ?? 'desconhecido'}).`
-          emitProcessAudioStatus('error', detail)
-          finish({ ok: false, error: detail })
-        }
+        stopProcessAudioCapture()
+        const detail = `O capturador de áudio foi encerrado inesperadamente (${code ?? signal ?? 'desconhecido'}).`
+        emitProcessAudioStatus('error', detail)
+        finish({ ok: false, error: detail })
       })
 
       startupTimeout = setTimeout(() => {
@@ -593,14 +576,9 @@ ipcMain.handle('gstreamer-start', async (event, id: unknown, request: unknown) =
     let source = resolveGStreamerSource(capture.sourceId, sources, displays)
     if (source && 'displayId' in source) {
       const displayId = source.displayId
-      const bounds = displays.find(display => display.id === displayId)!.bounds
-      const point = screen.dipToScreenPoint({
-        x: bounds.x + Math.floor(bounds.width / 2),
-        y: bounds.y + Math.floor(bounds.height / 2),
-      })
-      const mappedDisplay = screen.getDisplayNearestPoint(screen.screenToDipPoint(point))
-      const monitorHandle = mappedDisplay.id === displayId
-        ? await getGStreamerMonitorHandle(getProcessAudioHelperPath(), point) : null
+      const display = displays.find(display => display.id === displayId)!
+      const point = getCaptureDisplayPoint(display, screen)
+      const monitorHandle = point ? await getGStreamerMonitorHandle(getProcessAudioHelperPath(), point) : null
       if (nativeLives.get(id) !== pending) return false
       source = monitorHandle ? { monitorHandle } : null
     }
