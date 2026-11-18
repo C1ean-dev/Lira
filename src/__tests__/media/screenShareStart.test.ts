@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { MediaCallHandler } from '../../p2p/mediaCalls'
+import { LIVE_QUALITY_INTERVAL_MS } from '../../p2p/liveQualityLog'
 import {
   CAMERA_CAPS,
   RAMP_SAMPLE_OFFSETS_MS,
   SCREEN_START_HOLD_MS,
   activeScreenCaps,
   watchScreenShareRamp,
+  type VideoDegradation,
   __resetVideoSendPolicyForTests,
 } from '../../p2p/videoSendPolicy'
 import { useGameStore } from '../../store/useGameStore'
@@ -69,6 +71,128 @@ describe('screen share start', () => {
     __resetDiagForTests()
     vi.useRealTimers()
     ;(globalThis as any).window = undefined
+  })
+
+  describe('sustained encoder overload', () => {
+    function share(preference: VideoDegradation = 'maintain-framerate') {
+      const a = fakeCall()
+      const b = fakeCall()
+      const calls = callsOf(['a', a], ['b', b])
+      const track = Object.assign(screenTrack(), { getSettings: () => ({ height: 1080 }) })
+      let limit = 'cpu'
+      let fps = 16
+      let encodeMs = 45
+      let frames = 0
+      let encodeTime = 0
+      let last = 0
+      let reporting = true
+      a.pc.getStats = async () => {
+        const timestamp = Date.now()
+        const newFrames = Math.round((timestamp - (last || timestamp)) * fps / 1000)
+        last = timestamp
+        frames += newFrames
+        encodeTime += newFrames * encodeMs / 1000
+        if (!reporting) return new Map()
+        return new Map([['out-video', {
+          timestamp, type: 'outbound-rtp', kind: 'video', framesPerSecond: fps, framesEncoded: frames,
+          totalEncodeTime: encodeTime, frameHeight: 1080 / (a.last()?.scaleResolutionDownBy || 1),
+          qualityLimitationReason: limit, encoderImplementation: 'OpenH264', powerEfficientEncoder: false,
+        }]])
+      }
+      const start = () => MediaCallHandler.replaceVideoTrack(calls, track, true, 15_000_000, 60, preference)
+      start()
+      return {
+        a, b, calls, start,
+        setReporting: (enabled: boolean) => { reporting = enabled },
+        changeStats(nextLimit: string, nextFps: number, nextEncodeMs: number) {
+          limit = nextLimit
+          fps = nextFps
+          encodeMs = nextEncodeMs
+        },
+      }
+    }
+
+    it('lowers the resolution and bitrate for the affected peer in smoothness mode', async () => {
+      const { a, b } = share()
+      await vi.advanceTimersByTimeAsync(2 * LIVE_QUALITY_INTERVAL_MS)
+      expect(a.last()).toMatchObject({ scaleResolutionDownBy: 1, maxBitrate: 15_000_000 })
+
+      await vi.advanceTimersByTimeAsync(LIVE_QUALITY_INTERVAL_MS)
+      expect(a.last()).toMatchObject({
+        scaleResolutionDownBy: 1.5, maxBitrate: 8_165_000, maxFramerate: 60,
+        degradationPreference: 'maintain-framerate',
+      })
+      expect(b.last()).toMatchObject({ scaleResolutionDownBy: 1, maxBitrate: 15_000_000 })
+      expect(a.sender.replaceTrack).toHaveBeenCalledTimes(1)
+    })
+
+    it('keeps the requested resolution and lets WebRTC lower FPS on CPU overload in quality mode', async () => {
+      const { a } = share('maintain-resolution')
+      await vi.advanceTimersByTimeAsync(8 * LIVE_QUALITY_INTERVAL_MS)
+      expect(a.last()).toMatchObject({
+        scaleResolutionDownBy: 1, maxBitrate: 15_000_000, degradationPreference: 'maintain-resolution',
+      })
+    })
+
+    it('restores resolution when switching to quality and requires fresh overload samples after switching back', async () => {
+      const { a, calls } = share()
+      await vi.advanceTimersByTimeAsync(3 * LIVE_QUALITY_INTERVAL_MS)
+      expect(a.last().scaleResolutionDownBy).toBe(1.5)
+
+      MediaCallHandler.updateScreenDegradationPreference(calls, 'maintain-resolution')
+      expect(a.last()).toMatchObject({
+        scaleResolutionDownBy: 1, maxBitrate: 15_000_000, degradationPreference: 'maintain-resolution',
+      })
+      await vi.advanceTimersByTimeAsync(3 * LIVE_QUALITY_INTERVAL_MS)
+      expect(a.last().scaleResolutionDownBy).toBe(1)
+      MediaCallHandler.updateScreenDegradationPreference(calls, 'maintain-framerate')
+      await vi.advanceTimersByTimeAsync(LIVE_QUALITY_INTERVAL_MS)
+      expect(a.last().scaleResolutionDownBy).toBe(1)
+      await vi.advanceTimersByTimeAsync(LIVE_QUALITY_INTERVAL_MS)
+      expect(a.last().scaleResolutionDownBy).toBe(1.5)
+    })
+
+    it('keeps adapting down to 540p, retains the new cap through viewer renewals, and resets on a new live', async () => {
+      const { a, calls, start } = share()
+      await vi.advanceTimersByTimeAsync(8 * LIVE_QUALITY_INTERVAL_MS)
+      expect(a.last()).toMatchObject({ scaleResolutionDownBy: 2, maxFramerate: 60 })
+
+      MediaCallHandler.applyViewerRequest(calls, 'a', true, 4320)
+      expect(a.last().scaleResolutionDownBy).toBe(2)
+      start()
+      expect(a.last().scaleResolutionDownBy).toBe(1)
+    })
+
+    it('requires fresh consecutive samples after an interval with no video report', async () => {
+      const live = share()
+      await vi.advanceTimersByTimeAsync(2 * LIVE_QUALITY_INTERVAL_MS)
+      live.setReporting(false)
+      await vi.advanceTimersByTimeAsync(LIVE_QUALITY_INTERVAL_MS)
+      live.setReporting(true)
+      await vi.advanceTimersByTimeAsync(LIVE_QUALITY_INTERVAL_MS)
+      expect(live.a.last().scaleResolutionDownBy).toBe(1)
+      await vi.advanceTimersByTimeAsync(2 * LIVE_QUALITY_INTERVAL_MS)
+      expect(live.a.last().scaleResolutionDownBy).toBe(1.5)
+    })
+
+    it.each([['bandwidth', 16, 45], ['cpu', 57, 10], ['cpu', 1, 8]] as const)(
+      'keeps full resolution for limitation %s at %i FPS and %i ms per frame',
+      async (limit, fps, encodeMs) => {
+        const live = share()
+        live.changeStats(limit, fps, encodeMs)
+        await vi.advanceTimersByTimeAsync(6 * LIVE_QUALITY_INTERVAL_MS)
+        expect(live.a.last()).toMatchObject({ scaleResolutionDownBy: 1, maxBitrate: 15_000_000 })
+      },
+    )
+
+    it('preserves an off viewer and ignores its stale stats', async () => {
+      const { a, calls } = share()
+      MediaCallHandler.applyViewerRequest(calls, 'a', false, 0)
+      await vi.advanceTimersByTimeAsync(6 * LIVE_QUALITY_INTERVAL_MS)
+      expect(a.last().active).toBe(false)
+      MediaCallHandler.applyViewerRequest(calls, 'a', true, 4320)
+      expect(a.last()).toMatchObject({ active: true, scaleResolutionDownBy: 1 })
+    })
   })
 
   describe('preparing the calls before the capture starts', () => {

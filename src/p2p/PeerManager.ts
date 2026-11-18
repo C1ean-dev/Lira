@@ -17,9 +17,11 @@ import { CustomAsset } from '../types/customAsset'
 import { PublicRoomsService } from '../services/publicRoomsService'
 import { processNetworkMessage } from './messageHandlers'
 import { MediaCallHandler, ICE_CONNECT_TIMEOUT_MS, SHARED_RTC_CONFIG, resolveCallGlare } from './mediaCalls'
-import { VideoDegradation, setAlmViewer, findVideoSender, syncScreenCaps } from './videoSendPolicy'
+import { VideoDegradation, setAlmViewer, findVideoSender, syncScreenCaps, setNativeLiveViewer } from './videoSendPolicy'
 import { prioritizeH264HardwareCodec, isHardwareAccelerationEnabled } from '../media/hardwareCodec'
 import { AlmLive } from './almLive'
+import { GStreamerRoom } from './gstreamerRoom'
+import type { NativeGStreamerCapture } from '../media/gstreamerReceiver'
 import { isAlmStream } from '../media/almStreams'
 import { useLiveWatchStore } from '../store/useLiveWatchStore'
 import { MediaManager } from '../media/MediaManager'
@@ -223,6 +225,55 @@ export class PeerManager {
   private djSignalingReconnectTimer: ReturnType<typeof setTimeout> | null = null
   private djSignalingReconnectAttempts = 0
   private almSession?: AlmLive
+  private nativeLive?: GStreamerRoom
+  private nativeCapture?: NativeGStreamerCapture
+  private get gstreamer(): GStreamerRoom {
+    return this.nativeLive ??= new GStreamerRoom({
+      rtc: { ...SHARED_RTC_CONFIG, iceServers: SHARED_RTC_CONFIG.iceServers?.filter(server =>
+        (Array.isArray(server.urls) ? server.urls : [server.urls]).every(url => url.startsWith('stun:'))) },
+      send: (to, signal) => {
+        if (!this.peer) return
+        this.forwardGStreamer({ type: 'LIVE_GSTREAMER', senderId: this.peer.id, payload: { to, signal }, timestamp: Date.now() })
+      },
+      eligible: id => useMediaStore.getState().isScreenSharing && this.sameLiveZone(id),
+      watching: id => this.sameLiveZone(id) && !!useGameStore.getState().remotePlayers[id]?.isScreenSharing &&
+        !!useLiveWatchStore.getState().watching[id],
+      stream: (id, track, present) => {
+        const media = useMediaStore.getState()
+        if (present) media.setPeerScreenStream(id, new MediaStream([track, ...(media.peerStreams[id]?.getAudioTracks() ?? [])]))
+        else if (media.peerScreenStreams[id]?.getVideoTracks().includes(track)) media.removePeerScreenStream(id)
+      },
+      rtp: (id, playing) => {
+        setNativeLiveViewer(id, playing)
+        const pc = this.mediaCalls.get(id)?.peerConnection
+        const sender = pc && findVideoSender(pc)
+        if (sender) syncScreenCaps(sender, id)
+        MediaCallHandler.syncViewerAudio(this.mediaCalls, id)
+      },
+    })
+  }
+
+  private sameLiveZone(id: string): boolean {
+    const { localPlayer, remotePlayers } = useGameStore.getState()
+    const peer = remotePlayers[id]
+    return localPlayer.currentZoneId != null && peer?.currentZoneId === localPlayer.currentZoneId && !peer.isDjBot
+  }
+
+  private forwardGStreamer(msg: NetworkMessage<'LIVE_GSTREAMER'>): void {
+    const direct = this.connections.get(msg.payload.to)
+    const host = useGameStore.getState().connectionHostId
+    const conn = direct?.open ? direct : !this.isHost && host ? this.connections.get(host) : undefined
+    if (conn?.open) this.sendToPeer(conn, msg)
+  }
+
+  public setGStreamerCapture(capture?: NativeGStreamerCapture): void {
+    this.nativeCapture = capture
+    if (capture) this.gstreamer.setCapture(capture)
+    else this.nativeLive?.setCapture()
+  }
+
+  public getGStreamerConnection(stream: MediaStream) { return this.nativeLive?.connection(stream) }
+
   private get alm(): AlmLive { return this.almSession ??= new AlmLive({
     id: () => this.peer?.id ?? null,
     peers: () => Object.keys(useGameStore.getState().remotePlayers),
@@ -296,7 +347,9 @@ export class PeerManager {
     return PeerManager.instance
   }
 
-  public getMediaCalls(): Map<string, MediaConnection> {
+  public getMediaCalls(forLocalLive = false): Map<string, MediaConnection> {
+    if (forLocalLive && this.nativeCapture)
+      return new Map([...this.mediaCalls].filter(([id]) => !this.nativeLive?.isSendingVideo(id)))
     return this.mediaCalls
   }
 
@@ -1641,6 +1694,7 @@ export class PeerManager {
     SuperPeerVoiceRelay.getInstance().stopRelay(peerId)
     MediaCallHandler.clearVideoPreference(this.mediaCalls, peerId)
     this.alm.peerLeft(peerId)
+    this.nativeLive?.peerLeft(peerId)
     const departingPlayer = useGameStore.getState().remotePlayers[peerId]
     this.peerLastSeen.delete(peerId)
     this.pendingHeartbeats.delete(peerId)
@@ -2211,6 +2265,21 @@ export class PeerManager {
           void this.alm.receive(msg.senderId, msg.payload).catch(error => diagLog('screenshare', 'alm-control-error', { error: String(error) }))
         return
       }
+      if (msg.type === 'LIVE_GSTREAMER') {
+        const host = useGameStore.getState().connectionHostId
+        if (this.isHost ? msg.senderId !== peerId : peerId !== host && msg.senderId !== peerId) return
+        if (msg.payload.to === this.peer?.id) {
+          void this.gstreamer.receive(msg.senderId, msg.payload.signal)
+            .catch(error => diagLog('screenshare', 'gstreamer-control-error', { error: String(error) }))
+        } else if (this.isHost) {
+          const { remotePlayers } = useGameStore.getState()
+          const from = remotePlayers[msg.senderId]
+          const to = remotePlayers[msg.payload.to]
+          if (from?.currentZoneId != null && from.currentZoneId === to?.currentZoneId && !from.isDjBot && !to.isDjBot)
+            this.forwardGStreamer(msg)
+        }
+        return
+      }
       if (msg.type === 'HOST_TRANSFER') {
         this.handleHostTransfer(msg, peerId)
         return
@@ -2277,6 +2346,8 @@ export class PeerManager {
 
       if (msg.type === 'LIVE_VIEW') this.handleLiveView(msg)
       if (msg.type === 'PLAYER_UPDATE' && msg.payload?.player?.isScreenSharing !== undefined) {
+        if (msg.payload.player.isScreenSharing === false && !useGameStore.getState().remotePlayers[msg.senderId]?.isScreenSharing)
+          this.nativeLive?.watch(msg.senderId, false)
         if (useMediaStore.getState().isScreenSharing) {
           try {
             const { targetBitrate } = MediaManager.resolveOptimalScreenQuality()
@@ -2306,6 +2377,8 @@ export class PeerManager {
   public sendLiveView(sharerId: string, watch: boolean, h: number | null) {
     if (!this.peer) return
     this.alm.watch(sharerId, watch, h)
+    if (watch && this.sameLiveZone(sharerId) && typeof RTCPeerConnection === 'function') this.gstreamer.watch(sharerId, true)
+    else this.nativeLive?.watch(sharerId, false)
     this.broadcast({
       type: 'LIVE_VIEW',
       senderId: this.peer.id,
@@ -2326,7 +2399,7 @@ export class PeerManager {
       localPlayer.currentZoneId == null || sharer.currentZoneId !== localPlayer.currentZoneId ||
       !useLiveWatchStore.getState().watching[sharerId]) return
     const live = useMediaStore.getState().peerScreenStreams[sharerId]
-    if (live && isAlmStream(live)) return
+    if (live && (isAlmStream(live) || this.getGStreamerConnection(live))) return
     if (!MediaCallHandler.preferVp8ForPeer(this.mediaCalls, sharerId)) return
     diagLog('screenshare', 'decoder-retry', { fromPeer: sharerId, codec: 'VP8' })
     this.retryZoneCall(sharerId)
@@ -2520,6 +2593,7 @@ export class PeerManager {
 
   public checkZoneCallEligibility(remotePlayer: Player) {
     if (!this.peer || this.isIntentionalDisconnect) return
+    if (!this.sameLiveZone(remotePlayer.id)) this.nativeLive?.peerLeft(remotePlayer.id)
     this.pendingZoneCalls.set(remotePlayer.id, this.peer)
     this.scheduleZoneCallCheck()
   }
@@ -2950,6 +3024,7 @@ export class PeerManager {
   }
 
   public endMediaCallWithPeer(peerId: string) {
+    if (!this.sameLiveZone(peerId)) this.nativeLive?.peerLeft(peerId)
     this.pendingZoneCalls.delete(peerId)
     this.endLiveVoiceCallsWithPeer(peerId)
     MediaCallHandler.endMediaCall(this.mediaCalls, peerId)
@@ -3000,6 +3075,8 @@ export class PeerManager {
 
   public endAllZoneMediaCalls() {
     this.alm.close()
+    this.nativeLive?.close()
+    if (this.nativeCapture) this.nativeLive?.setCapture(this.nativeCapture)
     this.clearPendingZoneCalls()
     this.stopLiveVoiceCalls()
     this.incomingLiveVoiceCalls?.forEach((call) => call.close())
@@ -3026,7 +3103,7 @@ export class PeerManager {
       (peerId) => this.retryZoneCall(peerId),
       minBitrate
     )
-    if (isScreenShare && newTrack) {
+    if (isScreenShare && newTrack && !this.nativeCapture) {
       const audio = useMediaStore.getState().localScreenStream?.getAudioTracks().find(track =>
         (track as any).__screenShareLiveAudio === true && track.readyState === 'live')
       void this.alm.start(newTrack, maxBitrate, maxFramerate, isHardwareAccelerationEnabled(), audio)

@@ -44,6 +44,7 @@ export type NetworkMessageType =
   | 'ADMIN_DEAFEN_PARTICIPANT'
   | 'LIVE_VIEW'
   | 'LIVE_ALM'
+  | 'LIVE_GSTREAMER'
   | 'SPOTIFY_JAM_SYNC'
   | 'SPOTIFY_TRACK_SHARE'
   | 'SPOTIFY_DJ_STATUS'

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MiniCallOverlay } from '../../components/MiniCallOverlay'
 import { MediaManager } from '../../media/MediaManager'
 import { PeerManager } from '../../p2p/PeerManager'
+import { beginScreenShare, endScreenShare, noteViewRequest } from '../../p2p/videoSendPolicy'
 import { useGameStore } from '../../store/useGameStore'
 import { useMediaStore } from '../../store/useMediaStore'
 
@@ -126,6 +127,36 @@ describe('live audio and participant voice in the mini call', () => {
 
     manager.startLiveVoiceCalls()
     expect(sender.replaceTrack).toHaveBeenCalledWith(null)
+  })
+
+  it('routes application audio to a confirmed GStreamer viewer even if the ordinary RTP view is off', async () => {
+    const manager = PeerManager.getInstance() as any
+    const liveAudio = Object.assign(track('application-audio', 'audio'), { __screenShareLiveAudio: true })
+    const sender = {
+      track: null as MediaStreamTrack | null,
+      replaceTrack: vi.fn(async (source: MediaStreamTrack | null) => { sender.track = source }),
+    }
+    const local = { ...useGameStore.getState().localPlayer, id: 'presenter', currentZoneId: 'zone' }
+    useGameStore.setState({ localPlayer: local, remotePlayers: { viewer: { ...local, id: 'viewer', liveOptIn: true } } })
+    useMediaStore.setState({ isScreenSharing: true, localScreenStream: stream(track('screen', 'video'), liveAudio) })
+    manager.mediaCalls = new Map([['viewer', { peerConnection: {
+      getSenders: () => [sender], getTransceivers: () => [{ sender, receiver: { track: { kind: 'audio' } } }],
+    } }]])
+    beginScreenShare({ maxBitrate: 8_000_000, maxFramerate: 60 })
+    noteViewRequest('viewer', false, 0)
+    const session = 'a87cdfd3-1d62-447c-a155-50348760fe30'
+    manager.setGStreamerCapture({ activate: vi.fn(), signal: vi.fn(async () => true) })
+    try {
+      await manager.gstreamer.receive('viewer', { kind: 'watch', session })
+      expect(sender.replaceTrack).not.toHaveBeenCalled()
+      await manager.gstreamer.receive('viewer', { kind: 'ready', session })
+      expect(sender.replaceTrack).toHaveBeenCalledExactlyOnceWith(liveAudio)
+      await manager.gstreamer.receive('viewer', { kind: 'end', session })
+      await vi.waitFor(() => expect(sender.replaceTrack).toHaveBeenLastCalledWith(null))
+    } finally {
+      manager.setGStreamerCapture(undefined)
+      endScreenShare()
+    }
   })
 
   it('routes an incoming voice call to the participant audio stream', () => {

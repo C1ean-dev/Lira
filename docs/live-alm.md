@@ -31,8 +31,9 @@ Clientes sem suporte ao áudio sincronizado mantêm áudio e vídeo no RTP.
   `maxRetransmits: 0`. É SCTP/DTLS sobre ICE, com controle de congestionamento,
   e não UDP puro. STUN, Cloudflare e Metered configurados ficam disponíveis para
   ICE; estas conexões nativas não usam os prazos de escalonamento do PeerJS.
-- A raiz prefere H.264 High, depois Baseline, depois VP8, consultando o suporte
-  WebCodecs antes de criar o encoder. Hardware é uma preferência, não garantia.
+- A raiz consulta o suporte WebCodecs antes de criar o encoder. Em cada tentativa,
+  prefere H.264 High, depois Baseline e depois VP8. Com aceleração solicitada,
+  testa primeiro os encoders de hardware e recorre aos de software se necessário.
   H.264 usa Annex B; os IDRs incluem os parâmetros necessários ao decoder.
   O encoder consulta os modos temporais L1T3, L1T2 e L1T1 em ordem de preferência.
 - Quadros são fragmentados em mensagens de até 12.048 bytes. A remontagem tem
@@ -62,7 +63,9 @@ Clientes sem suporte ao áudio sincronizado mantêm áudio e vídeo no RTP.
   apresentador restaura RTP somente para o espectador afetado e reanexa seus
   filhos à árvore. Relatórios dos retransmissores são aceitos apenas para
   arestas ativas cujo pai é o remetente, na sessão atual; arestas antigas de
-  uma troca de pai são ignoradas. A volta ao RTP pode aumentar o upload do
+  uma troca de pai são ignoradas. O espectador permanece no RTP até a próxima
+  sessão da Live, inclusive quando o cliente renovar a intenção de assistir.
+  A volta ao RTP pode aumentar o upload do
   apresentador, mas preserva a recuperação sem reduzir a qualidade global
   do encoder compartilhado. Quadros não ficam retidos para envio posterior.
 - Pacotes Opus usam uma sequência separada. Se faltar um, a fila espera no máximo
@@ -73,6 +76,11 @@ Clientes sem suporte ao áudio sincronizado mantêm áudio e vídeo no RTP.
 - O vídeo RTP duplicado e o áudio original da Live só são substituídos após a
   confirmação de reprodução ALM. A voz auxiliar permanece independente.
   Clientes sem WebCodecs/captura de canvas usam RTP.
+- No envio RTP direto, **Priorizar Qualidade** pede ao WebRTC para preservar a
+  resolução e reduzir FPS sob sobrecarga. Em **Priorizar Fluidez**, duas amostras
+  válidas de sobrecarga de CPU com FPS baixo e codificação lenta podem reduzir
+  o teto do vídeo daquele espectador para 720p ou 540p. Voltar ao modo Qualidade
+  remove esse teto de sobrecarga durante a transmissão.
 
 ## Sincronização de áudio e vídeo
 
@@ -94,6 +102,11 @@ Ao detectar uma linha temporal atrasada, o receptor cancela os agendamentos das
 duas mídias e as realinha juntas. Quadros antigos são descartados. O diagnóstico
 `audioVideoSkewMs` mede os prazos internos de reprodução; não mede fisicamente
 o atraso de um monitor, caixa de som ou dispositivo Bluetooth.
+
+O painel de estatísticas da ALM mede os FPS pelos quadros enviados ao canvas
+de reprodução, conta as pausas entre quadros exibidos e registra os descartes
+locais pelo decoder ou pela fila de reprodução. Os congelamentos são registrados
+quando a reprodução retoma, usando o limiar de intervalo do WebRTC.
 
 ## Partial shedding
 

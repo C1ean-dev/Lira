@@ -85,6 +85,7 @@ describe('main process logging wiring', () => {
     const start = between('function logSessionStart(', '\n}\n')
     expect(start).toContain("'[Session] started'")
     expect(start).toContain('summarizeGpu(')
+    expect(start).toContain(".getGPUInfo('complete')")
     expect(main).toContain('app.whenReady().then(logSessionStart)')
   })
 

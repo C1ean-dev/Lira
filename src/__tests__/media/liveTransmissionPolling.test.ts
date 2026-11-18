@@ -3,7 +3,7 @@ import { useLiveTransmissionStats } from '../../hooks/useLiveTransmissionStats'
 
 const hooks = vi.hoisted(() => ({
   effect: null as null | (() => void | (() => void)),
-  setStats: vi.fn(), getMediaCalls: vi.fn(),
+  setStats: vi.fn(), getMediaCalls: vi.fn(), getGStreamerConnection: vi.fn(),
 }))
 vi.mock('react', () => ({
   useState: () => [[], hooks.setStats],
@@ -11,11 +11,12 @@ vi.mock('react', () => ({
 }))
 vi.mock('../../p2p/PeerManager', () => ({ PeerManager: { getInstance: () => ({
   getMediaCalls: hooks.getMediaCalls, getAlmTransmissionCounters: () => undefined,
+  getGStreamerConnection: hooks.getGStreamerConnection,
 }) } }))
 
 const track = { id: 'screen', kind: 'video', readyState: 'live' } as MediaStreamTrack
 const stream = { getVideoTracks: () => [track] } as MediaStream
-beforeEach(() => { vi.clearAllMocks(); vi.useFakeTimers(); hooks.effect = null })
+beforeEach(() => { vi.clearAllMocks(); vi.useFakeTimers(); hooks.effect = null; hooks.getGStreamerConnection.mockReset() })
 afterEach(() => vi.useRealTimers())
 
 it('does not collect connection statistics while the information panel is closed', () => {
@@ -56,4 +57,23 @@ it('ignores an in-flight sample that finishes after the panel is closed', async 
   await vi.advanceTimersByTimeAsync(0)
   expect(hooks.setStats).toHaveBeenCalledTimes(calls)
   expect(vi.getTimerCount()).toBe(0)
+})
+
+it('samples the connection carrying native video instead of the audio and fallback media call', async () => {
+  const getStats = vi.fn(async () => new Map([['video', {
+    id: 'video', type: 'inbound-rtp', kind: 'video', frameWidth: 1920, frameHeight: 1080,
+    framesPerSecond: 60, codecId: 'codec', freezeCount: 1,
+  }], ['codec', { id: 'codec', type: 'codec', mimeType: 'video/H264' }]]))
+  hooks.getMediaCalls.mockReturnValue(new Map())
+  hooks.getGStreamerConnection.mockReturnValue({ id: 'sharer', peerConnection: {
+    getStats, getReceivers: () => [{ track }], connectionState: 'connected',
+  } })
+  useLiveTransmissionStats(true, stream, false)
+  const close = hooks.effect!() as () => void
+  try {
+    await vi.advanceTimersByTimeAsync(0)
+    expect(hooks.setStats).toHaveBeenLastCalledWith([expect.objectContaining({
+      peerId: 'sharer', width: 1920, height: 1080, fps: 60, codec: 'H264', freezeCount: 1,
+    })])
+  } finally { close() }
 })

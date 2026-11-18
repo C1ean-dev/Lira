@@ -11,6 +11,7 @@ import type { SpotifyPlaybackCommand, SpotifyPlaybackResult } from '../types/spo
 import type { SpotifySearchResult, SpotifySearchTrack } from '../types/spotifySearch'
 import type { SpotifyDjRequestResult } from '../types/spotifyDjRequests'
 import { whiteboardOperationSchema } from '../collaboration/whiteboard'
+import { gstreamerSignalSchema } from '../media/gstreamerProtocol'
 
 const finite = z.number().finite()
 const id = z.string().min(1).max(512)
@@ -127,6 +128,7 @@ export const networkPayloadSchemas = {
   ADMIN_MUTE_PARTICIPANT: z.object({ targetUserId: text.optional(), targetGameId: text.optional(), targetUserName: text.optional(), mute: z.boolean(), adminName: text.optional() }),
   ADMIN_DEAFEN_PARTICIPANT: z.object({ targetUserId: text.optional(), targetGameId: text.optional(), targetUserName: text.optional(), deafen: z.boolean(), adminName: text.optional() }),
   LIVE_VIEW: z.object({ to: id, watch: z.boolean(), h: finite.nonnegative().nullable() }), LIVE_ALM: z.object({ to: id }).passthrough(),
+  LIVE_GSTREAMER: z.object({ to: id, signal: gstreamerSignalSchema }),
   SPOTIFY_JAM_SYNC: z.object({ zoneId: id.optional(), session: domain<ZoneJamSession>(object).nullable() }),
   SPOTIFY_TRACK_SHARE: z.object({ zoneId: id, track: domain<SharedSpotifyTrack>(object) }),
   SPOTIFY_DJ_STATUS: z.object({ zoneId: id, djState: domain<SpotifyDjState>(object).nullable() }),

@@ -64,6 +64,21 @@ describe('live transmission statistics', () => {
     expect((await sample(calls, stream, true))[0].bitrateKbps).toBeNull()
   })
 
+  it('reports rendered FPS when decode is faster than the actual RTP playback', async () => {
+    const inbound = (timestamp: number, framesRendered: number) => report({
+      id: 'incoming', type: 'inbound-rtp', kind: 'video', timestamp,
+      framesDecoded: timestamp * 60 / 1000, framesRendered, framesPerSecond: 60,
+    })
+    const pc = connection(inbound(1000, 60))
+    const calls = new Map([['host', { peerConnection: pc }]])
+    const sample = createTransmissionSampler()
+    await sample(calls, stream, false)
+    vi.mocked(pc.getStats).mockResolvedValue(inbound(2000, 95))
+    expect((await sample(calls, stream, false))[0].fps).toBe(35)
+    vi.mocked(pc.getStats).mockResolvedValue(inbound(3000, 95))
+    expect((await sample(calls, stream, false))[0].fps).toBe(0)
+  })
+
   it('ignores unrelated camera tracks and tolerates a disconnected recipient', async () => {
     const pc = connection(report(outbound(1000, 100)))
     pc.getSenders = () => [{ track: { ...track, id: 'camera' } }] as RTCRtpSender[]
@@ -80,15 +95,22 @@ describe('live transmission statistics', () => {
       const pc = connection(report())
       const calls = new Map([['host', { peerConnection: pc }]])
       const sample = createTransmissionSampler()
-      const source = { id: 'edge-1', peerId: 'host', width: 640, height: 360, codec: 'H.264', rttMs: 12, bytes: 100000, frames: 30 }
+      const source = { id: 'edge-1', peerId: 'host', width: 640, height: 360, codec: 'H.264', rttMs: 12, bytes: 100000, frames: 30,
+        freezeCount: 0, freezeDurationSec: 0, droppedFrames: 2 }
       const counters = { peers: new Set(['host']), rows: [source] }
-      expect((await sample(calls, stream, false, counters))[0]).toMatchObject({ bitrateKbps: null, fps: null })
+      expect((await sample(calls, stream, false, counters))[0]).toMatchObject({
+        bitrateKbps: null, fps: null, freezeCount: 0, freezeDurationSec: 0, droppedFrames: null,
+      })
       clock.mockReturnValue(2000)
-      expect((await sample(calls, stream, false, { ...counters, rows: [{ ...source, bytes: 225000, frames: 60 }] }))[0])
-        .toMatchObject({ width: 640, height: 360, bitrateKbps: 1000, fps: 30, bytes: 225000, jitterMs: null, lossPct: null })
+      const stalled = { ...source, bytes: 225000, frames: 60, freezeCount: 1, freezeDurationSec: 0.35, droppedFrames: 5 }
+      expect((await sample(calls, stream, false, { ...counters, rows: [stalled] }))[0])
+        .toMatchObject({
+          width: 640, height: 360, bitrateKbps: 1000, fps: 30, bytes: 225000, jitterMs: null, lossPct: null,
+          freezeCount: 1, freezeDurationSec: 0.35, droppedFrames: 3,
+        })
       clock.mockReturnValue(3000)
       expect((await sample(calls, stream, false, { ...counters, rows: [{ ...source, id: 'edge-2', bytes: 5000 }] }))[0])
-        .toMatchObject({ bitrateKbps: null, fps: null })
+        .toMatchObject({ bitrateKbps: null, fps: null, droppedFrames: null })
       expect(pc.getStats).not.toHaveBeenCalled()
     } finally {
       clock.mockRestore()

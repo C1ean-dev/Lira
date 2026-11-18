@@ -196,6 +196,39 @@ describe('ALM live delivery over native channel handlers', () => {
     expect(child.link.pc.close).toHaveBeenCalledOnce()
   })
 
+  it('keeps the affected viewer on RTP through renewals and delayed ready messages after a recovery rejection', async () => {
+    const { live, internal, session, child, deps } = await presenter()
+    child.link.deliveredBps = 2_000_000
+    child.link.receiptAt = Date.now()
+    internal.forward(session, { ...video(), data: new Uint8Array(120_000) })
+    vi.mocked(deps.send).mockClear()
+    vi.mocked(deps.rtp).mockClear()
+
+    const envelope = { v: 2, root: 'relay', epoch: 'epoch' }
+    for (let retry = 0; retry < 3; retry++) {
+      await live.receive('viewer', { ...envelope, kind: 'join', h: 4320 })
+      await live.receive('viewer', { ...envelope, kind: 'ready' })
+    }
+    await live.receive('viewer', { ...envelope, kind: 'playing', edge: 'child' })
+    expect(session.tree.parents.has('viewer')).toBe(false)
+    expect(deps.send).not.toHaveBeenCalledWith('viewer', expect.objectContaining({ kind: 'config' }))
+    expect(deps.rtp).not.toHaveBeenCalledWith('viewer', true)
+
+    await live.receive('new-viewer', { ...envelope, kind: 'join', h: 4320 })
+    expect(deps.send).toHaveBeenCalledWith('new-viewer', expect.objectContaining({ kind: 'config' }))
+  })
+
+  it('exposes playback health on the counters of the ALM stream shown to the viewer', async () => {
+    const { live, session, incoming } = await harness()
+    const stream = {} as MediaStream
+    session.sink = { stream }
+    session.confirmedInput = incoming.link.edge.id
+    incoming.link.videoBytes = 20_000
+    expect(live.transmissionCounters(stream, false)?.rows[0]).toMatchObject({
+      freezeCount: 0, freezeDurationSec: 0, droppedFrames: 0,
+    })
+  })
+
   it('authenticates relay fallback reports against the current parent and reconnects its children', async () => {
     const { live, session, deps } = await presenter()
     session.tree.add('parent')

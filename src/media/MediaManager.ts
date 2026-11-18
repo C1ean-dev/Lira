@@ -5,6 +5,7 @@ import { resolveNoiseProcessorPreference } from './noiseSuppressionStatus'
 import { MicCalibrator, ProcessedSampleInfo } from './MicCalibrator'
 import { CallAudioIsolator } from './CallAudioIsolator'
 import { ProcessAudioCapture } from './ProcessAudioCapture'
+import { NativeGStreamerCapture } from './gstreamerReceiver'
 import { diagLog, shortId, summarizeStream, summarizeTrack } from '../utils/diagnosticLogger'
 import { useMediaStore } from '../store/useMediaStore'
 import { useGameStore } from '../store/useGameStore'
@@ -55,8 +56,11 @@ export class MediaManager {
   private activeEngine: AudioEngine | null = null
   private mediaGeneration = 0
   private screenShareGeneration = 0
+  private screenShareSelection?: number
   private rawUserStream: MediaStream | null = null
   private rawScreenStream: MediaStream | null = null
+  private nativeScreenCapture?: NativeGStreamerCapture
+  private pendingNativeCapture?: NativeGStreamerCapture
   private screenAudioContext: AudioContext | null = null
   private screenSourceAudioTrack: MediaStreamTrack | null = null
   private screenGainNode: GainNode | null = null
@@ -1017,10 +1021,14 @@ export class MediaManager {
     return { resolution: chosenRes, fps: chosenFps, targetBitrate }
   }
 
-  public async startScreenShare(config: ScreenShareConfig = {}): Promise<MediaStream | null> {
+  public async startScreenShare(config: ScreenShareConfig = {}, useChromium = false): Promise<MediaStream | null> {
     const generation = this.screenShareGeneration = (this.screenShareGeneration || 0) + 1
+    this.screenShareSelection = generation
     const isCurrent = () => generation === this.screenShareGeneration
     let acquired: MediaStream | null = null
+    let nativeCapture: NativeGStreamerCapture | undefined
+    this.pendingNativeCapture?.close()
+    this.pendingNativeCapture = undefined
     try {
       this.isStoppingScreenShare = false
       this.isRecoveringScreenShare = false
@@ -1033,6 +1041,7 @@ export class MediaManager {
         fps = 'auto',
       } = config
       const includeAudio = true
+      const optimizationMode = config.optimizationMode ?? useMediaStore.getState().screenShareOptimizationMode ?? 'quality'
 
       if (sourceName && !useMediaStore.getState().isScreenSharing) {
         useMediaStore.getState().setScreenShareTargetTitle(sourceName)
@@ -1056,7 +1065,8 @@ export class MediaManager {
         height = 1080
       }
 
-      let screenStream: MediaStream
+      let screenStream: MediaStream | null = null
+      let triedNative = false
 
       const electronAPI = typeof window !== 'undefined' ? (window as any).electronAPI : undefined
       const isElectronCapture = Boolean(electronAPI?.setScreenSource)
@@ -1093,31 +1103,52 @@ export class MediaManager {
             }),
       }
 
-      if (sourceId && electronAPI?.setScreenSource) {
-        if (sourceName) {
-          await electronAPI.setScreenSource(sourceId, includeAudio, captureMethod, sourceName)
-        } else {
-          await electronAPI.setScreenSource(sourceId, includeAudio, captureMethod)
+      if (sourceId && electronAPI?.startGStreamerCapture && !useChromium &&
+          captureMethod === 'auto' && optimizationMode === 'quality' && useMediaStore.getState().isHardwareAccelerationEnabled) {
+        triedNative = true
+        const candidate = nativeCapture = new NativeGStreamerCapture(electronAPI, () => {
+          this.recoverFailedNativeScreenShare(candidate)
+        })
+        this.pendingNativeCapture = candidate
+        screenStream = await candidate.start({ sourceId, width, height, fps: effectiveFps })
+        if (this.pendingNativeCapture === candidate) this.pendingNativeCapture = undefined
+        if (!isCurrent()) {
+          candidate.close()
+          if (screenStream) this.releaseScreenCapture(screenStream)
+          return null
         }
-        if (!isCurrent()) return null
+        if (!candidate.available || !screenStream) {
+          candidate.close()
+          nativeCapture = undefined
+          screenStream = null
+          diagLog('screenshare', 'gstreamer-fallback', { sourceId })
+        }
+      }
+
+      if (!screenStream) {
+        if (sourceId && electronAPI?.setScreenSource) {
+          if (sourceName) await electronAPI.setScreenSource(sourceId, includeAudio, captureMethod, sourceName)
+          else await electronAPI.setScreenSource(sourceId, includeAudio, captureMethod)
+          if (!isCurrent()) return null
+        }
         try {
           screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions)
         } catch (error) {
-          if (!isCurrent() || ['NotAllowedError', 'AbortError', 'SecurityError'].includes((error as Error)?.name)) throw error
-          screenStream = await navigator.mediaDevices.getDisplayMedia({
-            ...displayMediaOptions,
-            audio: false,
-          })
-        }
-      } else {
-        try {
-          screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions)
-        } catch (error) {
-          if (!isCurrent() || ['NotAllowedError', 'AbortError', 'SecurityError'].includes((error as Error)?.name)) throw error
-          screenStream = await navigator.mediaDevices.getDisplayMedia({
-            ...displayMediaOptions,
-            audio: false,
-          })
+          const name = (error as Error)?.name
+          if (!isCurrent() || ['NotAllowedError', 'AbortError', 'SecurityError'].includes(name)) throw error
+          if (name === 'InvalidStateError' && isElectronCapture && sourceId && (triedNative || useChromium)) {
+            // The GStreamer probe or recovery can outlast getDisplayMedia's user gesture.
+            // Reuse only the source explicitly chosen in Lira's desktop picker.
+            screenStream = await navigator.mediaDevices.getUserMedia({
+              audio: false,
+              video: { mandatory: {
+                chromeMediaSource: 'desktop', chromeMediaSourceId: sourceId,
+                maxWidth: width, maxHeight: height, maxFrameRate: effectiveFps,
+              } } as MediaTrackConstraints,
+            })
+          } else {
+            screenStream = await navigator.mediaDevices.getDisplayMedia({ ...displayMediaOptions, audio: false })
+          }
         }
       }
 
@@ -1125,6 +1156,8 @@ export class MediaManager {
       if (!isCurrent()) { this.releaseScreenCapture(screenStream); return null }
       const capturedVideo = screenStream.getVideoTracks()[0]
       if (!capturedVideo || capturedVideo.readyState === 'ended') throw new Error('A captura não disponibilizou uma faixa de vídeo ativa.')
+      this.replaceNativeScreenCapture(nativeCapture)
+      if (nativeCapture) diagLog('screenshare', 'gstreamer-started', { sourceId })
       const previousCaptures = new Set([this.rawScreenStream, useMediaStore.getState().localScreenStream])
       for (const previous of previousCaptures) {
         if (previous && previous !== screenStream) this.releaseScreenCapture(previous)
@@ -1159,7 +1192,7 @@ export class MediaManager {
       this.processAudioCapture?.stop()
       this.processAudioCapture = null
 
-      const processAudioSourceId = audioSourceId || sourceId
+      const processAudioSourceId = sourceId?.startsWith('screen:') ? sourceId : audioSourceId || sourceId
       const nativeAudioSupported = ProcessAudioCapture.isSupported()
       diagLog('screenshare-audio', 'native-capability', {
         isElectron: isElectronCapture,
@@ -1232,9 +1265,6 @@ export class MediaManager {
         tracks: summarizeStream(screenStream),
       })
 
-      const optimizationMode =
-        config.optimizationMode ?? useMediaStore.getState().screenShareOptimizationMode ?? 'quality'
-
       const screenVideoTrack = screenStream.getVideoTracks()[0]
       if (screenVideoTrack) {
         screenVideoTrack.enabled = true
@@ -1279,6 +1309,7 @@ export class MediaManager {
       }
       console.warn('Screen share cancelled or failed:', err)
       diagLog('screenshare', 'cancelled-or-failed', { error: errShort(err) })
+      if (nativeCapture && nativeCapture !== this.nativeScreenCapture) nativeCapture.close()
       if (acquired && this.rawScreenStream === acquired) {
         this.stopScreenShare()
       } else if (!useMediaStore.getState().isScreenSharing) {
@@ -1289,7 +1320,28 @@ export class MediaManager {
       }
       if (acquired) this.releaseScreenCapture(acquired)
       return null
+    } finally {
+      if (this.screenShareSelection === generation) {
+        this.screenShareSelection = undefined
+        const active = this.nativeScreenCapture
+        if (active && !active.available) this.recoverFailedNativeScreenShare(active)
+      }
     }
+  }
+
+  private replaceNativeScreenCapture(next?: NativeGStreamerCapture): void {
+    const previous = this.nativeScreenCapture
+    if (previous === next) return
+    this.nativeScreenCapture = next
+    PeerManager.getInstance().setGStreamerCapture(next)
+    previous?.close()
+  }
+
+  private recoverFailedNativeScreenShare(capture: NativeGStreamerCapture): void {
+    if (this.nativeScreenCapture !== capture || this.screenShareSelection !== undefined || !this.activeScreenConfig) return
+    const config = this.activeScreenConfig
+    this.replaceNativeScreenCapture()
+    void this.restartNativeScreenShare(config, true)
   }
 
   private releaseScreenCapture(stream: MediaStream): void {
@@ -1525,9 +1577,13 @@ export class MediaManager {
 
   public stopScreenShare() {
     this.screenShareGeneration = (this.screenShareGeneration || 0) + 1
+    this.screenShareSelection = undefined
     const wasScreenSharing = useMediaStore.getState().isScreenSharing
     this.isStoppingScreenShare = true
     this.activeScreenConfig = null
+    this.pendingNativeCapture?.close()
+    this.pendingNativeCapture = undefined
+    this.replaceNativeScreenCapture()
     this.isRecoveringScreenShare = false
     if (this.callAudioIsolator) {
       this.callAudioIsolator.dispose()
@@ -1741,6 +1797,10 @@ export class MediaManager {
 
 
   public updateScreenShareOptimizationMode(mode: 'quality' | 'smoothness') {
+    if (mode === 'smoothness' && (this.nativeScreenCapture || this.pendingNativeCapture) && this.activeScreenConfig) {
+      void this.restartNativeScreenShare({ ...this.activeScreenConfig, optimizationMode: mode }, true)
+      return
+    }
     const localScreenStream = useMediaStore.getState().localScreenStream
     const track = localScreenStream?.getVideoTracks()[0]
     const currentFps = useMediaStore.getState().screenShareFps
@@ -1758,6 +1818,10 @@ export class MediaManager {
     const res = requestedRes ?? useMediaStore.getState().screenShareResolution
     const fps = requestedFps ?? useMediaStore.getState().screenShareFps
     const optimizationMode = useMediaStore.getState().screenShareOptimizationMode
+    if ((this.nativeScreenCapture || this.pendingNativeCapture) && this.activeScreenConfig) {
+      await this.restartNativeScreenShare({ ...this.activeScreenConfig, resolution: res, fps, optimizationMode })
+      return
+    }
 
     const { resolution: effectiveResolution, fps: effectiveFps, targetBitrate } =
       MediaManager.resolveOptimalScreenQuality(res, fps)
@@ -1793,6 +1857,12 @@ export class MediaManager {
 
     PeerManager.getInstance().updateScreenShareBitrate(targetBitrate)
     diagLog('screenshare', 'quality-updated', { res, fps, effectiveResolution, effectiveFps, targetBitrate })
+  }
+
+  private async restartNativeScreenShare(config: ScreenShareConfig, useChromium = false): Promise<void> {
+    const starting = this.startScreenShare(config, useChromium)
+    const generation = this.screenShareGeneration
+    if (!await starting && this.screenShareGeneration === generation && !this.nativeScreenCapture?.available) this.stopScreenShare()
   }
 
   public stopAllMedia() {

@@ -16,9 +16,11 @@ export interface TransmissionStats {
   freezeDurationSec: number | null
   codec: string | null
   limitation: string | null
+  videoEngine?: 'GStreamer'
 }
 
-type AlmTransmissionRow = Pick<TransmissionStats, 'id' | 'peerId' | 'width' | 'height' | 'codec' | 'rttMs'> & {
+type AlmTransmissionRow = Pick<TransmissionStats, 'id' | 'peerId' | 'width' | 'height' | 'codec' | 'rttMs'> &
+  Partial<Pick<TransmissionStats, 'freezeCount' | 'freezeDurationSec' | 'droppedFrames'>> & {
   bytes: number
   frames: number
 }
@@ -61,8 +63,11 @@ export function createTransmissionSampler() {
         ...row, bufferKind: local ? 'send' : 'playback',
         fps: count !== null && elapsed ? count * 1000 / elapsed : null,
         bitrateKbps: bytes !== null && elapsed ? bytes * 8 / elapsed : null,
-        bufferMs: null, jitterMs: null, lossPct: null, droppedFrames: null,
-        freezeCount: null, freezeDurationSec: null, limitation: null,
+        bufferMs: null, jitterMs: null, lossPct: null,
+        droppedFrames: local ? null : delta(row.droppedFrames, before?.droppedFrames),
+        freezeCount: local ? null : row.freezeCount ?? null,
+        freezeDurationSec: local ? null : row.freezeDurationSec ?? null,
+        limitation: null,
       }
     })
     previousAlm = nextAlm
@@ -88,6 +93,7 @@ export function createTransmissionSampler() {
         const bytes = local ? video.bytesSent : video.bytesReceived
         const byteDelta = delta(bytes, local ? before?.bytesSent : before?.bytesReceived)
         const frames = delta(local ? video.framesEncoded : video.framesDecoded, local ? before?.framesEncoded : before?.framesDecoded)
+        const rendered = local ? null : delta(video.framesRendered, before?.framesRendered)
         const bufferDelay = delta(local ? video.totalPacketSendDelay : video.jitterBufferDelay, local ? before?.totalPacketSendDelay : before?.jitterBufferDelay)
         const bufferCount = delta(local ? video.packetsSent : video.jitterBufferEmittedCount, local ? before?.packetsSent : before?.jitterBufferEmittedCount)
         const remote = stats.get(video.remoteId)
@@ -100,7 +106,8 @@ export function createTransmissionSampler() {
         rows.push({
           id: `${peerId}:${video.id}`, peerId,
           width: number(video.frameWidth), height: number(video.frameHeight),
-          fps: number(video.framesPerSecond) ?? (frames !== null && elapsed ? frames * 1000 / elapsed : null),
+          fps: rendered !== null && elapsed ? rendered * 1000 / elapsed
+            : number(video.framesPerSecond) ?? (frames !== null && elapsed ? frames * 1000 / elapsed : null),
           bitrateKbps: byteDelta !== null && elapsed ? byteDelta * 8 / elapsed : null,
           bytes: number(bytes), bufferKind: local ? 'send' : 'playback',
           bufferMs: bufferDelay !== null && bufferCount ? bufferDelay * 1000 / bufferCount : null,

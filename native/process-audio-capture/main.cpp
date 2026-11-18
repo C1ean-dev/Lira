@@ -14,8 +14,11 @@
 
 #pragma comment(lib, "winmm.lib")
 
+#include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
+#include <cstdint>
 #include <cwchar>
 #include <iostream>
 #include <map>
@@ -242,13 +245,10 @@ std::unique_ptr<ProcessSession> CreateProcessSession(DWORD pid, const WAVEFORMAT
   return session;
 }
 
-struct WindowScanContext {
-  HMONITOR targetMonitor;
-  DWORD selfPid;
-  RECT targetBounds;
-  std::set<DWORD> pidsOnScreen;
-  DWORD excludedProcessId;
-  std::map<DWORD, DWORD> processParents;
+struct WindowAudioLocation {
+  DWORD pid;
+  HMONITOR monitor;
+  bool presented = true;
 };
 
 bool ReadProcessParents(std::map<DWORD, DWORD>* parents) {
@@ -267,21 +267,53 @@ bool ReadProcessParents(std::map<DWORD, DWORD>* parents) {
   return readable;
 }
 
+bool IsInProcessTree(DWORD child, DWORD ancestor, const std::map<DWORD, DWORD>& parents) {
+  std::set<DWORD> visited;
+  while (child && visited.insert(child).second) {
+    if (child == ancestor) return true;
+    const auto parent = parents.find(child);
+    if (parent == parents.end()) break;
+    child = parent->second;
+  }
+  return false;
+}
+
 bool ShouldExcludeProcessAudio(DWORD processId, DWORD excludedProcessId, const std::map<DWORD, DWORD>& parents) {
-  if (!excludedProcessId) return false;
-  const auto descendsFrom = [&](DWORD child, DWORD ancestor) {
-    std::set<DWORD> visited;
-    while (child && visited.insert(child).second) {
-      if (child == ancestor) return true;
-      const auto parent = parents.find(child);
-      if (parent == parents.end()) break;
-      child = parent->second;
-    }
-    return false;
-  };
   // Process loopback includes descendants. Capturing either Lira, one of its
   // audio processes, or an ancestor would put call playback back into the live.
-  return descendsFrom(processId, excludedProcessId) || descendsFrom(excludedProcessId, processId);
+  return excludedProcessId && (IsInProcessTree(processId, excludedProcessId, parents) ||
+                               IsInProcessTree(excludedProcessId, processId, parents));
+}
+
+std::set<DWORD> SelectMonitorAudioProcesses(const std::vector<WindowAudioLocation>& windows, HMONITOR targetMonitor,
+                                           DWORD selfPid, DWORD excludedProcessId, const std::map<DWORD, DWORD>& parents) {
+  if (!targetMonitor) return {};
+  std::set<DWORD> onMonitor;
+  std::set<DWORD> elsewhere;
+  for (const auto& window : windows) {
+    if (!window.pid) continue;
+    if (window.monitor != targetMonitor) elsewhere.insert(window.pid);
+    else if (window.presented) onMonitor.insert(window.pid);
+  }
+
+  std::set<DWORD> eligible;
+  for (DWORD pid : onMonitor) {
+    if (pid == selfPid || ShouldExcludeProcessAudio(pid, excludedProcessId, parents)) continue;
+    // A loopback is indivisible if this process or a descendant owns a window elsewhere.
+    if (std::none_of(elsewhere.begin(), elsewhere.end(), [&](DWORD other) { return IsInProcessTree(other, pid, parents); })) {
+      eligible.insert(pid);
+    }
+  }
+
+  std::set<DWORD> selected;
+  for (DWORD pid : eligible) {
+    if (std::none_of(eligible.begin(), eligible.end(), [&](DWORD root) {
+          return root != pid && IsInProcessTree(pid, root, parents);
+        })) {
+      selected.insert(pid);
+    }
+  }
+  return selected;
 }
 
 std::wstring GetProcessDisplayName(DWORD processId) {
@@ -299,30 +331,30 @@ std::wstring GetProcessDisplayName(DWORD processId) {
 }
 
 BOOL CALLBACK ScanWindowsProc(HWND hwnd, LPARAM lParam) {
-  auto* ctx = reinterpret_cast<WindowScanContext*>(lParam);
-  if (!IsWindow(hwnd) || !IsWindowVisible(hwnd) || IsIconic(hwnd)) return TRUE;
+  if (!IsWindowVisible(hwnd) || hwnd == GetShellWindow()) return TRUE;
+  const LONG_PTR style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+  if ((style & WS_EX_TOOLWINDOW) && !(style & WS_EX_APPWINDOW)) return TRUE;
 
-  int cloaked = 0;
-  DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked));
-  if (cloaked) return TRUE;
+  DWORD pid = 0;
+  if (!GetWindowThreadProcessId(hwnd, &pid) || !pid) return TRUE;
+  auto* windows = reinterpret_cast<std::vector<WindowAudioLocation>*>(lParam);
 
-  RECT rc = {};
-  if (!GetWindowRect(hwnd, &rc) || (rc.right - rc.left <= 20) || (rc.bottom - rc.top <= 20)) return TRUE;
-
-  // MonitorFromWindow(..., MONITOR_DEFAULTTONEAREST) assigns a window that
-  // spans two displays to whichever display contains its center. That drops
-  // audio from a browser/game window that overlaps the selected display but
-  // has its center on another one. Use the actual monitor rectangle instead.
-  const RECT& monitor = ctx->targetBounds;
-  const bool intersectsMonitor = rc.left < monitor.right && rc.right > monitor.left &&
-                                 rc.top < monitor.bottom && rc.bottom > monitor.top;
-  if (intersectsMonitor) {
-    DWORD pid = 0;
-    GetWindowThreadProcessId(hwnd, &pid);
-    if (pid != 0 && pid != ctx->selfPid && !ShouldExcludeProcessAudio(pid, ctx->excludedProcessId, ctx->processParents)) {
-      ctx->pidsOnScreen.insert(pid);
-    }
+  if (IsIconic(hwnd)) {
+    // Minimized windows have an offscreen frame. The window API retains their original monitor.
+    windows->push_back({pid, MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL), false});
+    return TRUE;
   }
+
+  RECT bounds = {};
+  if (FAILED(DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &bounds, sizeof(bounds))) &&
+      !GetWindowRect(hwnd, &bounds)) return TRUE;
+  if (bounds.right - bounds.left <= 20 || bounds.bottom - bounds.top <= 20) return TRUE;
+
+  DWORD cloaked = 0;
+  DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked));
+  // Assign a window to the monitor containing most of its visible frame.
+  const HMONITOR monitor = cloaked ? nullptr : MonitorFromRect(&bounds, MONITOR_DEFAULTTONULL);
+  windows->push_back({pid, monitor, !cloaked});
   return TRUE;
 }
 
@@ -333,16 +365,19 @@ std::set<DWORD> ScanProcessesOnMonitor(HMONITOR targetMonitor, DWORD selfPid, DW
     return {};
   }
 
-  WindowScanContext ctx{targetMonitor, selfPid, monitorInfo.rcMonitor, {}, excludedProcessId, {}};
-  if (!ReadProcessParents(&ctx.processParents)) return {};
+  std::map<DWORD, DWORD> parents;
+  if (!ReadProcessParents(&parents)) return {};
+  std::vector<WindowAudioLocation> windows;
   HDESK desk = OpenInputDesktop(0, FALSE, GENERIC_ALL);
+  BOOL scanned;
   if (desk) {
-    EnumDesktopWindows(desk, ScanWindowsProc, reinterpret_cast<LPARAM>(&ctx));
+    scanned = EnumDesktopWindows(desk, ScanWindowsProc, reinterpret_cast<LPARAM>(&windows));
     CloseDesktop(desk);
   } else {
-    EnumWindows(ScanWindowsProc, reinterpret_cast<LPARAM>(&ctx));
+    scanned = EnumWindows(ScanWindowsProc, reinterpret_cast<LPARAM>(&windows));
   }
-  return ctx.pidsOnScreen;
+  if (!scanned) return {};
+  return SelectMonitorAudioProcesses(windows, targetMonitor, selfPid, excludedProcessId, parents);
 }
 
 int RunWindowCapture(HWND targetWindow, DWORD excludedProcessId) {
@@ -421,10 +456,21 @@ int RunWindowCapture(HWND targetWindow, DWORD excludedProcessId) {
   return 0;
 }
 
-int RunScreenCapture(int left, int top, int width, int height, DWORD excludedProcessId) {
-  POINT centerPt = { left + width / 2, top + height / 2 };
-  HMONITOR targetMonitor = MonitorFromPoint(centerPt, MONITOR_DEFAULTTONEAREST);
-  if (!targetMonitor) {
+bool ParseScreenPoint(const wchar_t* xArg, const wchar_t* yArg, POINT* point) {
+  wchar_t* endX = nullptr;
+  wchar_t* endY = nullptr;
+  errno = 0;
+  const long x = wcstol(xArg, &endX, 10);
+  const long y = wcstol(yArg, &endY, 10);
+  if (endX == xArg || endY == yArg || *endX || *endY || errno == ERANGE) return false;
+  *point = POINT{x, y};
+  return true;
+}
+
+int RunScreenCapture(POINT point, DWORD excludedProcessId) {
+  const HMONITOR targetMonitor = MonitorFromPoint(point, MONITOR_DEFAULTTONULL);
+  MONITORINFO monitorInfo = {sizeof(monitorInfo)};
+  if (!targetMonitor || !GetMonitorInfoW(targetMonitor, &monitorInfo)) {
     std::wcerr << L"[process-audio-capture] Target monitor could not be resolved from coordinates.\n";
     return 3;
   }
@@ -443,13 +489,10 @@ int RunScreenCapture(int left, int top, int width, int height, DWORD excludedPro
   std::set<DWORD> lastDesiredPids;
 
   std::wcerr << L"[process-audio-capture] READY\n";
-  MONITORINFO monitorInfo = {sizeof(monitorInfo)};
-  if (GetMonitorInfoW(targetMonitor, &monitorInfo)) {
-    std::wcerr << L"[process-audio-capture] MONITOR_TARGET left=" << monitorInfo.rcMonitor.left
-               << L" top=" << monitorInfo.rcMonitor.top
-               << L" right=" << monitorInfo.rcMonitor.right
-               << L" bottom=" << monitorInfo.rcMonitor.bottom << L"\n";
-  }
+  std::wcerr << L"[process-audio-capture] MONITOR_TARGET left=" << monitorInfo.rcMonitor.left
+             << L" top=" << monitorInfo.rcMonitor.top
+             << L" right=" << monitorInfo.rcMonitor.right
+             << L" bottom=" << monitorInfo.rcMonitor.bottom << L"\n";
   std::wcerr.flush();
 
   HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -630,6 +673,18 @@ int RunScreenCapture(int left, int top, int width, int height, DWORD excludedPro
 }  // namespace
 
 int wmain(int argc, wchar_t* argv[]) {
+  // The live launcher resolves the Electron display to a physical point.
+  // Never substitute the nearest monitor if the selected point disappeared.
+  if (argc == 4 && wcscmp(argv[1], L"--monitor-handle-at") == 0) {
+    POINT point = {};
+    if (!ParseScreenPoint(argv[2], argv[3], &point)) return 2;
+    if (!SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) return 1;
+    const HMONITOR monitor = MonitorFromPoint(point, MONITOR_DEFAULTTONULL);
+    if (!monitor) return 1;
+    std::cout << reinterpret_cast<std::uintptr_t>(monitor) << '\n';
+    return 0;
+  }
+
   // Fast path: Redraw window frame after capture stops to ensure DWM drops the yellow border.
   if (argc >= 3 && wcscmp(argv[1], L"--refresh-window") == 0) {
     HWND targetWindow = nullptr;
@@ -645,14 +700,28 @@ int wmain(int argc, wchar_t* argv[]) {
 
   // Supported invocations:
   // 1. Window capture: process-audio-capture --source-id window:<HWND>:<index>
-  // 2. Screen capture: process-audio-capture --source-id screen:<id> --screen-bounds <left> <top> <width> <height>
+  // 2. Screen capture: process-audio-capture --source-id screen:<id> --screen-point <physicalX> <physicalY>
   if (argc < 3 || wcscmp(argv[1], L"--source-id") != 0) {
-    std::wcerr << L"Usage: process-audio-capture --source-id <window:...|screen:...> [--screen-bounds left top width height]\n";
+    std::wcerr << L"Usage: process-audio-capture --source-id <window:...|screen:...> [--screen-point physicalX physicalY]\n";
     return 2;
   }
 
   const wchar_t* sourceId = argv[2];
   const bool isScreen = (wcsncmp(sourceId, L"screen:", 7) == 0);
+  POINT screenPoint = {};
+  if (isScreen) {
+    bool hasPoint = false;
+    for (int i = 3; i + 2 < argc; ++i) {
+      if (wcscmp(argv[i], L"--screen-point") == 0) {
+        hasPoint = ParseScreenPoint(argv[i + 1], argv[i + 2], &screenPoint);
+        break;
+      }
+    }
+    if (!hasPoint || !SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) {
+      std::wcerr << L"[process-audio-capture] A physical point on the selected monitor is required.\n";
+      return 3;
+    }
+  }
   DWORD excludedProcessId = 0;
   for (int i = 3; i + 1 < argc; ++i) {
     if (wcscmp(argv[i], L"--exclude-process-tree") == 0) {
@@ -681,17 +750,7 @@ int wmain(int argc, wchar_t* argv[]) {
 
   int exitCode = 0;
   if (isScreen) {
-    int left = 0, top = 0, width = 1920, height = 1080;
-    for (int i = 3; i < argc; ++i) {
-      if (wcscmp(argv[i], L"--screen-bounds") == 0 && i + 4 < argc) {
-        left = _wtoi(argv[i + 1]);
-        top = _wtoi(argv[i + 2]);
-        width = _wtoi(argv[i + 3]);
-        height = _wtoi(argv[i + 4]);
-        break;
-      }
-    }
-    exitCode = RunScreenCapture(left, top, width, height, excludedProcessId);
+    exitCode = RunScreenCapture(screenPoint, excludedProcessId);
   } else {
     HWND targetWindow = nullptr;
     if (!ParseWindowHandle(sourceId, &targetWindow)) {
