@@ -238,6 +238,9 @@ export default defineConfig({
     host: true,
     watch: {
       ignored: [
+        '**/.scratch/**',
+        '**/native/bin/**',
+        '**/native/process-audio-capture/obj/**',
         '**/src/data/nativeAssets.json',
         '**/src/data/nativeSpaces.json',
         '**/public/assets/**',
