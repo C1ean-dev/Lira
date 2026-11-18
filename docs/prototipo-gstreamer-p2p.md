@@ -94,6 +94,15 @@ Testes automatizados sem capturar tela ou abrir navegador:
 node --test scripts/gstreamer-p2p/prototype.test.mjs
 ```
 
+O teste nativo do Windows valida AMF e entrega de H.264 por WebRTC em loopback
+com a fonte sintética. Use `LIRA_GSTREAMER_BIN` se o runtime estiver em uma
+pasta diferente da instalação de sistema padrão.
+
+```powershell
+$env:LIRA_RUN_GSTREAMER_NATIVE_TESTS = '1'
+node --test scripts/gstreamer-p2p/native.test.mjs
+```
+
 [Captura D3D11](https://gstreamer.freedesktop.org/documentation/d3d11/d3d11screencapturesrc.html) ·
 [Encoder AMD AMF](https://gstreamer.freedesktop.org/documentation/amfcodec/amfh264enc.html) ·
 [`webrtcsink`](https://gstreamer.freedesktop.org/documentation/rswebrtc/webrtcsink.html)

@@ -86,7 +86,8 @@ export function pipeline(options) {
     '!', 'amfh264enc', 'usage=low-latency', 'rate-control=cbr', 'cabac=false',
     `bitrate=${bitrate}`, `gop-size=${fps}`,
     '!', 'h264parse', 'config-interval=-1',
-    '!', 'video/x-h264,profile=constrained-baseline,stream-format=byte-stream,alignment=au',
+    // AMF may emit Baseline. AVC carries SPS/PPS in the caps for webrtcsink discovery.
+    '!', 'video/x-h264,profile=(string){constrained-baseline,baseline},stream-format=avc,alignment=au',
     '!', 'webrtcsink', 'video-caps=video/x-h264',
     'congestion-control=disabled', 'do-retransmission=true', 'stun-server=NULL',
     'run-signalling-server=true', `signalling-server-host=${host}`, `signalling-server-port=${signalPort}`,
