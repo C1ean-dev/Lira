@@ -1,6 +1,8 @@
 import { CollaborationButtons } from './collaboration/CollaborationButtons'
 import React, { useState, useEffect, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import {
+  Bug,
   Copy,
   Check,
   CircleAlert,
@@ -36,6 +38,7 @@ import { useRoomPublication } from '../hooks/useRoomPublication'
 import { useInlineContentFit } from '../hooks/useInlineContentFit'
 import { useHeaderActionsFit } from '../hooks/useHeaderActionsFit'
 import { DirectConnectionPanel } from './lobby/DirectConnectionPanel'
+import { ReportIssueModal } from './ReportIssueModal'
 import { createSpaceInviteLink } from '../utils/spaceInviteLink'
 
 interface Props {
@@ -103,8 +106,10 @@ export const TopNavBar: React.FC<Props> = ({
   const [showDirectConnection, setShowDirectConnection] = useState(false)
   const [autoSavedNotice, setAutoSavedNotice] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isReportIssueOpen, setIsReportIssueOpen] = useState(false)
   const prevEditorOpenRef = useRef(isEditorOpen)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const reportIssueButtonRef = useRef<HTMLButtonElement>(null)
   const directConnectionDialogRef = useRef<HTMLDialogElement>(null)
 
   useEffect(() => {
@@ -196,6 +201,18 @@ export const TopNavBar: React.FC<Props> = ({
     } finally {
       setTimeout(() => setLinkStatus(current => current === 'copying' ? current : 'idle'), 3500)
     }
+  }
+
+  const openReportIssue = () => {
+    setIsMobileMenuOpen(false)
+    setIsReportIssueOpen(true)
+  }
+
+  const closeReportIssue = () => {
+    setIsReportIssueOpen(false)
+    const reportButton = reportIssueButtonRef.current
+    if (reportButton?.getClientRects().length) reportButton.focus()
+    else menuButtonRef.current?.focus()
   }
 
   return (
@@ -499,6 +516,18 @@ onClick={() => PeerManager.getInstance().reconnect()}
         )}
       </div>
 
+      <button
+        ref={reportIssueButtonRef}
+        type="button"
+        aria-label="Reportar erro"
+        aria-haspopup="dialog"
+        title="Reportar erro"
+        onClick={openReportIssue}
+        className="hidden min-[520px]:flex shrink-0 items-center rounded-xl border border-[#2a3142] bg-[#1b202c] p-2 text-slate-300 transition-colors hover:bg-slate-800 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300"
+      >
+        <Bug className="h-4 w-4 text-rose-400" aria-hidden="true" />
+      </button>
+
       <div className="flex 2xl:hidden shrink-0 items-center gap-1 sm:gap-1.5">
         <button
           onClick={() => { setIsMobileMenuOpen(false); toggleChat() }}
@@ -609,6 +638,16 @@ onClick={() => PeerManager.getInstance().reconnect()}
           </div>
 
           <div className="flex shrink-0 flex-col gap-2 pt-1">
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              onClick={openReportIssue}
+              className="flex min-[520px]:hidden items-center gap-2.5 w-full p-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-semibold text-slate-100 transition-colors text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300"
+            >
+              <Bug className="h-4 w-4 shrink-0 text-rose-400" aria-hidden="true" />
+              <span>Reportar erro</span>
+            </button>
+
             <button
               onClick={() => {
                 setIsMobileMenuOpen(false)
@@ -725,6 +764,7 @@ onClick={() => PeerManager.getInstance().reconnect()}
           <DirectConnectionPanel role="host" />
         </div>
       </dialog>}
+      {isReportIssueOpen && createPortal(<ReportIssueModal isOpen onClose={closeReportIssue} />, document.body)}
     </header>
   )
 }

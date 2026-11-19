@@ -90,6 +90,26 @@ test('navigation fits the viewport and its compact menu stays legible above the 
       return page.getByText('Local Atual:', { exact: true }).locator('..').locator('..')
     }
 
+    await t.test('reporting an error opens the existing form from the bar or compact menu', async () => {
+      for (const width of [375, 1366, 1920]) {
+        await page.setViewportSize({ width, height: 768 })
+        await reset({})
+        const trigger = page.getByRole('button', { name: 'Reportar erro', exact: true })
+        if (width < 520) {
+          assert.equal(await trigger.isVisible(), false)
+          await openMenu()
+        }
+        await trigger.click()
+        const dialog = page.getByRole('dialog', { name: 'Reportar problema' })
+        await dialog.getByRole('textbox', { name: 'Título do problema' }).waitFor()
+        assert.equal(await page.getByRole('region', { name: 'Menu do espaço' }).count(), 0)
+        await dialog.getByRole('button', { name: 'Cancelar' }).click()
+        await dialog.waitFor({ state: 'detached' })
+        const focusTarget = width < 520 ? page.getByTitle('Mais opções e menus', { exact: true }) : trigger
+        assert.ok(await focusTarget.evaluate(button => document.activeElement === button))
+      }
+    })
+
     await t.test('the direct connection dialog stays inside the viewport and above the map', async () => {
       for (const viewport of [{ width: 1920, height: 580 }, { width: 375, height: 320 }]) {
         await page.setViewportSize(viewport)
