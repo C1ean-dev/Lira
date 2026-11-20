@@ -2,6 +2,7 @@ import '../helpers/mockAssetPersistence'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PeerManager } from '../../p2p/PeerManager'
 import { buildAtlas } from '../../assets/atlasService'
+import { buildLibrary } from '../../assets/individualLibrary'
 import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 vi.mock('../../data/nativeAssets.json', () => ({ default: { categories: [], assets: [] } }))
 const asset = { id: 'hero', name: 'Hero', type: 'avatar' as const, category: 'People', width: 1, height: 1, frames: ['data:image/png;base64,aGVybw=='], createdAt: 1 }
@@ -67,5 +68,55 @@ describe('individual image protocol integration', () => {
       expect(messages.some(message => message.type === 'CUSTOM_ASSETS_SYNC')).toBe(true)
       expect(messages.some(message => message.payload.kind === 'offer')).toBe(false)
     }
+  })
+
+  it('relays received individual library assets from a guest to other participants when host', async () => {
+    const manager = new (PeerManager as any)()
+    manager.peer = { id: 'host' }
+    manager.isHost = true
+    const guest1 = { peer: 'guest1', open: true, metadata: { individualLibrary: 2 }, send: vi.fn() }
+    const guest2 = { peer: 'guest2', open: true, metadata: { individualLibrary: 2 }, send: vi.fn() }
+    const legacyGuest = { peer: 'legacy', open: true, metadata: {}, send: vi.fn() }
+    manager.connections.set('guest1', guest1)
+    manager.connections.set('guest2', guest2)
+    manager.connections.set('legacy', legacyGuest)
+    manager.individualLibraryPeers.add(guest1)
+    manager.individualLibraryPeers.add(guest2)
+
+    const newAsset = { id: 'sprite2', name: 'Sprite 2', type: 'avatar' as const, category: 'People', width: 1, height: 1, frames: ['data:image/png;base64,c3ByaXRlMg=='], createdAt: 1 }
+    const packet = await buildLibrary({ assets: [newAsset], categories: ['People'] })
+
+    manager.handleNetworkMessage({
+      type: 'INDIVIDUAL_LIBRARY',
+      timestamp: 1,
+      senderId: 'guest1',
+      payload: { kind: 'offer', id: 'offer-1', catalog: packet.catalog },
+    }, 'guest1')
+    await manager.individualLibrarySession(guest1).queue
+
+    const requestMsg = guest1.send.mock.calls.find(([m]: any[]) => m.payload?.kind === 'request')?.[0]
+    expect(requestMsg).toBeDefined()
+
+    for (const name of requestMsg.payload.names) {
+      manager.handleNetworkMessage({
+        type: 'INDIVIDUAL_LIBRARY',
+        timestamp: 1,
+        senderId: 'guest1',
+        payload: { kind: 'image', id: 'offer-1', name, index: 0, total: 1, data: packet.images[name] },
+      }, 'guest1')
+    }
+
+    await manager.individualLibrarySession(guest1).queue
+    await manager.assetTransferQueue
+
+    const guest2Offer = guest2.send.mock.calls.find(([m]: any[]) => m.payload?.kind === 'offer')?.[0]
+    expect(guest2Offer).toBeDefined()
+    expect(guest2Offer.type).toBe('INDIVIDUAL_LIBRARY')
+
+    const legacySync = legacyGuest.send.mock.calls.find(([m]: any[]) => m.type === 'CUSTOM_ASSETS_SYNC')?.[0]
+    expect(legacySync).toBeDefined()
+
+    const guest1Offers = guest1.send.mock.calls.filter(([m]: any[]) => m.payload?.kind === 'offer')
+    expect(guest1Offers).toHaveLength(0)
   })
 })

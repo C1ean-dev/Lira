@@ -242,7 +242,15 @@ async function addAssets(incoming: CustomAsset[], broadcast: boolean, categories
     await commit(merge(state.customAssets, incoming), cats)
     if (broadcast) {
       const ids = new Set(incoming.map(asset => asset.id))
-      PeerManager.getInstance().sendCustomAssetsSync(useCustomAssetsStore.getState().customAssets.filter(asset => ids.has(asset.id)), cats)
+      const savedAssets = useCustomAssetsStore.getState().customAssets.filter(asset => ids.has(asset.id))
+      const assetsToSend = savedAssets.map(saved => {
+        const inc = incoming.find(i => i.id === saved.id)
+        if (inc && inc.frames?.some(f => typeof f === 'string' && f.startsWith('data:'))) {
+          return { ...saved, frames: inc.frames, directionalFrames: inc.directionalFrames || saved.directionalFrames }
+        }
+        return saved
+      })
+      PeerManager.getInstance().sendCustomAssetsSync(assetsToSend, cats)
     }
   })
 }
@@ -283,7 +291,11 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
       delete asset.slicerPresets
     }
     await commit(merge(state.customAssets, [asset]), [...new Set([...state.customCategories, asset.category])])
-    PeerManager.getInstance().sendCustomAssetAddOrUpdate(get().customAssets.find(saved => saved.id === id)!)
+    const saved = get().customAssets.find(s => s.id === id)!
+    const toSend = asset.frames?.some(f => typeof f === 'string' && f.startsWith('data:'))
+      ? { ...saved, frames: asset.frames, directionalFrames: asset.directionalFrames || saved.directionalFrames }
+      : saved
+    PeerManager.getInstance().sendCustomAssetAddOrUpdate(toSend)
   }),
   deleteCustomAsset: id => deleteAsset(id, true),
   syncRemoteAtlas: (_pair, document) => addAssets(document.assets, false, document.categories),

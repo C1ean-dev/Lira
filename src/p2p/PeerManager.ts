@@ -2316,6 +2316,34 @@ export class PeerManager {
             async document => {
               if (this.peer === owner && this.connections.get(peerId) === connection && connection.open) {
                 await useCustomAssetsStore.getState().syncRemoteCustomAssets(document.assets, document.categories)
+                if (document.deletedAssetIds?.length) {
+                  for (const id of document.deletedAssetIds) {
+                    await useCustomAssetsStore.getState().syncRemoteAssetDelete(id)
+                    if (this.isHost) this.sendCustomAssetDelete(id)
+                  }
+                }
+                if (this.isHost) {
+                  this.queueAssetTransfer(async () => {
+                    const legacyConnections = [...this.connections.entries()].filter(([pid, c]) => pid !== peerId && c.open && !this.individualLibraryPeers.has(c))
+                    for (const [pid, c] of this.connections.entries()) {
+                      if (pid !== peerId && c.open && this.individualLibraryPeers.has(c)) {
+                        await this.offerIndividualLibrary(c, document.assets, document.categories)
+                      }
+                    }
+                    if (!legacyConnections.length) return
+                    const atlas = await buildAtlas(document.assets, document.categories)
+                    const digest = await atlasDigest(atlas)
+                    if (this.peer !== owner) return
+                    for (const [, c] of legacyConnections) {
+                      this.sendToPeer(c, {
+                        type: 'CUSTOM_ASSETS_SYNC',
+                        senderId: owner.id,
+                        payload: { atlas, digest },
+                        timestamp: Date.now(),
+                      })
+                    }
+                  })
+                }
               }
             }).catch(error => console.error('[Assets] Invalid individual image transfer:', error))
         }
