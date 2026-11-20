@@ -223,6 +223,22 @@ async function addAssets(incoming: CustomAsset[], broadcast: boolean, categories
   await queue(async () => {
     const state = useCustomAssetsStore.getState()
     const cats = [...new Set([...state.customCategories, ...(categories || []), ...incoming.map(a => a.category || 'Geral')])]
+    if (!broadcast) {
+      const currentMap = new Map(state.customAssets.map(a => [a.id, a]))
+      const hasNewCategory = cats.length !== state.customCategories.length || cats.some(c => !state.customCategories.includes(c))
+      const hasAssetChanges = incoming.some(a => {
+        const current = currentMap.get(a.id)
+        if (!current) return true
+        if (a.updatedAt && current.updatedAt) {
+          if (a.updatedAt > current.updatedAt) return true
+          if (a.updatedAt < current.updatedAt) return false
+        }
+        return JSON.stringify(current) !== JSON.stringify(a)
+      })
+      if (!hasNewCategory && !hasAssetChanges) {
+        return
+      }
+    }
     await commit(merge(state.customAssets, incoming), cats)
     if (broadcast) {
       const ids = new Set(incoming.map(asset => asset.id))
