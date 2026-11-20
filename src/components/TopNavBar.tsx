@@ -764,7 +764,7 @@ onClick={() => PeerManager.getInstance().reconnect()}
           <DirectConnectionPanel role="host" />
         </div>
       </dialog>}
-      {isReportIssueOpen && createPortal(<ReportIssueModal isOpen onClose={closeReportIssue} />, document.body)}
+      {isReportIssueOpen && typeof document !== 'undefined' && createPortal(<ReportIssueModal isOpen onClose={closeReportIssue} />, document.body)}
     </header>
   )
 }

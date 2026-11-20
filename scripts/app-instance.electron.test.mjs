@@ -30,7 +30,7 @@ test('native Electron locks isolate development and still reject duplicate insta
     ` }, outfile: entry, bundle: true, platform: 'node', format: 'cjs', external: ['electron'], logLevel: 'silent' })
     async function launch(installed, instance = '1') {
       const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE
-      const child = spawn(require('electron'), [entry, `--instance=${instance}`, ...(installed ? ['--installed'] : [])], { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      const child = spawn(require('electron'), ['--mute-audio', entry, `--instance=${instance}`, ...(installed ? ['--installed'] : [])], { env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
       const closed = new Promise(resolve => child.once('close', resolve))
       children.push({ child, closed })
       return new Promise((resolve, reject) => {

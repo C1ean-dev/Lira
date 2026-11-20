@@ -64,6 +64,7 @@ export async function electronSystem({ output, microphone, visible }) {
     delete env.ELECTRON_RUN_AS_NODE
     const desktop = await _electron.launch({ executablePath: require('electron'), cwd: working, env,
       args: [application, '--multi', `--instance=${index + 1}`, ...(!visible ? ['--hidden'] : []),
+        '--mute-audio',
         '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream',
         `--use-file-for-fake-audio-capture=${microphone}`, '--disable-background-timer-throttling', '--disable-renderer-backgrounding'], timeout: 30000 })
     applications.push(desktop)

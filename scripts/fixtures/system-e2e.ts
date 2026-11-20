@@ -11,6 +11,7 @@ import { parseNetworkMessage } from '../../src/validation/schemas'
 import { almAudioOutput, isAlmStream } from '../../src/media/almStreams'
 
 SHARED_RTC_CONFIG.iceServers = []
+useMediaStore.setState({ soundEffectsEnabled: false, soundEffectsVolume: 0 })
 const meters = new WeakMap<MediaStream, AnalyserNode>()
 const trackProcessor = Object.getOwnPropertyDescriptor(globalThis, 'MediaStreamTrackProcessor')
 let audioContext: AudioContext | undefined

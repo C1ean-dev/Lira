@@ -36,7 +36,7 @@ test('transcription starts on the map and survives closing the call view', {
   const errors = [], remoteOrigins = []
   try {
     await vite.listen()
-    browser = await chromium.launch({ headless: true, executablePath: process.env.LIRA_CHROMIUM_EXECUTABLE || undefined })
+    browser = await chromium.launch({ headless: true, executablePath: process.env.LIRA_CHROMIUM_EXECUTABLE || undefined, args: ['--mute-audio'] })
     await mkdir('.scratch/space-transcription', { recursive: true })
     for (const width of [1280, 375]) {
       const page = await browser.newPage({ viewport: { width, height: 800 } })

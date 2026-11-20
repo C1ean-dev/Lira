@@ -904,6 +904,13 @@ export class MediaManager {
       )
       if (generation !== this.mediaGeneration) return false
 
+      const existingVideo = this.rawUserStream?.getVideoTracks() ?? useMediaStore.getState().localStream?.getVideoTracks() ?? []
+      existingVideo.forEach((v) => {
+        if (!processedStream.getVideoTracks().includes(v)) {
+          processedStream.addTrack(v)
+        }
+      })
+
       useMediaStore.getState().setLocalStream(processedStream)
 
       if (useMediaStore.getState().isTestingMic) {

@@ -53,7 +53,7 @@ test('chat reaches the bottom after deferred images and preserves history readin
       } else response.end('<!doctype html><div id="root"></div><script type="module" src="/chat.js"></script>')
     })
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
-    browser = await chromium.launch({ headless: true })
+    browser = await chromium.launch({ headless: true, args: ['--mute-audio'] })
     const page = await browser.newPage()
     const errors = []
     page.on('pageerror', error => errors.push(error.message))
