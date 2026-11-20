@@ -1,6 +1,6 @@
 {
   "name": "lira",
-  "version": "1.1.211",
+  "version": "1.1.218",
   "description": "Lira - Espaço Virtual e Comunicação em Tempo Real",
   "main": "out/main.js",
   "type": "module",
