@@ -51,14 +51,19 @@ export async function writeIndividualLibrary(directory: string, packet: LibraryP
     await fs.mkdir(path.dirname(target), { recursive: true })
     await writeImage(target, Buffer.from(data.split(',')[1], 'base64'))
   }
+  let previous: LibraryLocation | null | undefined
+  const getPrevious = async () => {
+    if (previous === undefined) previous = await readIndividualLibrary(directory)
+    return previous
+  }
   for (const name of packet.catalog.images) {
     const target = path.join(directory, libraryImagePath(packet.catalog, name))
     try { await fs.access(target) }
     catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       // Renames and upgrades can still refer to the previous on-disk layout.
-      const previous = await readIndividualLibrary(directory)
-      const oldPath = previous?.catalog.images.includes(name) ? libraryImagePath(previous.catalog, name) : `images/${name}`
+      const prev = await getPrevious()
+      const oldPath = prev?.catalog.images.includes(name) ? libraryImagePath(prev.catalog, name) : `images/${name}`
       const bytes = await fs.readFile(path.join(directory, oldPath))
       const mime = name.endsWith('.jpg') ? 'image/jpeg' : `image/${name.split('.').pop()}`
       if (await imageIdentity(`data:${mime};base64,${bytes.toString('base64')}`) !== name) throw new Error('Imagem salva corrompida')
@@ -66,32 +71,54 @@ export async function writeIndividualLibrary(directory: string, packet: LibraryP
       await writeImage(target, bytes)
     }
   }
+  const masterImageCache = new Map<string, Promise<Buffer>>()
+  const getMasterImage = (name: string) => {
+    let cached = masterImageCache.get(name)
+    if (!cached) {
+      cached = fs.readFile(path.join(directory, libraryImagePath(packet.catalog, name)))
+      masterImageCache.set(name, cached)
+    }
+    return cached
+  }
   for (const asset of document.assets) {
     const folder = path.join(directory, libraryAssetFolder(asset))
     await fs.mkdir(folder, { recursive: true })
     // Shared sheets remain addressable by hash, with a complete copy in each
     // asset's folder so its XML never depends on another asset's folder.
     for (const name of assetImageNames(asset)) {
-      const bytes = await fs.readFile(path.join(directory, libraryImagePath(packet.catalog, name)))
+      const bytes = await getMasterImage(name)
       await writeImage(path.join(folder, name), bytes)
     }
     const source = asset.frames.map(readSpriteFrame).find(Boolean)?.source
     if (!source || !imageNamePattern.test(source)) continue
-    await publishFile(path.join(folder, 'sprite.xml'), spriteXml(asset, source))
+    const xml = spriteXml(asset, source)
+    const xmlTarget = path.join(folder, 'sprite.xml')
+    try {
+      const existing = await fs.readFile(xmlTarget, 'utf8')
+      if (existing === xml) continue
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+    await publishFile(xmlTarget, xml)
   }
   await publishFile(path.join(directory, 'catalog.json'), JSON.stringify(packet.catalog))
 }
 export async function stageBundledLibraryImages(directory: string, packet: LibraryPacket, bundledDirectory: string): Promise<void> {
   openLibrary(packet.catalog, name => name, false)
   const bundled = await readIndividualLibrary(bundledDirectory)
+  let local: LibraryLocation | null | undefined
+  const getLocal = async () => {
+    if (local === undefined) local = await readIndividualLibrary(directory)
+    return local
+  }
   for (const name of packet.catalog.images) {
     if (Object.prototype.hasOwnProperty.call(packet.images, name)) continue
     const target = path.join(directory, libraryImagePath(packet.catalog, name))
     try { await fs.access(target); continue }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
-    const local = await readIndividualLibrary(directory)
+    const localLib = await getLocal()
     let bytes: Buffer
-    const previous = local?.catalog.images.includes(name) ? libraryImagePath(local.catalog, name) : `images/${name}`
+    const previous = localLib?.catalog.images.includes(name) ? libraryImagePath(localLib.catalog, name) : `images/${name}`
     try { bytes = await fs.readFile(path.join(directory, previous)) }
     catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error

@@ -73,7 +73,7 @@ test('navigation fits the viewport and its compact menu stays legible above the 
       } catch (error) { response.writeHead(error.code === 'ENOENT' ? 404 : 500).end() }
     })
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
-    browser = await chromium.launch({ headless: true, executablePath: process.env.LIRA_CHROMIUM_EXECUTABLE || undefined })
+    browser = await chromium.launch({ headless: true, executablePath: process.env.LIRA_CHROMIUM_EXECUTABLE || undefined, args: ['--mute-audio'] })
     const page = await browser.newPage({ viewport: { width: 1366, height: 768 }, reducedMotion: 'reduce' })
     page.setDefaultTimeout(5000)
     page.on('pageerror', error => errors.push(error.message))

@@ -48,14 +48,41 @@ export async function imageIdentity(dataUrl: string): Promise<string> {
 }
 export async function imageDataUrl(src: string): Promise<string> {
   if (src.startsWith('data:')) return src
-  const response = await fetch(src)
-  if (!response.ok) throw new Error('Imagem da biblioteca ausente: ' + src)
-  const blob = await response.blob()
-  const mime = Object.keys(mimeExtensions).includes(blob.type) ? blob.type : 'image/png'
-  const bytes = new Uint8Array(await blob.arrayBuffer())
-  let binary = ''
-  for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192))
-  return `data:${mime};base64,${btoa(binary)}`
+  try {
+    const response = await fetch(src)
+    if (response.ok) {
+      const blob = await response.blob()
+      const mime = Object.keys(mimeExtensions).includes(blob.type) ? blob.type : 'image/png'
+      const bytes = new Uint8Array(await blob.arrayBuffer())
+      let binary = ''
+      for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192))
+      return `data:${mime};base64,${btoa(binary)}`
+    }
+  } catch {
+    // fetch failed (e.g. cross-scheme file:// or environment restrictions)
+  }
+  if (typeof Image !== 'undefined' && typeof document !== 'undefined') {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas')
+          canvas.width = img.naturalWidth
+          canvas.height = img.naturalHeight
+          const ctx = canvas.getContext('2d')
+          if (!ctx) { reject(new Error('Canvas 2D indisponível')); return }
+          ctx.drawImage(img, 0, 0)
+          resolve(canvas.toDataURL('image/png'))
+        } catch (e) {
+          reject(e)
+        }
+      }
+      img.onerror = () => reject(new Error('Imagem da biblioteca ausente: ' + src))
+      img.src = src
+    })
+  }
+  throw new Error('Imagem da biblioteca ausente: ' + src)
 }
 export function openLibrary(catalog: LibraryCatalog, imageUrl: (name: string) => string, register = true): AtlasDocument {
   if (![2, 3].includes(catalog?.version) || !Array.isArray(catalog.images) || catalog.images.some(n => typeof n !== 'string' || !imageNamePattern.test(n)) || new Set(catalog.images).size !== catalog.images.length || typeof catalog.document !== 'string') throw new Error('Catálogo de imagens inválido')

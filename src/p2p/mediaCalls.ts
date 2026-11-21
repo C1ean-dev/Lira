@@ -464,7 +464,7 @@ export class MediaCallHandler {
       })
       return {
         available: true,
-        ready: isDjBot ? true : (outboundAudio && inboundAudio),
+        ready: isDjBot ? true : (outboundAudio || inboundAudio),
         outboundAudio,
         inboundAudio,
       }

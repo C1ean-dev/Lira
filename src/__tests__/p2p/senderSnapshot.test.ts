@@ -238,3 +238,61 @@ describe('call media readiness gate', () => {
     expect(MediaCallHandler.evaluateCallReadiness(pc, remoteStream).ok).toBe(true)
   })
 })
+
+describe('evaluateAudioRtpReadiness', () => {
+  it('reports ready when either outbound or inbound audio RTP is flowing', async () => {
+    const pcOutOnly = {
+      getStats: async () =>
+        new Map<string, any>([
+          ['out-a', { type: 'outbound-rtp', kind: 'audio', bytesSent: 100, packetsSent: 5 }],
+        ]),
+    } as any
+    const resOut = await MediaCallHandler.evaluateAudioRtpReadiness(pcOutOnly)
+    expect(resOut).toEqual({
+      available: true,
+      ready: true,
+      outboundAudio: true,
+      inboundAudio: false,
+    })
+
+    const pcInOnly = {
+      getStats: async () =>
+        new Map<string, any>([
+          ['in-a', { type: 'inbound-rtp', kind: 'audio', bytesReceived: 100 }],
+        ]),
+    } as any
+    const resIn = await MediaCallHandler.evaluateAudioRtpReadiness(pcInOnly)
+    expect(resIn).toEqual({
+      available: true,
+      ready: true,
+      outboundAudio: false,
+      inboundAudio: true,
+    })
+  })
+
+  it('keeps ready false when neither outbound nor inbound audio RTP has arrived', async () => {
+    const pcEmpty = {
+      getStats: async () => new Map<string, any>(),
+    } as any
+    const resEmpty = await MediaCallHandler.evaluateAudioRtpReadiness(pcEmpty)
+    expect(resEmpty).toEqual({
+      available: true,
+      ready: false,
+      outboundAudio: false,
+      inboundAudio: false,
+    })
+  })
+
+  it('allows DJ bot to be ready even without RTP audio packets', async () => {
+    const pcEmpty = {
+      getStats: async () => new Map<string, any>(),
+    } as any
+    const resDj = await MediaCallHandler.evaluateAudioRtpReadiness(pcEmpty, true)
+    expect(resDj).toEqual({
+      available: true,
+      ready: true,
+      outboundAudio: false,
+      inboundAudio: false,
+    })
+  })
+})

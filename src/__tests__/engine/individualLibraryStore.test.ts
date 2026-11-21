@@ -223,4 +223,11 @@ describe('individual library store migration and lazy loading', () => {
     expect(getCustomAssetImage(source)).not.toBe(image)
     expect(Image).toHaveBeenCalledTimes(2)
   })
+  it('does not re-save or re-commit the library when remote sync brings identical assets and categories', async () => {
+    vi.mocked(saveStoredLibrary).mockClear()
+    const { useCustomAssetsStore } = await import('../../store/useCustomAssetsStore')
+    useCustomAssetsStore.setState({ customAssets: [hero], customCategories: ['People'] })
+    await useCustomAssetsStore.getState().syncRemoteCustomAssets([hero], ['People'])
+    expect(saveStoredLibrary).not.toHaveBeenCalled()
+  })
 })

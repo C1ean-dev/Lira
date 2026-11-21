@@ -60,7 +60,7 @@ test('optional transcription installs from file origin and starts again offline'
     await fs.writeFile(main, `const {app,BrowserWindow}=require('electron');app.setPath('userData',${JSON.stringify(path.join(temporary, 'profile'))});app.whenReady().then(()=>{const window=new BrowserWindow({show:false,width:1280,height:800,webPreferences:{webSecurity:true,contextIsolation:true,nodeIntegration:false,backgroundThrottling:false}});window.loadFile(${JSON.stringify(path.join(temporary, 'index.html'))})});app.on('window-all-closed',()=>app.quit());`)
     const environment = { ...process.env }
     delete environment.ELECTRON_RUN_AS_NODE
-    electron = await _electron.launch({ executablePath: require('electron'), args: [main], env: environment })
+    electron = await _electron.launch({ executablePath: require('electron'), args: ['--mute-audio', main], env: environment })
     const page = await electron.firstWindow()
     const capture = async name => { if (process.env.LIRA_TRANSCRIPTION_SCREENSHOTS === '1') await page.screenshot({ path: path.join(screenshots, name) }) }
     const requests = []

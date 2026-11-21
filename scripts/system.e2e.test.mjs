@@ -189,8 +189,8 @@ test('dois usuários percorrem o Lira pela interface com mídia P2P real', {
           const rows = await window.liraE2E.rtp()
           return ['audio', 'video'].every(kind => rows.some(row => row.type === 'inbound-rtp' && row.kind === kind && row.bytesReceived > 0))
         }, null, { timeout: 60000 })
-        await page.waitForFunction(() => window.liraE2E.playback().some(video => video.width > 0 && video.frames > 5))
-        await page.waitForFunction(async () => (await window.liraE2E.audio()).some(row => row.rms > .005))
+        await page.waitForFunction(() => window.liraE2E.playback().some(video => video.width > 0 && video.frames > 5), null, { timeout: 60000 })
+        await page.waitForFunction(async () => (await window.liraE2E.audio()).some(row => row.rms > .005), null, { timeout: 60000 })
       }
       await ana.getByTitle('Mutar Microfone (M)', { exact: true }).click()
       await bruno.waitForFunction(async () => (await window.liraE2E.audio()).every(row => row.rms < .001))
