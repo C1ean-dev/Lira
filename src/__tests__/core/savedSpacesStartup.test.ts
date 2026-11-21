@@ -180,3 +180,117 @@ it('continues startup when the native file cannot be read', async () => {
   expect(loadNativeSpaces).toHaveBeenCalledOnce()
   expect(useSavedSpacesStore.getState()).toBe(initial)
 })
+
+it('loads spaces from an externally replaced nativeSpaces.json even when localStorage already has rooms', async () => {
+  vi.resetModules()
+  const staleDefault = {
+    id: 'space-exgc3j0',
+    roomCode: '087cbbd7-48e7-47e4-abd1-554505b1a968',
+    name: 'Espaço #1',
+    createdAt: 100,
+    updatedAt: 200,
+    mapData: createEmptyWorkspace(),
+  }
+  const localOnly = {
+    id: 'space-local-only',
+    roomCode: 'local-only-code',
+    name: 'Local Extra',
+    createdAt: 150,
+    updatedAt: 250,
+    mapData: createEmptyWorkspace(),
+  }
+  const externalSpaceA = {
+    id: 'space-exgc3j0',
+    roomCode: '087cbbd7-48e7-47e4-abd1-554505b1a968',
+    name: 'teste',
+    createdAt: 100,
+    updatedAt: 150,
+    mapData: {
+      ...createEmptyWorkspace(),
+      zones: [
+        { id: 'zone-1', name: 'Banheiro', color: '#fff', x: 2, y: 2, width: 4, height: 4 },
+        { id: 'zone-2', name: 'Quarto', color: '#0ff', x: 8, y: 2, width: 4, height: 4 },
+      ],
+      furniture: [
+        { id: 'f1', defId: 'chair', x: 3, y: 3 },
+        { id: 'f2', defId: 'desk', x: 4, y: 3 },
+        { id: 'f3', defId: 'plant', x: 5, y: 3 },
+      ],
+    },
+  }
+  const externalSpaceB = {
+    id: 'space-uii0let',
+    roomCode: 'a839aad2-34f7-4887-a6ef-50eb7d93606d',
+    name: 'Espaço #2',
+    createdAt: 120,
+    updatedAt: 180,
+    mapData: createEmptyWorkspace(),
+  }
+
+  const items = new Map([['lira_saved_spaces', JSON.stringify([staleDefault, localOnly])]])
+  const loadNativeSpaces = vi.fn(async () => [externalSpaceA, externalSpaceB])
+  const saveNativeSpaces = vi.fn(async () => true)
+  vi.stubGlobal('window', {
+    localStorage: {
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => items.set(key, value),
+    },
+    electronAPI: { loadNativeSpaces, saveNativeSpaces },
+  })
+
+  const { initializeSavedSpaces, useSavedSpacesStore } = await import('../../store/useSavedSpacesStore')
+  await initializeSavedSpaces()
+
+  expect(loadNativeSpaces).toHaveBeenCalledOnce()
+  const { getSpaceById } = useSavedSpacesStore.getState()
+  expect(getSpaceById('space-exgc3j0')?.name).toBe('teste')
+  expect(getSpaceById('space-exgc3j0')?.mapData.zones).toHaveLength(2)
+  expect(getSpaceById('space-exgc3j0')?.mapData.furniture).toHaveLength(3)
+  expect(getSpaceById('space-uii0let')?.name).toBe('Espaço #2')
+  expect(getSpaceById('space-local-only')?.name).toBe('Local Extra')
+  expect(saveNativeSpaces).not.toHaveBeenCalled()
+})
+
+it('does not overwrite local edits when nativeSpaces.json matches the last synced file signature', async () => {
+  vi.resetModules()
+  const initialRoom = {
+    id: 'space-synced',
+    roomCode: 'room-sync',
+    name: 'Original',
+    createdAt: 1,
+    updatedAt: 1,
+    color: '#fff',
+    mapData: createEmptyWorkspace(),
+  }
+  const items = new Map([['lira_saved_spaces', JSON.stringify([initialRoom])]])
+  let lastDiskPayload: unknown[] = [initialRoom]
+  const saveNativeSpaces = vi.fn(async (spaces: unknown[]) => {
+    lastDiskPayload = JSON.parse(JSON.stringify(spaces))
+    return true
+  })
+  const loadNativeSpaces = vi.fn(async () => lastDiskPayload)
+  vi.stubGlobal('window', {
+    localStorage: {
+      getItem: (key: string) => items.get(key) ?? null,
+      setItem: (key: string, value: string) => items.set(key, value),
+    },
+    electronAPI: { loadNativeSpaces, saveNativeSpaces },
+  })
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true })))
+
+  const first = await import('../../store/useSavedSpacesStore')
+  first.useSavedSpacesStore.getState().updateSavedSpace('space-synced', { name: 'Editado' })
+  await Promise.resolve()
+  await Promise.resolve()
+  expect(items.has('lira_native_spaces_sig')).toBe(true)
+
+  // Simulate another local-only update whose disk write failed while disk still has the last synced copy.
+  const localNewer = JSON.parse(items.get('lira_saved_spaces')!)
+  localNewer.find((s: any) => s.id === 'space-synced').name = 'Editado Localmente'
+  items.set('lira_saved_spaces', JSON.stringify(localNewer))
+
+  vi.resetModules()
+  const restarted = await import('../../store/useSavedSpacesStore')
+  await restarted.initializeSavedSpaces()
+  expect(restarted.useSavedSpacesStore.getState().getSpaceById('space-synced')?.name).toBe('Editado Localmente')
+})

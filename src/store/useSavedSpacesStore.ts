@@ -24,7 +24,34 @@ export interface SavedSpace {
 
 const STORAGE_KEY = 'lira_saved_spaces'
 const ACTIVE_SPACE_ID_KEY = 'lira_active_space_id'
+const NATIVE_SYNC_SIGNATURE_KEY = 'lira_native_spaces_sig'
 const savedSpaceStorage = createStoredState<unknown[] | null>(STORAGE_KEY, z.array(z.unknown()), null)
+
+const computeSpacesSignature = (records: unknown[]): string => {
+  const serialized = JSON.stringify(records)
+  let hash = 0x811c9dc5
+  for (let i = 0; i < serialized.length; i += 1) {
+    hash ^= serialized.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193)
+  }
+  return `${serialized.length}:${(hash >>> 0).toString(16)}`
+}
+
+const readNativeSyncSignature = (): string | null => {
+  try {
+    return typeof window === 'undefined' ? null : window.localStorage?.getItem(NATIVE_SYNC_SIGNATURE_KEY) ?? null
+  } catch {
+    return null
+  }
+}
+
+const writeNativeSyncSignature = (signature: string): void => {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(NATIVE_SYNC_SIGNATURE_KEY, signature)
+    }
+  } catch {}
+}
 
 const serializeSpacesForStorage = (spaces: SavedSpace[]) => {
   return spaces.map((s) => ({
@@ -56,6 +83,9 @@ const syncSpacesToNativeFile = async (serialized: unknown[]): Promise<boolean> =
         }
       } catch {}
     }
+    if (saved) {
+      writeNativeSyncSignature(computeSpacesSignature(serialized))
+    }
     return saved
   } catch (err) {
     console.error('Failed to sync native spaces to file:', err)
@@ -63,21 +93,22 @@ const syncSpacesToNativeFile = async (serialized: unknown[]): Promise<boolean> =
   }
 }
 
-const loadSavedSpaces = (storedSpaces: unknown[]) => {
-  const nativeSpaces: SavedSpace[] = ((nativeSpacesData as any[]) || []).map((s: any) => ({
-    ...s,
-    roomCode: s.roomCode || generateUUID(),
-    mapData: hydrateMapData(s.mapData),
-  }))
-  const savedSpaces: SavedSpace[] = []
+const isMinimalDefaultSpace = (space: SavedSpace): boolean => {
+  const furnitureCount = space.mapData?.furniture?.length ?? 0
+  const zoneCount = space.mapData?.zones?.length ?? 0
+  return space.name === 'Espaço #1' && furnitureCount <= 2 && zoneCount <= 1
+}
+
+const parseSpaceRecords = (records: unknown[], reportErrors: boolean) => {
+  const spaces: SavedSpace[] = []
   const unreadableSpaces: unknown[] = []
 
-  for (const [index, entry] of storedSpaces.entries()) {
+  for (const [index, entry] of records.entries()) {
     try {
       const space = savedSpaceSchema.parse(entry)
       if (space.id === 'space-default' || space.name === 'Meu Espaço Principal') continue
 
-      savedSpaces.push({
+      spaces.push({
         id: space.id || 'space-' + Math.random().toString(36).substring(2, 9),
         roomCode: space.roomCode || generateUUID(),
         name: space.name || 'Meu Espaço',
@@ -89,17 +120,32 @@ const loadSavedSpaces = (storedSpaces: unknown[]) => {
         channels: space.channels,
       })
     } catch (error) {
-      if (unreadableSpaces.length === 0) {
+      if (reportErrors && unreadableSpaces.length === 0) {
         reportStorageFailure('read', STORAGE_KEY, error, { roomIndex: index })
       }
       unreadableSpaces.push(entry)
     }
   }
 
+  return { spaces, unreadableSpaces }
+}
+
+const loadSavedSpaces = (storedSpaces: unknown[]) => {
+  const nativeParsed = parseSpaceRecords(Array.isArray(nativeSpacesData) ? nativeSpacesData : [], false)
+  const storedParsed = parseSpaceRecords(storedSpaces, true)
+
   const map = new Map<string, SavedSpace>()
-  nativeSpaces.forEach((s) => map.set(s.id, s))
-  savedSpaces.forEach((s) => map.set(s.id, s))
-  return { spaces: Array.from(map.values()), unreadableSpaces }
+  nativeParsed.spaces.forEach((s) => map.set(s.id, s))
+  storedParsed.spaces.forEach((localSpace) => {
+    const bundled = map.get(localSpace.id)
+    // If a project nativeSpaces.json replaces the minimal default starter space under the same ID,
+    // prefer the populated native space instead of overwriting it with the empty placeholder.
+    if (bundled && isMinimalDefaultSpace(localSpace) && !isMinimalDefaultSpace(bundled)) {
+      return
+    }
+    map.set(localSpace.id, localSpace)
+  })
+  return { spaces: Array.from(map.values()), unreadableSpaces: storedParsed.unreadableSpaces }
 }
 
 function resolveActiveSpaceId(spaces: SavedSpace[]): string | null {
@@ -248,18 +294,53 @@ export const useSavedSpacesStore = create<SavedSpacesState>((set, get) => {
 
 export async function initializeSavedSpaces(): Promise<void> {
   const electron = typeof window === 'undefined' ? undefined : window.electronAPI
+  if (!electron?.loadNativeSpaces) return
+
+  const localStored = savedSpaceStorage.getState()
   // An empty array is a valid save and may reflect an intentional deletion.
-  if (savedSpaceStorage.getState() !== null || !electron?.loadNativeSpaces) return
+  if (Array.isArray(localStored) && localStored.length === 0) return
 
   try {
     const records = await electron.loadNativeSpaces()
-    if (!Array.isArray(records) || records.length === 0 || savedSpaceStorage.getState() !== null) return
+    if (!Array.isArray(records) || records.length === 0) return
 
-    const recovered = loadSavedSpaces(records)
-    unreadableSpaces = recovered.unreadableSpaces
+    if (localStored === null) {
+      if (savedSpaceStorage.getState() !== null) return
+      const recovered = loadSavedSpaces(records)
+      unreadableSpaces = recovered.unreadableSpaces
+      useSavedSpacesStore.setState({
+        savedSpaces: recovered.spaces,
+        activeSpaceId: resolveActiveSpaceId(recovered.spaces),
+      })
+      return
+    }
+
+    // Reconcile externally placed or updated nativeSpaces.json files even when
+    // localStorage already contains previous spaces.
+    const diskSignature = computeSpacesSignature(records)
+    const localSignature = computeSpacesSignature(localStored)
+    const lastSyncedSignature = readNativeSyncSignature()
+    if (diskSignature === localSignature || (lastSyncedSignature !== null && diskSignature === lastSyncedSignature)) {
+      return
+    }
+
+    const diskParsed = parseSpaceRecords(records, false)
+    if (diskParsed.spaces.length === 0) return
+
+    const currentSpaces = useSavedSpacesStore.getState().savedSpaces
+    const mergedMap = new Map<string, SavedSpace>()
+    currentSpaces.forEach((s) => mergedMap.set(s.id, s))
+    diskParsed.spaces.forEach((diskSpace) => {
+      mergedMap.set(diskSpace.id, diskSpace)
+    })
+
+    const merged = Array.from(mergedMap.values())
+    if (diskParsed.unreadableSpaces.length > 0) {
+      unreadableSpaces = [...unreadableSpaces, ...diskParsed.unreadableSpaces]
+    }
     useSavedSpacesStore.setState({
-      savedSpaces: recovered.spaces,
-      activeSpaceId: resolveActiveSpaceId(recovered.spaces),
+      savedSpaces: merged,
+      activeSpaceId: resolveActiveSpaceId(merged),
     })
   } catch (error) {
     reportStorageFailure('read', STORAGE_KEY, error, { source: 'nativeSpaces.json' })
