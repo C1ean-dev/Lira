@@ -47,6 +47,7 @@ describe('call ICE servers', () => {
     { VITE_TURN_URLS: 'https://relay.example.com', VITE_TURN_USERNAME: 'user', VITE_TURN_CREDENTIAL: 'password' },
     { VITE_TURN_URLS: 'turn:', VITE_TURN_USERNAME: 'user', VITE_TURN_CREDENTIAL: 'password' },
     { VITE_TURN_URLS: 'turn:relay.example.com:3478,https://bad.example.com', VITE_TURN_USERNAME: 'user', VITE_TURN_CREDENTIAL: 'password' },
+    { VITE_TURN_URLS: 'turn:relay.example.com:3478', VITE_TURN_USERNAME: 'user', VITE_TURN_CREDENTIAL: 'https://backend.example/turn/credentials' },
   ])('keeps discovery usable when relay settings are incomplete or invalid: %j', env => {
     expect(buildIceServers(env)).toEqual(buildIceServers({}))
   })
