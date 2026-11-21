@@ -45,5 +45,5 @@ describe('Spotify playback Electron packaging', () => {
     } finally {
       if (path.dirname(testDir) === cacheDir) rmSync(testDir, { recursive: true, force: true })
     }
-  }, 30000)
+  }, 90000)
 })

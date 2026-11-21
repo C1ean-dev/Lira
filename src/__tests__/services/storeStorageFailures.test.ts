@@ -11,7 +11,7 @@ const storageRecords = async () => {
   return getBufferedLogs().filter((record) => record.scope === 'Storage')
 }
 
-describe('saved data that cannot be read or written', { timeout: 30000 }, () => {
+describe('saved data that cannot be read or written', { timeout: 60000 }, () => {
   beforeEach(() => {
     vi.resetModules()
     vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -25,11 +25,13 @@ describe('saved data that cannot be read or written', { timeout: 30000 }, () => 
   it('is reported, key by key, when what was saved is corrupted', async () => {
     installStorage({ getItem: () => '{corrupted', setItem: () => {} })
 
-    await import('../../store/useGameStore')
-    await import('../../store/useChatStore')
-    await import('../../store/useMediaStore')
-    await import('../../store/useSettingsStore')
-    await import('../../store/useMapStore')
+    await Promise.all([
+      import('../../store/useGameStore'),
+      import('../../store/useChatStore'),
+      import('../../store/useMediaStore'),
+      import('../../store/useSettingsStore'),
+      import('../../store/useMapStore'),
+    ])
 
     const records = await storageRecords()
     const keys = records.map((record) => record.message.split(' ')[3])

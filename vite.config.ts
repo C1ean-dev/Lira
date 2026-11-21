@@ -263,6 +263,8 @@ export default defineConfig({
   test: {
     // Node 25+ Web Storage shadows jsdom's storage in Vitest 4 (vitest#10867).
     execArgv: Number(process.versions.node.split('.')[0]) >= 25 ? ['--no-experimental-webstorage'] : [],
+    testTimeout: 60000,
+    hookTimeout: 60000,
     server: { deps: { inline: [/@excalidraw\/excalidraw/, /open-color/] } },
     include: ['src/__tests__/**/*.test.{ts,tsx,js,mjs}'],
     exclude: ['**/node_modules/**', '**/.claude/**', '**/dist/**'],

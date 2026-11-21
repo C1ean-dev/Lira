@@ -44,16 +44,18 @@ public static class GeometryFixture {
     expect(JSON.parse(output)).toEqual([1250, 929, 790, 520])
   }, 15000)
   it.skipIf(process.platform !== 'win32')('clips only the browser caption at normal and scaled DPI without shrinking the page', async () => {
-    for (const [dpi, top] of [[96, 38], [144, 57], [192, 76]]) {
-      let output = ''
-      const bridge = new SpotifyNativeWindowBridge(async script => {
-        const declarations = script.slice(0, script.lastIndexOf('[LiraSpotifyHost]::'))
-        output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', declarations + `[LiraSpotifyHost]::ContentBounds(900,700,${dpi}) | ConvertTo-Json -Compress`], { windowsHide: true, encoding: 'utf8', stdio: 'pipe' })
-        return ''
-      }, process.pid)
-      await bridge.resize({ processId: 70, handle: '42', title: '' }, '99')
-      expect(JSON.parse(output)).toEqual([0, -top, 900, 700 + top])
-    }
+    let output = ''
+    const bridge = new SpotifyNativeWindowBridge(async script => {
+      const declarations = script.slice(0, script.lastIndexOf('[LiraSpotifyHost]::'))
+      output = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', declarations + `@{ '96' = [LiraSpotifyHost]::ContentBounds(900,700,96); '144' = [LiraSpotifyHost]::ContentBounds(900,700,144); '192' = [LiraSpotifyHost]::ContentBounds(900,700,192) } | ConvertTo-Json -Compress`], { windowsHide: true, encoding: 'utf8', stdio: 'pipe' })
+      return ''
+    }, process.pid)
+    await bridge.resize({ processId: 70, handle: '42', title: '' }, '99')
+    expect(JSON.parse(output)).toEqual({
+      '96': [0, -38, 900, 738],
+      '144': [0, -57, 900, 757],
+      '192': [0, -76, 900, 776],
+    })
   }, 30000)
   it.skipIf(process.platform !== 'win32')('compiles the native bridge and rejects an absent window without changing any window', async () => {
     const bridge = new SpotifyNativeWindowBridge(async script => execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true, encoding: 'utf8', stdio: 'pipe' }), process.pid)

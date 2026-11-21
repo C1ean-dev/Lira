@@ -57,7 +57,7 @@ describe.skipIf(process.platform !== 'win32')('selective application updates', {
   }
 
   beforeAll(() => { tools = mkdtempSync(path.join(os.tmpdir(), 'lira-delta-tools-')); io = createUpdateIoHarness(tools) })
-  afterAll(() => rm(tools, { recursive: true, force: true }))
+  afterAll(async () => { await io?.close(); await rm(tools, { recursive: true, force: true }) })
   beforeEach(() => {
     root = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), 'lira-delta-')))
     app = path.join(root, 'Lira á [teste]')
