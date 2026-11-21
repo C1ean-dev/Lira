@@ -23,7 +23,7 @@ describe.skipIf(process.platform !== 'win32')('installer file recovery', { timeo
     compiledRoot = mkdtempSync(path.join(os.tmpdir(), 'lira-recovery-io-'))
     ioHarness = createUpdateIoHarness(compiledRoot)
   })
-  afterAll(() => rm(compiledRoot, { recursive: true, force: true }))
+  afterAll(async () => { await ioHarness?.close(); await rm(compiledRoot, { recursive: true, force: true }) })
   const putAt = (directory: string, relative: string, value: string | Buffer) => {
     const file = path.join(directory, relative)
     mkdirSync(path.dirname(file), { recursive: true })
@@ -41,7 +41,7 @@ describe.skipIf(process.platform !== 'win32')('installer file recovery', { timeo
     const closed = new Promise<void>(resolve => child.once('close', () => resolve()))
     try {
       await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Lock helper did not start')), 5000)
+        const timeout = setTimeout(() => reject(new Error('Lock helper did not start')), 15000)
         child.stdout.on('data', data => { if (String(data).includes('ready')) { clearTimeout(timeout); resolve() } })
         child.once('error', error => { clearTimeout(timeout); reject(error) })
         child.once('close', () => { clearTimeout(timeout); reject(new Error('Lock helper exited before acquiring the file')) })

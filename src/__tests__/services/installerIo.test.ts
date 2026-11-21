@@ -17,7 +17,7 @@ describe.skipIf(process.platform !== 'win32')('installer batch file IO', { timeo
     compiledRoot = mkdtempSync(path.join(os.tmpdir(), 'lira-compiled-io-'))
     ioHarness = createUpdateIoHarness(compiledRoot)
   })
-  afterAll(() => rmSync(compiledRoot, { recursive: true, force: true }))
+  afterAll(async () => { await ioHarness?.close(); rmSync(compiledRoot, { recursive: true, force: true }) })
   const digest = (data: string | Buffer) => createHash('sha256').update(data).digest('hex').toUpperCase()
   const execute = (body: string, files: { Name: string; Length: number; Hash?: string }[], directories: string[] = []) => {
     const harness = path.join(root, 'batch-test.ps1')

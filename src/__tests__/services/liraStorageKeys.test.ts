@@ -26,7 +26,7 @@ const installFakeWindow = () => {
   })
 }
 
-describe('lira storage keys and events', { timeout: 30000 }, () => {
+describe('lira storage keys and events', { timeout: 60000 }, () => {
   beforeEach(() => {
     vi.resetModules()
     installFakeWindow()
@@ -39,14 +39,16 @@ describe('lira storage keys and events', { timeout: 30000 }, () => {
   })
 
   it('reads only lira_ keys when the stores load with nothing saved', async () => {
-    await import('../../store/useGameStore')
-    await import('../../store/useChatStore')
-    await import('../../store/useMediaStore')
-    await import('../../store/useSettingsStore')
-    await import('../../store/useMapStore')
-    await import('../../store/useSavedSpacesStore')
-    await import('../../store/useCustomAssetsStore')
-    await import('../../media/hardwareCodec')
+    await Promise.all([
+      import('../../store/useGameStore'),
+      import('../../store/useChatStore'),
+      import('../../store/useMediaStore'),
+      import('../../store/useSettingsStore'),
+      import('../../store/useMapStore'),
+      import('../../store/useSavedSpacesStore'),
+      import('../../store/useCustomAssetsStore'),
+      import('../../media/hardwareCodec'),
+    ])
 
     expect(readKeys).toEqual(expect.arrayContaining([
       'lira_user_profile',

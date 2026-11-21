@@ -37,7 +37,7 @@ jobs:
         run: npm ci
 
       - name: Run Test Suite
-        run: npm test -- --maxWorkers=2 --testTimeout=60000 --hookTimeout=60000
+        run: npm test
 
       - name: Install browser for core call tests
         run: npx playwright install chromium

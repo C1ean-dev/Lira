@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, sym
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { ensureCompiledUpdateIoAssembly } from '../helpers/updateIoHarness'
 
 describe.skipIf(process.platform !== 'win32')('selective update data backup', () => {
   let root: string
@@ -28,19 +29,10 @@ describe.skipIf(process.platform !== 'win32')('selective update data backup', ()
   })
   const identity = (directory: string, name: string) => statSync(path.join(directory, name), { bigint: true }).ino
   beforeAll(async () => {
-    // Compile the unchanged production C# once, then load it in each isolated process.
+    // Reuse the shared compiled C# assembly across parallel test workers.
     toolsDirectory = mkdtempSync(path.join(os.tmpdir(), 'lira-selective-tools-'))
-    compiledHelper = path.join(toolsDirectory, 'update-io.dll')
-    const compiler = path.join(toolsDirectory, 'compile.ps1')
+    compiledHelper = ensureCompiledUpdateIoAssembly()
     runner = path.join(toolsDirectory, 'run.ps1')
-    writeFileSync(compiler, `param([string]$Helper, [string]$Assembly)
-$ErrorActionPreference = 'Stop'
-function Add-Type {
-  param([string]$TypeDefinition)
-  Microsoft.PowerShell.Utility\\Add-Type -TypeDefinition $TypeDefinition -OutputAssembly $Assembly
-}
-. $Helper
-`)
     writeFileSync(runner, `param([string]$Assembly, [string]$Recovery)
 $ErrorActionPreference = 'Stop'
 $null = [Reflection.Assembly]::LoadFrom($Assembly)
@@ -59,7 +51,6 @@ while ($null -ne ($line = [Console]::ReadLine())) {
   }
 }
 `)
-    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', compiler, '-Helper', path.resolve('build/update-io.ps1'), '-Assembly', compiledHelper], { windowsHide: true, stdio: 'pipe' })
     worker = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', runner, '-Assembly', compiledHelper, '-Recovery', script], { windowsHide: true, stdio: 'pipe' })
     workerClosed = new Promise(resolve => worker.once('close', () => resolve()))
     await new Promise<void>((resolve, reject) => {
