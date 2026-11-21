@@ -17,7 +17,7 @@ concurrency:
 jobs:
   build-and-release:
     name: Build and Release Windows App
-    runs-on: windows-latest
+    runs-on: [self-hosted, windows, x64]
     outputs:
       tag_name: ${{ steps.tag.outputs.tag_name }}
 
@@ -51,6 +51,10 @@ jobs:
         run: |
           git fetch origin --tags
           node scripts/bump-version.js
+
+      - name: Clean previous release artifacts
+        run: |
+          node -e "require('node:fs').rmSync('release', { recursive: true, force: true })"
 
       - name: Build and Package Electron App
         env:
@@ -89,7 +93,7 @@ jobs:
   prune-releases:
     name: Prune Old Releases
     needs: [build-and-release, android]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, windows, x64]
     permissions:
       contents: write
 
