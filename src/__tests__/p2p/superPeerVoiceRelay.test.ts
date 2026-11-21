@@ -261,11 +261,19 @@ describe('SuperPeerVoiceRelay - Regras 1, 2 e 3 (UDP Sem Head-of-Line, CoordenaÃ
     expect(MediaCallHandler.directPeerStreams.has('peer-a')).toBe(false)
   })
 
+  it('returns false from isAvailable by default while audio media transport is not yet implemented', () => {
+    peerMgrNotHost()
+    const peerMgr = PeerManager.getInstance()
+    vi.spyOn(peerMgr, 'getConnection').mockReturnValue({ open: true } as any)
+    expect(relay.isAvailable('peer-a')).toBe(false)
+  })
+
   it('detects handshake timeout in isRelayFailing when requested > 6000ms ago and still inactive', () => {
     peerMgrNotHost()
     const peerMgr = PeerManager.getInstance()
     vi.spyOn(peerMgr, 'getConnection').mockReturnValue({ open: true } as any)
     vi.spyOn(peerMgr, 'sendVoiceRelayControl').mockImplementation(() => {})
+    vi.spyOn(relay, 'isAvailable').mockReturnValue(true)
 
     const now = Date.now()
     const started = relay.requestRelay('peer-unresponsive')

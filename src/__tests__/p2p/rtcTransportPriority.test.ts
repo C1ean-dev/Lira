@@ -448,6 +448,73 @@ describe('automatic relay for sustained voice packet loss', () => {
     expect(retryPc.setConfiguration).not.toHaveBeenCalled()
   })
 
+  it('releases a pinned relay when the replacement call closes after timing out in new ICE state, while preserving it across fast glare replacements', async () => {
+    const f = fixture(true, metered, 'media')
+    f.pc.change('connected')
+    for (let index = 0; index <= 3; index++) await sample(f, index, index * 235)
+    f.close()
+
+    // Fast glare replacement (< RELAY_ATTEMPT_MS) keeps the pinned relay for the winning call
+    const glarePc = new Connection()
+    let closeGlare!: () => void
+    const glareConn: any = {
+      ...f.conn,
+      connectionId: 'glare-out',
+      options: {},
+      peerConnection: glarePc,
+      on: (name: string, fn: () => void) => { if (name === 'close') closeGlare = fn },
+    }
+    f.peer._addConnection('remote', glareConn)
+    expect(glarePc.setConfiguration).toHaveBeenLastCalledWith({ iceServers: cloudflare, iceTransportPolicy: 'relay' })
+    await vi.advanceTimersByTimeAsync(100)
+    closeGlare()
+
+    // Winning call still receives the pinned relay, then stalls in 'new' and times out
+    const stalledPc = new Connection()
+    let closeStalled!: () => void
+    const stalledConn: any = {
+      ...f.conn,
+      connectionId: 'stalled-relay',
+      options: {},
+      peerConnection: stalledPc,
+      on: (name: string, fn: () => void) => { if (name === 'close') closeStalled = fn },
+    }
+    f.peer._addConnection('remote', stalledConn)
+    expect(stalledPc.setConfiguration).toHaveBeenLastCalledWith({ iceServers: cloudflare, iceTransportPolicy: 'relay' })
+    await vi.advanceTimersByTimeAsync(12_000)
+    closeStalled()
+
+    // Next recovery dial must return to direct ICE instead of looping on relay for 120s
+    const recoveryPc = new Connection()
+    f.peer._addConnection('remote', { ...f.conn, connectionId: 'direct-recovery', options: {}, peerConnection: recoveryPc })
+    expect(recoveryPc.setConfiguration).not.toHaveBeenCalled()
+    expect(appTrail.list()).toContainEqual(expect.objectContaining({
+      event: 'rtc.voice-route-recovery',
+      data: expect.objectContaining({ connectionId: 'stalled-relay', result: 'redial-relay-failed' }),
+    }))
+  })
+
+  it('does not force relay-only with empty iceServers on answer or report degraded upgrade success when no TURN is available', async () => {
+    const out = fixture(false, [], 'media')
+    out.load.mockResolvedValue([])
+    out.pc.change('connected')
+    expect(await forceDegradedUpgrade(out.pc, 'sustained_packet_loss_or_jitter')).toBe(false)
+    expect(out.pc.setConfiguration).not.toHaveBeenCalled()
+    expect(out.pc.createOffer).not.toHaveBeenCalled()
+
+    const inc = fixture(true, [], 'media')
+    inc.load.mockResolvedValue([])
+    await inc.peer._handleMessage({
+      type: 'OFFER',
+      src: 'remote',
+      payload: { connectionId: 'dc_test', liraIceRestart: 'cloudflare', liraIceForceRelay: 1, sdp: { type: 'offer', sdp: 'force-relay' } },
+    })
+    expect(inc.pc.setConfiguration).toHaveBeenLastCalledWith(expect.objectContaining({
+      iceServers: stun,
+      iceTransportPolicy: 'all',
+    }))
+  })
+
   it('restores the previous policy when the relay never becomes the selected route', async () => {
     const f = fixture(false, metered, 'media')
     f.pc.change('connected')

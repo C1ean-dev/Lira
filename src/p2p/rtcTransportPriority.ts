@@ -85,6 +85,8 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
     let timer: ReturnType<typeof setTimeout> | undefined
     let degradedUpgradeCount = 0
     let lastDegradedUpgradeTime = 0
+    let everConnected = false
+    const attachedAt = Date.now()
     const originator = !conn.options?._payload
     let supportsPriority = originator || conn.options?._payload?.liraIcePriorityVersion === 1
     const candidateHandler = pc.onicecandidate
@@ -96,10 +98,11 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
     const schedule = (delay: number) => { clear(); if (originator && tier < 1 && alive()) timer = setTimeout(() => { void advance() }, delay) }
     const serversFor = async (next: RelayTier) => next === 'cloudflare' ? options.cloudflare() : options.metered
     const configure = (servers: RTCIceServer[], relayOnly = false) => {
+      const forceRelay = relayOnly && servers.length > 0
       pc.setConfiguration({
         ...pc.getConfiguration(),
-        iceServers: relayOnly ? servers : [...options.discovery, ...servers],
-        iceTransportPolicy: relayOnly ? 'relay' : 'all',
+        iceServers: forceRelay ? servers : [...options.discovery, ...servers],
+        iceTransportPolicy: forceRelay ? 'relay' : 'all',
       })
       // PeerJS stops forwarding candidates after ICE completes. A recovered
       // connection needs its candidate sender again for the new ICE generation.
@@ -248,32 +251,42 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
       })
     }
 
-    async function advance(forceDegraded = false) {
-      if (!alive() || busy) return
-      if (!forceDegraded && (voiceTrial || !originator || !supportsPriority || connected())) return
+    const releasePinnedVoiceRelay = () => {
+      if (pinnedVoiceRelay && incomingVoiceRelays.get(conn.peer) === pinnedVoiceRelay) {
+        incomingVoiceRelays.delete(conn.peer)
+        logVoiceRoute('redial-relay-failed')
+      }
+    }
+
+    async function advance(forceDegraded = false): Promise<boolean> {
+      if (!alive() || busy) return false
+      if (!forceDegraded && (voiceTrial || !originator || !supportsPriority || connected())) return false
       // Restart only after the previous offer/answer has completed; otherwise
       // a delayed initial answer could be applied to a new ICE generation.
-      if (!pc.remoteDescription || pc.signalingState !== 'stable') { schedule(250); return }
+      if (!pc.remoteDescription || pc.signalingState !== 'stable') { schedule(250); return false }
       busy = true
       clear()
       try {
         while (++tier < tiers.length) {
           const next = tiers[tier]
-          const servers = await serversFor(next)
-          if (!alive()) return
-          if (!forceDegraded && connected()) return
+          const rawServers = await serversFor(next).catch(() => [])
+          const servers = forceDegraded ? selectVoiceRecoveryServers(rawServers) : rawServers
+          if (!alive()) return false
+          if (!forceDegraded && connected()) return false
           if (!servers.length) continue
           const offer = await makeRestartOffer(servers, forceDegraded || !!pinnedVoiceRelay)
-          if (!offer) return
+          if (!offer) return false
           send('OFFER', offer, next, forceDegraded)
           schedule(RELAY_ATTEMPT_MS)
-          return
+          return true
         }
         // Propagate a failure deferred while checking unavailable providers.
         if (pc.iceConnectionState === 'failed' || pc.connectionState === 'failed') conn.close()
+        return false
       } catch {
         if (alive() && tier < 1) schedule(0)
         else if (alive()) conn.close()
+        return false
       } finally { busy = false }
     }
     async function forceDegradedUpgrade(reason: string): Promise<boolean> {
@@ -285,10 +298,10 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
       if (now - lastDegradedUpgradeTime < DEGRADED_UPGRADE_COOLDOWN_MS) {
         return false
       }
-      degradedUpgradeCount++
-      lastDegradedUpgradeTime = now
       console.log(`[RTCTransportPriority] Executando upgrade forçado para relay (Cloudflare TURN): ${reason}`)
       if (!originator) {
+        degradedUpgradeCount++
+        lastDegradedUpgradeTime = now
         peer.socket.send({
           type: 'CANDIDATE',
           dst: conn.peer,
@@ -297,8 +310,10 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
         return true
       }
       if (tier < 0) tier = -1
-      await advance(true)
-      return true
+      const sent = await advance(true)
+      lastDegradedUpgradeTime = now
+      if (sent) degradedUpgradeCount++
+      return sent
     }
     ;(pc as any).forceDegradedUpgrade = forceDegradedUpgrade
     ;(conn as any).forceDegradedUpgrade = forceDegradedUpgrade
@@ -314,7 +329,8 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
       answering = true
       remoteReady = false
       try {
-        const servers = await serversFor(next)
+        const rawServers = await serversFor(next).catch(() => [])
+        const servers = isForceRelay ? selectVoiceRecoveryServers(rawServers) : rawServers
         if (!alive()) return
         configure(servers, isForceRelay || !!pinnedVoiceRelay)
         await pc.setRemoteDescription(payload.sdp)
@@ -331,16 +347,13 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
     const state = (event: Event) => {
       if (!alive()) { clear(); return }
       const failed = pc.iceConnectionState === 'failed' || pc.connectionState === 'failed'
-      if (failed && pinnedVoiceRelay && incomingVoiceRelays.get(conn.peer) === pinnedVoiceRelay) {
-        incomingVoiceRelays.delete(conn.peer)
-        logVoiceRoute('redial-relay-failed')
-      }
+      if (failed) releasePinnedVoiceRelay()
       const disconnected = pc.iceConnectionState === 'disconnected' || pc.connectionState === 'disconnected'
       if (voiceTrial && (failed || disconnected)) {
         event.stopImmediatePropagation()
         return
       }
-      if (connected()) { clear(); return }
+      if (connected()) { everConnected = true; clear(); return }
       if (!supportsPriority || !((failed || disconnected) && tier < 1 || failed && busy)) return
       event.stopImmediatePropagation()
       diagLog('p2p', 'rtc.fallback-trigger', {
@@ -365,6 +378,9 @@ export function installRtcTransportPriority(peer: Peer, options: Options): Peer 
       clearTimeout(voiceTrial?.timer)
       voiceTrial = undefined
       voiceRouteObservers.delete(conn)
+      if (!everConnected && Date.now() - attachedAt >= RELAY_ATTEMPT_MS) {
+        releasePinnedVoiceRelay()
+      }
       pc.removeEventListener('iceconnectionstatechange', state, true)
       pc.removeEventListener('connectionstatechange', state, true)
       pc.removeEventListener('signalingstatechange', signaling)
