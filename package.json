@@ -44,7 +44,7 @@
     "protobufjs@7.6.6": true
   },
   "scripts": {
-    "test": "vitest run src/__tests__",
+    "test": "vitest run src/__tests__ --maxWorkers=8",
     "test:all": "node scripts/test-all.mjs",
     "teste:all": "npm run test:all",
     "test:migration": "python scripts/test_migrate_individual_library.py",
