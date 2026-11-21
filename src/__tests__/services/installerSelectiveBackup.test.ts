@@ -100,7 +100,14 @@ function Add-Type { throw 'IO helper must not compile twice in one process' }
   })
 
   it('copies only the mutable data used by this version and skips images, modules and browser profiles', async () => {
-    const mutable = ['data/nativeSpaces.json', 'data/nativeAssets.json', 'assets/library/catalog.json', 'Local Storage/leveldb/000001.ldb']
+    const mutable = [
+      'data/nativeSpaces.json',
+      'data/spaces/index.json',
+      'data/spaces/space-1.json.gz',
+      'data/nativeAssets.json',
+      'assets/library/catalog.json',
+      'Local Storage/leveldb/000001.ldb',
+    ]
     const unchanged = ['assets/library/images/hash.png', 'assets/library/library.xml', 'assets/library/library.png', 'IndexedDB/lira-optional-modules/model.bin', 'spotify-browser/Default/Network/Cookies', 'Preferences', 'data/external-save.json']
     for (const file of [...mutable, ...unchanged]) put(profile, file, file)
     await run('Backup')

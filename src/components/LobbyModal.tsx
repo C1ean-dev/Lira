@@ -84,10 +84,13 @@ export const LobbyModal: React.FC<Props> = ({
     savedSpaces,
     activeSpaceId,
     setActiveSpaceId,
+    loadSpaceMap,
     createSavedSpace,
     updateSavedSpace,
     deleteSavedSpace,
     duplicateSavedSpace,
+    exportSavedSpace,
+    importSpacesFromBytes,
   } = useSavedSpacesStore()
 
   const [activeTab, setActiveTab] = useState<'connect' | 'available_rooms' | 'friends' | 'saved_rooms'>('connect')
@@ -253,11 +256,12 @@ export const LobbyModal: React.FC<Props> = ({
         (s) => s.roomCode?.toUpperCase() === room.code.trim().toUpperCase()
       )
       if (matchingSpace) {
-        useMapStore.getState().setMapData(matchingSpace.mapData)
+        const loadedMap = (await loadSpaceMap(matchingSpace.id)) ?? matchingSpace.mapData
+        useMapStore.getState().setMapData(loadedMap)
         setActiveSpaceId(matchingSpace.id)
         setSelectedSpaceId(matchingSpace.id)
-        const spawnX = matchingSpace.mapData.spawnPoint?.x ?? 34
-        const spawnY = matchingSpace.mapData.spawnPoint?.y ?? 20
+        const spawnX = loadedMap.spawnPoint?.x ?? 34
+        const spawnY = loadedMap.spawnPoint?.y ?? 20
         playerPayload.x = spawnX
         playerPayload.y = spawnY
       }
@@ -304,11 +308,12 @@ export const LobbyModal: React.FC<Props> = ({
         (s) => s.roomCode?.toUpperCase() === (invite?.room ?? code.trim().toUpperCase())
       )
       if (matchingSpace) {
-        useMapStore.getState().setMapData(matchingSpace.mapData)
+        const loadedMap = (await loadSpaceMap(matchingSpace.id)) ?? matchingSpace.mapData
+        useMapStore.getState().setMapData(loadedMap)
         setActiveSpaceId(matchingSpace.id)
         setSelectedSpaceId(matchingSpace.id)
-        const spawnX = matchingSpace.mapData.spawnPoint?.x ?? 34
-        const spawnY = matchingSpace.mapData.spawnPoint?.y ?? 20
+        const spawnX = loadedMap.spawnPoint?.x ?? 34
+        const spawnY = loadedMap.spawnPoint?.y ?? 20
         playerPayload.x = spawnX
         playerPayload.y = spawnY
       }
@@ -467,11 +472,12 @@ export const LobbyModal: React.FC<Props> = ({
     })
 
     try {
-      useMapStore.getState().setMapData(targetSpace.mapData)
+      const targetMapData = (await loadSpaceMap(targetSpace.id)) ?? targetSpace.mapData
+      useMapStore.getState().setMapData(targetMapData)
       setActiveSpaceId(targetSpace.id)
 
-      const spawnX = targetSpace.mapData.spawnPoint?.x ?? 34
-      const spawnY = targetSpace.mapData.spawnPoint?.y ?? 20
+      const spawnX = targetMapData.spawnPoint?.x ?? 34
+      const spawnY = targetMapData.spawnPoint?.y ?? 20
 
       setLocalPlayer({
         name: userName.trim(),
@@ -798,6 +804,38 @@ export const LobbyModal: React.FC<Props> = ({
               const freshCode = generateUUID()
               updateSavedSpace(spaceId, { roomCode: freshCode })
               setError(null)
+            }}
+            onExportSpace={async (spaceId) => {
+              try {
+                const exported = await exportSavedSpace(spaceId)
+                if (!exported) return
+                const blob = new Blob([exported.bytes as BlobPart], { type: exported.mimeType })
+                const url = URL.createObjectURL(blob)
+                const link = document.createElement('a')
+                link.href = url
+                link.download = exported.filename
+                document.body.appendChild(link)
+                link.click()
+                link.remove()
+                URL.revokeObjectURL(url)
+                setError(null)
+              } catch (err: any) {
+                setError(err?.message || 'Não foi possível exportar o espaço.')
+              }
+            }}
+            onImportSpacesFile={async (file) => {
+              try {
+                const bytes = new Uint8Array(await file.arrayBuffer())
+                const { imported } = await importSpacesFromBytes(bytes)
+                if (imported.length === 0) {
+                  setError('Nenhum espaço válido encontrado no arquivo selecionado.')
+                  return
+                }
+                setSelectedSpaceId(imported[0].id)
+                setError(null)
+              } catch (err: any) {
+                setError(err?.message || 'Arquivo de espaço inválido.')
+              }
             }}
           />
         )}

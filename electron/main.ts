@@ -29,6 +29,14 @@ import { readNativeDataFile } from './nativeDataFile'
 import { readAssetAtlas, writeAssetAtlasLatest } from './assetAtlasFile'
 import { readIndividualLibrary, writeIndividualLibraryLatest, stageBundledLibraryImages } from './individualLibraryFile'
 import { ensureNativeSpacesFile, readNativeSpacesFile, writeNativeSpacesFileLatest } from './nativeSpacesFile'
+import {
+  deleteSpace as deleteModularSpace,
+  importLegacySpaces as importLegacyModularSpaces,
+  readSpaceMap as readModularSpaceMap,
+  readSpacesIndex as readModularSpacesIndex,
+  updateSpaceMetadata as updateModularSpaceMetadata,
+  writeSpace as writeModularSpace,
+} from './spacesStoreFile'
 import { createStartupTimer } from './startupTimer'
 import { startCpuProfile } from './startupProfile'
 import { sanitizeRecords } from '../src/utils/logFormat'
@@ -1649,6 +1657,63 @@ ipcMain.handle('load-native-spaces', async () => {
     console.error('[NativeSpaces] Load error:', err)
   }
   return null
+})
+
+ipcMain.handle('spaces:list', async () => {
+  try {
+    return await readModularSpacesIndex(getDataDirectory())
+  } catch (err) {
+    console.error('[SpacesStore] List error:', err)
+    return null
+  }
+})
+
+ipcMain.handle('spaces:load-map', async (_event, spaceId: string) => {
+  try {
+    return await readModularSpaceMap(getDataDirectory(), spaceId)
+  } catch (err) {
+    console.error('[SpacesStore] Load map error:', err)
+    return null
+  }
+})
+
+ipcMain.handle('spaces:save', async (_event, payload: { summary: any; mapData: any }) => {
+  try {
+    if (!payload?.summary?.id || !payload?.mapData) return null
+    return await writeModularSpace(getDataDirectory(), payload.summary, payload.mapData)
+  } catch (err) {
+    console.error('[SpacesStore] Save error:', err)
+    return null
+  }
+})
+
+ipcMain.handle('spaces:update-meta', async (_event, payload: { spaceId: string; partial: any }) => {
+  try {
+    if (!payload?.spaceId || !payload?.partial) return null
+    return await updateModularSpaceMetadata(getDataDirectory(), payload.spaceId, payload.partial)
+  } catch (err) {
+    console.error('[SpacesStore] Update metadata error:', err)
+    return null
+  }
+})
+
+ipcMain.handle('spaces:delete', async (_event, spaceId: string) => {
+  try {
+    return await deleteModularSpace(getDataDirectory(), spaceId)
+  } catch (err) {
+    console.error('[SpacesStore] Delete error:', err)
+    return false
+  }
+})
+
+ipcMain.handle('spaces:import-legacy', async (_event, records: unknown[]) => {
+  try {
+    if (!Array.isArray(records)) return null
+    return await importLegacyModularSpaces(getDataDirectory(), records)
+  } catch (err) {
+    console.error('[SpacesStore] Import legacy error:', err)
+    return null
+  }
 })
 
 function getPresenceDirectory(): string {

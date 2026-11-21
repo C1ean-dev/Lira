@@ -51,6 +51,7 @@ if (@($managedTrees | ForEach-Object { $_.ToUpperInvariant() } | Select-Object -
 # and retained when catalogs change; external browser profiles and downloaded modules stay live.
 $profileChangeKinds = @{
   'data\nativeSpaces.json' = 'File'
+  'data\spaces' = 'Directory'
   'data\nativeAssets.json' = 'File'
   'assets\library\catalog.json' = 'File'
   'Local Storage' = 'Directory'
