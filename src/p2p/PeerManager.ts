@@ -48,7 +48,7 @@ import { decodeDirectInvite, decodeLanInvite, encodeAllInvite, encodeDirectInvit
 
 export type { SignalingTier }
 export const SIGNALING_TIERS: SignalingTier[] = ['render', 'public', 'local', 'direct']
-export const RENDER_SIGNALING_HOST = 'lira-signaling.onrender.com'
+export const RENDER_SIGNALING_HOST = 'p01--lira--tj9yvq5j5cgs.code.run'
 const HOST_TRANSPORT_TIMEOUT_MS = 30_000
 const HOST_RECONNECT_DELAY_MS = 2500
 // Keep one attempt alive through the direct and both relay windows (8.5s).

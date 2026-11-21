@@ -203,7 +203,7 @@ test('navigation fits the viewport and its compact menu stays legible above the 
         } })
       })
       await page.getByRole('button', { name: 'Copiar link do convite', exact: true }).click()
-      await page.waitForFunction(() => window.copiedRoomInvite?.startsWith('https://lira-signaling.onrender.com/join#invite='))
+      await page.waitForFunction(() => window.copiedRoomInvite?.startsWith('https://p01--lira--tj9yvq5j5cgs.code.run/join#invite='))
       const copied = new URL(await page.evaluate(() => window.copiedRoomInvite))
       assert.equal(new URLSearchParams(copied.hash.slice(1)).get('invite'), 'LIRA-ALL:eyJ2ZXJzaW9uIjoxLCJyb29tIjoiUk9PTSIsInNpZ25hbGluZyI6InJlbmRlciJ9')
       await page.evaluate(() => { delete navigator.clipboard })

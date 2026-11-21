@@ -187,10 +187,10 @@ test('space invitation links reach the real app through Electron startup and a s
     })
     await t.test('pasting a link and clicking a chat link both use the existing join flow', async () => {
       await page.evaluate(() => window.inviteTesting.reset('Visitante'))
-      await page.getByPlaceholder('Cole o código, convite ou link').fill('https://lira-signaling.onrender.com/join#invite=PASTED')
+      await page.getByPlaceholder('Cole o código, convite ou link').fill('https://p01--lira--tj9yvq5j5cgs.code.run/join#invite=PASTED')
       await page.getByRole('button', { name: 'Entrar na sala', exact: true }).click()
       await space.filter({ hasText: 'PASTED' }).waitFor()
-      await page.evaluate(value => window.inviteTesting.chat(value), 'https://lira-signaling.onrender.com/join#invite=CHAT')
+      await page.evaluate(value => window.inviteTesting.chat(value), 'https://p01--lira--tj9yvq5j5cgs.code.run/join#invite=CHAT')
       await page.locator('#chat a').click()
       await space.filter({ hasText: 'CHAT' }).waitFor()
     })

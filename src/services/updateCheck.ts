@@ -1,8 +1,8 @@
 import { isNewerVersion } from '../utils/versionUtils'
 export { isNewerVersion } from '../utils/versionUtils'
 export const GITHUB_REPO = 'C1ean-dev/Lira'
-export const UPDATE_CACHE_URL = 'https://lira-signaling.onrender.com/updates/lira/latest'
-const ASSET_PREFIX = 'https://lira-signaling.onrender.com/updates/lira/assets/'
+export const UPDATE_CACHE_URL = 'https://p01--lira--tj9yvq5j5cgs.code.run/updates/lira/latest'
+const ASSET_PREFIX = 'https://p01--lira--tj9yvq5j5cgs.code.run/updates/lira/assets/'
 
 export interface UpdateInfo {
   hasUpdate: boolean

@@ -423,7 +423,7 @@ temporárias; o token administrativo fica somente no servidor. Configure
 
 `CLOUDFLARE_TURN_KEY_ID` e `CLOUDFLARE_TURN_API_TOKEN` no Render. O cliente usa
 
-`VITE_TURN_CREDENTIALS_URL` (padrão: `https://lira-signaling.onrender.com/turn/credentials`).
+`VITE_TURN_CREDENTIALS_URL` (padrão: `https://p01--lira--tj9yvq5j5cgs.code.run/turn/credentials`).
 
 Consulte [configuração e fallback TURN](docs/call-relays.md) para implantação.
 

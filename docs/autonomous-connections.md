@@ -9,7 +9,7 @@ direto. A sala pode ser usada localmente enquanto aguarda participantes.
 ### Entrar por link
 
 Na barra do espaço, **Copiar link do convite** copia um endereço HTTPS:
-`https://lira-signaling.onrender.com/join#invite=…`. Compartilhe o endereço completo
+`https://p01--lira--tj9yvq5j5cgs.code.run/join#invite=…`. Compartilhe o endereço completo
 no WhatsApp, em sites ou em outros mensageiros. O navegador abre a página do
 convite e tenta abrir o aplicativo automaticamente. Se o navegador bloquear essa
 tentativa, clique em **Abrir no Lira** e confirme a abertura quando solicitado.

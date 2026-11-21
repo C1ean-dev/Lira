@@ -27,7 +27,7 @@ describe('Update Service & Version Checker', () => {
       assets: [
         {
           name: 'Lira-Setup-2.0.0.exe',
-          browser_download_url: 'https://lira-signaling.onrender.com/updates/lira/assets/100',
+          browser_download_url: 'https://p01--lira--tj9yvq5j5cgs.code.run/updates/lira/assets/100',
         },
       ],
     }
@@ -42,7 +42,7 @@ describe('Update Service & Version Checker', () => {
     expect(updateInfo.hasUpdate).toBe(true)
     expect(updateInfo.latestVersion).toBe('v2.0.0')
     expect(updateInfo.downloadUrl).toBe(
-      'https://lira-signaling.onrender.com/updates/lira/assets/100'
+      'https://p01--lira--tj9yvq5j5cgs.code.run/updates/lira/assets/100'
     )
     expect(updateInfo.releaseNotes).toBe('Bug fixes and performance improvements')
   })
@@ -118,11 +118,11 @@ describe('Update Service & Version Checker', () => {
       assets: [
         {
           name: 'Lira-Setup-2.0.0.exe',
-          browser_download_url: 'https://lira-signaling.onrender.com/updates/lira/assets/100',
+          browser_download_url: 'https://p01--lira--tj9yvq5j5cgs.code.run/updates/lira/assets/100',
         },
         {
           name: 'Lira-v2.0.0.apk',
-          browser_download_url: 'https://lira-signaling.onrender.com/updates/lira/assets/101',
+          browser_download_url: 'https://p01--lira--tj9yvq5j5cgs.code.run/updates/lira/assets/101',
         },
       ],
     }
@@ -136,7 +136,7 @@ describe('Update Service & Version Checker', () => {
 
     expect(updateInfo.hasUpdate).toBe(true)
     expect(updateInfo.downloadUrl).toBe(
-      'https://lira-signaling.onrender.com/updates/lira/assets/101'
+      'https://p01--lira--tj9yvq5j5cgs.code.run/updates/lira/assets/101'
     )
 
     isAndroidSpy.mockRestore()
