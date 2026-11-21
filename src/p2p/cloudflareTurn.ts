@@ -43,5 +43,5 @@ export function createCloudflareTurnClient(endpoint: string, fetcher: Fetcher = 
 }
 
 export const loadCloudflareIceServers = createCloudflareTurnClient(
-  import.meta.env.VITE_TURN_CREDENTIALS_URL || 'https://lira-signaling.onrender.com/turn/credentials',
+  import.meta.env.VITE_TURN_CREDENTIALS_URL || 'https://p01--lira--tj9yvq5j5cgs.code.run/turn/credentials',
 )

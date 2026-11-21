@@ -9,7 +9,7 @@ const broker = vi.hoisted(() => ({
   servers: [
     { name: 'EMQX', host: 'broker.emqx.io', status: 'connected' },
     { name: 'HiveMQ', host: 'broker.hivemq.com', status: 'disconnected' },
-    { name: 'Render', host: 'lira-signaling.onrender.com', status: 'disconnected' },
+    { name: 'Render', host: 'p01--lira--tj9yvq5j5cgs.code.run', status: 'disconnected' },
   ],
   isResolving: false,
   feedback: null,
@@ -60,7 +60,7 @@ describe('public rooms server badge', () => {
     broker.servers[2].status = 'connected'
     const html = renderTab()
     expect(html).toContain('aria-label="Render: Conectado"')
-    expect(html).toContain('title="lira-signaling.onrender.com"')
+    expect(html).toContain('title="p01--lira--tj9yvq5j5cgs.code.run"')
     expect(html).toContain('aria-label="EMQX: Não conectado"')
     expect(html).toContain('aria-label="HiveMQ: Não conectado"')
   })

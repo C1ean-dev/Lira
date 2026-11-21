@@ -255,7 +255,7 @@ export function buildIssueMarkdown(payload: {
 }
 
 export const DEFAULT_REPORT_BACKEND_URL =
-  process.env.VITE_REPORT_BACKEND_URL || 'https://lira-signaling.onrender.com/report-issue'
+  process.env.VITE_REPORT_BACKEND_URL || 'https://p01--lira--tj9yvq5j5cgs.code.run/report-issue'
 
 export async function submitIssueToBackend(
   payload: {
