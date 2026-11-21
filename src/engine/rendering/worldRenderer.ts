@@ -14,6 +14,7 @@ import { getStaticLayer } from './staticLayerCache'
 import { FurnitureRenderer, resolveFurnitureDimensions } from './furnitureRenderer'
 import { furnitureDrawOrder } from './furnitureLayers'
 import { renderBedParticipant } from './bedRenderer'
+import { EasterEggManager } from '../easterEggs'
 
 export class WorldRenderer {
   static render(
@@ -242,6 +243,9 @@ export class WorldRenderer {
       if (allEntities.length > 1) allEntities.sort((a, b) => a.y - b.y)
 
       const showNameTags = useSettingsStore.getState().showNameTags ?? true
+      const easterEggs = EasterEggManager.getInstance()
+
+      easterEggs.renderGround(ctx, currentTime)
 
       for (const entity of allEntities) {
         if (entity.kind === 'player') {
@@ -250,6 +254,8 @@ export class WorldRenderer {
           PetRenderer.drawPet(ctx, entity.pet, entity.petConfig, currentTime, showNameTags)
         }
       }
+
+      easterEggs.renderOverlay(ctx, currentTime)
 
       for (const r of reactions) {
         const age = currentTime - r.createdAt
@@ -541,6 +547,8 @@ export class WorldRenderer {
     } finally {
       ctx.restore()
     }
+
+    EasterEggManager.getInstance().renderScreenOverlay(ctx, canvas.width, canvas.height, currentTime)
 
     if (useSettingsStore.getState().showFpsCounter) {
       ctx.save()

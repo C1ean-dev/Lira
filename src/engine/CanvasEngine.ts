@@ -5,9 +5,11 @@ import { checkCollision, checkZonePresence } from './physics/collision'
 import { findPath, hasLineOfSight } from './physics/pathfinding'
 import { WorldRenderer } from './rendering/worldRenderer'
 import { PetManager } from './pet/PetManager'
+import { EasterEggManager } from './easterEggs'
 import { useGameStore } from '../store/useGameStore'
 import { useMapStore } from '../store/useMapStore'
 import { useSettingsStore } from '../store/useSettingsStore'
+import { useBedStore } from '../store/useBedStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { getZoneDoorTarget } from '../utils/doorKnockHelper'
 import { findFurnitureSeatAt } from './physics/seating'
@@ -246,6 +248,7 @@ export class CanvasEngine {
     }
 
     this.update(deltaTime)
+    this.updateEasterEggs(deltaTime)
     this.render(currentTime)
 
     if (this.isRunning && useGameStore.getState().mapViewMode === 'immersive') {
@@ -435,6 +438,27 @@ export class CanvasEngine {
 
     const allActivePlayers = [local, ...Object.values(gameStore.remotePlayers)]
     PetManager.getInstance().update(deltaTime, allActivePlayers)
+  }
+
+  private updateEasterEggs(deltaTime: number) {
+    const gameStore = useGameStore.getState()
+    const local = gameStore.localPlayer
+    const players = [local]
+    for (const remote of Object.values(gameStore.remotePlayers)) {
+      if (remote.isDjBot || remote.id.startsWith('dj-')) continue
+      if (remote.id === local.id || (remote.gameId && remote.gameId === local.id)) continue
+      players.push(remote)
+    }
+
+    EasterEggManager.getInstance().update(deltaTime, {
+      localPlayer: local,
+      players,
+      map: useMapStore.getState().mapData,
+      roomKey: gameStore.roomId || '__local__',
+      bedSessions: useBedStore.getState().sessions,
+      getAssetById: (id) => useCustomAssetsStore.getState().getAssetById(id),
+      now: Date.now(),
+    })
   }
 
   private render(currentTime: number) {
