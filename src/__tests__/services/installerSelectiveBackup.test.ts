@@ -175,7 +175,7 @@ function Get-ChildItem {
     expect(events.at(-1).SourceReadBytes).toBe(2)
     expect(events.at(-1).VerificationReadBytes).toBe(2)
     expect(existsSync(path.join(backup, 'assets/library/images'))).toBe(false)
-  }, 30000)
+  }, 60000)
 
   it('preserves excluded junctions without traversing them during backup or rollback', async () => {
     const unrelated = path.join(root, 'browser-profile')

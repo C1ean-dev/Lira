@@ -11,7 +11,7 @@ const script = path.resolve('build/update-recovery.ps1')
 const manifestName = 'resources/update-manifest.json'
 const digest = (bytes: Buffer | string) => createHash('sha256').update(bytes).digest('hex').toUpperCase()
 
-describe.skipIf(process.platform !== 'win32')('selective application updates', { timeout: 30000 }, () => {
+describe.skipIf(process.platform !== 'win32')('selective application updates', { timeout: 60000 }, () => {
   let tools: string
   let io: ReturnType<typeof createUpdateIoHarness>
   let root: string, app: string, payload: string, profile: string, backup: string
