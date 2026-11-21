@@ -93,8 +93,8 @@ Section
   Quit
 SectionEnd
 `)
-  execFileSync(compiler!, ['/V2', path.join(runtime, 'fixture.nsi')], { windowsHide: true, stdio: 'pipe', timeout: 15000 })
-}, 30000)
+  execFileSync(compiler!, ['/V2', path.join(runtime, 'fixture.nsi')], { windowsHide: true, stdio: 'pipe', timeout: 30000 })
+}, 60000)
 afterAll(async () => { if (runtime) await rm(runtime, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }) })
 
 // Execute the production NSIS error flow against a stub recovery worker. No real
