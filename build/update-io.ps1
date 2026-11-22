@@ -3,6 +3,7 @@
 if ('LiraUpdateIO' -as [type]) { return }
 Add-Type -TypeDefinition @'
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -59,6 +60,9 @@ public static class LiraUpdateIO {
   private static byte[] GetBuffer() {
     return streamingBuffer ?? (streamingBuffer = new byte[1024 * 1024]);
   }
+  private static int ReadParallelism() {
+    return Math.Min(4, Math.Max(2, Environment.ProcessorCount));
+  }
   public static void PublishFile(string temporary, string destination) {
     if (File.Exists(destination)) File.Replace(temporary, destination, null);
     else File.Move(temporary, destination);
@@ -81,9 +85,13 @@ public static class LiraUpdateIO {
   }
 
   private static void NotifyProgress(Action progress) {
-    if (progress == null || progressClock.ElapsedMilliseconds - lastProgress < 250) return;
-    lastProgress = progressClock.ElapsedMilliseconds;
-    progress();
+    if (progress == null) return;
+    long now = progressClock.ElapsedMilliseconds;
+    long prev = Interlocked.Read(ref lastProgress);
+    if (now - prev < 250) return;
+    if (Interlocked.CompareExchange(ref lastProgress, now, prev) == prev) {
+      progress();
+    }
   }
 
   private static string ChildPath(string root, string name) {
@@ -108,6 +116,55 @@ public static class LiraUpdateIO {
     }
   }
 
+  private static void RequireRegularPathCached(string target, string stopAt, ConcurrentDictionary<string, byte> verifiedDirs) {
+    string current = target;
+    bool isLeaf = true;
+    while (current != null && !String.Equals(current, stopAt, StringComparison.OrdinalIgnoreCase)) {
+      if (!isLeaf && verifiedDirs.ContainsKey(current)) break;
+      try {
+        if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+          throw new IOException("Linked path: " + current);
+      } catch (FileNotFoundException) {
+      } catch (DirectoryNotFoundException) {
+      }
+      if (!isLeaf) verifiedDirs.TryAdd(current, 0);
+      current = Path.GetDirectoryName(current);
+      isLeaf = false;
+    }
+  }
+
+  public static void AssertRegularPath(string target) {
+    if (String.IsNullOrEmpty(target)) return;
+    RequireRegularPath(Path.GetFullPath(target).TrimEnd(Path.DirectorySeparatorChar), null);
+  }
+
+  public static void AssertRegularTree(string root) {
+    if (String.IsNullOrEmpty(root)) return;
+    string full = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar);
+    RequireRegularPath(full, null);
+    if (!Directory.Exists(full)) return;
+    var pending = new Stack<DirectoryInfo>();
+    pending.Push(new DirectoryInfo(full));
+    while (pending.Count > 0) {
+      foreach (FileSystemInfo item in pending.Pop().EnumerateFileSystemInfos()) {
+        if ((item.Attributes & FileAttributes.ReparsePoint) != 0)
+          throw new IOException("Linked path: " + item.FullName);
+        var dir = item as DirectoryInfo;
+        if (dir != null) pending.Push(dir);
+      }
+    }
+  }
+
+  private static void RunParallelWithProgress(Action work, Action progress) {
+    Task running = Task.Run(work);
+    try {
+      NotifyProgress(progress);
+      while (!running.Wait(250)) NotifyProgress(progress);
+    } finally {
+      running.GetAwaiter().GetResult();
+    }
+  }
+
   public static void CopyTree(string source, string destination, LiraUpdateFile[] files, string[] directories, Action progress) {
     source = Path.GetFullPath(source).TrimEnd(Path.DirectorySeparatorChar);
     destination = Path.GetFullPath(destination).TrimEnd(Path.DirectorySeparatorChar);
@@ -123,42 +180,104 @@ public static class LiraUpdateIO {
       if (!Directory.Exists(input)) throw new DirectoryNotFoundException(input);
       Directory.CreateDirectory(output);
     }
+    var verifiedSrc = new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
+    var verifiedDst = new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
     // Bound IO concurrency and keep all PowerShell/UI callbacks on the caller's thread.
     // Even a busy installer progress window must not pause file writes.
-    Task copying = Task.Run(delegate {
+    RunParallelWithProgress(delegate {
       Parallel.ForEach(files, new ParallelOptions { MaxDegreeOfParallelism = 2 }, delegate(LiraUpdateFile file) {
         string input = ChildPath(source, file.Name);
         string output = ChildPath(destination, file.Name);
-        RequireRegularPath(input, source);
-        RequireRegularPath(output, destination);
+        RequireRegularPathCached(input, source, verifiedSrc);
+        RequireRegularPathCached(output, destination, verifiedDst);
         Directory.CreateDirectory(Path.GetDirectoryName(output));
         string hash = CopyAndHash(input, output, file.Length, null);
         if (!String.IsNullOrEmpty(file.Hash) && !String.Equals(file.Hash, hash, StringComparison.OrdinalIgnoreCase))
           throw new IOException("Backup changed while copying: " + file.Name);
         file.Hash = hash;
       });
-    });
-    try {
-      NotifyProgress(progress);
-      while (!copying.Wait(250)) NotifyProgress(progress);
-    } finally {
-      // Drain every worker even if progress reporting throws: rollback must never race a writer.
-      copying.GetAwaiter().GetResult();
-    }
+    }, progress);
   }
 
   public static void VerifyTree(string directory, LiraUpdateFile[] files, bool moved, Action progress) {
     directory = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar);
     RequireRegularPath(directory, null);
     if (!Directory.Exists(directory)) throw new DirectoryNotFoundException(directory);
+    if (files == null || files.Length == 0) return;
+    var verifiedDirs = new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
+    RunParallelWithProgress(delegate {
+      Parallel.ForEach(files, new ParallelOptions { MaxDegreeOfParallelism = ReadParallelism() }, delegate(LiraUpdateFile file) {
+        string target = ChildPath(directory, file.Name);
+        RequireRegularPathCached(target, directory, verifiedDirs);
+        if (new FileInfo(target).Length != file.Length || (!moved &&
+            (String.IsNullOrEmpty(file.Hash) || !String.Equals(HashFile(target, null), file.Hash, StringComparison.OrdinalIgnoreCase))))
+          throw new IOException("Incomplete backup: " + file.Name);
+      });
+    }, progress);
+  }
+
+  public static void VerifyFiles(string directory, LiraUpdateFile[] files, Action progress) {
+    directory = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar);
+    RequireRegularPath(directory, null);
+    if (!Directory.Exists(directory)) throw new DirectoryNotFoundException(directory);
+    if (files == null || files.Length == 0) return;
+    var verifiedDirs = new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
+    RunParallelWithProgress(delegate {
+      Parallel.ForEach(files, new ParallelOptions { MaxDegreeOfParallelism = ReadParallelism() }, delegate(LiraUpdateFile file) {
+        string target = ChildPath(directory, file.Name);
+        RequireRegularPathCached(target, directory, verifiedDirs);
+        if (Directory.Exists(target)) throw new IOException("An update file is a directory: " + file.Name);
+        var info = new FileInfo(target);
+        if (!info.Exists || info.Length != file.Length ||
+            String.IsNullOrEmpty(file.Hash) ||
+            !String.Equals(HashFile(target, null), file.Hash, StringComparison.OrdinalIgnoreCase))
+          throw new IOException("Update file integrity mismatch: " + file.Name);
+      });
+    }, progress);
+  }
+
+  public static void VerifyFilesMetadata(string directory, LiraUpdateFile[] files) {
+    directory = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar);
+    RequireRegularPath(directory, null);
+    if (!Directory.Exists(directory)) throw new DirectoryNotFoundException(directory);
+    if (files == null || files.Length == 0) return;
+    var verifiedDirs = new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
     foreach (LiraUpdateFile file in files) {
       string target = ChildPath(directory, file.Name);
-      RequireRegularPath(target, directory);
-      if (new FileInfo(target).Length != file.Length || (!moved &&
-          (String.IsNullOrEmpty(file.Hash) || !String.Equals(HashFile(target, progress), file.Hash, StringComparison.OrdinalIgnoreCase))))
-        throw new IOException("Incomplete backup: " + file.Name);
-      NotifyProgress(progress);
+      RequireRegularPathCached(target, directory, verifiedDirs);
+      if (Directory.Exists(target)) throw new IOException("An update file is a directory: " + file.Name);
+      var info = new FileInfo(target);
+      if (!info.Exists || info.Length != file.Length)
+        throw new IOException("Update file integrity mismatch: " + file.Name);
     }
+  }
+
+  public static LiraUpdateFile[] InspectFiles(string directory, string[] names, Action progress) {
+    directory = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar);
+    RequireRegularPath(directory, null);
+    var results = new LiraUpdateFile[names == null ? 0 : names.Length];
+    if (results.Length == 0) return results;
+    var verifiedDirs = new ConcurrentDictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
+    RunParallelWithProgress(delegate {
+      Parallel.For(0, names.Length, new ParallelOptions { MaxDegreeOfParallelism = ReadParallelism() }, delegate(int i) {
+        string name = names[i];
+        string target = ChildPath(directory, name);
+        RequireRegularPathCached(target, directory, verifiedDirs);
+        if (Directory.Exists(target)) throw new IOException("An application file was replaced by a directory: " + name);
+        string parent = Path.GetDirectoryName(target);
+        while (parent != null && !String.Equals(parent, directory, StringComparison.OrdinalIgnoreCase)) {
+          if (File.Exists(parent)) throw new IOException("An application parent is a file: " + name);
+          parent = Path.GetDirectoryName(parent);
+        }
+        var info = new FileInfo(target);
+        if (!info.Exists) {
+          results[i] = new LiraUpdateFile { Name = name, Length = -1, Hash = null };
+        } else {
+          results[i] = new LiraUpdateFile { Name = name, Length = info.Length, Hash = HashFile(target, null) };
+        }
+      });
+    }, progress);
+    return results;
   }
 
   public static string CopyAndHash(string source, string destination, long expectedLength, Action progress) {
@@ -192,7 +311,7 @@ public static class LiraUpdateIO {
         int count;
         while ((count = input.Read(buffer, 0, buffer.Length)) > 0) {
           hash.TransformBlock(buffer, 0, count, buffer, 0);
-          VerificationReadBytes += count;
+          Interlocked.Add(ref VerificationReadBytes, count);
           NotifyProgress(progress);
         }
       }
