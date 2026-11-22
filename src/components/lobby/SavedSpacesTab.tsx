@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { Plus, LayoutGrid, Check, X, Copy, ArrowRight, Edit2, Trash2 } from 'lucide-react'
+import React, { useRef, useState } from 'react'
+import { Plus, LayoutGrid, Check, X, Copy, ArrowRight, Edit2, Trash2, Download, Upload } from 'lucide-react'
 import { SavedSpace } from '../../store/useSavedSpacesStore'
 import { ConfirmModal } from '../ConfirmModal'
 
@@ -22,6 +22,8 @@ interface Props {
   loading: boolean
   error?: string | null
   handleRegenerateCode?: (spaceId: string) => void
+  onExportSpace?: (spaceId: string) => void | Promise<void>
+  onImportSpacesFile?: (file: File) => void | Promise<void>
 }
 
 export const SavedSpacesTab: React.FC<Props> = ({
@@ -43,8 +45,11 @@ export const SavedSpacesTab: React.FC<Props> = ({
   loading,
   error,
   handleRegenerateCode,
+  onExportSpace,
+  onImportSpacesFile,
 }) => {
   const [spaceToDelete, setSpaceToDelete] = useState<{ id: string; name: string } | null>(null)
+  const importInputRef = useRef<HTMLInputElement | null>(null)
   return (
     <div className="p-4 sm:p-6 space-y-3.5 sm:space-y-4 overflow-y-auto flex-1">
       {error && (
@@ -57,14 +62,40 @@ export const SavedSpacesTab: React.FC<Props> = ({
           <h3 className="text-xs font-bold text-slate-200">Meus Espaços & Salas Salvas</h3>
           <p className="text-[11px] text-slate-400">Mapas completos com pisos, paredes, móveis e zonas</p>
         </div>
-        <button
-          type="button"
-          onClick={handleCreateNewSpace}
-          className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all active:scale-95"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>Novo Espaço</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {onImportSpacesFile && (
+            <>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".gz,.json,.lira-space"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  e.target.value = ''
+                  if (file) void onImportSpacesFile(file)
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => importInputRef.current?.click()}
+                className="px-2.5 py-1.5 rounded-xl bg-[#1a2030] hover:bg-[#232b40] border border-[#2a3142] text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95"
+                title="Importar espaço (.lira-space.json.gz ou nativeSpaces.json)"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Importar</span>
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={handleCreateNewSpace}
+            className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all active:scale-95"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Novo Espaço</span>
+          </button>
+        </div>
       </div>
 
       <div className="space-y-2.5 max-h-[400px] overflow-y-auto pr-1">
@@ -91,8 +122,8 @@ export const SavedSpacesTab: React.FC<Props> = ({
         ) : (
           savedSpaces.map((space) => {
             const isEditing = editingSpaceId === space.id
-            const totalZones = space.mapData.zones?.length || 0
-            const totalFurniture = space.mapData.furniture?.length || 0
+            const totalZones = space.zonesCount ?? space.mapData.zones?.length ?? 0
+            const totalFurniture = space.furnitureCount ?? space.mapData.furniture?.length ?? 0
 
             return (
               <div
@@ -181,6 +212,16 @@ export const SavedSpacesTab: React.FC<Props> = ({
                     >
                       <Copy className="w-3.5 h-3.5" />
                     </button>
+                    {onExportSpace && (
+                      <button
+                        type="button"
+                        onClick={() => void onExportSpace(space.id)}
+                        className="p-1.5 rounded-xl text-slate-400 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                        title="Exportar Espaço (.lira-space.json.gz)"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setSpaceToDelete({ id: space.id, name: space.name })}

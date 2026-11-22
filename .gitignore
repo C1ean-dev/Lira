@@ -88,6 +88,7 @@ out/
 native/bin/
 native/process-audio-capture/obj/
 *.apk
+src/data/spaces/
 
 # Editor / IDE settings
 .vscode/
