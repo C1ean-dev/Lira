@@ -328,4 +328,27 @@ function Get-PSDrive { param($Name,$PSProvider,$ErrorAction) return @{Free=0} }
     expect(existsSync(backup)).toBe(false)
     expect(readFileSync(path.join(profile, 'data/nativeSpaces.json'), 'utf8')).toBe('original save')
   })
+
+  it('backs up, applies via DeltaUpdate, and restores modular data/spaces directories without scope errors', () => {
+    put(profile, 'data/spaces/index.json', '{"version":1}')
+    put(profile, 'data/spaces/space-1.json.gz', 'compressed-space-v1')
+    put(profile, 'data/spaces/nested/extra.json', 'nested-space-file')
+
+    run('DeltaUpdate', { PayloadDir: payload })
+    expect(readFileSync(path.join(app, 'Lira.exe'), 'utf8')).toBe('new exe')
+    expect(readFileSync(path.join(backup, 'user-data/lira/data/spaces/index.json'), 'utf8')).toBe('{"version":1}')
+
+    put(profile, 'data/spaces/space-1.json.gz', 'mutated-by-new-version')
+    put(profile, 'data/spaces/space-2.json.gz', 'created-by-new-version')
+    run('Restore')
+    expect(readFileSync(path.join(app, 'Lira.exe'), 'utf8')).toBe('old exe')
+    expect(readFileSync(path.join(profile, 'data/spaces/space-1.json.gz'), 'utf8')).toBe('compressed-space-v1')
+    expect(readFileSync(path.join(profile, 'data/spaces/nested/extra.json'), 'utf8')).toBe('nested-space-file')
+    expect(existsSync(path.join(profile, 'data/spaces/space-2.json.gz'))).toBe(false)
+
+    run('DeltaUpdate', { PayloadDir: payload })
+    run('Commit')
+    expect(existsSync(path.join(root, 'lira.update-pending.json'))).toBe(false)
+    expect(readFileSync(path.join(app, 'Lira.exe'), 'utf8')).toBe('new exe')
+  })
 })

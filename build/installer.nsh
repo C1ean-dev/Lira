@@ -158,10 +158,12 @@
   ${OrIfNot} ${FileExists} "$INSTDIR\resources\app.asar"
     Abort "Os arquivos da nova versao estao incompletos."
   ${EndIf}
-  nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\update-recovery.ps1" -Action Verify -InstallDir "$INSTDIR" -UserDataDir "$APPDATA\${APP_PACKAGE_NAME}"`
-  Pop $0
-  ${If} $0 != 0
-    Abort "A verificacao dos arquivos instalados falhou."
+  ${If} $liraDeltaUpdate != "true"
+    nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\update-recovery.ps1" -Action Verify -InstallDir "$INSTDIR" -UserDataDir "$APPDATA\${APP_PACKAGE_NAME}"`
+    Pop $0
+    ${If} $0 != 0
+      Abort "A verificacao dos arquivos instalados falhou."
+    ${EndIf}
   ${EndIf}
   # Inicia o aplicativo atualizado imediatamente apos a conclusao da instalacao
   !insertmacro LogToInstallFile `[customInstall] Iniciando app atualizado: $appExe`

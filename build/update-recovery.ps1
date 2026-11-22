@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true)]
-  [ValidateSet('Backup', 'Apply', 'Verify', 'Restore', 'Commit', 'Cleanup')]
+  [ValidateSet('Backup', 'Apply', 'DeltaUpdate', 'Verify', 'Restore', 'Commit', 'Cleanup')]
   [string]$Action,
   [Parameter(Mandatory = $true)]
   [string]$InstallDir,
@@ -12,7 +12,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-if ($Action -in @('Backup', 'Apply', 'Verify', 'Restore', 'Commit')) { . "$PSScriptRoot\update-io.ps1" }
+if ($Action -in @('Backup', 'Apply', 'DeltaUpdate', 'Verify', 'Restore', 'Commit')) { . "$PSScriptRoot\update-io.ps1" }
 
 function Get-ManagedPath([string]$Target) {
   $absolute = [IO.Path]::GetFullPath($Target).TrimEnd('\')
@@ -59,6 +59,10 @@ $profileChangeKinds = @{
 $profileChangeParents = @('data', 'assets', 'assets\library')
 
 function Assert-RegularPath([string]$Target) {
+  if ('LiraUpdateIO' -as [type]) {
+    [LiraUpdateIO]::AssertRegularPath($Target)
+    return
+  }
   $ancestor = $Target
   while ($ancestor) {
     if (Test-Path -LiteralPath $ancestor) {
@@ -72,6 +76,10 @@ function Assert-RegularPath([string]$Target) {
 
 function Assert-RegularTree([string]$Target) {
   # Reject junctions and symlinks before any recursive copy/removal, including ancestors.
+  if ('LiraUpdateIO' -as [type]) {
+    [LiraUpdateIO]::AssertRegularTree($Target)
+    return
+  }
   Assert-RegularPath $Target
   if (Test-Path -LiteralPath $Target) {
     foreach ($item in Get-ChildItem -LiteralPath $Target -Recurse -Force) {
@@ -218,9 +226,18 @@ function Assert-ProfileChanges($Profile) {
     $seenParents += $parentState.Name
   }
   if ($seenParents.Count -ne $profileChangeParents.Count) { throw 'Missing profile parent state.' }
+  $directoryTargets = @($profileChangeKinds.Keys | Where-Object { $profileChangeKinds[$_] -eq 'Directory' })
   foreach ($directory in $Profile.Directories) {
-    if ($directory -notin $profileChangeParents -and $directory -ne 'Local Storage' -and
-        -not $directory.StartsWith('Local Storage\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Directory outside mutable profile scope.' }
+    $allowed = ($directory -in $profileChangeParents)
+    if (-not $allowed) {
+      foreach ($dirTarget in $directoryTargets) {
+        if ($directory -eq $dirTarget -or $directory.StartsWith($dirTarget + '\', [StringComparison]::OrdinalIgnoreCase)) {
+          $allowed = $true
+          break
+        }
+      }
+    }
+    if (-not $allowed) { throw 'Directory outside mutable profile scope.' }
   }
 }
 
@@ -547,9 +564,13 @@ switch ($Action) {
     if (-not $PayloadDir) { throw 'Missing incoming application directory.' }
     Apply-Delta $PayloadDir
   }
+  'DeltaUpdate' {
+    if (-not $PayloadDir) { throw 'Missing incoming application directory.' }
+    Invoke-DeltaUpdate $PayloadDir
+  }
   'Verify' {
     $manifest = Read-DeltaManifest $installPath
-    foreach ($file in $manifest.Files) { Assert-DeltaFile $installPath $file }
+    Assert-DeltaFilesOnDisk $installPath $manifest.Files
     $null = Get-DeltaDescriptor $installPath 'Uninstall Lira.exe'
   }
   'Restore' {
@@ -649,7 +670,7 @@ switch ($Action) {
       if ($snapshot.PSObject.Properties.Name -contains 'FormatVersion' -and $snapshot.FormatVersion -eq 6) {
         if ($snapshot.Phase -ne 'Applied') { throw 'The differential update has not finished.' }
         $recovery = Read-Recovery
-        foreach ($file in $recovery.Snapshot.NewFiles) { Assert-DeltaFile $installPath $file }
+        [LiraUpdateIO]::VerifyFilesMetadata($installPath, (ConvertTo-UpdateFiles $recovery.Snapshot.NewFiles))
       }
       Remove-Item -LiteralPath $pendingPath -Force
     }
