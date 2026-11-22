@@ -243,6 +243,7 @@ export class MediaManager {
       snrDb: number
       recommendedMode: AudioProcessorMode
       recommendedSensitivity: number
+      gateMode: SensitivityMode
       rawAudioUrl?: string
       processedAudioUrl?: string
       rawWaveform?: number[]
@@ -255,12 +256,18 @@ export class MediaManager {
     }> {
       const state = useMediaStore.getState()
       const deviceId = state.selectedAudioInput
+      const gateMode: SensitivityMode = state.sensitivityMode === 'manual' ? 'manual' : 'auto'
       state.setIsCalibrating(true)
       try {
         const calibrator = new MicCalibrator()
-        const result = await calibrator.calibrate(inputStream, durationMs, (p) => {
-          onProgress?.(p.elapsedMs, p.totalMs, p.currentRmsDb, p.liveWaveform)
-        })
+        const result = await calibrator.calibrate(
+          inputStream,
+          durationMs,
+          (p) => {
+            onProgress?.(p.elapsedMs, p.totalMs, p.currentRmsDb, p.liveWaveform)
+          },
+          { gateMode }
+        )
         const cal = {
           noiseFloorDb: result.noiseFloorDb,
           peakRmsDb: result.peakRmsDb,
@@ -270,10 +277,6 @@ export class MediaManager {
           calibratedAt: Date.now(),
         }
         state.setMicCalibration(deviceId, cal)
-        state.setManualSensitivityThreshold(result.recommendedSensitivity)
-        if (state.sensitivityMode === 'manual') {
-          this.updateSensitivity('manual', result.recommendedSensitivity)
-        }
 
         return {
           noiseFloorDb: cal.noiseFloorDb,
@@ -281,6 +284,7 @@ export class MediaManager {
           snrDb: cal.snrDb,
           recommendedMode: cal.recommendedMode,
           recommendedSensitivity: cal.recommendedSensitivity,
+          gateMode: result.gateMode ?? gateMode,
           rawAudioUrl: result.rawAudioUrl,
           processedAudioUrl: result.processedAudioUrl,
           rawWaveform: result.rawWaveform,

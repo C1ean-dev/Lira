@@ -2,6 +2,7 @@
 export interface AutoGateConfig {
   minOpenRms: number
   minCloseRms: number
+  initialFloorRms?: number
 }
 
 export const AUTO_GATE = {
@@ -18,6 +19,30 @@ export const AUTO_GATE = {
   MAX_STEP_MS: 250,
 } as const
 
+export const GATE_RMS_SCALE = 6
+export const MIN_MANUAL_OPEN_RMS = 0.0045
+export const MIN_RECOMMENDED_MANUAL_PERCENT = Math.round(MIN_MANUAL_OPEN_RMS * GATE_RMS_SCALE * 100)
+export const MAX_RECOMMENDED_MANUAL_PERCENT = Math.round(
+  AUTO_GATE.MAX_FLOOR_RMS * AUTO_GATE.OPEN_RATIO * GATE_RMS_SCALE * 100
+)
+
+export function calculateRecommendedSensitivity(noiseFloorRms: number): number {
+  const safeRms = Number.isFinite(noiseFloorRms) && noiseFloorRms > 0 ? noiseFloorRms : 0
+  const openRms = Math.max(MIN_MANUAL_OPEN_RMS, safeRms * AUTO_GATE.OPEN_RATIO)
+  const percent = Math.round(openRms * GATE_RMS_SCALE * 100)
+  return Math.max(MIN_RECOMMENDED_MANUAL_PERCENT, Math.min(MAX_RECOMMENDED_MANUAL_PERCENT, percent))
+}
+
+export function calculateRecommendedSensitivityFromDb(noiseFloorDb: number): number {
+  if (!Number.isFinite(noiseFloorDb)) return MIN_RECOMMENDED_MANUAL_PERCENT
+  return calculateRecommendedSensitivity(Math.pow(10, noiseFloorDb / 20))
+}
+
+function clampInitialFloor(value?: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return AUTO_GATE.INITIAL_FLOOR_RMS
+  return Math.min(AUTO_GATE.MAX_FLOOR_RMS, Math.max(AUTO_GATE.MIN_FLOOR_RMS, value))
+}
+
 export class AutoGate {
   private floorRms: number = AUTO_GATE.INITIAL_FLOOR_RMS
   private lastMs: number | null = null
@@ -28,6 +53,7 @@ export class AutoGate {
     if (!(config.minCloseRms > 0 && config.minCloseRms < config.minOpenRms)) {
       throw new RangeError('AutoGate: need 0 < minCloseRms < minOpenRms')
     }
+    this.floorRms = clampInitialFloor(config.initialFloorRms)
   }
 
   get floor(): number {
@@ -43,7 +69,7 @@ export class AutoGate {
   }
 
   reset(): void {
-    this.floorRms = AUTO_GATE.INITIAL_FLOOR_RMS
+    this.floorRms = clampInitialFloor(this.config.initialFloorRms)
     this.lastMs = null
     this.loudMs = 0
     this.loudMin = 0
