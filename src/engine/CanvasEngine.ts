@@ -5,11 +5,10 @@ import { checkCollision, checkZonePresence } from './physics/collision'
 import { findPath, hasLineOfSight } from './physics/pathfinding'
 import { WorldRenderer } from './rendering/worldRenderer'
 import { PetManager } from './pet/PetManager'
-import { EasterEggManager } from './easterEggs'
+import { AvatarEffectsManager } from './avatarEffects'
 import { useGameStore } from '../store/useGameStore'
 import { useMapStore } from '../store/useMapStore'
 import { useSettingsStore } from '../store/useSettingsStore'
-import { useBedStore } from '../store/useBedStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { getZoneDoorTarget } from '../utils/doorKnockHelper'
 import { findFurnitureSeatAt } from './physics/seating'
@@ -248,7 +247,7 @@ export class CanvasEngine {
     }
 
     this.update(deltaTime)
-    this.updateEasterEggs(deltaTime)
+    this.updateAvatarEffects(deltaTime)
     this.render(currentTime)
 
     if (this.isRunning && useGameStore.getState().mapViewMode === 'immersive') {
@@ -440,7 +439,7 @@ export class CanvasEngine {
     PetManager.getInstance().update(deltaTime, allActivePlayers)
   }
 
-  private updateEasterEggs(deltaTime: number) {
+  private updateAvatarEffects(deltaTime: number) {
     const gameStore = useGameStore.getState()
     const local = gameStore.localPlayer
     const players = [local]
@@ -450,13 +449,9 @@ export class CanvasEngine {
       players.push(remote)
     }
 
-    EasterEggManager.getInstance().update(deltaTime, {
-      localPlayer: local,
+    AvatarEffectsManager.getInstance().update(deltaTime, {
       players,
-      map: useMapStore.getState().mapData,
       roomKey: gameStore.roomId || '__local__',
-      bedSessions: useBedStore.getState().sessions,
-      getAssetById: (id) => useCustomAssetsStore.getState().getAssetById(id),
       now: Date.now(),
     })
   }
