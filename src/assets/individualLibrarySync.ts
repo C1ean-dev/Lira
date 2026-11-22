@@ -1,4 +1,4 @@
-import { buildLibrary, openLibrary, knownLibraryImage, imageDataUrl, imageIdentity, type LibraryCatalog, type LibraryPacket } from './individualLibrary'
+import { buildLibrary, openLibrary, knownLibraryImage, imageDataUrl, imageIdentity, registerPendingLibraryImage, type LibraryCatalog, type LibraryPacket } from './individualLibrary'
 import type { AtlasDocument } from './atlasFormat'
 import { materializeSpriteDocument } from '../utils/rasterImageSource'
 
@@ -66,7 +66,9 @@ export class IndividualLibrarySync {
       if (parts.length !== message.total) return
       const data = parts.join('')
       if (await imageIdentity(data) !== message.name) { this.pending.delete(message.id); throw new Error('Assinatura da imagem inválida') }
-      item.urls.set(message.name, data); item.parts.delete(message.name); item.missing.delete(message.name)
+      const needsShortUrl = data.length >= 8192 || item.catalog.document.includes(`<Sprite image="${message.name}"`)
+      item.urls.set(message.name, needsShortUrl ? registerPendingLibraryImage(message.name, data) : data)
+      item.parts.delete(message.name); item.missing.delete(message.name)
       if (!item.missing.size) {
         this.pending.delete(message.id)
         await commit(openLibrary(item.catalog, name => item.urls.get(name)!))

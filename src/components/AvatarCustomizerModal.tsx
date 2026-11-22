@@ -284,21 +284,21 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-md p-2 sm:p-4 animate-in fade-in duration-200 select-none">
-      <div className="bg-[#1e1f22] border border-[#2b2d31] rounded-2xl sm:rounded-3xl w-full max-w-5xl lg:max-w-6xl overflow-hidden shadow-2xl flex flex-col h-[94vh] sm:h-[680px]">
-        <div className="flex flex-wrap items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3 border-b border-[#2b2d31] bg-[#18191c] gap-2">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-lira-ground/80 p-2 sm:p-4 select-none font-mono text-lira-ink">
+      <div className="bg-lira-panel border border-dashed border-lira-rule rounded-[12px] w-full max-w-5xl lg:max-w-6xl overflow-hidden flex flex-col h-[94vh] sm:h-[680px]">
+        <div className="flex flex-wrap items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3 border-b border-dashed border-lira-rule/60 bg-lira-sidebar gap-2">
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <h2 className="text-sm sm:text-base font-extrabold text-slate-100 tracking-tight">Editar Avatar</h2>
-            <div className="hidden sm:block h-4 w-px bg-[#2b2d31]" />
-            <div className="flex items-center gap-1.5 bg-[#2b2d31] px-2.5 py-1 rounded-xl border border-[#383a40]">
-              <span className="text-[11px] font-semibold text-slate-400">Nome:</span>
+            <h2 className="text-sm sm:text-base font-display font-bold text-lira-accent tracking-tight">Editar Avatar</h2>
+            <div className="hidden sm:block h-4 w-px bg-lira-quiet" />
+            <div className="flex items-center gap-1.5 bg-lira-ground px-2.5 py-1 rounded-[8px] border border-lira-rule">
+              <span className="text-[11px] font-mono font-semibold text-lira-muted">Nome:</span>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Seu Nickname"
                 maxLength={32}
-                className="bg-transparent text-xs font-bold text-slate-100 focus:outline-none focus:text-white w-24 sm:w-36 md:w-48"
+                className="bg-transparent text-xs font-mono font-bold text-lira-ink focus:outline-none w-24 sm:w-36 md:w-48"
               />
             </div>
 
@@ -307,32 +307,32 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
               options={statusDropdownOptions}
               onChange={setStatus}
               labelPrefix="Status:"
-              buttonClassName="bg-[#2b2d31] hover:bg-[#34373d] border-[#383a40] text-xs py-1"
+              buttonClassName="bg-lira-surface hover:border-lira-accent border-lira-rule text-xs py-1"
             />
 
             <div className="hidden sm:block">
               <CustomDropdown<'show' | 'hide'>
                 value={showNameTags ? 'show' : 'hide'}
                 options={[
-                  { value: 'show', label: 'Mostrar', icon: <Eye className="w-3.5 h-3.5 text-blue-400" /> },
-                  { value: 'hide', label: 'Ocultar', icon: <EyeOff className="w-3.5 h-3.5 text-slate-400" /> },
+                  { value: 'show', label: 'Mostrar', icon: <Eye className="w-3.5 h-3.5 text-lira-accent" /> },
+                  { value: 'hide', label: 'Ocultar', icon: <EyeOff className="w-3.5 h-3.5 text-lira-muted" /> },
                 ]}
                 onChange={(val) => setShowNameTags(val === 'show')}
                 labelPrefix="Nomes:"
-                buttonClassName="bg-[#2b2d31] hover:bg-[#34373d] border-[#383a40] text-xs py-1"
+                buttonClassName="bg-lira-surface hover:border-lira-accent border-lira-rule text-xs py-1"
                 title="Mostrar ou ocultar nomes em cima do personagem e do pet"
               />
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-[#2b2d31] transition-colors ml-auto sm:ml-0"
+            className="p-1.5 rounded-[8px] border border-transparent text-lira-muted hover:text-lira-ink hover:bg-lira-surface hover:border-lira-rule transition-colors ml-auto sm:ml-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="flex md:hidden overflow-x-auto p-1.5 bg-[#18191c] border-b border-[#2b2d31] gap-1.5 shrink-0">
+        <div className="flex md:hidden overflow-x-auto p-1.5 bg-lira-sidebar border-b border-dashed border-lira-rule/60 gap-1.5 shrink-0">
           {CATEGORIES.map((cat) => {
             const Icon = cat.icon
             const isActive = activeCategory === cat.id
@@ -340,10 +340,10 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
               <button
                 key={cat.id}
                 onClick={() => setActiveCategory(cat.id as CategoryKey)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-xs font-mono font-bold whitespace-nowrap transition-colors border ${
                   isActive
-                    ? 'bg-[#3b82f6] text-white shadow-md shadow-blue-500/20'
-                    : 'text-slate-300 hover:bg-[#2b2d31] hover:text-white bg-[#222428]'
+                    ? 'bg-lira-accent text-lira-ground border-lira-accent'
+                    : 'text-lira-muted hover:bg-lira-surface hover:text-lira-ink bg-lira-panel border-lira-quiet'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5 shrink-0" />
@@ -354,7 +354,7 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
         </div>
 
         <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
-          <CategoryTabs activeCategory={activeCategory} onSelectCategory={setActiveCategory} className="hidden md:flex w-48 bg-[#18191c] border-r border-[#2b2d31] p-3 flex-col gap-1 overflow-y-auto shrink-0" />
+          <CategoryTabs activeCategory={activeCategory} onSelectCategory={setActiveCategory} className="hidden md:flex w-48 bg-lira-sidebar border-r border-lira-quiet p-3 flex-col gap-1 overflow-y-auto shrink-0" />
 
         {activeCategory !== 'profile' && (
           <AvatarPreviewCanvas
@@ -365,13 +365,13 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
             localPlayer={localPlayer}
             onRandomize={handleRandomize}
             showNameTags={showNameTags}
-            className="md:hidden w-full h-28 sm:h-36 bg-[#1e1f22] border-b border-[#2b2d31] relative flex items-center justify-center p-1.5 shrink-0 overflow-hidden"
+            className="md:hidden w-full h-28 sm:h-36 bg-lira-panel border-b border-lira-quiet relative flex items-center justify-center p-1.5 shrink-0 overflow-hidden"
             canvasWidth={320}
             canvasHeight={140}
           />
         )}
 
-        <div className="flex-1 bg-[#2b2d31] flex flex-col justify-between p-2 sm:p-5 overflow-y-auto">
+        <div className="flex-1 bg-lira-panel flex flex-col justify-between p-2 sm:p-5 overflow-y-auto">
           {activeCategory === 'profile' ? (
             <ProfileSettingsPanel
                 name={name}
@@ -414,20 +414,20 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
             localPlayer={localPlayer}
             onRandomize={handleRandomize}
             showNameTags={showNameTags}
-            className="hidden md:flex w-80 bg-[#1e1f22] border-l border-[#2b2d31] relative items-center justify-center p-4 shrink-0 overflow-hidden"
+            className="hidden md:flex w-80 bg-lira-sidebar border-l border-lira-quiet relative items-center justify-center p-4 shrink-0 overflow-hidden"
           />
         </div>
 
-        <div className="p-3 sm:p-4 border-t border-[#2b2d31] bg-[#18191c] flex items-center justify-end gap-3 shrink-0">
+        <div className="p-3 sm:p-4 border-t border-dashed border-lira-rule/60 bg-lira-sidebar flex items-center justify-end gap-3 shrink-0">
           <button
             onClick={onClose}
-            className="px-4 sm:px-5 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-[#2b2d31] transition-colors"
+            className="px-4 sm:px-5 py-2 rounded-[8px] text-xs font-mono font-bold text-lira-muted hover:text-lira-ink bg-lira-surface border border-lira-rule hover:border-lira-accent transition-colors"
           >
             Cancelar
           </button>
           <button
             onClick={handleSave}
-            className="px-6 sm:px-7 py-2 sm:py-2.5 rounded-xl text-xs font-extrabold bg-[#3b82f6] hover:bg-blue-500 text-white shadow-lg shadow-blue-500/30 transition-all active:scale-95 flex items-center gap-1.5"
+            className="px-6 sm:px-7 py-2 sm:py-2.5 rounded-[8px] text-xs font-mono font-extrabold bg-lira-accent hover:bg-lira-ink text-lira-ground border-2 border-lira-accent hover:border-lira-ink transition-colors flex items-center gap-1.5"
           >
             <Check className="w-4 h-4" />
             <span>Feito</span>

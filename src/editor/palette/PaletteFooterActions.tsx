@@ -40,13 +40,13 @@ export const PaletteFooterActions: React.FC<Props> = ({
   }
 
   return (
-    <div className="p-2 sm:p-3 border-t border-[#2a3142] bg-[#12151d]/80 flex gap-1.5 sm:gap-2">
+    <div className="p-2 sm:p-3 border-t border-dashed border-lira-rule/60 bg-lira-sidebar flex gap-1.5 sm:gap-2 font-mono">
       <button
         onClick={handleToggleEraser}
-        className={`flex-1 py-1.5 sm:py-2 px-2 sm:px-3 rounded-xl text-[11px] sm:text-xs font-medium flex items-center justify-center gap-1.5 sm:gap-2 transition-all ${
+        className={`flex-1 py-1.5 sm:py-2 px-2 sm:px-3 rounded-[8px] text-[11px] sm:text-xs font-mono font-bold flex items-center justify-center gap-1.5 sm:gap-2 transition-colors border ${
           activeTool === 'eraser'
-            ? 'bg-rose-600 text-white shadow-md ring-2 ring-rose-500/30'
-            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            ? 'bg-lira-error text-lira-ground border-lira-error'
+            : 'bg-lira-surface text-lira-muted border-lira-rule hover:text-lira-ink hover:border-lira-accent'
         }`}
         title={`Ativar borracha para apagar ${
           eraserTarget === 'floor'
@@ -64,10 +64,10 @@ export const PaletteFooterActions: React.FC<Props> = ({
 
       <button
         onClick={onResetWorkspace}
-        className="py-1.5 sm:py-2 px-2 sm:px-3 rounded-xl text-[11px] sm:text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center gap-1.5 transition-all shrink-0"
+        className="py-1.5 sm:py-2 px-2 sm:px-3 rounded-[8px] text-[11px] sm:text-xs font-mono font-bold bg-lira-surface hover:border-lira-amber border border-lira-rule text-lira-muted hover:text-lira-ink flex items-center gap-1.5 transition-colors shrink-0"
         title="Limpar e reiniciar mapa em branco"
       >
-        <RotateCcw className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
+        <RotateCcw className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-lira-amber" />
         <span>Limpar Espaço</span>
       </button>
     </div>

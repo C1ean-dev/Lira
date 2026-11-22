@@ -61,7 +61,7 @@ export const SpaceShell: React.FC<Props> = ({
       onDisconnect={onDisconnect}
     />
 
-    <main className="relative flex-1 w-full overflow-hidden flex">
+    <main className="relative flex-1 w-full overflow-hidden flex bg-lira-ground text-lira-ink">
       <MapViewport />
       <AssetPalette />
       <ChatDrawer />

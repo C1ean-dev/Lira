@@ -3,6 +3,7 @@ import { Radio, RefreshCw, Search, X, Globe, Users, Check, Copy, ArrowRight, Log
 import { PublicRoomInfo } from '../../types/game'
 import { useBrokerStatus } from '../../hooks/useBrokerStatus'
 import { isAndroid } from '../../utils/platform'
+import { Button, Input, Badge, Card } from '../ui'
 
 interface Props {
   publicRooms: PublicRoomInfo[]
@@ -65,47 +66,51 @@ export const PublicRoomsTab: React.FC<Props> = ({
   }
 
   return (
-    <div className="p-5 space-y-3.5 overflow-y-auto flex-1 flex flex-col">
+    <div className="p-5 space-y-3.5 overflow-y-auto flex-1 flex flex-col font-mono text-lira-ink bg-lira-panel">
       <div className="space-y-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="relative">
-              <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
-              <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <Radio className="w-4 h-4 text-lira-online" />
+              <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-lira-online" />
             </div>
             <div>
-              <h3 className="text-xs font-bold text-slate-100 flex items-center gap-2">
+              <h3 className="font-display text-sm font-bold text-lira-accent flex items-center gap-2">
                 Hub de Salas Públicas
-                <span className="text-[10px] font-normal px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                <Badge variant="online">
                   {publicRooms.length} {publicRooms.length === 1 ? 'sala ativa' : 'salas ativas'}
-                </span>
+                </Badge>
               </h3>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5">
             {brokerStatus === 'disconnected' && (
-              <button
+              <Button
                 type="button"
+                variant="destructive"
+                size="sm"
                 onClick={resolveConnection}
                 disabled={isResolving}
-                className="flex items-center gap-2 px-3 py-1 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-rose-300 text-xs font-bold transition-all cursor-pointer animate-pulse"
+                className="cursor-pointer"
                 title="Broker desconectado. Clique para tentar resolver a conexão."
               >
-                <span className="w-2 h-2 rounded-full bg-rose-500" />
+                <span className="w-2 h-2 rounded-full bg-lira-error" />
                 <span>Não conectado — aperte aqui para tentar resolver</span>
-              </button>
+              </Button>
             )}
 
-            <button
+            <Button
               type="button"
+              variant="quiet"
+              size="sm"
               onClick={handleManualRefresh}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#12151d] hover:bg-slate-800 border border-[#2a3142] text-slate-200 hover:text-white text-xs font-semibold transition-all cursor-pointer"
+              className="cursor-pointer"
               title="Atualizar lista de salas públicas"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               <span>Atualizar</span>
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -120,18 +125,18 @@ export const PublicRoomsTab: React.FC<Props> = ({
                 role="status"
                 aria-label={`${server.name}: ${label}`}
                 title={server.host}
-                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border text-xs ${
+                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-[8px] border text-xs font-mono ${
                   connected
-                    ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
+                    ? 'bg-lira-online/15 border-lira-online/40 text-lira-online'
                     : connecting
-                      ? 'bg-blue-500/10 border-blue-500/25 text-blue-400'
-                      : 'bg-[#12151d] border-[#2a3142] text-slate-400'
+                      ? 'bg-lira-surface border-lira-rule text-lira-accent'
+                      : 'bg-lira-ground border-lira-quiet text-lira-muted'
                 }`}
               >
                 {connecting ? (
                   <RefreshCw className="w-3 h-3 animate-spin" />
                 ) : (
-                  <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                  <span className={`w-2 h-2 rounded-full ${connected ? 'bg-lira-online' : 'bg-lira-muted'}`} />
                 )}
                 <span className="font-semibold">{server.name}</span>
                 <span>{label}</span>
@@ -141,16 +146,16 @@ export const PublicRoomsTab: React.FC<Props> = ({
         </div>
 
         {error && (
-          <div className="text-xs p-2.5 rounded-xl border border-rose-500/40 bg-rose-500/15 text-rose-300 flex items-center justify-between gap-2 animate-in fade-in">
+          <div className="text-xs p-2.5 rounded-[8px] border border-lira-error/40 bg-lira-error/15 text-lira-error flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0" />
+              <span className="w-2 h-2 rounded-full bg-lira-error shrink-0" />
               <span>{error}</span>
             </div>
             {setError && (
               <button
                 type="button"
                 onClick={() => setError(null)}
-                className="text-rose-400 hover:text-rose-200 p-0.5 cursor-pointer"
+                className="text-lira-error hover:text-lira-ink p-0.5 cursor-pointer"
                 title="Fechar aviso"
               >
                 <X className="w-3.5 h-3.5" />
@@ -161,14 +166,14 @@ export const PublicRoomsTab: React.FC<Props> = ({
 
         {feedback && (
           <div
-            className={`text-xs p-2.5 rounded-xl border flex items-center justify-between gap-2 animate-in fade-in ${
+            className={`text-xs p-2.5 rounded-[8px] border flex items-center justify-between gap-2 ${
               feedback.type === 'success'
-                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                ? 'bg-lira-online/15 border-lira-online/40 text-lira-online'
+                : 'bg-lira-error/15 border-lira-error/40 text-lira-error'
             }`}
           >
             <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${feedback.type === 'success' ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+              <span className={`w-2 h-2 rounded-full ${feedback.type === 'success' ? 'bg-lira-online' : 'bg-lira-error'}`} />
               <span>{feedback.text}</span>
             </div>
             {feedback.type === 'error' && (
@@ -176,7 +181,7 @@ export const PublicRoomsTab: React.FC<Props> = ({
                 type="button"
                 onClick={resolveConnection}
                 disabled={isResolving}
-                className="text-[11px] font-bold underline hover:text-rose-200 cursor-pointer"
+                className="text-[11px] font-bold underline hover:text-lira-ink cursor-pointer"
               >
                 Tentar Novamente
               </button>
@@ -192,19 +197,19 @@ export const PublicRoomsTab: React.FC<Props> = ({
           className="flex items-center gap-2"
         >
           <div className="relative flex-1">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-lira-muted" />
+            <Input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Buscar por nome da sala ou digite o código para entrar..."
-              className="w-full bg-[#12151d] border border-[#2a3142] rounded-xl pl-8 pr-8 py-2 text-xs text-slate-100 placeholder-slate-400 focus:outline-none focus:border-indigo-500"
+              className="pl-8 pr-8"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 cursor-pointer"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-lira-muted hover:text-lira-ink p-0.5 cursor-pointer"
                 title="Limpar pesquisa"
               >
                 <X className="w-3 h-3" />
@@ -212,10 +217,12 @@ export const PublicRoomsTab: React.FC<Props> = ({
             )}
           </div>
 
-          <button
+          <Button
             type="submit"
+            variant="primary"
+            size="sm"
             disabled={!searchQuery.trim() || loading}
-            className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all active:scale-95 shrink-0 cursor-pointer"
+            className="h-9 cursor-pointer"
             title="Entrar na sala com este código ou nome"
           >
             {loading ? (
@@ -224,111 +231,118 @@ export const PublicRoomsTab: React.FC<Props> = ({
               <LogIn className="w-3.5 h-3.5" />
             )}
             <span>Entrar</span>
-          </button>
+          </Button>
         </form>
       </div>
 
       <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1 flex-1">
         {filteredPublicRooms.length === 0 ? (
-          <div className="text-center py-9 bg-[#12151d]/70 rounded-2xl border border-[#2a3142] p-6 space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 mx-auto flex items-center justify-center">
-              <Globe className="w-6 h-6 animate-pulse" />
+          <Card variant="dashed" className="text-center py-9 bg-lira-ground p-6 space-y-3">
+            <div className="w-12 h-12 rounded-[12px] bg-lira-surface border border-lira-rule text-lira-accent mx-auto flex items-center justify-center">
+              <Globe className="w-6 h-6" />
             </div>
             <div>
-              <h4 className="text-xs font-bold text-slate-200">
+              <h4 className="font-display text-sm font-bold text-lira-accent">
                 {searchQuery
                   ? 'Nenhuma sala encontrada com esses termos.'
                   : 'Nenhuma sala pública aberta no momento.'}
               </h4>
-              <p className="text-[11px] text-slate-400 mt-1 max-w-sm mx-auto">
+              <p className="text-[11px] font-mono text-lira-muted mt-1 max-w-sm mx-auto">
                 {searchQuery
                   ? 'Pressione Enter ou clique em Entrar para tentar conectar usando este código direto.'
                   : 'Aperte o botão abaixo para atualizar e verificar se novas salas públicas foram abertas.'}
               </p>
             </div>
-            <button
+            <Button
               type="button"
+              variant="primary"
+              size="md"
               onClick={handleManualRefresh}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold inline-flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition-all active:scale-95 cursor-pointer"
+              className="cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />
               <span>Atualizar Lista de Salas</span>
-            </button>
-          </div>
+            </Button>
+          </Card>
         ) : (
           filteredPublicRooms.map((room) => {
             const isCopied = copiedRoomCode === room.code
 
             return (
-              <div
+              <Card
                 key={room.code}
-                className="p-3.5 rounded-2xl bg-[#12151d] border border-[#2a3142] hover:border-indigo-500/60 transition-all group flex flex-col gap-2 relative overflow-hidden shadow-sm"
+                variant="ground"
+                className="p-3.5 hover:border-lira-accent transition-colors group flex flex-col gap-2 relative overflow-hidden"
               >
                 <div
-                  className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl"
-                  style={{ backgroundColor: room.color || '#3b82f6' }}
+                  className="absolute left-0 top-0 bottom-0 w-1 rounded-l-[12px]"
+                  style={{ backgroundColor: room.color || '#d1b5ff' }}
                 />
 
                 <div className="flex items-center justify-between gap-2 pl-1">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-xs font-bold text-slate-100 truncate group-hover:text-indigo-300 transition-colors">
+                    <span className="font-display text-sm font-bold text-lira-ink truncate group-hover:text-lira-accent transition-colors">
                       {room.name}
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-300 shrink-0">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <Badge variant="online">
+                    <span className="w-1.5 h-1.5 rounded-full bg-lira-online" />
                     <Users className="w-3 h-3" />
                     <span>{room.playerCount} online</span>
-                  </div>
+                  </Badge>
                 </div>
 
                 {room.description && (
-                  <p className="text-[11px] text-slate-400 pl-1 line-clamp-1">
+                  <p className="text-[11px] font-mono text-lira-muted pl-1 line-clamp-1">
                     {room.description}
                   </p>
                 )}
 
-                <div className="flex items-center justify-between gap-2 pl-1 pt-1 border-t border-[#2a3142]/60 mt-0.5">
+                <div className="flex items-center justify-between gap-2 pl-1 pt-1 border-t border-dashed border-lira-rule/60 mt-0.5">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <div
-                      className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 border border-white/20"
-                      style={{ backgroundColor: room.hostColor || '#4c6ef5' }}
+                      className="w-5 h-5 rounded-[6px] flex items-center justify-center text-[10px] font-mono font-bold text-lira-ground shrink-0 border border-lira-rule"
+                      style={{ backgroundColor: room.hostColor || '#d1b5ff' }}
                     >
                       {room.hostName.charAt(0).toUpperCase()}
                     </div>
-                    <span className="text-[11px] text-slate-300 truncate">
-                      Criado por <strong className="text-slate-100">{room.hostName}</strong>
+                    <span className="text-[11px] font-mono text-lira-muted truncate">
+                      Criado por <strong className="text-lira-ink">{room.hostName}</strong>
                     </span>
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
-                    <button
+                    <Button
                       type="button"
+                      variant="quiet"
+                      size="xs"
                       onClick={(e) => handleCopyCode(e, room.code)}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] text-[10px] font-mono text-slate-300 transition-colors"
+                      className="font-mono text-[10px] gap-1"
                       title="Copiar código da sala"
                     >
                       <span>{isAndroid() && room.code ? room.code.slice(0, 8) : room.code}</span>
                       {isCopied ? (
-                        <Check className="w-3 h-3 text-emerald-400" />
+                        <Check className="w-3 h-3 text-lira-online" />
                       ) : (
-                        <Copy className="w-3 h-3 text-slate-400" />
+                        <Copy className="w-3 h-3 text-lira-muted" />
                       )}
-                    </button>
+                    </Button>
 
-                    <button
+                    <Button
                       type="button"
+                      variant="primary"
+                      size="sm"
                       onClick={() => handleJoinPublicRoom(room)}
                       disabled={loading}
-                      className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all active:scale-95 group/btn"
+                      className="group/btn"
                     >
                       <span>Entrar</span>
                       <ArrowRight className="w-3 h-3 group-hover/btn:translate-x-0.5 transition-transform" />
-                    </button>
+                    </Button>
                   </div>
                 </div>
-              </div>
+              </Card>
             )
           })
         )}

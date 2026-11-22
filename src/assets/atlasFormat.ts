@@ -28,15 +28,20 @@ export function encodeValue(value: unknown, images: Map<string, string>): string
 
 export function decodeValue(xml: string, image: (name: string) => string): unknown {
   let at = 0
+  const spriteRe = /<Sprite image="([^"<]+)" x="(\d+)" y="(\d+)" width="(\d+)" height="(\d+)"\/>/y
+  const openRe = /<(Null\/|String|Number|Boolean|Image|Array|Object)>/y
+  const entryRe = /<Entry key="([^"<]*)">/y
   const read = (): unknown => {
-    const sprite = /^<Sprite image="([^"<]+)" x="(\d+)" y="(\d+)" width="(\d+)" height="(\d+)"\/>/.exec(xml.slice(at))
+    spriteRe.lastIndex = at
+    const sprite = spriteRe.exec(xml)
     if (sprite) {
-      at += sprite[0].length
+      at = spriteRe.lastIndex
       return spriteFrame(image(unescape(sprite[1])), Number(sprite[2]), Number(sprite[3]), Number(sprite[4]), Number(sprite[5]))
     }
-    const open = /^<(Null\/|String|Number|Boolean|Image|Array|Object)>/.exec(xml.slice(at))
+    openRe.lastIndex = at
+    const open = openRe.exec(xml)
     if (!open) throw new Error('Metadados XML inválidos')
-    at += open[0].length
+    at = openRe.lastIndex
     const type = open[1]
     if (type === 'Null/') return null
     let result: unknown
@@ -47,9 +52,10 @@ export function decodeValue(xml: string, image: (name: string) => string): unkno
     } else if (type === 'Object') {
       const obj: Record<string, unknown> = Object.create(null)
       while (!xml.startsWith('</Object>', at)) {
-        const entry = /^<Entry key="([^"<]*)">/.exec(xml.slice(at))
+        entryRe.lastIndex = at
+        const entry = entryRe.exec(xml)
         if (!entry) throw new Error('Entrada XML inválida')
-        at += entry[0].length
+        at = entryRe.lastIndex
         const key = unescape(entry[1])
         if (['__proto__', 'prototype', 'constructor'].includes(key) || Object.prototype.hasOwnProperty.call(obj, key)) throw new Error('Chave XML inválida')
         obj[key] = read()

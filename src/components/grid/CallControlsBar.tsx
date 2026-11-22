@@ -131,11 +131,11 @@ export const CallControlsBar: React.FC<Props> = ({
 
   return (
     <>
-      <div className="flex items-center justify-between px-6 py-2.5 bg-[#12151d]/95 backdrop-blur-xl rounded-2xl border border-[#2a3142] max-w-3xl mx-auto w-full shadow-2xl shrink-0 mt-2">
+      <div className="flex items-center justify-between px-6 py-2.5 bg-lira-panel rounded-[12px] border border-dashed border-lira-rule max-w-3xl mx-auto w-full shrink-0 mt-2 font-mono">
         <div className="flex items-center gap-2">
           <button
             onClick={() => useMediaStore.getState().setSettingsModalOpen(true)}
-            className="p-2 rounded-xl bg-slate-800/60 border border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+            className="p-2 rounded-[8px] bg-lira-surface border border-lira-rule text-lira-muted hover:text-lira-ink hover:border-lira-accent transition-colors"
             title="Configurações de Áudio e Voz"
           >
             <SlidersHorizontal className="w-4 h-4" />
@@ -144,7 +144,7 @@ export const CallControlsBar: React.FC<Props> = ({
           {localPlayer.currentZoneId && (
             <button
               onClick={() => setIsRoomSettingsOpen(true)}
-              className="p-2 rounded-xl bg-slate-800/60 border border-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+              className="p-2 rounded-[8px] bg-lira-surface border border-lira-rule text-lira-muted hover:text-lira-ink hover:border-lira-accent transition-colors"
               title="Gerenciar Usuários com Permissão de Entrada"
             >
               <Shield className="w-4 h-4" />
@@ -155,12 +155,12 @@ export const CallControlsBar: React.FC<Props> = ({
       <div className="flex items-center gap-2.5">
         <button
           onClick={toggleMute}
-          className={`p-3 rounded-xl flex items-center justify-center transition-all ${
+          className={`p-3 rounded-[8px] flex items-center justify-center transition-colors ${
             localPlayer.isMutedByAdmin
-              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/50 hover:bg-amber-500/30 shadow-lg shadow-amber-500/20'
+              ? 'bg-lira-amber/15 text-lira-amber border border-lira-amber/50 hover:bg-lira-amber/25'
               : isMuted
-              ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40 hover:bg-rose-500/30'
-              : 'bg-[#1b202c] text-white border border-[#2a3142] hover:bg-slate-700'
+              ? 'bg-lira-error/15 text-lira-error border border-lira-error/40 hover:bg-lira-error/25'
+              : 'bg-lira-surface text-lira-ink border border-lira-rule hover:border-lira-accent hover:text-lira-accent'
           }`}
           title={
             localPlayer.isMutedByAdmin
@@ -171,7 +171,7 @@ export const CallControlsBar: React.FC<Props> = ({
           }
         >
           {isMuted ? (
-            <MicOff className={`w-4 h-4 ${localPlayer.isMutedByAdmin ? 'text-amber-400' : ''}`} />
+            <MicOff className={`w-4 h-4 ${localPlayer.isMutedByAdmin ? 'text-lira-amber' : ''}`} />
           ) : (
             <Mic className="w-4 h-4" />
           )}
@@ -179,10 +179,10 @@ export const CallControlsBar: React.FC<Props> = ({
 
         <button
           onClick={toggleDeafen}
-          className={`p-3 rounded-xl flex items-center justify-center transition-all ${
+          className={`p-3 rounded-[8px] flex items-center justify-center transition-colors ${
             isDeafened
-              ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40 hover:bg-rose-500/30 shadow-lg shadow-rose-500/20'
-              : 'bg-[#1b202c] text-slate-300 border border-[#2a3142] hover:bg-slate-700 hover:text-white'
+              ? 'bg-lira-error/15 text-lira-error border border-lira-error/40 hover:bg-lira-error/25'
+              : 'bg-lira-surface text-lira-ink border border-lira-rule hover:border-lira-accent hover:text-lira-accent'
           }`}
           title={
             isDeafened
@@ -196,40 +196,40 @@ export const CallControlsBar: React.FC<Props> = ({
         <div className="relative">
           <button
             onClick={() => setIsNoiseMenuOpen((prev) => !prev)}
-            className={`p-3 rounded-xl flex items-center justify-center transition-all ${
+            className={`p-3 rounded-[8px] flex items-center justify-center transition-colors ${
               noiseDisplay.canRetry
-                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30'
+                ? 'bg-lira-amber/15 text-lira-amber border border-lira-amber/40 hover:bg-lira-amber/25'
                 : isNoiseSuppressionEnabled
-                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30 shadow-lg shadow-emerald-500/10'
-                : 'bg-[#1b202c] text-slate-400 border border-[#2a3142] hover:bg-slate-700 hover:text-slate-200'
+                ? 'bg-lira-online/15 text-lira-online border border-lira-online/40 hover:bg-lira-online/25'
+                : 'bg-lira-surface text-lira-muted border border-lira-rule hover:border-lira-accent hover:text-lira-ink'
             }`}
             title={noiseDisplay.title}
           >
-            <AudioLines className={`w-4 h-4 ${noiseDisplay.canRetry ? 'text-amber-300' : isNoiseSuppressionEnabled ? 'text-emerald-400' : ''}`} />
+            <AudioLines className={`w-4 h-4 ${noiseDisplay.canRetry ? 'text-lira-amber' : isNoiseSuppressionEnabled ? 'text-lira-online' : ''}`} />
           </button>
 
           {isNoiseMenuOpen && (
             <div
               ref={noiseMenuRef}
-              className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-60 bg-[#12151d]/95 backdrop-blur-xl border border-[#2a3142] rounded-2xl shadow-2xl p-1.5 z-50 select-none animate-in fade-in zoom-in-95 duration-150"
+              className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-60 bg-lira-panel border border-dashed border-lira-rule rounded-[12px] p-1.5 z-50 select-none font-mono"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="px-2.5 py-1 text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center justify-between border-b border-[#2a3142]/60 mb-1">
+              <div className="px-2.5 py-1 text-[10px] font-bold text-lira-online uppercase tracking-wider flex items-center justify-between border-b border-dashed border-lira-rule/60 mb-1">
                 <div className="flex items-center gap-1.5">
                   <span
                     className={`w-1.5 h-1.5 rounded-full ${
-                      noiseDisplay.canRetry ? 'bg-amber-400' : isNoiseSuppressionEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-500'
+                      noiseDisplay.canRetry ? 'bg-lira-amber' : isNoiseSuppressionEnabled ? 'bg-lira-online animate-pulse' : 'bg-lira-muted'
                     }`}
                   />
                   <span>Supressor de Ruído</span>
                 </div>
                 <span
-                  className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                  className={`text-[8.5px] font-mono tabular-nums px-1.5 py-0.5 rounded-[4px] font-bold uppercase ${
                     noiseDisplay.canRetry
-                      ? 'bg-amber-500/20 text-amber-300'
+                      ? 'bg-lira-amber/15 text-lira-amber'
                       : isNoiseSuppressionEnabled
-                      ? 'bg-emerald-500/20 text-emerald-300'
-                      : 'bg-slate-700/60 text-slate-400'
+                      ? 'bg-lira-online/15 text-lira-online'
+                      : 'bg-lira-surface text-lira-muted'
                   }`}
                 >
                   {noiseDisplay.badge}
@@ -258,41 +258,41 @@ export const CallControlsBar: React.FC<Props> = ({
                           await MediaManager.getInstance().reprocessStream()
                         }
                       }}
-                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded-xl text-xs font-medium transition-all text-left ${
+                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded-[8px] text-xs font-medium transition-colors text-left ${
                         isSelected
-                          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold'
-                          : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
+                          ? 'bg-lira-surface text-lira-online border border-lira-online/40 font-bold'
+                          : 'text-lira-ink hover:text-lira-accent hover:bg-lira-surface border border-transparent'
                       }`}
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <Icon
                           className={`w-3.5 h-3.5 shrink-0 ${
-                            isSelected ? 'text-emerald-400' : 'text-slate-400'
+                            isSelected ? 'text-lira-online' : 'text-lira-muted'
                           }`}
                         />
                         <div className="flex flex-col min-w-0">
                           <div className="flex items-center gap-1.5">
                             <span className="truncate">{engine.name}</span>
                             {engine.badge && (
-                              <span className="text-[8px] px-1 py-0.2 rounded bg-slate-800 text-slate-400 font-normal">
+                              <span className="text-[8px] px-1 py-0.2 rounded-[4px] bg-lira-ground border border-lira-quiet text-lira-muted font-normal">
                                 {engine.badge}
                               </span>
                             )}
                           </div>
-                          <span className="text-[9px] text-slate-400 font-normal whitespace-normal leading-snug">
+                          <span className="text-[9px] text-lira-muted font-normal whitespace-normal leading-snug">
                             {engine.id === processingMode && noiseDisplay.canRetry ? 'Indisponível · clique para tentar novamente' : engine.desc}
                           </span>
                         </div>
                       </div>
                       {isSelected && (
-                        <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 ml-1.5" />
+                        <Check className="w-3.5 h-3.5 text-lira-online shrink-0 ml-1.5" />
                       )}
                     </button>
                   )
                 })}
               </div>
 
-              <div className="my-1 border-t border-[#2a3142]/60" />
+              <div className="my-1 border-t border-dashed border-lira-rule/60" />
 
               <button
                 type="button"
@@ -303,22 +303,22 @@ export const CallControlsBar: React.FC<Props> = ({
                     MediaManager.getInstance().updateNoiseSuppression(false)
                   }
                 }}
-                className={`w-full flex items-center justify-between px-2 py-1.5 rounded-xl text-xs font-medium transition-all text-left ${
+                className={`w-full flex items-center justify-between px-2 py-1.5 rounded-[8px] text-xs font-medium transition-colors text-left ${
                   !isNoiseSuppressionEnabled
-                    ? 'bg-rose-500/15 text-rose-300 border border-rose-500/30 font-bold'
-                    : 'text-slate-400 hover:text-rose-300 hover:bg-rose-950/30 border border-transparent'
+                    ? 'bg-lira-error/15 text-lira-error border border-lira-error/40 font-bold'
+                    : 'text-lira-muted hover:text-lira-error hover:bg-lira-surface border border-transparent'
                 }`}
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <Power
                     className={`w-3.5 h-3.5 shrink-0 ${
-                      !isNoiseSuppressionEnabled ? 'text-rose-400' : 'text-slate-500'
+                      !isNoiseSuppressionEnabled ? 'text-lira-error' : 'text-lira-muted'
                     }`}
                   />
                   <span>Supressor desligado</span>
                 </div>
                 {!isNoiseSuppressionEnabled && (
-                  <Check className="w-3.5 h-3.5 text-rose-400 shrink-0 ml-1.5" />
+                  <Check className="w-3.5 h-3.5 text-lira-error shrink-0 ml-1.5" />
                 )}
               </button>
             </div>
@@ -327,10 +327,10 @@ export const CallControlsBar: React.FC<Props> = ({
 
         <button
           onClick={toggleCamera}
-          className={`p-3 rounded-xl flex items-center justify-center transition-all ${
+          className={`p-3 rounded-[8px] flex items-center justify-center transition-colors ${
             isCameraOff
-              ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40 hover:bg-rose-500/30'
-              : 'bg-[#1b202c] text-white border border-[#2a3142] hover:bg-slate-700'
+              ? 'bg-lira-error/15 text-lira-error border border-lira-error/40 hover:bg-lira-error/25'
+              : 'bg-lira-surface text-lira-ink border border-lira-rule hover:border-lira-accent hover:text-lira-accent'
           }`}
           title={isCameraOff ? 'Ligar Câmera (V)' : 'Desligar Câmera (V)'}
         >
@@ -346,10 +346,10 @@ export const CallControlsBar: React.FC<Props> = ({
                 onToggleScreenShare()
               }
             }}
-            className={`p-3 rounded-xl flex items-center justify-center transition-all ${
+            className={`p-3 rounded-[8px] flex items-center justify-center transition-colors ${
               isScreenSharing
-                ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/40 animate-pulse'
-                : 'bg-[#1b202c] text-slate-300 border border-[#2a3142] hover:bg-slate-700'
+                ? 'bg-lira-error text-lira-ground border border-lira-error font-bold animate-pulse'
+                : 'bg-lira-surface text-lira-ink border border-lira-rule hover:border-lira-accent hover:text-lira-accent'
             }`}
             title={isScreenSharing ? 'Opções da Transmissão (Ao Vivo)' : 'Compartilhar Tela / Janela'}
           >
@@ -359,15 +359,15 @@ export const CallControlsBar: React.FC<Props> = ({
           {isScreenSharing && isActiveStreamMenuOpen && (
             <div
               ref={streamMenuRef}
-              className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-48 bg-[#12151d]/95 backdrop-blur-xl border border-[#2a3142] rounded-2xl shadow-2xl p-1.5 z-50 select-none animate-in fade-in zoom-in-95 duration-150"
+              className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-48 bg-lira-panel border border-dashed border-lira-rule rounded-[12px] p-1.5 z-50 select-none font-mono"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="px-2.5 py-1 text-[10px] font-bold text-rose-400 uppercase tracking-wider flex items-center justify-between border-b border-[#2a3142]/60 mb-1">
+              <div className="px-2.5 py-1 text-[10px] font-bold text-lira-error uppercase tracking-wider flex items-center justify-between border-b border-dashed border-lira-rule/60 mb-1">
                 <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-lira-error animate-pulse" />
                   <span>Ao Vivo</span>
                 </div>
-                <span className="text-[9px] font-semibold text-slate-400 normal-case">
+                <span className="text-[9px] font-semibold text-lira-muted normal-case">
                   {optimizationMode === 'quality' ? 'Qualidade' : 'Fluidez'}
                 </span>
               </div>
@@ -377,46 +377,46 @@ export const CallControlsBar: React.FC<Props> = ({
                   onClick={() => {
                     setScreenShareOptimizationMode('quality')
                   }}
-                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded-xl text-xs font-medium transition-all text-left ${
+                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded-[8px] text-xs font-medium transition-colors text-left ${
                     optimizationMode === 'quality'
-                      ? 'bg-indigo-500/15 text-indigo-300 font-bold border border-indigo-500/30'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
+                      ? 'bg-lira-surface text-lira-accent font-bold border border-lira-accent'
+                      : 'text-lira-ink hover:text-lira-accent hover:bg-lira-surface border border-transparent'
                   }`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    <Sparkles className={`w-3.5 h-3.5 shrink-0 ${optimizationMode === 'quality' ? 'text-indigo-400' : 'text-slate-400'}`} />
+                    <Sparkles className={`w-3.5 h-3.5 shrink-0 ${optimizationMode === 'quality' ? 'text-lira-accent' : 'text-lira-muted'}`} />
                     <span className="truncate">Priorizar Qualidade</span>
                   </div>
-                  {optimizationMode === 'quality' && <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0 ml-1.5" />}
+                  {optimizationMode === 'quality' && <Check className="w-3.5 h-3.5 text-lira-accent shrink-0 ml-1.5" />}
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     setScreenShareOptimizationMode('smoothness')
                   }}
-                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded-xl text-xs font-medium transition-all text-left ${
+                  className={`w-full flex items-center justify-between px-2 py-1.5 rounded-[8px] text-xs font-medium transition-colors text-left ${
                     optimizationMode === 'smoothness'
-                      ? 'bg-indigo-500/15 text-indigo-300 font-bold border border-indigo-500/30'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
+                      ? 'bg-lira-surface text-lira-accent font-bold border border-lira-accent'
+                      : 'text-lira-ink hover:text-lira-accent hover:bg-lira-surface border border-transparent'
                   }`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
-                    <Zap className={`w-3.5 h-3.5 shrink-0 ${optimizationMode === 'smoothness' ? 'text-indigo-400' : 'text-slate-400'}`} />
+                    <Zap className={`w-3.5 h-3.5 shrink-0 ${optimizationMode === 'smoothness' ? 'text-lira-accent' : 'text-lira-muted'}`} />
                     <span className="truncate">Priorizar Fluidez</span>
                   </div>
-                  {optimizationMode === 'smoothness' && <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0 ml-1.5" />}
+                  {optimizationMode === 'smoothness' && <Check className="w-3.5 h-3.5 text-lira-accent shrink-0 ml-1.5" />}
                 </button>
               </div>
-              <div className="my-1 border-t border-[#2a3142]/60" />
+              <div className="my-1 border-t border-dashed border-lira-rule/60" />
               <button
                 type="button"
                 onClick={() => {
                   setIsActiveStreamMenuOpen(false)
                   onToggleScreenShare()
                 }}
-                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-xl text-xs font-medium text-slate-200 hover:text-white hover:bg-slate-800/80 transition-colors text-left"
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-[8px] text-xs font-medium text-lira-ink hover:text-lira-accent hover:bg-lira-surface transition-colors text-left"
               >
-                <Sliders className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <Sliders className="w-3.5 h-3.5 text-lira-accent shrink-0" />
                 <span>Trocar configurações</span>
               </button>
               <button
@@ -425,9 +425,9 @@ export const CallControlsBar: React.FC<Props> = ({
                   setIsActiveStreamMenuOpen(false)
                   MediaManager.getInstance().stopScreenShare()
                 }}
-                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-xl text-xs font-medium text-rose-400 hover:text-rose-200 hover:bg-rose-950/40 transition-colors text-left"
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-[8px] text-xs font-medium text-lira-error hover:bg-lira-error/15 transition-colors text-left"
               >
-                <StopCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                <StopCircle className="w-3.5 h-3.5 text-lira-error shrink-0" />
                 <span>Encerrar transmissão</span>
               </button>
             </div>
@@ -438,16 +438,16 @@ export const CallControlsBar: React.FC<Props> = ({
       <div className="flex items-center gap-2">
         <button
           onClick={handleOpenRoomChat}
-          className={`p-2.5 rounded-xl border transition-all relative ${
+          className={`p-2.5 rounded-[8px] border transition-colors relative ${
             isChatOpen && activeChannelId === 'current-zone'
-              ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/30'
-              : 'bg-[#1b202c] border-[#2a3142] text-slate-300 hover:bg-slate-700 hover:text-white'
+              ? 'bg-lira-accent text-lira-ground border-lira-accent'
+              : 'bg-lira-surface border-lira-rule text-lira-ink hover:border-lira-accent hover:text-lira-accent'
           }`}
           title="Abrir Chat da Sala"
         >
           <MessageSquare className="w-4 h-4" />
           {unreadZoneCount > 0 && (
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-indigo-400 ring-2 ring-[#12151d] animate-pulse flex items-center justify-center text-[8px] font-bold text-slate-950">
+            <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-lira-amber border border-lira-ground flex items-center justify-center text-[8px] font-mono tabular-nums font-bold text-lira-ground">
               {unreadZoneCount > 9 ? '9+' : unreadZoneCount}
             </span>
           )}
@@ -455,7 +455,7 @@ export const CallControlsBar: React.FC<Props> = ({
 
         <button
           onClick={onLeaveCall}
-          className="px-3.5 py-2 rounded-xl bg-rose-600/20 border border-rose-600/40 hover:bg-rose-600 text-rose-400 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all"
+          className="px-3.5 py-2 rounded-[8px] bg-lira-error/15 border border-lira-error/40 hover:bg-lira-error text-lira-error hover:text-lira-ground text-xs font-mono font-bold flex items-center gap-1.5 transition-colors"
         >
           <LogOut className="w-3.5 h-3.5" />
           <span>Minimizar</span>

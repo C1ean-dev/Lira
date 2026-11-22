@@ -113,41 +113,43 @@ export class ErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0c0e14] p-6 text-slate-100 font-sans select-none">
-          <div className="bg-[#1b202c] border border-rose-500/30 rounded-3xl p-8 max-w-xl w-full shadow-2xl space-y-6 animate-in fade-in duration-300">
-            <div className="flex items-center gap-3 text-rose-400">
-              <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-6 h-6" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-lira-ground p-6 text-lira-ink font-mono select-none">
+          <div className="bg-lira-panel border border-dashed border-lira-error/60 rounded-[12px] p-6 max-w-xl w-full space-y-5">
+            <div className="flex items-center gap-3 text-lira-error pb-3 border-b border-dashed border-lira-quiet">
+              <div className="w-11 h-11 rounded-[8px] bg-lira-error/15 border border-lira-error/40 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-white">Ops! Ocorreu um erro ao carregar a tela</h2>
-                <p className="text-xs text-slate-400">O Lira encontrou uma falha de renderização</p>
+                <h2 className="font-display text-lg font-bold text-lira-accent">
+                  Ops! Ocorreu um erro ao carregar a tela
+                </h2>
+                <p className="text-xs text-lira-muted">O Lira encontrou uma falha de renderização</p>
               </div>
             </div>
 
             {this.state.error && (
-              <div className="bg-[#12151d] border border-[#2a3142] rounded-2xl p-4 overflow-auto max-h-52 space-y-2">
-                <p className="text-xs font-mono text-rose-300 font-bold break-words">
+              <div className="bg-lira-ground border border-lira-quiet rounded-[8px] p-4 overflow-auto max-h-52 space-y-2 select-text">
+                <p className="text-xs font-mono text-lira-error font-bold break-words">
                   {this.state.error.name}: {this.state.error.message}
                 </p>
                 {this.state.error.stack && (
-                  <pre className="text-[10px] font-mono text-slate-400 whitespace-pre-wrap leading-relaxed">
+                  <pre className="text-[10px] font-mono text-lira-muted whitespace-pre-wrap leading-relaxed">
                     {this.state.error.stack}
                   </pre>
                 )}
                 {this.state.errorInfo?.componentStack && (
-                  <pre className="text-[10px] font-mono text-slate-500 whitespace-pre-wrap border-t border-slate-800 pt-2">
+                  <pre className="text-[10px] font-mono text-lira-muted/80 whitespace-pre-wrap border-t border-dashed border-lira-quiet pt-2">
                     {this.state.errorInfo.componentStack}
                   </pre>
                 )}
               </div>
             )}
 
-            <div className="flex items-center gap-3 pt-2">
+            <div className="flex items-center gap-2.5 pt-1">
               <button
                 type="button"
                 onClick={this.handleReload}
-                className="flex-1 py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 transition-all active:scale-95"
+                className="flex-1 py-2.5 px-4 rounded-[8px] bg-lira-accent hover:bg-lira-ink text-lira-ground border-2 border-lira-accent hover:border-lira-ink font-bold text-xs flex items-center justify-center gap-2 transition-colors"
               >
                 <RefreshCw className="w-4 h-4" />
                 <span>Recarregar Aplicação</span>
@@ -156,21 +158,21 @@ export class ErrorBoundary extends Component<Props, State> {
               <button
                 type="button"
                 onClick={this.handleCopyError}
-                className={`py-3 px-4 rounded-xl font-bold text-xs border flex items-center justify-center gap-2 transition-all active:scale-95 ${
+                className={`py-2.5 px-4 rounded-[8px] font-bold text-xs border flex items-center justify-center gap-2 transition-colors ${
                   this.state.copied
-                    ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300'
-                    : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200 hover:text-white'
+                    ? 'bg-lira-online/15 border-lira-online/50 text-lira-online'
+                    : 'bg-lira-surface hover:border-lira-accent border-lira-rule text-lira-ink'
                 }`}
                 title="Copiar toda a thread de erro e rastreamento de pilha"
               >
                 {this.state.copied ? (
                   <>
-                    <Check className="w-4 h-4 text-emerald-400" />
+                    <Check className="w-4 h-4 text-lira-online" />
                     <span>Thread Copiada!</span>
                   </>
                 ) : (
                   <>
-                    <Copy className="w-4 h-4 text-slate-300" />
+                    <Copy className="w-4 h-4 text-lira-accent" />
                     <span>Copiar Erro</span>
                   </>
                 )}
@@ -179,7 +181,7 @@ export class ErrorBoundary extends Component<Props, State> {
               <button
                 type="button"
                 onClick={this.handleResetAll}
-                className="py-3 px-4 rounded-xl bg-slate-800 hover:bg-rose-500/20 hover:text-rose-300 text-slate-300 font-semibold text-xs border border-slate-700 hover:border-rose-500/30 flex items-center justify-center gap-2 transition-all active:scale-95"
+                className="py-2.5 px-4 rounded-[8px] bg-lira-surface hover:bg-lira-error hover:text-lira-ground text-lira-error font-semibold text-xs border border-lira-error/50 hover:border-lira-error flex items-center justify-center gap-2 transition-colors"
                 title="Limpa o localStorage e restaura os dados padrão"
               >
                 <Trash2 className="w-4 h-4" />
@@ -187,7 +189,7 @@ export class ErrorBoundary extends Component<Props, State> {
               </button>
             </div>
 
-            <ExportLogsButton className="w-full py-2.5 px-4 rounded-xl bg-transparent hover:bg-slate-800 text-slate-400 hover:text-slate-200 font-semibold text-xs border border-slate-700/70 flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-60" />
+            <ExportLogsButton className="w-full py-2.5 px-4 rounded-[8px] bg-lira-surface hover:border-lira-accent text-lira-muted hover:text-lira-ink font-semibold text-xs border border-lira-rule flex items-center justify-center gap-2 transition-colors disabled:opacity-60" />
           </div>
 
           <ConfirmModal

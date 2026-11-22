@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react'
 import { LogOut, X, AlertTriangle } from 'lucide-react'
+import { Button } from './ui/Button'
 
 interface ConfirmModalProps {
   isOpen: boolean
@@ -27,6 +28,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   onCancel,
 }) => {
   const activeVariant = variant || confirmVariant
+
   useEffect(() => {
     if (!isOpen) return
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -43,67 +45,74 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-lira-ground/80"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-modal-title"
+      onClick={onCancel}
+    >
       <div
-        className="relative w-full max-w-md bg-[#12151d] border border-[#2a3142] rounded-3xl shadow-2xl overflow-hidden p-6 space-y-5 animate-in zoom-in-95 duration-150"
+        className="relative w-full max-w-md bg-lira-panel border border-dashed border-lira-rule rounded-[12px] overflow-hidden p-5 space-y-4 text-lira-ink"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="absolute -top-24 -right-24 w-48 h-48 bg-rose-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3.5">
+        <div className="flex items-start justify-between pb-3 border-b border-dashed border-lira-quiet">
+          <div className="flex items-center gap-3">
             <div
-              className={`w-12 h-12 rounded-2xl flex items-center justify-center border shadow-lg ${
+              className={`w-10 h-10 rounded-[8px] flex items-center justify-center border shrink-0 ${
                 activeVariant === 'danger'
-                  ? 'bg-rose-500/15 border-rose-500/30 text-rose-400 shadow-rose-500/10'
-                  : 'bg-amber-500/15 border-amber-500/30 text-amber-400 shadow-amber-500/10'
+                  ? 'bg-lira-error/15 border-lira-error/40 text-lira-error'
+                  : activeVariant === 'warning'
+                  ? 'bg-lira-amber/15 border-lira-amber/40 text-lira-amber'
+                  : 'bg-lira-surface border-lira-rule text-lira-accent'
               }`}
             >
               {icon === 'logout' ? (
-                <LogOut className="w-6 h-6" />
+                <LogOut className="w-5 h-5" />
               ) : (
-                <AlertTriangle className="w-6 h-6" />
+                <AlertTriangle className="w-5 h-5" />
               )}
             </div>
 
             <div>
-              <h3 className="text-base font-bold text-slate-100">{title}</h3>
-              <p className="text-xs text-slate-400 mt-0.5 font-medium">Confirmação de Ação</p>
+              <h3
+                id="confirm-modal-title"
+                className="font-display text-lg font-bold text-lira-accent leading-tight"
+              >
+                {title}
+              </h3>
+              <p className="text-[11px] font-mono text-lira-muted mt-0.5">Confirmação de Ação</p>
             </div>
           </div>
 
-          <button
+          <Button
+            variant="icon"
+            size="icon"
             onClick={onCancel}
-            className="p-1.5 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800/60 transition-colors"
+            aria-label="Fechar"
+            className="h-8 w-8"
           >
             <X className="w-4 h-4" />
-          </button>
+          </Button>
         </div>
 
-        <div className="p-3.5 bg-[#181c26]/90 border border-[#2a3142] rounded-2xl">
-          <p className="text-xs text-slate-300 leading-relaxed">{message}</p>
+        <div className="p-3.5 bg-lira-ground border border-lira-quiet rounded-[8px]">
+          <p className="text-xs font-mono text-lira-ink leading-relaxed">{message}</p>
         </div>
 
-        <div className="flex items-center justify-end gap-2.5 pt-1">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs border border-slate-700 transition-all active:scale-95"
-          >
+        <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-dashed border-lira-quiet">
+          <Button variant="quiet" size="md" onClick={onCancel}>
             {cancelText}
-          </button>
+          </Button>
 
-          <button
+          <Button
+            variant={activeVariant === 'danger' ? 'destructive' : 'primary'}
+            size="md"
             onClick={onConfirm}
-            className={`px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 text-white shadow-lg transition-all active:scale-95 ${
-              activeVariant === 'danger'
-                ? 'bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 shadow-rose-600/30 border border-rose-500/40'
-                : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 shadow-indigo-600/30 border border-indigo-500/40'
-            }`}
           >
             {icon === 'logout' && <LogOut className="w-3.5 h-3.5" />}
             <span>{confirmText}</span>
-          </button>
+          </Button>
         </div>
       </div>
     </div>

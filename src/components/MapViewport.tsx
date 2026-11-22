@@ -14,6 +14,7 @@ import { PlacedFurniture, PrivateZone, FloorType } from '../types/map'
 import { MapControlsWidget } from './MapControlsWidget'
 import { SimplifiedMapView } from './SimplifiedMapView'
 import { FurnitureContextMenu } from '../editor/FurnitureContextMenu'
+import { Button, Badge } from './ui'
 
 function restoreZoomOrFit(engine: CanvasEngine) {
   const saved = useGameStore.getState().cameraZoom
@@ -801,7 +802,7 @@ export const MapViewport: React.FC = () => {
   return (
     <div
       onWheel={handleWheel}
-      className="relative flex-1 w-full h-[calc(100vh-56px)] overflow-hidden bg-[#0c0e14]"
+      className="relative flex-1 w-full h-[calc(100vh-56px)] overflow-hidden bg-lira-ground"
     >
       <canvas
         ref={canvasRef}
@@ -827,51 +828,54 @@ export const MapViewport: React.FC = () => {
       />
 
       {isCameraPanned && mapViewMode !== 'simplified' && (
-        <button
+        <Button
+          variant="primary"
+          size="sm"
           onClick={handleRecenterCamera}
-          className="absolute top-4 left-4 z-40 flex items-center gap-2 px-3 py-2 bg-indigo-600/90 hover:bg-indigo-600 text-white rounded-2xl shadow-xl border border-indigo-400/40 text-xs font-bold transition-all active:scale-95 animate-in fade-in slide-in-from-top-2"
+          className="absolute top-4 left-4 z-40"
           title="Recentralizar câmera no seu personagem"
         >
-          <LocateFixed className="w-4 h-4 text-white" />
+          <LocateFixed className="w-4 h-4 text-lira-ground" />
           <span>Centralizar</span>
-        </button>
+        </Button>
       )}
 
       {isEditorOpen && selectedPlacedFurnitureId && !isDraggingFurniture && mapViewMode !== 'simplified' && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-md border border-slate-700/60 text-white px-4 py-2 rounded-2xl shadow-xl flex items-center gap-3 text-xs font-semibold select-none z-30">
-          <span className="text-slate-300">💡 Dica:</span>
-          <span className="text-indigo-300 font-medium">Arraste a mobília para mover</span>
-          <span className="text-slate-500">•</span>
-          <span className="text-slate-300 font-normal">Girar (<kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-amber-300 font-mono text-[10px]">R</kbd>)</span>
-          <span className="text-slate-500">•</span>
-          <span className="text-slate-300 font-normal">Deselecionar (<kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 font-mono text-[10px]">Esc</kbd> ou clique nela)</span>
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-lira-panel border border-dashed border-lira-rule text-lira-ink px-4 py-2 rounded-[12px] flex items-center gap-3 text-xs font-mono font-semibold select-none z-30">
+          <span className="text-lira-muted">💡 Dica:</span>
+          <span className="text-lira-accent font-medium">Arraste a mobília para mover</span>
+          <span className="text-lira-rule">•</span>
+          <span className="text-lira-muted font-normal">Girar (<kbd className="px-1.5 py-0.5 rounded-[4px] bg-lira-surface border border-lira-quiet text-lira-amber font-mono text-[10px]">R</kbd>)</span>
+          <span className="text-lira-rule">•</span>
+          <span className="text-lira-muted font-normal">Deselecionar (<kbd className="px-1.5 py-0.5 rounded-[4px] bg-lira-surface border border-lira-quiet text-lira-ink font-mono text-[10px]">Esc</kbd> ou clique nela)</span>
         </div>
       )}
 
       {isEditorOpen && activeTool === 'paint_floor' && mapViewMode !== 'simplified' && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-emerald-600/90 backdrop-blur-md border border-emerald-400/40 text-white px-4 py-2 rounded-2xl shadow-xl flex items-center gap-2.5 text-xs font-semibold select-none z-30">
-          <Sparkles className="w-4 h-4 text-amber-300" />
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-lira-panel border border-dashed border-lira-online/60 text-lira-ink px-4 py-2 rounded-[12px] flex items-center gap-2.5 text-xs font-mono font-semibold select-none z-30">
+          <Sparkles className="w-4 h-4 text-lira-online" />
           <span>Clique e arraste para pintar o piso (Shift + Clique preenche a sala inteira)</span>
         </div>
       )}
 
       {isEditorOpen && activeTool === 'place_furniture' && mapViewMode !== 'simplified' && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-md border border-slate-700/60 text-white px-4 py-2 rounded-2xl shadow-xl flex items-center gap-3 text-xs font-semibold select-none z-30">
-          <span className="text-slate-300">Direção:</span>
-          <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-lira-panel border border-dashed border-lira-rule text-lira-ink px-4 py-2 rounded-[12px] flex items-center gap-3 text-xs font-mono font-semibold select-none z-30">
+          <span className="text-lira-muted">Direção:</span>
+          <Badge variant="default">
             {placementDirection === 'down' && '⬇️ Frente'}
             {placementDirection === 'left' && '⬅️ Esquerda'}
             {placementDirection === 'up' && '⬆️ Costas'}
             {placementDirection === 'right' && '➡️ Direita'}
-          </span>
-          <button
+          </Badge>
+          <Button
+            variant="primary"
+            size="xs"
             onClick={() => rotatePlacementDirection()}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors shadow-sm cursor-pointer"
             title="Girar objeto (Tecla R)"
           >
             <RotateCw className="w-3.5 h-3.5" />
             <span>Girar (R)</span>
-          </button>
+          </Button>
         </div>
       )}
 

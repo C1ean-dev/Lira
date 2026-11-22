@@ -8,8 +8,8 @@ interface Props {
   onContextMenu?: (e: React.MouseEvent, person: ChatPerson) => void
 }
 
-const HEADING_CLASS = 'text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 py-1'
-const EMPTY_CLASS = 'text-[11px] text-slate-400 px-2 py-1 italic'
+const HEADING_CLASS = 'text-[10px] font-mono font-bold uppercase tracking-wider text-lira-muted px-2 py-1'
+const EMPTY_CLASS = 'text-[11px] font-mono text-lira-muted/80 px-2 py-1 italic'
 
 const whereabouts = (person: ChatPerson): string =>
   person.inSpace
@@ -25,12 +25,12 @@ const PersonRow: React.FC<Pick<Props, 'onOpen' | 'onContextMenu'> & { person: Ch
     type="button"
     onClick={() => onOpen(person)}
     onContextMenu={onContextMenu ? (e) => onContextMenu(e, person) : undefined}
-    className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition-all ${
+    className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-mono transition-colors ${
       person.isCurrent
-        ? 'bg-indigo-600/30 text-indigo-300 font-semibold border border-indigo-500/30'
+        ? 'bg-indigo-600/30 bg-lira-surface text-lira-accent font-semibold border border-lira-rule/50'
         : person.isOnline
-        ? 'text-slate-300 hover:text-white hover:bg-slate-800/40'
-        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+        ? 'text-slate-300 text-lira-ink hover:text-lira-accent hover:bg-lira-surface/60 border border-transparent'
+        : 'text-slate-400 text-lira-muted hover:text-lira-ink hover:bg-lira-surface/60 border border-transparent'
     }`}
     title={whereabouts(person)}
   >
@@ -41,12 +41,12 @@ const PersonRow: React.FC<Pick<Props, 'onOpen' | 'onContextMenu'> & { person: Ch
         showStatus={true}
         status={person.status}
         size="xs"
-        className={person.isOnline ? 'rounded-full' : 'rounded-full opacity-70'}
+        className={person.isOnline ? 'rounded-[6px]' : 'rounded-[6px] opacity-70'}
       />
       <span className="truncate text-xs">{person.name}</span>
     </div>
     {person.unreadCount > 0 && (
-      <span className="bg-indigo-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+      <span className="bg-indigo-500 bg-lira-accent text-lira-ground text-[10px] px-1.5 py-0.2 rounded font-mono font-bold">
         {person.unreadCount}
       </span>
     )}

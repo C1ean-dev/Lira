@@ -117,7 +117,7 @@ export const ColorWheelPicker: React.FC<ColorWheelPickerProps> = ({
     ctx.arc(center, center, innerRadius - 8, 0, Math.PI * 2)
     ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`
     ctx.fill()
-    ctx.strokeStyle = '#ffffff'
+    ctx.strokeStyle = '#f3ecff'
     ctx.lineWidth = 2
     ctx.stroke()
 
@@ -128,9 +128,9 @@ export const ColorWheelPicker: React.FC<ColorWheelPickerProps> = ({
 
     ctx.beginPath()
     ctx.arc(indicatorX, indicatorY, 6, 0, Math.PI * 2)
-    ctx.fillStyle = '#ffffff'
+    ctx.fillStyle = '#f3ecff'
     ctx.fill()
-    ctx.strokeStyle = '#000000'
+    ctx.strokeStyle = '#100c18'
     ctx.lineWidth = 2
     ctx.stroke()
   }, [hue, saturation, lightness])
@@ -206,16 +206,17 @@ export const ColorWheelPicker: React.FC<ColorWheelPickerProps> = ({
 
   return (
     <div
-      className={`bg-[#1e1f22] border border-[#383a40] rounded-2xl p-4 shadow-2xl flex flex-col items-center gap-3 w-64 select-none ${className}`}
+      className={`bg-lira-panel border border-dashed border-lira-rule rounded-[12px] p-4 flex flex-col items-center gap-3 w-64 select-none font-mono text-lira-ink ${className}`}
     >
       <div className="flex items-center justify-between w-full">
-        <span className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-1.5">
+        <span className="text-xs font-bold text-lira-accent uppercase tracking-wider flex items-center gap-1.5">
           <span>🎨</span> Roda de Cores
         </span>
         {onClose && (
           <button
+            type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-white text-xs px-1.5 py-0.5 rounded-md hover:bg-[#2b2d31] transition-colors cursor-pointer"
+            className="text-lira-muted hover:text-lira-ink text-xs px-1.5 py-0.5 rounded-[6px] border border-transparent hover:border-lira-rule hover:bg-lira-surface transition-colors cursor-pointer"
           >
             ✕
           </button>
@@ -230,15 +231,15 @@ export const ColorWheelPicker: React.FC<ColorWheelPickerProps> = ({
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
-          className="rounded-full touch-none shadow-md"
+          className="rounded-full touch-none"
         />
       </div>
 
       <div className="w-full flex flex-col gap-2.5">
         <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between text-[11px] text-slate-400">
+          <div className="flex items-center justify-between text-[11px] text-lira-muted">
             <span>Saturação</span>
-            <span className="font-mono text-slate-300">{saturation}%</span>
+            <span className="font-mono text-lira-ink tabular-nums">{saturation}%</span>
           </div>
           <input
             type="range"
@@ -246,7 +247,7 @@ export const ColorWheelPicker: React.FC<ColorWheelPickerProps> = ({
             max={100}
             value={saturation}
             onChange={(e) => handleSaturationChange(parseInt(e.target.value))}
-            className="w-full h-1.5 bg-[#2b2d31] rounded-lg appearance-none cursor-pointer accent-[#3b82f6]"
+            className="w-full h-1.5 bg-lira-surface rounded-lg appearance-none cursor-pointer accent-[#d1b5ff]"
             style={{
               background: `linear-gradient(to right, hsl(${hue}, 0%, ${lightness}%), hsl(${hue}, 100%, ${lightness}%))`,
             }}
@@ -254,9 +255,9 @@ export const ColorWheelPicker: React.FC<ColorWheelPickerProps> = ({
         </div>
 
         <div className="flex flex-col gap-1">
-          <div className="flex items-center justify-between text-[11px] text-slate-400">
+          <div className="flex items-center justify-between text-[11px] text-lira-muted">
             <span>Brilho / Luz</span>
-            <span className="font-mono text-slate-300">{lightness}%</span>
+            <span className="font-mono text-lira-ink tabular-nums">{lightness}%</span>
           </div>
           <input
             type="range"
@@ -264,7 +265,7 @@ export const ColorWheelPicker: React.FC<ColorWheelPickerProps> = ({
             max={100}
             value={lightness}
             onChange={(e) => handleLightnessChange(parseInt(e.target.value))}
-            className="w-full h-1.5 bg-[#2b2d31] rounded-lg appearance-none cursor-pointer accent-[#3b82f6]"
+            className="w-full h-1.5 bg-lira-surface rounded-lg appearance-none cursor-pointer accent-[#d1b5ff]"
             style={{
               background: `linear-gradient(to right, #000000, hsl(${hue}, ${saturation}%, 50%), #ffffff)`,
             }}
@@ -272,9 +273,9 @@ export const ColorWheelPicker: React.FC<ColorWheelPickerProps> = ({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 w-full pt-2 border-t border-[#383a40]/60">
+      <div className="flex items-center gap-2 w-full pt-2 border-t border-dashed border-lira-quiet">
         <div
-          className="w-8 h-8 rounded-lg border border-white/20 shadow-inner shrink-0"
+          className="w-8 h-8 rounded-[6px] border border-lira-rule shrink-0"
           style={{ backgroundColor: hexInput }}
         />
         <input
@@ -282,7 +283,7 @@ export const ColorWheelPicker: React.FC<ColorWheelPickerProps> = ({
           value={hexInput}
           onChange={handleHexChange}
           placeholder="#ffffff"
-          className="flex-1 bg-[#141517] border border-[#383a40] focus:border-[#3b82f6] rounded-lg px-2.5 py-1 text-xs text-white font-mono uppercase outline-none"
+          className="flex-1 bg-lira-ground border border-lira-rule focus:border-lira-accent rounded-[6px] px-2.5 py-1 text-xs text-lira-ink font-mono uppercase outline-none"
         />
       </div>
     </div>

@@ -14,7 +14,7 @@ export function toDeviceOptions(
     {
       value: SYSTEM_DEFAULT_ID,
       label: `${fallbackName} Padrão do Sistema`,
-      icon: renderIcon('w-3.5 h-3.5 text-indigo-400'),
+      icon: renderIcon('w-3.5 h-3.5 text-indigo-400 text-lira-accent'),
     },
   ]
   for (const d of devices) {
@@ -23,7 +23,7 @@ export function toDeviceOptions(
     options.push({
       value: d.deviceId,
       label: d.label || `${fallbackName} (${d.deviceId.slice(0, 8)}...)`,
-      icon: renderIcon('w-3.5 h-3.5 text-slate-400'),
+      icon: renderIcon('w-3.5 h-3.5 text-slate-400 text-lira-muted'),
     })
   }
   return options

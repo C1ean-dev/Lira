@@ -27,8 +27,6 @@ import { PeerManager } from '../p2p/PeerManager'
 import { LiraLogo } from './LiraLogo'
 import { useUpdateStore, versionBadgeLabel } from '../store/useUpdateStore'
 import { CURRENT_APP_VERSION } from '../services/updateService'
-import { NetworkSignalIcon } from './NetworkSignalIcon'
-import { useNetworkQualityStore } from '../store/useNetworkQualityStore'
 import { STATUS_META } from '../types/game'
 import { PlayerAvatar } from './common/PlayerAvatar'
 import { UpdateDownloadIndicator } from './common/UpdateDownloadIndicator'
@@ -36,7 +34,6 @@ import { UpdateChangelogHover } from './common/UpdateChangelogHover'
 import { isAndroid } from '../utils/platform'
 import { useRoomPublication } from '../hooks/useRoomPublication'
 import { useInlineContentFit } from '../hooks/useInlineContentFit'
-import { useHeaderActionsFit } from '../hooks/useHeaderActionsFit'
 import { DirectConnectionPanel } from './lobby/DirectConnectionPanel'
 import { ReportIssueModal } from './ReportIssueModal'
 import { createSpaceInviteLink } from '../utils/spaceInviteLink'
@@ -98,7 +95,6 @@ export const TopNavBar: React.FC<Props> = ({
   const isMuted = useMediaStore((s) => s.isMuted)
   const toggleMute = useMediaStore((s) => s.toggleMute)
   const connectionStatus = useGameStore((s) => s.connectionStatus)
-  const localQuality = useNetworkQualityStore((s) => s.localQuality)
 
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'copied' | 'error'>('idle')
   const [linkStatus, setLinkStatus] = useState<'idle' | 'copying' | 'copied' | 'error'>('idle')
@@ -216,8 +212,8 @@ export const TopNavBar: React.FC<Props> = ({
   }
 
   return (
-    <header className={`h-14 shrink-0 bg-[#12151d]/90 backdrop-blur-md border-b border-[#2a3142] px-2 sm:px-4 flex items-center justify-between gap-1 sm:gap-2 select-none relative ${isMobileMenuOpen ? 'z-[80]' : 'z-30'}`}>
-      <div ref={publicationFit.containerRef} className="flex flex-1 min-w-0 items-center gap-1 sm:gap-3">
+    <header className={`h-14 shrink-0 bg-lira-panel border-b border-dashed border-lira-rule/60 pl-1.5 pr-2 sm:pl-2 sm:pr-3 flex items-center justify-between gap-1.5 sm:gap-2 select-none relative font-mono text-lira-ink ${isMobileMenuOpen ? 'z-[80]' : 'z-30'}`}>
+      <div ref={publicationFit.containerRef} className="flex flex-1 min-w-0 2xl:min-w-fit items-center gap-1.5">
         <div className="flex shrink-0 items-center">
           <LiraLogo size={32} showText={true} className="hidden sm:inline-flex" />
           <LiraLogo size={28} showText={false} className="sm:hidden" />
@@ -227,10 +223,10 @@ export const TopNavBar: React.FC<Props> = ({
           aria-busy={linkStatus === 'copying'}
           aria-label={linkStatus === 'copied' ? 'Link do convite copiado' : 'Copiar link do convite'}
           title={linkStatus === 'error' ? linkError : 'Copiar link para abrir o Lira e entrar no espaço'}
-          className="flex shrink-0 items-center gap-1.5 rounded-xl border border-indigo-500/40 bg-indigo-500/15 p-2 text-xs font-semibold text-indigo-200 enabled:hover:bg-indigo-500/25 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300">
+          className="flex shrink-0 items-center gap-1.5 rounded-[8px] border border-lira-quiet bg-lira-surface p-2 text-xs font-semibold text-lira-accent transition-colors enabled:hover:border-lira-accent enabled:hover:text-lira-ink disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-lira-accent">
           {linkStatus === 'copying' ? <LoaderCircle className="h-4 w-4 animate-spin" />
-            : linkStatus === 'copied' ? <Check className="h-4 w-4 text-emerald-400" />
-            : linkStatus === 'error' ? <CircleAlert className="h-4 w-4 text-rose-300" />
+            : linkStatus === 'copied' ? <Check className="h-4 w-4 text-lira-online" />
+            : linkStatus === 'error' ? <CircleAlert className="h-4 w-4 text-lira-error" />
             : <Link2 className="h-4 w-4" />}
           <span className="sr-only" role="status">{linkStatus === 'error' ? linkError : linkStatus === 'copied' ? 'Link copiado' : ''}</span>
         </button>}
@@ -243,30 +239,30 @@ export const TopNavBar: React.FC<Props> = ({
             disabled={copyStatus === 'copying'}
             aria-busy={copyStatus === 'copying'}
             aria-label={copyStatus === 'copying' ? 'Preparando convite' : copyStatus === 'error' ? 'Falha ao copiar. Tente novamente.' : isHost ? 'Copiar convite completo' : 'Copiar ID do espaço'}
-            className={`hidden min-[520px]:flex min-w-0 max-w-[360px] items-center gap-1.5 rounded-xl border px-2 py-2 text-xs font-semibold transition-all sm:px-3 ${
-              isHost ? 'shrink-0 border-indigo-500/40 bg-indigo-500/15 text-indigo-200 hover:bg-indigo-500/25' : 'border-[#2a3142] bg-[#1b202c] text-slate-200 hover:bg-slate-800'
+            className={`hidden min-[520px]:flex min-w-0 max-w-[360px] items-center gap-1.5 rounded-[8px] border px-2 py-2 text-xs font-semibold transition-colors sm:px-2.5 ${
+              isHost ? 'shrink-0 border-lira-quiet bg-lira-surface text-lira-accent hover:border-lira-accent hover:text-lira-ink' : 'border-lira-quiet bg-lira-surface text-lira-ink hover:border-lira-rule'
             }`}
             title={isHost ? 'Copiar convite completo' : `ID do Espaço: ${roomId}\nClique para copiar o ID`}
           >
             {copyStatus === 'copied' ? (
-              <Check className="h-4 w-4 shrink-0 text-emerald-400" />
+              <Check className="h-4 w-4 shrink-0 text-lira-online" />
             ) : copyStatus === 'copying' ? (
-              <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-indigo-300" />
+              <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin text-lira-accent" />
             ) : copyStatus === 'error' ? (
-              <CircleAlert className="h-3.5 w-3.5 shrink-0 text-rose-300" />
+              <CircleAlert className="h-3.5 w-3.5 shrink-0 text-lira-error" />
             ) : (
               <Copy className="h-4 w-4 shrink-0" />
             )}
             {isHost ? (
               <span className="hidden whitespace-nowrap lg:inline">{copyStatus === 'copied' ? 'Convite copiado' : 'Convite completo'}</span>
             ) : (
-              <span className="min-w-0 truncate font-mono font-bold text-indigo-300">{displayRoomId}</span>
+              <span className="min-w-0 truncate font-mono font-bold text-lira-accent">{displayRoomId}</span>
             )}
           </button>
         )}
 
         {roomId && isHost && <button type="button" onClick={() => setShowDirectConnection(true)}
-          className="hidden min-[520px]:flex shrink-0 items-center gap-1.5 rounded-xl border border-indigo-500/40 p-2 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/20 sm:px-3"
+          className="hidden min-[520px]:flex shrink-0 items-center gap-1.5 rounded-[8px] border border-lira-quiet bg-lira-surface p-2 text-xs font-semibold text-lira-accent transition-colors hover:border-lira-accent hover:text-lira-ink sm:px-2.5"
           aria-label="Convites individuais" title="Convites individuais">
           <Link2 className="h-4 w-4 shrink-0" />
           <span className="hidden whitespace-nowrap lg:inline">Convites individuais</span>
@@ -277,12 +273,12 @@ export const TopNavBar: React.FC<Props> = ({
             onClick={isHost ? toggleRoomPrivacy : undefined}
             disabled={!isHost}
             className={`relative hidden sm:flex shrink-0 min-w-0 overflow-hidden whitespace-nowrap items-center justify-center gap-1.5 ${
-              isAndroidPlatform ? 'p-2' : 'p-2 sm:px-3 sm:py-1.5'
-            } rounded-xl border text-xs font-semibold transition-all ${
+              isAndroidPlatform ? 'p-2' : 'p-2 sm:px-2.5 sm:py-1.5'
+            } rounded-[8px] border text-xs font-semibold transition-colors ${
               isRoomPublic
-                ? 'bg-blue-500/15 border-blue-500/40 text-blue-300 hover:bg-blue-500/25'
-                : 'bg-[#1b202c] border-[#2a3142] text-slate-300 hover:bg-slate-800'
-            } ${!isHost ? 'cursor-default opacity-80' : 'cursor-pointer hover:scale-105 active:scale-95'}`}
+                ? 'bg-lira-surface border-lira-rule text-lira-accent hover:border-lira-accent hover:text-lira-ink'
+                : 'bg-lira-ground border-lira-quiet text-lira-muted hover:border-lira-rule hover:text-lira-ink'
+            } ${!isHost ? 'cursor-default opacity-80' : 'cursor-pointer'}`}
             title={
               isHost
                 ? isRoomPublic
@@ -294,9 +290,9 @@ export const TopNavBar: React.FC<Props> = ({
             }
           >
             {isRoomPublic ? (
-              <Globe className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              <Globe className="w-3.5 h-3.5 text-lira-accent shrink-0" />
             ) : (
-              <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <Lock className="w-3.5 h-3.5 text-lira-muted shrink-0" />
             )}
             {!isAndroidPlatform && (
               <>
@@ -310,7 +306,7 @@ export const TopNavBar: React.FC<Props> = ({
                   {publicationServers.map(server => (
                     <span
                       key={server.host}
-                      className="inline-block min-w-0 max-w-24 truncate text-[9px] border px-1.5 py-0.5 rounded font-bold bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                      className="inline-block min-w-0 max-w-24 truncate text-[9px] border px-1.5 py-0.5 rounded-[4px] font-bold bg-lira-online/15 text-lira-online border-lira-online/40"
                       aria-label={`Sala publicada em ${server.name}`}
                       title={server.host}
                     >
@@ -318,7 +314,7 @@ export const TopNavBar: React.FC<Props> = ({
                     </span>
                   ))}
                   {publicationServers.length === 0 && (
-                    <span className="text-[9px] text-amber-300">Aguardando publicação</span>
+                    <span className="text-[9px] text-lira-amber">Aguardando publicação</span>
                   )}
                 </span>}
               </>
@@ -328,53 +324,54 @@ export const TopNavBar: React.FC<Props> = ({
 
         {connectionStatus === 'reconnecting' && (
           <div
-            className="flex shrink-0 items-center gap-1.5 px-2 sm:px-3 py-2 sm:py-1 bg-amber-500/15 border border-amber-500/40 rounded-xl text-xs font-semibold text-amber-300 animate-pulse"
+            className="flex shrink-0 items-center gap-1.5 px-2 sm:px-2.5 py-2 sm:py-1 bg-lira-amber/15 border border-lira-amber/40 rounded-[8px] text-xs font-semibold text-lira-amber"
             title="Conexão com a rede P2P instável. Tentando reconectar automaticamente..."
           >
-            <span className="w-2 h-2 shrink-0 rounded-full bg-amber-400 animate-ping" />
+            <span className="w-2 h-2 shrink-0 rounded-full bg-lira-amber animate-ping" />
             <span className="hidden md:inline whitespace-nowrap">Reconectando...</span>
           </div>
         )}
 
         {connectionStatus === 'disconnected' && roomId && (
           <button
-onClick={() => PeerManager.getInstance().reconnect()}
-            className="flex shrink-0 items-center gap-1.5 px-2 sm:px-3 py-2 sm:py-1 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 rounded-xl text-xs font-semibold text-rose-300 transition-all cursor-pointer shadow-sm active:scale-95"
+            onClick={() => PeerManager.getInstance().reconnect()}
+            className="flex shrink-0 items-center gap-1.5 px-2 sm:px-2.5 py-2 sm:py-1 bg-lira-error/15 hover:bg-lira-error/25 border border-lira-error/40 rounded-[8px] text-xs font-semibold text-lira-error transition-colors cursor-pointer"
             title="Conexão com o servidor perdida. Clique para tentar reconectar agora."
           >
-            <span className="w-2 h-2 shrink-0 rounded-full bg-rose-500" />
+            <span className="w-2 h-2 shrink-0 rounded-full bg-lira-error" />
             <span className="hidden md:inline whitespace-nowrap">Desconectado</span>
             <span className="hidden md:inline underline ml-1 font-bold">Reconectar</span>
           </button>
         )}
       </div>
 
-      <div className="hidden 2xl:flex shrink-0 min-w-0 max-w-[190px] items-center gap-2">
-        <div className="flex min-w-0 max-w-full items-center gap-2 px-3 py-1.5 bg-[#1b202c]/60 border border-[#2a3142] rounded-full" title={currentZone ? currentZone.name : 'Corredor Geral'}>
+      <div className="hidden 2xl:flex shrink-0 min-w-0 max-w-[200px] min-[1800px]:max-w-64 items-center justify-center">
+        <div className="flex min-w-0 max-w-full items-center gap-2 px-3 py-1.5 bg-lira-ground border border-dashed border-lira-rule/60 rounded-[8px]" title={currentZone ? currentZone.name : 'Corredor Geral'}>
           <div
             className="w-2.5 h-2.5 shrink-0 rounded-full"
             style={{ backgroundColor: currentZone ? currentZone.color : '#6b7280' }}
           />
-          <span className="min-w-0 truncate whitespace-nowrap text-xs font-semibold text-slate-200">
+          <span className="min-w-0 truncate whitespace-nowrap text-xs font-semibold text-lira-ink">
             {currentZone ? currentZone.name : 'Corredor Geral'}
           </span>
         </div>
       </div>
 
-      <div className="hidden 2xl:flex shrink-0 items-center gap-2.5 whitespace-nowrap">
+      <div className="flex shrink-0 2xl:flex-1 2xl:min-w-fit items-center justify-end gap-1.5 whitespace-nowrap">
+      <div className="hidden 2xl:flex shrink-0 items-center gap-1.5 min-[1800px]:gap-2 whitespace-nowrap">
         {autoSavedNotice && (
-          <div className="flex shrink-0 items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-xs font-semibold text-emerald-300 animate-in fade-in duration-200" role="status" title="Espaço Salvo!">
-            <Check className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+          <div className="flex shrink-0 items-center gap-1.5 px-2.5 py-1.5 rounded-[8px] bg-lira-online/15 border border-lira-online/40 text-xs font-semibold text-lira-online" role="status" title="Espaço Salvo!">
+            <Check className="w-3.5 h-3.5 shrink-0 text-lira-online" />
             <span className="hidden min-[1800px]:inline">Espaço Salvo!</span>
           </div>
         )}
 
         <button
           onClick={toggleEditor}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-[8px] text-xs font-semibold border transition-colors ${
             isEditorOpen
-              ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/30'
-              : 'bg-[#1b202c] text-slate-300 border-[#2a3142] hover:bg-slate-800'
+              ? 'bg-lira-accent text-lira-ground border-lira-accent font-bold'
+              : 'bg-lira-surface text-lira-ink border-lira-quiet hover:border-lira-accent hover:text-lira-accent'
           }`}
           title="Editar Mobília, Pisos e Zonas do Espaço"
         >
@@ -384,16 +381,16 @@ onClick={() => PeerManager.getInstance().reconnect()}
 
         <button
           onClick={toggleChat}
-          className={`relative p-2 rounded-xl border transition-all ${
+          className={`relative p-2 rounded-[8px] border transition-colors ${
             isChatOpen
-              ? 'bg-indigo-600 text-white border-indigo-500 shadow-md'
-              : 'bg-[#1b202c] text-slate-300 border-[#2a3142] hover:bg-slate-800'
+              ? 'bg-lira-accent text-lira-ground border-lira-accent'
+              : 'bg-lira-surface text-lira-ink border-lira-quiet hover:border-lira-accent hover:text-lira-accent'
           }`}
           title="Abrir Chat e Canais"
         >
           <MessageSquare className="w-4 h-4" />
           {totalUnread > 0 && !isChatOpen && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-indigo-500 text-white text-[10px] font-bold flex items-center justify-center animate-bounce">
+            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-lira-accent text-lira-ground text-[10px] font-bold flex items-center justify-center">
               {totalUnread}
             </span>
           )}
@@ -401,12 +398,12 @@ onClick={() => PeerManager.getInstance().reconnect()}
 
         <button
           onClick={toggleOnlineUsers}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all relative ${
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-[8px] border text-xs font-semibold transition-colors relative ${
             isOnlineUsersOpen
-              ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-600/30 ring-2 ring-indigo-500/30'
+              ? 'bg-lira-accent text-lira-ground border-lira-accent font-bold'
               : totalUnreadDMs > 0
-              ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 hover:bg-rose-500/30 animate-pulse'
-              : 'bg-[#1b202c] hover:bg-slate-800 border-[#2a3142] text-slate-300 hover:text-white'
+              ? 'bg-lira-error/20 text-lira-error border-lira-error/50 hover:bg-lira-error/30'
+              : 'bg-lira-surface hover:border-lira-accent border-lira-quiet text-lira-ink'
           }`}
           title={
             totalUnreadDMs > 0
@@ -414,10 +411,10 @@ onClick={() => PeerManager.getInstance().reconnect()}
               : 'Ver Participantes Online, Amigos e Gerenciar Permissões'
           }
         >
-          <Users className={`w-3.5 h-3.5 ${isOnlineUsersOpen ? 'text-white' : totalUnreadDMs > 0 ? 'text-rose-400' : 'text-emerald-400'}`} />
+          <Users className={`w-3.5 h-3.5 ${isOnlineUsersOpen ? 'text-lira-ground' : totalUnreadDMs > 0 ? 'text-lira-error' : 'text-lira-online'}`} />
           <span>{remotePlayerCount + 1}</span>
           {totalUnreadDMs > 0 && !isOnlineUsersOpen && (
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-[#12151d] animate-ping" />
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-lira-error ring-2 ring-lira-panel animate-ping" />
           )}
         </button>
 
@@ -432,7 +429,7 @@ onClick={() => PeerManager.getInstance().reconnect()}
             <button
               type="button"
               disabled={isUpdating || isDownloadingUpdate}
-              className="p-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-400 hover:text-emerald-300 transition-all hover:scale-105 shadow-sm shadow-emerald-500/20 disabled:opacity-75 disabled:cursor-wait cursor-pointer"
+              className="p-2 rounded-[8px] bg-lira-online/15 hover:bg-lira-online/25 border border-lira-online/40 text-lira-online transition-colors disabled:opacity-75 disabled:cursor-wait cursor-pointer"
               aria-label={updateActionLabel}
               title={isDownloadingUpdate ? updateActionLabel : 'Nova versão disponível. Passe o mouse ou clique para ver novidades e instalar.'}
             >
@@ -447,44 +444,31 @@ onClick={() => PeerManager.getInstance().reconnect()}
               type="button"
               onClick={(e) => { e.stopPropagation(); checkNow() }}
               disabled={manualCheck === 'checking'}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#1b202c] hover:bg-[#232a3a] border border-[#2a3142] text-slate-300 text-xs font-semibold select-none transition-colors cursor-pointer disabled:cursor-wait"
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-[8px] bg-lira-surface hover:border-lira-accent border border-lira-quiet text-lira-ink text-xs font-semibold select-none transition-colors cursor-pointer disabled:cursor-wait"
               title={`Versão atual do Lira: ${currentVersion}. Clique para verificar atualizações.`}
             >
               {manualCheck === 'checking' ? (
-                <RefreshCw className="w-3 h-3 animate-spin text-slate-400" />
+                <RefreshCw className="w-3 h-3 animate-spin text-lira-muted" />
               ) : (
-                <span className={`w-1.5 h-1.5 rounded-full ${manualCheck === 'failed' ? 'bg-rose-400' : 'bg-emerald-400'}`} />
+                <span className={`w-1.5 h-1.5 rounded-full ${manualCheck === 'failed' ? 'bg-lira-error' : 'bg-lira-online'}`} />
               )}
-              <span className="font-mono text-[11px] text-slate-400">{versionBadgeLabel(manualCheck, currentVersion)}</span>
+              <span className="font-mono text-[11px] text-lira-muted">{versionBadgeLabel(manualCheck, currentVersion)}</span>
             </button>
           )}
         </UpdateChangelogHover>
 
-        <div
-          className="flex items-center px-2.5 py-1.5 bg-[#1b202c] border border-[#2a3142] rounded-xl hover:bg-slate-800 transition-colors"
-          title={`Sua Conexão:\nPing: ${localQuality.pingMs > 0 ? `${localQuality.pingMs}ms` : '<10ms'}\nPerda de pacotes: ${localQuality.lossPct}%\nQualidade: ${localQuality.rating}`}
-        >
-          <NetworkSignalIcon
-            rating={localQuality.rating}
-            pingMs={localQuality.pingMs}
-            lossPct={localQuality.lossPct}
-            showPingText={true}
-            size="sm"
-          />
-        </div>
-
         <button
           onClick={() => useMediaStore.getState().setSettingsModalOpen(true)}
-          className="p-2 rounded-xl bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] text-slate-300 hover:text-white transition-all group"
+          className="p-2 rounded-[8px] bg-lira-surface hover:border-lira-accent border border-lira-quiet text-lira-muted hover:text-lira-ink transition-colors group"
           title="Configurações de Áudio e Chamada"
         >
-          <Settings className="w-4 h-4 text-slate-400 group-hover:text-indigo-400 group-hover:rotate-45 transition-transform" />
+          <Settings className="w-4 h-4 text-lira-muted group-hover:text-lira-accent transition-colors" />
         </button>
 
         <button
           onClick={onOpenAvatarModal}
           title={`Editar perfil: ${localPlayerName}`}
-          className="flex shrink-0 items-center gap-2 px-2 min-[1800px]:pr-3 py-1 bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] rounded-xl transition-all group"
+          className="flex shrink-0 items-center gap-2 px-2 min-[1800px]:pr-3 py-1 bg-lira-surface hover:border-lira-accent border border-lira-quiet rounded-[8px] transition-colors group"
         >
           <PlayerAvatar
             name={localPlayerName}
@@ -495,10 +479,10 @@ onClick={() => PeerManager.getInstance().reconnect()}
             size="sm"
           />
           <div className="hidden min-[1800px]:block min-w-0 max-w-[80px] text-left">
-            <div className="truncate text-xs font-bold text-slate-200 group-hover:text-white leading-tight">
+            <div className="truncate font-display text-xs font-bold text-lira-ink group-hover:text-lira-accent leading-tight">
               {localPlayerName}
             </div>
-            <div className="text-[10px] text-slate-400 leading-tight truncate max-w-[80px]">
+            <div className="text-[10px] font-mono text-lira-muted leading-tight truncate max-w-[80px]">
               {localPlayerStatusText}
             </div>
           </div>
@@ -507,10 +491,10 @@ onClick={() => PeerManager.getInstance().reconnect()}
         {onDisconnect && (
           <button
             onClick={onDisconnect}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-950/40 hover:bg-rose-600/30 border border-rose-500/30 text-rose-300 hover:text-rose-100 rounded-xl text-xs font-bold transition-all active:scale-95 group shadow-sm hover:shadow-rose-500/20"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-lira-surface hover:bg-lira-error hover:text-lira-ground border border-lira-error/40 text-lira-error rounded-[8px] text-xs font-bold transition-colors group"
             title="Sair / Desconectar deste espaço"
           >
-            <LogOut className="w-3.5 h-3.5 text-rose-400 group-hover:text-rose-200 transition-colors" />
+            <LogOut className="w-3.5 h-3.5 text-current transition-colors" />
             <span className="hidden min-[1800px]:inline">Sair</span>
           </button>
         )}
@@ -523,24 +507,24 @@ onClick={() => PeerManager.getInstance().reconnect()}
         aria-haspopup="dialog"
         title="Reportar erro"
         onClick={openReportIssue}
-        className="hidden min-[520px]:flex shrink-0 items-center rounded-xl border border-[#2a3142] bg-[#1b202c] p-2 text-slate-300 transition-colors hover:bg-slate-800 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300"
+        className="hidden min-[520px]:flex shrink-0 items-center rounded-[8px] border border-lira-quiet bg-lira-surface p-2 text-lira-muted transition-colors hover:border-lira-accent hover:text-lira-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-lira-accent"
       >
-        <Bug className="h-4 w-4 text-rose-400" aria-hidden="true" />
+        <Bug className="h-4 w-4 text-lira-error" aria-hidden="true" />
       </button>
 
       <div className="flex 2xl:hidden shrink-0 items-center gap-1 sm:gap-1.5">
         <button
           onClick={() => { setIsMobileMenuOpen(false); toggleChat() }}
-          className={`relative p-2 rounded-xl border transition-all ${
+          className={`relative p-2 rounded-[8px] border transition-colors ${
             isChatOpen
-              ? 'bg-indigo-600 text-white border-indigo-500 shadow-md'
-              : 'bg-[#1b202c] text-slate-300 border-[#2a3142] hover:bg-slate-800'
+              ? 'bg-lira-accent text-lira-ground border-lira-accent'
+              : 'bg-lira-surface text-lira-ink border-lira-quiet hover:border-lira-accent'
           }`}
           title="Abrir Chat"
         >
           <MessageSquare className="w-4 h-4" />
           {totalUnread > 0 && !isChatOpen && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-indigo-500 text-white text-[10px] font-bold flex items-center justify-center animate-bounce">
+            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-lira-accent text-lira-ground text-[10px] font-bold flex items-center justify-center">
               {totalUnread}
             </span>
           )}
@@ -548,19 +532,19 @@ onClick={() => PeerManager.getInstance().reconnect()}
 
         <button
           onClick={() => { setIsMobileMenuOpen(false); toggleOnlineUsers() }}
-          className={`flex items-center gap-1 p-2 rounded-xl border text-xs font-semibold transition-all relative ${
+          className={`flex items-center gap-1 p-2 rounded-[8px] border text-xs font-semibold transition-colors relative ${
             isOnlineUsersOpen
-              ? 'bg-indigo-600 text-white border-indigo-500 shadow-md'
+              ? 'bg-lira-accent text-lira-ground border-lira-accent'
               : totalUnreadDMs > 0
-              ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 animate-pulse'
-              : 'bg-[#1b202c] border-[#2a3142] text-slate-300'
+              ? 'bg-lira-error/20 text-lira-error border-lira-error/50'
+              : 'bg-lira-surface border-lira-quiet text-lira-ink'
           }`}
           title="Participantes Online"
         >
           <Users className="w-4 h-4" />
           <span className="text-[11px] font-bold">{remotePlayerCount + 1}</span>
           {totalUnreadDMs > 0 && !isOnlineUsersOpen && (
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-[#12151d] animate-ping" />
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-lira-error ring-2 ring-lira-panel animate-ping" />
           )}
         </button>
 
@@ -569,33 +553,34 @@ onClick={() => PeerManager.getInstance().reconnect()}
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           aria-expanded={isMobileMenuOpen}
           aria-controls="space-navigation-menu"
-          className={`p-2 rounded-xl border transition-all relative ${
+          className={`p-2 rounded-[8px] border transition-colors relative ${
             isMobileMenuOpen
-              ? 'bg-indigo-600 text-white border-indigo-500 shadow-md'
-              : 'bg-[#1b202c] border-[#2a3142] text-slate-300 hover:text-white'
+              ? 'bg-lira-accent text-lira-ground border-lira-accent'
+              : 'bg-lira-surface border-lira-quiet text-lira-ink hover:border-lira-accent'
           }`}
           title="Mais opções e menus"
         >
-          {isMobileMenuOpen ? <X className="w-4 h-4 text-white" /> : <Menu className="w-4 h-4" />}
+          {isMobileMenuOpen ? <X className="w-4 h-4 text-lira-ground" /> : <Menu className="w-4 h-4" />}
           {(showUpdateAction || totalUnreadDMs > 0) && !isMobileMenuOpen && (
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-lira-online" />
           )}
         </button>
+      </div>
       </div>
 
       {isMobileMenuOpen && (
         <>
-        <div className="absolute inset-x-0 top-14 h-[calc(100dvh-3.5rem)] bg-black/50 z-40 2xl:hidden" aria-hidden="true" onClick={() => setIsMobileMenuOpen(false)} />
-        <div id="space-navigation-menu" role="region" aria-label="Menu do espaço" className="absolute inset-x-0 top-14 bg-[#12151d] border-b border-[#394359] p-3 sm:p-4 z-50 shadow-2xl flex flex-col gap-3 max-h-[calc(100dvh-3.5rem)] overflow-y-auto overscroll-contain select-none 2xl:hidden">
+        <div className="absolute inset-x-0 top-14 h-[calc(100dvh-3.5rem)] bg-lira-ground/80 z-40 2xl:hidden" aria-hidden="true" onClick={() => setIsMobileMenuOpen(false)} />
+        <div id="space-navigation-menu" role="region" aria-label="Menu do espaço" className="absolute inset-x-0 top-14 bg-lira-panel border-b border-dashed border-lira-rule p-3 sm:p-4 z-50 flex flex-col gap-3 max-h-[calc(100dvh-3.5rem)] overflow-y-auto overscroll-contain select-none 2xl:hidden">
           {roomId && <div className="flex flex-wrap items-center gap-2 min-[520px]:hidden">
             <button type="button" onClick={handleCopyCode} disabled={copyStatus === 'copying'} aria-busy={copyStatus === 'copying'}
               aria-label={isHost ? 'Copiar convite completo' : 'Copiar ID do espaço'}
-              className="flex items-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-500/15 p-2 text-xs font-semibold text-indigo-200 hover:bg-indigo-500/25 disabled:opacity-50">
+              className="flex items-center gap-2 rounded-[8px] border border-lira-rule bg-lira-surface p-2 text-xs font-semibold text-lira-accent hover:border-lira-accent hover:text-lira-ink disabled:opacity-50">
               {copyStatus === 'copied' ? <Check size={16} /> : copyStatus === 'copying' ? <LoaderCircle size={16} className="animate-spin" /> : <Copy size={16} />}
               <span>{copyStatus === 'copied' ? 'Convite copiado' : isHost ? 'Convite completo' : 'Copiar ID do espaço'}</span>
             </button>
             {isHost && <button type="button" onClick={() => setShowDirectConnection(true)} aria-label="Convites individuais"
-              className="flex items-center gap-2 rounded-xl border border-indigo-500/40 p-2 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/20">
+              className="flex items-center gap-2 rounded-[8px] border border-lira-rule bg-lira-surface p-2 text-xs font-semibold text-lira-accent hover:border-lira-accent hover:text-lira-ink">
               <Link2 size={16} /><span>Convites individuais</span>
             </button>}
             <span className="sr-only" role="status">{copyStatus === 'error' ? 'Falha ao copiar. Tente novamente.' : copyStatus === 'copied' ? 'Convite copiado' : ''}</span>
@@ -605,7 +590,7 @@ onClick={() => PeerManager.getInstance().reconnect()}
               setIsMobileMenuOpen(false)
               onOpenAvatarModal()
             }}
-            className="flex shrink-0 w-full items-center justify-between gap-3 p-3 rounded-2xl bg-[#1b202c] border border-[#475569] text-left cursor-pointer hover:border-indigo-400 transition-colors"
+            className="flex shrink-0 w-full items-center justify-between gap-3 p-3 rounded-[12px] bg-lira-surface border border-lira-rule text-left cursor-pointer hover:border-lira-accent transition-colors"
           >
             <div className="flex min-w-0 items-center gap-3">
               <PlayerAvatar
@@ -617,18 +602,18 @@ onClick={() => PeerManager.getInstance().reconnect()}
                 size="md"
               />
               <div className="min-w-0">
-                <div className="truncate text-sm font-bold text-slate-100" title={localPlayerName}>{localPlayerName}</div>
-                <div className="truncate text-xs text-slate-300">{localPlayerStatusText}</div>
+                <div className="truncate font-display text-sm font-bold text-lira-ink" title={localPlayerName}>{localPlayerName}</div>
+                <div className="truncate text-xs text-lira-muted">{localPlayerStatusText}</div>
               </div>
             </div>
-            <span className="shrink-0 whitespace-nowrap text-xs text-indigo-200 font-semibold px-2 py-1 rounded-lg bg-indigo-950 border border-indigo-700">
+            <span className="shrink-0 whitespace-nowrap text-xs text-lira-accent font-semibold px-2 py-1 rounded-[6px] bg-lira-ground border border-lira-rule">
               Editar Perfil
             </span>
           </button>
 
-          <div className="flex shrink-0 items-center justify-between gap-3 px-3 py-2 rounded-xl bg-[#181d28] border border-[#394359] text-xs">
-            <span className="shrink-0 text-slate-300">Local Atual:</span>
-            <span className="min-w-0 font-bold text-slate-100 flex items-center justify-end gap-1.5" title={currentZone ? currentZone.name : 'Corredor Geral'}>
+          <div className="flex shrink-0 items-center justify-between gap-3 px-3 py-2 rounded-[8px] bg-lira-ground border border-dashed border-lira-rule/60 text-xs">
+            <span className="shrink-0 text-lira-muted">Local Atual:</span>
+            <span className="min-w-0 font-bold text-lira-ink flex items-center justify-end gap-1.5" title={currentZone ? currentZone.name : 'Corredor Geral'}>
               <div
                 className="w-2.5 h-2.5 shrink-0 rounded-full"
                 style={{ backgroundColor: currentZone ? currentZone.color : '#6b7280' }}
@@ -642,9 +627,9 @@ onClick={() => PeerManager.getInstance().reconnect()}
               type="button"
               aria-haspopup="dialog"
               onClick={openReportIssue}
-              className="flex min-[520px]:hidden items-center gap-2.5 w-full p-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-semibold text-slate-100 transition-colors text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300"
+              className="flex min-[520px]:hidden items-center gap-2.5 w-full p-3 rounded-[8px] bg-lira-surface hover:border-lira-accent border border-lira-quiet text-xs font-semibold text-lira-ink transition-colors text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-lira-accent"
             >
-              <Bug className="h-4 w-4 shrink-0 text-rose-400" aria-hidden="true" />
+              <Bug className="h-4 w-4 shrink-0 text-lira-error" aria-hidden="true" />
               <span>Reportar erro</span>
             </button>
 
@@ -653,9 +638,9 @@ onClick={() => PeerManager.getInstance().reconnect()}
                 setIsMobileMenuOpen(false)
                 useMediaStore.getState().setSettingsModalOpen(true)
               }}
-              className="flex items-center gap-2.5 w-full p-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-semibold text-slate-100 transition-colors text-left"
+              className="flex items-center gap-2.5 w-full p-3 rounded-[8px] bg-lira-surface hover:border-lira-accent border border-lira-quiet text-xs font-semibold text-lira-ink transition-colors text-left"
             >
-              <Settings className="w-4 h-4 shrink-0 text-indigo-300" />
+              <Settings className="w-4 h-4 shrink-0 text-lira-accent" />
               <span>Configurações de Áudio e Chamada</span>
             </button>
 
@@ -664,13 +649,13 @@ onClick={() => PeerManager.getInstance().reconnect()}
                 setIsMobileMenuOpen(false)
                 toggleEditor()
               }}
-              className={`flex items-center gap-2.5 w-full p-3 rounded-xl text-xs font-semibold border transition-colors text-left ${
+              className={`flex items-center gap-2.5 w-full p-3 rounded-[8px] text-xs font-semibold border transition-colors text-left ${
                 isEditorOpen
-                  ? 'bg-indigo-600 text-white border-indigo-500'
-                  : 'bg-slate-800 text-slate-100 border-slate-600 hover:bg-slate-700'
+                  ? 'bg-lira-accent text-lira-ground border-lira-accent font-bold'
+                  : 'bg-lira-surface text-lira-ink border-lira-quiet hover:border-lira-accent'
               }`}
             >
-              <Edit3 className={`w-4 h-4 shrink-0 ${isEditorOpen ? 'text-white' : 'text-indigo-300'}`} />
+              <Edit3 className={`w-4 h-4 shrink-0 ${isEditorOpen ? 'text-lira-ground' : 'text-lira-accent'}`} />
               <span>{isEditorOpen ? 'Fechar Editor do Espaço' : 'Editar Mobílias e Salas'}</span>
             </button>
 
@@ -679,36 +664,24 @@ onClick={() => PeerManager.getInstance().reconnect()}
                 onClick={() => {
                   toggleRoomPrivacy()
                 }}
-                className="flex items-center justify-between gap-2 w-full p-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-semibold text-slate-100 transition-colors text-left"
+                className="flex items-center justify-between gap-2 w-full p-3 rounded-[8px] bg-lira-surface hover:border-lira-accent border border-lira-quiet text-xs font-semibold text-lira-ink transition-colors text-left"
               >
                 <span className="flex items-center gap-2.5">
-                  {isRoomPublic ? <Globe className="w-4 h-4 shrink-0 text-blue-300" /> : <Lock className="w-4 h-4 shrink-0 text-slate-300" />}
+                  {isRoomPublic ? <Globe className="w-4 h-4 shrink-0 text-lira-accent" /> : <Lock className="w-4 h-4 shrink-0 text-lira-muted" />}
                   <span>Privacidade da Sala: {isRoomPublic ? 'Pública' : 'Privada'}</span>
                 </span>
-                <span className="shrink-0 text-[10px] text-indigo-200 underline font-bold">Alternar</span>
+                <span className="shrink-0 text-[10px] text-lira-accent underline font-bold">Alternar</span>
               </button>
             )}
 
-            <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-[#181d28] border border-[#394359] text-xs">
-              <span className="text-slate-300">Qualidade da Conexão:</span>
-              <NetworkSignalIcon
-                rating={localQuality.rating}
-                pingMs={localQuality.pingMs}
-                lossPct={localQuality.lossPct}
-                showPingText={true}
-                size="sm"
-                className="shrink-0"
-              />
-            </div>
-
             {!(showUpdateAction && onApplyUpdate) && (
               <button type="button" onClick={() => checkNow()} disabled={manualCheck === 'checking'}
-                className="flex items-center justify-between gap-3 w-full p-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-semibold text-slate-100 text-left disabled:cursor-wait">
+                className="flex items-center justify-between gap-3 w-full p-3 rounded-[8px] bg-lira-surface hover:border-lira-accent border border-lira-quiet text-xs font-semibold text-lira-ink text-left disabled:cursor-wait">
                 <span className="flex items-center gap-2.5">
-                  <RefreshCw className={`w-4 h-4 shrink-0 text-indigo-300 ${manualCheck === 'checking' ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-4 h-4 shrink-0 text-lira-accent ${manualCheck === 'checking' ? 'animate-spin' : ''}`} />
                   <span>Verificar atualizações</span>
                 </span>
-                <span className="shrink-0 text-[11px] font-mono text-slate-200">{versionBadgeLabel(manualCheck, currentVersion)}</span>
+                <span className="shrink-0 text-[11px] font-mono text-lira-muted">{versionBadgeLabel(manualCheck, currentVersion)}</span>
               </button>
             )}
 
@@ -721,7 +694,7 @@ onClick={() => PeerManager.getInstance().reconnect()}
                 disabled={isUpdating || isDownloadingUpdate}
                 aria-label={updateActionLabel}
                 title={isDownloadingUpdate ? updateActionLabel : undefined}
-                className="flex items-center justify-between gap-3 w-full p-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 border border-emerald-500 text-white font-bold text-xs transition-colors disabled:cursor-wait disabled:opacity-75"
+                className="flex items-center justify-between gap-3 w-full p-3 rounded-[8px] bg-lira-online/20 hover:bg-lira-online/30 border border-lira-online text-lira-online font-bold text-xs transition-colors disabled:cursor-wait disabled:opacity-75"
               >
                 <span className="flex items-center gap-2">
                   <UpdateDownloadIndicator downloading={isDownloadingUpdate} percent={updatePercent} />
@@ -737,9 +710,9 @@ onClick={() => PeerManager.getInstance().reconnect()}
                   setIsMobileMenuOpen(false)
                   onDisconnect()
                 }}
-                className="flex items-center justify-center gap-2 w-full p-3 mt-1 rounded-xl bg-rose-950 hover:bg-rose-900 border border-rose-500 text-rose-100 font-bold text-xs transition-colors cursor-pointer"
+                className="flex items-center justify-center gap-2 w-full p-3 mt-1 rounded-[8px] bg-lira-surface hover:bg-lira-error hover:text-lira-ground border border-lira-error/50 text-lira-error font-bold text-xs transition-colors cursor-pointer group"
               >
-                <LogOut className="w-4 h-4 shrink-0 text-rose-200" />
+                <LogOut className="w-4 h-4 shrink-0 text-current" />
                 <span>Sair / Desconectar do Espaço</span>
               </button>
             )}
@@ -750,13 +723,13 @@ onClick={() => PeerManager.getInstance().reconnect()}
       {showDirectConnection && <dialog
         ref={directConnectionDialogRef}
         aria-labelledby="direct-connection-title"
-        className="fixed inset-0 m-auto max-h-[calc(100dvh-1.5rem)] w-[calc(100%-1.5rem)] max-w-xl select-text flex-col overflow-hidden rounded-2xl border border-slate-600 bg-[#181d28] p-0 text-slate-100 open:flex backdrop:bg-black/70"
+        className="fixed inset-0 m-auto max-h-[calc(100dvh-1.5rem)] w-[calc(100%-1.5rem)] max-w-xl select-text flex-col overflow-hidden rounded-[12px] border border-dashed border-lira-rule bg-lira-panel p-0 font-mono text-lira-ink open:flex backdrop:bg-lira-ground/80"
         onClose={() => setShowDirectConnection(false)}
         onClick={event => { if (event.target === event.currentTarget) event.currentTarget.close() }}>
-        <div className="flex shrink-0 items-center justify-between gap-4 border-b border-slate-700 px-4 py-2 sm:px-5">
-          <h2 id="direct-connection-title" className="text-base font-bold">Convites individuais</h2>
+        <div className="flex shrink-0 items-center justify-between gap-4 border-b border-dashed border-lira-rule/60 px-4 py-2.5 sm:px-5">
+          <h2 id="direct-connection-title" className="font-display text-lg font-bold text-lira-accent">Convites individuais</h2>
           <button type="button" aria-label="Fechar convites individuais" onClick={() => directConnectionDialogRef.current?.close()}
-            className="rounded-lg p-2.5 text-slate-300 hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300">
+            className="rounded-[8px] border border-transparent p-2.5 text-lira-muted hover:border-lira-quiet hover:bg-lira-surface hover:text-lira-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-lira-accent">
             <X className="h-5 w-5" />
           </button>
         </div>

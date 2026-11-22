@@ -128,53 +128,53 @@ const OnlineUsersMenuInner: React.FC = () => {
     if (isOwnerPlayer) {
       return {
         label: 'Dono',
-        icon: <Crown className="w-3 h-3 text-amber-400" />,
-        bg: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+        icon: <Crown className="w-3 h-3 text-lira-amber" />,
+        bg: 'bg-lira-amber/15 text-lira-amber border-lira-amber/40',
       }
     }
     if (isHostPlayer) {
       return {
         label: 'Host de Conexão',
-        icon: <Zap className="w-3 h-3 text-cyan-400" />,
-        bg: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30',
+        icon: <Zap className="w-3 h-3 text-lira-accent" />,
+        bg: 'bg-lira-accent/15 text-lira-accent border-lira-accent/40',
       }
     }
     if (role === 'admin') {
       return {
         label: 'Admin',
-        icon: <Shield className="w-3 h-3 text-indigo-400" />,
-        bg: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30',
+        icon: <Shield className="w-3 h-3 text-lira-accent" />,
+        bg: 'bg-lira-surface text-lira-accent border-lira-rule',
       }
     }
     if (role === 'guest') {
       return {
         label: 'Visitante',
-        icon: <UserX className="w-3 h-3 text-slate-400" />,
-        bg: 'bg-slate-800 text-slate-400 border-slate-700',
+        icon: <UserX className="w-3 h-3 text-lira-muted" />,
+        bg: 'bg-lira-ground text-lira-muted border-lira-quiet',
       }
     }
     return {
       label: 'Membro',
-      icon: <UserCheck className="w-3 h-3 text-emerald-400" />,
-      bg: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+      icon: <UserCheck className="w-3 h-3 text-lira-online" />,
+      bg: 'bg-lira-online/15 text-lira-online border-lira-online/40',
     }
   }
 
   return (
-    <div className="fixed top-16 left-3 right-3 sm:left-auto sm:right-4 w-auto sm:w-96 bg-[#161922] backdrop-blur-xl border border-[#2a3142] rounded-3xl shadow-2xl z-[70] overflow-hidden flex flex-col max-h-[calc(100dvh-76px)] animate-in fade-in slide-in-from-right-4 duration-200 select-none">
-      <div className="p-4 border-b border-[#2a3142] bg-[#12151d]/80 flex items-center justify-between">
+    <div className="fixed top-16 left-3 right-3 sm:left-auto sm:right-4 w-auto sm:w-96 bg-lira-panel border border-dashed border-lira-rule rounded-[12px] z-[70] overflow-hidden flex flex-col max-h-[calc(100dvh-76px)] select-none font-mono text-lira-ink">
+      <div className="p-4 border-b border-dashed border-lira-rule/60 bg-lira-ground flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-md shadow-emerald-500/20">
+          <div className="w-8 h-8 rounded-[8px] bg-lira-surface border border-lira-rule flex items-center justify-center text-lira-accent">
             <Users className="w-4 h-4" />
           </div>
           <div>
-            <h2 className="text-sm font-extrabold text-slate-100 flex items-center gap-2">
+            <h2 className="font-display text-base font-bold text-lira-accent flex items-center gap-2">
               Pessoas no Espaço
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-[6px] bg-lira-online/15 text-lira-online border border-lira-online/40 font-bold">
                 {allPlayers.length} online
               </span>
             </h2>
-            <p className="text-[11px] text-slate-400 truncate max-w-[200px]">
+            <p className="text-[11px] font-mono text-lira-muted truncate max-w-[200px]">
               {roomName || 'Espaço de Trabalho Virtual'}
             </p>
           </div>
@@ -182,18 +182,18 @@ const OnlineUsersMenuInner: React.FC = () => {
 
         <button
           onClick={() => setOnlineUsersOpen(false)}
-          className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+          className="p-1.5 rounded-[8px] bg-lira-surface border border-lira-quiet hover:border-lira-accent text-lira-muted hover:text-lira-ink transition-colors"
         >
           <X className="w-4 h-4" />
         </button>
       </div>
 
-      <div className="p-3 bg-indigo-950/40 border-b border-indigo-500/20 flex items-center justify-between gap-2">
+      <div className="p-3 bg-lira-surface border-b border-dashed border-lira-rule/60 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <Share2 className="w-4 h-4 text-indigo-400 shrink-0" />
-          <div className="text-xs text-indigo-200 truncate">
+          <Share2 className="w-4 h-4 text-lira-accent shrink-0" />
+          <div className="text-xs text-lira-ink truncate">
             <span className="font-bold">Convidar amigos:</span> Código{' '}
-            <span className="font-mono font-bold text-white bg-indigo-900/60 px-1.5 py-0.5 rounded border border-indigo-500/30">
+            <span className="font-mono font-bold text-lira-accent bg-lira-ground px-1.5 py-0.5 rounded-[4px] border border-lira-quiet">
               {roomId || 'Principal'}
             </span>
           </div>
@@ -201,56 +201,56 @@ const OnlineUsersMenuInner: React.FC = () => {
 
         <button
           onClick={handleCopyInvite}
-          className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/30 transition-all flex items-center gap-1.5 shrink-0"
+          className="px-3 py-1 bg-lira-accent hover:bg-lira-ink text-lira-ground border border-lira-accent rounded-[8px] text-xs font-bold transition-colors flex items-center gap-1.5 shrink-0"
         >
           {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
           <span>{copiedLink ? 'Copiado!' : 'Copiar'}</span>
         </button>
       </div>
 
-      <div className="p-3 space-y-2.5 border-b border-[#2a3142] bg-[#12151d]/40">
+      <div className="p-3 space-y-2.5 border-b border-dashed border-lira-rule/60 bg-lira-panel">
         <div className="relative">
-          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <Search className="w-3.5 h-3.5 text-lira-muted absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Buscar por nome ou status..."
-            className="w-full bg-[#12151d] border border-[#2a3142] rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
+            className="w-full bg-lira-ground border border-lira-rule rounded-[8px] pl-9 pr-3 py-1.5 text-xs font-mono text-lira-ink placeholder:text-lira-muted/70 focus:outline-none focus:border-lira-accent"
           />
         </div>
 
-        <div className="flex gap-1.5 bg-[#12151d] p-1 rounded-xl border border-[#2a3142]">
+        <div className="flex gap-1.5 bg-lira-ground p-1 rounded-[8px] border border-lira-quiet">
           <button
             onClick={() => setFilterTab('all')}
-            className={`flex-1 py-1 rounded-lg text-xs font-bold transition-all ${
+            className={`flex-1 py-1 rounded-[6px] text-xs font-bold transition-colors ${
               filterTab === 'all'
-                ? 'bg-indigo-600 text-white shadow'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-lira-accent text-lira-ground'
+                : 'text-lira-muted hover:text-lira-ink hover:bg-lira-surface'
             }`}
           >
             Todos ({allPlayers.length})
           </button>
           <button
             onClick={() => setFilterTab('friends')}
-            className={`flex-1 py-1 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${
+            className={`flex-1 py-1 rounded-[6px] text-xs font-bold transition-colors flex items-center justify-center gap-1 ${
               filterTab === 'friends'
-                ? 'bg-indigo-600 text-white shadow'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-lira-accent text-lira-ground'
+                : 'text-lira-muted hover:text-lira-ink hover:bg-lira-surface'
             }`}
           >
-            <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+            <Star className={`w-3 h-3 ${filterTab === 'friends' ? 'text-lira-ground fill-lira-ground' : 'text-lira-amber fill-lira-amber'}`} />
             <span>Amigos ({friendsInRoomCount})</span>
           </button>
         </div>
       </div>
 
-      {transferError && <div role="alert" className="mx-3 mt-3 p-2.5 rounded-xl border border-rose-500/30 bg-rose-500/10 text-xs text-rose-200">{transferError}</div>}
+      {transferError && <div role="alert" className="mx-3 mt-3 p-2.5 rounded-[8px] border border-lira-error/40 bg-lira-error/15 text-xs text-lira-error">{transferError}</div>}
 
       <div className="p-3 overflow-y-auto flex-1 space-y-2">
         {filteredPlayers.length === 0 ? (
-          <div className="text-center py-8 text-xs text-slate-500 space-y-1">
-            <Users className="w-6 h-6 mx-auto text-slate-600" />
+          <div className="text-center py-8 text-xs text-lira-muted space-y-1 border border-dashed border-lira-rule/50 rounded-[8px] bg-lira-ground">
+            <Users className="w-6 h-6 mx-auto text-lira-muted" />
             <div>
               {searchQuery
                 ? 'Nenhum participante encontrado'
@@ -271,13 +271,11 @@ const OnlineUsersMenuInner: React.FC = () => {
             const isFriend = !!friendKey
             const isMenuOpen = selectedUserMenuId === player.id
             const pingMs = player.ping ?? (isLocal ? 12 : 38)
-            const pingColor = pingMs < 60 ? 'text-emerald-400' : pingMs < 120 ? 'text-amber-400' : 'text-rose-400'
-            const pingDot = pingMs < 60 ? 'bg-emerald-400' : pingMs < 120 ? 'bg-amber-400' : 'bg-rose-400'
 
             return (
               <div
                 key={player.id}
-                className="p-3 rounded-2xl bg-[#12151d]/70 hover:bg-[#12151d] border border-[#2a3142] transition-all space-y-2.5"
+                className="p-3 rounded-[10px] bg-lira-ground hover:bg-lira-surface/60 border border-lira-quiet hover:border-lira-rule transition-colors space-y-2.5"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2.5 min-w-0">
@@ -289,36 +287,36 @@ const OnlineUsersMenuInner: React.FC = () => {
 
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-xs font-bold text-slate-100 truncate">
+                        <span className="text-xs font-display font-bold text-lira-ink truncate">
                           {player.name}
                         </span>
                         {isLocal && (
-                          <span className="text-[9px] bg-slate-800 text-slate-300 px-1.5 py-0.2 rounded border border-slate-700 font-semibold">
+                          <span className="text-[9px] font-mono bg-lira-surface text-lira-muted px-1.5 py-0.2 rounded-[4px] border border-lira-quiet font-semibold">
                             Você
                           </span>
                         )}
                         {(player.isDjBot || player.id.startsWith('dj-')) && (
-                          <span className="text-[9px] bg-[#1db954] text-black px-1.5 py-0.2 rounded font-extrabold flex items-center gap-1 shadow-sm">
+                          <span className="text-[9px] bg-[#1db954] text-black px-1.5 py-0.2 rounded-[4px] font-extrabold flex items-center gap-1">
                             <SpotifyIcon size={10} className="text-black" />
                             <span>DJ</span>
                           </span>
                         )}
                         <span
-                          className={`text-[9px] px-1.5 py-0.2 rounded-md font-bold border flex items-center gap-1 ${roleBadge.bg}`}
+                          className={`text-[9px] font-mono px-1.5 py-0.2 rounded-[4px] font-bold border flex items-center gap-1 ${roleBadge.bg}`}
                         >
                           {roleBadge.icon}
                           <span>{roleBadge.label}</span>
                         </span>
                         {isPlayerOwner && isPlayerConnectionHost && (
-                          <span className="text-[8px] bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 px-1 py-0.2 rounded font-semibold flex items-center gap-0.5">
+                          <span className="text-[8px] font-mono bg-lira-accent/15 text-lira-accent border border-lira-accent/30 px-1 py-0.2 rounded-[4px] font-semibold flex items-center gap-0.5">
                             <Zap className="w-2.5 h-2.5" />
                             Host
                           </span>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
-                        <span className="flex items-center gap-0.5 text-indigo-300">
+                      <div className="flex items-center gap-2 text-[10px] text-lira-muted mt-0.5">
+                        <span className="flex items-center gap-0.5 text-lira-accent">
                           <MapPin className="w-2.5 h-2.5" />
                           <span>{getZoneName(player.currentZoneId)}</span>
                         </span>
@@ -355,10 +353,10 @@ const OnlineUsersMenuInner: React.FC = () => {
                                 window.open(`https://open.spotify.com/search/${encodeURIComponent(query)}`, '_blank')
                               }
                             }}
-                            className="flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 font-medium cursor-pointer truncate max-w-[130px] transition-colors bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20"
+                            className="flex items-center gap-1 text-[10px] text-lira-online hover:text-lira-ink font-medium cursor-pointer truncate max-w-[130px] transition-colors bg-lira-online/10 px-1.5 py-0.2 rounded-[4px] border border-lira-online/30"
                             title={`Ouvindo no Spotify: ${player.spotifyActivity.track}${player.spotifyActivity.artist ? ` - ${player.spotifyActivity.artist}` : ''} (Clique para ouvir)`}
                           >
-                            <SpotifyIcon size={10} className="w-2.5 h-2.5 shrink-0 text-emerald-400" />
+                            <SpotifyIcon size={10} className="w-2.5 h-2.5 shrink-0 text-lira-online" />
                             <span className="truncate">
                               {player.spotifyActivity.track}
                             </span>
@@ -371,34 +369,34 @@ const OnlineUsersMenuInner: React.FC = () => {
                   <div className="flex items-center gap-1">
                     {!isLocal && callStates[player.id] === 'connecting' && (
                       <span
-                        className="text-[8px] bg-amber-500/15 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded font-bold flex items-center gap-1 animate-pulse"
+                        className="text-[8px] bg-lira-amber/15 text-lira-amber border border-lira-amber/40 px-1.5 py-0.5 rounded-[4px] font-bold flex items-center gap-1"
                         title="Estabelecendo conexão de áudio/vídeo…"
                       >
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-lira-amber" />
                         Conectando
                       </span>
                     )}
                     {!isLocal && callStates[player.id] === 'failed' && (
                       <span
-                        className="text-[8px] bg-rose-500/15 text-rose-300 border border-rose-500/30 px-1.5 py-0.5 rounded font-bold flex items-center gap-1"
+                        className="text-[8px] bg-lira-error/15 text-lira-error border border-lira-error/40 px-1.5 py-0.5 rounded-[4px] font-bold flex items-center gap-1"
                         title="Falha na conexão de chamada"
                       >
                         Sem áudio
                       </span>
                     )}
-                    <div className="flex items-center gap-0.5 text-slate-400 bg-slate-900/60 p-1 rounded-lg border border-slate-800">
+                    <div className="flex items-center gap-0.5 text-lira-muted bg-lira-panel p-1 rounded-[6px] border border-lira-quiet">
                       {player.isMuted ? (
-                        <MicOff className="w-3 h-3 text-rose-400" />
+                        <MicOff className="w-3 h-3 text-lira-error" />
                       ) : (
-                        <Mic className="w-3 h-3 text-emerald-400" />
+                        <Mic className="w-3 h-3 text-lira-online" />
                       )}
                       {player.isCameraOff ? (
-                        <VideoOff className="w-3 h-3 text-slate-500" />
+                        <VideoOff className="w-3 h-3 text-lira-muted" />
                       ) : (
-                        <Video className="w-3 h-3 text-emerald-400" />
+                        <Video className="w-3 h-3 text-lira-online" />
                       )}
                       {player.isScreenSharing && (
-                        <Tv className="w-3 h-3 text-blue-400 animate-pulse" />
+                        <Tv className="w-3 h-3 text-lira-accent" />
                       )}
                     </div>
 
@@ -407,10 +405,10 @@ const OnlineUsersMenuInner: React.FC = () => {
                       return (
                         <button
                           onClick={() => openDirectMessage({ id: playerUserId, name: player.name })}
-                          className={`p-1.5 rounded-lg border transition-colors relative ${
+                          className={`p-1.5 rounded-[6px] border transition-colors relative ${
                             friendUnread > 0
-                              ? 'bg-rose-600 text-white border-rose-500 animate-pulse shadow-md shadow-rose-600/30'
-                              : 'bg-slate-800/60 text-slate-400 hover:text-indigo-300 hover:bg-indigo-600/20 border-slate-700 hover:border-indigo-500/40'
+                              ? 'bg-lira-error text-lira-ground border-lira-error'
+                              : 'bg-lira-surface text-lira-muted hover:text-lira-accent border-lira-quiet hover:border-lira-accent'
                           }`}
                           title={
                             friendUnread > 0
@@ -418,9 +416,9 @@ const OnlineUsersMenuInner: React.FC = () => {
                               : `Conversar com ${player.name}`
                           }
                         >
-                          <MessageSquare className={`w-3 h-3 ${friendUnread > 0 ? 'text-white' : 'text-indigo-400'}`} />
+                          <MessageSquare className={`w-3 h-3 ${friendUnread > 0 ? 'text-lira-ground' : 'text-lira-accent'}`} />
                           {friendUnread > 0 && (
-                            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-[#12151d] animate-ping" />
+                            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-lira-error ring-2 ring-lira-ground" />
                           )}
                         </button>
                       )
@@ -444,12 +442,12 @@ const OnlineUsersMenuInner: React.FC = () => {
                               openDirectMessage({ id: playerUserId, name: player.name })
                             }
                           }}
-                          className={`p-1.5 rounded-lg border transition-colors ${
+                          className={`p-1.5 rounded-[6px] border transition-colors ${
                             isFriend
-                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                              ? 'bg-lira-amber/15 text-lira-amber border-lira-amber/40'
                               : isPending
-                              ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40 animate-pulse'
-                              : 'bg-slate-800/60 text-slate-400 hover:text-slate-200 border-slate-700'
+                              ? 'bg-lira-surface text-lira-accent border-lira-rule'
+                              : 'bg-lira-surface text-lira-muted hover:text-lira-ink border-lira-quiet hover:border-lira-rule'
                           }`}
                           title={
                             isFriend
@@ -460,9 +458,9 @@ const OnlineUsersMenuInner: React.FC = () => {
                           }
                         >
                           {isPending && !isFriend ? (
-                            <Clock className="w-3 h-3 text-indigo-400" />
+                            <Clock className="w-3 h-3 text-lira-accent" />
                           ) : (
-                            <Star className={`w-3 h-3 ${isFriend ? 'fill-amber-400 text-amber-400' : ''}`} />
+                            <Star className={`w-3 h-3 ${isFriend ? 'fill-lira-amber text-lira-amber' : ''}`} />
                           )}
                         </button>
                       )
@@ -473,10 +471,10 @@ const OnlineUsersMenuInner: React.FC = () => {
                         onClick={() =>
                           setSelectedUserMenuId(isMenuOpen ? null : player.id)
                         }
-                        className={`p-1.5 rounded-lg border transition-colors ${
+                        className={`p-1.5 rounded-[6px] border transition-colors ${
                           isMenuOpen
-                            ? 'bg-indigo-600 text-white border-indigo-500'
-                            : 'bg-slate-800/60 text-slate-400 hover:text-white border-slate-700'
+                            ? 'bg-lira-accent text-lira-ground border-lira-accent'
+                            : 'bg-lira-surface text-lira-muted hover:text-lira-ink border-lira-quiet hover:border-lira-rule'
                         }`}
                         title="Ações e Permissões do Usuário"
                       >
@@ -487,8 +485,8 @@ const OnlineUsersMenuInner: React.FC = () => {
                 </div>
 
                 {isMenuOpen && !isLocal && (
-                  <div className="p-3 bg-[#181c26] rounded-xl border border-indigo-500/30 space-y-2.5 animate-in fade-in duration-150">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <div className="p-3 bg-lira-surface rounded-[8px] border border-dashed border-lira-rule space-y-2.5">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-lira-muted">
                       Ações & Interação
                     </div>
 
@@ -498,7 +496,7 @@ const OnlineUsersMenuInner: React.FC = () => {
                           goToPlayer(player.id)
                           setSelectedUserMenuId(null)
                         }}
-                        className="py-1.5 px-2 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 font-bold text-xs flex items-center gap-1.5 border border-indigo-500/30 transition-colors"
+                        className="py-1.5 px-2 rounded-[6px] bg-lira-ground hover:border-lira-accent text-lira-accent font-bold text-xs flex items-center gap-1.5 border border-lira-rule transition-colors"
                       >
                         <Compass className="w-3.5 h-3.5" />
                         <span>Ir até {player.name.split(' ')[0]}</span>
@@ -509,9 +507,9 @@ const OnlineUsersMenuInner: React.FC = () => {
                           openDirectMessage({ id: playerUserId, name: player.name })
                           setSelectedUserMenuId(null)
                         }}
-                        className="py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 border border-slate-700 transition-colors"
+                        className="py-1.5 px-2 rounded-[6px] bg-lira-ground hover:border-lira-rule text-lira-ink font-bold text-xs flex items-center gap-1.5 border border-lira-quiet transition-colors"
                       >
-                        <MessageSquare className="w-3.5 h-3.5 text-indigo-400" />
+                        <MessageSquare className="w-3.5 h-3.5 text-lira-accent" />
                         <span>Mensagem</span>
                       </button>
 
@@ -530,9 +528,9 @@ const OnlineUsersMenuInner: React.FC = () => {
                               openDirectMessage({ id: playerUserId, name: player.name })
                               setSelectedUserMenuId(null)
                             }}
-                            className="py-1.5 px-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-bold text-xs flex items-center gap-1.5 border border-emerald-500/30 transition-colors col-span-2"
+                            className="py-1.5 px-2 rounded-[6px] bg-lira-online/15 hover:bg-lira-online/25 text-lira-online font-bold text-xs flex items-center gap-1.5 border border-lira-online/40 transition-colors col-span-2"
                           >
-                            <UserPlus className="w-3.5 h-3.5 text-emerald-400" />
+                            <UserPlus className="w-3.5 h-3.5 text-lira-online" />
                             <span>Adicionar aos Amigos</span>
                           </button>
                         )
@@ -540,8 +538,8 @@ const OnlineUsersMenuInner: React.FC = () => {
                     </div>
 
                     {(isOwner || isHost) && (
-                      <div className="pt-2 border-t border-slate-800 space-y-2">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      <div className="pt-2 border-t border-dashed border-lira-rule/60 space-y-2">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-lira-muted">
                           {isOwner ? 'Gerenciar Participante (Dono da Sala)' : 'Host de Conexão'}
                         </div>
 
@@ -562,32 +560,32 @@ const OnlineUsersMenuInner: React.FC = () => {
                               setTransferTargetId(null)
                             }
                           }}
-                          className={`w-full py-1.5 px-2.5 rounded-lg text-xs font-bold border flex items-center justify-between transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                          className={`w-full py-1.5 px-2.5 rounded-[6px] text-xs font-bold border flex items-center justify-between transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                             isPlayerConnectionHost
-                              ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
-                              : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border-slate-700'
+                              ? 'bg-lira-accent/15 text-lira-accent border-lira-accent/40'
+                              : 'bg-lira-ground hover:border-lira-accent text-lira-ink border-lira-quiet'
                           }`}
                           title="Transfere a conexão da sala para este participante após a confirmação dele"
                         >
                           <div className="flex items-center gap-1.5">
-                            <Zap className="w-3.5 h-3.5 text-cyan-400" />
+                            <Zap className="w-3.5 h-3.5 text-lira-accent" />
                             <span>{transferTargetId === player.id ? 'Transferindo…' : isPlayerConnectionHost ? 'Host de Conexão Ativo' : 'Tornar Host de Conexão'}</span>
                           </div>
-                          <span className="text-[10px] font-mono text-emerald-400">{pingMs}ms</span>
+                          <span className="text-[10px] font-mono text-lira-online">{pingMs}ms</span>
                         </button>
 
                         {isOwner && <>
                         <div className="flex items-center justify-between gap-1 text-xs">
-                          <span className="text-slate-300">Cargo:</span>
+                          <span className="text-lira-muted">Cargo:</span>
                           <div className="flex gap-1">
                             {(['admin', 'member', 'guest'] as UserRole[]).map((r) => (
                               <button
                                 key={r}
                                 onClick={() => updatePlayerRole(player.id, r)}
-                                className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition-colors ${
+                                className={`px-2 py-0.5 rounded-[4px] text-[10px] font-bold border transition-colors ${
                                   player.role === r || (!player.role && r === 'member')
-                                    ? 'bg-indigo-600 text-white border-indigo-500'
-                                    : 'bg-slate-900 text-slate-400 border-slate-700 hover:text-white'
+                                    ? 'bg-lira-accent text-lira-ground border-lira-accent'
+                                    : 'bg-lira-ground text-lira-muted border-lira-quiet hover:text-lira-ink hover:border-lira-rule'
                                 }`}
                               >
                                 {r === 'admin' ? 'Admin' : r === 'member' ? 'Membro' : 'Visitante'}
@@ -605,10 +603,10 @@ const OnlineUsersMenuInner: React.FC = () => {
                                 canEditMap: canEdit,
                               })
                             }}
-                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border flex items-center gap-1.5 transition-colors ${
+                            className={`px-2.5 py-1 rounded-[6px] text-[10px] font-bold border flex items-center gap-1.5 transition-colors ${
                               player.permissions?.canEditMap
-                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                                : 'bg-slate-900 text-slate-400 border-slate-700'
+                                ? 'bg-lira-online/15 text-lira-online border-lira-online/40'
+                                : 'bg-lira-ground text-lira-muted border-lira-quiet'
                             }`}
                           >
                             <Shield className="w-3 h-3" />
@@ -623,7 +621,7 @@ const OnlineUsersMenuInner: React.FC = () => {
                             onClick={() => {
                               setKickConfirmPlayer({ id: player.id, name: player.name })
                             }}
-                            className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border border-rose-500/40 transition-colors"
+                            className="px-2.5 py-1 rounded-[6px] text-[10px] font-bold bg-lira-error/15 hover:bg-lira-error hover:text-lira-ground text-lira-error border border-lira-error/40 transition-colors"
                           >
                             Expulsar
                           </button>

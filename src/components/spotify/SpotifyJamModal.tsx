@@ -76,24 +76,24 @@ export const SpotifyJamModal: React.FC = () => {
       role="dialog"
       aria-modal="true"
       aria-labelledby="spotify-dj-title"
-      className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md select-none animate-in fade-in duration-200"
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-lira-ground/80 select-none font-mono"
     >
-      <div className="bg-[#12151d] border border-[#2a3142] rounded-3xl w-full max-w-md overflow-hidden flex flex-col shadow-2xl shadow-black/90 max-h-[90vh]">
-        <div className="px-5 py-4 border-b border-[#222736] bg-[#0e1118] flex items-center justify-between">
+      <div className="bg-lira-panel border border-dashed border-lira-rule rounded-xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="px-5 py-4 border-b border-dashed border-lira-rule/60 bg-lira-sidebar flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shadow-md">
+            <div className="w-10 h-10 rounded-lg bg-lira-online/15 border border-lira-online/40 text-lira-online flex items-center justify-center">
               <SpotifyIcon size={20} className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 id="spotify-dj-title" className="text-base font-bold text-slate-100">DJ</h2>
+                <h2 id="spotify-dj-title" className="text-base font-display font-bold text-lira-accent">DJ</h2>
                 {currentZone && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold uppercase tracking-wider">
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-lira-online/15 text-lira-online border border-lira-online/40 font-mono font-bold uppercase tracking-wider">
                     {currentZone.name}
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-400">Músicas exclusivas para quem estiver nesta sala</p>
+              <p className="text-xs text-lira-muted">Músicas exclusivas para quem estiver nesta sala</p>
             </div>
           </div>
           <button
@@ -101,7 +101,7 @@ export const SpotifyJamModal: React.FC = () => {
             aria-label="Fechar DJ"
             onClick={handleCloseDj}
             disabled={djLoading}
-            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
+            className="p-2 text-lira-muted hover:text-lira-ink hover:bg-lira-surface rounded-lg transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -109,20 +109,20 @@ export const SpotifyJamModal: React.FC = () => {
 
         <div className="p-5 space-y-4 overflow-y-auto">
           {!targetZoneId || !currentZone ? (
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 text-center space-y-3">
-              <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+            <div className="bg-lira-surface border border-dashed border-lira-amber/60 rounded-xl p-4 text-center space-y-3">
+              <div className="w-10 h-10 rounded-lg bg-lira-amber/15 border border-lira-amber/40 text-lira-amber flex items-center justify-center mx-auto">
                 <MapPin className="w-5 h-5" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-xs font-bold text-amber-200">Você está no corredor</h3>
-                <p className="text-xs text-slate-400">
+                <h3 className="text-xs font-display font-bold text-lira-amber">Você está no corredor</h3>
+                <p className="text-xs text-lira-muted">
                   Entre em uma sala privada no mapa para transmitir como DJ. As músicas tocam exclusivamente para quem estiver na mesma sala!
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setModalOpen(false)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition-colors"
+                className="px-4 py-2 bg-lira-ground hover:bg-lira-panel text-lira-ink border border-lira-rule text-xs font-semibold rounded-lg transition-colors"
               >
                 Entendi
               </button>
@@ -137,24 +137,24 @@ export const SpotifyJamModal: React.FC = () => {
                 onClick={handleToggleDjMode}
                 disabled={djLoading || (!isDjModeActive && !isListening && !login.ready)}
                 aria-busy={djLoading}
-                className={`w-full py-4 px-5 rounded-2xl text-base font-bold flex items-center justify-center gap-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                className={`w-full py-4 px-5 rounded-xl text-base font-bold flex items-center justify-center gap-3 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                   isDjModeActive || isListening
-                    ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30'
-                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-950/40'
+                    ? 'bg-lira-error/15 text-lira-error border border-lira-error/50 hover:bg-lira-error/25'
+                    : 'bg-lira-accent hover:bg-lira-ink text-lira-ground border-2 border-lira-accent hover:border-lira-ink'
                 }`}
               >
                 <SpotifyIcon size={24} className="w-6 h-6 shrink-0" aria-hidden="true" />
                 <span>{djLoading ? (isDjModeActive || isListening ? 'Parando...' : 'Iniciando...') : isDjModeActive || isListening ? 'Parar DJ' : 'Transmitir DJ'}</span>
               </button>
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-[#141721] border border-slate-800">
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-lira-surface border border-lira-quiet">
                 <button
                   type="button"
                   onClick={toggleMute}
-                  className="p-1 text-slate-400 hover:text-white rounded transition-colors"
+                  className="p-1 text-lira-muted hover:text-lira-ink rounded transition-colors"
                   title={isMuted ? 'Desmutar' : 'Mutar'}
                   aria-label={isMuted ? 'Desmutar' : 'Mutar'}
                 >
-                  {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4" />}
+                  {isMuted ? <VolumeX className="w-4 h-4 text-lira-error" /> : <Volume2 className="w-4 h-4" />}
                 </button>
                 <input
                   type="range"
@@ -166,9 +166,9 @@ export const SpotifyJamModal: React.FC = () => {
                     const v = Number(e.target.value)
                     setVolume(v)
                   }}
-                  className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                  className="w-full h-1 bg-lira-ground rounded-lg appearance-none cursor-pointer accent-[var(--accent)]"
                 />
-                <span className="text-xs text-slate-400 font-mono w-8 text-right">
+                <span className="text-xs text-lira-muted font-mono tabular-nums w-8 text-right">
                   {isMuted ? '0%' : `${volume}%`}
                 </span>
               </div>
@@ -176,12 +176,12 @@ export const SpotifyJamModal: React.FC = () => {
           )}
         </div>
 
-        <div className="px-5 py-3 border-t border-[#222736] bg-[#0e1118] flex justify-end">
+        <div className="px-5 py-3 border-t border-dashed border-lira-rule/60 bg-lira-sidebar flex justify-end">
           <button
             type="button"
             onClick={handleCloseDj}
             disabled={djLoading}
-            className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl font-medium transition-colors"
+            className="px-4 py-1.5 bg-lira-surface hover:border-lira-accent text-lira-ink border border-lira-rule text-xs rounded-lg font-medium transition-colors"
           >
             Fechar
           </button>

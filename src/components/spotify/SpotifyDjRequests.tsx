@@ -12,21 +12,21 @@ export function SpotifySongSearchResults({ view, disabled, onSelect, blockedTrac
   view: SpotifySearchView; disabled: boolean; onSelect(track: SpotifySearchTrack): void; blockedTracks?: ReadonlyMap<string, 'adding' | 'uncertain'>
 }) {
   if (view.query.length < 2) return null
-  if (view.loading) return <p role="status" className="text-xs text-slate-400">Buscando no Spotify…</p>
-  if (view.error) return <p role="alert" className="text-xs text-amber-300">{view.error}</p>
-  if (!view.tracks.length) return <p role="status" className="text-xs text-slate-400">Nenhuma música encontrada no Spotify.</p>
+  if (view.loading) return <p role="status" className="text-xs font-mono text-lira-muted">Buscando no Spotify…</p>
+  if (view.error) return <p role="alert" className="text-xs font-mono text-lira-amber">{view.error}</p>
+  if (!view.tracks.length) return <p role="status" className="text-xs font-mono text-lira-muted">Nenhuma música encontrada no Spotify.</p>
   return (
-    <ul aria-label="Resultados do Spotify" className="max-h-56 overflow-y-auto rounded-lg border border-slate-700 bg-[#0e1118] divide-y divide-slate-800">
+    <ul aria-label="Resultados do Spotify" className="max-h-56 overflow-y-auto rounded-lg border border-lira-quiet bg-lira-ground divide-y divide-lira-quiet font-mono">
       {view.tracks.map(track => <li key={track.id}>
         <button type="button" disabled={disabled || blockedTracks?.has(track.id)} onClick={() => onSelect({ ...track, searchQuery: view.query })}
           aria-label={`Adicionar ${track.title}${track.artist ? ` de ${track.artist}` : ''} à fila do DJ`}
-          className="w-full flex items-center gap-2 p-2 text-left hover:bg-emerald-500/10 disabled:opacity-50 disabled:cursor-not-allowed">
+          className="w-full flex items-center gap-2 p-2 text-left hover:bg-lira-surface disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
           {track.coverUrl && <img src={track.coverUrl} alt="" referrerPolicy="no-referrer" loading="lazy" className="h-8 w-8 shrink-0 rounded object-cover" />}
           <span className="min-w-0 flex-1">
-            <span className="block text-xs font-medium text-slate-100 truncate">{track.title}</span>
-            {track.artist && <span className="block text-[10px] text-slate-400 truncate">{track.artist}</span>}
+            <span className="block text-xs font-medium text-lira-ink truncate">{track.title}</span>
+            {track.artist && <span className="block text-[10px] text-lira-muted truncate">{track.artist}</span>}
           </span>
-          <span className="shrink-0 text-[10px] text-emerald-300">{blockedTracks?.get(track.id) === 'uncertain' ? 'Confira a fila' : blockedTracks?.has(track.id) ? 'Adicionando…' : 'Adicionar'}</span>
+          <span className="shrink-0 text-[10px] text-lira-online">{blockedTracks?.get(track.id) === 'uncertain' ? 'Confira a fila' : blockedTracks?.has(track.id) ? 'Adicionando…' : 'Adicionar'}</span>
         </button>
       </li>)}
     </ul>
@@ -101,58 +101,58 @@ export function SpotifyDjRequests({ zoneId }: { zoneId: string }) {
   }
 
   return (
-    <section aria-label="Pedidos de música" className="space-y-3 rounded-2xl border border-slate-800 bg-[#141721] p-3">
+    <section aria-label="Pedidos de música" className="space-y-3 rounded-xl border border-dashed border-lira-rule/60 bg-lira-surface p-3 font-mono">
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-xs font-semibold text-slate-200">Pedidos da sala</h3>
-        <span className="text-[10px] text-slate-400 tabular-nums">{pendingCount}/{MAX_DJ_SONG_REQUESTS} pendentes</span>
+        <h3 className="text-xs font-display font-bold text-lira-accent">Pedidos da sala</h3>
+        <span className="text-[10px] text-lira-muted tabular-nums">{pendingCount}/{MAX_DJ_SONG_REQUESTS} pendentes</span>
       </div>
       <form onSubmit={submit} className="space-y-2">
-        <label htmlFor={inputId} className="text-xs text-slate-400">Música ou artista</label>
+        <label htmlFor={inputId} className="text-xs text-lira-muted">Música ou artista</label>
         <div className="flex gap-2">
           <input ref={inputRef} id={inputId} name="songQuery" type="search" maxLength={MAX_DJ_SONG_QUERY_LENGTH} required
             placeholder="Nome da música e artista" autoComplete="off" disabled={busy !== null || full}
             onChange={event => { setError(null); setFeedback(null); searchSession.current?.setQuery(event.currentTarget.value) }}
-            className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-[#0e1118] px-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 disabled:opacity-50" />
+            className="min-w-0 flex-1 rounded-lg border border-lira-rule bg-lira-ground px-3 py-2 text-xs text-lira-ink placeholder:text-lira-muted/60 focus:outline-none focus:border-lira-accent disabled:opacity-50" />
           <button type="submit" disabled={busy !== null || full} aria-busy={busy === 'send'}
-            className="shrink-0 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed">
+            className="shrink-0 rounded-lg bg-lira-accent px-3 py-2 text-xs font-semibold text-lira-ground border-2 border-lira-accent hover:bg-lira-ink hover:border-lira-ink disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
             {busy === 'send' ? 'Adicionando…' : 'Buscar'}
           </button>
         </div>
       </form>
       <SpotifySongSearchResults view={suggestions} disabled={busy !== null || full} blockedTracks={blockedTracks}
         onSelect={track => { void sendSong([track.title, track.artist].filter(Boolean).join(' — ').slice(0, MAX_DJ_SONG_QUERY_LENGTH), inputRef.current, track) }} />
-      <p className="text-[11px] text-slate-400">{full ? 'Há muitos pedidos em processamento. Aguarde algumas inclusões terminarem.' : 'Selecione uma música para adicioná-la à fila do DJ.'}</p>
+      <p className="text-[11px] text-lira-muted">{full ? 'Há muitos pedidos em processamento. Aguarde algumas inclusões terminarem.' : 'Selecione uma música para adicioná-la à fila do DJ.'}</p>
       {requests.length ? (
-        <ol className="max-h-48 overflow-y-auto divide-y divide-slate-800">
+        <ol className="max-h-48 overflow-y-auto divide-y divide-lira-quiet">
           {requests.map(request => (
             <li key={request.id} className="flex items-center gap-2 py-2">
               <div className="min-w-0 flex-1">
-                <p className="text-xs text-slate-200 break-words">{request.track?.title || request.query}</p>
-                {request.track?.artist && <p className="text-[10px] text-slate-400 truncate">{request.track.artist}</p>}
-                <p className="text-[10px] text-slate-500 truncate">Pedido por {request.requestedByName}</p>
-                {request.status && <p className={`text-[10px] ${request.status === 'queued' ? 'text-emerald-300' : request.status === 'adding' ? 'text-slate-400' : 'text-amber-300'}`}>
+                <p className="text-xs text-lira-ink break-words">{request.track?.title || request.query}</p>
+                {request.track?.artist && <p className="text-[10px] text-lira-muted truncate">{request.track.artist}</p>}
+                <p className="text-[10px] text-lira-muted/80 truncate">Pedido por {request.requestedByName}</p>
+                {request.status && <p className={`text-[10px] ${request.status === 'queued' ? 'text-lira-online' : request.status === 'adding' ? 'text-lira-muted' : 'text-lira-amber'}`}>
                   {request.status === 'queued' ? 'Adicionada ao Spotify' : request.status === 'adding' ? 'Adicionando ao Spotify…' : request.status === 'uncertain' ? 'Confira a fila no Spotify' : 'Falha ao adicionar'}
                 </p>}
-                {request.error && <p className="text-[10px] text-amber-300 break-words">{request.error}</p>}
+                {request.error && <p className="text-[10px] text-lira-amber break-words">{request.error}</p>}
               </div>
               {isOwner && <div className="flex shrink-0 items-center gap-1">
                 {(!request.status || request.status === 'error' || request.status === 'uncertain') && <button type="button" onClick={() => search(request.id)} disabled={busy !== null}
                   aria-label={`Buscar no Spotify: ${request.query}`} title="Buscar no Spotify"
-                  className="p-2 rounded-lg text-emerald-300 hover:bg-emerald-500/15 disabled:opacity-50">
+                  className="p-2 rounded-lg text-lira-online hover:bg-lira-online/15 disabled:opacity-50 transition-colors">
                   <Search aria-hidden="true" className="h-4 w-4" />
                 </button>}
                 <button type="button" onClick={() => remove(request.id)} disabled={busy !== null || request.status === 'adding'}
                   aria-label={`Remover pedido: ${request.query}`} title="Remover pedido atendido"
-                  className="p-2 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-rose-500/10 disabled:opacity-50">
+                  className="p-2 rounded-lg text-lira-muted hover:text-lira-error hover:bg-lira-error/15 disabled:opacity-50 transition-colors">
                   <Trash2 aria-hidden="true" className="h-4 w-4" />
                 </button>
               </div>}
             </li>
           ))}
         </ol>
-      ) : <p className="text-xs text-slate-500">Os pedidos aparecerão aqui.</p>}
-      {error && <p role="alert" className="text-xs text-rose-300">{error}</p>}
-      {feedback && <p role="status" aria-live="polite" className="text-xs text-emerald-300">{feedback}</p>}
+      ) : <p className="text-xs text-lira-muted">Os pedidos aparecerão aqui.</p>}
+      {error && <p role="alert" className="text-xs text-lira-error">{error}</p>}
+      {feedback && <p role="status" aria-live="polite" className="text-xs text-lira-online">{feedback}</p>}
     </section>
   )
 }

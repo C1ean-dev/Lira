@@ -90,4 +90,76 @@ describe('libraries with repeated large images', () => {
     expect(useCustomAssetsStore.getState().customAssets[0].frames[0]).toMatch(/^file:\/\/\/profile\/library\/sprites\//)
     expect(alert).not.toHaveBeenCalled()
   })
+
+  it('transfers a multi-megabyte sprite sheet with hundreds of <Sprite> cuts without amplifying RAM or freezing', async () => {
+    const { spriteFrame } = await import('../../assets/spriteFrame')
+    const save = vi.fn(async (packet: LibraryPacket) => ({ catalog: packet.catalog, baseUrl: 'file:///profile/library/' }))
+    const alert = vi.fn()
+    vi.stubGlobal('window', { location: { protocol: 'file:', href: 'file:///app/index.html' }, alert, electronAPI: { saveIndividualLibrary: save } })
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: vi.fn() })
+    const { useCustomAssetsStore } = await import('../../store/useCustomAssetsStore')
+    useCustomAssetsStore.setState({ customAssets: [], customCategories: ['Geral'], deletedAssetIds: [] })
+
+    const name = await imageIdentity(png)
+    const cuts = Array.from({ length: 350 }, (_, i) => spriteFrame(name, (i % 20) * 32, Math.floor(i / 20) * 32, 32, 32))
+    const slicedAvatar: CustomAsset = {
+      id: 'sliced-avatar-heavy',
+      name: 'Heavy Sliced Avatar',
+      type: 'avatar',
+      category: 'Geral',
+      width: 1,
+      height: 1,
+      createdAt: 1,
+      frames: cuts.slice(0, 12),
+      directionalFrames: { down: cuts.slice(0, 80), up: cuts.slice(80, 160), left: cuts.slice(160, 240), right: cuts.slice(240, 320) },
+      activityAnimations: { dance: cuts.slice(320, 350) },
+      sourceImageSrc: name,
+    }
+    const catalog: LibraryCatalog = {
+      version: 3,
+      images: [name],
+      document: encodeValue({ assets: [slicedAvatar], categories: ['Geral'] }, new Map([[name, name]])),
+    }
+
+    const receiver = new IndividualLibrarySync(() => undefined)
+    let committedFrameBytes = 0
+    const commit = async (document: { assets: CustomAsset[]; categories: string[] }) => {
+      const a = document.assets[0]
+      const allFrames = [
+        ...a.frames,
+        ...(a.directionalFrames?.down || []),
+        ...(a.directionalFrames?.up || []),
+        ...(a.directionalFrames?.left || []),
+        ...(a.directionalFrames?.right || []),
+        ...(a.activityAnimations?.dance || []),
+      ] as string[]
+      committedFrameBytes = allFrames.reduce((sum, s) => sum + s.length, 0)
+      await useCustomAssetsStore.getState().syncRemoteCustomAssets(document.assets, document.categories)
+    }
+
+    const requests: LibraryMessage[] = []
+    await receiver.receive({ kind: 'offer', id: 'heavy-sprites', catalog }, msg => { requests.push(msg) }, commit)
+    expect(requests).toEqual([{ kind: 'request', id: 'heavy-sprites', names: [name] }])
+
+    const CHUNK = 32 * 1024
+    const total = Math.ceil(png.length / CHUNK)
+    const started = performance.now()
+    for (let index = 0; index < total; index++) {
+      await receiver.receive(
+        { kind: 'image', id: 'heavy-sprites', name, index, total, data: png.slice(index * CHUNK, (index + 1) * CHUNK) },
+        () => {},
+        commit,
+      )
+    }
+    const elapsedMs = performance.now() - started
+
+    // 350 cuts over a 1 MiB PNG previously expanded to >350 MiB of encoded strings.
+    expect(committedFrameBytes).toBeLessThan(150_000)
+    expect(elapsedMs).toBeLessThan(5000)
+    expect(save).toHaveBeenCalledOnce()
+    expect(save.mock.calls[0][0].catalog.images).toEqual([name])
+    expect(save.mock.calls[0][0].images[name]).toBe(png)
+    expect(useCustomAssetsStore.getState().customAssets[0].directionalFrames?.down).toHaveLength(80)
+    expect(alert).not.toHaveBeenCalled()
+  })
 })

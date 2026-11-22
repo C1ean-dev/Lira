@@ -1987,35 +1987,35 @@ export const CustomElementModal: React.FC = () => {
   if (!isCustomModalOpen) return null
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="asset-studio-title" className="fixed inset-0 z-[110] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-200 select-none">
-      <div className="bg-[#1e1f22] border border-[#2b2d31] rounded-3xl w-full max-w-[1440px] overflow-hidden shadow-2xl flex flex-col h-[94dvh] max-h-[1000px]">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-3 border-b border-[#2b2d31] bg-[#18191c]">
+    <div role="dialog" aria-modal="true" aria-labelledby="asset-studio-title" className="fixed inset-0 z-[110] flex items-center justify-center bg-lira-ground/80 p-4 select-none font-mono text-lira-ink">
+      <div className="bg-lira-panel border border-dashed border-lira-rule rounded-[12px] w-full max-w-[1440px] overflow-hidden flex flex-col h-[94dvh] max-h-[1000px]">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-6 py-3 border-b border-dashed border-lira-rule/60 bg-lira-sidebar">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-rose-500 flex items-center justify-center text-white font-black text-sm shadow">
+            <div className="w-8 h-8 rounded-[8px] bg-lira-surface border border-lira-rule flex items-center justify-center text-lira-accent font-display font-bold text-sm">
               ✦
             </div>
             <div>
-              <h2 id="asset-studio-title" className="text-sm font-black text-slate-100">
+              <h2 id="asset-studio-title" className="text-sm font-display font-bold text-lira-accent">
                 Estúdio de Elementos
               </h2>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] font-mono text-lira-muted">
                 Desenhe, importe imagens e monte seus elementos em um único lugar
               </p>
             </div>
           </div>
 
-          <div role="tablist" aria-label="Ferramentas do estúdio" className="flex flex-wrap bg-[#12151d] p-1 rounded-2xl border border-[#2b2d31]">
+          <div role="tablist" aria-label="Ferramentas do estúdio" className="flex flex-wrap bg-lira-ground p-1 rounded-[8px] border border-lira-quiet">
             <button type="button" role="tab" aria-selected={studioMode === 'draw'} onClick={() => setStudioMode('draw')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 ${studioMode === 'draw' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+              className={`px-3 py-1.5 rounded-[6px] text-xs font-mono font-bold flex items-center gap-1.5 ${studioMode === 'draw' ? 'bg-lira-accent text-lira-ground' : 'text-lira-muted hover:text-lira-ink'}`}>
               <Pencil className="w-3.5 h-3.5" />Desenhar
             </button>
             <button
               type="button"
               role="tab" aria-selected={studioMode === 'crop'} onClick={() => setStudioMode('crop')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-[6px] text-xs font-mono font-bold transition-colors flex items-center gap-1.5 ${
                 studioMode === 'crop'
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-lira-accent text-lira-ground'
+                  : 'text-lira-muted hover:text-lira-ink'
               }`}
             >
               <Scissors className="w-3.5 h-3.5" />
@@ -2025,20 +2025,20 @@ export const CustomElementModal: React.FC = () => {
             <button
               type="button"
               role="tab" aria-selected={studioMode === 'compose'} onClick={() => setStudioMode('compose')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-[6px] text-xs font-mono font-bold transition-colors flex items-center gap-1.5 ${
                 studioMode === 'compose'
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-lira-accent text-lira-ground'
+                  : 'text-lira-muted hover:text-lira-ink'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5 text-emerald-300" />
+              <Sparkles className="w-3.5 h-3.5" />
               <span>Montagem e colisão</span>
             </button>
           </div>
 
           <button
             onClick={() => setCustomModalOpen(false)}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-[#2b2d31] transition-colors"
+            className="p-1.5 rounded-[8px] border border-transparent text-lira-muted hover:text-lira-ink hover:bg-lira-surface hover:border-lira-rule transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -2119,7 +2119,7 @@ export const CustomElementModal: React.FC = () => {
             )}
           </div>
 
-          <div className="w-full lg:w-80 xl:w-96 bg-[#18191c] border-l border-[#2b2d31] p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
+          <div className="w-full lg:w-80 xl:w-96 bg-lira-sidebar border-l border-lira-quiet p-4 flex flex-col gap-4 overflow-y-auto shrink-0">
             <AssetPropertiesForm
               canvasWidth={Math.round(canvasWidth)} canvasHeight={Math.round(canvasHeight)} onSetCanvasSize={setDrawingCanvasSize}
               elementName={elementName}
@@ -2152,18 +2152,18 @@ export const CustomElementModal: React.FC = () => {
               selection={selection}
             />
 
-            <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-[#12151d] p-3 text-xs text-slate-300">
+            <label className="flex items-center gap-2 rounded-[8px] border border-lira-quiet bg-lira-ground p-3 text-xs font-mono text-lira-ink">
               <input type="checkbox" checked={elementType === 'wall' || elementType !== 'floor' && collisionGrid.some(row => row.some(Boolean))}
                 disabled={elementType === 'floor' || elementType === 'wall'}
                 onChange={event => { handleSetAllCollision(event.target.checked); setDirectionalCollisionGrids({}) }} />
               Obstáculo com colisão
-              <span className="ml-auto text-[10px] text-slate-500">Ajuste por tile em Montagem</span>
+              <span className="ml-auto text-[10px] font-mono text-lira-muted">Ajuste por tile em Montagem</span>
             </label>
 
-            {studioMode === 'draw' && elementType === 'furniture' && <div className="rounded-xl border border-slate-700 p-3">
-              <p className="text-xs text-slate-400 mb-2">Direção do desenho</p>
+            {studioMode === 'draw' && elementType === 'furniture' && <div className="rounded-[8px] border border-lira-quiet bg-lira-panel p-3">
+              <p className="text-xs font-mono text-lira-muted mb-2">Direção do desenho</p>
               <div className="grid grid-cols-4 gap-1">{(['down', 'left', 'up', 'right'] as Direction[]).map((direction, index) =>
-                <button type="button" key={direction} aria-pressed={direction === activeDirection} onClick={() => { drawRevision.current++; handleSelectDirection(direction) }} className={`rounded-lg px-1 py-2 text-[11px] ${direction === activeDirection ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'}`}>{['Frente', 'Esquerda', 'Costas', 'Direita'][index]}</button>)}</div>
+                <button type="button" key={direction} aria-pressed={direction === activeDirection} onClick={() => { drawRevision.current++; handleSelectDirection(direction) }} className={`rounded-[6px] px-1 py-2 text-[11px] font-mono font-bold border ${direction === activeDirection ? 'bg-lira-accent text-lira-ground border-lira-accent' : 'bg-lira-ground text-lira-muted border-lira-quiet hover:text-lira-ink'}`}>{['Frente', 'Esquerda', 'Costas', 'Direita'][index]}</button>)}</div>
             </div>}
 
             {studioMode === 'crop' && <TransparencyControls
@@ -2214,14 +2214,14 @@ export const CustomElementModal: React.FC = () => {
           </div>
         </div>
 
-        {isResizingCanvas && <p role="status" className="px-4 py-2 text-xs text-indigo-300">Redimensionando a tela…</p>}
-        {saveError && <p role="alert" className="px-4 py-2 text-xs text-rose-300 bg-rose-950/30">{saveError}</p>}
-        <div className="p-4 border-t border-[#2b2d31] bg-[#18191c] flex flex-wrap gap-2 items-center justify-between">
+        {isResizingCanvas && <p role="status" className="px-4 py-2 text-xs font-mono text-lira-accent">Redimensionando a tela…</p>}
+        {saveError && <p role="alert" className="px-4 py-2 text-xs font-mono text-lira-error bg-lira-error/15">{saveError}</p>}
+        <div className="p-4 border-t border-dashed border-lira-rule/60 bg-lira-sidebar flex flex-wrap gap-2 items-center justify-between">
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={handleClearBoard}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-[8px] bg-lira-surface hover:border-lira-accent border border-lira-rule text-lira-muted hover:text-lira-ink text-xs font-mono font-semibold transition-colors flex items-center gap-1.5"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Limpar Mesa</span>
@@ -2231,14 +2231,14 @@ export const CustomElementModal: React.FC = () => {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setCustomModalOpen(false)}
-              className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-colors"
+              className="px-4 py-2 rounded-[8px] text-xs font-mono font-bold text-lira-muted hover:text-lira-ink bg-lira-surface border border-lira-rule hover:border-lira-accent transition-colors"
             >
               Cancelar
             </button>
             <button
               onClick={handleSaveAsset}
               disabled={isSaving || isResizingCanvas}
-              className="px-6 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white shadow-lg shadow-indigo-600/30 transition-all active:scale-95 flex items-center gap-1.5"
+              className="px-6 py-2 rounded-[8px] text-xs font-mono font-black bg-lira-accent hover:bg-lira-ink text-lira-ground border-2 border-lira-accent hover:border-lira-ink transition-colors flex items-center gap-1.5"
             >
               <Check className="w-4 h-4" />
               <span>{isSaving ? 'Salvando…' : 'Salvar Elemento no Catálogo'}</span>
