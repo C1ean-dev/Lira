@@ -27,8 +27,6 @@ import { PeerManager } from '../p2p/PeerManager'
 import { LiraLogo } from './LiraLogo'
 import { useUpdateStore, versionBadgeLabel } from '../store/useUpdateStore'
 import { CURRENT_APP_VERSION } from '../services/updateService'
-import { NetworkSignalIcon } from './NetworkSignalIcon'
-import { useNetworkQualityStore } from '../store/useNetworkQualityStore'
 import { STATUS_META } from '../types/game'
 import { PlayerAvatar } from './common/PlayerAvatar'
 import { UpdateDownloadIndicator } from './common/UpdateDownloadIndicator'
@@ -36,11 +34,9 @@ import { UpdateChangelogHover } from './common/UpdateChangelogHover'
 import { isAndroid } from '../utils/platform'
 import { useRoomPublication } from '../hooks/useRoomPublication'
 import { useInlineContentFit } from '../hooks/useInlineContentFit'
-import { useHeaderActionsFit } from '../hooks/useHeaderActionsFit'
 import { DirectConnectionPanel } from './lobby/DirectConnectionPanel'
 import { ReportIssueModal } from './ReportIssueModal'
 import { createSpaceInviteLink } from '../utils/spaceInviteLink'
-import { ThemeToggle } from './ui'
 
 interface Props {
   onOpenAvatarModal: () => void
@@ -99,7 +95,6 @@ export const TopNavBar: React.FC<Props> = ({
   const isMuted = useMediaStore((s) => s.isMuted)
   const toggleMute = useMediaStore((s) => s.toggleMute)
   const connectionStatus = useGameStore((s) => s.connectionStatus)
-  const localQuality = useNetworkQualityStore((s) => s.localQuality)
 
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'copied' | 'error'>('idle')
   const [linkStatus, setLinkStatus] = useState<'idle' | 'copying' | 'copied' | 'error'>('idle')
@@ -217,8 +212,8 @@ export const TopNavBar: React.FC<Props> = ({
   }
 
   return (
-    <header className={`h-14 shrink-0 bg-lira-panel border-b border-dashed border-lira-rule/60 px-2 sm:px-4 flex items-center justify-between gap-1 sm:gap-2 select-none relative font-mono text-lira-ink ${isMobileMenuOpen ? 'z-[80]' : 'z-30'}`}>
-      <div ref={publicationFit.containerRef} className="flex flex-1 min-w-0 items-center gap-1 sm:gap-2">
+    <header className={`h-14 shrink-0 bg-lira-panel border-b border-dashed border-lira-rule/60 pl-1.5 pr-2 sm:pl-2 sm:pr-3 flex items-center justify-between gap-1.5 sm:gap-2 select-none relative font-mono text-lira-ink ${isMobileMenuOpen ? 'z-[80]' : 'z-30'}`}>
+      <div ref={publicationFit.containerRef} className="flex flex-1 min-w-0 2xl:min-w-fit items-center gap-1.5">
         <div className="flex shrink-0 items-center">
           <LiraLogo size={32} showText={true} className="hidden sm:inline-flex" />
           <LiraLogo size={28} showText={false} className="sm:hidden" />
@@ -350,8 +345,8 @@ export const TopNavBar: React.FC<Props> = ({
         )}
       </div>
 
-      <div className="hidden 2xl:flex shrink-0 min-w-0 max-w-[140px] min-[1800px]:max-w-[190px] items-center gap-2">
-        <div className="flex min-w-0 max-w-full items-center gap-2 px-2.5 py-1.5 bg-lira-ground border border-dashed border-lira-rule/60 rounded-[8px]" title={currentZone ? currentZone.name : 'Corredor Geral'}>
+      <div className="hidden 2xl:flex shrink-0 min-w-0 max-w-[200px] min-[1800px]:max-w-64 items-center justify-center">
+        <div className="flex min-w-0 max-w-full items-center gap-2 px-3 py-1.5 bg-lira-ground border border-dashed border-lira-rule/60 rounded-[8px]" title={currentZone ? currentZone.name : 'Corredor Geral'}>
           <div
             className="w-2.5 h-2.5 shrink-0 rounded-full"
             style={{ backgroundColor: currentZone ? currentZone.color : '#6b7280' }}
@@ -362,6 +357,7 @@ export const TopNavBar: React.FC<Props> = ({
         </div>
       </div>
 
+      <div className="flex shrink-0 2xl:flex-1 2xl:min-w-fit items-center justify-end gap-1.5 whitespace-nowrap">
       <div className="hidden 2xl:flex shrink-0 items-center gap-1.5 min-[1800px]:gap-2 whitespace-nowrap">
         {autoSavedNotice && (
           <div className="flex shrink-0 items-center gap-1.5 px-2.5 py-1.5 rounded-[8px] bg-lira-online/15 border border-lira-online/40 text-xs font-semibold text-lira-online" role="status" title="Espaço Salvo!">
@@ -461,19 +457,6 @@ export const TopNavBar: React.FC<Props> = ({
           )}
         </UpdateChangelogHover>
 
-        <div
-          className="flex items-center px-2 py-1.5 bg-lira-surface border border-lira-quiet rounded-[8px] hover:border-lira-rule transition-colors"
-          title={`Sua Conexão:\nPing: ${localQuality.pingMs > 0 ? `${localQuality.pingMs}ms` : '<10ms'}\nPerda de pacotes: ${localQuality.lossPct}%\nQualidade: ${localQuality.rating}`}
-        >
-          <NetworkSignalIcon
-            rating={localQuality.rating}
-            pingMs={localQuality.pingMs}
-            lossPct={localQuality.lossPct}
-            showPingText={true}
-            size="sm"
-          />
-        </div>
-
         <button
           onClick={() => useMediaStore.getState().setSettingsModalOpen(true)}
           className="p-2 rounded-[8px] bg-lira-surface hover:border-lira-accent border border-lira-quiet text-lira-muted hover:text-lira-ink transition-colors group"
@@ -481,8 +464,6 @@ export const TopNavBar: React.FC<Props> = ({
         >
           <Settings className="w-4 h-4 text-lira-muted group-hover:text-lira-accent transition-colors" />
         </button>
-
-        <ThemeToggle size="sm" className="h-8 w-8" />
 
         <button
           onClick={onOpenAvatarModal}
@@ -584,6 +565,7 @@ export const TopNavBar: React.FC<Props> = ({
             <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-lira-online" />
           )}
         </button>
+      </div>
       </div>
 
       {isMobileMenuOpen && (
@@ -691,20 +673,6 @@ export const TopNavBar: React.FC<Props> = ({
                 <span className="shrink-0 text-[10px] text-lira-accent underline font-bold">Alternar</span>
               </button>
             )}
-
-            <ThemeToggle showLabel size="sm" className="w-full justify-between px-3 py-2.5 h-auto rounded-[8px]" />
-
-            <div className="flex items-center justify-between gap-3 p-3 rounded-[8px] bg-lira-ground border border-dashed border-lira-rule/60 text-xs">
-              <span className="text-lira-muted">Qualidade da Conexão:</span>
-              <NetworkSignalIcon
-                rating={localQuality.rating}
-                pingMs={localQuality.pingMs}
-                lossPct={localQuality.lossPct}
-                showPingText={true}
-                size="sm"
-                className="shrink-0"
-              />
-            </div>
 
             {!(showUpdateAction && onApplyUpdate) && (
               <button type="button" onClick={() => checkNow()} disabled={manualCheck === 'checking'}

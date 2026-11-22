@@ -2,9 +2,13 @@ export interface SpriteFrame { source: string; x: number; y: number; width: numb
 const prefix = 'lira-sprite:'
 const parsed = new Map<string, SpriteFrame>()
 
-export function spriteFrame(source: string, x: number, y: number, width: number, height: number): string {
+function validateSpriteFrame(source: string, x: number, y: number, width: number, height: number): void {
   if (!source || source.startsWith(prefix) || ![x, y, width, height].every(Number.isSafeInteger)
     || x < 0 || y < 0 || width <= 0 || height <= 0 || width > 16384 || height > 16384) throw new Error('Recorte de sprite inválido')
+}
+
+export function spriteFrame(source: string, x: number, y: number, width: number, height: number): string {
+  validateSpriteFrame(source, x, y, width, height)
   return prefix + encodeURIComponent(JSON.stringify([source, x, y, width, height]))
 }
 
@@ -16,7 +20,7 @@ export function readSpriteFrame(value: string): SpriteFrame | null {
   try { values = JSON.parse(decodeURIComponent(value.slice(prefix.length))) } catch { throw new Error('Recorte de sprite inválido') }
   if (!Array.isArray(values) || values.length !== 5 || typeof values[0] !== 'string') throw new Error('Recorte de sprite inválido')
   const [source, x, y, width, height] = values
-  spriteFrame(source, x, y, width, height)
+  validateSpriteFrame(source, x, y, width, height)
   const frame = { source, x, y, width, height }
   // Temporary editor data URLs may contain an entire sheet; do not retain
   // another decoded copy of that sheet for every cut.

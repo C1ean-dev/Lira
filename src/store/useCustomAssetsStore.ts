@@ -257,6 +257,7 @@ async function addAssets(incoming: CustomAsset[], broadcast: boolean, categories
 async function deleteAsset(id: string, broadcast: boolean) {
   await queue(async () => {
     const state = useCustomAssetsStore.getState()
+    if (!broadcast && !state.customAssets.some(a => a.id === id) && state.deletedAssetIds.includes(id)) return
     await commit(state.customAssets.filter(a => a.id !== id), state.customCategories, [...new Set([...state.deletedAssetIds, id])])
     if (broadcast) PeerManager.getInstance().sendCustomAssetDelete(id)
   })

@@ -24,7 +24,7 @@ import { SavedSpacesTab } from './lobby/SavedSpacesTab'
 import { FriendsTab } from './lobby/FriendsTab'
 import { LobbyChatModal } from './lobby/LobbyChatModal'
 import { LiraLogo } from './LiraLogo'
-import { Button, Badge, Card, ThemeToggle } from './ui'
+import { Button, Badge, Card } from './ui'
 import { UpdateDownloadIndicator } from './common/UpdateDownloadIndicator'
 import { UpdateChangelogHover } from './common/UpdateChangelogHover'
 import { useUpdateStore, versionBadgeLabel } from '../store/useUpdateStore'
@@ -595,7 +595,6 @@ export const LobbyModal: React.FC<Props> = ({
         <div className="bg-lira-surface border-b border-dashed border-lira-rule/60 p-3.5 sm:p-5 text-center relative shrink-0 z-20">
           <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-30"><MeetingHistoryAccess /></div>
           <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-30 flex items-center gap-2">
-            <ThemeToggle size="sm" />
             <UpdateChangelogHover
               updateInfo={updateInfo}
               isUpdateReady={isReadyToInstall}
