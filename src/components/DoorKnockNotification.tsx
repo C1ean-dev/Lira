@@ -66,32 +66,32 @@ export const DoorKnockNotification: React.FC = () => {
   }
 
   return (
-    <div className="fixed top-20 right-6 z-[80] flex flex-col gap-2.5 max-w-sm w-full pointer-events-auto select-none animate-in fade-in slide-in-from-top-4 duration-200">
+    <div className="fixed top-20 right-6 z-[80] flex flex-col gap-2.5 max-w-sm w-full pointer-events-auto select-none font-mono">
       {activeKnocks.map((knock) => (
         <div
           key={knock.id}
-          className="bg-[#12151d]/95 backdrop-blur-xl border border-indigo-500/40 rounded-2xl p-4 shadow-2xl shadow-indigo-950/50 flex flex-col gap-3"
+          className="bg-lira-panel border border-dashed border-lira-rule rounded-xl p-4 flex flex-col gap-3"
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="flex h-2.5 w-2.5 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lira-amber opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-lira-amber"></span>
               </span>
-              <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5 uppercase tracking-wide">
+              <span className="text-xs font-display font-bold text-lira-amber flex items-center gap-1.5 uppercase tracking-wide">
                 <span>🚪</span> Bateram na porta!
               </span>
             </div>
             <button
               onClick={() => handleDeny(knock)}
-              className="text-slate-400 hover:text-slate-200 p-1 rounded-lg hover:bg-slate-800 transition-colors"
+              className="text-lira-muted hover:text-lira-ink p-1 rounded-lg hover:bg-lira-surface transition-colors"
               title="Ignorar"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <div className="flex items-center gap-3 bg-[#1b202c]/80 p-2.5 rounded-xl border border-[#2a3142]">
+          <div className="flex items-center gap-3 bg-lira-surface p-2.5 rounded-lg border border-lira-quiet">
             <PlayerAvatar
               name={knock.requesterName}
               profilePicture={knock.requesterProfilePicture}
@@ -99,11 +99,11 @@ export const DoorKnockNotification: React.FC = () => {
               size="lg"
             />
             <div className="flex flex-col min-w-0 flex-1">
-              <span className="text-sm font-bold text-white truncate">
+              <span className="text-sm font-display font-bold text-lira-ink truncate">
                 {knock.requesterName}
               </span>
-              <span className="text-xs text-slate-400 truncate flex items-center gap-1">
-                pedindo para entrar em <span className="text-indigo-300 font-medium">{knock.zoneName}</span>
+              <span className="text-xs text-lira-muted truncate flex items-center gap-1">
+                pedindo para entrar em <span className="text-lira-accent font-medium">{knock.zoneName}</span>
               </span>
             </div>
           </div>
@@ -111,14 +111,14 @@ export const DoorKnockNotification: React.FC = () => {
           <div className="flex items-center gap-2">
             <button
               onClick={() => handleDeny(knock)}
-              className="flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border border-slate-700"
+              className="flex-1 py-2 px-3 rounded-lg bg-lira-ground hover:bg-lira-error/15 text-lira-ink hover:text-lira-error text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors border border-lira-rule hover:border-lira-error/50"
             >
-              <X className="w-3.5 h-3.5 text-rose-400" />
+              <X className="w-3.5 h-3.5 text-lira-error" />
               <span>Recusar</span>
             </button>
             <button
               onClick={() => handleApprove(knock)}
-              className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-lg shadow-emerald-600/30"
+              className="flex-1 py-2 px-3 rounded-lg bg-lira-accent hover:bg-lira-ink text-lira-ground border-2 border-lira-accent hover:border-lira-ink text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
             >
               <Check className="w-3.5 h-3.5" />
               <span>Permitir</span>

@@ -26,11 +26,11 @@ export const SpotifyPlaybackFrame: React.FC<{
   })
   const duration = frame.seek?.duration || 0
   return (
-    <div className="w-full rounded-xl bg-black p-3 space-y-3 min-h-[92px]">
+    <div className="w-full rounded-xl bg-lira-ground border border-lira-quiet p-3 space-y-3 min-h-[92px] font-mono">
       <div className="flex items-center gap-2">
         <div className="flex-1 min-w-0" aria-live="polite">
-          <p className="text-sm font-semibold text-white truncate" title={frame.track?.title}>{frame.track?.title || 'Escolha uma música no Spotify'}</p>
-          {frame.track?.artist && <p className="text-xs text-slate-400 truncate">{frame.track.artist}</p>}
+          <p className="text-sm font-display font-bold text-lira-ink truncate" title={frame.track?.title}>{frame.track?.title || 'Escolha uma música no Spotify'}</p>
+          {frame.track?.artist && <p className="text-xs text-lira-muted truncate">{frame.track.artist}</p>}
         </div>
       </div>
       <div className="flex items-center justify-center gap-3">
@@ -45,8 +45,8 @@ export const SpotifyPlaybackFrame: React.FC<{
               title={button.label}
               disabled={busy || button.disabled}
               onClick={() => onCommand({ action: button.id })}
-              className={`relative flex items-center justify-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed ${
-                primary ? 'w-10 h-10 bg-white text-black hover:bg-slate-200' : 'w-8 h-8 hover:bg-white/10 text-slate-300 hover:text-white'
+              className={`relative flex items-center justify-center rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-lira-accent disabled:opacity-40 disabled:cursor-not-allowed ${
+                primary ? 'w-10 h-10 bg-lira-accent text-lira-ground hover:bg-lira-ink' : 'w-8 h-8 hover:bg-lira-surface text-lira-muted hover:text-lira-ink'
               }`}
             >
               <Icon aria-hidden="true" className={primary ? 'w-5 h-5 fill-current' : 'w-4 h-4'} />
@@ -54,7 +54,7 @@ export const SpotifyPlaybackFrame: React.FC<{
           )
         })}
       </div>
-      <div className="flex items-center gap-2 text-[10px] text-slate-300 font-mono tabular-nums">
+      <div className="flex items-center gap-2 text-[10px] text-lira-muted font-mono tabular-nums">
         <span>{playbackTime(duration * progress / 100)}</span>
         <input
           type="range"
@@ -70,7 +70,7 @@ export const SpotifyPlaybackFrame: React.FC<{
           onKeyUp={event => {
             if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) onCommand({ action: 'seek', fraction: Number(event.currentTarget.value) / 100 })
           }}
-          className="w-full h-1 rounded-lg appearance-none bg-slate-700 cursor-pointer accent-emerald-500 disabled:cursor-not-allowed"
+          className="w-full h-1 rounded-lg appearance-none bg-lira-surface cursor-pointer accent-[var(--accent)] disabled:cursor-not-allowed"
         />
         <span>{playbackTime(duration)}</span>
       </div>
@@ -99,14 +99,14 @@ export const SpotifyPlaybackCrop: React.FC = () => {
     finally { pending.current = false; if (alive.current) setBusy(false) }
   }
   return (
-    <section aria-label="Reprodução do Spotify" className="space-y-2">
+    <section aria-label="Reprodução do Spotify" className="space-y-2 font-mono">
       {frame ? <SpotifyPlaybackFrame frame={frame} busy={busy} onCommand={selection => { void command(selection) }} /> : (
-        <p role="status" className="text-xs text-slate-400 p-3 rounded-xl bg-black/40 min-h-[92px]">
+        <p role="status" className="text-xs text-lira-muted p-3 rounded-xl bg-lira-ground border border-dashed border-lira-rule/60 min-h-[92px]">
           {error || 'Carregando os controles do Spotify...'}
         </p>
       )}
-      {frame && error && <p role="alert" className="text-xs text-rose-300">{error}</p>}
-      {commandError && <p role="alert" className="text-xs text-rose-300">{commandError}</p>}
+      {frame && error && <p role="alert" className="text-xs text-lira-error">{error}</p>}
+      {commandError && <p role="alert" className="text-xs text-lira-error">{commandError}</p>}
     </section>
   )
 }

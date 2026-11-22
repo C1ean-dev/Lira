@@ -130,27 +130,27 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
     <div
       ref={menuRef}
       style={{ left: clampedX, top: clampedY, maxHeight: 'calc(100vh - 20px)' }}
-      className="fixed z-[100] w-64 overflow-y-auto bg-[#12151d]/95 backdrop-blur-xl border border-[#2a3142] rounded-2xl shadow-2xl p-2 select-none text-slate-200 animate-in fade-in zoom-in-95 duration-150"
+      className="fixed z-[100] w-64 overflow-y-auto bg-lira-panel border border-dashed border-lira-rule rounded-[12px] p-2 select-none text-lira-ink font-mono"
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <div className="flex items-center gap-2.5 px-2.5 py-2 mb-1.5 border-b border-[#2a3142]/80">
+      <div className="flex items-center gap-2.5 px-2.5 py-2 mb-1.5 border-b border-dashed border-lira-rule/60">
         <div
-          className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-sm border border-white/20 shrink-0"
-          style={{ backgroundColor: user.shirtColor || '#4f46e5' }}
+          className="w-7 h-7 rounded-[6px] flex items-center justify-center text-xs font-bold text-lira-ground border border-lira-quiet shrink-0"
+          style={{ backgroundColor: user.shirtColor || '#d1b5ff' }}
         >
           {user.name.charAt(0).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-xs font-bold text-white truncate flex items-center gap-1.5">
+          <div className="font-display text-sm font-bold text-lira-accent truncate flex items-center gap-1.5">
             <span>{user.isLocal ? `${user.name} (Você)` : user.name}</span>
             {isLive && (
-              <span className="text-[8px] bg-rose-500/20 text-rose-400 border border-rose-500/40 px-1 py-0.2 rounded font-bold">
+              <span className="text-[8px] font-mono bg-lira-error/20 text-lira-error border border-lira-error/40 px-1 py-0.2 rounded-[4px] font-bold">
                 LIVE
               </span>
             )}
           </div>
-          <div className="text-[10px] text-slate-400 truncate">
+          <div className="text-[10px] text-lira-muted truncate">
             {user.isLocal ? 'Controles do seu perfil' : 'Opções de áudio e moderação'}
           </div>
         </div>
@@ -161,27 +161,27 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
         return (
           <div
             key={control.label}
-            className="px-2.5 py-2 mb-1.5 bg-[#1b202c]/90 rounded-xl border border-[#2a3142]/90 shadow-inner"
+            className="px-2.5 py-2 mb-1.5 bg-lira-surface rounded-[8px] border border-lira-quiet"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between text-xs font-semibold text-slate-300 mb-1.5">
+            <div className="flex items-center justify-between text-xs font-semibold text-lira-ink mb-1.5">
               <span className="flex items-center gap-1.5">
                 {currentVol === 0 ? (
-                  <VolumeX className="w-3.5 h-3.5 text-rose-400" />
+                  <VolumeX className="w-3.5 h-3.5 text-lira-error" />
                 ) : currentVol < 50 ? (
-                  <Volume1 className="w-3.5 h-3.5 text-slate-400" />
+                  <Volume1 className="w-3.5 h-3.5 text-lira-muted" />
                 ) : (
-                  <Volume2 className="w-3.5 h-3.5 text-indigo-400" />
+                  <Volume2 className="w-3.5 h-3.5 text-lira-accent" />
                 )}
                 <span>{control.label}</span>
               </span>
               <span
-                className={`text-[11px] font-mono font-bold ${
+                className={`text-[11px] font-mono tabular-nums font-bold ${
                   currentVol === 0
-                    ? 'text-rose-400'
+                    ? 'text-lira-error'
                     : currentVol > 100
-                    ? 'text-amber-400'
-                    : 'text-indigo-300'
+                    ? 'text-lira-amber'
+                    : 'text-lira-accent'
                 }`}
               >
                 {currentVol}%
@@ -200,19 +200,19 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
                   const val = Number(e.target.value)
                   control.setVolume(val)
                 }}
-                className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400"
+                className="w-full h-1.5 bg-lira-ground rounded-[4px] appearance-none cursor-pointer accent-lira-accent"
               />
             </div>
 
-            <div className="flex items-center justify-between mt-1.5 text-[9px] text-slate-400">
+            <div className="flex items-center justify-between mt-1.5 text-[9px] font-mono tabular-nums text-lira-muted">
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation()
                   control.setVolume(0)
                 }}
-                className={`px-1.5 py-0.5 rounded transition-colors ${
-                  currentVol === 0 ? 'text-rose-400 font-bold bg-rose-500/10' : 'hover:text-white hover:bg-slate-800'
+                className={`px-1.5 py-0.5 rounded-[4px] transition-colors ${
+                  currentVol === 0 ? 'text-lira-error font-bold bg-lira-error/15' : 'hover:text-lira-ink hover:bg-lira-ground'
                 }`}
               >
                 0%
@@ -223,8 +223,8 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
                   e.stopPropagation()
                   control.setVolume(100)
                 }}
-                className={`px-1.5 py-0.5 rounded transition-colors ${
-                  currentVol === 100 ? 'text-indigo-400 font-bold bg-indigo-500/10' : 'hover:text-white hover:bg-slate-800'
+                className={`px-1.5 py-0.5 rounded-[4px] transition-colors ${
+                  currentVol === 100 ? 'text-lira-accent font-bold bg-lira-accent/15' : 'hover:text-lira-ink hover:bg-lira-ground'
                 }`}
               >
                 100% (Padrão)
@@ -235,8 +235,8 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
                   e.stopPropagation()
                   control.setVolume(200)
                 }}
-                className={`px-1.5 py-0.5 rounded transition-colors ${
-                  currentVol === 200 ? 'text-amber-400 font-bold bg-amber-500/10' : 'hover:text-amber-300 hover:bg-slate-800'
+                className={`px-1.5 py-0.5 rounded-[4px] transition-colors ${
+                  currentVol === 200 ? 'text-lira-amber font-bold bg-lira-amber/15' : 'hover:text-lira-amber hover:bg-lira-ground'
                 }`}
               >
                 200%
@@ -250,19 +250,19 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
         <div className="space-y-1">
           <button
             onClick={handleToggleSilenceForMe}
-            className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all ${
+            className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-[8px] text-left transition-colors ${
               isSilencedForMe
-                ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'
-                : 'hover:bg-slate-800/80 text-slate-200'
+                ? 'bg-lira-amber/15 text-lira-amber border border-lira-amber/40'
+                : 'hover:bg-lira-surface text-lira-ink border border-transparent'
             }`}
           >
-            <VolumeX className={`w-4 h-4 mt-0.5 shrink-0 ${isSilencedForMe ? 'text-amber-400' : 'text-slate-400'}`} />
+            <VolumeX className={`w-4 h-4 mt-0.5 shrink-0 ${isSilencedForMe ? 'text-lira-amber' : 'text-lira-muted'}`} />
             <div className="min-w-0 flex-1">
               <div className="text-xs font-semibold flex items-center justify-between">
                 <span>{isSilencedForMe ? 'Desfazer silêncio' : 'Silenciar para mim'}</span>
-                {isSilencedForMe && <Check className="w-3 h-3 text-amber-400" />}
+                {isSilencedForMe && <Check className="w-3 h-3 text-lira-amber" />}
               </div>
-              <p className="text-[10px] text-slate-400 leading-tight mt-0.5">
+              <p className="text-[10px] text-lira-muted leading-tight mt-0.5">
                 Muta nos 2 sentidos (ele não te escuta, você não o escuta)
               </p>
             </div>
@@ -270,19 +270,19 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
 
           <button
             onClick={handleToggleMuteForMe}
-            className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all ${
+            className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-[8px] text-left transition-colors ${
               isMutedForMe
-                ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30'
-                : 'hover:bg-slate-800/80 text-slate-200'
+                ? 'bg-lira-error/15 text-lira-error border border-lira-error/40'
+                : 'hover:bg-lira-surface text-lira-ink border border-transparent'
             }`}
           >
-            <MicOff className={`w-4 h-4 mt-0.5 shrink-0 ${isMutedForMe ? 'text-rose-400' : 'text-slate-400'}`} />
+            <MicOff className={`w-4 h-4 mt-0.5 shrink-0 ${isMutedForMe ? 'text-lira-error' : 'text-lira-muted'}`} />
             <div className="min-w-0 flex-1">
               <div className="text-xs font-semibold flex items-center justify-between">
                 <span>{isMutedForMe ? 'Desmutar para mim' : 'Mutar para mim'}</span>
-                {isMutedForMe && <Check className="w-3 h-3 text-rose-400" />}
+                {isMutedForMe && <Check className="w-3 h-3 text-lira-error" />}
               </div>
-              <p className="text-[10px] text-slate-400 leading-tight mt-0.5">
+              <p className="text-[10px] text-lira-muted leading-tight mt-0.5">
                 Muta o microfone dele para você (ele ainda pode te escutar)
               </p>
             </div>
@@ -292,14 +292,14 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
 
       {!user.isLocal && (
         <>
-          <div className="my-1.5 border-t border-[#2a3142]/80" />
-          <div className="px-2 py-1 flex items-center justify-between text-[9px] font-bold tracking-wider uppercase text-amber-400/90">
+          <div className="my-1.5 border-t border-dashed border-lira-rule/60" />
+          <div className="px-2 py-1 flex items-center justify-between text-[9px] font-bold tracking-wider uppercase text-lira-amber">
             <span className="flex items-center gap-1">
               <Crown className="w-3 h-3" />
               Opções de Administrador
             </span>
             {!isLocalAdmin && (
-              <span className="text-slate-500 flex items-center gap-0.5">
+              <span className="text-lira-muted flex items-center gap-0.5">
                 <Lock className="w-2.5 h-2.5" />
                 Apenas ADMs
               </span>
@@ -310,21 +310,21 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
             <button
               onClick={handleAdminMuteForEveryone}
               disabled={!isLocalAdmin}
-              className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all ${
+              className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-[8px] text-left transition-colors ${
                 !isLocalAdmin
-                  ? 'opacity-40 cursor-not-allowed'
+                  ? 'opacity-40 cursor-not-allowed border border-transparent'
                   : isTargetMuted
-                  ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30'
-                  : 'hover:bg-slate-800/80 text-slate-200'
+                  ? 'bg-lira-error/15 text-lira-error border border-lira-error/40'
+                  : 'hover:bg-lira-surface text-lira-ink border border-transparent'
               }`}
             >
-              <MicOff className={`w-4 h-4 mt-0.5 shrink-0 ${isTargetMuted ? 'text-rose-400' : 'text-slate-400'}`} />
+              <MicOff className={`w-4 h-4 mt-0.5 shrink-0 ${isTargetMuted ? 'text-lira-error' : 'text-lira-muted'}`} />
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-semibold flex items-center justify-between">
                   <span>{isTargetMuted ? 'Desmutar para todos' : 'Mutar para todos'}</span>
-                  {isTargetMuted && <Check className="w-3 h-3 text-rose-400" />}
+                  {isTargetMuted && <Check className="w-3 h-3 text-lira-error" />}
                 </div>
-                <p className="text-[10px] text-slate-400 leading-tight mt-0.5">
+                <p className="text-[10px] text-lira-muted leading-tight mt-0.5">
                   {isTargetMuted
                     ? 'Reativa o microfone deste usuário para toda a sala'
                     : 'Muta o microfone deste usuário para toda a sala'}
@@ -335,21 +335,21 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
             <button
               onClick={handleAdminDeafenForEveryone}
               disabled={!isLocalAdmin}
-              className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all ${
+              className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-[8px] text-left transition-colors ${
                 !isLocalAdmin
-                  ? 'opacity-40 cursor-not-allowed'
+                  ? 'opacity-40 cursor-not-allowed border border-transparent'
                   : isTargetDeafened
-                  ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'
-                  : 'hover:bg-slate-800/80 text-slate-200'
+                  ? 'bg-lira-amber/15 text-lira-amber border border-lira-amber/40'
+                  : 'hover:bg-lira-surface text-lira-ink border border-transparent'
               }`}
             >
-              <Headphones className={`w-4 h-4 mt-0.5 shrink-0 ${isTargetDeafened ? 'text-amber-400' : 'text-slate-400'}`} />
+              <Headphones className={`w-4 h-4 mt-0.5 shrink-0 ${isTargetDeafened ? 'text-lira-amber' : 'text-lira-muted'}`} />
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-semibold flex items-center justify-between">
                   <span>{isTargetDeafened ? 'Desilenciar para todos' : 'Silenciar para todos'}</span>
-                  {isTargetDeafened && <Check className="w-3 h-3 text-amber-400" />}
+                  {isTargetDeafened && <Check className="w-3 h-3 text-lira-amber" />}
                 </div>
-                <p className="text-[10px] text-slate-400 leading-tight mt-0.5">
+                <p className="text-[10px] text-lira-muted leading-tight mt-0.5">
                   {isTargetDeafened
                     ? 'Reativa o som da chamada para este participante'
                     : 'Desativa o som da chamada para este participante'}
@@ -367,17 +367,17 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
               useMediaStore.getState().toggleMute()
               onClose()
             }}
-            className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-all text-xs font-semibold ${
+            className={`w-full flex items-center justify-between px-2.5 py-2 rounded-[8px] text-left transition-colors text-xs font-semibold ${
               user.isMuted
-                ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30'
-                : 'hover:bg-slate-800/80 text-slate-200'
+                ? 'bg-lira-error/15 text-lira-error border border-lira-error/40'
+                : 'hover:bg-lira-surface text-lira-ink border border-transparent'
             }`}
           >
             <div className="flex items-center gap-2.5">
-              {user.isMuted ? <MicOff className="w-4 h-4 text-rose-400" /> : <Mic className="w-4 h-4 text-slate-400" />}
+              {user.isMuted ? <MicOff className="w-4 h-4 text-lira-error" /> : <Mic className="w-4 h-4 text-lira-muted" />}
               <span>{user.isMuted ? 'Desmutar Meu Microfone' : 'Mutar Meu Microfone'}</span>
             </div>
-            {user.isMuted && <Check className="w-3 h-3 text-rose-400" />}
+            {user.isMuted && <Check className="w-3 h-3 text-lira-error" />}
           </button>
 
           <button
@@ -385,17 +385,17 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
               useMediaStore.getState().toggleDeafen()
               onClose()
             }}
-            className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left transition-all text-xs font-semibold ${
+            className={`w-full flex items-center justify-between px-2.5 py-2 rounded-[8px] text-left transition-colors text-xs font-semibold ${
               isDeafened
-                ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'
-                : 'hover:bg-slate-800/80 text-slate-200'
+                ? 'bg-lira-amber/15 text-lira-amber border border-lira-amber/40'
+                : 'hover:bg-lira-surface text-lira-ink border border-transparent'
             }`}
           >
             <div className="flex items-center gap-2.5">
-              <Headphones className={`w-4 h-4 ${isDeafened ? 'text-amber-400' : 'text-slate-400'}`} />
+              <Headphones className={`w-4 h-4 ${isDeafened ? 'text-lira-amber' : 'text-lira-muted'}`} />
               <span>{isDeafened ? 'Desilenciar Meu Som' : 'Silenciar Meu Som'}</span>
             </div>
-            {isDeafened && <Check className="w-3 h-3 text-amber-400" />}
+            {isDeafened && <Check className="w-3 h-3 text-lira-amber" />}
           </button>
         </div>
       )}

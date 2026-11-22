@@ -115,23 +115,23 @@ export const DoorKnockPrompt: React.FC = () => {
   }
 
   return (
-    <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[75] flex flex-col items-center select-none pointer-events-auto animate-in fade-in slide-in-from-bottom-3 duration-200">
-      <div className="bg-[#12151d]/95 backdrop-blur-xl border border-amber-500/40 rounded-2xl px-5 py-3.5 shadow-2xl shadow-black/70 flex items-center gap-4 max-w-md">
-        <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+    <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[75] flex flex-col items-center select-none pointer-events-auto font-mono">
+      <div className="bg-lira-panel border border-dashed border-lira-amber/60 rounded-xl px-5 py-3.5 flex items-center gap-4 max-w-md">
+        <div className="w-10 h-10 rounded-lg bg-lira-amber/15 border border-lira-amber/40 flex items-center justify-center text-lira-amber shrink-0">
           <Lock className="w-5 h-5" />
         </div>
 
         <div className="flex flex-col min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-bold text-white truncate">
+            <span className="text-sm font-display font-bold text-lira-ink truncate">
               {lockedZone.name}
             </span>
-            <span className="text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40 px-1.5 py-0.5 rounded-full uppercase tracking-wider">
+            <span className="text-[10px] font-mono font-bold bg-lira-amber/15 text-lira-amber border border-lira-amber/40 px-1.5 py-0.5 rounded uppercase tracking-wider">
               Trancada
             </span>
           </div>
 
-          <p className="text-xs text-slate-300 line-clamp-1">
+          <p className="text-xs text-lira-muted line-clamp-1">
             {status === 'idle' && 'Esta sala está trancada. Bata na porta para solicitar entrada.'}
             {status === 'knocking' && 'Batendo na porta... Aguardando autorização.'}
             {status === 'approved' && 'Entrada permitida! Você já pode entrar.'}
@@ -143,7 +143,7 @@ export const DoorKnockPrompt: React.FC = () => {
           {status === 'idle' && (
             <button
               onClick={handleKnock}
-              className="py-2 px-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-lg shadow-indigo-600/30 active:scale-95"
+              className="py-2 px-3.5 rounded-lg bg-lira-accent hover:bg-lira-ink text-lira-ground border-2 border-lira-accent hover:border-lira-ink text-xs font-bold flex items-center gap-1.5 transition-colors"
             >
               <Hand className="w-4 h-4" />
               <span>Bater na Porta</span>
@@ -152,13 +152,13 @@ export const DoorKnockPrompt: React.FC = () => {
 
           {status === 'knocking' && (
             <div className="flex items-center gap-2">
-              <div className="py-2 px-3 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-300 text-xs font-medium flex items-center gap-1.5">
+              <div className="py-2 px-3 rounded-lg bg-lira-amber/15 border border-lira-amber/40 text-lira-amber text-xs font-medium flex items-center gap-1.5">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 <span>Aguardando...</span>
               </div>
               <button
                 onClick={handleReset}
-                className="text-xs text-slate-400 hover:text-slate-200 underline px-1"
+                className="text-xs text-lira-muted hover:text-lira-ink underline px-1"
               >
                 Cancelar
               </button>
@@ -167,13 +167,13 @@ export const DoorKnockPrompt: React.FC = () => {
 
           {status === 'approved' && (
             <div className="flex items-center gap-2">
-              <div className="py-2 px-3 rounded-xl bg-emerald-600/20 border border-emerald-500/40 text-emerald-400 text-xs font-bold flex items-center gap-1.5">
+              <div className="py-2 px-3 rounded-lg bg-lira-online/15 border border-lira-online/40 text-lira-online text-xs font-bold flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4" />
                 <span>Liberado!</span>
               </div>
               <button
                 onClick={handleEnterApproved}
-                className="py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1 transition-all shadow-lg shadow-emerald-600/30 active:scale-95"
+                className="py-2 px-3 rounded-lg bg-lira-online hover:bg-lira-ink text-lira-ground border-2 border-lira-online hover:border-lira-ink text-xs font-bold flex items-center gap-1 transition-colors"
               >
                 <span>Entrar</span>
               </button>
@@ -183,9 +183,9 @@ export const DoorKnockPrompt: React.FC = () => {
           {status === 'denied' && (
             <button
               onClick={handleReset}
-              className="py-2 px-3 rounded-xl bg-rose-600/20 border border-rose-500/40 text-rose-300 hover:bg-rose-600/30 text-xs font-bold flex items-center gap-1.5 transition-colors"
+              className="py-2 px-3 rounded-lg bg-lira-error/15 border border-lira-error/40 text-lira-error hover:bg-lira-error/25 text-xs font-bold flex items-center gap-1.5 transition-colors"
             >
-              <XCircle className="w-4 h-4 text-rose-400" />
+              <XCircle className="w-4 h-4 text-lira-error" />
               <span>Tentar de novo</span>
             </button>
           )}

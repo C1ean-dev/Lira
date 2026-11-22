@@ -102,35 +102,35 @@ export const AudioSettingsModal: React.FC = () => {
   }
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200 select-none">
-      <div className="bg-[#1b202c] border border-[#2a3142] rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#2a3142] bg-[#12151d]/70">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-lira-ground/80 p-4 select-none font-mono">
+      <div className="bg-lira-panel border border-dashed border-lira-rule rounded-[12px] w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-dashed border-lira-rule/60 bg-lira-surface/50">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+            <div className="w-10 h-10 rounded-[8px] bg-lira-surface border border-lira-rule flex items-center justify-center text-lira-accent">
               <Sliders className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-100">Configurações do Espaço</h2>
-              <p className="text-xs text-slate-400">
+              <h2 className="font-display text-lg font-bold text-lira-accent">Configurações do Espaço</h2>
+              <p className="text-xs font-mono text-lira-muted">
                 Dispositivos de Áudio, Câmera, Voz & Sistema
               </p>
             </div>
           </div>
           <button
             onClick={handleClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+            className="p-2 rounded-[8px] border border-lira-rule bg-lira-surface text-lira-muted hover:text-lira-ink hover:border-lira-accent transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="flex gap-2 px-6 pt-3 border-b border-[#2a3142] bg-[#12151d]/40">
+        <div className="flex gap-2 px-6 pt-3 border-b border-dashed border-lira-rule/60 bg-lira-panel">
           <button
             onClick={() => setActiveTab('devices')}
-            className={`flex items-center gap-2 pb-3 px-3 text-xs font-bold border-b-2 transition-all ${
+            className={`flex items-center gap-2 pb-3 px-3 text-xs font-mono font-bold border-b-2 transition-colors ${
               activeTab === 'devices'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-lira-accent text-lira-accent'
+                : 'border-transparent text-lira-muted hover:text-lira-ink'
             }`}
           >
             <Mic className="w-4 h-4" />
@@ -138,10 +138,10 @@ export const AudioSettingsModal: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('advanced')}
-            className={`flex items-center gap-2 pb-3 px-3 text-xs font-bold border-b-2 transition-all ${
+            className={`flex items-center gap-2 pb-3 px-3 text-xs font-mono font-bold border-b-2 transition-colors ${
               activeTab === 'advanced'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-lira-accent text-lira-accent'
+                : 'border-transparent text-lira-muted hover:text-lira-ink'
             }`}
           >
             <Sparkles className="w-4 h-4" />
@@ -149,10 +149,10 @@ export const AudioSettingsModal: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab('system')}
-            className={`flex items-center gap-2 pb-3 px-3 text-xs font-bold border-b-2 transition-all ${
+            className={`flex items-center gap-2 pb-3 px-3 text-xs font-mono font-bold border-b-2 transition-colors ${
               activeTab === 'system'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-lira-accent text-lira-accent'
+                : 'border-transparent text-lira-muted hover:text-lira-ink'
             }`}
           >
             <Monitor className="w-4 h-4" />
@@ -174,13 +174,13 @@ export const AudioSettingsModal: React.FC = () => {
           {activeTab === 'system' && <SystemSettingsTab />}
         </div>
 
-        <div className="p-4 border-t border-[#2a3142] bg-[#12151d]/90 flex items-center justify-between gap-3">
+        <div className="p-4 border-t border-dashed border-lira-rule/60 bg-lira-surface/50 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <ExportLogsButton className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-[11px] font-bold transition-all disabled:opacity-60" />
+            <ExportLogsButton className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] bg-lira-surface hover:border-lira-accent border border-lira-rule text-lira-ink hover:text-lira-accent text-[11px] font-mono font-bold transition-colors disabled:opacity-60" />
             <button
               type="button"
               onClick={() => setIsReportIssueOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 hover:text-rose-200 text-[11px] font-bold transition-all"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] bg-lira-error/15 hover:bg-lira-error/25 border border-lira-error/40 text-lira-error text-[11px] font-mono font-bold transition-colors"
               title="Relatar um problema no GitHub com diagnóstico e logs do app"
             >
               <Bug className="w-3.5 h-3.5" />
@@ -190,7 +190,7 @@ export const AudioSettingsModal: React.FC = () => {
 
           <button
             onClick={handleClose}
-            className="px-6 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all active:scale-98"
+            className="px-6 py-2 rounded-[8px] text-xs font-mono font-bold bg-lira-accent hover:bg-lira-ink border border-lira-accent hover:border-lira-ink text-lira-ground transition-colors"
           >
             Concluir
           </button>

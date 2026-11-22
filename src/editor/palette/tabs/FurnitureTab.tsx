@@ -70,42 +70,42 @@ export const FurnitureTab: React.FC<Props> = ({
   }
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-4 gap-1 p-1 bg-slate-900/80 border border-slate-800 rounded-xl">
+    <div className="space-y-3 font-mono text-lira-ink">
+      <div className="grid grid-cols-4 gap-1 p-1 bg-lira-ground border border-lira-quiet rounded-[8px]">
         <button
           type="button"
           onClick={onOpenStudioCreate}
-          className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 hover:text-white text-[10px] font-bold border border-indigo-500/30 transition-all shadow-xs"
+          className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-[6px] bg-lira-surface hover:bg-lira-accent text-lira-accent hover:text-lira-ground text-[10px] font-mono font-bold border border-lira-rule transition-colors"
           title="Desenhar mobília no estúdio de elementos"
         >
-          <Pencil className="w-3 h-3 text-indigo-400" />
+          <Pencil className="w-3 h-3" />
           <span>Criar elemento</span>
         </button>
         <button
           type="button"
           onClick={() => onOpenSlicer?.()}
-          className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-amber-600/30 hover:bg-amber-600 text-amber-200 hover:text-white text-[10px] font-bold border border-amber-500/30 transition-all shadow-xs"
+          className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-[6px] bg-lira-surface hover:border-lira-amber text-lira-amber text-[10px] font-mono font-bold border border-lira-rule transition-colors"
           title="Fatiar spritesheet ou imagem"
         >
-          <Scissors className="w-3 h-3 text-amber-400" />
+          <Scissors className="w-3 h-3 text-lira-amber" />
           <span>Fatiar</span>
         </button>
         <button
           type="button"
           onClick={onOpenAtlasImport}
-          className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-emerald-600/30 hover:bg-emerald-600 text-emerald-200 hover:text-white text-[10px] font-bold border border-emerald-500/30 transition-all shadow-xs"
+          className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-[6px] bg-lira-surface hover:border-lira-online text-lira-online text-[10px] font-mono font-bold border border-lira-rule transition-colors"
           title="Importar pacote / Atlas ZIP de mobílias"
         >
-          <FolderInput className="w-3 h-3 text-emerald-400" />
+          <FolderInput className="w-3 h-3 text-lira-online" />
           <span>Importar</span>
         </button>
         <button
           type="button"
           onClick={onExportAtlas}
-          className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[10px] font-bold border border-slate-700 transition-all shadow-xs"
+          className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-[6px] bg-lira-surface hover:border-lira-accent text-lira-muted hover:text-lira-ink text-[10px] font-mono font-bold border border-lira-rule transition-colors"
           title="Exportar catálogo de mobílias como Atlas ZIP"
         >
-          <Download className="w-3 h-3 text-slate-400" />
+          <Download className="w-3 h-3 text-lira-muted" />
           <span>Exportar</span>
         </button>
       </div>
@@ -117,10 +117,10 @@ export const FurnitureTab: React.FC<Props> = ({
             <div key={cat} className="flex items-center shrink-0">
               <button
                 onClick={() => setFurnitureCategory(cat)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap flex items-center gap-1.5 transition-colors ${
+                className={`px-2.5 py-1 rounded-[6px] text-xs font-mono font-semibold whitespace-nowrap flex items-center gap-1.5 transition-colors border ${
                   isActive
-                    ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/40'
-                    : 'bg-slate-800/60 text-slate-400 hover:text-slate-200'
+                    ? 'bg-lira-surface text-lira-accent border-lira-accent'
+                    : 'bg-lira-ground text-lira-muted border-lira-quiet hover:text-lira-ink'
                 }`}
               >
                 <span>{cat}</span>
@@ -131,14 +131,14 @@ export const FurnitureTab: React.FC<Props> = ({
         })}
 
         {isAddingCategory ? (
-          <div className="flex items-center gap-1 shrink-0 bg-slate-900 border border-blue-500/60 rounded-lg p-0.5">
+          <div className="flex items-center gap-1 shrink-0 bg-lira-ground border border-lira-accent rounded-[6px] p-0.5">
             <input
               type="text"
               value={newCategoryText}
               onChange={(e) => setNewCategoryText(e.target.value)}
               placeholder="Nome..."
               autoFocus
-              className="px-2 py-0.5 bg-transparent text-xs text-white focus:outline-none w-24"
+              className="px-2 py-0.5 bg-transparent text-xs font-mono text-lira-ink focus:outline-none w-24"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleSaveCategory()
                 else if (e.key === 'Escape') setIsAddingCategory(false)
@@ -146,13 +146,13 @@ export const FurnitureTab: React.FC<Props> = ({
             />
             <button
               onClick={handleSaveCategory}
-              className="px-1.5 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-[10px] font-bold"
+              className="px-1.5 py-0.5 bg-lira-accent hover:bg-lira-ink text-lira-ground rounded text-[10px] font-mono font-bold"
             >
               OK
             </button>
             <button
               onClick={() => setIsAddingCategory(false)}
-              className="px-1 text-slate-400 hover:text-white text-xs"
+              className="px-1 text-lira-muted hover:text-lira-ink text-xs"
             >
               ×
             </button>
@@ -160,7 +160,7 @@ export const FurnitureTab: React.FC<Props> = ({
         ) : (
           <button
             onClick={() => setIsAddingCategory(true)}
-            className="px-2 py-1 rounded-lg text-xs font-semibold whitespace-nowrap bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 border border-blue-500/30 flex items-center gap-1 transition-colors shrink-0"
+            className="px-2 py-1 rounded-[6px] text-xs font-mono font-semibold whitespace-nowrap bg-lira-surface hover:border-lira-accent text-lira-accent border border-lira-rule flex items-center gap-1 transition-colors shrink-0"
             title="Criar nova categoria personalizada"
           >
             <Plus className="w-3 h-3" />
@@ -185,15 +185,15 @@ export const FurnitureTab: React.FC<Props> = ({
                     setActiveTool('place_furniture')
                   }
                 }}
-                className={`group relative aspect-square rounded-xl border flex flex-col items-center justify-between p-1.5 transition-all select-none cursor-pointer ${
+                className={`group relative aspect-square rounded-[8px] border flex flex-col items-center justify-between p-1.5 transition-colors select-none cursor-pointer ${
                   isSelected
-                    ? 'border-indigo-500 bg-indigo-500/20 shadow-md shadow-indigo-500/20 ring-2 ring-indigo-500/40'
-                    : 'border-[#2a3142] bg-[#12151d]/60 hover:border-slate-500 hover:bg-[#181d28]'
+                    ? 'border-lira-accent bg-lira-surface ring-1 ring-lira-accent'
+                    : 'border-lira-quiet bg-lira-ground hover:border-lira-rule hover:bg-lira-surface'
                 }`}
                 title={`${item.name} (${item.width}×${item.height} tiles • ${item.isObstacle ? 'Obstáculo' : 'Livre'})`}
               >
                 <div className="w-full flex items-center justify-between z-10 pointer-events-none">
-                  <span className="text-[9px] font-mono font-bold px-1 py-0.5 rounded bg-black/60 text-slate-300 backdrop-blur-xs leading-none">
+                  <span className="text-[9px] font-mono font-bold px-1 py-0.5 rounded bg-lira-panel text-lira-muted border border-lira-quiet leading-none">
                     {item.width}×{item.height}
                   </span>
 
@@ -205,7 +205,7 @@ export const FurnitureTab: React.FC<Props> = ({
                           e.stopPropagation()
                           onOpenStudioEdit(item.id)
                         }}
-                        className="p-1 rounded-md bg-indigo-500/30 hover:bg-indigo-500/60 text-indigo-300 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                        className="p-1 rounded-[4px] bg-lira-surface hover:bg-lira-accent text-lira-accent hover:text-lira-ground border border-lira-rule opacity-0 group-hover:opacity-100 transition-opacity"
                         title={`Editar no estúdio: "${item.name}"`}
                       >
                         <Pencil className="w-2.5 h-2.5" />
@@ -219,7 +219,7 @@ export const FurnitureTab: React.FC<Props> = ({
                           e.stopPropagation()
                           onOpenSlicer(item.id)
                         }}
-                        className="p-1 rounded-md bg-amber-500/30 hover:bg-amber-500/60 text-amber-300 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                        className="p-1 rounded-[4px] bg-lira-surface hover:bg-lira-amber text-lira-amber hover:text-lira-ground border border-lira-rule opacity-0 group-hover:opacity-100 transition-opacity"
                         title={`Fatiar / reajustar sprites: "${item.name}"`}
                       >
                         <Scissors className="w-2.5 h-2.5" />
@@ -233,7 +233,7 @@ export const FurnitureTab: React.FC<Props> = ({
                           e.stopPropagation()
                           setAssetToDelete({ id: item.id, name: item.name })
                         }}
-                        className="p-1 rounded-md bg-rose-500/30 hover:bg-rose-500/60 text-rose-300 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                        className="p-1 rounded-[4px] bg-lira-error/20 hover:bg-lira-error text-lira-error hover:text-lira-ground border border-lira-error/40 opacity-0 group-hover:opacity-100 transition-opacity"
                         title={`Excluir mobília "${item.name}"`}
                       >
                         <Trash2 className="w-2.5 h-2.5" />
@@ -261,7 +261,7 @@ export const FurnitureTab: React.FC<Props> = ({
                 </div>
 
                 <div className="w-full text-center px-0.5">
-                  <div className="text-[11px] font-semibold text-slate-200 truncate leading-tight">
+                  <div className="text-[11px] font-mono font-semibold text-lira-ink truncate leading-tight">
                     {item.name}
                   </div>
                 </div>
@@ -270,7 +270,7 @@ export const FurnitureTab: React.FC<Props> = ({
           })}
         </div>
       ) : (
-        <div className="text-xs text-slate-500 text-center py-6 bg-[#12151d]/40 rounded-xl border border-[#2a3142]">
+        <div className="text-xs font-mono text-lira-muted text-center py-6 bg-lira-ground rounded-[8px] border border-dashed border-lira-rule/60">
           Nenhum item nesta categoria. Crie um novo no botão acima!
         </div>
       )}

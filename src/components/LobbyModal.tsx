@@ -24,6 +24,7 @@ import { SavedSpacesTab } from './lobby/SavedSpacesTab'
 import { FriendsTab } from './lobby/FriendsTab'
 import { LobbyChatModal } from './lobby/LobbyChatModal'
 import { LiraLogo } from './LiraLogo'
+import { Button, Badge, Card, ThemeToggle } from './ui'
 import { UpdateDownloadIndicator } from './common/UpdateDownloadIndicator'
 import { UpdateChangelogHover } from './common/UpdateChangelogHover'
 import { useUpdateStore, versionBadgeLabel } from '../store/useUpdateStore'
@@ -589,14 +590,12 @@ export const LobbyModal: React.FC<Props> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0c0e14]/90 backdrop-blur-xl p-2 sm:p-4 select-none animate-in fade-in duration-300">
-      <div className="bg-[#1b202c] border border-[#2a3142] rounded-2xl sm:rounded-3xl w-full max-w-2xl sm:max-w-[740px] overflow-hidden shadow-2xl flex flex-col max-h-[96vh] sm:max-h-[92vh]">
-        <div className="bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 p-3.5 sm:p-5 text-center relative shrink-0 z-20">
-          <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-t-2xl sm:rounded-t-3xl">
-            <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full bg-white/10 blur-2xl" />
-          </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-lira-ground p-2 sm:p-4 select-none font-mono text-lira-ink">
+      <Card variant="dashed" className="w-full max-w-2xl sm:max-w-[740px] overflow-hidden flex flex-col max-h-[96vh] sm:max-h-[92vh]">
+        <div className="bg-lira-surface border-b border-dashed border-lira-rule/60 p-3.5 sm:p-5 text-center relative shrink-0 z-20">
           <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-30"><MeetingHistoryAccess /></div>
-          <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-30">
+          <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-30 flex items-center gap-2">
+            <ThemeToggle size="sm" />
             <UpdateChangelogHover
               updateInfo={updateInfo}
               isUpdateReady={isReadyToInstall}
@@ -605,10 +604,11 @@ export const LobbyModal: React.FC<Props> = ({
               onApplyUpdate={showUpdateAction && onApplyUpdate ? onApplyUpdate : undefined}
             >
               {showUpdateAction && onApplyUpdate ? (
-                <button
-                  type="button"
+                <Button
+                  variant="quiet"
+                  size="icon"
                   disabled={isUpdating || isDownloadingUpdate}
-                  className="p-2 sm:p-2.5 rounded-2xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 text-emerald-300 hover:text-white transition-all hover:scale-105 active:scale-95 shadow-lg shadow-emerald-500/20 cursor-pointer disabled:opacity-75 disabled:pointer-events-none"
+                  className="border-lira-online/50 bg-lira-online/15 text-lira-online hover:bg-lira-online hover:text-lira-ground hover:border-lira-online cursor-pointer"
                   aria-label={updateActionLabel}
                   title={isDownloadingUpdate ? updateActionLabel : 'Nova versão disponível. Passe o mouse ou clique para ver novidades e instalar.'}
                 >
@@ -617,22 +617,23 @@ export const LobbyModal: React.FC<Props> = ({
                   ) : (
                     <UpdateDownloadIndicator downloading={isDownloadingUpdate} percent={updatePercent} />
                   )}
-                </button>
+                </Button>
               ) : (
-                <button
-                  type="button"
+                <Button
+                  variant="quiet"
+                  size="sm"
                   onClick={(e) => { e.stopPropagation(); checkNow() }}
                   disabled={manualCheck === 'checking'}
-                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/20 text-white/90 text-xs font-bold shadow-sm transition-all cursor-pointer disabled:cursor-wait"
+                  className="gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 text-xs font-bold cursor-pointer disabled:cursor-wait"
                   title={`Versão atual do Lira: ${currentVersion}. Clique para verificar atualizações.`}
                 >
                   {manualCheck === 'checking' ? (
                     <RefreshCw className="w-3 h-3 animate-spin" />
                   ) : (
-                    <span className={`w-2 h-2 rounded-full ${manualCheck === 'failed' ? 'bg-rose-400' : 'bg-emerald-400'}`} />
+                    <span className={`w-2 h-2 rounded-full ${manualCheck === 'failed' ? 'bg-lira-error' : 'bg-lira-online'}`} />
                   )}
                   <span className="font-mono">{versionBadgeLabel(manualCheck, currentVersion)}</span>
-                </button>
+                </Button>
               )}
             </UpdateChangelogHover>
           </div>
@@ -640,21 +641,21 @@ export const LobbyModal: React.FC<Props> = ({
             <div className="mb-1 sm:mb-2 scale-90 sm:scale-100">
               <LiraLogo size={46} />
             </div>
-            <h1 className="text-lg sm:text-xl font-extrabold text-white tracking-wider">LIRA</h1>
-            <p className="text-[11px] sm:text-xs text-indigo-100 max-w-sm mt-0.5 px-2">
+            <h1 className="font-display text-xl sm:text-2xl font-bold text-lira-accent tracking-tight">LIRA</h1>
+            <p className="text-[11px] sm:text-xs font-mono text-lira-muted max-w-sm mt-0.5 px-2">
               Escritório virtual colaborativo com salas em tempo real, áudio P2P e zonas privadas
             </p>
           </div>
         </div>
 
-        <div className="flex border-b border-[#2a3142] bg-[#12151d]/80 px-3 sm:px-6 pt-2.5 sm:pt-3 gap-1.5 sm:gap-2.5 shrink-0 overflow-x-auto justify-start sm:justify-center">
+        <div className="flex border-b border-dashed border-lira-rule/60 bg-lira-sidebar px-3 sm:px-6 pt-2.5 sm:pt-3 gap-1.5 sm:gap-2.5 shrink-0 overflow-x-auto justify-start sm:justify-center font-mono">
           <button
             type="button"
             onClick={() => setActiveTab('connect')}
-            className={`pb-2.5 px-3 text-xs font-bold transition-all border-b-2 flex items-center gap-2 shrink-0 whitespace-nowrap ${
+            className={`pb-2.5 px-3 text-xs font-bold transition-colors border-b-2 flex items-center gap-2 shrink-0 whitespace-nowrap ${
               activeTab === 'connect'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-lira-accent text-lira-accent'
+                : 'border-transparent text-lira-muted hover:text-lira-ink'
             }`}
           >
             <DoorOpen className="w-3.5 h-3.5" />
@@ -664,69 +665,70 @@ export const LobbyModal: React.FC<Props> = ({
           <button
             type="button"
             onClick={() => setActiveTab('available_rooms')}
-            className={`pb-2.5 px-3 text-xs font-bold transition-all border-b-2 flex items-center gap-2 shrink-0 whitespace-nowrap relative ${
+            className={`pb-2.5 px-3 text-xs font-bold transition-colors border-b-2 flex items-center gap-2 shrink-0 whitespace-nowrap relative ${
               activeTab === 'available_rooms'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-lira-accent text-lira-accent'
+                : 'border-transparent text-lira-muted hover:text-lira-ink'
             }`}
           >
-            <Globe className="w-3.5 h-3.5 text-blue-400 animate-pulse" />
+            <Globe className="w-3.5 h-3.5 text-lira-accent" />
             <span>Salas Disponíveis (Hub)</span>
-            <span className="bg-blue-500/20 text-blue-300 text-[10px] px-1.5 py-0.2 rounded-full font-bold border border-blue-500/30 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+            <Badge variant="online" className="text-[10px] px-1.5 py-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-lira-online" />
               {publicRooms.length}
-            </span>
+            </Badge>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('friends')}
-            className={`pb-2.5 px-3 text-xs font-bold transition-all border-b-2 flex items-center gap-2 shrink-0 whitespace-nowrap relative ${
+            className={`pb-2.5 px-3 text-xs font-bold transition-colors border-b-2 flex items-center gap-2 shrink-0 whitespace-nowrap relative ${
               activeTab === 'friends'
-                ? 'border-indigo-500 text-indigo-400'
+                ? 'border-lira-accent text-lira-accent'
                 : totalUnreadDMs > 0
-                ? 'border-rose-500 text-rose-300 font-extrabold bg-rose-500/10 rounded-t-xl animate-pulse'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-lira-error text-lira-error font-extrabold bg-lira-error/10 rounded-t-[8px]'
+                : 'border-transparent text-lira-muted hover:text-lira-ink'
             }`}
           >
             <div className="relative flex items-center">
-              <Users className={`w-3.5 h-3.5 ${totalUnreadDMs > 0 ? 'text-rose-400' : ''}`} />
+              <Users className={`w-3.5 h-3.5 ${totalUnreadDMs > 0 ? 'text-lira-error' : ''}`} />
               {totalUnreadDMs > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-[#12151d] animate-ping" />
+                <span className="absolute -top-1.5 -right-1.5 w-2.5 h-2.5 rounded-full bg-lira-error ring-2 ring-lira-sidebar" />
               )}
             </div>
             <span>Amigos</span>
-            <span className="bg-indigo-500/20 text-indigo-300 text-[10px] px-1.5 py-0.2 rounded-full font-bold flex items-center gap-1">
+            <Badge variant="default" className="text-[10px] px-1.5 py-0">
               {onlineFriendsCount > 0 && (
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="w-1.5 h-1.5 rounded-full bg-lira-online" />
               )}
               {friends.length}
-            </span>
+            </Badge>
             {totalUnreadDMs > 0 && (
-              <span
-                className="bg-rose-600 text-white text-[10px] px-2 py-0.5 rounded-full font-extrabold shadow-lg shadow-rose-600/50 flex items-center gap-1 animate-pulse"
+              <Badge
+                variant="error"
+                className="text-[10px] px-2 py-0.5 font-extrabold"
                 title={`${totalUnreadDMs} nova(s) mensagem(ns)`}
               >
-                <MessageSquare className="w-2.5 h-2.5 fill-white text-white" />
+                <MessageSquare className="w-2.5 h-2.5 fill-current" />
                 <span>{totalUnreadDMs} nova{totalUnreadDMs > 1 ? 's' : ''}</span>
-              </span>
+              </Badge>
             )}
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('saved_rooms')}
-            className={`pb-2.5 px-3 text-xs font-bold transition-all border-b-2 flex items-center gap-2 shrink-0 whitespace-nowrap ${
+            className={`pb-2.5 px-3 text-xs font-bold transition-colors border-b-2 flex items-center gap-2 shrink-0 whitespace-nowrap ${
               activeTab === 'saved_rooms'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-lira-accent text-lira-accent'
+                : 'border-transparent text-lira-muted hover:text-lira-ink'
             }`}
           >
             <LayoutGrid className="w-3.5 h-3.5" />
             <span>Salas Salvas</span>
-            <span className="bg-indigo-500/20 text-indigo-300 text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+            <Badge variant="default" className="text-[10px] px-1.5 py-0">
               {savedSpaces.length}
-            </span>
+            </Badge>
           </button>
         </div>
 
@@ -839,7 +841,7 @@ export const LobbyModal: React.FC<Props> = ({
             }}
           />
         )}
-      </div>
+      </Card>
 
       {chatFriend && (
         <LobbyChatModal
@@ -850,53 +852,58 @@ export const LobbyModal: React.FC<Props> = ({
       )}
 
       {incomingToast && (
-        <div className="fixed top-6 right-6 z-[60] bg-[#1b202c] border-2 border-rose-500 rounded-2xl p-3.5 shadow-2xl shadow-rose-950/80 max-w-sm w-full flex items-start gap-3 animate-in slide-in-from-top-4 fade-in duration-200">
+        <Card
+          variant="dashed"
+          className="fixed top-6 right-6 z-[60] border-lira-error p-3.5 max-w-sm w-full flex items-start gap-3 font-mono"
+        >
           <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-white shrink-0 shadow-md border border-white/20"
+            className="w-10 h-10 rounded-[6px] flex items-center justify-center font-bold text-sm text-lira-ground shrink-0 border border-lira-rule"
             style={{
               backgroundColor:
                 incomingToast.friend.avatar?.shirtColor ||
                 incomingToast.friend.avatar?.topColor ||
-                '#e11d48',
+                '#ffb0bd',
             }}
           >
             {incomingToast.friend.name.charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-1">
-              <span className="text-xs font-bold text-white truncate">
+              <span className="text-xs font-bold text-lira-ink truncate">
                 {incomingToast.friend.name}
               </span>
-              <span className="text-[10px] text-rose-400 font-extrabold flex items-center gap-1 shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
+              <span className="text-[10px] text-lira-error font-extrabold flex items-center gap-1 shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-lira-error" />
                 Nova mensagem
               </span>
             </div>
-            <p className="text-xs text-slate-300 truncate mt-1 bg-[#12151d] p-1.5 rounded-lg border border-[#2a3142]">
+            <p className="text-xs text-lira-ink truncate mt-1 bg-lira-ground p-1.5 rounded-[8px] border border-lira-quiet">
               "{incomingToast.content}"
             </p>
             <div className="flex items-center gap-2 mt-2">
-              <button
-                type="button"
+              <Button
+                variant="destructive"
+                size="xs"
                 onClick={() => {
                   setChatFriend(incomingToast.friend)
                   setIncomingToast(null)
                 }}
-                className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-lg shadow-md flex items-center gap-1.5 transition-colors cursor-pointer"
+                className="cursor-pointer"
               >
-                <MessageSquare className="w-3 h-3 fill-white" />
+                <MessageSquare className="w-3 h-3 fill-current" />
                 <span>Responder</span>
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="ghost"
+                size="xs"
                 onClick={() => setIncomingToast(null)}
-                className="px-2 py-1 text-slate-400 hover:text-white text-xs cursor-pointer"
+                className="cursor-pointer"
               >
                 Dispensar
-              </button>
+              </Button>
             </div>
           </div>
-        </div>
+        </Card>
       )}
     </div>
   )

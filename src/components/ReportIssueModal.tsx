@@ -256,20 +256,20 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
       role="dialog"
       aria-modal="true"
       aria-labelledby="report-issue-title"
-      className="fixed inset-0 z-[130] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200 select-none"
+      className="fixed inset-0 z-[130] flex items-center justify-center bg-lira-ground/80 p-4 select-none font-mono"
     >
-      <div className="bg-[#1b202c] border border-[#2a3142] rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
+      <div className="bg-lira-panel border border-dashed border-lira-rule rounded-[12px] w-full max-w-lg overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#2a3142] bg-[#12151d]/70">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-dashed border-lira-rule/60 bg-lira-surface/50">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400">
+            <div className="w-10 h-10 rounded-[8px] bg-lira-error/15 border border-lira-error/40 flex items-center justify-center text-lira-error">
               <Bug className="w-5 h-5" />
             </div>
             <div>
-              <h2 id="report-issue-title" className="text-base font-bold text-slate-100">
+              <h2 id="report-issue-title" className="font-display text-lg font-bold text-lira-accent">
                 Reportar problema
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs font-mono text-lira-muted">
                 Crie uma issue com diagnóstico e anexos de logs
               </p>
             </div>
@@ -278,7 +278,7 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
             type="button"
             onClick={handleClose}
             disabled={isSubmitting}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors disabled:opacity-50"
+            className="p-2 rounded-[8px] border border-lira-rule bg-lira-surface text-lira-muted hover:text-lira-ink hover:border-lira-accent transition-colors disabled:opacity-50"
             title="Fechar"
           >
             <X className="w-5 h-5" />
@@ -289,19 +289,19 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
         {feedback?.type === 'success' || feedback?.type === 'warning' ? (
           <div className="p-6 space-y-4">
             {feedback.type === 'warning' ? (
-              <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/30 flex items-start gap-3 text-amber-200">
-                <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="p-4 rounded-[12px] bg-lira-amber/10 border border-dashed border-lira-amber/40 flex items-start gap-3 text-lira-amber">
+                <AlertCircle className="w-5 h-5 text-lira-amber shrink-0 mt-0.5" />
                 <div className="space-y-2">
                   <div>
-                    <p className="text-sm font-bold text-amber-300">Quase lá! Conclua o envio no GitHub</p>
-                    <p className="text-xs text-amber-200/90 leading-relaxed mt-0.5">{feedback.message}</p>
+                    <p className="font-display text-base font-bold text-lira-amber">Quase lá! Conclua o envio no GitHub</p>
+                    <p className="text-xs text-lira-ink leading-relaxed mt-0.5">{feedback.message}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 pt-1">
                     {feedback.issueUrl && (
                       <button
                         type="button"
                         onClick={() => handleOpenLink(feedback.issueUrl!)}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 hover:text-amber-100 text-xs font-bold transition-all shadow-sm"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-[8px] bg-lira-amber/15 hover:bg-lira-amber/25 border border-lira-amber/40 text-lira-amber text-xs font-mono font-bold transition-colors"
                       >
                         <span>Abrir e publicar no GitHub</span>
                         <ExternalLink className="w-3.5 h-3.5" />
@@ -311,21 +311,21 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
                       <button
                         type="button"
                         onClick={() => handleOpenLink(feedback.gistUrl!)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition-all shadow-sm"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] bg-lira-surface hover:border-lira-accent border border-lira-rule text-lira-ink hover:text-lira-accent text-xs font-mono font-semibold transition-colors"
                       >
                         <span>Ver logs anexados (Gist)</span>
                         <ExternalLink className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
-                  <p className="text-[11px] text-slate-400 pt-1">
+                  <p className="text-[11px] text-lira-muted pt-1">
                     Ao clicar no botão, a página de criação de issue será aberta no seu navegador com o título e os logs já preenchidos. Basta clicar em <strong>Submit new issue</strong>.
                   </p>
                 </div>
               </div>
             ) : (
-              <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 flex items-start gap-3 text-emerald-300">
-                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+              <div className="p-4 rounded-[12px] bg-lira-online/10 border border-dashed border-lira-online/40 flex items-start gap-3 text-lira-online">
+                <CheckCircle2 className="w-5 h-5 text-lira-online shrink-0 mt-0.5" />
                 <div className="space-y-2">
                   <p className="text-sm font-semibold">{feedback.message}</p>
                   <div className="flex flex-wrap gap-2 pt-1">
@@ -333,7 +333,7 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
                       <button
                         type="button"
                         onClick={() => handleOpenLink(feedback.issueUrl!)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 hover:text-emerald-200 text-xs font-bold transition-all shadow-sm"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] bg-lira-online/15 hover:bg-lira-online/25 border border-lira-online/40 text-lira-online text-xs font-mono font-bold transition-colors"
                       >
                         <span>Ver issue no GitHub</span>
                         <ExternalLink className="w-3.5 h-3.5" />
@@ -343,7 +343,7 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
                       <button
                         type="button"
                         onClick={() => handleOpenLink(feedback.gistUrl!)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 hover:text-white text-xs font-semibold transition-all shadow-sm"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] bg-lira-surface hover:border-lira-accent border border-lira-rule text-lira-ink hover:text-lira-accent text-xs font-mono font-semibold transition-colors"
                       >
                         <span>Ver logs anexados (Gist)</span>
                         <ExternalLink className="w-3.5 h-3.5" />
@@ -357,7 +357,7 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
               <button
                 type="button"
                 onClick={handleClose}
-                className="px-5 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-md shadow-indigo-600/20"
+                className="px-5 py-2 rounded-[8px] text-xs font-mono font-bold bg-lira-accent hover:bg-lira-ink text-lira-ground border border-lira-accent hover:border-lira-ink transition-colors"
               >
                 Fechar
               </button>
@@ -366,7 +366,7 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
         ) : (
           <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
             <div className="space-y-1.5">
-              <label htmlFor="issue-title-input" className="block text-xs font-bold text-slate-300">
+              <label htmlFor="issue-title-input" className="block text-xs font-bold text-lira-ink">
                 Título do problema
               </label>
               <input
@@ -376,12 +376,12 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
                 onChange={(e) => setTitle(e.target.value)}
                 disabled={isSubmitting}
                 placeholder="Ex: DJ cortando o som após alguns minutos"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#12151d] border border-[#2a3142] focus:border-indigo-500 focus:outline-none text-slate-200 placeholder:text-slate-500 text-xs transition-colors"
+                className="w-full px-3.5 py-2.5 rounded-[8px] bg-lira-ground border border-lira-quiet focus:border-lira-accent focus:outline-none text-lira-ink placeholder:text-lira-muted text-xs font-mono transition-colors"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor="issue-desc-input" className="block text-xs font-bold text-slate-300">
+              <label htmlFor="issue-desc-input" className="block text-xs font-bold text-lira-ink">
                 Descrição do problema
               </label>
               <textarea
@@ -391,33 +391,33 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
                 onChange={(e) => setDescription(e.target.value)}
                 disabled={isSubmitting}
                 placeholder="Explique detalhadamente o que aconteceu, o que era esperado e passos para reproduzir o problema..."
-                className="w-full px-3.5 py-2.5 rounded-xl bg-[#12151d] border border-[#2a3142] focus:border-indigo-500 focus:outline-none text-slate-200 placeholder:text-slate-500 text-xs transition-colors resize-none"
+                className="w-full px-3.5 py-2.5 rounded-[8px] bg-lira-ground border border-lira-quiet focus:border-lira-accent focus:outline-none text-lira-ink placeholder:text-lira-muted text-xs font-mono transition-colors resize-none"
               />
             </div>
 
             {/* Anexos de Logs Incluídos & Drag and Drop */}
-            <div className="p-3.5 rounded-2xl bg-[#12151d] border border-[#2a3142] space-y-2.5">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
-                <Paperclip className="w-3.5 h-3.5 text-indigo-400" />
+            <div className="p-3.5 rounded-[12px] bg-lira-ground border border-lira-quiet space-y-2.5">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-lira-ink">
+                <Paperclip className="w-3.5 h-3.5 text-lira-accent" />
                 <span>Anexos de Logs Incluídos</span>
               </div>
 
               {/* Automatic Log Files (without DJ/Audio label and without Automático tag) */}
-              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-400">
-                <div className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-800/40 border border-slate-700/40">
-                  <FileText className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+              <div className="grid grid-cols-2 gap-2 text-[11px] font-mono text-lira-muted">
+                <div className="flex items-center gap-1.5 p-2 rounded-[8px] bg-lira-surface border border-lira-quiet">
+                  <FileText className="w-3.5 h-3.5 text-lira-accent shrink-0" />
                   <span className="truncate">call-debug.log</span>
                 </div>
-                <div className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-800/40 border border-slate-700/40">
-                  <FileText className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                <div className="flex items-center gap-1.5 p-2 rounded-[8px] bg-lira-surface border border-lira-quiet">
+                  <FileText className="w-3.5 h-3.5 text-lira-error shrink-0" />
                   <span className="truncate">lira-errors.log</span>
                 </div>
-                <div className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-800/40 border border-slate-700/40">
-                  <FileText className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <div className="flex items-center gap-1.5 p-2 rounded-[8px] bg-lira-surface border border-lira-quiet">
+                  <FileText className="w-3.5 h-3.5 text-lira-amber shrink-0" />
                   <span className="truncate">lira.log</span>
                 </div>
-                <div className="flex items-center gap-1.5 p-2 rounded-xl bg-slate-800/40 border border-slate-700/40">
-                  <FileText className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <div className="flex items-center gap-1.5 p-2 rounded-[8px] bg-lira-surface border border-lira-quiet">
+                  <FileText className="w-3.5 h-3.5 text-lira-online shrink-0" />
                   <span className="truncate">lira-reports.jsonl</span>
                 </div>
               </div>
@@ -428,10 +428,10 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
-                className={`p-3 rounded-xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center gap-1 text-center select-none ${
+                className={`p-3 rounded-[8px] border border-dashed transition-colors cursor-pointer flex flex-col items-center justify-center gap-1 text-center select-none ${
                   isDragging
-                    ? 'border-indigo-500 bg-indigo-500/10 text-indigo-300'
-                    : 'border-slate-700 hover:border-indigo-500/50 bg-slate-800/20 text-slate-400 hover:text-slate-300'
+                    ? 'border-lira-accent bg-lira-surface text-lira-accent'
+                    : 'border-lira-rule hover:border-lira-accent bg-lira-panel text-lira-muted hover:text-lira-ink'
                 }`}
               >
                 <input
@@ -442,11 +442,11 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
                   onChange={handleFileChange}
                   className="hidden"
                 />
-                <UploadCloud className="w-5 h-5 text-indigo-400" />
+                <UploadCloud className="w-5 h-5 text-lira-accent" />
                 <span className="text-xs font-medium">
-                  Arraste arquivos aqui ou <span className="text-indigo-400 underline">clique para selecionar</span>
+                  Arraste arquivos aqui ou <span className="text-lira-accent underline">clique para selecionar</span>
                 </span>
-                <span className="text-[10px] text-slate-500">
+                <span className="text-[10px] text-lira-muted">
                   Imagens, prints de tela, textos ou arquivos adicionais de log
                 </span>
               </div>
@@ -454,23 +454,23 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
               {/* User Added Files List */}
               {userFiles.length > 0 && (
                 <div className="space-y-1.5 pt-1">
-                  <div className="text-[11px] font-semibold text-slate-300">
+                  <div className="text-[11px] font-semibold text-lira-ink">
                     Arquivos adicionados ({userFiles.length}):
                   </div>
                   <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
                     {userFiles.map((file, idx) => (
                       <div
                         key={idx}
-                        className="flex items-center justify-between gap-2 p-1.5 px-2 rounded-lg bg-slate-800/60 border border-slate-700/60 text-xs text-slate-300"
+                        className="flex items-center justify-between gap-2 p-1.5 px-2 rounded-[6px] bg-lira-surface border border-lira-quiet text-xs text-lira-ink"
                       >
                         <div className="flex items-center gap-1.5 truncate">
                           {file.isImage ? (
-                            <ImageIcon className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                            <ImageIcon className="w-3.5 h-3.5 text-lira-accent shrink-0" />
                           ) : (
-                            <FileText className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                            <FileText className="w-3.5 h-3.5 text-lira-accent shrink-0" />
                           )}
                           <span className="truncate">{file.name}</span>
-                          <span className="text-[10px] text-slate-500 shrink-0">
+                          <span className="text-[10px] font-mono tabular-nums text-lira-muted shrink-0">
                             ({formatFileSize(file.size)})
                           </span>
                         </div>
@@ -480,7 +480,7 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
                             e.stopPropagation()
                             handleRemoveFile(idx)
                           }}
-                          className="p-1 rounded text-slate-400 hover:text-rose-400 transition-colors"
+                          className="p-1 rounded-[4px] text-lira-muted hover:text-lira-error transition-colors"
                           title="Remover arquivo"
                         >
                           <Trash2 className="w-3 h-3" />
@@ -493,25 +493,25 @@ export const ReportIssueModal: React.FC<ReportIssueModalProps> = ({ isOpen, onCl
             </div>
 
             {feedback?.type === 'error' && (
-              <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-500/40 text-xs text-rose-300 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              <div className="p-3 rounded-[8px] bg-lira-error/15 border border-lira-error/40 text-xs text-lira-error flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-lira-error shrink-0" />
                 <span>{feedback.message}</span>
               </div>
             )}
 
-            <div className="pt-2 flex items-center justify-end gap-3 border-t border-[#2a3142]">
+            <div className="pt-2 flex items-center justify-end gap-3 border-t border-dashed border-lira-rule/60">
               <button
                 type="button"
                 onClick={handleClose}
                 disabled={isSubmitting}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
+                className="px-4 py-2 rounded-[8px] text-xs font-mono font-semibold text-lira-muted hover:text-lira-ink bg-lira-surface border border-lira-rule hover:border-lira-accent transition-colors disabled:opacity-50"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
                 disabled={!isFormValid || isSubmitting}
-                className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/50 disabled:cursor-not-allowed text-white shadow-lg shadow-indigo-600/30 transition-all active:scale-98"
+                className="flex items-center gap-2 px-5 py-2 rounded-[8px] text-xs font-mono font-bold bg-lira-accent hover:bg-lira-ink border border-lira-accent hover:border-lira-ink disabled:bg-lira-surface disabled:border-lira-quiet disabled:text-lira-muted disabled:cursor-not-allowed text-lira-ground transition-colors"
               >
                 {isSubmitting ? (
                   <>

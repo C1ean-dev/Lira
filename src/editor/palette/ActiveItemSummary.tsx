@@ -65,8 +65,8 @@ export const ActiveItemSummary: React.FC<Props> = ({
         subtitle: info.subtitle,
         badge: info.badge,
         thumbnail: (
-          <div className="w-12 h-12 rounded-xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center">
-            <Trash2 className="w-6 h-6 text-rose-400" />
+          <div className="w-12 h-12 rounded-[8px] bg-lira-error/15 border border-lira-error/40 flex items-center justify-center">
+            <Trash2 className="w-6 h-6 text-lira-error" />
           </div>
         ),
       }
@@ -78,10 +78,10 @@ export const ActiveItemSummary: React.FC<Props> = ({
         badge: 'Demarcar Zona',
         thumbnail: (
           <div
-            className="w-12 h-12 rounded-xl border-2 border-dashed border-white/60 flex items-center justify-center shadow-inner"
+            className="w-12 h-12 rounded-[8px] border-2 border-dashed border-lira-rule flex items-center justify-center"
             style={{ backgroundColor: `${zoneDraft.color}44` }}
           >
-            <Sparkles className="w-6 h-6 text-white" />
+            <Sparkles className="w-6 h-6 text-lira-ink" />
           </div>
         ),
       }
@@ -92,7 +92,7 @@ export const ActiveItemSummary: React.FC<Props> = ({
         subtitle: 'Clique no chão para pintar o piso',
         badge: 'Pintar Piso',
         thumbnail: (
-          <div className="p-1 rounded-xl bg-[#1b202c] border border-white/15 shadow-md">
+          <div className="p-1 rounded-[8px] bg-lira-ground border border-lira-quiet">
             <PixelArtThumbnail type="floor" id={selectedFloor} size={40} />
           </div>
         ),
@@ -104,7 +104,7 @@ export const ActiveItemSummary: React.FC<Props> = ({
         subtitle: 'Clique no mapa para levantar paredes com colisão',
         badge: 'Pintar Parede',
         thumbnail: (
-          <div className="p-1 rounded-xl bg-[#1b202c] border border-white/15 shadow-md">
+          <div className="p-1 rounded-[8px] bg-lira-ground border border-lira-quiet">
             <PixelArtThumbnail type="wall" id={selectedWall} size={40} />
           </div>
         ),
@@ -116,7 +116,7 @@ export const ActiveItemSummary: React.FC<Props> = ({
         subtitle: `${currentFurniture.width}x${currentFurniture.height} tiles • Clique para posicionar`,
         badge: 'Objeto Selecionado',
         thumbnail: (
-          <div className="p-1 rounded-xl bg-[#1b202c] border border-white/15 shadow-md flex items-center justify-center">
+          <div className="p-1 rounded-[8px] bg-lira-ground border border-lira-quiet flex items-center justify-center">
             <PixelArtThumbnail type="furniture" id={selectedFurnitureDefId} size={40} />
           </div>
         ),
@@ -128,8 +128,8 @@ export const ActiveItemSummary: React.FC<Props> = ({
       subtitle: 'Crie ou selecione um elemento abaixo para posicionar',
       badge: 'Modo Mobília',
       thumbnail: (
-        <div className="w-12 h-12 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center justify-center">
-          <Armchair className="w-5 h-5 text-slate-400" />
+        <div className="w-12 h-12 rounded-[8px] bg-lira-surface border border-lira-quiet flex items-center justify-center">
+          <Armchair className="w-5 h-5 text-lira-muted" />
         </div>
       ),
     }
@@ -138,18 +138,18 @@ export const ActiveItemSummary: React.FC<Props> = ({
   const activeItem = getSummary()
 
   return (
-    <div className="p-2 sm:p-3 bg-[#12151d]/90 border-b border-[#2a3142] flex items-center gap-2 sm:gap-3">
+    <div className="p-2 sm:p-3 bg-lira-sidebar border-b border-dashed border-lira-rule/60 flex items-center gap-2 sm:gap-3 font-mono">
       <div className="shrink-0 scale-90 sm:scale-100 origin-left">
         {activeItem.thumbnail}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+          <span className="text-[9px] sm:text-[10px] uppercase font-mono font-bold tracking-wider px-1.5 py-0.5 rounded-[4px] bg-lira-surface text-lira-accent border border-lira-rule">
             {activeItem.badge}
           </span>
         </div>
-        <div className="text-[11px] sm:text-xs font-bold text-slate-100 truncate mt-0.5">{activeItem.title}</div>
-        <div className="text-[9px] sm:text-[10px] text-slate-400 truncate">{activeItem.subtitle}</div>
+        <div className="text-[11px] sm:text-xs font-mono font-bold text-lira-ink truncate mt-0.5">{activeItem.title}</div>
+        <div className="text-[9px] sm:text-[10px] font-mono text-lira-muted truncate">{activeItem.subtitle}</div>
       </div>
       {activeTool !== 'select' && (
         <button
@@ -158,7 +158,7 @@ export const ActiveItemSummary: React.FC<Props> = ({
             setSelectedFurnitureDefId('')
             setActiveTool('select')
           }}
-          className="p-1 sm:p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-700/50 transition-colors shrink-0"
+          className="p-1 sm:p-1.5 rounded-[6px] text-lira-muted hover:text-lira-ink hover:bg-lira-surface transition-colors shrink-0"
           title="Deselecionar item (Escape)"
         >
           <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />

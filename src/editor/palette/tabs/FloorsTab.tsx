@@ -38,42 +38,42 @@ export const FloorsTab: React.FC<Props> = ({
   const [assetToDelete, setAssetToDelete] = useState<{ id: string; name: string } | null>(null)
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-4 gap-1 p-1 bg-slate-900/80 border border-slate-800 rounded-xl">
+    <div className="space-y-3 font-mono text-lira-ink">
+      <div className="grid grid-cols-4 gap-1 p-1 bg-lira-ground border border-lira-quiet rounded-[8px]">
         <button
           type="button"
           onClick={onOpenStudioCreate}
-          className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-indigo-600/30 hover:bg-indigo-600 text-indigo-200 hover:text-white text-[10px] font-bold border border-indigo-500/30 transition-all shadow-xs"
+          className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-[6px] bg-lira-surface hover:bg-lira-accent text-lira-accent hover:text-lira-ground text-[10px] font-mono font-bold border border-lira-rule transition-colors"
           title="Desenhar piso no estúdio de elementos"
         >
-          <Pencil className="w-3 h-3 text-indigo-400" />
+          <Pencil className="w-3 h-3" />
           <span>Criar elemento</span>
         </button>
         <button
           type="button"
           onClick={() => onOpenSlicer?.()}
-          className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-amber-600/30 hover:bg-amber-600 text-amber-200 hover:text-white text-[10px] font-bold border border-amber-500/30 transition-all shadow-xs"
+          className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-[6px] bg-lira-surface hover:border-lira-amber text-lira-amber text-[10px] font-mono font-bold border border-lira-rule transition-colors"
           title="Fatiar spritesheet ou imagem para criar piso"
         >
-          <Scissors className="w-3 h-3 text-amber-400" />
+          <Scissors className="w-3 h-3 text-lira-amber" />
           <span>Fatiar</span>
         </button>
         <button
           type="button"
           onClick={onOpenAtlasImport}
-          className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-emerald-600/30 hover:bg-emerald-600 text-emerald-200 hover:text-white text-[10px] font-bold border border-emerald-500/30 transition-all shadow-xs"
+          className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-[6px] bg-lira-surface hover:border-lira-online text-lira-online text-[10px] font-mono font-bold border border-lira-rule transition-colors"
           title="Importar pacote / Atlas ZIP de pisos"
         >
-          <FolderInput className="w-3 h-3 text-emerald-400" />
+          <FolderInput className="w-3 h-3 text-lira-online" />
           <span>Importar</span>
         </button>
         <button
           type="button"
           onClick={onExportAtlas}
-          className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[10px] font-bold border border-slate-700 transition-all shadow-xs"
+          className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-[6px] bg-lira-surface hover:border-lira-accent text-lira-muted hover:text-lira-ink text-[10px] font-mono font-bold border border-lira-rule transition-colors"
           title="Exportar pisos como Atlas ZIP"
         >
-          <Download className="w-3 h-3 text-slate-400" />
+          <Download className="w-3 h-3 text-lira-muted" />
           <span>Exportar</span>
         </button>
       </div>
@@ -93,10 +93,10 @@ export const FloorsTab: React.FC<Props> = ({
                   setActiveTool('paint_floor')
                 }
               }}
-              className={`group relative aspect-square rounded-xl border flex flex-col items-center justify-between p-1.5 transition-all select-none cursor-pointer ${
+              className={`group relative aspect-square rounded-[8px] border flex flex-col items-center justify-between p-1.5 transition-colors select-none cursor-pointer ${
                 isSelected
-                  ? 'border-indigo-500 bg-indigo-500/20 shadow-md shadow-indigo-500/20 ring-2 ring-indigo-500/40'
-                  : 'border-[#2a3142] bg-[#12151d]/60 hover:border-slate-500 hover:bg-[#181d28]'
+                  ? 'border-lira-accent bg-lira-surface ring-1 ring-lira-accent'
+                  : 'border-lira-quiet bg-lira-ground hover:border-lira-rule hover:bg-lira-surface'
               }`}
               title={floor.name}
             >
@@ -104,7 +104,7 @@ export const FloorsTab: React.FC<Props> = ({
                 <div>
                   {((floor.width && floor.width > 1) || (floor.height && floor.height > 1)) && (
                     <div
-                      className="px-1 py-0.5 rounded text-[8px] font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-500/40 shadow-sm"
+                      className="px-1 py-0.5 rounded text-[8px] font-mono font-bold bg-lira-surface text-lira-accent border border-lira-rule"
                       title={`Dimensão: ${floor.width || 1}×${floor.height || 1} tiles`}
                     >
                       {floor.width || 1}×{floor.height || 1}
@@ -113,10 +113,10 @@ export const FloorsTab: React.FC<Props> = ({
                 </div>
                 {isDefaultFloor ? (
                   <div
-                    className="px-1 py-0.5 rounded text-[8px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-0.5 shadow-sm"
+                    className="px-1 py-0.5 rounded text-[8px] font-mono font-bold bg-lira-online/15 text-lira-online border border-lira-online/40 flex items-center gap-0.5"
                     title="Piso padrão protegido"
                   >
-                    <ShieldCheck className="w-2.5 h-2.5 text-emerald-400" />
+                    <ShieldCheck className="w-2.5 h-2.5 text-lira-online" />
                     <span>Padrão</span>
                   </div>
                 ) : (
@@ -128,7 +128,7 @@ export const FloorsTab: React.FC<Props> = ({
                           e.stopPropagation()
                           onOpenStudioEdit(floor.id)
                         }}
-                        className="p-1 rounded-md bg-indigo-500/30 hover:bg-indigo-500/60 text-indigo-300 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                        className="p-1 rounded-[4px] bg-lira-surface hover:bg-lira-accent text-lira-accent hover:text-lira-ground border border-lira-rule opacity-0 group-hover:opacity-100 transition-opacity"
                         title={`Editar no estúdio: "${floor.name}"`}
                       >
                         <Pencil className="w-2.5 h-2.5" />
@@ -142,7 +142,7 @@ export const FloorsTab: React.FC<Props> = ({
                           e.stopPropagation()
                           onOpenSlicer(floor.id)
                         }}
-                        className="p-1 rounded-md bg-amber-500/30 hover:bg-amber-500/60 text-amber-300 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                        className="p-1 rounded-[4px] bg-lira-surface hover:bg-lira-amber text-lira-amber hover:text-lira-ground border border-lira-rule opacity-0 group-hover:opacity-100 transition-opacity"
                         title={`Fatiar / reajustar sprites: "${floor.name}"`}
                       >
                         <Scissors className="w-2.5 h-2.5" />
@@ -155,7 +155,7 @@ export const FloorsTab: React.FC<Props> = ({
                         e.stopPropagation()
                         setAssetToDelete({ id: floor.id, name: floor.name })
                       }}
-                      className="p-1 rounded-md bg-rose-500/30 hover:bg-rose-500/60 text-rose-300 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                      className="p-1 rounded-[4px] bg-lira-error/20 hover:bg-lira-error text-lira-error hover:text-lira-ground border border-lira-error/40 opacity-0 group-hover:opacity-100 transition-opacity"
                       title={`Excluir piso "${floor.name}"`}
                     >
                       <Trash2 className="w-2.5 h-2.5" />
@@ -174,7 +174,7 @@ export const FloorsTab: React.FC<Props> = ({
               </div>
 
               <div className="w-full text-center px-0.5">
-                <div className="text-[11px] font-semibold text-slate-200 truncate leading-tight">
+                <div className="text-[11px] font-mono font-semibold text-lira-ink truncate leading-tight">
                   {floor.name.replace(/^✨\s*/, '')}
                 </div>
               </div>

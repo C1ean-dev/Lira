@@ -183,10 +183,10 @@ export const VideoTile: React.FC<VideoTileProps> = ({
         e.stopPropagation()
         onContextMenu?.(e)
       }}
-      className={`group relative w-32 h-24 bg-[#12151d] rounded-2xl overflow-hidden border-2 transition-all flex items-center justify-center shrink-0 cursor-pointer hover:scale-105 shadow-lg select-none ${
+      className={`group relative w-32 h-24 bg-lira-surface rounded-[8px] overflow-hidden border transition-colors flex items-center justify-center shrink-0 cursor-pointer select-none font-mono ${
         isScreenTrack
-          ? 'border-rose-500/80 hover:border-rose-400'
-          : 'border-[#2a3142] hover:border-indigo-500'
+          ? 'border-lira-error hover:border-lira-error'
+          : 'border-lira-quiet hover:border-lira-accent'
       }`}
       title={isScreenTrack ? 'Transmissão de Tela - Clique para expandir' : 'Clique para expandir em tela cheia'}
     >
@@ -200,7 +200,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
           onCanPlay={() => videoRef.current?.play().catch(() => {})}
           onLoadedData={liveGate.onFrame}
           onPlaying={liveGate.onFrame}
-          className={`w-full h-full ${isScreenTrack ? 'object-contain bg-black' : 'object-cover'} ${
+          className={`w-full h-full ${isScreenTrack ? 'object-contain bg-lira-ground' : 'object-cover'} ${
             shouldShowVideo ? 'block' : 'hidden'
           } ${isLocal && !isScreenSharing && !isScreenTrack ? '-scale-x-100' : ''}`}
         />
@@ -223,7 +223,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
           profilePicture={profilePicture}
           avatar={avatar}
           size="xl"
-          className="w-14 h-14 rounded-full shadow-lg border-2 border-white/20"
+          className="w-14 h-14 rounded-[6px] border border-lira-quiet"
         />
       )}
 
@@ -232,35 +232,35 @@ export const VideoTile: React.FC<VideoTileProps> = ({
       )}
 
       {(isScreenSharing || isScreenTrack) && (
-        <div className="absolute top-1.5 left-1.5 flex items-center gap-1 px-1.5 py-0.5 bg-rose-600 text-white rounded text-[8px] font-bold shadow animate-pulse">
+        <div className="absolute top-1.5 left-1.5 flex items-center gap-1 px-1.5 py-0.5 bg-lira-error text-lira-ground rounded-[4px] text-[8px] font-mono font-bold">
           <Radio className="w-2.5 h-2.5" />
           <span>{isScreenTrack ? 'TELA AO VIVO' : 'AO VIVO'}</span>
         </div>
       )}
 
       {!isLocal && !isScreenTrack && callState === 'reconnecting' && (
-        <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1 px-1.5 py-0.5 bg-amber-500/90 text-white rounded text-[8px] font-bold shadow animate-pulse">
-          <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+        <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1 px-1.5 py-0.5 bg-lira-amber text-lira-ground rounded-[4px] text-[8px] font-mono font-bold">
+          <span className="w-1.5 h-1.5 rounded-full bg-lira-ground animate-ping" />
           <span>RECONECTANDO</span>
         </div>
       )}
 
       {!isLocal && !isScreenTrack && callState === 'connecting' && (
-        <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1 px-1.5 py-0.5 bg-indigo-500/90 text-white rounded text-[8px] font-bold shadow animate-pulse">
-          <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+        <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1 px-1.5 py-0.5 bg-lira-panel border border-lira-accent text-lira-accent rounded-[4px] text-[8px] font-mono font-bold">
+          <span className="w-1.5 h-1.5 rounded-full bg-lira-accent animate-ping" />
           <span>CONECTANDO</span>
         </div>
       )}
 
       {!isLocal && !isScreenTrack && callState === 'failed' && (
-        <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-20 flex flex-col items-center justify-center p-1 text-center">
-          <span className="text-[10px] text-rose-400 font-bold mb-1">Chamada caiu</span>
+        <div className="absolute inset-0 bg-lira-ground/90 z-20 flex flex-col items-center justify-center p-1 text-center">
+          <span className="text-[10px] text-lira-error font-mono font-bold mb-1">Chamada caiu</span>
           <button
             onClick={(e) => {
               e.stopPropagation()
               onRetryCall?.()
             }}
-            className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] rounded-lg font-bold transition-all cursor-pointer shadow active:scale-95"
+            className="px-2 py-0.5 bg-lira-accent hover:bg-lira-ink text-lira-ground text-[9px] rounded-[6px] font-mono font-bold transition-colors cursor-pointer"
           >
             Reconectar
           </button>
@@ -269,7 +269,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
 
       {!isLocal && !liveGate.needsClick && (
         <div
-          className="absolute top-1.5 right-1.5 group/vol flex items-center bg-black/70 hover:bg-black/90 backdrop-blur-md border border-white/15 rounded-lg px-1 py-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
+          className="absolute top-1.5 right-1.5 group/vol flex items-center bg-lira-panel/95 hover:border-lira-accent border border-lira-rule rounded-[6px] px-1 py-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
           onClick={(e) => e.stopPropagation()}
         >
           {liveGate.watching && (
@@ -278,7 +278,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
                 e.stopPropagation()
                 liveGate.stop()
               }}
-              className="text-slate-200 hover:text-rose-300 transition-colors p-0.5"
+              className="text-lira-ink hover:text-lira-error transition-colors p-0.5"
               title="Parar de assistir"
             >
               <EyeOff className="w-3 h-3" />
@@ -295,7 +295,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
                 if (name) setParticipantVolume(name, nextVol)
               }
             }}
-            className="text-slate-200 hover:text-white transition-colors p-0.5"
+            className="text-lira-ink hover:text-lira-accent transition-colors p-0.5"
             title={
               rawVolume === 0
                 ? isScreenTrack
@@ -307,11 +307,11 @@ export const VideoTile: React.FC<VideoTileProps> = ({
             }
           >
             {rawVolume === 0 ? (
-              <VolumeX className="w-3 h-3 text-rose-400" />
+              <VolumeX className="w-3 h-3 text-lira-error" />
             ) : rawVolume < 50 ? (
-              <Volume1 className="w-3 h-3 text-indigo-300" />
+              <Volume1 className="w-3 h-3 text-lira-accent" />
             ) : (
-              <Volume2 className="w-3 h-3 text-indigo-300" />
+              <Volume2 className="w-3 h-3 text-lira-accent" />
             )}
           </button>
           <div className="w-0 group-hover/vol:w-14 focus-within:w-14 transition-all duration-200 overflow-hidden flex items-center pl-0.5">
@@ -330,21 +330,21 @@ export const VideoTile: React.FC<VideoTileProps> = ({
                   if (name) setParticipantVolume(name, val)
                 }
               }}
-              className="w-12 h-1 bg-slate-600 rounded appearance-none cursor-pointer accent-indigo-500"
+              className="w-12 h-1 bg-lira-surface rounded-[4px] appearance-none cursor-pointer accent-lira-accent"
               title={isScreenTrack ? `Volume da live: ${rawVolume}%` : `Volume: ${rawVolume}%`}
             />
           </div>
         </div>
       )}
 
-      <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between px-2 py-0.5 bg-black/70 backdrop-blur-md rounded-lg text-[10px] text-white">
+      <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between px-2 py-0.5 bg-lira-ground/85 border border-lira-quiet rounded-[6px] text-[10px] font-mono text-lira-ink">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="truncate font-medium">
             {isScreenTrack ? `Tela (${name})` : isLocal ? `${name} (Você)` : name}
           </span>
           {(Boolean(id?.startsWith('dj-')) || name.includes('DJ')) && (
-            <span className="inline-flex items-center gap-0.5 px-1 py-0.2 bg-[#1db954] text-black text-[8px] font-extrabold rounded shrink-0 shadow-sm" title="DJ">
-              <SpotifyIcon size={9} className="text-black" />
+            <span className="inline-flex items-center gap-0.5 px-1 py-0.2 bg-lira-online text-lira-ground text-[8px] font-extrabold rounded-[4px] shrink-0" title="DJ">
+              <SpotifyIcon size={9} className="text-lira-ground" />
               <span>DJ</span>
             </span>
           )}
@@ -361,17 +361,17 @@ export const VideoTile: React.FC<VideoTileProps> = ({
         <div className="flex items-center gap-1 shrink-0">
           {isDeafened && (
             <span title={isLocal ? "Você mutou o som para si" : "Usuário mutou o som para si (ensurdecido)"} className="flex items-center">
-              <Headphones className="w-2.5 h-2.5 text-amber-400" />
+              <Headphones className="w-2.5 h-2.5 text-lira-amber" />
             </span>
           )}
           {!isLocal && isSilenced && (
             <span title="Silenciado mutuamente" className="flex items-center">
-              <VolumeX className="w-2.5 h-2.5 text-amber-400" />
+              <VolumeX className="w-2.5 h-2.5 text-lira-amber" />
             </span>
           )}
           {!isLocal && !isSilenced && rawVolume === 0 && (
             <span title="Mutado para você" className="flex items-center">
-              <VolumeX className="w-2.5 h-2.5 text-rose-400" />
+              <VolumeX className="w-2.5 h-2.5 text-lira-error" />
             </span>
           )}
           {isMuted && !isScreenTrack && (
@@ -379,7 +379,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
               title={isMutedByAdmin ? "Mutado pelo Administrador" : "Microfone mutado"}
               className="flex items-center"
             >
-              <MicOff className={`w-2.5 h-2.5 shrink-0 ${isMutedByAdmin ? 'text-amber-400' : 'text-rose-400'}`} />
+              <MicOff className={`w-2.5 h-2.5 shrink-0 ${isMutedByAdmin ? 'text-lira-amber' : 'text-lira-error'}`} />
             </span>
           )}
         </div>
@@ -455,11 +455,11 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
   }, [rawVolume, outputVolume, selectedAudioOutput, isLocal, liveGate.needsClick])
 
   return (
-    <div className="w-72 sm:w-80 bg-[#12151d] rounded-2xl overflow-hidden border-2 border-indigo-500/80 shadow-2xl animate-in slide-in-from-bottom-2 duration-200">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-[#1b202c]/90 border-b border-[#2a3142]">
+    <div className="w-72 sm:w-80 bg-lira-panel rounded-[12px] overflow-hidden border border-dashed border-lira-rule font-mono">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-lira-surface border-b border-dashed border-lira-rule/60">
         <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-          <span className="text-[11px] font-bold text-slate-200">
+          <span className="w-2 h-2 rounded-full bg-lira-error animate-ping" />
+          <span className="text-[11px] font-bold text-lira-ink">
             {isLocal ? 'Sua Tela' : `Tela de ${presenterName}`}
           </span>
         </div>
@@ -468,7 +468,7 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
           {liveGate.watching && (
             <button
               onClick={liveGate.stop}
-              className="p-1 rounded-lg text-slate-400 hover:text-rose-300 hover:bg-slate-700 transition-colors"
+              className="p-1 rounded-[6px] text-lira-muted hover:text-lira-error hover:bg-lira-panel transition-colors"
               title="Parar de assistir"
             >
               <EyeOff className="w-3.5 h-3.5" />
@@ -476,7 +476,7 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
           )}
 
           {!isLocal && !liveGate.needsClick && (
-            <div className="group/vol relative flex items-center bg-[#12151d] border border-[#2a3142] rounded-lg px-1.5 py-0.5">
+            <div className="group/vol relative flex items-center bg-lira-panel border border-lira-quiet rounded-[6px] px-1.5 py-0.5">
               <button
                 onClick={() => {
                   if (rawVolume > 0) {
@@ -485,15 +485,15 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
                     handleVolumeChange(100)
                   }
                 }}
-                className="text-slate-300 hover:text-white transition-colors p-0.5"
+                className="text-lira-muted hover:text-lira-ink transition-colors p-0.5"
                 title={rawVolume === 0 ? 'Desmutar Transmissão' : 'Mutar Transmissão'}
               >
                 {rawVolume === 0 ? (
-                  <VolumeX className="w-3 h-3 text-rose-400" />
+                  <VolumeX className="w-3 h-3 text-lira-error" />
                 ) : rawVolume < 50 ? (
-                  <Volume1 className="w-3 h-3 text-indigo-400" />
+                  <Volume1 className="w-3 h-3 text-lira-accent" />
                 ) : (
-                  <Volume2 className="w-3 h-3 text-indigo-400" />
+                  <Volume2 className="w-3 h-3 text-lira-accent" />
                 )}
               </button>
               <div className="w-0 group-hover/vol:w-28 transition-all duration-200 overflow-hidden flex items-center pl-1 gap-1">
@@ -503,10 +503,10 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
                   max="200"
                   value={rawVolume}
                   onChange={(e) => handleVolumeChange(Number(e.target.value))}
-                  className="w-14 h-1 bg-slate-700 rounded appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400"
+                  className="w-14 h-1 bg-lira-surface rounded-[4px] appearance-none cursor-pointer accent-lira-accent"
                   title={`Volume: ${rawVolume}%`}
                 />
-                <span className="text-[10px] font-mono text-slate-200 min-w-[28px]">
+                <span className="text-[10px] font-mono tabular-nums text-lira-ink min-w-[28px]">
                   {rawVolume}%
                 </span>
               </div>
@@ -515,14 +515,14 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
 
           <button
             onClick={onExpand}
-            className="p-1 rounded-lg text-slate-300 hover:text-white hover:bg-slate-700 transition-colors"
+            className="p-1 rounded-[6px] text-lira-muted hover:text-lira-ink hover:bg-lira-panel transition-colors"
             title="Expandir Tela Cheia (Modo Grade)"
           >
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+            className="p-1 rounded-[6px] text-lira-muted hover:text-lira-ink hover:bg-lira-panel transition-colors"
             title="Recolher Janela Flutuante"
           >
             <ChevronDown className="w-3.5 h-3.5" />
@@ -534,7 +534,7 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
         onClick={onExpand}
         ref={frameRef}
         style={frameStyle}
-        className="relative w-full h-40 bg-black flex items-center justify-center cursor-pointer group"
+        className="relative w-full h-40 bg-lira-ground flex items-center justify-center cursor-pointer group"
         title="Clique para expandir em tela cheia"
       >
         {!liveGate.needsClick && (
@@ -547,7 +547,7 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
             onCanPlay={() => videoRef.current?.play().catch(() => {})}
             onLoadedData={liveGate.onFrame}
             onPlaying={liveGate.onFrame}
-            className="w-full h-full object-contain bg-black"
+            className="w-full h-full object-contain bg-lira-ground"
           />
         )}
         {(liveGate.needsClick || liveGate.connecting) && (
@@ -560,8 +560,8 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
         )}
 
         {!liveGate.needsClick && !liveGate.connecting && (
-          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-            <span className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-bold rounded-xl shadow-lg flex items-center gap-1.5 backdrop-blur-md">
+          <div className="absolute inset-0 bg-lira-ground/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+            <span className="px-3 py-1.5 bg-lira-accent text-lira-ground border border-lira-accent text-xs font-mono font-bold rounded-[8px] flex items-center gap-1.5">
               <Maximize2 className="w-3.5 h-3.5" />
               Expandir Apresentação
             </span>
@@ -825,7 +825,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
           </div>
         )}
 
-        <div className="bg-[#1b202c]/95 backdrop-blur-xl border border-[#2a3142] rounded-3xl p-2.5 sm:p-3 shadow-2xl animate-in slide-in-from-bottom-4 duration-200 max-w-[calc(100vw-24px)] sm:max-w-md">
+        <div className="bg-lira-panel border border-dashed border-lira-rule rounded-[12px] p-2.5 sm:p-3 max-w-[calc(100vw-24px)] sm:max-w-md font-mono">
           <div className="flex items-center justify-between gap-2 sm:gap-4 px-1">
             <div
               onClick={() => {
@@ -835,22 +835,22 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               className="flex items-center gap-1.5 cursor-grab active:cursor-grabbing group min-w-0"
               title={`Ir para o Chat da Sala (${zoneName}) • Arraste para mover`}
             >
-              <GripHorizontal className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-300 shrink-0" />
-              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-              <span className="text-xs font-bold text-slate-100 group-hover:text-indigo-400 transition-colors truncate max-w-[110px] sm:max-w-[180px]">
+              <GripHorizontal className="w-3.5 h-3.5 text-lira-muted group-hover:text-lira-ink shrink-0" />
+              <div className="w-2 h-2 rounded-full bg-lira-online animate-pulse shrink-0" />
+              <span className="font-display text-sm font-bold text-lira-ink group-hover:text-lira-accent transition-colors truncate max-w-[110px] sm:max-w-[180px]">
                 {zoneName}
               </span>
-              <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded-full shrink-0">
+              <span className="text-[10px] font-mono tabular-nums bg-lira-surface border border-lira-quiet text-lira-muted px-1.5 py-0.5 rounded-[6px] shrink-0">
                 {peersInSameZone.length + 1} online
               </span>
               {isRoomLocked && (
-                <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1 shrink-0">
-                  <Lock className="w-2.5 h-2.5 text-amber-400" />
+                <span className="text-[9px] bg-lira-amber/15 text-lira-amber border border-lira-amber/40 px-1.5 py-0.5 rounded-[6px] font-bold flex items-center gap-1 shrink-0">
+                  <Lock className="w-2.5 h-2.5 text-lira-amber" />
                 </span>
               )}
               {isAnyReconnecting && (
-                <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                <span className="text-[9px] bg-lira-amber/15 text-lira-amber border border-lira-amber/40 px-1.5 py-0.5 rounded-[6px] font-bold flex items-center gap-1 animate-pulse shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-lira-amber animate-ping" />
                 </span>
               )}
             </div>
@@ -859,12 +859,12 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               {isCardCollapsed && (
                 <button
                   onClick={toggleMute}
-                  className={`p-1.5 rounded-xl text-xs font-medium transition-colors ${
+                  className={`p-1.5 rounded-[8px] text-xs font-medium transition-colors ${
                     localPlayer.isMutedByAdmin
-                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/50'
+                      ? 'bg-lira-amber/15 text-lira-amber border border-lira-amber/50'
                       : isMuted
-                      ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
-                      : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                      ? 'bg-lira-error/15 text-lira-error border border-lira-error/40'
+                      : 'bg-lira-surface text-lira-ink border border-lira-rule hover:border-lira-accent'
                   }`}
                   title={isMuted ? 'Desmutar Microfone' : 'Mutar Microfone'}
                 >
@@ -875,7 +875,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               {hasActiveScreenShare && !isFloatingPreviewVisible && (
                 <button
                   onClick={() => setIsFloatingPreviewVisible(true)}
-                  className="px-2 py-0.5 rounded-lg bg-rose-600/20 text-rose-400 border border-rose-500/30 hover:bg-rose-600 hover:text-white transition-all text-[10px] font-bold flex items-center gap-1"
+                  className="px-2 py-0.5 rounded-[6px] bg-lira-error/15 text-lira-error border border-lira-error/40 hover:bg-lira-error hover:text-lira-ground transition-colors text-[10px] font-mono font-bold flex items-center gap-1"
                   title="Exibir Tela Flutuante da Apresentação"
                 >
                   <Monitor className="w-3 h-3" />
@@ -885,17 +885,17 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
 
               <button
                 onClick={() => setSpotifyJamModalOpen(true, localPlayer.currentZoneId)}
-                className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold flex items-center gap-1 transition-all ${
+                className={`px-2 py-0.5 rounded-[6px] border text-[10px] font-mono font-bold flex items-center gap-1 transition-colors ${
                   isJamActive
-                    ? 'bg-emerald-600/25 text-emerald-300 border-emerald-500/50 hover:bg-emerald-600 hover:text-white shadow-sm shadow-emerald-500/20'
-                    : 'bg-slate-800 text-slate-400 hover:text-emerald-400 hover:bg-slate-700 border-transparent'
+                    ? 'bg-lira-online/15 text-lira-online border-lira-online/40 hover:bg-lira-online/25'
+                    : 'bg-lira-surface text-lira-muted hover:text-lira-online hover:border-lira-online border-lira-quiet'
                 }`}
                 title={isJamActive ? `Spotify Jam ativo: ${activeZoneJam?.zoneName || zoneName}` : 'Iniciar Spotify Jam nesta sala'}
               >
-                <SpotifyIcon size={12} className={`w-3 h-3 ${isJamActive ? 'text-emerald-400 animate-pulse' : ''}`} />
+                <SpotifyIcon size={12} className={`w-3 h-3 ${isJamActive ? 'text-lira-online animate-pulse' : ''}`} />
                 <span>Jam</span>
                 {isJamActive && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-lira-online animate-ping" />
                 )}
               </button>
 
@@ -903,7 +903,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               {roomId && isRoomOwner && <PetApiSettings roomId={roomId} />}
               <button
                 onClick={() => setGridCallOpen(true)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
+                className="p-1 rounded-[6px] text-lira-muted hover:text-lira-ink hover:bg-lira-surface transition-colors"
                 title="Expandir Chamada (Modo Grade)"
               >
                 <Maximize2 className="w-4 h-4" />
@@ -915,7 +915,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                   void MediaManager.getInstance().resumeMicrophone()
                   setIsCardCollapsed((prev) => !prev)
                 }}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
+                className="p-1 rounded-[6px] text-lira-muted hover:text-lira-ink hover:bg-lira-surface transition-colors"
                 title={isCardCollapsed ? 'Expandir painel de chamada' : 'Recolher painel de chamada'}
               >
                 {isCardCollapsed ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -983,7 +983,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                   profilePicture={resolvedPic}
                   avatar={resolvedAvatar}
                   suppressAudio={suppressAudio}
-                  color={resolvedAvatar?.shirtColor || '#3b82f6'}
+                  color={resolvedAvatar?.shirtColor || '#d1b5ff'}
                   callState={callStates[peer.id] || peer.callState || 'idle'}
                   onRetryCall={() => PeerManager.getInstance().retryZoneCall(peer.id)}
                   onClick={() => setGridCallOpen(true)}
@@ -1010,15 +1010,15 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
           })}
           </div>
 
-          <div className="flex items-center justify-center gap-2 mt-2 pt-2 border-t border-[#2a3142]">
+          <div className="flex items-center justify-center gap-2 mt-2 pt-2 border-t border-dashed border-lira-rule/60">
             <button
               onClick={toggleMute}
-              className={`p-2 rounded-xl text-xs font-medium transition-colors ${
+              className={`p-2 rounded-[8px] text-xs font-medium transition-colors ${
                 localPlayer.isMutedByAdmin
-                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/50 hover:bg-amber-500/30'
+                  ? 'bg-lira-amber/15 text-lira-amber border border-lira-amber/50 hover:bg-lira-amber/25'
                   : isMuted
-                  ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40 hover:bg-rose-500/30'
-                  : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                  ? 'bg-lira-error/15 text-lira-error border border-lira-error/40 hover:bg-lira-error/25'
+                  : 'bg-lira-surface text-lira-ink border border-lira-rule hover:border-lira-accent hover:text-lira-accent'
               }`}
               title={
                 localPlayer.isMutedByAdmin
@@ -1029,7 +1029,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               }
             >
               {isMuted ? (
-                <MicOff className={`w-4 h-4 ${localPlayer.isMutedByAdmin ? 'text-amber-400' : ''}`} />
+                <MicOff className={`w-4 h-4 ${localPlayer.isMutedByAdmin ? 'text-lira-amber' : ''}`} />
               ) : (
                 <Mic className="w-4 h-4" />
               )}
@@ -1037,10 +1037,10 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
 
             <button
               onClick={toggleDeafen}
-              className={`p-2 rounded-xl text-xs font-medium transition-colors ${
+              className={`p-2 rounded-[8px] text-xs font-medium transition-colors ${
                 isDeafened
-                  ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40 hover:bg-rose-500/30 shadow-md shadow-rose-500/10'
-                  : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                  ? 'bg-lira-error/15 text-lira-error border border-lira-error/40 hover:bg-lira-error/25'
+                  : 'bg-lira-surface text-lira-ink border border-lira-rule hover:border-lira-accent hover:text-lira-accent'
               }`}
               title={
                 isDeafened
@@ -1053,8 +1053,10 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
 
             <button
               onClick={toggleCamera}
-              className={`p-2 rounded-xl text-xs font-medium transition-colors ${
-                isCameraOff ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40' : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+              className={`p-2 rounded-[8px] text-xs font-medium transition-colors ${
+                isCameraOff
+                  ? 'bg-lira-error/15 text-lira-error border border-lira-error/40 hover:bg-lira-error/25'
+                  : 'bg-lira-surface text-lira-ink border border-lira-rule hover:border-lira-accent hover:text-lira-accent'
               }`}
               title={isCameraOff ? 'Ligar Câmera' : 'Desligar Câmera'}
             >
@@ -1064,10 +1066,10 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
             <div className="relative">
               <button
                 onClick={handleToggleScreenShare}
-                className={`p-2 rounded-xl text-xs font-medium transition-all ${
+                className={`p-2 rounded-[8px] text-xs font-medium transition-colors ${
                   isScreenSharing
-                    ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/40 animate-pulse'
-                    : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                    ? 'bg-lira-error text-lira-ground border border-lira-error font-bold animate-pulse'
+                    : 'bg-lira-surface text-lira-ink border border-lira-rule hover:border-lira-accent hover:text-lira-accent'
                 }`}
                 title={isScreenSharing ? 'Opções da Transmissão (Ao Vivo)' : 'Compartilhar Tela'}
               >
@@ -1077,11 +1079,11 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               {isScreenSharing && isActiveStreamMenuOpen && (
                 <div
                   ref={streamMenuRef}
-                  className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-48 bg-[#12151d]/95 backdrop-blur-xl border border-[#2a3142] rounded-2xl shadow-2xl p-1.5 z-50 select-none animate-in fade-in zoom-in-95 duration-150"
+                  className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-48 bg-lira-panel border border-dashed border-lira-rule rounded-[12px] p-1.5 z-50 select-none font-mono"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="px-2.5 py-1 text-[10px] font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1.5 border-b border-[#2a3142]/60 mb-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                  <div className="px-2.5 py-1 text-[10px] font-bold text-lira-error uppercase tracking-wider flex items-center gap-1.5 border-b border-dashed border-lira-rule/60 mb-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-lira-error animate-pulse" />
                     Ao Vivo
                   </div>
                   <button
@@ -1090,9 +1092,9 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                       setIsActiveStreamMenuOpen(false)
                       setIsScreenModalOpen(true)
                     }}
-                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-xl text-xs font-medium text-slate-200 hover:text-white hover:bg-slate-800/80 transition-colors text-left"
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-[8px] text-xs font-medium text-lira-ink hover:text-lira-accent hover:bg-lira-surface transition-colors text-left"
                   >
-                    <Sliders className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                    <Sliders className="w-3.5 h-3.5 text-lira-accent shrink-0" />
                     <span>Trocar configurações</span>
                   </button>
                   <button
@@ -1101,9 +1103,9 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                       setIsActiveStreamMenuOpen(false)
                       MediaManager.getInstance().stopScreenShare()
                     }}
-                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-xl text-xs font-medium text-rose-400 hover:text-rose-200 hover:bg-rose-950/40 transition-colors text-left"
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-[8px] text-xs font-medium text-lira-error hover:bg-lira-error/15 transition-colors text-left"
                   >
-                    <StopCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                    <StopCircle className="w-3.5 h-3.5 text-lira-error shrink-0" />
                     <span>Encerrar transmissão</span>
                   </button>
                 </div>
@@ -1112,16 +1114,16 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
 
             <button
               onClick={handleOpenRoomChat}
-              className={`p-2 rounded-xl text-xs font-medium transition-all relative ${
+              className={`p-2 rounded-[8px] border text-xs font-medium transition-colors relative ${
                 isChatOpen && activeChannelId === 'current-zone'
-                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/40'
-                  : 'bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white'
+                  ? 'bg-lira-accent text-lira-ground border-lira-accent'
+                  : 'bg-lira-surface text-lira-ink border-lira-rule hover:border-lira-accent hover:text-lira-accent'
               }`}
               title={`Ir para o Chat da Sala (${zoneName})`}
             >
               <MessageSquare className="w-4 h-4" />
               {unreadZoneCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-indigo-400 ring-2 ring-[#1b202c] animate-pulse flex items-center justify-center text-[8px] font-bold text-slate-950">
+                <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-lira-amber border border-lira-ground flex items-center justify-center text-[8px] font-mono tabular-nums font-bold text-lira-ground">
                   {unreadZoneCount > 9 ? '9+' : unreadZoneCount}
                 </span>
               )}
@@ -1130,40 +1132,40 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
             <div className="relative">
               <button
                 onClick={() => setIsNoiseMenuOpen((prev) => !prev)}
-                className={`p-2 rounded-xl text-xs font-medium transition-all ${
+                className={`p-2 rounded-[8px] text-xs font-medium transition-colors ${
                   noiseDisplay.canRetry
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30'
+                    ? 'bg-lira-amber/15 text-lira-amber border border-lira-amber/40 hover:bg-lira-amber/25'
                     : isNoiseSuppressionEnabled
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 hover:bg-emerald-500/30 shadow-md shadow-emerald-500/10'
-                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
+                    ? 'bg-lira-online/15 text-lira-online border border-lira-online/40 hover:bg-lira-online/25'
+                    : 'bg-lira-surface text-lira-muted border border-lira-rule hover:border-lira-accent hover:text-lira-ink'
                 }`}
                 title={noiseDisplay.title}
               >
-                <AudioLines className={`w-4 h-4 ${noiseDisplay.canRetry ? 'text-amber-300' : isNoiseSuppressionEnabled ? 'text-emerald-400' : ''}`} />
+                <AudioLines className={`w-4 h-4 ${noiseDisplay.canRetry ? 'text-lira-amber' : isNoiseSuppressionEnabled ? 'text-lira-online' : ''}`} />
               </button>
 
               {isNoiseMenuOpen && (
                 <div
                   ref={noiseMenuRef}
-                  className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-60 bg-[#12151d]/95 backdrop-blur-xl border border-[#2a3142] rounded-2xl shadow-2xl p-1.5 z-50 select-none animate-in fade-in zoom-in-95 duration-150"
+                  className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-60 bg-lira-panel border border-dashed border-lira-rule rounded-[12px] p-1.5 z-50 select-none font-mono"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="px-2.5 py-1 text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center justify-between border-b border-[#2a3142]/60 mb-1">
+                  <div className="px-2.5 py-1 text-[10px] font-bold text-lira-online uppercase tracking-wider flex items-center justify-between border-b border-dashed border-lira-rule/60 mb-1">
                     <div className="flex items-center gap-1.5">
                       <span
                         className={`w-1.5 h-1.5 rounded-full ${
-                          noiseDisplay.canRetry ? 'bg-amber-400' : isNoiseSuppressionEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-slate-500'
+                          noiseDisplay.canRetry ? 'bg-lira-amber' : isNoiseSuppressionEnabled ? 'bg-lira-online animate-pulse' : 'bg-lira-muted'
                         }`}
                       />
                       <span>Supressor de Ruído</span>
                     </div>
                     <span
-                      className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                      className={`text-[8.5px] font-mono tabular-nums px-1.5 py-0.5 rounded-[4px] font-bold uppercase ${
                         noiseDisplay.canRetry
-                          ? 'bg-amber-500/20 text-amber-300'
+                          ? 'bg-lira-amber/15 text-lira-amber'
                           : isNoiseSuppressionEnabled
-                          ? 'bg-emerald-500/20 text-emerald-300'
-                          : 'bg-slate-700/60 text-slate-400'
+                          ? 'bg-lira-online/15 text-lira-online'
+                          : 'bg-lira-surface text-lira-muted'
                       }`}
                     >
                       {noiseDisplay.badge}
@@ -1192,41 +1194,41 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                               await MediaManager.getInstance().reprocessStream()
                             }
                           }}
-                          className={`w-full flex items-center justify-between px-2 py-1.5 rounded-xl text-xs font-medium transition-all text-left ${
+                          className={`w-full flex items-center justify-between px-2 py-1.5 rounded-[8px] text-xs font-medium transition-colors text-left ${
                             isSelected
-                              ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold'
-                              : 'text-slate-300 hover:text-white hover:bg-slate-800/80 border border-transparent'
+                              ? 'bg-lira-surface text-lira-online border border-lira-online/40 font-bold'
+                              : 'text-lira-ink hover:text-lira-accent hover:bg-lira-surface border border-transparent'
                           }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <Icon
                               className={`w-3.5 h-3.5 shrink-0 ${
-                                isSelected ? 'text-emerald-400' : 'text-slate-400'
+                                isSelected ? 'text-lira-online' : 'text-lira-muted'
                               }`}
                             />
                             <div className="flex flex-col min-w-0">
                               <div className="flex items-center gap-1.5">
                                 <span className="truncate">{engine.name}</span>
                                 {engine.badge && (
-                                  <span className="text-[8px] px-1 py-0.2 rounded bg-slate-800 text-slate-400 font-normal">
+                                  <span className="text-[8px] px-1 py-0.2 rounded-[4px] bg-lira-ground border border-lira-quiet text-lira-muted font-normal">
                                     {engine.badge}
                                   </span>
                                 )}
                               </div>
-                              <span className="text-[9px] text-slate-400 font-normal whitespace-normal leading-snug">
+                              <span className="text-[9px] text-lira-muted font-normal whitespace-normal leading-snug">
                                 {engine.id === processingMode && noiseDisplay.canRetry ? 'Indisponível · clique para tentar novamente' : engine.desc}
                               </span>
                             </div>
                           </div>
                           {isSelected && (
-                            <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0 ml-1.5" />
+                            <Check className="w-3.5 h-3.5 text-lira-online shrink-0 ml-1.5" />
                           )}
                         </button>
                       )
                     })}
                   </div>
 
-                  <div className="my-1 border-t border-[#2a3142]/60" />
+                  <div className="my-1 border-t border-dashed border-lira-rule/60" />
 
                   <button
                     type="button"
@@ -1237,22 +1239,22 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                         MediaManager.getInstance().updateNoiseSuppression(false)
                       }
                     }}
-                    className={`w-full flex items-center justify-between px-2 py-1.5 rounded-xl text-xs font-medium transition-all text-left ${
+                    className={`w-full flex items-center justify-between px-2 py-1.5 rounded-[8px] text-xs font-medium transition-colors text-left ${
                       !isNoiseSuppressionEnabled
-                        ? 'bg-rose-500/15 text-rose-300 border border-rose-500/30 font-bold'
-                        : 'text-slate-400 hover:text-rose-300 hover:bg-rose-950/30 border border-transparent'
+                        ? 'bg-lira-error/15 text-lira-error border border-lira-error/40 font-bold'
+                        : 'text-lira-muted hover:text-lira-error hover:bg-lira-surface border border-transparent'
                     }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <Power
                         className={`w-3.5 h-3.5 shrink-0 ${
-                          !isNoiseSuppressionEnabled ? 'text-rose-400' : 'text-slate-500'
+                          !isNoiseSuppressionEnabled ? 'text-lira-error' : 'text-lira-muted'
                         }`}
                       />
                       <span>Supressor desligado</span>
                     </div>
                     {!isNoiseSuppressionEnabled && (
-                      <Check className="w-3.5 h-3.5 text-rose-400 shrink-0 ml-1.5" />
+                      <Check className="w-3.5 h-3.5 text-lira-error shrink-0 ml-1.5" />
                     )}
                   </button>
                 </div>
@@ -1261,7 +1263,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
 
             <button
               onClick={() => setIsRoomSettingsOpen(true)}
-              className="p-2 rounded-xl text-xs font-medium bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-indigo-300 transition-colors"
+              className="p-2 rounded-[8px] text-xs font-medium bg-lira-surface border border-lira-rule text-lira-muted hover:border-lira-accent hover:text-lira-accent transition-colors"
               title="Gerenciar Usuários com Permissão de Entrada"
             >
               <Shield className="w-4 h-4" />
@@ -1269,7 +1271,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
 
             <button
               onClick={() => useMediaStore.getState().setSettingsModalOpen(true)}
-              className="p-2 rounded-xl text-xs font-medium bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white transition-colors"
+              className="p-2 rounded-[8px] text-xs font-medium bg-lira-surface border border-lira-rule text-lira-ink hover:border-lira-accent hover:text-lira-accent transition-colors"
               title="Configurações de Áudio e Voz"
             >
               <Settings className="w-4 h-4" />

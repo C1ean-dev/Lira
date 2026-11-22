@@ -126,15 +126,15 @@ export const FurnitureContextMenu: React.FC = () => {
   })()
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-200">
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 font-mono text-lira-ink">
       {showColorPalette && (
-        <div className="bg-[#18191c]/95 backdrop-blur-md p-3 rounded-2xl border border-[#2b2d31] shadow-2xl flex flex-col gap-2 animate-in fade-in zoom-in-95">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-300 pb-1 border-b border-[#2b2d31]">
+        <div className="bg-lira-panel p-3 rounded-[12px] border border-dashed border-lira-rule flex flex-col gap-2">
+          <div className="flex items-center justify-between text-xs font-mono font-bold text-lira-accent pb-1 border-b border-dashed border-lira-rule/60">
             <span>Escolher Cor da Mobília</span>
             <button
               type="button"
               onClick={() => setShowColorPalette(false)}
-              className="text-slate-400 hover:text-white p-0.5"
+              className="text-lira-muted hover:text-lira-ink p-0.5"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -148,20 +148,20 @@ export const FurnitureContextMenu: React.FC = () => {
                   key={item.name}
                   type="button"
                   onClick={() => handleSelectColor(item.color)}
-                  className={`w-7 h-7 rounded-xl border flex items-center justify-center transition-all ${
+                  className={`w-7 h-7 rounded-[6px] border flex items-center justify-center ${
                     isSelected
-                      ? 'border-indigo-400 scale-110 shadow-lg ring-2 ring-indigo-500/50'
-                      : 'border-white/20 hover:scale-105'
+                      ? 'border-lira-accent ring-2 ring-lira-accent/50'
+                      : 'border-lira-rule hover:border-lira-ink'
                   }`}
                   style={{
-                    backgroundColor: item.color || '#333742',
+                    backgroundColor: item.color || '#1e162b',
                     backgroundImage: item.color
                       ? undefined
-                      : 'repeating-conic-gradient(#475569 0% 25%, #1e293b 0% 50%) 50% / 8px 8px',
+                      : 'repeating-conic-gradient(#1e162b 0% 25%, #100c18 0% 50%) 50% / 8px 8px',
                   }}
                   title={item.name}
                 >
-                  {isSelected && <Check className="w-3.5 h-3.5 text-white drop-shadow" />}
+                  {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
                 </button>
               )
             })}
@@ -169,24 +169,24 @@ export const FurnitureContextMenu: React.FC = () => {
         </div>
       )}
 
-      <div className="bg-[#18191c]/95 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-indigo-500/40 shadow-2xl flex items-center gap-3">
-        <div className="flex items-center gap-2 pr-3 border-r border-[#2b2d31]">
+      <div className="bg-lira-panel px-4 py-2.5 rounded-[12px] border border-dashed border-lira-rule flex items-center gap-3">
+        <div className="flex items-center gap-2 pr-3 border-r border-dashed border-lira-rule/60">
           <div
-            className="w-3.5 h-3.5 rounded-md border border-white/20 shadow-inner shrink-0"
+            className="w-3.5 h-3.5 rounded-[4px] border border-lira-rule shrink-0"
             style={{
-              backgroundColor: selectedFurn.tintColor || furnDef?.iconColor || '#6366f1',
+              backgroundColor: selectedFurn.tintColor || furnDef?.iconColor || '#d1b5ff',
             }}
           />
-          <span className="text-xs font-bold text-white max-w-[140px] truncate">{furnName}</span>
+          <span className="text-xs font-mono font-bold text-lira-ink max-w-[140px] truncate">{furnName}</span>
         </div>
 
         <button
           type="button"
           onClick={handleStartMove}
-          className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-md active:scale-95 ${
+          className={`px-3 py-1.5 rounded-[8px] text-xs font-mono font-bold flex items-center gap-1.5 transition-colors ${
             isMovingFurniture
-              ? 'bg-amber-500 text-slate-950 shadow-amber-500/30'
-              : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30'
+              ? 'bg-lira-amber text-lira-ground'
+              : 'bg-lira-accent hover:bg-lira-ink text-lira-ground'
           }`}
           title="Arraste a mobília diretamente pelo mapa para movê-la"
         >
@@ -197,24 +197,24 @@ export const FurnitureContextMenu: React.FC = () => {
         <button
           type="button"
           onClick={handleRotate}
-          className="px-3 py-1.5 rounded-xl bg-[#26282e] hover:bg-[#32353b] text-slate-200 border border-[#3b3e45] text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 shadow-sm"
+          className="px-3 py-1.5 rounded-[8px] bg-lira-surface hover:border-lira-accent text-lira-ink border border-lira-rule text-xs font-mono font-bold flex items-center gap-1.5 transition-colors"
           title="Girar mobília (tecla R) — Alterna entre as 4 direções"
         >
-          <RotateCw className="w-3.5 h-3.5 text-amber-400" />
-          <span>Girar <span className="text-amber-300 font-mono text-[11px]">({dirBadge.icon} {dirBadge.label})</span></span>
+          <RotateCw className="w-3.5 h-3.5 text-lira-amber" />
+          <span>Girar <span className="text-lira-amber font-mono text-[11px]">({dirBadge.icon} {dirBadge.label})</span></span>
         </button>
 
         <button
           type="button"
           onClick={() => setShowColorPalette(!showColorPalette)}
-          className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 ${
+          className={`px-3 py-1.5 rounded-[8px] text-xs font-mono font-bold flex items-center gap-1.5 transition-colors border ${
             showColorPalette
-              ? 'bg-emerald-600 text-white shadow-emerald-600/30'
-              : 'bg-[#26282e] hover:bg-[#32353b] text-slate-200 border border-[#3b3e45]'
+              ? 'bg-lira-online text-lira-ground border-lira-online'
+              : 'bg-lira-surface hover:border-lira-accent text-lira-ink border-lira-rule'
           }`}
           title="Trocar cor ou aplicar tom na mobília"
         >
-          <Palette className="w-3.5 h-3.5 text-emerald-400" />
+          <Palette className="w-3.5 h-3.5 text-lira-online" />
           <span>Trocar de Cor</span>
         </button>
 
@@ -224,7 +224,7 @@ export const FurnitureContextMenu: React.FC = () => {
             onClick={() => {
               useCustomAssetsStore.getState().openEditModal(selectedFurn.defId, 'compose')
             }}
-            className="px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/40 text-xs font-bold flex items-center gap-1.5 transition-all shadow-md active:scale-95"
+            className="px-3 py-1.5 rounded-[8px] bg-lira-surface hover:bg-lira-accent text-lira-accent hover:text-lira-ground border border-lira-rule text-xs font-mono font-bold flex items-center gap-1.5 transition-colors"
             title="Editar esta mobília no Estúdio de Criação"
           >
             <Pencil className="w-3.5 h-3.5" />
@@ -235,7 +235,7 @@ export const FurnitureContextMenu: React.FC = () => {
         <button
           type="button"
           onClick={handleDelete}
-          className="px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-xs font-bold flex items-center gap-1.5 transition-all shadow-md active:scale-95"
+          className="px-3 py-1.5 rounded-[8px] bg-lira-error/15 hover:bg-lira-error text-lira-error hover:text-lira-ground border border-lira-error/40 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors"
           title="Apagar esta mobília do mapa"
         >
           <Trash2 className="w-3.5 h-3.5" />
@@ -249,7 +249,7 @@ export const FurnitureContextMenu: React.FC = () => {
             setIsMovingFurniture(false)
             setShowColorPalette(false)
           }}
-          className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors ml-1"
+          className="p-1.5 text-lira-muted hover:text-lira-ink rounded-[6px] hover:bg-lira-surface transition-colors ml-1"
           title="Fechar seleção"
         >
           <X className="w-4 h-4" />

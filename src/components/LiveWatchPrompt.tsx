@@ -16,10 +16,10 @@ export const LiveWatchPrompt: React.FC<LiveWatchPromptProps> = ({ size, name, co
 
   if (size === 'tile') {
     return (
-      <div className="absolute inset-0 flex items-center justify-center bg-black/55 pointer-events-none">
+      <div className="absolute inset-0 flex items-center justify-center bg-lira-ground/80 pointer-events-none">
         {connecting ? (
-          <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-black/70 text-[9px] font-bold text-slate-200">
-            <Loader2 className="w-2.5 h-2.5 animate-spin" />
+          <span className="flex items-center gap-1 px-2 py-1 rounded-[8px] bg-lira-panel border border-dashed border-lira-rule text-[9px] font-mono font-bold text-lira-muted">
+            <Loader2 className="w-2.5 h-2.5 animate-spin text-lira-accent" />
             Conectando…
           </span>
         ) : (
@@ -27,7 +27,7 @@ export const LiveWatchPrompt: React.FC<LiveWatchPromptProps> = ({ size, name, co
             type="button"
             onClick={watch}
             onDoubleClick={(e) => e.stopPropagation()}
-            className="pointer-events-auto flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold shadow-lg transition-colors active:scale-95 cursor-pointer"
+            className="pointer-events-auto flex items-center gap-1 px-2.5 py-1 rounded-[8px] bg-lira-accent hover:bg-lira-ink text-lira-ground border border-lira-accent hover:border-lira-ink text-[10px] font-mono font-bold transition-colors cursor-pointer"
             title={`Ver a transmissão de ${name}`}
           >
             <Play className="w-2.5 h-2.5 fill-current" />
@@ -41,27 +41,27 @@ export const LiveWatchPrompt: React.FC<LiveWatchPromptProps> = ({ size, name, co
   const stage = size === 'stage'
   return (
     <div
-      className={`absolute inset-0 flex flex-col items-center justify-center text-center bg-[#0c0e14]/95 pointer-events-none ${
+      className={`absolute inset-0 flex flex-col items-center justify-center text-center bg-lira-ground/95 pointer-events-none ${
         stage ? 'gap-4 p-6' : 'gap-2 p-3'
       }`}
     >
       <div
-        className={`flex items-center font-bold text-rose-400 uppercase tracking-wider ${
-          stage ? 'gap-2 text-sm' : 'gap-1.5 text-[10px]'
+        className={`flex items-center font-mono font-bold text-lira-error uppercase tracking-wider ${
+          stage ? 'gap-2 text-xs' : 'gap-1.5 text-[10px]'
         }`}
       >
-        <Radio className={stage ? 'w-5 h-5' : 'w-3.5 h-3.5'} />
+        <Radio className={stage ? 'w-4 h-4' : 'w-3.5 h-3.5'} />
         <span>Ao vivo</span>
       </div>
-      <div className={`font-bold text-slate-100 ${stage ? 'text-2xl' : 'text-xs'}`}>Tela de {name}</div>
+      <div className={`font-display font-bold text-lira-ink ${stage ? 'text-2xl' : 'text-sm'}`}>Tela de {name}</div>
       {stage && !connecting && (
-        <p className="max-w-sm text-sm text-slate-400">
+        <p className="max-w-sm text-xs font-mono text-lira-muted leading-relaxed">
           O vídeo e o som da transmissão começam quando você clicar. Até lá você ouve só o microfone.
         </p>
       )}
       {connecting ? (
-        <span className={`flex items-center font-bold text-slate-300 ${stage ? 'gap-2 text-sm' : 'gap-1.5 text-[11px]'}`}>
-          <Loader2 className={`animate-spin ${stage ? 'w-4 h-4' : 'w-3 h-3'}`} />
+        <span className={`flex items-center font-mono font-bold text-lira-muted ${stage ? 'gap-2 text-xs' : 'gap-1.5 text-[11px]'}`}>
+          <Loader2 className={`animate-spin text-lira-accent ${stage ? 'w-4 h-4' : 'w-3 h-3'}`} />
           Conectando…
         </span>
       ) : (
@@ -69,8 +69,8 @@ export const LiveWatchPrompt: React.FC<LiveWatchPromptProps> = ({ size, name, co
           type="button"
           onClick={watch}
           onDoubleClick={(e) => e.stopPropagation()}
-          className={`pointer-events-auto flex items-center bg-rose-600 hover:bg-rose-500 text-white font-bold shadow-lg transition-colors active:scale-95 cursor-pointer ${
-            stage ? 'gap-2 px-6 py-3 rounded-2xl text-base' : 'gap-1.5 px-3 py-1.5 rounded-xl text-xs'
+          className={`pointer-events-auto flex items-center bg-lira-accent hover:bg-lira-ink text-lira-ground border-2 border-lira-accent hover:border-lira-ink font-mono font-bold transition-colors cursor-pointer ${
+            stage ? 'gap-2 px-6 py-2.5 rounded-[12px] text-sm' : 'gap-1.5 px-3 py-1.5 rounded-[8px] text-xs'
           }`}
         >
           <Play className={`fill-current ${stage ? 'w-4 h-4' : 'w-3 h-3'}`} />

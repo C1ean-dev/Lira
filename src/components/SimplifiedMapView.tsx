@@ -178,15 +178,12 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onWheel={handleWheel}
-      className="relative flex-1 w-full h-[calc(100vh-56px)] overflow-hidden bg-[#072427] cursor-crosshair select-none flex items-center justify-center"
-      style={{
-        backgroundImage: `radial-gradient(circle at 50% 50%, #0d383c 0%, #061c1f 100%)`,
-      }}
+      className="relative flex-1 w-full h-[calc(100vh-56px)] overflow-hidden bg-lira-ground cursor-crosshair select-none flex items-center justify-center font-mono"
     >
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-[#0c2428] border border-[#1a4a4f] text-teal-200 px-4 py-1.5 rounded-full flex items-center gap-2 text-xs font-semibold pointer-events-none z-20">
-        <Zap className="w-3.5 h-3.5 text-emerald-400" />
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-lira-panel border border-dashed border-lira-rule text-lira-ink px-4 py-1.5 rounded-[8px] flex items-center gap-2 text-xs font-semibold pointer-events-none z-20">
+        <Zap className="w-3.5 h-3.5 text-lira-online" />
         <span>Modo Simplificado (Baixo Consumo)</span>
-        <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.2 rounded-full border border-emerald-500/30">
+        <span className="text-[10px] bg-lira-online/15 text-lira-online px-2 py-0.2 rounded-[4px] border border-lira-online/40">
           Baixo consumo
         </span>
       </div>
@@ -205,12 +202,12 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
-            backgroundImage: `linear-gradient(to right, rgba(25, 80, 88, 0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(25, 80, 88, 0.18) 1px, transparent 1px)`,
+            backgroundImage: `linear-gradient(to right, rgba(130, 105, 152, 0.16) 1px, transparent 1px), linear-gradient(to bottom, rgba(130, 105, 152, 0.16) 1px, transparent 1px)`,
             backgroundSize: '24px 24px',
           }}
         />
 
-        <div className="absolute top-3 left-3 text-[11px] font-bold text-teal-400/50 uppercase tracking-widest pointer-events-none flex items-center gap-1.5">
+        <div className="absolute top-3 left-3 text-[11px] font-bold text-lira-muted uppercase tracking-widest pointer-events-none flex items-center gap-1.5">
           <span>🏢 Corredor Geral ({mapWidth}x{mapHeight})</span>
         </div>
 
@@ -234,12 +231,12 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
                   ? `${zone.name} (Trancada - Clique para bater na porta)`
                   : `${zone.name} - Clique para entrar`
               }
-              className={`absolute rounded-xl cursor-pointer flex flex-col items-center justify-between p-2.5 group ${
+              className={`absolute rounded-[12px] cursor-pointer flex flex-col items-center justify-between p-2.5 group ${
                 isLocalInside
-                  ? 'bg-[#182030] border-2 border-emerald-400 shadow-emerald-500/20 ring-4 ring-emerald-500/10 z-10'
+                  ? 'bg-lira-surface border-2 border-lira-online z-10'
                   : zone.isLocked && !isAuthorized
-                  ? 'bg-[#1a141b]/92 hover:bg-[#251722] border border-rose-500/30 hover:border-rose-400/60'
-                  : 'bg-[#131926]/92 hover:bg-[#182030] border border-[#2b3548] hover:border-indigo-400/50'
+                  ? 'bg-lira-panel hover:bg-lira-surface border border-dashed border-lira-error/50 hover:border-lira-error'
+                  : 'bg-lira-panel hover:bg-lira-surface border border-dashed border-lira-rule/70 hover:border-lira-accent'
               }`}
               style={{
                 left: `${leftPercent}%`,
@@ -248,23 +245,23 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
                 height: `${heightPercent}%`,
               }}
             >
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#0d121c]/80 border border-[#232c3d] text-slate-200 text-xs font-bold shadow-sm pointer-events-none max-w-[90%] truncate">
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-[8px] bg-lira-ground border border-lira-quiet text-lira-ink text-xs font-display font-bold pointer-events-none max-w-[90%] truncate">
                 {zone.isLocked ? (
-                  <Lock className="w-3 h-3 text-rose-400 shrink-0" />
+                  <Lock className="w-3 h-3 text-lira-error shrink-0" />
                 ) : (
                   <span>{getZoneIcon(zone.name)}</span>
                 )}
                 <span className="truncate">{zone.name}</span>
                 {zone.isLocked && !isAuthorized && (
-                  <span className="text-[9px] bg-rose-500/20 text-rose-300 px-1.5 py-0.2 rounded-full border border-rose-500/30 font-semibold">
+                  <span className="text-[9px] font-mono bg-lira-error/15 text-lira-error px-1.5 py-0.2 rounded-[4px] border border-lira-error/40 font-semibold">
                     Bater
                   </span>
                 )}
                 {zone.admins && zone.admins.includes(localPlayer.name) && (
-                  <Crown className="w-3 h-3 text-amber-400 shrink-0" />
+                  <Crown className="w-3 h-3 text-lira-amber shrink-0" />
                 )}
                 {totalInZone > 0 && (
-                  <span className="ml-1 text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.2 rounded-full border border-indigo-500/30 font-semibold">
+                  <span className="ml-1 text-[10px] font-mono bg-lira-surface text-lira-accent px-1.5 py-0.2 rounded-[4px] border border-lira-rule font-semibold">
                     {totalInZone}
                   </span>
                 )}
@@ -273,16 +270,16 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
               <div className="flex items-center gap-2 mt-auto flex-wrap justify-center pointer-events-none pb-1">
                 {isLocalInside && (
                   <div className="flex flex-col items-center">
-                    <div className="flex items-center gap-1.5 bg-[#5b50e6] text-white px-2 py-0.5 rounded-lg shadow-md border border-[#7268f2] text-[11px] font-bold">
-                      <div className="w-3.5 h-3.5 rounded-full bg-white/20 flex items-center justify-center text-[8px]">
+                    <div className="flex items-center gap-1.5 bg-lira-accent text-lira-ground px-2 py-0.5 rounded-[6px] border border-lira-accent text-[11px] font-bold">
+                      <div className="w-3.5 h-3.5 rounded-[4px] bg-lira-ground/20 flex items-center justify-center text-[8px]">
                         {localPlayer.name.charAt(0).toUpperCase()}
                       </div>
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-lira-online" />
                       <span className="truncate max-w-[80px]">{localPlayer.name}</span>
                     </div>
-                    <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-[#5b50e6]" />
+                    <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-lira-accent" />
                     <div
-                      className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs text-white border-2 border-white shadow-md mt-0.5"
+                      className="w-7 h-7 rounded-[6px] flex items-center justify-center font-bold text-xs text-white border border-lira-ink mt-0.5"
                       style={{ backgroundColor: localPlayer.avatar?.shirtColor || '#4c6ef5' }}
                     >
                       {localPlayer.name.charAt(0).toUpperCase()}
@@ -292,13 +289,13 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
 
                 {playersInZone.map((remote) => (
                   <div key={remote.id} className="flex flex-col items-center">
-                    <div className="flex items-center gap-1 bg-[#1e2738] text-slate-200 px-1.5 py-0.5 rounded-lg border border-[#324058] text-[10px] font-medium shadow-sm">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    <div className="flex items-center gap-1 bg-lira-surface text-lira-ink px-1.5 py-0.5 rounded-[6px] border border-lira-rule text-[10px] font-medium">
+                      <div className="w-1.5 h-1.5 rounded-full bg-lira-online" />
                       <span className="truncate max-w-[70px]">{remote.name}</span>
                     </div>
-                    <div className="w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-t-[3px] border-t-[#1e2738]" />
+                    <div className="w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-t-[3px] border-t-lira-surface" />
                     <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] text-white border border-white/40 shadow-sm mt-0.5"
+                      className="w-6 h-6 rounded-[6px] flex items-center justify-center font-bold text-[10px] text-white border border-lira-rule mt-0.5"
                       style={{ backgroundColor: remote.avatar?.shirtColor || '#ec4899' }}
                     >
                       {remote.name.charAt(0).toUpperCase()}
@@ -308,14 +305,14 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
               </div>
 
               {isLocalInside && (
-                <div className="absolute -top-2.5 -right-2.5 bg-emerald-500 text-slate-950 font-extrabold text-[9px] px-2 py-0.5 rounded-full shadow-lg border border-emerald-300 flex items-center gap-1">
-                  <div className="w-1.5 h-1.5 rounded-full bg-slate-950" />
+                <div className="absolute -top-2.5 -right-2.5 bg-lira-online text-lira-ground font-extrabold text-[9px] px-2 py-0.5 rounded-[6px] border border-lira-online flex items-center gap-1">
+                  <div className="w-1.5 h-1.5 rounded-full bg-lira-ground" />
                   <span>Sua Sala</span>
                 </div>
               )}
 
-              <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1/3 max-w-[48px] h-1.5 bg-[#1c1917] border-t border-indigo-400/50 rounded-t-sm flex items-center justify-center pointer-events-none shadow-sm">
-                <div className="w-2.5 h-0.5 bg-amber-400/70 rounded-full" />
+              <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1/3 max-w-[48px] h-1.5 bg-lira-ground border-t border-lira-rule rounded-t-sm flex items-center justify-center pointer-events-none">
+                <div className="w-2.5 h-0.5 bg-lira-amber rounded-full" />
               </div>
             </div>
           )
@@ -329,16 +326,16 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
               top: `${(localPlayer.y / mapHeight) * 100}%`,
             }}
           >
-            <div className="flex items-center gap-1.5 bg-[#5b50e6] text-white px-2.5 py-1 rounded-xl shadow-xl border border-[#7268f2] text-xs font-bold">
-              <div className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center text-[9px]">
+            <div className="flex items-center gap-1.5 bg-lira-accent text-lira-ground px-2.5 py-1 rounded-[8px] border border-lira-accent text-xs font-bold">
+              <div className="w-4 h-4 rounded-[4px] bg-lira-ground/20 flex items-center justify-center text-[9px]">
                 {localPlayer.name.charAt(0).toUpperCase()}
               </div>
-              <div className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm" />
+              <div className="w-2 h-2 rounded-full bg-lira-online" />
               <span className="truncate max-w-[90px]">{localPlayer.name}</span>
             </div>
-            <div className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[5px] border-t-[#5b50e6]" />
+            <div className="w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[5px] border-t-lira-accent" />
             <div
-              className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs text-white border-2 border-white shadow-lg mt-0.5 ring-4 ring-[#5b50e6]/30"
+              className="w-8 h-8 rounded-[6px] flex items-center justify-center font-bold text-xs text-white border-2 border-lira-ink mt-0.5"
               style={{ backgroundColor: localPlayer.avatar?.shirtColor || '#4c6ef5' }}
             >
               {localPlayer.name.charAt(0).toUpperCase()}
@@ -356,13 +353,13 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
                 top: `${(remote.y / mapHeight) * 100}%`,
               }}
             >
-              <div className="flex items-center gap-1 bg-[#1e2738] text-slate-200 px-2 py-0.5 rounded-lg border border-[#324058] text-[10px] font-semibold shadow-md">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <div className="flex items-center gap-1 bg-lira-surface text-lira-ink px-2 py-0.5 rounded-[6px] border border-lira-rule text-[10px] font-semibold">
+                <div className="w-1.5 h-1.5 rounded-full bg-lira-online" />
                 <span className="truncate max-w-[70px]">{remote.name}</span>
               </div>
-              <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-[#1e2738]" />
+              <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[4px] border-t-lira-surface" />
               <div
-                className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs text-white border border-white/40 shadow-md mt-0.5"
+                className="w-7 h-7 rounded-[6px] flex items-center justify-center font-bold text-xs text-white border border-lira-rule mt-0.5"
                 style={{ backgroundColor: remote.avatar?.shirtColor || '#ec4899' }}
               >
                 {remote.name.charAt(0).toUpperCase()}

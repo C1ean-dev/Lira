@@ -56,26 +56,26 @@ export const AssetPropertiesForm: React.FC<Props> = ({
   selection,
 }) => {
   return (
-    <div className="bg-[#18191c] rounded-2xl p-4 border border-[#2b2d31] space-y-3.5">
+    <div className="bg-lira-panel rounded-[12px] p-4 border border-lira-quiet space-y-3.5 font-mono text-lira-ink">
       <div className="flex items-center gap-2">
-        <Package className="w-4 h-4 text-indigo-400" />
-        <span className="text-xs font-bold text-slate-200">Propriedades do Elemento</span>
+        <Package className="w-4 h-4 text-lira-accent" />
+        <span className="text-xs font-display font-bold text-lira-accent">Propriedades do Elemento</span>
       </div>
 
       <div className="space-y-1">
-        <label className="block text-[11px] font-semibold text-slate-300">Nome do Objeto</label>
+        <label className="block text-[11px] font-mono font-semibold text-lira-muted">Nome do Objeto</label>
         <input
           type="text"
           value={elementName}
           onChange={(e) => setElementName(e.target.value)}
           placeholder="Ex: Forja de Armas, Trono de Ouro, Parede Rústica..."
-          className="w-full bg-[#12151d] border border-[#2b2d31] rounded-xl px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+          className="w-full bg-lira-ground border border-lira-rule rounded-[8px] px-3 py-1.5 text-xs font-mono text-lira-ink focus:outline-none focus:border-lira-accent"
           maxLength={30}
         />
       </div>
 
       <div className="space-y-1">
-        <label className="block text-[11px] font-semibold text-slate-300">Tipo de Elemento</label>
+        <label className="block text-[11px] font-mono font-semibold text-lira-muted">Tipo de Elemento</label>
         <div className="grid grid-cols-4 gap-1.5">
           {[
             { type: 'avatar', label: '👤 Avatar' },
@@ -87,10 +87,10 @@ export const AssetPropertiesForm: React.FC<Props> = ({
               key={item.type}
               type="button"
               onClick={() => onSelectElementType(item.type as CustomAssetType)}
-              className={`py-1.5 px-1 rounded-xl text-[11px] font-bold border transition-all ${
+              className={`py-1.5 px-1 rounded-[8px] text-[11px] font-mono font-bold border transition-colors ${
                 elementType === item.type
-                  ? 'bg-indigo-600 border-indigo-500 text-white shadow-md'
-                  : 'bg-[#12151d] border-[#2b2d31] text-slate-400 hover:text-slate-200'
+                  ? 'bg-lira-accent border-lira-accent text-lira-ground'
+                  : 'bg-lira-ground border-lira-quiet text-lira-muted hover:text-lira-ink'
               }`}
             >
               {item.label}
@@ -99,19 +99,19 @@ export const AssetPropertiesForm: React.FC<Props> = ({
         </div>
       </div>
 
-      <div className="space-y-2 pt-2 border-t border-[#2b2d31]">
+      <div className="space-y-2 pt-2 border-t border-dashed border-lira-rule/60">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            <Maximize2 className="w-3.5 h-3.5 text-indigo-400" />
-            <label className="block text-[11px] font-bold text-slate-200">
+            <Maximize2 className="w-3.5 h-3.5 text-lira-accent" />
+            <label className="block text-[11px] font-mono font-bold text-lira-ink">
               Dimensões do elemento
             </label>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 bg-[#12151d] p-2 rounded-xl border border-[#2b2d31]">
+        <div className="grid grid-cols-2 gap-2 bg-lira-ground p-2 rounded-[8px] border border-lira-quiet">
           <div>
-            <span className="block text-[10px] font-semibold text-slate-400 mb-1">Tamanho da tela (px)</span>
+            <span className="block text-[10px] font-mono font-semibold text-lira-muted mb-1">Tamanho da tela (px)</span>
             <div className="flex items-center gap-1">
               <input
                 type="number"
@@ -123,10 +123,10 @@ export const AssetPropertiesForm: React.FC<Props> = ({
                   const val = parseFloat(e.target.value)
                   if (!isNaN(val)) void onSetCanvasSize(Math.max(1, val), canvasHeight)
                 }}
-                className="w-full bg-[#18191c] border border-[#2b2d31] rounded-lg px-2 py-1 text-xs font-bold text-center text-white focus:outline-none focus:border-indigo-500"
+                className="w-full bg-lira-panel border border-lira-rule rounded-[6px] px-2 py-1 text-xs font-mono font-bold text-center text-lira-ink focus:outline-none focus:border-lira-accent"
                 aria-label="Largura da tela em pixels" title="Largura da área de desenho da camada"
               />
-              <span className="text-slate-500 text-xs font-bold">×</span>
+              <span className="text-lira-muted text-xs font-bold">×</span>
               <input
                 type="number"
                 min={1}
@@ -137,14 +137,14 @@ export const AssetPropertiesForm: React.FC<Props> = ({
                   const val = parseFloat(e.target.value)
                   if (!isNaN(val)) void onSetCanvasSize(canvasWidth, Math.max(1, val))
                 }}
-                className="w-full bg-[#18191c] border border-[#2b2d31] rounded-lg px-2 py-1 text-xs font-bold text-center text-white focus:outline-none focus:border-indigo-500"
+                className="w-full bg-lira-panel border border-lira-rule rounded-[6px] px-2 py-1 text-xs font-mono font-bold text-center text-lira-ink focus:outline-none focus:border-lira-accent"
                 aria-label="Altura da tela em pixels" title="Altura da área de desenho da camada"
               />
             </div>
           </div>
 
           <div>
-            <span className="block text-[10px] font-semibold text-slate-400 mb-1">Tamanho final no mapa (px)</span>
+            <span className="block text-[10px] font-mono font-semibold text-lira-muted mb-1">Tamanho final no mapa (px)</span>
             <div className="flex items-center gap-1">
               <input
                 type="number"
@@ -158,10 +158,10 @@ export const AssetPropertiesForm: React.FC<Props> = ({
                     onSetPixelSize(Math.max(1, px), pixelHeight)
                   }
                 }}
-                className="w-full bg-[#18191c] border border-[#2b2d31] rounded-lg px-2 py-1 text-xs font-mono font-bold text-center text-emerald-400 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-lira-panel border border-lira-rule rounded-[6px] px-2 py-1 text-xs font-mono font-bold text-center text-lira-online focus:outline-none focus:border-lira-accent"
                 aria-label="Largura final no mapa em pixels" title="Largura de exibição no mapa"
               />
-              <span className="text-slate-500 text-xs font-bold">×</span>
+              <span className="text-lira-muted text-xs font-bold">×</span>
               <input
                 type="number"
                 min={1}
@@ -174,25 +174,25 @@ export const AssetPropertiesForm: React.FC<Props> = ({
                     onSetPixelSize(pixelWidth, Math.max(1, px))
                   }
                 }}
-                className="w-full bg-[#18191c] border border-[#2b2d31] rounded-lg px-2 py-1 text-xs font-mono font-bold text-center text-emerald-400 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-lira-panel border border-lira-rule rounded-[6px] px-2 py-1 text-xs font-mono font-bold text-center text-lira-online focus:outline-none focus:border-lira-accent"
                 aria-label="Altura final no mapa em pixels" title="Altura de exibição no mapa"
               />
             </div>
           </div>
         </div>
 
-        <p className="text-[10px] text-slate-500">Tela: resolução da camada em edição. Final: tamanho de exibição do elemento.</p>
+        <p className="text-[10px] font-mono text-lira-muted">Tela: resolução da camada em edição. Final: tamanho de exibição do elemento.</p>
 
         <div className="space-y-1">
-          <label className="block text-[10px] font-semibold text-slate-400">Ajuste do Recorte para o Tamanho Final:</label>
+          <label className="block text-[10px] font-mono font-semibold text-lira-muted">Ajuste do Recorte para o Tamanho Final:</label>
           <div className="grid grid-cols-2 gap-1.5">
             <button
               type="button"
               onClick={() => setScaleFitMode('fit')}
-              className={`py-1 px-2 rounded-xl text-[10px] font-bold border transition-all ${
+              className={`py-1 px-2 rounded-[8px] text-[10px] font-mono font-bold border transition-colors ${
                 scaleFitMode === 'fit'
-                  ? 'bg-indigo-600 border-indigo-500 text-white shadow'
-                  : 'bg-[#12151d] border-[#2b2d31] text-slate-400 hover:text-slate-200'
+                  ? 'bg-lira-accent border-lira-accent text-lira-ground'
+                  : 'bg-lira-ground border-lira-quiet text-lira-muted hover:text-lira-ink'
               }`}
               title="Ajusta o sprite mantendo as proporções originais (alinhado à base do chão)"
             >
@@ -201,10 +201,10 @@ export const AssetPropertiesForm: React.FC<Props> = ({
             <button
               type="button"
               onClick={() => setScaleFitMode('stretch')}
-              className={`py-1 px-2 rounded-xl text-[10px] font-bold border transition-all ${
+              className={`py-1 px-2 rounded-[8px] text-[10px] font-mono font-bold border transition-colors ${
                 scaleFitMode === 'stretch'
-                  ? 'bg-indigo-600 border-indigo-500 text-white shadow'
-                  : 'bg-[#12151d] border-[#2b2d31] text-slate-400 hover:text-slate-200'
+                  ? 'bg-lira-accent border-lira-accent text-lira-ground'
+                  : 'bg-lira-ground border-lira-quiet text-lira-muted hover:text-lira-ink'
               }`}
               title="Preenche exatamente toda a largura e altura final"
             >
@@ -214,14 +214,14 @@ export const AssetPropertiesForm: React.FC<Props> = ({
         </div>
 
         {selection && selection.w > 0 && selection.h > 0 && (
-          <div className="p-2 rounded-xl bg-slate-800/60 border border-slate-700/60 text-[10px] flex items-center justify-between text-slate-300">
+          <div className="p-2 rounded-[8px] bg-lira-surface border border-lira-quiet text-[10px] font-mono flex items-center justify-between text-lira-muted">
             <span>
-              Recorte: <strong className="font-mono text-white">{selection.w}×{selection.h}px</strong>
+              Recorte: <strong className="font-mono text-lira-ink">{selection.w}×{selection.h}px</strong>
             </span>
-            <span className="text-slate-500">➔</span>
+            <span className="text-lira-muted">➔</span>
             <span>
               Final:{' '}
-              <strong className="font-mono text-emerald-400">
+              <strong className="font-mono text-lira-online">
                 {pixelWidth}×{pixelHeight}px
               </strong>{' '}
 
@@ -230,13 +230,13 @@ export const AssetPropertiesForm: React.FC<Props> = ({
         )}
       </div>
 
-      <div className="space-y-1 pt-1 border-t border-[#2b2d31]">
+      <div className="space-y-1 pt-1 border-t border-dashed border-lira-rule/60">
         <div className="flex items-center justify-between">
-          <label className="block text-[11px] font-semibold text-slate-300">Categoria no Menu</label>
+          <label className="block text-[11px] font-mono font-semibold text-lira-muted">Categoria no Menu</label>
           <button
             type="button"
             onClick={() => setIsCreatingNewCategory(!isCreatingNewCategory)}
-            className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-0.5"
+            className="text-[10px] font-mono text-lira-accent hover:text-lira-ink flex items-center gap-0.5"
           >
             <Plus className="w-3 h-3" />
             <span>{isCreatingNewCategory ? 'Usar Existente' : 'Nova Categoria'}</span>
@@ -250,13 +250,13 @@ export const AssetPropertiesForm: React.FC<Props> = ({
               value={newCategoryName}
               onChange={(e) => setNewCategoryName(e.target.value)}
               placeholder="Nome da categoria..."
-              className="flex-1 bg-[#12151d] border border-[#2a3142] rounded-xl px-3 py-1 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+              className="flex-1 bg-lira-ground border border-lira-rule rounded-[8px] px-3 py-1 text-xs font-mono text-lira-ink focus:outline-none focus:border-lira-accent"
               maxLength={20}
             />
             <button
               type="button"
               onClick={onAddNewCategory}
-              className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow transition-colors"
+              className="px-3 py-1 bg-lira-accent hover:bg-lira-ink text-lira-ground rounded-[8px] text-xs font-mono font-bold transition-colors"
             >
               Salvar
             </button>
@@ -265,7 +265,7 @@ export const AssetPropertiesForm: React.FC<Props> = ({
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="w-full bg-[#12151d] border border-[#2b2d31] rounded-xl px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+            className="w-full bg-lira-ground border border-lira-rule rounded-[8px] px-3 py-1.5 text-xs font-mono text-lira-ink focus:outline-none focus:border-lira-accent"
           >
             {allCategories.map((c) => (
               <option key={c} value={c}>

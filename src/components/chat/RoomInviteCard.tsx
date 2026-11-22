@@ -17,42 +17,42 @@ export const RoomInviteCard: React.FC<Props> = ({ invite, state, senderName, rec
 
   return (
     <div
-      className={`rounded-2xl border p-4 max-w-sm w-full shadow-lg select-none ${
+      className={`rounded-xl border p-4 max-w-sm w-full select-none font-mono ${
         isClosed
-          ? 'bg-gradient-to-b from-slate-900/60 to-[#121620] border-slate-700/50 text-slate-400'
-          : 'bg-gradient-to-b from-[#1b2130] to-[#141824] border-indigo-500/40 shadow-indigo-950/30'
+          ? 'bg-lira-panel border-lira-quiet text-lira-muted'
+          : 'bg-lira-surface border-lira-rule'
       }`}
     >
       <div className="flex items-center gap-2.5 mb-2.5">
         <div
-          className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
+          className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border ${
             isClosed
-              ? 'bg-slate-800 border-slate-700 text-slate-400'
-              : 'bg-indigo-600/20 border-indigo-500/30 text-indigo-400'
+              ? 'bg-lira-ground border-lira-quiet text-lira-muted'
+              : 'bg-lira-ground border-lira-accent/40 text-lira-accent'
           }`}
         >
           {isClosed ? <XCircle className="w-4 h-4" /> : <DoorOpen className="w-4 h-4" />}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-xs font-bold text-slate-200">
+          <div className="text-xs font-display font-bold text-lira-ink">
             {isSent ? 'Convite enviado' : isClosed ? 'Convite encerrado' : 'Convite para um espaço'}
           </div>
-          <p className="text-[11px] text-slate-400 truncate">{invite.roomName}</p>
+          <p className="text-[11px] text-lira-muted truncate">{invite.roomName}</p>
         </div>
       </div>
 
-      <div className="text-xs text-slate-300 bg-[#0d1017]/50 rounded-xl p-2.5 border border-white/5">
+      <div className="text-xs text-lira-ink bg-lira-ground rounded-lg p-2.5 border border-dashed border-lira-rule/60">
         {isSent ? (
           <span>
-            Você convidou <strong className="text-indigo-300">{recipientName || 'seu amigo'}</strong> para{' '}
-            <strong className="text-slate-100">{invite.roomName}</strong>.
+            Você convidou <strong className="text-lira-accent">{recipientName || 'seu amigo'}</strong> para{' '}
+            <strong className="text-lira-ink">{invite.roomName}</strong>.
           </span>
         ) : isClosed ? (
           <span>{senderName} não está mais neste espaço.</span>
         ) : (
           <span>
-            <strong className="text-indigo-300">{senderName}</strong> convidou você para{' '}
-            <strong className="text-slate-100">{invite.roomName}</strong>.
+            <strong className="text-lira-accent">{senderName}</strong> convidou você para{' '}
+            <strong className="text-lira-ink">{invite.roomName}</strong>.
           </span>
         )}
       </div>
@@ -61,7 +61,7 @@ export const RoomInviteCard: React.FC<Props> = ({ invite, state, senderName, rec
         <button
           type="button"
           onClick={onJoin}
-          className="mt-3 w-full py-2 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md shadow-emerald-950/50 flex items-center justify-center gap-1.5 transition-all"
+          className="mt-3 w-full py-2 px-3 bg-lira-accent hover:bg-lira-ink text-lira-ground border-2 border-lira-accent hover:border-lira-ink font-mono font-bold text-xs rounded-lg flex items-center justify-center gap-1.5 transition-colors"
         >
           <LogIn className="w-3.5 h-3.5" />
           <span>Entrar no espaço</span>
@@ -69,7 +69,7 @@ export const RoomInviteCard: React.FC<Props> = ({ invite, state, senderName, rec
       )}
 
       {state === 'here' && (
-        <div className="mt-3 flex items-center gap-1.5 text-[11px] font-bold text-emerald-400">
+        <div className="mt-3 flex items-center gap-1.5 text-[11px] font-bold text-lira-online">
           <MapPin className="w-3.5 h-3.5" />
           <span>Você já está neste espaço</span>
         </div>

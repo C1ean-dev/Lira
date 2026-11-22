@@ -4,6 +4,8 @@ import { MediaManager } from '../../media/MediaManager'
 import { useGameStore } from '../../store/useGameStore'
 import { useMediaStore } from '../../store/useMediaStore'
 import { decodeLanInvite, isGlobalIpv6InviteAddress } from '../../p2p/directInvite'
+import { buttonVariants } from '../ui'
+import { cn } from '../../lib/cn'
 
 interface Props {
   role: 'host' | 'guest'
@@ -13,8 +15,9 @@ interface Props {
   beginJoin?: () => boolean
   endJoin?: () => void
 }
-const fieldClass = 'block w-full min-h-16 resize-y rounded-xl border border-slate-600 bg-[#12151d] p-3 font-mono text-xs text-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300'
-const buttonClass = 'min-h-10 rounded-xl bg-indigo-600 px-3 py-2 text-sm font-semibold text-white enabled:hover:bg-indigo-500 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-300'
+const fieldClass = 'block w-full min-h-16 resize-y rounded-[8px] border border-lira-rule bg-lira-ground p-3 font-mono text-xs text-lira-ink focus-visible:outline-none focus-visible:border-lira-accent'
+const buttonClass = cn(buttonVariants({ variant: 'primary', size: 'sm' }), 'px-2 text-[10px] tracking-tight sm:h-10 sm:px-4 sm:text-xs sm:tracking-normal')
+const quietButtonClass = cn(buttonVariants({ variant: 'quiet', size: 'sm' }), 'px-2 text-[10px] tracking-tight sm:h-10 sm:px-3.5 sm:text-xs sm:tracking-normal')
 
 export function DirectConnectionPanel({ role, invite, guestName, onJoined, beginJoin, endJoin }: Props) {
   const [input, setInput] = useState('')
@@ -119,8 +122,8 @@ export function DirectConnectionPanel({ role, invite, guestName, onJoined, begin
   })
 
   const feedback = (target: string) => feedbackTarget === target && (
-    error ? <p role="alert" className="text-sm text-rose-300">{error}</p> :
-    (busy || status) && <p role="status" className="text-sm text-indigo-300">{busy ? 'Preparando conexão…' : status}</p>
+    error ? <p role="alert" className="text-xs leading-snug font-mono text-lira-error sm:text-sm">{error}</p> :
+    (busy || status) && <p role="status" className="text-xs leading-snug font-mono text-lira-accent sm:text-sm">{busy ? 'Preparando conexão…' : status}</p>
   )
 
   const outputField = output && (
@@ -141,24 +144,23 @@ export function DirectConnectionPanel({ role, invite, guestName, onJoined, begin
   const hasGlobalIpv6 = lanInvites.some(invite => invite.globalIpv6)
   const hasLocalIpv6 = lanInvites.some(invite => invite.ipv6)
 
-  return <section className="space-y-4 text-sm text-slate-300" aria-label="Conexão sem servidor de sinalização">
-    {role === 'host' && <div className="space-y-2">
-      <h3 className="font-semibold text-slate-100">1. Envie um convite</h3>
+  return <section className="space-y-3 text-xs leading-snug font-mono text-lira-muted sm:space-y-4 sm:text-sm" aria-label="Conexão sem servidor de sinalização">
+    {role === 'host' && <div className="space-y-1.5 sm:space-y-2">
+      <h3 className="font-display text-base font-bold text-lira-accent">1. Envie um convite</h3>
       <p>Gere um convite para um jogador. Ele vale por 10 minutos. Mantenha esta janela aberta até conectar.</p>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1.5 sm:gap-2">
         <button type="button" className={buttonClass} disabled={busy} onClick={generate}>Gerar convite direto</button>
-        <button type="button" disabled={busy} onClick={expire}
-          className="min-h-10 rounded-xl border border-slate-600 px-2 py-2 text-xs font-semibold text-slate-200 enabled:hover:bg-slate-700 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-300 sm:px-3 sm:text-sm">
+        <button type="button" disabled={busy} onClick={expire} className={quietButtonClass}>
           Expirar convites diretos
         </button>
       </div>
       {feedback('invite')}
       {outputField}
     </div>}
-    <div className={role === 'host' ? 'space-y-2 border-t border-slate-700 pt-4' : 'space-y-2'}>
-      {role === 'host' ? <h3 className="font-semibold text-slate-100">2. Aplique a resposta</h3> :
+    <div className={role === 'host' ? 'space-y-2 border-t border-dashed border-lira-rule/60 pt-4' : 'space-y-2'}>
+      {role === 'host' ? <h3 className="font-display text-base font-bold text-lira-accent">2. Aplique a resposta</h3> :
         guestInvite && !guestHasName && !output && <p>Informe seu nickname para gerar a resposta automaticamente.</p>}
-      {role === 'host' && <p className="text-xs text-slate-400">Se o jogador usou um convite completo, cole aqui a resposta que ele enviou.</p>}
+      {role === 'host' && <p className="text-xs text-lira-muted">Se o jogador usou um convite completo, cole aqui a resposta que ele enviou.</p>}
       {invite === undefined && <label className="block space-y-1">
         <span>{role === 'host' ? 'Resposta do jogador' : 'Convite do anfitrião'}</span>
         <textarea aria-label={role === 'host' ? 'Resposta do jogador' : 'Convite do anfitrião'} className={fieldClass}
@@ -168,14 +170,14 @@ export function DirectConnectionPanel({ role, invite, guestName, onJoined, begin
       {feedback('response')}
       {role === 'guest' && outputField}
     </div>
-    {canHostLan && lan.length === 0 && <div className="space-y-2 border-t border-slate-700 pt-4">
-      <h3 className="font-semibold text-slate-100">Rede local / IPv6</h3>
+    {canHostLan && lan.length === 0 && <div className="space-y-2 border-t border-dashed border-lira-rule/60 pt-4">
+      <h3 className="font-display text-base font-bold text-lira-accent">Rede local / IPv6</h3>
       <p>Ative enquanto estiver sozinho. O espaço sai do Hub e os jogadores entram pelo convite gerado aqui.</p>
       <button type="button" className={buttonClass} disabled={busy} onClick={enableLan}>Ativar rede local / IPv6</button>
       {feedback('lan')}
     </div>}
     {lanInvites.length > 0 && !hasGlobalIpv6 && (
-      <p role="status" className="border-t border-slate-700 pt-4 text-sm text-slate-300">
+      <p role="status" className="border-t border-dashed border-lira-rule/60 pt-4 text-sm text-lira-muted">
         {hasLocalIpv6 ? 'O IPv6 disponível é apenas para a rede local.' : 'Apenas IPv4 está disponível para convites na rede local.'}
         {' '}Para convidar por IPv6 pela internet, o anfitrião precisa de um endereço IPv6 global e uma porta acessível.
       </p>
@@ -183,12 +185,12 @@ export function DirectConnectionPanel({ role, invite, guestName, onJoined, begin
     {lanInvites.map(({ invite, host, port, ipv6, globalIpv6 }, index) => {
       const label = globalIpv6 ? 'Convite por IPv6' : ipv6 ? 'Convite IPv6 da rede local' : 'Convite IPv4 da rede local'
       const copyLabel = globalIpv6 ? 'Copiar convite IPv6' : ipv6 ? 'Copiar convite IPv6 local' : 'Copiar convite da rede local'
-      return <div key={invite} className="space-y-2 border-t border-slate-700 pt-4">
-        <h3 className="font-semibold text-slate-100">{label}</h3>
+      return <div key={invite} className="space-y-2 border-t border-dashed border-lira-rule/60 pt-4">
+        <h3 className="font-display text-base font-bold text-lira-accent">{label}</h3>
         <p>{globalIpv6
           ? 'Com IPv6 nos dois computadores e a porta acessível, este convite permite entrar pela internet sem trocar uma resposta. Cole em Código da Sala.'
           : 'Na mesma rede, envie este convite para entrar sem trocar uma resposta. Cole em Código da Sala.'}</p>
-        <p className="text-xs font-mono break-all text-slate-400">{host}:{port}</p>
+        <p className="text-xs font-mono break-all text-lira-muted">{host}:{port}</p>
         <textarea aria-label={`${label} ${index + 1}`} className={fieldClass} readOnly value={invite} />
         <button type="button" className={buttonClass} disabled={busy} onClick={() => copy(invite, invite)}>{copyLabel}</button>
         {feedback(invite)}

@@ -6,7 +6,7 @@ const Panel = lazy(() => import('./MeetingSummaryPanel').then(module => ({ defau
 export const MeetingHistoryAccess: React.FC = () => {
   const isOpen = useMeetingStore(state => state.isOpen)
   return <>
-    <button type="button" aria-label="Abrir transcrições e resumo" title="Transcrições e resumos salvos neste dispositivo" onClick={() => useMeetingStore.getState().setOpen(true)} className="rounded-xl border border-white/20 bg-white/10 p-2 text-white hover:bg-white/20"><NotebookPen size={18} /></button>
+    <button type="button" aria-label="Abrir transcrições e resumo" title="Transcrições e resumos salvos neste dispositivo" onClick={() => useMeetingStore.getState().setOpen(true)} className="rounded-[8px] border border-lira-rule bg-lira-surface p-2 text-lira-accent transition-colors hover:border-lira-accent hover:text-lira-ink"><NotebookPen size={18} /></button>
     {isOpen && <Suspense fallback={null}><Panel /></Suspense>}
   </>
 }

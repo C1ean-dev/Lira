@@ -3,6 +3,7 @@ import { User, PlusCircle, LogIn, Sparkles, Clipboard } from 'lucide-react'
 import { useMediaStore } from '../../store/useMediaStore'
 import { DirectConnectionPanel } from './DirectConnectionPanel'
 import { normalizeSpaceInvite } from '../../utils/spaceInviteLink'
+import { Button, Input } from '../ui'
 
 interface Props {
   userName: string
@@ -22,9 +23,7 @@ interface Props {
   endDirectJoin: () => void
 }
 
-const inputClass = 'min-w-0 w-full rounded-xl border border-[#2a3142] bg-[#12151d] px-3 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-400'
-const actionClass = 'min-h-10 rounded-xl px-3 py-2 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-300'
-const rowClass = 'grid gap-2 sm:grid-cols-[minmax(0,1fr)_9rem] sm:items-end'
+const rowClass = 'grid gap-2 sm:grid-cols-[minmax(0,1fr)_11.5rem] sm:items-end'
 
 export const DirectConnectTab: React.FC<Props> = ({
   userName, setUserName, onOpenAvatarCustomizer, createRoomName, setCreateRoomName,
@@ -37,39 +36,40 @@ export const DirectConnectTab: React.FC<Props> = ({
   const directInvite = code.startsWith('LIRA-DIRECT:') ? code : directFallback
 
   return (
-    <div className="space-y-4 overflow-y-auto p-4 sm:p-6">
+    <div className="space-y-4 overflow-y-auto p-4 sm:p-6 font-mono text-lira-ink bg-lira-panel">
       <div>
-        <label htmlFor={`${fieldId}-name`} className="mb-1.5 block text-xs font-semibold text-slate-300">Seu Nickname</label>
+        <label htmlFor={`${fieldId}-name`} className="mb-1.5 block text-xs font-semibold text-lira-muted">Seu Nickname</label>
         <div className="flex gap-2">
-          <input
+          <Input
             id={`${fieldId}-name`}
             type="text"
             value={userName}
             onChange={event => setUserName(event.target.value)}
             placeholder="Ex: Lucas, Carol..."
-            className={inputClass}
+            className="h-10 text-sm"
             maxLength={32}
           />
-          <button
+          <Button
             type="button"
+            variant="quiet"
+            size="md"
             onClick={onOpenAvatarCustomizer}
-            className={`${actionClass} shrink-0 border border-[#2a3142] bg-[#12151d] text-indigo-300 hover:bg-slate-800`}
             title="Personalizar Avatar Pixel Art"
           >
             <User className="h-4 w-4" />
             Avatar
-          </button>
+          </Button>
         </div>
       </div>
 
-      <form className="space-y-3 border-t border-[#2a3142] pt-4" onSubmit={event => {
+      <form className="space-y-3 border-t border-dashed border-lira-rule/60 pt-4" onSubmit={event => {
         event.preventDefault()
         if (!loading && code && !directInvite) onJoin(code)
       }}>
         <div className={rowClass}>
           <div>
             <div className="mb-1.5 flex items-center justify-between gap-2">
-              <label htmlFor={`${fieldId}-code`} className="text-xs font-semibold text-slate-300">Código da sala</label>
+              <label htmlFor={`${fieldId}-code`} className="text-xs font-semibold text-lira-muted">Código da sala</label>
               <button
                 type="button"
                 disabled={loading && !directInvite}
@@ -81,32 +81,32 @@ export const DirectConnectTab: React.FC<Props> = ({
                     document.getElementById(`${fieldId}-code`)?.focus()
                   }
                 }}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-300 hover:underline disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-lira-accent hover:underline disabled:opacity-50"
               >
                 <Clipboard className="h-3.5 w-3.5" />
                 Colar código
               </button>
             </div>
-            <input
+            <Input
               id={`${fieldId}-code`}
               type="text"
               value={roomInput}
               onChange={event => setRoomInput(event.target.value)}
               placeholder="Cole o código, convite ou link"
-              className={inputClass}
+              className="h-10 text-sm"
               autoCapitalize="off"
               spellCheck={false}
               readOnly={loading && !directInvite}
             />
           </div>
           {!directInvite && (
-            <button type="submit" disabled={loading || !code} className={`${actionClass} bg-indigo-600 text-white enabled:hover:bg-indigo-500`}>
+            <Button type="submit" variant="primary" size="md" disabled={loading || !code}>
               <LogIn className="h-4 w-4" />
               Entrar na sala
-            </button>
+            </Button>
           )}
         </div>
-        {directFallback && <p className="text-sm text-slate-300">As outras rotas não conectaram. O Lira vai preparar uma resposta direta.</p>}
+        {directFallback && <p className="text-sm text-lira-muted">As outras rotas não conectaram. O Lira vai preparar uma resposta direta.</p>}
         {directInvite && (
           <DirectConnectionPanel
             key={directInvite}
@@ -120,40 +120,40 @@ export const DirectConnectTab: React.FC<Props> = ({
         )}
       </form>
 
-      <form className={`${rowClass} border-t border-[#2a3142] pt-4`} onSubmit={event => {
+      <form className={`${rowClass} border-t border-dashed border-lira-rule/60 pt-4`} onSubmit={event => {
         event.preventDefault()
         if (!loading) onCreate()
       }}>
         <div>
-          <label htmlFor={`${fieldId}-space`} className="mb-1.5 block text-xs font-semibold text-slate-300">Nome do espaço</label>
-          <input
+          <label htmlFor={`${fieldId}-space`} className="mb-1.5 block text-xs font-semibold text-lira-muted">Nome do espaço</label>
+          <Input
             id={`${fieldId}-space`}
             type="text"
             value={createRoomName}
             onChange={event => setCreateRoomName(event.target.value)}
             placeholder="Ex: Reunião de Equipe"
-            className={inputClass}
+            className="h-10 text-sm"
             maxLength={35}
           />
         </div>
-        <button type="submit" disabled={loading} className={`${actionClass} border border-indigo-500/40 text-indigo-200 enabled:hover:bg-indigo-500/15`}>
+        <Button type="submit" variant="secondary" size="md" disabled={loading}>
           <PlusCircle className="h-4 w-4" />
           Criar espaço
-        </button>
+        </Button>
       </form>
 
-      {loading && !directInvite && <p role="status" className="text-sm text-indigo-300">Conectando ao espaço…</p>}
-      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
+      {loading && !directInvite && <p role="status" className="text-sm text-lira-accent">Conectando ao espaço…</p>}
+      {error && <p role="alert" className="text-sm text-lira-error">{error}</p>}
 
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-[#2a3142] pt-3 text-xs text-slate-400">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-dashed border-lira-rule/60 pt-3 text-xs text-lira-muted">
         <span className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 shrink-0 text-indigo-400" />
+          <Sparkles className="h-4 w-4 shrink-0 text-lira-accent" />
           Supressor de Ruído DSP &amp; Anti-Eco ativados
         </span>
         <button
           type="button"
           onClick={() => useMediaStore.getState().setSettingsModalOpen(true)}
-          className="py-1 font-semibold text-indigo-300 underline"
+          className="py-1 font-semibold text-lira-accent underline hover:text-lira-ink"
         >
           Configurar Áudio
         </button>

@@ -16,8 +16,8 @@ export const EditorHistoryControls: React.FC = () => {
     window.addEventListener('keydown', keydown)
     return () => window.removeEventListener('keydown', keydown)
   }, [isEditorOpen])
-  return <div className="flex gap-1" aria-label="Histórico do editor">
-    <button type="button" onClick={() => useMapStore.getState().undo()} disabled={!past} aria-label="Desfazer" title="Desfazer (Ctrl/Cmd+Z)" className="p-1 rounded hover:bg-slate-700 disabled:opacity-30"><Undo2 className="w-4 h-4" /></button>
-    <button type="button" onClick={() => useMapStore.getState().redo()} disabled={!future} aria-label="Refazer" title="Refazer (Ctrl/Cmd+Shift+Z ou Ctrl+Y)" className="p-1 rounded hover:bg-slate-700 disabled:opacity-30"><Redo2 className="w-4 h-4" /></button>
+  return <div className="flex gap-1 font-mono" aria-label="Histórico do editor">
+    <button type="button" onClick={() => useMapStore.getState().undo()} disabled={!past} aria-label="Desfazer" title="Desfazer (Ctrl/Cmd+Z)" className="p-1 rounded-[6px] text-lira-muted hover:text-lira-ink hover:bg-lira-surface disabled:opacity-30"><Undo2 className="w-4 h-4" /></button>
+    <button type="button" onClick={() => useMapStore.getState().redo()} disabled={!future} aria-label="Refazer" title="Refazer (Ctrl/Cmd+Shift+Z ou Ctrl+Y)" className="p-1 rounded-[6px] text-lira-muted hover:text-lira-ink hover:bg-lira-surface disabled:opacity-30"><Redo2 className="w-4 h-4" /></button>
   </div>
 }
