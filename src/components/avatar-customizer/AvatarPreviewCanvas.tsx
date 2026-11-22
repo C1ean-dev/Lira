@@ -3,6 +3,7 @@ import { Download, Dices } from 'lucide-react'
 import { AvatarConfig, PresenceStatus } from '../../types/game'
 import type { PlayerDetails } from '../../hooks/usePlayerDetails'
 import { AvatarRenderer } from '../../engine/AvatarRenderer'
+import { drawAvatarAuraPreview, drawAvatarStepsPreview } from '../../engine/avatarEffects'
 import { PetRenderer } from '../../engine/pet/PetRenderer'
 import { PetState } from '../../engine/pet/PetManager'
 
@@ -89,7 +90,9 @@ export const AvatarPreviewCanvas: React.FC<Props> = ({
         y: 0,
       }
 
+      drawAvatarStepsPreview(ctx, avatar, tick, 32)
       AvatarRenderer.drawPlayer(ctx, tempPlayer, true, tick, 32, showNameTags)
+      drawAvatarAuraPreview(ctx, avatar, tick, 32)
 
       if (avatar.pet && avatar.pet.type !== 'none') {
         const previewPet: PetState = {

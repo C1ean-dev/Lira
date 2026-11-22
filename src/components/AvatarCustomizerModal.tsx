@@ -11,6 +11,7 @@ import { idleManager } from '../services/idleManager'
 import { PetRenderer } from '../engine/pet/PetRenderer'
 import { CategoryKey, CategoryTabs, CATEGORIES } from './avatar-customizer/CategoryTabs'
 import { OptionSelectorGrid } from './avatar-customizer/OptionSelectorGrid'
+import { AvatarEffectsPanel } from './avatar-customizer/AvatarEffectsPanel'
 import { PetSelectorPanel } from './avatar-customizer/PetSelectorPanel'
 import { ProfileSettingsPanel } from './avatar-customizer/ProfileSettingsPanel'
 import { AvatarPreviewCanvas } from './avatar-customizer/AvatarPreviewCanvas'
@@ -43,6 +44,8 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
     ...DEFAULT_AVATAR,
     ...localPlayer.avatar,
     pet: localPlayer.avatar?.pet || { type: 'none' },
+    aura: localPlayer.avatar?.aura || DEFAULT_AVATAR.aura,
+    steps: localPlayer.avatar?.steps || DEFAULT_AVATAR.steps,
     customSkinUrl: localPlayer.avatar?.customSkinUrl,
     customAvatarId: localPlayer.avatar?.customAvatarId,
     customComponents: localPlayer.avatar?.customComponents,
@@ -69,6 +72,8 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
       setAvatar({
         ...localPlayer.avatar,
         pet: localPlayer.avatar?.pet || { type: 'none' },
+        aura: localPlayer.avatar?.aura || DEFAULT_AVATAR.aura,
+        steps: localPlayer.avatar?.steps || DEFAULT_AVATAR.steps,
         customSkinUrl: localPlayer.avatar?.customSkinUrl,
         customAvatarId: localPlayer.avatar?.customAvatarId,
         customComponents: localPlayer.avatar?.customComponents,
@@ -376,6 +381,12 @@ export const AvatarCustomizerModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 avatar={avatar}
                 status={status}
                 onChangeStatus={setStatus}
+              />
+            ) : activeCategory === 'aura' || activeCategory === 'steps' ? (
+              <AvatarEffectsPanel
+                kind={activeCategory}
+                avatar={avatar}
+                onChangeAvatar={setAvatar}
               />
             ) : activeCategory === 'pet' ? (
               <PetSelectorPanel
