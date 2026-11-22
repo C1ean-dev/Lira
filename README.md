@@ -143,11 +143,11 @@ Para executar apenas a suíte unitária, use `npm test`.
 
   - O marcador "Corte atual" do medidor acompanha o limiar aprendido (lógica compartilhada em `src/media/autoGate.ts`).
 
-- **Calibração Automática de Microfone**:
+- **Análise de Microfone & Supressão**:
 
-  - Medição acústica do ruído de fundo (*noise floor* em dBFS) a partir de amostras brutas com cálculo pela mediana da metade inferior, evitando distorções causadas por fala ou ruídos esporádicos.
+  - Medição acústica do ruído de fundo (*noise floor* em dBFS) e SNR a partir de uma amostra de 5 segundos com cálculo pela mediana da metade inferior, evitando distorções causadas por fala ou ruídos esporádicos.
 
-  - Recomendação automática do motor mais adequado e do limiar numérico do Noise Gate.
+  - Recomendação do motor de supressão mais adequado e comparação A/B/C respeitando o modo atual do Noise Gate (no modo Automático o gate continua adaptativo em tempo real; no modo Manual sugere o limiar na mesma escala linear de RMS do gate).
 
 - **Visualizador de Formas de Onda (Waveform)**:
 

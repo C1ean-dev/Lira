@@ -25,6 +25,7 @@ import {
 } from '../../utils/soundEffects'
 import { MediaManager } from '../../media/MediaManager'
 import { attachStreamToVideo } from '../../media/attachVideoElement'
+import { resolveNoiseProcessorPreference } from '../../media/noiseSuppressionStatus'
 import { AudioDeviceInfo, SensitivityMode } from '../../types/audio'
 import { CustomDropdown } from '../common/CustomDropdown'
 import { toDeviceOptions } from './deviceOptions'
@@ -68,6 +69,11 @@ export const AudioDevicesTab: React.FC<Props> = ({
   const setSoundTheme = useMediaStore((s) => s.setSoundTheme)
   const micCalibrations = useMediaStore((s) => s.micCalibrations)
   const currentCalibration = micCalibrations[selectedAudioInput]
+  const processingMode = useMediaStore(resolveNoiseProcessorPreference)
+  const isNoiseSuppressionEnabled = useMediaStore((s) => s.isNoiseSuppressionEnabled)
+  const deepFilterStatus = useMediaStore((s) => s.deepFilterStatus)
+  const isDeepFilterContinuous =
+    isNoiseSuppressionEnabled && processingMode === 'deepfilter' && deepFilterStatus === 'ready'
 
   const activeSeasonalTheme = resolveEffectiveSoundTheme('auto')
 
@@ -216,7 +222,7 @@ export const AudioDevicesTab: React.FC<Props> = ({
 
   const handleThresholdChange = (val: number) => {
     setManualSensitivityThreshold(val)
-    MediaManager.getInstance().updateSensitivity(sensitivityMode, val)
+    MediaManager.getInstance().updateSensitivity('manual', val)
   }
 
   const handleTestMicToggle = async () => {
@@ -495,9 +501,9 @@ export const AudioDevicesTab: React.FC<Props> = ({
                     type="button"
                     onClick={() => handleThresholdChange(currentCalibration.recommendedSensitivity)}
                     className="text-[9.5px] font-mono tabular-nums px-1.5 py-0.5 rounded-[4px] bg-lira-amber/15 text-lira-amber hover:bg-lira-amber/25 transition-colors cursor-pointer"
-                    title="Usar limiar recomendado na calibração do microfone"
+                    title="Usar limiar manual sugerido pela análise do microfone"
                   >
-                    Usar calibrado ({currentCalibration.recommendedSensitivity}%)
+                    Usar sugerido ({currentCalibration.recommendedSensitivity}%)
                   </button>
                 )}
               </div>
@@ -516,35 +522,22 @@ export const AudioDevicesTab: React.FC<Props> = ({
             </p>
           </div>
         ) : (
-          <div className="text-[11px] text-lira-online bg-lira-online/10 border border-dashed border-lira-online/30 p-2.5 rounded-[8px] space-y-1.5">
+          <div className="text-[11px] text-lira-online bg-lira-online/10 border border-dashed border-lira-online/30 p-2.5 rounded-[8px]">
             <div className="flex items-center justify-between gap-2">
               <span>
-                O sistema detecta dinamicamente os barulhos da sua sala e calibra o corte automaticamente.
+                {isDeepFilterContinuous
+                  ? 'O DeepFilterNet remove o ruído continuamente sem precisar fechar o microfone; o limiar acompanha apenas o indicador de voz.'
+                  : 'O sistema detecta dinamicamente os barulhos da sua sala e ajusta o corte automaticamente em tempo real.'}
               </span>
               {autoThresholdPercent > 0 && (
                 <span
                   className="text-[10px] px-2 py-0.5 rounded-[4px] bg-lira-online/15 text-lira-online font-mono tabular-nums font-bold border border-lira-online/30 shrink-0"
                   title="Limiar adaptativo calculado em tempo real para o ruído da sala"
                 >
-                  Corte atual: ~{autoThresholdPercent}%
+                  {isDeepFilterContinuous ? `Detecção: ~${autoThresholdPercent}%` : `Corte atual: ~${autoThresholdPercent}%`}
                 </span>
               )}
             </div>
-            {currentCalibration && (
-              <div className="text-[10px] text-lira-muted pl-6 flex items-center gap-1.5">
-                <span>Calibração recomendou {currentCalibration.recommendedSensitivity}%.</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleSensitivityModeToggle('manual')
-                    handleThresholdChange(currentCalibration.recommendedSensitivity)
-                  }}
-                  className="text-lira-online underline hover:text-lira-ink font-medium cursor-pointer"
-                >
-                  Mudar para Manual ({currentCalibration.recommendedSensitivity}%)
-                </button>
-              </div>
-            )}
           </div>
         )}
       </div>

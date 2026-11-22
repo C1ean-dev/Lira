@@ -12,6 +12,15 @@ const VAD_SPEECH = 0.2
 const VAD_SOFT_SPEECH = 0.08
 const VAD_SILENCE = 0.05
 
+export const RNNOISE_AUTO_GATE = {
+  openLevel: AUTO_OPEN_LEVEL,
+  closeLevel: AUTO_CLOSE_LEVEL,
+  softSpeechLevel: AUTO_SOFT_SPEECH_LEVEL,
+  vadSpeech: VAD_SPEECH,
+  vadSoftSpeech: VAD_SOFT_SPEECH,
+  vadSilence: VAD_SILENCE,
+} as const
+
 export const RNNOISE_GATE = {
   holdMs: 220,
   attackTimeConstant: 0.008,

@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Mic, RotateCw, Check, Volume2 } from 'lucide-react'
 import { useMediaStore } from '../../store/useMediaStore'
 import { MediaManager } from '../../media/MediaManager'
-import { AudioProcessorMode } from '../../types/audio'
+import { AudioProcessorMode, SensitivityMode } from '../../types/audio'
 import { AudioSamplePlayer } from './AudioSamplePlayer'
 import { MultiEngineAudioPlayer } from './MultiEngineAudioPlayer'
 import { ProcessedSampleInfo } from '../../media/MicCalibrator'
+import { MIN_RECOMMENDED_MANUAL_PERCENT } from '../../media/autoGate'
 import { resolveNoiseProcessorPreference, noiseSuppressionDisplay } from '../../media/noiseSuppressionStatus'
 
 export const AdvancedAudioTab: React.FC = () => {
@@ -25,7 +26,6 @@ export const AdvancedAudioTab: React.FC = () => {
   const toggleNoiseSuppression = useMediaStore((s) => s.toggleNoiseSuppression)
   const setAudioProcessorMode = useMediaStore((s) => s.setAudioProcessorMode)
   const setManualSensitivityThreshold = useMediaStore((s) => s.setManualSensitivityThreshold)
-  const setSensitivityMode = useMediaStore((s) => s.setSensitivityMode)
   const setIsCalibrating = useMediaStore((s) => s.setIsCalibrating)
   const clearMicCalibration = useMediaStore((s) => s.clearMicCalibration)
   const rnnoiseStatus = useMediaStore((s) => s.rnnoiseStatus)
@@ -50,6 +50,7 @@ export const AdvancedAudioTab: React.FC = () => {
     snrDb: number
     recommendedMode: AudioProcessorMode
     recommendedSensitivity: number
+    gateMode: SensitivityMode
     rawAudioUrl?: string
     processedAudioUrl?: string
     rawWaveform?: number[]
@@ -138,6 +139,7 @@ export const AdvancedAudioTab: React.FC = () => {
         snrDb: result.snrDb,
         recommendedMode: result.recommendedMode,
         recommendedSensitivity: result.recommendedSensitivity,
+        gateMode: result.gateMode,
         rawAudioUrl: result.rawAudioUrl,
         processedAudioUrl: result.processedAudioUrl,
         rawWaveform: result.rawWaveform,
@@ -204,7 +206,7 @@ export const AdvancedAudioTab: React.FC = () => {
           <div className="flex items-center gap-1.5">
             <Mic className="w-3.5 h-3.5 text-lira-online" />
             <div className="text-xs font-semibold text-lira-ink">
-              Calibração Automática de Microfone
+              Análise de Microfone & Supressão
             </div>
             <span
               className={`ml-auto text-[9.5px] font-mono font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-[4px] border ${
@@ -220,8 +222,9 @@ export const AdvancedAudioTab: React.FC = () => {
             </span>
           </div>
           <div className="text-[10px] text-lira-muted leading-snug">
-            Fique em silêncio por 3 segundos. Medimos o ruído ambiente e
-            sugerimos o motor e a sensibilidade. O RNNoise é o padrão até você
+            Deixe ~2 segundos em silêncio e fale uma frase normal (5 segundos).
+            Medimos o ruído da sala, sugerimos o melhor motor e gravamos uma
+            amostra para comparar os 3 motores. O RNNoise é o padrão até você
             escolher outro motor abaixo.
           </div>
 
@@ -244,12 +247,12 @@ export const AdvancedAudioTab: React.FC = () => {
               ) : currentCalibration ? (
                 <>
                   <RotateCw className="w-3.5 h-3.5" />
-                  <span>Recalibrar</span>
+                  <span>Analisar Novamente</span>
                 </>
               ) : (
                 <>
                   <Mic className="w-3.5 h-3.5" />
-                  <span>Calibrar Microfone</span>
+                  <span>Analisar Microfone</span>
                 </>
               )}
             </button>
@@ -258,7 +261,7 @@ export const AdvancedAudioTab: React.FC = () => {
                 type="button"
                 onClick={handleResetCalibration}
                 className="px-2.5 py-2 rounded-[8px] border border-lira-quiet bg-lira-surface text-[10px] text-lira-muted hover:text-lira-ink hover:border-lira-rule transition-colors"
-                title="Limpar calibração deste microfone"
+                title="Limpar análise deste microfone"
               >
                 Limpar
               </button>
@@ -278,7 +281,7 @@ export const AdvancedAudioTab: React.FC = () => {
                       Gravando amostra de áudio...
                     </div>
                     <div className="text-[10px] text-lira-muted">
-                      Fale uma frase de teste ou faça barulhos comuns da sua sala
+                      Deixe ~2 segundos em silêncio e depois fale uma frase de teste
                     </div>
                   </div>
                 </div>
@@ -336,144 +339,142 @@ export const AdvancedAudioTab: React.FC = () => {
             </div>
           )}
 
-          {(currentCalibration || lastCalibration) && (
-            <div className="text-[10px] text-lira-ink bg-lira-panel rounded-[8px] p-2.5 border border-lira-quiet leading-snug space-y-2.5">
-              <div className="flex items-center gap-1 text-lira-online font-bold">
-                <Check className="w-3 h-3" />
-                <span>Resultado da calibração</span>
-              </div>
+          {(currentCalibration || lastCalibration) && (() => {
+            const suggestedSensitivity =
+              lastCalibration?.recommendedSensitivity ??
+              currentCalibration?.recommendedSensitivity ??
+              MIN_RECOMMENDED_MANUAL_PERCENT
+            const isManualGate = sensitivityMode === 'manual'
 
-              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono tabular-nums">
-                <span className="text-lira-muted">Ruído ambiente:</span>
-                <span>
-                  {(
-                    lastCalibration?.noiseFloorDb ??
-                    currentCalibration?.noiseFloorDb ??
-                    0
-                  ).toFixed(1)}{' '}
-                  dBFS
-                </span>
-                <span className="text-lira-muted">SNR estimado:</span>
-                <span>
-                  {(
-                    lastCalibration?.snrDb ?? currentCalibration?.snrDb ?? 0
-                  ).toFixed(1)}{' '}
-                  dB
-                </span>
-              </div>
-
-              <SuggestedActionRow
-                label="Motor sugerido:"
-                current={
-                  <span className="font-bold text-lira-accent">
-                    {engineModeLabel(
-                      lastCalibration?.recommendedMode ??
-                        currentCalibration?.recommendedMode ??
-                        'classic'
-                    )}
-                  </span>
-                }
-                active={audioProcessorMode === (lastCalibration?.recommendedMode ?? currentCalibration?.recommendedMode ?? 'classic')}
-                onApply={async () => {
-                  const mode =
-                    lastCalibration?.recommendedMode ??
-                    currentCalibration?.recommendedMode ??
-                    'classic'
-                  if (audioProcessorMode === mode) return
-                  setAudioProcessorMode(mode)
-                  await MediaManager.getInstance().reprocessStream()
-                }}
-                applyLabel="Aplicar motor"
-              />
-
-              <SuggestedActionRow
-                label="Sensibilidade (Gate):"
-                current={
-                  <span className="font-mono tabular-nums flex items-center gap-1.5">
-                    <span>
-                      {lastCalibration?.recommendedSensitivity ??
-                        currentCalibration?.recommendedSensitivity ??
-                        20}
-                      %
-                    </span>
-                    {sensitivityMode === 'auto' && (
-                      <span className="text-[9px] text-lira-amber font-normal">
-                        (Gate em Automático)
-                      </span>
-                    )}
-                  </span>
-                }
-                active={
-                  sensitivityMode === 'manual' &&
-                  manualSensitivityThreshold ===
-                    (lastCalibration?.recommendedSensitivity ??
-                      currentCalibration?.recommendedSensitivity ??
-                      20)
-                }
-                onApply={() => {
-                  const sens =
-                    lastCalibration?.recommendedSensitivity ??
-                    currentCalibration?.recommendedSensitivity ??
-                    20
-                  setSensitivityMode('manual')
-                  setManualSensitivityThreshold(sens)
-                  MediaManager.getInstance().updateSensitivity('manual', sens)
-                }}
-                applyLabel="Aplicar no Gate (Ativar Manual)"
-              />
-
-              {lastCalibration?.rawAudioUrl && (
-                <div className="space-y-2 pt-2 border-t border-dashed border-lira-rule/60">
-                  <div className="text-[10.5px] font-bold text-lira-ink flex items-center gap-1.5">
-                    <Volume2 className="w-3.5 h-3.5 text-lira-online" />
-                    <span>Comparação da Amostra Gravada</span>
-                  </div>
-
-                  <AudioSamplePlayer
-                    title="Amostra Original Gravada"
-                    subtitle="Áudio bruto sem nenhum filtro aplicado"
-                    badge="Original Bruto"
-                    badgeVariant="raw"
-                    audioUrl={lastCalibration.rawAudioUrl}
-                    waveform={lastCalibration.rawWaveform}
-                  />
-
-                  {lastCalibration.processedSamples ? (
-                    <MultiEngineAudioPlayer
-                      recommendedMode={lastCalibration.recommendedMode}
-                      recommendedSensitivity={lastCalibration.recommendedSensitivity}
-                      activeMode={audioProcessorMode}
-                      samples={lastCalibration.processedSamples}
-                      onApplyEngine={async (mode) => {
-                        setAudioProcessorMode(mode)
-                        setSensitivityMode('manual')
-                        setManualSensitivityThreshold(lastCalibration.recommendedSensitivity)
-                        MediaManager.getInstance().updateSensitivity('manual', lastCalibration.recommendedSensitivity)
-                        await MediaManager.getInstance().reprocessStream()
-                      }}
-                    />
-                  ) : lastCalibration.processedAudioUrl ? (
-                    <AudioSamplePlayer
-                      title="Como vai ficar com as alterações"
-                      subtitle={`Processado com ${engineModeLabel(lastCalibration.recommendedMode)} + Noise Gate (${lastCalibration.recommendedSensitivity}%)`}
-                      badge="Com Alterações"
-                      badgeVariant="processed"
-                      audioUrl={lastCalibration.processedAudioUrl}
-                      waveform={lastCalibration.processedWaveform}
-                      applyLabel="Aplicar Tudo"
-                      onApplySettings={async () => {
-                        setAudioProcessorMode(lastCalibration.recommendedMode)
-                        setSensitivityMode('manual')
-                        setManualSensitivityThreshold(lastCalibration.recommendedSensitivity)
-                        MediaManager.getInstance().updateSensitivity('manual', lastCalibration.recommendedSensitivity)
-                        await MediaManager.getInstance().reprocessStream()
-                      }}
-                    />
-                  ) : null}
+            return (
+              <div className="text-[10px] text-lira-ink bg-lira-panel rounded-[8px] p-2.5 border border-lira-quiet leading-snug space-y-2.5">
+                <div className="flex items-center gap-1 text-lira-online font-bold">
+                  <Check className="w-3 h-3" />
+                  <span>Resultado da análise</span>
                 </div>
-              )}
-            </div>
-          )}
+
+                <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono tabular-nums">
+                  <span className="text-lira-muted">Ruído ambiente:</span>
+                  <span>
+                    {(
+                      lastCalibration?.noiseFloorDb ??
+                      currentCalibration?.noiseFloorDb ??
+                      0
+                    ).toFixed(1)}{' '}
+                    dBFS
+                  </span>
+                  <span className="text-lira-muted">SNR estimado:</span>
+                  <span>
+                    {(
+                      lastCalibration?.snrDb ?? currentCalibration?.snrDb ?? 0
+                    ).toFixed(1)}{' '}
+                    dB
+                  </span>
+                </div>
+
+                <SuggestedActionRow
+                  label="Motor sugerido:"
+                  current={
+                    <span className="font-bold text-lira-accent">
+                      {engineModeLabel(
+                        lastCalibration?.recommendedMode ??
+                          currentCalibration?.recommendedMode ??
+                          'classic'
+                      )}
+                    </span>
+                  }
+                  active={audioProcessorMode === (lastCalibration?.recommendedMode ?? currentCalibration?.recommendedMode ?? 'classic')}
+                  onApply={async () => {
+                    const mode =
+                      lastCalibration?.recommendedMode ??
+                      currentCalibration?.recommendedMode ??
+                      'classic'
+                    if (audioProcessorMode === mode) return
+                    setAudioProcessorMode(mode)
+                    await MediaManager.getInstance().reprocessStream()
+                  }}
+                  applyLabel="Aplicar motor"
+                />
+
+                {isManualGate ? (
+                  <SuggestedActionRow
+                    label="Gate manual sugerido:"
+                    current={<span className="font-mono tabular-nums">{suggestedSensitivity}%</span>}
+                    active={manualSensitivityThreshold === suggestedSensitivity}
+                    onApply={() => {
+                      setManualSensitivityThreshold(suggestedSensitivity)
+                      MediaManager.getInstance().updateSensitivity('manual', suggestedSensitivity)
+                    }}
+                    applyLabel="Aplicar no Gate"
+                  />
+                ) : (
+                  <div className="flex items-center gap-2 text-[10.5px] font-mono">
+                    <span className="text-lira-muted shrink-0">Sensibilidade (Gate):</span>
+                    <span className="flex-1 truncate text-lira-ink">
+                      Ajustada em tempo real pelo modo Automático
+                    </span>
+                    <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-[4px] bg-lira-online/15 text-lira-online border border-lira-online/30 shrink-0">
+                      Automático
+                    </span>
+                  </div>
+                )}
+
+                {lastCalibration?.rawAudioUrl && (
+                  <div className="space-y-2 pt-2 border-t border-dashed border-lira-rule/60">
+                    <div className="text-[10.5px] font-bold text-lira-ink flex items-center gap-1.5">
+                      <Volume2 className="w-3.5 h-3.5 text-lira-online" />
+                      <span>Comparação da Amostra Gravada</span>
+                    </div>
+
+                    <AudioSamplePlayer
+                      title="Amostra Original Gravada"
+                      subtitle="Áudio bruto sem nenhum filtro aplicado"
+                      badge="Original Bruto"
+                      badgeVariant="raw"
+                      audioUrl={lastCalibration.rawAudioUrl}
+                      waveform={lastCalibration.rawWaveform}
+                    />
+
+                    {lastCalibration.processedSamples ? (
+                      <MultiEngineAudioPlayer
+                        recommendedMode={lastCalibration.recommendedMode}
+                        recommendedSensitivity={lastCalibration.recommendedSensitivity}
+                        gateMode={lastCalibration.gateMode}
+                        activeMode={audioProcessorMode}
+                        samples={lastCalibration.processedSamples}
+                        onApplyEngine={async (mode) => {
+                          setAudioProcessorMode(mode)
+                          await MediaManager.getInstance().reprocessStream()
+                        }}
+                      />
+                    ) : lastCalibration.processedAudioUrl ? (
+                      <AudioSamplePlayer
+                        title="Como vai ficar com as alterações"
+                        subtitle={
+                          lastCalibration.gateMode === 'manual'
+                            ? `Processado com ${engineModeLabel(lastCalibration.recommendedMode)} + Gate Manual (${lastCalibration.recommendedSensitivity}%)`
+                            : `Processado com ${engineModeLabel(lastCalibration.recommendedMode)} + Gate Automático`
+                        }
+                        badge="Com Alterações"
+                        badgeVariant="processed"
+                        audioUrl={lastCalibration.processedAudioUrl}
+                        waveform={lastCalibration.processedWaveform}
+                        applyLabel={isManualGate ? 'Aplicar Tudo' : 'Aplicar Motor'}
+                        onApplySettings={async () => {
+                          setAudioProcessorMode(lastCalibration.recommendedMode)
+                          if (isManualGate) {
+                            setManualSensitivityThreshold(lastCalibration.recommendedSensitivity)
+                            MediaManager.getInstance().updateSensitivity('manual', lastCalibration.recommendedSensitivity)
+                          }
+                          await MediaManager.getInstance().reprocessStream()
+                        }}
+                      />
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
         </div>
 
         <div className="space-y-2">

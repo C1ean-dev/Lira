@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useId } from 'react'
 import { Play, Pause, RotateCcw, Sparkles, Sliders, Cpu, Check } from 'lucide-react'
-import { AudioProcessorMode } from '../../types/audio'
+import { AudioProcessorMode, SensitivityMode } from '../../types/audio'
 
 export interface EngineSampleData {
   audioUrl: string
@@ -9,7 +9,8 @@ export interface EngineSampleData {
 
 interface Props {
   recommendedMode: AudioProcessorMode
-  recommendedSensitivity: number
+  recommendedSensitivity?: number
+  gateMode?: SensitivityMode
   activeMode: AudioProcessorMode
   samples: {
     classic: EngineSampleData
@@ -55,6 +56,7 @@ const ENGINES: {
 export const MultiEngineAudioPlayer: React.FC<Props> = ({
   recommendedMode,
   recommendedSensitivity,
+  gateMode = recommendedSensitivity !== undefined ? 'manual' : 'auto',
   activeMode,
   samples,
   onApplyEngine,
@@ -255,13 +257,17 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
             Comparação A/B/C
           </span>
           <span className="text-[9px] font-mono tabular-nums text-lira-muted px-1.5 py-0.5 rounded-[4px] bg-lira-panel border border-lira-quiet">
-            Gate: {recommendedSensitivity}%
+            {gateMode === 'manual' && recommendedSensitivity !== undefined
+              ? `Gate Manual: ${recommendedSensitivity}%`
+              : 'Gate: Automático'}
           </span>
         </div>
       </div>
 
       <div className="text-[10px] text-lira-muted leading-tight">
-        Ouça a mesma gravação tratada individualmente por cada motor de supressão com o Noise Gate calibrado:
+        {gateMode === 'manual' && recommendedSensitivity !== undefined
+          ? `Ouça a mesma gravação tratada individualmente por cada motor de supressão com o Gate Manual sugerido (${recommendedSensitivity}%):`
+          : 'Ouça a mesma gravação tratada individualmente por cada motor de supressão (com Gate Automático):'}
       </div>
 
       <div className="bg-lira-ground rounded-[8px] p-1.5 border border-lira-quiet divide-y divide-lira-quiet">

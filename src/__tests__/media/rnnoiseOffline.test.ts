@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { denoiseSamples, gateDenoisedSamples } from '../../media/rnnoiseOffline'
+import { autoGateDenoisedSamples, denoiseSamples, gateDenoisedSamples } from '../../media/rnnoiseOffline'
 import { processAudioBufferOffline } from '../../media/audioBufferUtils'
 
 const SAMPLE_RATE = 48000
@@ -162,6 +162,30 @@ describe('RNNoise offline (calibration preview)', () => {
     })
   })
 
+  describe('autoGateDenoisedSamples', () => {
+    it('closes on steady background noise and opens for voice bursts', () => {
+      const input = new Float32Array(SAMPLE_RATE * 3)
+      input.set(tone(SAMPLE_RATE * 2, 0.01), 0)
+      input.set(tone(SAMPLE_RATE, 0.1), SAMPLE_RATE * 2)
+
+      const output = autoGateDenoisedSamples(input, SAMPLE_RATE)
+
+      const noiseTail = output.subarray(SAMPLE_RATE, SAMPLE_RATE * 2)
+      const speechTail = output.subarray(SAMPLE_RATE * 2 + SAMPLE_RATE / 4)
+      expect(toDb(rms(noiseTail) / rms(input.subarray(SAMPLE_RATE, SAMPLE_RATE * 2)))).toBeLessThan(-40)
+      expect(rms(speechTail)).toBeCloseTo(rms(input.subarray(SAMPLE_RATE * 2 + SAMPLE_RATE / 4)), 3)
+    })
+
+    it('opens when RNNoise VAD detects speech even at quiet levels', () => {
+      const input = tone(SAMPLE_RATE, 0.004)
+      const frameVads = new Float32Array(Math.ceil(input.length / 480)).fill(0.8)
+
+      const output = autoGateDenoisedSamples(input, SAMPLE_RATE, frameVads)
+
+      expect(rms(output.subarray(SAMPLE_RATE / 4))).toBeCloseTo(rms(input.subarray(SAMPLE_RATE / 4)), 3)
+    })
+  })
+
   describe('processAudioBufferOffline', () => {
     const param = () => ({ setValueAtTime: vi.fn() })
     const node = (extra: Record<string, unknown> = {}) => ({ connect: vi.fn(), ...extra })
@@ -172,6 +196,7 @@ describe('RNNoise offline (calibration preview)', () => {
       getChannelData: () => data,
     })
     let compressorsCreated = 0
+    let gainSchedules: Array<{ value: number; time: number }> = []
 
     class FakeOfflineAudioContext {
       destination = {}
@@ -189,7 +214,13 @@ describe('RNNoise offline (calibration preview)', () => {
         return node({ type: '', frequency: param(), Q: param(), gain: param() })
       }
       createGain() {
-        return node({ gain: param() })
+        return node({
+          gain: {
+            setValueAtTime: vi.fn((value: number, time: number) => {
+              gainSchedules.push({ value, time })
+            }),
+          },
+        })
       }
       createDynamicsCompressor() {
         compressorsCreated++
@@ -202,6 +233,7 @@ describe('RNNoise offline (calibration preview)', () => {
 
     beforeEach(() => {
       compressorsCreated = 0
+      gainSchedules = []
       ;(globalThis as any).window = globalThis
       ;(globalThis as any).OfflineAudioContext = FakeOfflineAudioContext
     })
@@ -235,6 +267,21 @@ describe('RNNoise offline (calibration preview)', () => {
       await processAudioBufferOffline(raw, 'classic', 0)
 
       expect(compressorsCreated).toBe(1)
+    })
+
+    it('uses AutoGate instead of manual sensitivityPercent when gateMode is auto', async () => {
+      const recording = new Float32Array(SAMPLE_RATE * 3)
+      recording.set(tone(SAMPLE_RATE * 2, 0.01), 0)
+      recording.set(tone(SAMPLE_RATE, 0.08), SAMPLE_RATE * 2)
+      const raw = fakeBuffer(recording, SAMPLE_RATE) as unknown as AudioBuffer
+
+      // Even if a high manual sensitivity (95%) is passed, gateMode='auto' must follow AutoGate.
+      await processAudioBufferOffline(raw, 'classic', 95, 'auto')
+
+      const noiseClosed = gainSchedules.some((g) => g.time >= 0.5 && g.time < 1.8 && g.value < 0.05)
+      const speechOpened = gainSchedules.some((g) => g.time >= 2.2 && g.value === 1)
+      expect(noiseClosed).toBe(true)
+      expect(speechOpened).toBe(true)
     })
 
     it('falls back to the approximation for a recording that is not at 48 kHz', async () => {
