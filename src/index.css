@@ -1,3 +1,4 @@
+@import './styles/theme.css';
 @import './styles/scrollbars.css';
 @import './styles/forms.css';
 @import './styles/animations.css';
@@ -17,9 +18,9 @@
 
 @layer base {
   body {
-    background-color: #0c0e14;
-    color: #f8f9fa;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: var(--ground, #100c18);
+    color: var(--ink, #f3ecff);
+    font-family: var(--body, 'Martian Mono', 'Inter', system-ui, -apple-system, sans-serif);
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
     touch-action: manipulation;

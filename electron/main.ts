@@ -653,7 +653,7 @@ function createWindow() {
     ...(xOffset !== undefined ? { x: xOffset } : {}),
     ...(yOffset !== undefined ? { y: yOffset } : {}),
     title: appInstance.title,
-    backgroundColor: '#0c0e14',
+    backgroundColor: '#100c18',
     icon: runtimeAssetPath(app.getAppPath(), app.isPackaged, 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

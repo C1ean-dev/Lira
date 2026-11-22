@@ -15,7 +15,6 @@ export interface MoonPhaseIconProps {
 export const MoonPhaseIcon: React.FC<MoonPhaseIconProps> = ({
   status = 'available',
   className = 'w-4 h-4',
-  color,
   withBackground = false,
 }) => {
   switch (status) {
@@ -33,7 +32,7 @@ export const MoonPhaseIcon: React.FC<MoonPhaseIconProps> = ({
       return (
         <div
           className={`${className} rounded-full overflow-hidden flex items-center justify-center shrink-0`}
-          style={{ backgroundColor: withBackground ? '#251a3a' : undefined }}
+          style={{ backgroundColor: withBackground ? '#1e162b' : undefined }}
         >
           <img
             src={LUA_ROXA_IMAGE_DATA_URL}
@@ -48,7 +47,7 @@ export const MoonPhaseIcon: React.FC<MoonPhaseIconProps> = ({
       return (
         <div
           className={`${className} rounded-full overflow-hidden flex items-center justify-center shrink-0`}
-          style={{ backgroundColor: withBackground ? '#352914' : undefined }}
+          style={{ backgroundColor: withBackground ? '#291f14' : undefined }}
         >
           <img
             src={AUSENTE_IMAGE_DATA_URL}
@@ -63,7 +62,7 @@ export const MoonPhaseIcon: React.FC<MoonPhaseIconProps> = ({
       return (
         <div
           className={`${className} rounded-full overflow-hidden flex items-center justify-center shrink-0`}
-          style={{ backgroundColor: withBackground ? '#35151b' : undefined }}
+          style={{ backgroundColor: withBackground ? '#2d141d' : undefined }}
         >
           <img
             src={MARTE_IMAGE_DATA_URL}
@@ -84,18 +83,17 @@ export const MoonPhaseIcon: React.FC<MoonPhaseIconProps> = ({
           xmlns="http://www.w3.org/2000/svg"
           aria-label="Offline"
         >
-          {withBackground && <circle cx="16" cy="16" r="16" fill="#1e2024" />}
+          {withBackground && <circle cx="16" cy="16" r="16" fill="#100c18" />}
           <circle
             cx="16"
             cy="16"
             r="11"
-            stroke="#64748b"
+            stroke="#826998"
             strokeWidth="2"
             fill="none"
-            opacity="0.6"
+            opacity="0.7"
           />
         </svg>
       )
   }
 }
-

@@ -139,23 +139,30 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md select-none animate-in fade-in duration-200">
-      <div className="bg-[#1e1f22] border border-[#383a40] rounded-2xl w-full max-w-sm sm:max-w-md p-5 flex flex-col gap-4 shadow-2xl text-white">
-        <div className="flex items-center justify-between pb-3 border-b border-[#313338]">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-lira-ground/80 select-none"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="bg-lira-panel border border-dashed border-lira-rule rounded-[12px] w-full max-w-sm sm:max-w-md p-5 flex flex-col gap-4 text-lira-ink font-mono">
+        <div className="flex items-center justify-between pb-3 border-b border-dashed border-lira-quiet">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-600/20 text-blue-400 flex items-center justify-center border border-blue-500/30">
+            <div className="w-8 h-8 rounded-[8px] bg-lira-surface text-lira-accent flex items-center justify-center border border-lira-rule">
               <Crop className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-white">Recortar Foto de Perfil</h3>
-              <p className="text-[11px] text-slate-400">
+              <h3 className="font-display text-base font-bold text-lira-accent">
+                Recortar Foto de Perfil
+              </h3>
+              <p className="text-[11px] text-lira-muted">
                 Arraste a imagem e ajuste o zoom para centralizar
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onCancel}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-1.5 rounded-[8px] border border-lira-rule bg-lira-surface text-lira-muted hover:text-lira-ink hover:border-lira-accent transition-colors"
             title="Fechar"
           >
             <X className="w-4 h-4" />
@@ -170,7 +177,7 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
             onPointerUp={handlePointerUp}
             onWheel={handleWheel}
             style={{ width: VIEWPORT_SIZE, height: VIEWPORT_SIZE }}
-            className="relative overflow-hidden rounded-2xl bg-[#111214] border border-[#2b2d31] cursor-grab active:cursor-grabbing touch-none flex items-center justify-center shadow-inner"
+            className="relative overflow-hidden rounded-[12px] bg-lira-ground border border-lira-quiet cursor-grab active:cursor-grabbing touch-none flex items-center justify-center"
           >
             <img
               ref={imgRef}
@@ -188,24 +195,25 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <div
                 style={{ width: CROP_DIAMETER, height: CROP_DIAMETER }}
-                className="rounded-full border-2 border-white/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.65)] ring-1 ring-black/40 flex items-center justify-center"
+                className="rounded-full border-2 border-lira-accent shadow-[0_0_0_9999px_rgba(16,12,24,0.75)] flex items-center justify-center"
               >
-                <div className="w-full h-[1px] bg-white/10" />
-                <div className="h-full w-[1px] bg-white/10 absolute" />
+                <div className="w-full h-[1px] bg-lira-accent/20" />
+                <div className="h-full w-[1px] bg-lira-accent/20 absolute" />
               </div>
             </div>
 
-            <div className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1 text-[10px] text-white/60 bg-black/60 px-2 py-0.5 rounded-full backdrop-blur-sm">
+            <div className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-1 text-[10px] text-lira-muted bg-lira-ground/80 border border-lira-quiet px-2 py-0.5 rounded-[6px]">
               <Move className="w-3 h-3" />
               <span>Arraste para mover</span>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 bg-[#2b2d31] p-3 rounded-xl border border-white/5">
+        <div className="flex items-center gap-3 bg-lira-surface p-3 rounded-[8px] border border-lira-rule">
           <button
+            type="button"
             onClick={() => handleZoomChange(zoom - 0.2)}
-            className="p-1 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-1 rounded-[6px] text-lira-muted hover:text-lira-ink hover:bg-lira-ground transition-colors"
             title="Diminuir Zoom"
           >
             <ZoomOut className="w-4 h-4" />
@@ -218,20 +226,22 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
             step="0.05"
             value={zoom}
             onChange={(e) => handleZoomChange(parseFloat(e.target.value))}
-            className="flex-1 accent-blue-500 h-1.5 bg-slate-700 rounded-lg cursor-pointer"
+            className="flex-1 accent-[#d1b5ff] h-1.5 bg-lira-ground rounded-lg cursor-pointer"
           />
 
           <button
+            type="button"
             onClick={() => handleZoomChange(zoom + 0.2)}
-            className="p-1 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-1 rounded-[6px] text-lira-muted hover:text-lira-ink hover:bg-lira-ground transition-colors"
             title="Aumentar Zoom"
           >
             <ZoomIn className="w-4 h-4" />
           </button>
 
           <button
+            type="button"
             onClick={handleReset}
-            className="px-2 py-1 rounded-lg text-[11px] font-semibold text-slate-300 hover:text-white hover:bg-white/10 border border-white/10 flex items-center gap-1 transition-colors"
+            className="px-2 py-1 rounded-[6px] text-[11px] font-semibold text-lira-muted hover:text-lira-ink hover:border-lira-accent border border-lira-rule flex items-center gap-1 transition-colors"
             title="Centralizar"
           >
             <RotateCcw className="w-3 h-3" />
@@ -239,16 +249,18 @@ export const ImageCropModal: React.FC<ImageCropModalProps> = ({
           </button>
         </div>
 
-        <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-[#313338]">
+        <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-dashed border-lira-quiet">
           <button
+            type="button"
             onClick={onCancel}
-            className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-[#2b2d31] hover:text-white transition-colors cursor-pointer"
+            className="px-4 py-2 rounded-[8px] text-xs font-semibold border border-lira-rule bg-lira-surface text-lira-muted hover:border-lira-accent hover:text-lira-ink transition-colors cursor-pointer"
           >
             Cancelar
           </button>
           <button
+            type="button"
             onClick={handleConfirm}
-            className="px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 active:scale-95 text-white transition-all shadow-md shadow-blue-600/30 flex items-center gap-1.5 cursor-pointer"
+            className="px-4 py-2 rounded-[8px] text-xs font-bold bg-lira-accent hover:bg-lira-ink text-lira-ground border-2 border-lira-accent hover:border-lira-ink transition-colors flex items-center gap-1.5 cursor-pointer"
           >
             <Check className="w-4 h-4" />
             <span>Confirmar Recorte</span>

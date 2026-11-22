@@ -9,11 +9,11 @@ export interface StatusBadgeProps {
 }
 
 const TONE: Record<string, string> = {
-  busy: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
-  focusing: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
-  away: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-  available: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-  offline: 'bg-slate-800 text-slate-400 border-slate-700',
+  busy: 'bg-lira-error/15 text-lira-error border-lira-error/40',
+  focusing: 'bg-lira-accent/15 text-lira-accent border-lira-accent/40',
+  away: 'bg-lira-amber/15 text-lira-amber border-lira-amber/40',
+  available: 'bg-lira-online/15 text-lira-online border-lira-online/40',
+  offline: 'bg-slate-800 bg-lira-ground text-lira-muted border-lira-quiet',
 }
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, label, className = '' }) => {
@@ -24,7 +24,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, label, classNa
 
   return (
     <span
-      className={`text-[9px] pl-1 pr-2 py-0.5 rounded-full font-bold border flex items-center gap-1 ${tone} ${className}`}
+      className={`text-[10px] font-mono pl-1 pr-2 py-0.5 rounded-[6px] font-bold border flex items-center gap-1 ${tone} ${className}`}
     >
       <MoonPhaseIcon status={status} className="w-3 h-3" />
       <span>{text}</span>
