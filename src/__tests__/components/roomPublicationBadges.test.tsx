@@ -26,7 +26,7 @@ describe('room publication in the navigation bar', () => {
     publication.servers = [
       { name: 'EMQX', host: 'broker.emqx.io' },
       { name: 'HiveMQ', host: 'broker.hivemq.com' },
-      { name: 'Render', host: 'p01--lira--tj9yvq5j5cgs.code.run' },
+      { name: 'Lira', host: 'p01--lira--tj9yvq5j5cgs.code.run' },
     ]
     const html = renderBar()
     for (const server of publication.servers) {
@@ -41,9 +41,9 @@ describe('room publication in the navigation bar', () => {
   })
 
   it('uses the available space for publication instead of hiding it below 1800px', () => {
-    publication.servers = [{ name: 'Render', host: 'p01--lira--tj9yvq5j5cgs.code.run' }]
+    publication.servers = [{ name: 'Lira', host: 'p01--lira--tj9yvq5j5cgs.code.run' }]
     const html = renderBar()
-    const badge = html.match(/<span[^>]*aria-label="Sala publicada em Render"[^>]*>/)?.[0]
+    const badge = html.match(/<span[^>]*aria-label="Sala publicada em Lira"[^>]*>/)?.[0]
     expect(badge).toBeDefined()
     expect(badge).not.toContain('hidden')
     expect(badge).not.toContain('min-[1800px]')
@@ -56,7 +56,7 @@ describe('room publication in the navigation bar', () => {
   })
 
   it('hides publication services when the room becomes private or is left', () => {
-    publication.servers = [{ name: 'Render', host: 'p01--lira--tj9yvq5j5cgs.code.run' }]
+    publication.servers = [{ name: 'Lira', host: 'p01--lira--tj9yvq5j5cgs.code.run' }]
     useGameStore.setState({ isRoomPublic: false })
     expect(renderBar()).not.toContain('Sala publicada em')
     expect(renderBar()).not.toContain('Aguardando publicação')

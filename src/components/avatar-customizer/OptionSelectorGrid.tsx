@@ -8,8 +8,8 @@ import {
 import { CategoryKey } from './CategoryTabs'
 import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 import { CustomAsset } from '../../types/customAsset'
-import { exportCategoryAtlas } from '../../engine/avatar/avatarAtlasExporter'
 import { AtlasImportModal } from './AtlasImportModal'
+import { AtlasExportModal } from './AtlasExportModal'
 import { AvatarSpritesheetSlicerModal } from './AvatarSpritesheetSlicerModal'
 import { prepareAssetForSlicer } from '../../utils/avatarAssetOrigin'
 
@@ -33,6 +33,7 @@ export const OptionSelectorGrid: React.FC<Props> = ({
   const { customAssets, deleteCustomAsset } = useCustomAssetsStore()
   const [deletingAsset, setDeletingAsset] = useState<CustomAsset | null>(null)
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false)
+  const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false)
 
   const directSlicerInputRef = useRef<HTMLInputElement | null>(null)
   const [slicerImageSrc, setSlicerImageSrc] = useState<string>('')
@@ -248,8 +249,8 @@ export const OptionSelectorGrid: React.FC<Props> = ({
 
             <button
               type="button"
-              onClick={() => exportCategoryAtlas(activeCategory, customAssets, avatar)}
-              title={`Exportar Folha PNG e Arquivo Sparrow XML para personagens`}
+              onClick={() => setIsExportModalOpen(true)}
+              title={`Selecionar e exportar personagens em Folha PNG e Arquivo Sparrow XML`}
               className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-[8px] bg-lira-surface hover:border-lira-accent border border-lira-rule text-lira-muted hover:text-lira-ink text-[11px] font-mono font-semibold transition-colors cursor-pointer"
             >
               <Download className="w-3.5 h-3.5 text-lira-accent" />
@@ -306,6 +307,15 @@ export const OptionSelectorGrid: React.FC<Props> = ({
           isOpen={isImportModalOpen}
           onClose={() => setIsImportModalOpen(false)}
           category={activeCategory as AvatarComponentSlot}
+        />
+      )}
+
+      {isExportModalOpen && (
+        <AtlasExportModal
+          isOpen={isExportModalOpen}
+          onClose={() => setIsExportModalOpen(false)}
+          category={activeCategory as AvatarComponentSlot}
+          customAssets={customAssets}
         />
       )}
 
