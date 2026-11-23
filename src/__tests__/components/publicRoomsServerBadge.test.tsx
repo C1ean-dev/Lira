@@ -9,7 +9,7 @@ const broker = vi.hoisted(() => ({
   servers: [
     { name: 'EMQX', host: 'broker.emqx.io', status: 'connected' },
     { name: 'HiveMQ', host: 'broker.hivemq.com', status: 'disconnected' },
-    { name: 'Render', host: 'p01--lira--tj9yvq5j5cgs.code.run', status: 'disconnected' },
+    { name: 'Lira', host: 'p01--lira--tj9yvq5j5cgs.code.run', status: 'disconnected' },
   ],
   isResolving: false,
   feedback: null,
@@ -50,16 +50,16 @@ describe('public rooms server badge', () => {
     expect(html).toContain(`aria-label="HiveMQ: ${hiveText}"`)
     expect(html).toContain('title="broker.emqx.io"')
     expect(html).toContain('title="broker.hivemq.com"')
-    expect(html).toContain('aria-label="Render: Não conectado"')
+    expect(html).toContain('aria-label="Lira: Não conectado"')
     expect(html).toContain('aria-label="Servidores de salas"')
   })
 
-  it('shows Render connected independently of the two MQTT servers', () => {
+  it('shows Lira connected independently of the two MQTT servers', () => {
     broker.servers[0].status = 'disconnected'
     broker.servers[1].status = 'disconnected'
     broker.servers[2].status = 'connected'
     const html = renderTab()
-    expect(html).toContain('aria-label="Render: Conectado"')
+    expect(html).toContain('aria-label="Lira: Conectado"')
     expect(html).toContain('title="p01--lira--tj9yvq5j5cgs.code.run"')
     expect(html).toContain('aria-label="EMQX: Não conectado"')
     expect(html).toContain('aria-label="HiveMQ: Não conectado"')

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TextureAtlas imagePath="c87a1679eab4a178ce0f1523df574602b96b47a7ad3db199609c60dd9565fddd.png">
+  <SubTexture name="floor_custom_floor_1793985473068_down_0" x="0" y="0" width="32" height="32"/>
+  <SubTexture name="floor_custom_floor_1793985473068_up_0" x="0" y="0" width="32" height="32"/>
+  <SubTexture name="floor_custom_floor_1793985473068_left_0" x="0" y="0" width="32" height="32"/>
+  <SubTexture name="floor_custom_floor_1793985473068_right_0" x="0" y="0" width="32" height="32"/>
+</TextureAtlas>

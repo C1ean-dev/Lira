@@ -30,7 +30,7 @@ export interface BrokerServerStatus {
 const ROOM_BROKERS = [
   { name: 'EMQX', host: 'broker.emqx.io', url: 'wss://broker.emqx.io:8084/mqtt', protocol: 'mqtt' },
   { name: 'HiveMQ', host: 'broker.hivemq.com', url: 'wss://broker.hivemq.com:8884/mqtt', protocol: 'mqtt' },
-  { name: 'Render', host: 'p01--lira--tj9yvq5j5cgs.code.run', url: 'wss://p01--lira--tj9yvq5j5cgs.code.run/rooms', protocol: 'json' },
+  { name: 'Lira', host: 'p01--lira--tj9yvq5j5cgs.code.run', url: 'wss://p01--lira--tj9yvq5j5cgs.code.run/rooms', protocol: 'json' },
 ] as const
 
 interface BrokerRelay {

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TextureAtlas imagePath="e44d6248444f47830c266355735d4cfd1e87f979026ea155064b4b4e24236238.png">
+  <SubTexture name="other_avatar_other_sliced_1792631781412_d70p_down_0" x="0" y="0" width="260" height="260"/>
+  <SubTexture name="other_avatar_other_sliced_1792631781412_d70p_up_0" x="0" y="0" width="260" height="260"/>
+  <SubTexture name="other_avatar_other_sliced_1792631781412_d70p_left_0" x="0" y="0" width="260" height="260"/>
+  <SubTexture name="other_avatar_other_sliced_1792631781412_d70p_right_0" x="0" y="0" width="260" height="260"/>
+</TextureAtlas>

@@ -27,7 +27,7 @@ import { PaletteFooterActions } from './palette/PaletteFooterActions'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { AvatarSpritesheetSlicerModal } from '../components/avatar-customizer/AvatarSpritesheetSlicerModal'
 import { AtlasImportModal } from '../components/avatar-customizer/AtlasImportModal'
-import { exportCategoryAtlas } from '../engine/avatar/avatarAtlasExporter'
+import { AtlasExportModal } from '../components/avatar-customizer/AtlasExportModal'
 
 export const AssetPalette: React.FC = () => {
   const {
@@ -78,6 +78,14 @@ export const AssetPalette: React.FC = () => {
   const [isDirectSlicerOpen, setIsDirectSlicerOpen] = useState(false)
 
   const [atlasImportModal, setAtlasImportModal] = useState<{
+    isOpen: boolean
+    category: 'furniture' | 'floor' | 'wall'
+  }>({
+    isOpen: false,
+    category: 'furniture',
+  })
+
+  const [atlasExportModal, setAtlasExportModal] = useState<{
     isOpen: boolean
     category: 'furniture' | 'floor' | 'wall'
   }>({
@@ -217,8 +225,11 @@ export const AssetPalette: React.FC = () => {
     })
   }
 
-  const handleExportAtlas = async (cat: 'furniture' | 'floor' | 'wall') => {
-    await exportCategoryAtlas(cat, customAssets)
+  const handleExportAtlas = (cat: 'furniture' | 'floor' | 'wall') => {
+    setAtlasExportModal({
+      isOpen: true,
+      category: cat,
+    })
   }
 
   const handleSlicerSaveComplete = (createdAssets: CustomAsset[]) => {
@@ -475,6 +486,16 @@ export const AssetPalette: React.FC = () => {
           onImportSuccess={() => {
             syncAllAssetsToDisk()
           }}
+        />
+      )}
+
+      {atlasExportModal.isOpen && (
+        <AtlasExportModal
+          isOpen={atlasExportModal.isOpen}
+          onClose={() => setAtlasExportModal((prev) => ({ ...prev, isOpen: false }))}
+          category={atlasExportModal.category}
+          customAssets={customAssets}
+          initialSubCategory={atlasExportModal.category === 'furniture' ? effectiveCategory : undefined}
         />
       )}
     </>

@@ -71,7 +71,7 @@ export const FloorsTab: React.FC<Props> = ({
           type="button"
           onClick={onExportAtlas}
           className="flex items-center justify-center gap-1 py-1.5 px-1 rounded-[6px] bg-lira-surface hover:border-lira-accent text-lira-muted hover:text-lira-ink text-[10px] font-mono font-bold border border-lira-rule transition-colors"
-          title="Exportar pisos como Atlas ZIP"
+          title="Selecionar e exportar pisos como Atlas (.png e .xml)"
         >
           <Download className="w-3 h-3 text-lira-muted" />
           <span>Exportar</span>

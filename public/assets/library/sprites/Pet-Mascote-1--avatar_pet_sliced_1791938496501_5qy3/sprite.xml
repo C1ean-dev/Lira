@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TextureAtlas imagePath="8e863450d50f0e5b92959601df0ca0d5b32b5d83a63f9db4ddc2fc5da6cf5af3.png">
+  <SubTexture name="pet_avatar_pet_sliced_1791938496501_5qy3_down_0" x="0" y="0" width="30" height="30"/>
+  <SubTexture name="pet_avatar_pet_sliced_1791938496501_5qy3_down_1" x="0" y="0" width="28" height="28"/>
+</TextureAtlas>
