@@ -43,6 +43,7 @@ import { PlayerAvatar } from './common/PlayerAvatar'
 import { MessageStatusIcon } from './chat/MessageStatusIcon'
 import { ChatUserContextMenu } from './chat/ChatUserContextMenu'
 import { ChatPeopleList } from './chat/ChatPeopleList'
+import { DmHeaderStatus } from './chat/DmHeaderStatus'
 import { requestPetFromChat } from '../services/petNetwork'
 import { prepareTtsCommand } from '../services/callTtsCore'
 import { sendCallTts } from '../services/callTts'
@@ -61,7 +62,7 @@ import { RoomInviteCard } from './chat/RoomInviteCard'
 import { ConfirmModal } from './ConfirmModal'
 import { getPlayerUserId, findFriendKey, isSameParticipant } from '../utils/userId'
 import { getChatUserFriendState } from '../utils/chatUserActions'
-import { buildChatPeople, openChatPerson, ChatPerson } from '../utils/chatPeople'
+import { buildChatPeople, findActiveChatPerson, openChatPerson, ChatPerson } from '../utils/chatPeople'
 import { ChatPersonAction, getChatPersonMenu } from '../utils/chatPersonMenu'
 import { ChannelAction, getChannelMenu } from '../utils/roomChannels'
 import { getRoomInviteState, readRoomInvite } from '../utils/roomInvite'
@@ -401,6 +402,7 @@ const ChatDrawerInner: React.FC = () => {
     dmChannelIdFor: getLocalDmChannelId,
     getFriendPresence: (friend) => FriendsPresenceService.getInstance().getFriendStatus(friend),
   })
+  const activeDmPerson = findActiveChatPerson(people, activeChannel)
 
   const canManageChannels = !!roomId && isOwner
 
@@ -938,8 +940,8 @@ const ChatDrawerInner: React.FC = () => {
               : 'flex-1 flex'
           } flex-col bg-lira-panel overflow-hidden`}
         >
-          <div className="px-3 py-2 border-b border-dashed border-lira-rule/60 flex items-center justify-between bg-lira-sidebar shrink-0">
-            <div className="flex items-center gap-1.5 truncate">
+          <div className="px-3 py-2 border-b border-dashed border-lira-rule/60 flex items-center justify-between gap-2 bg-lira-sidebar shrink-0">
+            <div className="flex items-center gap-1.5 min-w-0">
               {isMobile && (
                 <button
                   type="button"
@@ -960,11 +962,13 @@ const ChatDrawerInner: React.FC = () => {
               )}
               <span className="text-xs font-display font-bold text-lira-ink truncate">{activeChannel.name}</span>
             </div>
-            <span className="text-[10px] text-lira-muted truncate max-w-[50%]">
-              {activeChannel.type === 'dm'
-                ? `Conversa privada com ${activeChannel.name}`
-                : activeChannel.description}
-            </span>
+            {activeChannel.type === 'dm' ? (
+              <DmHeaderStatus person={activeDmPerson} fallbackName={activeChannel.name} />
+            ) : (
+              <span className="text-[10px] text-lira-muted truncate max-w-[50%]">
+                {activeChannel.description}
+              </span>
+            )}
           </div>
 
           <div ref={pagination.messagesRef} onScroll={pagination.onScroll} onWheel={pagination.onWheel} onTouchStart={pagination.onTouchStart} onTouchMove={pagination.onTouchMove} className="flex-1 min-h-0 p-3 overflow-y-auto">

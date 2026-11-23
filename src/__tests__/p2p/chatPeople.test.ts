@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from 'vitest'
-import { buildChatPeople, openChatPerson, ChatPerson } from '../../utils/chatPeople'
+import {
+  buildChatPeople,
+  findActiveChatPerson,
+  getChatPersonStatusDisplay,
+  openChatPerson,
+  ChatPerson,
+} from '../../utils/chatPeople'
 import { Channel } from '../../types/chat'
 import { FriendProfile } from '../../types/game'
 
@@ -503,5 +509,90 @@ describe('openChatPerson', () => {
     openChatPerson(row({ kind: 'user', id: BOB, name: 'Bob' }), actions)
     expect(actions.openDirectMessage).toHaveBeenCalledWith({ id: BOB, name: 'Bob' })
     expect(actions.setActiveChannel).not.toHaveBeenCalled()
+  })
+})
+
+describe('status details and active DM person helpers', () => {
+  it('carries real status, statusText and statusEmoji for in-space players and online friends', () => {
+    const busyBob = { ...bob, status: 'busy', statusText: 'Em reunião', statusEmoji: '🎧' }
+    const people = build({
+      remotePlayers: [busyBob],
+      friends: [BOB, CAROL, DAN],
+      friendProfiles: {
+        [BOB]: profile(BOB, 'Bob'),
+        [CAROL]: profile(CAROL, 'Carol'),
+        [DAN]: profile(DAN, 'Dan'),
+      },
+      getFriendPresence: (friend) =>
+        friend.id === CAROL
+          ? { isOnline: true, status: 'focusing', statusText: 'Estudando', statusEmoji: '📚' }
+          : { isOnline: false, status: 'away', statusText: 'Ausente' },
+    })
+
+    expect(people.friends[0]).toMatchObject({
+      name: 'Bob',
+      isOnline: true,
+      status: 'busy',
+      statusText: 'Em reunião',
+      statusEmoji: '🎧',
+    })
+    expect(people.friends[1]).toMatchObject({
+      name: 'Carol',
+      isOnline: true,
+      status: 'focusing',
+      statusText: 'Estudando',
+      statusEmoji: '📚',
+    })
+    expect(people.friends[2]).toMatchObject({
+      name: 'Dan',
+      isOnline: false,
+      status: 'offline',
+    })
+    expect(people.friends[2].statusText).toBeUndefined()
+  })
+
+  it('finds the active DM person from friends, space or conversations', () => {
+    const dmCarol = dm(dmChannelIdFor(CAROL), 'Carol', CAROL)
+    const people = build({
+      friends: [CAROL],
+      friendProfiles: { [CAROL]: profile(CAROL, 'Carol') },
+      channels: [dmCarol],
+      activeChannelId: dmCarol.id,
+      getFriendPresence: () => ({ isOnline: true, status: 'focusing' }),
+    })
+
+    expect(findActiveChatPerson(people, dmCarol)?.name).toBe('Carol')
+    expect(findActiveChatPerson(people, { id: 'general', name: 'general', type: 'general', unreadCount: 0 })).toBeNull()
+  })
+
+  it('formats online status display and ignores stale Disponível fallback for non-available statuses', () => {
+    const busyDefault = getChatPersonStatusDisplay({
+      name: 'Ann',
+      isOnline: true,
+      inSpace: false,
+      status: 'busy',
+      statusText: 'Disponível',
+    })
+    expect(busyDefault).toMatchObject({ isOnline: true, statusKey: 'busy', statusLabel: 'Ocupado' })
+
+    const custom = getChatPersonStatusDisplay({
+      name: 'Ann',
+      isOnline: true,
+      inSpace: true,
+      status: 'away',
+      statusText: 'Ausente (AFK)',
+      statusEmoji: '💤',
+    })
+    expect(custom).toMatchObject({ isOnline: true, statusKey: 'away', statusLabel: '💤 Ausente (AFK)' })
+    expect(custom.tooltip).toContain('Ann está online')
+
+    const offline = getChatPersonStatusDisplay(
+      { name: 'Ann', isOnline: false, inSpace: false, status: 'offline' },
+      'Ann'
+    )
+    expect(offline).toMatchObject({ isOnline: false, statusKey: 'offline', statusLabel: 'Offline' })
+
+    const missing = getChatPersonStatusDisplay(null, 'Ann')
+    expect(missing).toMatchObject({ isOnline: false, statusKey: 'offline', statusLabel: 'Offline' })
   })
 })
