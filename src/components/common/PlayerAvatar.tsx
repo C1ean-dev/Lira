@@ -32,8 +32,8 @@ export interface PlayerAvatarProps {
 }
 
 const SIZE_MAP = {
-  xs: { container: 'w-5 h-5 rounded-[6px] text-[10px]', dot: 'w-1.5 h-1.5' },
-  sm: { container: 'w-7 h-7 rounded-[6px] text-xs', dot: 'w-2 h-2' },
+  xs: { container: 'w-5 h-5 rounded-[6px] text-[10px]', dot: 'w-2 h-2' },
+  sm: { container: 'w-7 h-7 rounded-[6px] text-xs', dot: 'w-2.5 h-2.5' },
   md: { container: 'w-9 h-9 rounded-[6px] text-sm', dot: 'w-2.5 h-2.5' },
   lg: { container: 'w-12 h-12 rounded-[8px] text-base', dot: 'w-3 h-3' },
   xl: { container: 'w-16 h-16 rounded-[8px] text-xl', dot: 'w-3.5 h-3.5' },
@@ -117,17 +117,17 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
     return (
       <div
         onClick={onClick}
-        className={`relative shrink-0 flex items-center justify-center overflow-hidden border border-lira-online/50 bg-lira-ground select-none ${
+        className={`relative shrink-0 flex items-center justify-center border border-lira-online/50 bg-lira-ground select-none ${
           customSizeClass || sizeClasses.container
         } ${className}`}
         title="DJ"
       >
-        <div className="w-full h-full flex items-center justify-center bg-lira-surface">
+        <div className="w-full h-full overflow-hidden rounded-[inherit] flex items-center justify-center bg-lira-surface">
           <SpotifyIcon size={iconSize} className="text-lira-online" />
         </div>
         {showStatus && (
           <div
-            className={`absolute -bottom-0.5 -right-0.5 rounded-full ring-2 ring-lira-ground overflow-hidden flex items-center justify-center bg-lira-online ${sizeClasses.dot}`}
+            className={`absolute -bottom-0.5 -right-0.5 z-10 rounded-full ring-2 ring-lira-ground overflow-hidden flex items-center justify-center bg-lira-online ${sizeClasses.dot}`}
             title="DJ Ativo"
           >
             <span className="w-1.5 h-1.5 rounded-full bg-lira-ground animate-pulse" />
@@ -140,35 +140,37 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
   return (
     <div
       onClick={onClick}
-      className={`relative shrink-0 flex items-center justify-center overflow-hidden border border-lira-rule/50 select-none ${
+      className={`relative shrink-0 flex items-center justify-center border border-lira-rule/50 select-none ${
         customSizeClass || sizeClasses.container
       } ${className}`}
       style={{ backgroundColor: hasCustomPic ? '#100c18' : `${bgColor}25` }}
     >
-      {!imgError && avatarSrc ? (
-        <img
-          src={avatarSrc}
-          alt={alt || effectiveName}
-          onError={() => setImgError(true)}
-          className={`w-full h-full ${
-            hasCustomPic
-              ? 'object-cover'
-              : `object-contain pixelated ${characterPadding} transition-transform duration-150`
-          }`}
-          loading="lazy"
-        />
-      ) : (
-        <div
-          className="w-full h-full flex items-center justify-center font-mono font-bold text-[#100c18] uppercase"
-          style={{ backgroundColor: bgColor }}
-        >
-          {effectiveName.charAt(0)}
-        </div>
-      )}
+      <div className="w-full h-full overflow-hidden rounded-[inherit] flex items-center justify-center">
+        {!imgError && avatarSrc ? (
+          <img
+            src={avatarSrc}
+            alt={alt || effectiveName}
+            onError={() => setImgError(true)}
+            className={`w-full h-full ${
+              hasCustomPic
+                ? 'object-cover'
+                : `object-contain pixelated ${characterPadding} transition-transform duration-150`
+            }`}
+            loading="lazy"
+          />
+        ) : (
+          <div
+            className="w-full h-full flex items-center justify-center font-mono font-bold text-[#100c18] uppercase"
+            style={{ backgroundColor: bgColor }}
+          >
+            {effectiveName.charAt(0)}
+          </div>
+        )}
+      </div>
 
       {showStatus && (
         <div
-          className={`absolute -bottom-0.5 -right-0.5 rounded-full ring-2 ring-lira-ground overflow-hidden flex items-center justify-center bg-lira-ground ${sizeClasses.dot}`}
+          className={`absolute -bottom-0.5 -right-0.5 z-10 rounded-full ring-2 ring-lira-ground overflow-hidden flex items-center justify-center bg-lira-ground ${sizeClasses.dot}`}
           title={`Status: ${statusMeta.label}${
             (statusMeta as any).moonPhase ? ` (${(statusMeta as any).moonPhase})` : ''
           }`}
@@ -190,7 +192,7 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
               window.open(`https://open.spotify.com/search/${encodeURIComponent(query)}`, '_blank')
             }
           }}
-          className={`absolute -top-0.5 -right-0.5 rounded-full ring-2 ring-lira-ground overflow-hidden flex items-center justify-center bg-lira-online text-lira-ground cursor-pointer hover:scale-125 transition-transform ${sizeClasses.dot}`}
+          className={`absolute -top-0.5 -right-0.5 z-10 rounded-full ring-2 ring-lira-ground overflow-hidden flex items-center justify-center bg-lira-online text-lira-ground cursor-pointer hover:scale-125 transition-transform ${sizeClasses.dot}`}
           title={`Ouvindo no Spotify: ${player.spotifyActivity.track}${
             player.spotifyActivity.artist ? ` - ${player.spotifyActivity.artist}` : ''
           } (Clique para abrir)`}

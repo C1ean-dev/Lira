@@ -1,5 +1,5 @@
 import { Channel } from '../types/chat'
-import { AvatarConfig, FriendProfile } from '../types/game'
+import { AvatarConfig, FriendProfile, PresenceStatus, STATUS_META } from '../types/game'
 import { findFriendKey, getFriendUserId, getPlayerUserId, isUserId } from './userId'
 
 interface RoomPlayer {
@@ -8,6 +8,9 @@ interface RoomPlayer {
   name: string
   profilePicture?: string
   avatar?: AvatarConfig
+  status?: PresenceStatus | string
+  statusText?: string
+  statusEmoji?: string
 }
 
 export type ChatPersonOpen =
@@ -22,6 +25,8 @@ export interface ChatPerson {
   inSpace: boolean
   isOnline: boolean
   status: string
+  statusText?: string
+  statusEmoji?: string
   unreadCount: number
   isCurrent: boolean
   open: ChatPersonOpen
@@ -41,6 +46,8 @@ export interface ChatPeople {
 interface FriendPresence {
   isOnline: boolean
   status?: string
+  statusText?: string
+  statusEmoji?: string
   inRoom?: boolean
   roomCode?: string | null
   roomName?: string | null
@@ -88,7 +95,9 @@ export function buildChatPeople(input: ChatPeopleInput): ChatPeople {
       avatarSource: player,
       inSpace: true,
       isOnline: true,
-      status: 'available',
+      status: player.status || 'available',
+      ...(player.statusText ? { statusText: player.statusText } : {}),
+      ...(player.statusEmoji ? { statusEmoji: player.statusEmoji } : {}),
       unreadCount: channel?.unreadCount || 0,
       isCurrent: activeChannelId === ownChannelId || (!!channel && activeChannelId === channel.id),
       open: { kind: 'user', id: userId, name: player.name },
@@ -130,6 +139,8 @@ export function buildChatPeople(input: ChatPeopleInput): ChatPeople {
       inSpace: false,
       isOnline: presence.isOnline,
       status: presence.isOnline ? presence.status || 'available' : 'offline',
+      ...(presence.isOnline && presence.statusText ? { statusText: presence.statusText } : {}),
+      ...(presence.isOnline && presence.statusEmoji ? { statusEmoji: presence.statusEmoji } : {}),
       unreadCount: channel?.unreadCount || 0,
       isCurrent: activeChannelId === (channel ? channel.id : ownChannelId),
       open: channel
@@ -180,5 +191,99 @@ export function openChatPerson(
     actions.setActiveChannel(person.open.channelId)
   } else {
     actions.openDirectMessage({ id: person.open.id, name: person.open.name })
+  }
+}
+
+export function findActiveChatPerson(people: ChatPeople, activeChannel?: Channel | null): ChatPerson | null {
+  if (!activeChannel || activeChannel.type !== 'dm') return null
+  const all = [...people.friends, ...people.inSpace, ...people.conversations]
+  return (
+    all.find((p) => p.isCurrent) ||
+    all.find((p) => p.channelId === activeChannel.id) ||
+    (activeChannel.recipientId ? all.find((p) => p.contactId === activeChannel.recipientId) : undefined) ||
+    null
+  )
+}
+
+export interface ChatPersonStatusDisplay {
+  isOnline: boolean
+  statusKey: PresenceStatus | 'offline'
+  statusLabel: string
+  dotClass: string
+  textClass: string
+  pillClass: string
+  tooltip: string
+}
+
+const ONLINE_STATUS_STYLE: Record<
+  PresenceStatus,
+  { dotClass: string; textClass: string; pillClass: string }
+> = {
+  available: {
+    dotClass: 'bg-lira-online shadow-[0_0_6px_rgb(var(--online-rgb)/0.85)]',
+    textClass: 'text-lira-online',
+    pillClass: 'bg-lira-online/15 border-lira-online/40',
+  },
+  focusing: {
+    dotClass: 'bg-lira-accent shadow-[0_0_6px_rgb(var(--accent-rgb)/0.85)]',
+    textClass: 'text-lira-accent',
+    pillClass: 'bg-lira-accent/15 border-lira-accent/40',
+  },
+  away: {
+    dotClass: 'bg-lira-amber shadow-[0_0_6px_rgb(var(--amber-rgb)/0.85)]',
+    textClass: 'text-lira-amber',
+    pillClass: 'bg-lira-amber/15 border-lira-amber/40',
+  },
+  busy: {
+    dotClass: 'bg-lira-error shadow-[0_0_6px_rgb(var(--error-rgb)/0.85)]',
+    textClass: 'text-lira-error',
+    pillClass: 'bg-lira-error/15 border-lira-error/40',
+  },
+}
+
+export function getChatPersonStatusDisplay(
+  person?: Pick<ChatPerson, 'name' | 'isOnline' | 'inSpace' | 'status' | 'statusText' | 'statusEmoji' | 'room'> | null,
+  fallbackName?: string
+): ChatPersonStatusDisplay {
+  const name = person?.name || fallbackName || ''
+  if (!person || !person.isOnline) {
+    return {
+      isOnline: false,
+      statusKey: 'offline',
+      statusLabel: 'Offline',
+      dotClass: 'border border-lira-muted/70 bg-lira-ground',
+      textClass: 'text-lira-muted',
+      pillClass: 'bg-lira-ground border-lira-quiet',
+      tooltip: name ? `${name} está offline` : 'Offline',
+    }
+  }
+
+  const statusKey: PresenceStatus =
+    person.status && person.status in STATUS_META ? (person.status as PresenceStatus) : 'available'
+  const meta = STATUS_META[statusKey]
+  const rawText = person.statusText?.trim() || ''
+  const isStaleDefault =
+    !rawText ||
+    rawText.toLowerCase() === 'offline' ||
+    (statusKey !== 'available' && rawText === STATUS_META.available.label)
+  const baseLabel = isStaleDefault ? meta.label : rawText
+  const emoji = person.statusEmoji?.trim()
+  const statusLabel = emoji && !baseLabel.startsWith(emoji) ? `${emoji} ${baseLabel}` : baseLabel
+
+  const locationSuffix = person.inSpace
+    ? ' — Neste espaço'
+    : person.room?.name
+      ? ` — Em: ${person.room.name}`
+      : ''
+  const tooltip = name
+    ? `${name} está online • ${statusLabel}${locationSuffix}`
+    : `Online • ${statusLabel}${locationSuffix}`
+
+  return {
+    isOnline: true,
+    statusKey,
+    statusLabel,
+    ...ONLINE_STATUS_STYLE[statusKey],
+    tooltip,
   }
 }
