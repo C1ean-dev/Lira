@@ -161,6 +161,54 @@ describe('remote call audio', () => {
       }
     })
 
+    it('keeps a muted raw audio sink attached to the remote stream so Chromium pumps WebRTC audio into Web Audio', () => {
+      const gain = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() }
+      const source = { connect: vi.fn(), disconnect: vi.fn() }
+      const destination = { stream: new FakeMediaStream([track('audio', 'amplified')]), disconnect: vi.fn() }
+      const context = {
+        createMediaStreamSource: vi.fn(() => source),
+        createGain: vi.fn(() => gain),
+        createMediaStreamDestination: vi.fn(() => destination),
+        state: 'running', resume: vi.fn(async () => {}), close: vi.fn(async () => {}),
+      }
+      const rawSink = {
+        muted: false,
+        paused: true,
+        srcObject: null as unknown,
+        play: vi.fn(() => { rawSink.paused = false; return Promise.resolve() }),
+        pause: vi.fn(() => { rawSink.paused = true }),
+      }
+      vi.stubGlobal('AudioContext', class { constructor() { return context } })
+      vi.stubGlobal('document', { createElement: vi.fn(() => rawSink) })
+      try {
+        const { stream, mic } = peerStream()
+        const el = fakeElement()
+        const cleanup = attachRemoteAudio(el, stream, { tile: 'dj-audio', peer: 'dj-room', muted: false })
+        expect(rawSink.muted).toBe(true)
+        expect(rawSink.srcObject).toBe(audioOnlyStream(stream))
+        expect(rawSink.play).toHaveBeenCalledTimes(1)
+        expect(el.srcObject).toBe(destination.stream)
+
+        rawSink.paused = true
+        const unmute = mic.addEventListener.mock.calls.find((c: any[]) => c[0] === 'unmute')
+        expect(unmute).toBeDefined()
+        ;(unmute as unknown as [string, () => void])[1]()
+        expect(rawSink.play).toHaveBeenCalledTimes(2)
+
+        rawSink.paused = true
+        applyAudioOutput(el, { muted: false, volume: 1 })
+        expect(rawSink.play).toHaveBeenCalledTimes(3)
+        expect(rawSink.muted).toBe(true)
+
+        cleanup()
+        expect(rawSink.pause).toHaveBeenCalledOnce()
+        expect(rawSink.srcObject).toBeNull()
+        expect(mic.removeEventListener).toHaveBeenCalledWith('unmute', expect.any(Function))
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    })
+
     it('keeps ordinary playback when audio processing is unavailable', () => {
       const close = vi.fn(async () => {})
       vi.stubGlobal('AudioContext', class {
