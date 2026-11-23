@@ -432,9 +432,16 @@ describe('SuperPeerVoiceRelay - Regras 1, 2 e 3 (UDP Sem Head-of-Line, Coordena√
       },
     })
 
-    expect(relay.isAvailable('dj-room-host-abc')).toBe(false)
-    expect(relay.isAvailable('custom-bot')).toBe(false)
-    expect(relay.isAvailable('peer-a')).toBe(true)
+    const anyRelay = relay as any
+    const prevTransportEnabled = anyRelay.mediaTransportEnabled
+    anyRelay.mediaTransportEnabled = true
+    try {
+      expect(relay.isAvailable('dj-room-host-abc')).toBe(false)
+      expect(relay.isAvailable('custom-bot')).toBe(false)
+      expect(relay.isAvailable('peer-a')).toBe(true)
+    } finally {
+      anyRelay.mediaTransportEnabled = prevTransportEnabled
+    }
   })
 
   function peerMgrNotHost() {
