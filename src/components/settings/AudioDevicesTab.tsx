@@ -232,7 +232,6 @@ export const AudioDevicesTab: React.FC<Props> = ({
 
   return (
     <div className="space-y-6 font-mono">
-      <ParsecEchoSettings />
       <div className="bg-lira-ground rounded-[12px] p-4 border border-dashed border-lira-rule/60 space-y-3.5">
         <div className="flex items-center justify-between">
           <label className="flex items-center gap-2 text-xs font-bold text-lira-ink">
@@ -697,6 +696,8 @@ export const AudioDevicesTab: React.FC<Props> = ({
           </div>
         )}
       </div>
+
+      <ParsecEchoSettings />
     </div>
   )
 }

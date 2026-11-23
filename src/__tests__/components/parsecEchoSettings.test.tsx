@@ -5,26 +5,30 @@ import { ParsecEchoSettings, applyParsecEchoProtection } from '../../components/
 import { AudioDevicesTab } from '../../components/settings/AudioDevicesTab'
 
 afterEach(() => vi.unstubAllGlobals())
-const desktop = (configure = vi.fn(async () => ({ ok: true, restartRequired: true }))) => {
+const desktop = (configure = vi.fn(async () => ({ ok: true, restartRequired: false, restarted: false }))) => {
   vi.stubGlobal('window', { electronAPI: { platform: 'win32', configureParsecEcho: configure } })
   return configure
 }
 
 describe('Parsec echo protection in audio settings', () => {
-  it('offers an explicit action on the host and explains the change and restart', () => {
-    const configure = desktop()
+  it('renders a compact informative status card with a discrete reapply button', () => {
+    desktop()
     const html = renderToStaticMarkup(<ParsecEchoSettings />)
     expect(html).toContain('Evitar eco no Parsec')
-    expect(html).toContain('computador que está hospedando o jogo')
-    expect(html).toContain('substitui o aplicativo excluído anteriormente')
-    expect(html).toContain('Reinicie o Parsec')
-    expect(configure).not.toHaveBeenCalled()
+    expect(html).toContain('Proteção ativa')
+    expect(html).toContain('Exclui automaticamente o áudio do Lira')
+    expect(html).toContain('Reaplicar')
   })
 
-  it('is reachable next to the audio device controls', () => {
+  it('is rendered below the sound effects section in audio device controls', () => {
     desktop()
-    expect(renderToStaticMarkup(<AudioDevicesTab inputDevices={[]} outputDevices={[]} videoDevices={[]}
-      isPlayingTestSound={false} onPlayTestSound={() => {}} />)).toContain('Evitar eco no Parsec')
+    const html = renderToStaticMarkup(
+      <AudioDevicesTab inputDevices={[]} outputDevices={[]} videoDevices={[]} isPlayingTestSound={false} onPlayTestSound={() => {}} />
+    )
+    const soundEffectsIndex = html.indexOf('Efeitos Sonoros')
+    const parsecIndex = html.indexOf('Evitar eco no Parsec')
+    expect(soundEffectsIndex).toBeGreaterThan(-1)
+    expect(parsecIndex).toBeGreaterThan(soundEffectsIndex)
   })
 
   it('hides the integration outside the Windows desktop app', () => {
@@ -34,11 +38,35 @@ describe('Parsec echo protection in audio settings', () => {
     expect(renderToStaticMarkup(<ParsecEchoSettings />)).toBe('')
   })
 
-  it('applies only on request and reports that a restart is still required', async () => {
-    const configure = desktop()
-    expect(await applyParsecEchoProtection()).toMatchObject({ ok: true, message: expect.stringContaining('Reinicie o Parsec') })
+  it('reports automatic active protection when no manual restart is needed', async () => {
+    const configure = desktop(vi.fn(async () => ({ ok: true, restartRequired: false, restarted: false })))
+    expect(await applyParsecEchoProtection()).toMatchObject({
+      ok: true,
+      restartRequired: false,
+      restarted: false,
+      message: expect.stringContaining('Proteção ativa no Parsec'),
+    })
     expect(configure).toHaveBeenCalledOnce()
-    expect(configure).toHaveBeenCalledWith()
+  })
+
+  it('reports when Parsec was automatically restarted to apply the configuration', async () => {
+    desktop(vi.fn(async () => ({ ok: true, restartRequired: false, restarted: true })))
+    expect(await applyParsecEchoProtection()).toMatchObject({
+      ok: true,
+      restartRequired: false,
+      restarted: true,
+      message: expect.stringContaining('reiniciado automaticamente'),
+    })
+  })
+
+  it('reports that a manual restart is still required if automatic restart could not complete', async () => {
+    desktop(vi.fn(async () => ({ ok: true, restartRequired: true, restarted: false })))
+    expect(await applyParsecEchoProtection()).toMatchObject({
+      ok: true,
+      restartRequired: true,
+      restarted: false,
+      message: expect.stringContaining('Reinicie o Parsec'),
+    })
   })
 
   it('shows configuration errors without claiming protection is active', async () => {
