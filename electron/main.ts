@@ -54,7 +54,7 @@ import { checkCachedUpdate } from '../src/services/updateCheck'
 import { downloadUpdateFile, updateDownloadErrorMessage } from './updateFileDownload'
 import { runtimeAssetPath } from './assetPaths'
 import { getLanAddresses, startLocalSignalingServer } from './lanSignaling'
-import { configureParsecEcho } from './parsecEcho'
+import { configureParsecEcho, restartParsecProcess } from './parsecEcho'
 import { createParsecEchoHandler } from './parsecEchoIpc'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -1271,7 +1271,7 @@ ipcMain.handle('download-and-install-update', async (_event, downloadUrl: string
   return false
 })
 
-ipcMain.handle('configure-parsec-echo', createParsecEchoHandler(
+const parsecEchoHandler = createParsecEchoHandler(
   () => mainWindow?.webContents ?? null,
   () => configureParsecEcho({
     platform: process.platform,
@@ -1280,8 +1280,10 @@ ipcMain.handle('configure-parsec-echo', createParsecEchoHandler(
     executablePath: process.execPath,
     appData: app.getPath('appData'),
     programData: process.env.ProgramData,
+    restartParsec: restartParsecProcess,
   }),
-))
+)
+ipcMain.handle('configure-parsec-echo', parsecEchoHandler)
 
 ipcMain.handle('open-external', async (event, url: string) => {
   if (url) {
@@ -2152,6 +2154,11 @@ app.whenReady().then(async () => {
   initNetworkTriggerAndLanDiscovery()
   initLocalPeerServer()
   startSpotifyPoll()
+  if (process.platform === 'win32' && app.isPackaged) {
+    void parsecEchoHandler.run().catch((err) => {
+      console.warn('[ParsecEcho] Falha ao configurar proteção automática do Parsec:', err)
+    })
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
