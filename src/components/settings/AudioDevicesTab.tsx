@@ -543,10 +543,10 @@ export const AudioDevicesTab: React.FC<Props> = ({
       </div>
 
       <div className="bg-lira-ground rounded-[12px] p-4 border border-dashed border-lira-rule/60 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-0.5 min-w-0">
             <div className="flex items-center gap-2">
-              <Volume2 className="w-4 h-4 text-lira-accent" />
+              <Volume2 className="w-4 h-4 text-lira-accent shrink-0" />
               <span className="font-display text-sm font-bold text-lira-ink">Efeitos Sonoros</span>
             </div>
             <p className="text-[11px] text-lira-muted">
@@ -556,15 +556,17 @@ export const AudioDevicesTab: React.FC<Props> = ({
 
           <button
             type="button"
+            role="switch"
+            aria-checked={soundEffectsEnabled}
             onClick={() => setSoundEffectsEnabled(!soundEffectsEnabled)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full border transition-colors focus:outline-none cursor-pointer ${
+            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-lira-accent cursor-pointer ${
               soundEffectsEnabled ? 'bg-lira-accent border-lira-accent' : 'bg-lira-surface border-lira-rule'
             }`}
             title={soundEffectsEnabled ? 'Desativar efeitos sonoros' : 'Ativar efeitos sonoros'}
           >
             <span
-              className={`inline-block h-4 w-4 transform rounded-full transition-transform ${
-                soundEffectsEnabled ? 'translate-x-6 bg-lira-ground' : 'translate-x-1 bg-lira-ink'
+              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full transition-transform ${
+                soundEffectsEnabled ? 'translate-x-[23px] bg-lira-ground' : 'translate-x-[3px] bg-lira-ink'
               }`}
             />
           </button>
