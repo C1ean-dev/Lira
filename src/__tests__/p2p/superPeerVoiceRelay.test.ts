@@ -421,6 +421,22 @@ describe('SuperPeerVoiceRelay - Regras 1, 2 e 3 (UDP Sem Head-of-Line, CoordenaÃ
     expect(mockChannel.binaryType).toBe('modified')
   })
 
+  it('does NOT treat DJ bots as eligible for Super-Peer voice relay', () => {
+    peerMgrNotHost()
+    const peerMgr = PeerManager.getInstance()
+    vi.spyOn(peerMgr, 'getConnection').mockReturnValue({ open: true, peer: 'peer-host' } as any)
+    useGameStore.setState({
+      remotePlayers: {
+        'custom-bot': { id: 'custom-bot', name: 'DJ', isDjBot: true } as any,
+        'peer-a': { id: 'peer-a', name: 'Alice' } as any,
+      },
+    })
+
+    expect(relay.isAvailable('dj-room-host-abc')).toBe(false)
+    expect(relay.isAvailable('custom-bot')).toBe(false)
+    expect(relay.isAvailable('peer-a')).toBe(true)
+  })
+
   function peerMgrNotHost() {
     const peerMgr = PeerManager.getInstance()
     peerMgr.isHost = false

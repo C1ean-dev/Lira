@@ -3,13 +3,14 @@ import { enqueueSpotifyTrackInPage } from '../../../electron/spotifyQueue'
 
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 const id = '4uLU6hMCjMI75M1A2tKUQC'
-function page({ confirmed = true, existingToast = false, toastText = 'Adicionada à fila', previousToastText = 'Added to queue', disabled = false, visible = false, focused = undefined as boolean | undefined, foregroundAfterMenu = false } = {}) {
+function page({ confirmed = true, existingToast = false, toastText = 'Adicionada à fila', previousToastText = 'Added to queue', disabled = false, visible = false, focused = undefined as boolean | undefined, foregroundAfterMenu = false, menuItems = undefined as any[] | undefined } = {}) {
   let open = false
   let added = false
   const oldToast = { textContent: previousToastText }
   const newToast = { textContent: toastText }
   const menuItem = { textContent: 'Adicionar à fila', disabled, getAttribute: () => null, click: vi.fn(() => { added = true }) }
-  const menu = { querySelectorAll: () => [menuItem], getAttribute: () => null }
+  const items = menuItems ? menuItems.map(item => ({ ...item, click: vi.fn(() => { item.click?.(); added = true }) })) : [menuItem]
+  const menu = { querySelectorAll: () => items, getAttribute: () => null }
   const more = { disabled: false, getAttribute: () => null, click: vi.fn(() => { open = true; if (foregroundAfterMenu) visible = true }) }
   const row = { querySelector: () => more }
   const anchor = { getAttribute: () => `/track/${id}`, closest: () => row }
@@ -19,9 +20,48 @@ function page({ confirmed = true, existingToast = false, toastText = 'Adicionada
     if (selector === '[role="menu"]') return open ? [menu] : []
     return [...(existingToast ? [oldToast] : []), ...(added && confirmed ? [newToast] : [])]
   } })
-  return { menuItem, more }
+  return { menuItem, items, more }
 }
 describe('Spotify queue robot in the page', () => {
+  it('ignores aria-hidden keyboard shortcut hints inside Spotify menu items', async () => {
+    const textNode = (text: string) => ({ nodeType: 3, textContent: text })
+    const el = (tagName: string, children: any[], attrs: Record<string, string> = {}) => ({
+      nodeType: 1,
+      tagName,
+      childNodes: children,
+      textContent: children.map(child => child.textContent).join(''),
+      getAttribute: (name: string) => attrs[name] ?? null,
+    })
+    const playlistItem = el('DIV', [
+      el('DIV', [el('SPAN', [textNode('Adicionar à playlist')])]),
+      el('DIV', [el('DIV', [el('SPAN', [textNode('P')])], { 'aria-hidden': 'true' })]),
+    ], { 'aria-keyshortcuts': 'P' })
+    const queueItem = el('DIV', [
+      el('DIV', [el('SPAN', [textNode('Adicionar à fila')])]),
+      el('DIV', [el('DIV', [el('SPAN', [textNode('Q')])], { 'aria-hidden': 'true' })]),
+    ], { 'aria-keyshortcuts': 'Q' })
+    expect(queueItem.textContent).toBe('Adicionar à filaQ')
+    const { items } = page({ toastText: 'Na fila', menuItems: [playlistItem, queueItem] })
+    expect(await enqueueSpotifyTrackInPage(id)).toEqual({ ok: true })
+    expect(items[0].click).not.toHaveBeenCalled()
+    expect(items[1].click).toHaveBeenCalledOnce()
+  })
+  it('ignores kbd shortcut hints and does not match unrelated queue items', async () => {
+    const textNode = (text: string) => ({ nodeType: 3, textContent: text })
+    const el = (tagName: string, children: any[], attrs: Record<string, string> = {}) => ({
+      nodeType: 1,
+      tagName,
+      childNodes: children,
+      textContent: children.map(child => child.textContent).join(''),
+      getAttribute: (name: string) => attrs[name] ?? null,
+    })
+    const removeItem = el('DIV', [el('SPAN', [textNode('Remover da fila')]), el('KBD', [textNode('Q')])])
+    const addItem = el('DIV', [el('SPAN', [textNode('Add to queue')]), el('KBD', [textNode('Q')])])
+    const { items } = page({ toastText: 'Added to queue', menuItems: [removeItem, addItem] })
+    expect(await enqueueSpotifyTrackInPage(id)).toEqual({ ok: true })
+    expect(items[0].click).not.toHaveBeenCalled()
+    expect(items[1].click).toHaveBeenCalledOnce()
+  })
   it('recognizes the real Portuguese Spotify confirmation: Na fila', async () => {
     vi.useFakeTimers()
     const { menuItem } = page({ toastText: 'Na fila' })

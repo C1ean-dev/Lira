@@ -228,8 +228,15 @@ export class SuperPeerVoiceRelay {
     const roomCode = peerMgr.getRoomCode()
     const hostPeerId = game.connectionHostId || (roomCode ? `lira-${roomCode}-host` : '')
 
-    // Cannot relay if I am the host, or target is the host, or no host ID
-    if (peerMgr.isHost || !hostPeerId || myId === hostPeerId || targetPeerId === hostPeerId) {
+    // Cannot relay if I am the host, or target is the host, or target is a DJ bot, or no host ID
+    if (
+      peerMgr.isHost ||
+      !hostPeerId ||
+      myId === hostPeerId ||
+      targetPeerId === hostPeerId ||
+      targetPeerId.startsWith('dj-') ||
+      Boolean(game.remotePlayers[targetPeerId]?.isDjBot)
+    ) {
       return false
     }
 

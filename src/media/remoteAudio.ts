@@ -2,7 +2,7 @@ import { attachStreamToVideo, AttachCtx } from './attachVideoElement'
 import { almAudioOutput, type AlmAudioOutput } from './almStreams'
 
 const audioViews = new WeakMap<MediaStream, MediaStream>()
-const audioGains = new WeakMap<HTMLMediaElement, { context: AudioContext; gain: GainNode }>()
+const audioGains = new WeakMap<HTMLMediaElement, { context: AudioContext; gain: GainNode; rawSink?: HTMLAudioElement }>()
 const almOutputs = new WeakMap<HTMLMediaElement, AlmAudioOutput>()
 
 export function audioOnlyStream(stream: MediaStream): MediaStream {
@@ -29,6 +29,7 @@ export function attachRemoteAudio(el: HTMLMediaElement, stream: MediaStream, ctx
   let source: MediaStreamAudioSourceNode | undefined
   let gain: GainNode | undefined
   let destination: MediaStreamAudioDestinationNode | undefined
+  let rawSink: HTMLAudioElement | undefined
   let playback = input
   try {
     if (typeof AudioContext !== 'undefined' && input.getAudioTracks().length > 0) {
@@ -45,7 +46,19 @@ export function attachRemoteAudio(el: HTMLMediaElement, stream: MediaStream, ctx
       gain.connect(destination)
       // Keep playback on the media element so setSinkId still selects the output.
       playback = destination.stream
-      audioGains.set(el, { context, gain })
+      if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
+        try {
+          // Chromium does not pump a remote WebRTC MediaStream into Web Audio unless
+          // an HTMLMediaElement is attached to the raw stream (crbug.com/933677).
+          rawSink = document.createElement('audio')
+          rawSink.muted = true
+          rawSink.srcObject = input
+          void Promise.resolve(rawSink.play?.()).catch(() => {})
+        } catch {
+          rawSink = undefined
+        }
+      }
+      audioGains.set(el, { context, gain, rawSink })
     }
   } catch {
     source?.disconnect()
@@ -54,13 +67,36 @@ export function attachRemoteAudio(el: HTMLMediaElement, stream: MediaStream, ctx
     context = undefined
   }
   const detach = attachStreamToVideo(el, playback, ctx)
+  const playRawSink = () => {
+    if (rawSink && rawSink.paused) void Promise.resolve(rawSink.play?.()).catch(() => {})
+  }
+  const inputTracks = rawSink ? input.getAudioTracks() : []
+  inputTracks.forEach((track) => {
+    try {
+      track.addEventListener?.('unmute', playRawSink)
+    } catch {}
+  })
   const resume = () => {
     if (context?.state === 'suspended') void context.resume().catch(() => {})
+    playRawSink()
   }
   el.addEventListener('click', resume)
   return () => {
     detach()
     el.removeEventListener('click', resume)
+    inputTracks.forEach((track) => {
+      try {
+        track.removeEventListener?.('unmute', playRawSink)
+      } catch {}
+    })
+    if (rawSink) {
+      try {
+        rawSink.pause?.()
+      } catch {}
+      try {
+        rawSink.srcObject = null
+      } catch {}
+    }
     if (context) {
       if (audioGains.get(el)?.context === context) audioGains.delete(el)
       source?.disconnect()
@@ -88,6 +124,7 @@ export function applyAudioOutput(el: HTMLMediaElement, out: AudioOutput): void {
       graph.gain.gain.value = volume
       el.volume = 1
       if (volume > 0 && graph.context.state === 'suspended') void graph.context.resume().catch(() => {})
+      if (volume > 0 && graph.rawSink?.paused) void Promise.resolve(graph.rawSink.play?.()).catch(() => {})
     } else {
       el.volume = Math.min(1, volume)
     }
