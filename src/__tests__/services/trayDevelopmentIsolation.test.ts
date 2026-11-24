@@ -12,7 +12,7 @@ describe('development login item isolation', () => {
   it('never reads or changes the installed Windows login item from development', () => {
     const tray = new TrayManager()
     tray.updateSettings({ openAtLogin: true })
-    applyLoginItemSettings({ openAtLogin: false, closeToTray: true, minimizeToTray: false })
+    applyLoginItemSettings({ openAtLogin: false, autoUpdateAtLogin: false, closeToTray: true, minimizeToTray: false })
     expect(electron.app.getLoginItemSettings).not.toHaveBeenCalled()
     expect(electron.app.setLoginItemSettings).not.toHaveBeenCalled()
   })
@@ -20,8 +20,15 @@ describe('development login item isolation', () => {
     electron.app.isPackaged = true
     const tray = new TrayManager()
     expect(tray.getSettings().openAtLogin).toBe(true)
+    expect(tray.getSettings().autoUpdateAtLogin).toBe(true)
     expect(electron.app.setLoginItemSettings).toHaveBeenCalledOnce()
     tray.updateSettings({ openAtLogin: false })
-    expect(electron.app.setLoginItemSettings).toHaveBeenLastCalledWith(expect.objectContaining({ openAtLogin: false, path: process.execPath }))
+    expect(electron.app.setLoginItemSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({ openAtLogin: true, path: process.execPath, args: ['--startup-update'] }),
+    )
+    tray.updateSettings({ autoUpdateAtLogin: false })
+    expect(electron.app.setLoginItemSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({ openAtLogin: false, path: process.execPath, args: [] }),
+    )
   })
 })

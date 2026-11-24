@@ -61,6 +61,27 @@ export const SystemSettingsTab: React.FC = () => {
             <div className="w-11 h-6 bg-lira-surface border border-lira-rule peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-lira-ground after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-lira-ink peer-checked:after:bg-lira-ground after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-lira-accent peer-checked:border-lira-accent"></div>
           </label>
         </div>
+
+        <div className="pt-3 border-t border-dashed border-lira-rule/60 flex items-center justify-between">
+          <div className="pr-4">
+            <div className="text-xs font-semibold text-lira-ink">
+              Atualizar automaticamente ao ligar o PC
+            </div>
+            <div className="text-[11px] text-lira-muted mt-0.5">
+              Verifica e baixa apenas os arquivos alterados em segundo plano ao iniciar o Windows, para você já entrar no Lira atualizado.
+            </div>
+          </div>
+
+          <label className="relative inline-flex items-center cursor-pointer shrink-0">
+            <input
+              type="checkbox"
+              checked={settings.autoUpdateAtLogin}
+              onChange={(e) => updateSettings({ autoUpdateAtLogin: e.target.checked })}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-lira-surface border border-lira-rule peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-lira-ground after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-lira-ink peer-checked:after:bg-lira-ground after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-lira-accent peer-checked:border-lira-accent"></div>
+          </label>
+        </div>
       </div>
 
       <div className="p-5 rounded-[12px] bg-lira-ground border border-dashed border-lira-rule/60 space-y-4">

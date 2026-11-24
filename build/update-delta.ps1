@@ -20,8 +20,8 @@ function Get-DeltaPath([string]$Root, [string]$Name) {
 
 function ConvertTo-UpdateFiles($Files) {
   $list = @($Files)
-  if ($list.Count -eq 0) { return [LiraUpdateFile[]]@() }
-  return [LiraUpdateFile[]]$list
+  if ($list.Count -eq 0) { return ,[LiraUpdateFile[]]@() }
+  return ,[LiraUpdateFile[]]$list
 }
 
 function Assert-DeltaFiles($Files) {
@@ -69,7 +69,7 @@ function Assert-DeltaFile([string]$Root, $File) {
 
 function Assert-DeltaFilesOnDisk([string]$Root, $Files) {
   $entries = ConvertTo-UpdateFiles $Files
-  if ($entries.Count -eq 0) { return }
+  if ($entries.Length -eq 0) { return }
   foreach ($entry in $entries) { Assert-DeltaName $entry.Name }
   [LiraUpdateIO]::VerifyFiles($Root, $entries, [Action]{ Report-Progress })
 }
@@ -305,6 +305,157 @@ function Apply-Delta([string]$PayloadRoot, $VerifiedPayload = $null, [switch]$Sk
 function Invoke-DeltaUpdate([string]$PayloadRoot) {
   $prepared = Backup-Delta $PayloadRoot -ReturnContext
   Apply-Delta $PayloadRoot -VerifiedPayload $prepared.Incoming -SkipBackupHash
+}
+
+function Invoke-SparseDeltaUpdate([string]$PayloadRoot) {
+  if (Test-Path -LiteralPath $pendingPath) { throw 'An unfinished update must be recovered first.' }
+  $PayloadRoot = Get-ManagedPath $PayloadRoot
+  foreach ($managed in $managedTrees) {
+    if ($PayloadRoot -eq $managed -or $PayloadRoot.StartsWith($managed + '\', [StringComparison]::OrdinalIgnoreCase) -or
+        $managed.StartsWith($PayloadRoot + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Payload overlaps managed update directories.' }
+  }
+  Assert-RegularTree $PayloadRoot
+  Assert-RegularTree $progressPath
+  if (Test-Path -LiteralPath $progressPath) { Remove-Item -LiteralPath $progressPath -Force }
+  Report-Progress 'Preparando atualizacao incremental' $true
+
+  $incomingManifest = Read-DeltaManifest $PayloadRoot
+  $previous = Read-DeltaManifest $installPath
+  $old = @{}; foreach ($file in $previous.Files) { $old[$file.Name] = $file }
+  foreach ($name in $deltaMetadataNames) {
+    $target = Get-DeltaPath $installPath $name
+    if (Test-Path -LiteralPath $target -PathType Leaf) { $old[$name] = Get-DeltaDescriptor $installPath $name }
+  }
+
+  $manifestByName = @{}; foreach ($file in $incomingManifest.Files) { $manifestByName[$file.Name] = $file }
+  $stagedTree = [LiraUpdateIO]::SnapshotTree($PayloadRoot)
+  $stagedMap = @{}
+  $stagedNonManifest = @()
+  foreach ($entry in $stagedTree.Files) {
+    Assert-DeltaName $entry.Name
+    if ($entry.Name -eq $deltaManifestName) { continue }
+    if (-not $manifestByName.ContainsKey($entry.Name)) { throw "Unexpected staged file outside manifest: $($entry.Name)" }
+    $expected = $manifestByName[$entry.Name]
+    $stagedMap[$entry.Name] = $expected
+    $stagedNonManifest += $expected
+  }
+
+  # Verify SHA-256 of ONLY the newly staged files (e.g., app.asar), not unchanged runtimes.
+  Assert-DeltaFilesOnDisk $PayloadRoot $stagedNonManifest
+  $stagedManifestDescriptor = Get-DeltaDescriptor $PayloadRoot $deltaManifestName
+  $stagedMap[$deltaManifestName] = $stagedManifestDescriptor
+
+  $incomingFiles = @($incomingManifest.Files) + @($stagedManifestDescriptor)
+  foreach ($metaName in @('Uninstall Lira.exe', 'uninstallerIcon.ico')) {
+    if ($old.ContainsKey($metaName)) { $incomingFiles += $old[$metaName] }
+  }
+  Assert-DeltaFiles $incomingFiles
+
+  # Every file NOT staged must match the previous manifest and still exist with matching length on disk.
+  $unchangedFiles = @()
+  foreach ($file in $incomingManifest.Files) {
+    if ($stagedMap.ContainsKey($file.Name)) { continue }
+    if (-not $old.ContainsKey($file.Name)) { throw "Missing staged payload for new file: $($file.Name)" }
+    $prevEntry = $old[$file.Name]
+    if ($prevEntry.Length -ne $file.Length -or $prevEntry.Hash -ne $file.Hash) {
+      throw "Missing staged payload for modified file: $($file.Name)"
+    }
+    $unchangedFiles += $file
+  }
+  [LiraUpdateIO]::VerifyFilesMetadata($installPath, (ConvertTo-UpdateFiles $unchangedFiles))
+
+  $next = @{}; foreach ($file in $incomingFiles) { $next[$file.Name] = $file }
+  $stagedNames = [string[]]@($stagedMap.Keys)
+  $inspectedStaged = [LiraUpdateIO]::InspectFiles($installPath, $stagedNames, [Action]{ Report-Progress })
+  $operations = @(); $backupFiles = @(); $created = @{}; $kept = @($unchangedFiles).Count
+  for ($i = 0; $i -lt $stagedNames.Length; $i++) {
+    $name = $stagedNames[$i]
+    $file = $stagedMap[$name]
+    $actual = $inspectedStaged[$i]
+    $exists = ($actual.Length -ge 0)
+    if ($exists -and $actual.Length -eq $file.Length -and $actual.Hash -eq $file.Hash) { $kept++; continue }
+    if ($exists -and -not $old.ContainsKey($file.Name)) { throw "Incoming file conflicts with an unmanaged file: $($file.Name)" }
+    $operations += [pscustomobject]@{ Name = $file.Name; Kind = $(if ($exists) { 'Replace' } else { 'Add' }); Existed = [bool]$exists }
+    if ($exists) { $backupFiles += [pscustomobject]@{ Name = $actual.Name; Length = $actual.Length; Hash = $actual.Hash } }
+    $parentName = [IO.Path]::GetDirectoryName($file.Name)
+    while ($parentName) {
+      if (-not (Test-Path -LiteralPath (Get-SnapshotChild $installPath $parentName))) { $created[$parentName] = $true }
+      $parentName = [IO.Path]::GetDirectoryName($parentName)
+    }
+  }
+
+  $removeCandidates = @()
+  foreach ($name in $old.Keys) {
+    if ($next.ContainsKey($name)) { continue }
+    Assert-DeltaName $name
+    $removeCandidates += $name
+  }
+  if ($removeCandidates.Count -gt 0) {
+    $inspectedRemoved = [LiraUpdateIO]::InspectFiles($installPath, [string[]]$removeCandidates, [Action]{ Report-Progress })
+    foreach ($actual in $inspectedRemoved) {
+      if ($actual.Length -lt 0) { continue }
+      $operations += [pscustomobject]@{ Name = $actual.Name; Kind = 'Remove'; Existed = $true }
+      $backupFiles += [pscustomobject]@{ Name = $actual.Name; Length = $actual.Length; Hash = $actual.Hash }
+    }
+  }
+
+  $profileNames = @($profileName)
+  if (Test-Path -LiteralPath $profileParent) {
+    $profileNames += @(Get-ChildItem -LiteralPath $profileParent -Directory -Force | Where-Object { $_.Name.StartsWith("$profileName-inst-", [StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { $_.Name })
+  }
+  $profiles = @(foreach ($name in $profileNames) { Get-ProfileChangesSnapshot $name })
+  $backupBytes = 0L; foreach ($file in $backupFiles) { $backupBytes += $file.Length }
+  $profileBytes = 0L; foreach ($profile in $profiles) { foreach ($file in $profile.Files) { $profileBytes += $file.Length } }
+  $writeBytes = 0L; foreach ($op in $operations | Where-Object { $_.Kind -ne 'Remove' }) { $writeBytes += $next[$op.Name].Length }
+  Assert-DeltaSpace $installPath ($backupBytes + 2 * $profileBytes + $writeBytes + 1MB)
+  if ([IO.Path]::GetPathRoot($userDataPath) -ne [IO.Path]::GetPathRoot($installPath)) { Assert-DeltaSpace $userDataPath ($profileBytes + 1MB) }
+
+  $snapshot = [pscustomobject]@{
+    FormatVersion = 6; TransactionId = [Guid]::NewGuid().ToString(); InstallDir = $installPath; UserDataDir = $userDataPath
+    Application = [pscustomobject]@{ Existed = $true; Storage = 'delta'; Files = $backupFiles; Directories = @() }
+    Profiles = $profiles; Operations = $operations; NewFiles = $incomingFiles; PreviousFiles = @($old.Values); CreatedDirectories = @($created.Keys)
+    Stats = [pscustomobject]@{ FilesKept = $kept; FilesChanged = $operations.Count; BackupBytes = $backupBytes; ApplyBytes = $writeBytes; WrittenBytes = 0L }
+  }
+  $script:deltaStats = $snapshot.Stats
+  Remove-UpdateTree $stagingPath
+  $null = [IO.Directory]::CreateDirectory($stagingPath)
+  Write-DeltaSnapshot $snapshot $stagingPath
+  $journal = [pscustomobject]@{ FormatVersion = 6; TransactionId = $snapshot.TransactionId; InstallDir = $installPath; UserDataDir = $userDataPath; BackupDir = $stagingPath; Phase = 'Preparing'; Completed = @(); WrittenBytes = 0L }
+  Write-Pending $journal
+  $script:totalFiles = $backupFiles.Count; $script:totalBytes = $backupBytes + $profileBytes
+  foreach ($profile in $profiles) { $script:totalFiles += @($profile.Files).Count }
+  Copy-SnapshotTree $snapshot.Application $installPath (Join-Path $stagingPath 'app') 'Copiando alteracoes'
+  foreach ($profile in $profiles) { Copy-SnapshotTree $profile (Get-ProfilePath $profile.Name) (Join-Path (Join-Path $stagingPath 'user-data') $profile.Name) }
+  Write-DeltaSnapshot $snapshot $stagingPath
+  Assert-DeltaSnapshot $snapshot $stagingPath -SkipTreeHash
+  $journal.Phase = 'Prepared'; Write-Pending $journal
+  Remove-UpdateTree $backupPath
+  Move-UpdateTree $stagingPath $backupPath
+  $journal.BackupDir = $backupPath; $journal.Phase = 'Installing'
+  Write-Pending $journal
+  Report-Progress 'Aplicando atualizacao incremental' $true
+
+  $orderedOps = @($snapshot.Operations | Sort-Object { $_.Name -eq $deltaManifestName })
+  $writtenFiles = @()
+  $journal.Phase = 'Applying'; Write-Pending $journal
+  foreach ($op in $orderedOps) {
+    $target = Get-DeltaPath $installPath $op.Name
+    if (-not $op.Existed -and (Test-Path -LiteralPath $target)) { throw 'A new application path appeared after preparation.' }
+    if ($op.Kind -eq 'Remove') { Remove-Item -LiteralPath $target -Force }
+    else {
+      Publish-DeltaFile $PayloadRoot $next[$op.Name] $snapshot.TransactionId ($op.Kind -eq 'Add') $false
+      $journal.WrittenBytes += $next[$op.Name].Length
+      $script:deltaStats.WrittenBytes = $journal.WrittenBytes
+      $writtenFiles += $next[$op.Name]
+    }
+    $journal.Completed = @($journal.Completed) + $op.Name
+    Write-Pending $journal
+    Report-Progress 'Aplicando alteracoes' $true
+  }
+  Assert-DeltaFilesOnDisk $installPath $writtenFiles
+  [LiraUpdateIO]::VerifyFilesMetadata($installPath, (ConvertTo-UpdateFiles $incomingFiles))
+  $journal.Phase = 'Applied'; Write-Pending $journal
+  Report-Progress 'Atualizacao incremental aplicada' $true
 }
 
 function Restore-Delta($Recovery) {

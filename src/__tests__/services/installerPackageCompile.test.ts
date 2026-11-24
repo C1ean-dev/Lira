@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { rm } from 'node:fs/promises'
 import path from 'node:path'
 import os from 'node:os'
+import { createPackage } from '@electron/asar'
 import { expect, it } from 'vitest'
 
 const require = createRequire(import.meta.url)
@@ -11,21 +12,26 @@ const cached = ['nsis-3.0.4.1', 'nsis-resources-3.4.1', '7zip@1.0.0'].every(name
 
 // Compile tiny inert payloads with the actual electron-builder pipeline. Neither
 // the generated installer, uninstaller, nor the fixture executable is executed.
-it.skipIf(process.platform !== 'win32' || !cached)('packages the custom selective installer and embedded uninstaller using cached NSIS tools', { timeout: 120000 }, async () => {
+it.skipIf(process.platform !== 'win32' || !cached)('packages the custom selective installer, embedded uninstaller, and incremental pack using cached NSIS tools', { timeout: 120000 }, async () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'lira-nsis-package-'))
   const app = path.join(root, 'unpacked')
+  const asarSrc = path.join(root, 'asar-src')
   mkdirSync(path.join(app, 'resources'), { recursive: true })
+  mkdirSync(asarSrc, { recursive: true })
+  writeFileSync(path.join(asarSrc, 'package.json'), JSON.stringify({ name: 'lira-fixture', version: '1.0.0', main: 'index.js' }))
+  writeFileSync(path.join(asarSrc, 'index.js'), 'console.log("inert fixture")\n')
+  await createPackage(asarSrc, path.join(app, 'resources/app.asar'))
   writeFileSync(path.join(app, 'Lira.exe'), 'inert fixture, never executed')
-  writeFileSync(path.join(app, 'resources/app.asar'), 'inert archive fixture')
   writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'lira-fixture', version: '1.0.0', description: 'NSIS compilation test', author: 'Lira tests', main: 'index.js' }))
   const { build, Platform, Arch } = require('electron-builder')
   const { rememberPack, artifactBuildStarted } = require('../../../scripts/windows-update-package.cjs')
   rememberPack({ appOutDir: app, arch: Arch.x64, electronPlatformName: 'win32', packager: { projectDir: root, appInfo: { version: '1.0.0' } } })
   try {
+    const outputDir = path.join(root, 'output')
     const files = await build({ projectDir: root, prepackaged: app, targets: Platform.WINDOWS.createTarget('nsis', Arch.x64), publish: 'never',
       config: {
         appId: 'com.lira.installer-fixture', productName: 'Lira', electronVersion: require('electron/package.json').version,
-        directories: { output: path.join(root, 'output'), buildResources: path.resolve('build') },
+        directories: { output: outputDir, buildResources: path.resolve('build') },
         artifactBuildStarted,
         nsis: { oneClick: true, perMachine: false, runAfterFinish: false, include: path.resolve('build/installer.nsh'), script: '.scratch/windows-installer/installer.nsi' },
         win: { signAndEditExecutable: false, signtoolOptions: { sign: async () => {} } },
@@ -35,5 +41,7 @@ it.skipIf(process.platform !== 'win32' || !cached)('packages the custom selectiv
     expect(installer).toBeTruthy()
     expect(readFileSync(installer).subarray(0, 2).toString()).toBe('MZ')
     expect(readFileSync(path.join(app, 'resources/update-manifest.json'), 'utf8')).toContain('Lira.exe')
+    expect(existsSync(path.join(outputDir, 'lira-win-x64-incremental.json.gz'))).toBe(true)
+    expect(existsSync(path.join(outputDir, 'lira-win-x64-payload.pack'))).toBe(true)
   } finally { await rm(root, { recursive: true, force: true }) }
 })

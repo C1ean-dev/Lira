@@ -34,6 +34,7 @@ export interface ProcessAudioCaptureInfo {
 
 export interface AppSettings {
   openAtLogin: boolean
+  autoUpdateAtLogin: boolean
   closeToTray: boolean
   minimizeToTray: boolean
 }
