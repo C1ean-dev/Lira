@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true)]
-  [ValidateSet('Backup', 'Apply', 'DeltaUpdate', 'Verify', 'Restore', 'Commit', 'Cleanup')]
+  [ValidateSet('Backup', 'Apply', 'DeltaUpdate', 'SparseDeltaUpdate', 'Verify', 'Restore', 'Commit', 'Cleanup')]
   [string]$Action,
   [Parameter(Mandatory = $true)]
   [string]$InstallDir,
@@ -12,7 +12,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-if ($Action -in @('Backup', 'Apply', 'DeltaUpdate', 'Verify', 'Restore', 'Commit')) { . "$PSScriptRoot\update-io.ps1" }
+if ($Action -in @('Backup', 'Apply', 'DeltaUpdate', 'SparseDeltaUpdate', 'Verify', 'Restore', 'Commit')) { . "$PSScriptRoot\update-io.ps1" }
 
 function Get-ManagedPath([string]$Target) {
   $absolute = [IO.Path]::GetFullPath($Target).TrimEnd('\')
@@ -34,6 +34,9 @@ $pendingPath = Join-Path $parent.FullName 'lira.update-pending.json'
 $pendingTempPath = "$pendingPath.tmp"
 $progressPath = Join-Path $parent.FullName 'lira.update-progress.jsonl'
 $errorPath = Join-Path $parent.FullName 'lira.update-errors.jsonl'
+$incrementalStagePath = Join-Path $parent.FullName 'lira.update-stage'
+$applyingLockPath = Join-Path $parent.FullName 'lira.update-applying.lock'
+$launchAfterFlagPath = Join-Path $parent.FullName 'lira.launch-after-update.flag'
 $profileStagingPath = "$userDataPath.update-restore"
 $managedTrees = @($installPath, $backupPath, $stagingPath, $userDataPath, $profileStagingPath)
 foreach ($left in $managedTrees) {
@@ -91,7 +94,7 @@ function Assert-RegularTree([string]$Target) {
 function Remove-UpdateTree([string]$Target) {
   # Check exact, resolved targets before every recursive removal.
   $resolved = [IO.Path]::GetFullPath($Target)
-  if ($resolved -notin @($installPath, $backupPath, $stagingPath, $profileStagingPath)) { throw 'Removal outside update directories.' }
+  if ($resolved -notin @($installPath, $backupPath, $stagingPath, $profileStagingPath, $incrementalStagePath)) { throw 'Removal outside update directories.' }
   Assert-RegularTree $resolved
   if (Test-Path -LiteralPath $resolved) { Remove-Item -LiteralPath $resolved -Recurse -Force }
 }
@@ -568,6 +571,10 @@ switch ($Action) {
     if (-not $PayloadDir) { throw 'Missing incoming application directory.' }
     Invoke-DeltaUpdate $PayloadDir
   }
+  'SparseDeltaUpdate' {
+    if (-not $PayloadDir) { throw 'Missing incoming application directory.' }
+    Invoke-SparseDeltaUpdate $PayloadDir
+  }
   'Verify' {
     $manifest = Read-DeltaManifest $installPath
     Assert-DeltaFilesOnDisk $installPath $manifest.Files
@@ -677,12 +684,15 @@ switch ($Action) {
   }
   'Cleanup' {
     # A full uninstall removes recovery artifacts, while retaining the live profile.
-    foreach ($target in @($backupPath, $stagingPath, $profileStagingPath, $pendingPath, $pendingTempPath, $progressPath)) { Assert-RegularTree $target }
+    foreach ($target in @($backupPath, $stagingPath, $profileStagingPath, $incrementalStagePath, $pendingPath, $pendingTempPath, $progressPath, $applyingLockPath, $launchAfterFlagPath)) { Assert-RegularTree $target }
     Remove-UpdateTree $backupPath
     Remove-UpdateTree $stagingPath
     Remove-UpdateTree $profileStagingPath
+    Remove-UpdateTree $incrementalStagePath
     if (Test-Path -LiteralPath $pendingPath) { Remove-Item -LiteralPath $pendingPath -Force }
     if (Test-Path -LiteralPath $pendingTempPath) { Remove-Item -LiteralPath $pendingTempPath -Force }
     if (Test-Path -LiteralPath $progressPath) { Remove-Item -LiteralPath $progressPath -Force }
+    if (Test-Path -LiteralPath $applyingLockPath) { Remove-Item -LiteralPath $applyingLockPath -Force }
+    if (Test-Path -LiteralPath $launchAfterFlagPath) { Remove-Item -LiteralPath $launchAfterFlagPath -Force }
   }
 }

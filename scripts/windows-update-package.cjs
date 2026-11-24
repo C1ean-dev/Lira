@@ -2,6 +2,7 @@ const fs = require('node:fs/promises')
 const path = require('node:path')
 const crypto = require('node:crypto')
 const { createReadStream } = require('node:fs')
+const { buildIncrementalReleaseArtifacts } = require('./windows-incremental-pack.cjs')
 
 const manifestName = 'resources/update-manifest.json'
 const contexts = new Map()
@@ -62,8 +63,22 @@ async function artifactBuildStarted(event) {
   if (!context) throw new Error('Missing final Windows package context')
   // NSIS emits this event after signing/fuses, before archiving the app. Unlike
   // afterSign, it also runs for unsigned local builds.
-  await writeUpdateManifest(context.appOutDir, context.packager.appInfo.version)
+  const manifest = await writeUpdateManifest(context.appOutDir, context.packager.appInfo.version)
   await generateInstallerScript(context.packager.projectDir)
+  if (event.file) {
+    const outputDir = path.dirname(event.file)
+    const stats = await buildIncrementalReleaseArtifacts({
+      appOutDir: context.appOutDir,
+      outputDir,
+      version: context.packager.appInfo.version,
+      manifest,
+    })
+    console.log(
+      `[Incremental package] Built manifest (${(stats.manifestBytes / 1024).toFixed(1)} KB) and pack ` +
+      `(${(stats.packBytes / 1048576).toFixed(1)} MB; code tier ${(stats.codeTierPackBytes / 1048576).toFixed(2)} MB, ` +
+      `${stats.asarBlockCount} ASAR blocks, ${stats.fileCount} external files).`,
+    )
+  }
 }
 
 module.exports = artifactBuildStarted

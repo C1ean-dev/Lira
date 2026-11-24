@@ -10,7 +10,7 @@ import {
   parseAppSettings,
   mergeAppSettings,
   buildLoginItemOptions,
-  resolveLoginItemState,
+  reconcileStartupLoginSettings,
 } from './traySettings'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -58,8 +58,11 @@ export function applyLoginItemSettings(settings: AppSettings, isPackaged: boolea
     return
   }
   try {
-    app.setLoginItemSettings(buildLoginItemOptions(settings, isPackaged, process.execPath))
-    console.info(`[TrayManager] Windows LoginItem set: openAtLogin=${settings.openAtLogin}`)
+    const options = buildLoginItemOptions(settings, isPackaged, process.execPath)
+    app.setLoginItemSettings(options)
+    console.info(
+      `[TrayManager] Windows LoginItem set: openAtLogin=${settings.openAtLogin}, autoUpdateAtLogin=${settings.autoUpdateAtLogin}, args=${JSON.stringify(options.args)}`,
+    )
   } catch (err) {
     console.warn('[TrayManager] Error applying login item settings:', err)
   }
@@ -75,15 +78,20 @@ export class TrayManager {
 
   constructor(instanceId: string = '1', isMultiInstance: boolean = false, title?: string) {
     this.instanceTitle = title || (isMultiInstance ? `Lira (Instância ${instanceId})` : 'Lira')
+    const hasPersisted = fs.existsSync(getSettingsFilePath())
     this.settings = readSettingsFromDisk()
 
     try {
-      if (app.isPackaged && (process.platform === 'win32' || process.platform === 'darwin')) {
-        const loginSettings = app.getLoginItemSettings()
-        if (loginSettings) {
-          const login = resolveLoginItemState(loginSettings)
-          this.settings.openAtLogin = login.openAtLogin
-          if (login.needsRewrite) applyLoginItemSettings(this.settings)
+      if (app.isPackaged && !isMultiInstance && (process.platform === 'win32' || process.platform === 'darwin')) {
+        const expected = buildLoginItemOptions(this.settings, true, process.execPath)
+        const expectedReading = app.getLoginItemSettings({ path: expected.path, args: expected.args })
+        const legacyReading = expected.args.length > 0
+          ? app.getLoginItemSettings({ path: process.execPath, args: [] })
+          : undefined
+        const reconciled = reconcileStartupLoginSettings(this.settings, hasPersisted, expectedReading, legacyReading)
+        this.settings = reconciled.settings
+        if (reconciled.needsRewrite) {
+          applyLoginItemSettings(this.settings)
         }
       }
     } catch {}
@@ -249,6 +257,14 @@ export class TrayManager {
         checked: this.settings.openAtLogin,
         click: (item) => {
           this.updateSettings({ openAtLogin: item.checked })
+        },
+      },
+      {
+        label: 'Atualizar ao ligar o PC',
+        type: 'checkbox',
+        checked: this.settings.autoUpdateAtLogin,
+        click: (item) => {
+          this.updateSettings({ autoUpdateAtLogin: item.checked })
         },
       },
       {

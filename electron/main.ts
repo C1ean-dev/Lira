@@ -23,7 +23,7 @@ import { setupSingleInstanceLock } from './singleInstance'
 import { resolveAppInstance } from './appInstance'
 import { setupSpaceInviteHandling } from './spaceInviteInbox'
 import { registerSpaceInviteProtocol } from './spaceInviteProtocol'
-import { TrayManager, AppSettings } from './trayManager'
+import { TrayManager, AppSettings, DEFAULT_APP_SETTINGS, readSettingsFromDisk } from './trayManager'
 import { createLogWriter, installConsoleCapture, installProcessErrorCapture } from './logWriter'
 import { readNativeDataFile } from './nativeDataFile'
 import { readAssetAtlas, writeAssetAtlasLatest } from './assetAtlasFile'
@@ -52,6 +52,23 @@ import { SpotifyNativeWindowBridge } from './spotifyNativeWindow'
 import { singleFlightDownload } from './updateDownload'
 import { checkCachedUpdate } from '../src/services/updateCheck'
 import { downloadUpdateFile, updateDownloadErrorMessage } from './updateFileDownload'
+import {
+  assertSafeRelativePath,
+  getIncrementalStageDir,
+  INCREMENTAL_PLAN_FILE_NAME,
+  INCREMENTAL_READY_FILE_NAME,
+  prepareIncrementalUpdate,
+  readStagedIncrementalPlan,
+} from './incrementalUpdater'
+import {
+  checkAndSignalActiveApplier,
+  getInstallDirFromExecPath,
+  hasUpdaterScripts,
+  isPostUpdateArgv,
+  isStartupUpdateArgv,
+  launchIncrementalApplier,
+  runStartupUpdateRoutine,
+} from './startupAutoUpdate'
 import { runtimeAssetPath } from './assetPaths'
 import { getLanAddresses, startLocalSignalingServer } from './lanSignaling'
 import { configureParsecEcho, restartParsecProcess } from './parsecEcho'
@@ -115,13 +132,32 @@ function stopNativeLive(id: string) {
 function stopAllNativeLives() {
   for (const id of nativeLives.keys()) stopNativeLive(id)
 }
+const isStartupUpdateMode = isStartupUpdateArgv(process.argv) && !isMultiInstance && !isPostUpdateArgv(process.argv)
+let startupUpdateActive = isStartupUpdateMode
+let startupUserLaunchRequested = false
+let wakeStartupWait: (() => void) | null = null
+
+// If the user launches Lira during the brief (~1s) incremental swap window, ask the active
+// applier to launch the freshly updated app immediately once its atomic commit finishes.
+if (!isMultiInstance && app.isPackaged && process.platform === 'win32' && !isStartupUpdateMode) {
+  if (checkAndSignalActiveApplier(getInstallDirFromExecPath(process.execPath), { requestLaunchAfter: true })) {
+    app.exit(0)
+  }
+}
+
 setupSpaceInviteHandling(app, ipcMain, () => mainWindow, process.argv)
 // Each profile gets one process, including the second profile used by electron:dual.
 // Exit duplicates before sessions and background services can contend for its cache.
 if (!setupSingleInstanceLock({
   requestLock: () => app.requestSingleInstanceLock(),
   quit: () => app.exit(0),
-  onSecondInstance: cb => app.on('second-instance', cb),
+  onSecondInstance: cb => app.on('second-instance', (_event, argv) => {
+    if (startupUpdateActive && !isStartupUpdateArgv(argv || [])) {
+      startupUserLaunchRequested = true
+      wakeStartupWait?.()
+    }
+    cb()
+  }),
   getWindows: () => mainWindow ? [mainWindow] : [],
 })) app.exit(0)
 
@@ -623,7 +659,9 @@ ipcMain.handle('gstreamer-stop', (event, id: unknown) => {
   if (isNativeLiveOwner(event) && typeof id === 'string') stopNativeLive(id)
 })
 
-app.whenReady().then(logSessionStart)
+if (!isStartupUpdateMode) {
+  app.whenReady().then(logSessionStart)
+}
 installConsoleCapture(console as any, appLog, 'main')
 installProcessErrorCapture(process, appLog, 'main')
 const startupStep = createStartupTimer({ log: (line) => console.log(line) })
@@ -1007,7 +1045,48 @@ function cleanupOldInstallers(currentInstallerPath?: string): void {
   }
 }
 
+function canUseIncrementalUpdater(): boolean {
+  return process.platform === 'win32' && app.isPackaged && hasUpdaterScripts(process.resourcesPath)
+}
+
+function getCurrentInstallDir(): string {
+  return getInstallDirFromExecPath(process.execPath)
+}
+
+function isIncrementalUpdateStagedSync(targetVersion?: string): boolean {
+  if (!canUseIncrementalUpdater()) return false
+  try {
+    const installDir = getCurrentInstallDir()
+    const stageDir = getIncrementalStageDir(installDir)
+    const readyPath = path.join(stageDir, INCREMENTAL_READY_FILE_NAME)
+    const planPath = path.join(stageDir, INCREMENTAL_PLAN_FILE_NAME)
+    if (!fs.existsSync(readyPath) || !fs.existsSync(planPath)) return false
+    const ready = JSON.parse(fs.readFileSync(readyPath, 'utf8'))
+    const plan = JSON.parse(fs.readFileSync(planPath, 'utf8'))
+    if (plan?.FormatVersion !== 1 || ready?.TargetVersion !== plan.TargetVersion) return false
+    if (path.resolve(plan.InstallDir || '').toLowerCase() !== path.resolve(installDir).toLowerCase()) return false
+    if (targetVersion) {
+      const cleanVer = targetVersion.trim().replace(/^v/i, '')
+      if (cleanVer && plan.TargetVersion !== cleanVer) return false
+    }
+    const payloadDir = path.join(stageDir, 'payload')
+    if (!Array.isArray(plan.StagedFiles) || plan.StagedFiles.length === 0) return false
+    for (const file of plan.StagedFiles) {
+      assertSafeRelativePath(file.Name)
+      const stat = fs.lstatSync(path.join(payloadDir, file.Name))
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.size !== file.Length) return false
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
 function checkIsUpdateDownloaded(targetVersion?: string): boolean {
+  if (isIncrementalUpdateStagedSync(targetVersion)) {
+    downloadedInstallerVersion = targetVersion || null
+    return true
+  }
   const installerPath = findExistingInstaller(targetVersion) || (targetVersion ? getInstallerPath(targetVersion) : downloadedInstallerPath)
   if (!installerPath || !isInstallerFileValid(installerPath)) return false
   downloadedInstallerPath = installerPath
@@ -1027,7 +1106,9 @@ const performDownloadUpdate = singleFlightDownload(async (downloadUrl: string, t
   cleanupOldInstallers(installerPath)
 
   if (checkIsUpdateDownloaded(ver)) {
-    const existing = findExistingInstaller(ver) || installerPath
+    const existing = isIncrementalUpdateStagedSync(ver)
+      ? getIncrementalStageDir(getCurrentInstallDir())
+      : (findExistingInstaller(ver) || installerPath)
     downloadedInstallerPath = existing
     downloadedInstallerVersion = ver
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1035,6 +1116,39 @@ const performDownloadUpdate = singleFlightDownload(async (downloadUrl: string, t
       mainWindow.webContents.send('update-download-complete', { installerPath: existing, version: ver })
     }
     return true
+  }
+
+  if (canUseIncrementalUpdater() && targetVersion && /^v?\d+\.\d+\.\d+$/.test(targetVersion.trim())) {
+    try {
+      const installDir = getCurrentInstallDir()
+      const incremental = await prepareIncrementalUpdate({
+        installDir,
+        targetVersion: ver,
+        fullInstallerSize: latestAssetExpectedSize,
+        onProgress: (percent, downloaded, total) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-download-progress', { percent, downloaded, total })
+          }
+        },
+      })
+      if (incremental.ok) {
+        console.log(
+          `[Updater] Incremental update staged for v${incremental.plan.TargetVersion} ` +
+          `(${(incremental.plan.Stats.DownloadBytes / 1048576).toFixed(2)} MB downloaded; ` +
+          `reused ${incremental.plan.Stats.AsarBlocksReused} ASAR blocks, ${incremental.plan.Stats.ExternalFilesKept} external files).`,
+        )
+        downloadedInstallerPath = incremental.stageDir
+        downloadedInstallerVersion = ver
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('update-download-progress', { percent: 100, downloaded: 1, total: 1 })
+          mainWindow.webContents.send('update-download-complete', { installerPath: incremental.stageDir, version: ver })
+        }
+        return true
+      }
+      console.info('[Updater] Incremental update unavailable, falling back to full installer:', incremental.reason)
+    } catch (incErr) {
+      console.warn('[Updater] Incremental update threw unexpectedly, falling back to full installer:', incErr)
+    }
   }
 
     try {
@@ -1071,6 +1185,36 @@ const performDownloadUpdate = singleFlightDownload(async (downloadUrl: string, t
 
 async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
   try {
+    if (canUseIncrementalUpdater()) {
+      const installDir = getCurrentInstallDir()
+      const stageDir = getIncrementalStageDir(installDir)
+      const stagedPlan = await readStagedIncrementalPlan(stageDir, targetVersion)
+      if (stagedPlan && path.resolve(stagedPlan.InstallDir).toLowerCase() === path.resolve(installDir).toLowerCase()) {
+        console.log('[Updater] Applying staged incremental update for v' + stagedPlan.TargetVersion)
+        const launched = await launchIncrementalApplier({
+          installDir,
+          userDataDir: defaultUserData,
+          resourcesPath: process.resourcesPath,
+          stageDir,
+          targetVersion: stagedPlan.TargetVersion,
+          waitPid: process.pid,
+          launchAfter: true,
+          silentBoot: false,
+          forceKill: true,
+        })
+        if (launched) {
+          console.log('[Updater] Incremental applier launched; exiting cleanly so files can be swapped atomically.')
+          setTimeout(() => {
+            if (trayManager) trayManager.setQuitting(true)
+            appLog.flushReports()
+            app.exit(0)
+          }, 150)
+          return true
+        }
+        console.warn('[Updater] Could not launch incremental applier; falling back to full installer if present.')
+      }
+    }
+
     const installerPath = findExistingInstaller(targetVersion) || downloadedInstallerPath
     if (!installerPath || !fs.existsSync(installerPath)) {
       console.warn('[Updater] Installer file not found:', installerPath)
@@ -2028,21 +2172,11 @@ try {
 })
 
 ipcMain.handle('get-app-settings', () => {
-  return trayManager?.getSettings() || {
-    openAtLogin: false,
-    closeToTray: true,
-    minimizeToTray: false,
-  }
+  return trayManager?.getSettings() || { ...DEFAULT_APP_SETTINGS }
 })
 
 ipcMain.handle('set-app-settings', (_event, partial: Partial<AppSettings>) => {
-  return (
-    trayManager?.updateSettings(partial) || {
-      openAtLogin: false,
-      closeToTray: true,
-      minimizeToTray: false,
-    }
-  )
+  return trayManager?.updateSettings(partial) || { ...DEFAULT_APP_SETTINGS }
 })
 
 ipcMain.handle('minimize-to-tray', () => {
@@ -2143,11 +2277,98 @@ app.on('before-quit', event => {
   }
 })
 
+function launchSilentFullInstaller(installerPath: string, launchAfter: boolean): boolean {
+  try {
+    try {
+      execSync(`compact.exe /U /F "${installerPath}"`, { windowsHide: true, stdio: 'ignore' })
+      execSync(`compact.exe /U /EXE "${installerPath}"`, { windowsHide: true, stdio: 'ignore' })
+    } catch {}
+    const args = ['/S', ...(launchAfter ? [] : ['/NOLAUNCH'])]
+    const child = spawn(installerPath, args, {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    })
+    child.unref()
+    return true
+  } catch (err) {
+    console.warn('[StartupUpdate] Failed to spawn silent full installer:', err)
+    return false
+  }
+}
+
 app.whenReady().then(async () => {
   protocol.handle('lira-board-font', createBoardFontHandler(path.join(__dirname, '../dist/excalidraw-assets/fonts')))
   if (process.platform === 'win32') {
     app.setAppUserModelId(appInstance.appUserModelId)
   }
+
+  if (isStartupUpdateMode) {
+    const bootSettings = readSettingsFromDisk(defaultUserData)
+    const outcome = await runStartupUpdateRoutine({
+      settings: bootSettings,
+      isPackaged: app.isPackaged,
+      platform: process.platform,
+      installDir: getCurrentInstallDir(),
+      userDataDir: defaultUserData,
+      resourcesPath: process.resourcesPath,
+      pid: process.pid,
+      isUserLaunchRequested: () => startupUserLaunchRequested,
+      checkUpdate: async (interactive) => {
+        const result = await checkCachedUpdate(
+          app.getVersion() || '1.0.0',
+          'windows',
+          fetch,
+          interactive ? { cacheTimeoutMs: 7000, githubTimeoutMs: 6000 } : undefined,
+        )
+        if (!result.checkFailed) latestAssetExpectedSize = result.assetSize
+        return result
+      },
+      fallbackSilentFullUpdate: async (info, launchAfter) => {
+        if (!info.downloadUrl) return false
+        const ver = info.latestVersion
+        const installerPath = getInstallerPath(ver)
+        const tempInstallerPath = `${installerPath}.tmp`
+        cleanupOldInstallers(installerPath)
+        if (!isInstallerFileValid(installerPath)) {
+          try {
+            await downloadUpdateFile(info.downloadUrl, tempInstallerPath, () => {}, { expectedSize: info.assetSize })
+          } catch (err) {
+            try { if (fs.existsSync(tempInstallerPath)) fs.unlinkSync(tempInstallerPath) } catch {}
+            throw err
+          }
+          if (fs.existsSync(installerPath)) {
+            try { fs.unlinkSync(installerPath) } catch {}
+          }
+          fs.renameSync(tempInstallerPath, installerPath)
+        }
+        return launchSilentFullInstaller(installerPath, launchAfter || startupUserLaunchRequested)
+      },
+      delay: (ms) => new Promise<void>((resolve) => {
+        if (startupUserLaunchRequested) {
+          resolve()
+          return
+        }
+        const timer = setTimeout(() => {
+          wakeStartupWait = null
+          resolve()
+        }, ms)
+        wakeStartupWait = () => {
+          clearTimeout(timer)
+          wakeStartupWait = null
+          resolve()
+        }
+      }),
+    })
+    startupUpdateActive = false
+    if (outcome.action === 'exit-silent' || outcome.action === 'apply-and-exit') {
+      appLog.flushReports()
+      app.exit(0)
+      return
+    }
+    logSessionStart()
+  }
+
   startupStep('ready')
   createWindow()
   startupStep('window-created')

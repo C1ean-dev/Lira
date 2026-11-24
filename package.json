@@ -160,6 +160,16 @@
         "filter": [
           "process-audio-capture.exe"
         ]
+      },
+      {
+        "from": "build",
+        "to": "updater",
+        "filter": [
+          "update-recovery.ps1",
+          "update-io.ps1",
+          "update-delta.ps1",
+          "update-apply-incremental.ps1"
+        ]
       }
     ],
     "win": {
