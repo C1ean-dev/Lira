@@ -20,11 +20,13 @@ const enabled = process.platform === 'win32' && !!compiler && !!spider
 let runtime: string
 let application: Buffer
 let fixture: string
+let hiddenDesktopRunner: string
 
 beforeAll(() => {
   if (!enabled) return
   runtime = mkdtempSync(path.join(os.tmpdir(), 'lira-rollback-runtime-'))
   const exe = path.join(runtime, 'fixture.exe')
+  hiddenDesktopRunner = path.join(runtime, 'hidden-desktop-runner.exe')
   // Stay alive until released, to catch an installer waiting for the restored app.
   const appSource = `using System; using System.IO; using System.Threading;
 public class Fixture { public static void Main() {
@@ -32,7 +34,96 @@ public class Fixture { public static void Main() {
   File.AppendAllText(Path.Combine(root, "started"), "started\\n");
   for (int i = 0; i < 600 && !File.Exists(Path.Combine(root, "stop")); i++) Thread.Sleep(100);
 } }`
-  const command = `Add-Type -OutputAssembly '${exe.replace(/'/g, "''")}' -OutputType WindowsApplication -TypeDefinition @'\n${appSource}\n'@`
+  // Run the NSIS fixture on an isolated off-screen Win32 desktop so interactive
+  // windows and banners exercise real Win32 visibility APIs without appearing
+  // on the user's active desktop or stealing focus.
+  const runnerSource = `using System; using System.Runtime.InteropServices; using System.Text; using System.Threading;
+public class HiddenDesktopRunner {
+  const uint GENERIC_ALL = 0x10000000;
+  const uint INFINITE = 0xFFFFFFFF;
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  struct STARTUPINFO {
+    public int cb; public string lpReserved; public string lpDesktop; public string lpTitle;
+    public int dwX, dwY, dwXSize, dwYSize, dwXCountChars, dwYCountChars, dwFillAttribute, dwFlags;
+    public short wShowWindow, cbReserved2;
+    public IntPtr lpReserved2, hStdInput, hStdOutput, hStdError;
+  }
+  [StructLayout(LayoutKind.Sequential)]
+  struct PROCESS_INFORMATION { public IntPtr hProcess, hThread; public int dwProcessId, dwThreadId; }
+  [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern IntPtr CreateDesktopW(string name, IntPtr device, IntPtr devmode, uint flags, uint access, IntPtr sa);
+  [DllImport("user32.dll", SetLastError = true)]
+  static extern bool CloseDesktop(IntPtr desktop);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern bool CreateProcessW(string app, StringBuilder cmd, IntPtr pa, IntPtr ta, bool inherit, uint flags, IntPtr env, string dir, ref STARTUPINFO si, out PROCESS_INFORMATION pi);
+  [DllImport("kernel32.dll", SetLastError = true)]
+  static extern uint WaitForSingleObject(IntPtr handle, uint ms);
+  [DllImport("kernel32.dll", SetLastError = true)]
+  static extern bool GetExitCodeProcess(IntPtr handle, out uint code);
+  [DllImport("kernel32.dll", SetLastError = true)]
+  static extern bool TerminateProcess(IntPtr handle, uint code);
+  [DllImport("kernel32.dll", SetLastError = true)]
+  static extern bool CloseHandle(IntPtr handle);
+  static string Quote(string arg) {
+    if (arg.Length > 0 && arg.IndexOfAny(new[] { ' ', '\\t', '"' }) < 0) return arg;
+    var sb = new StringBuilder("\\"");
+    int bs = 0;
+    foreach (char c in arg) {
+      if (c == '\\\\') bs++;
+      else if (c == '"') { sb.Append('\\\\', bs * 2 + 1).Append('"'); bs = 0; }
+      else { sb.Append('\\\\', bs).Append(c); bs = 0; }
+    }
+    return sb.Append('\\\\', bs * 2).Append('"').ToString();
+  }
+  public static int Main(string[] args) {
+    if (args.Length == 0) { Console.Error.WriteLine("missing executable"); return 124; }
+    string desktopName = "lira-rollback-" + Guid.NewGuid().ToString("N");
+    IntPtr desktop = CreateDesktopW(desktopName, IntPtr.Zero, IntPtr.Zero, 0, GENERIC_ALL, IntPtr.Zero);
+    if (desktop == IntPtr.Zero) { Console.Error.WriteLine("CreateDesktopW failed: " + Marshal.GetLastWin32Error()); return 125; }
+    try {
+      var cmd = new StringBuilder();
+      for (int i = 0; i < args.Length; i++) { if (i > 0) cmd.Append(' '); cmd.Append(Quote(args[i])); }
+      var si = new STARTUPINFO { cb = Marshal.SizeOf(typeof(STARTUPINFO)), lpDesktop = desktopName };
+      PROCESS_INFORMATION pi;
+      if (!CreateProcessW(args[0], cmd, IntPtr.Zero, IntPtr.Zero, false, 0, IntPtr.Zero, null, ref si, out pi)) {
+        Console.Error.WriteLine("CreateProcessW failed: " + Marshal.GetLastWin32Error());
+        return 126;
+      }
+      CloseHandle(pi.hThread);
+      object gate = new object();
+      IntPtr processHandle = pi.hProcess;
+      var releaseDesktop = new ManualResetEventSlim(false);
+      var watcher = new Thread(() => {
+        try { while (Console.In.ReadLine() != null) {} } catch {}
+        lock (gate) { if (processHandle != IntPtr.Zero) TerminateProcess(processHandle, 1); }
+        releaseDesktop.Set();
+      });
+      watcher.IsBackground = true;
+      watcher.Start();
+      WaitForSingleObject(pi.hProcess, INFINITE);
+      uint code = 1;
+      lock (gate) {
+        if (processHandle != IntPtr.Zero) {
+          GetExitCodeProcess(processHandle, out code);
+          CloseHandle(processHandle);
+          processHandle = IntPtr.Zero;
+        }
+      }
+      Console.Out.WriteLine("EXIT:" + code);
+      Console.Out.Flush();
+      // Keep the desktop alive until the test signals cleanup, so a restored
+      // child app can still attach to the desktop while starting up.
+      releaseDesktop.Wait(TimeSpan.FromSeconds(30));
+      return (int)code;
+    } finally {
+      CloseDesktop(desktop);
+    }
+  }
+}`
+  const command = [
+    `Add-Type -OutputAssembly '${exe.replace(/'/g, "''")}' -OutputType WindowsApplication -TypeDefinition @'\n${appSource}\n'@`,
+    `Add-Type -OutputAssembly '${hiddenDesktopRunner.replace(/'/g, "''")}' -OutputType ConsoleApplication -TypeDefinition @'\n${runnerSource}\n'@`,
+  ].join('\n')
   execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(command, 'utf16le').toString('base64')], { windowsHide: true, stdio: 'pipe' })
   application = readFileSync(exe)
   fixture = path.join(runtime, 'installer.exe')
@@ -79,6 +170,11 @@ Section
       FindWindow $R1 "#32770" "" $HWNDPARENT
       GetDlgItem $liraProgressLabel $R1 1006
     \${EndIf}
+    System::Call 'user32::IsWindowVisible(p $HWNDPARENT) i.r0'
+    \${If} $0 == 0
+      SetErrorLevel 92
+      Quit
+    \${EndIf}
   \${EndIf}
   \${If} $liraFixtureRoute == "backup"
   \${OrIf} $liraFixtureRoute == "pending"
@@ -117,11 +213,30 @@ it.skipIf(!enabled).each([
   if (scenario.app !== 'missing') writeFileSync(path.join(install, 'Lira.exe'), scenario.app === 'slow' ? application : 'invalid executable')
   writeFileSync(path.join(root, 'worker-code'), String(scenario.workerCode))
   if (scenario.route === 'pending') writeFileSync(path.join(root, 'lira.update-pending.json'), '{}')
+  let runner: ReturnType<typeof spawn> | undefined
   try {
-    const child = spawn(fixture, [...(scenario.silent ? ['/S'] : []), `/ROOT=${root}`, `/MODE=${scenario.route}`], { windowsHide: true, stdio: 'ignore' })
+    runner = spawn(
+      hiddenDesktopRunner,
+      [fixture, ...(scenario.silent ? ['/S'] : []), `/ROOT=${root}`, `/MODE=${scenario.route}`],
+      { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] },
+    )
+    const activeRunner = runner
     const result = await new Promise<{ code: number | null; timedOut: boolean }>((resolve, reject) => {
+      let settled = false
       let timedOut = false
-      const expire = () => { timedOut = true; child.kill() }
+      let stdout = ''
+      let stderr = ''
+      const finish = (cb: () => void) => {
+        if (settled) return
+        settled = true
+        clearInterval(monitor)
+        clearTimeout(timer)
+        cb()
+      }
+      const expire = () => {
+        timedOut = true
+        if (activeRunner.stdin && !activeRunner.stdin.destroyed) activeRunner.stdin.end()
+      }
       // Measure exit after recovery finishes, independently of Windows process
       // and PowerShell startup. The app outlives the five-second exit deadline.
       let timer = setTimeout(expire, 60000)
@@ -132,8 +247,20 @@ it.skipIf(!enabled).each([
         clearTimeout(timer)
         timer = setTimeout(expire, 5000)
       }, 25)
-      child.once('error', error => { clearInterval(monitor); clearTimeout(timer); reject(error) })
-      child.once('exit', code => { clearInterval(monitor); clearTimeout(timer); resolve({ code, timedOut }) })
+      activeRunner.stdout?.setEncoding('utf8')
+      activeRunner.stderr?.setEncoding('utf8')
+      activeRunner.stdout?.on('data', chunk => {
+        stdout += chunk
+        const match = stdout.match(/^EXIT:(\d+)\r?$/m)
+        if (match) finish(() => resolve({ code: Number(match[1]), timedOut }))
+      })
+      activeRunner.stderr?.on('data', chunk => { stderr += chunk })
+      activeRunner.once('error', error => finish(() => reject(error)))
+      activeRunner.once('exit', code => finish(() => {
+        const match = stdout.match(/^EXIT:(\d+)\r?$/m)
+        if (match) resolve({ code: Number(match[1]), timedOut })
+        else reject(new Error(`hidden desktop runner exited early (${code}): ${stderr.trim() || 'no stderr'}`))
+      }))
     })
     expect(result.timedOut, `rollback finished, but the installer still waits for an invisible dialog:\n${readFileSync(path.join(root, 'lira_install.log'), 'utf8')}`).toBe(false)
     expect(result.code).toBe(1)
@@ -147,7 +274,19 @@ it.skipIf(!enabled).each([
     } else expect(existsSync(path.join(install, 'started'))).toBe(false)
     if (scenario.app === 'invalid') expect(log).toContain('Nao foi possivel reabrir o Lira')
   } finally {
-    writeFileSync(path.join(install, 'stop'), '')
-    await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
+    try {
+      writeFileSync(path.join(install, 'stop'), '')
+      await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
+    } finally {
+      if (runner) {
+        if (runner.stdin && !runner.stdin.destroyed) runner.stdin.end()
+        if (runner.exitCode === null && runner.signalCode === null) {
+          await new Promise<void>(resolve => {
+            const fallback = setTimeout(() => { runner?.kill(); resolve() }, 5000)
+            runner?.once('close', () => { clearTimeout(fallback); resolve() })
+          })
+        }
+      }
+    }
   }
 })
