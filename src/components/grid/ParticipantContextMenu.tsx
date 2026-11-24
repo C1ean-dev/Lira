@@ -1,16 +1,18 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   VolumeX,
   Volume2,
   Volume1,
   MicOff,
   Mic,
-  Shield,
   Crown,
   Headphones,
-  Radio,
   Check,
   Lock,
+  Wifi,
+  Server,
+  RefreshCw,
+  RotateCcw,
 } from 'lucide-react'
 import { ParticipantData } from './GridParticipantTile'
 import { useMediaStore } from '../../store/useMediaStore'
@@ -20,6 +22,47 @@ import { PeerManager } from '../../p2p/PeerManager'
 import { useSpotifyJamStore } from '../../store/useSpotifyJamStore'
 import { MediaManager } from '../../media/MediaManager'
 import { participantVolumeControl } from '../../media/participantVolumeControl'
+import {
+  useUserNetworkQuality,
+  type ConnectionRoute,
+  type TransportPreference,
+  type TurnProvider,
+} from '../../store/useNetworkQualityStore'
+
+function formatConnectionLabel(
+  route: ConnectionRoute,
+  turnProvider: TurnProvider | undefined,
+  isSwitching: boolean,
+  hasActiveCall: boolean,
+  callState?: string
+): string {
+  if (isSwitching) return 'Trocando rota...'
+  if (route === 'direct') return 'P2P Direta'
+  if (route === 'turn') {
+    if (turnProvider === 'cloudflare') return 'TURN (Cloudflare)'
+    if (turnProvider === 'metered') return 'TURN (Metered)'
+    return 'TURN (Relay)'
+  }
+  if (route === 'super-peer') return 'Relay (Host)'
+  if (callState === 'connecting' || callState === 'reconnecting') return 'Conectando...'
+  if (hasActiveCall) return 'Verificando...'
+  return 'Sem chamada'
+}
+
+function formatSwitchError(reason?: string): string {
+  switch (reason) {
+    case 'no_turn_servers':
+      return 'Servidor TURN indisponível no momento'
+    case 'no_active_call':
+      return 'Nenhuma chamada ativa com este participante'
+    case 'busy':
+      return 'Troca de conexão já em andamento'
+    case 'peer_unsupported':
+      return 'Este participante precisa atualizar o Lira'
+    default:
+      return 'Não foi possível trocar a conexão'
+  }
+}
 
 interface Props {
   user: ParticipantData
@@ -30,6 +73,8 @@ interface Props {
 
 export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose }) => {
   const menuRef = useRef<HTMLDivElement>(null)
+  const [isSubmittingSwitch, setIsSubmittingSwitch] = useState(false)
+  const [switchError, setSwitchError] = useState<string | null>(null)
 
   const localPlayer = useGameStore((s) => s.localPlayer)
   const mapData = useMapStore((s) => s.mapData)
@@ -64,6 +109,30 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
       (p) => p.id === user.id || p.gameId === user.id || (user.gameId && (p.id === user.gameId || p.gameId === user.gameId))
     )
   )
+  const targetPeerId = remotePlayer?.id || user.id
+  const callState = useGameStore((s) => s.callStates?.[targetPeerId]) || remotePlayer?.callState || user.callState || 'idle'
+  const isDjBot = Boolean(user.isDjBot || remotePlayer?.isDjBot || user.id.startsWith('dj-'))
+  const showConnectionControls = !user.isLocal && !isDjBot
+  const networkQuality = useUserNetworkQuality(targetPeerId, user.isLocal)
+  const peerManager = typeof PeerManager?.getInstance === 'function' ? PeerManager.getInstance() : null
+  const hasActiveCall = Boolean(
+    peerManager?.hasActiveMediaCall?.(targetPeerId) ||
+    user.stream ||
+    callState === 'connected' ||
+    callState === 'connecting' ||
+    callState === 'reconnecting'
+  )
+  const currentRoute: ConnectionRoute = networkQuality.route ?? 'unknown'
+  const transportPreference: TransportPreference = networkQuality.transportPreference ?? 'auto'
+  const isSwitching = isSubmittingSwitch || Boolean(networkQuality.isSwitchingTransport)
+  const connectionLabel = formatConnectionLabel(
+    currentRoute,
+    networkQuality.turnProvider,
+    isSwitching,
+    hasActiveCall,
+    callState
+  )
+
   const isTargetMuted = remotePlayer ? Boolean(remotePlayer.isMuted) : Boolean(user.isMuted)
   const isTargetDeafened = remotePlayer ? Boolean(remotePlayer.isDeafened) : Boolean(user.isDeafened)
   const volumeControl = participantVolumeControl(user, remotePlayer, localPlayer.id,
@@ -74,6 +143,12 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
     { label: user.isDjBot || remotePlayer?.isDjBot ? 'Volume do player' : 'Volume da voz', ...volumeControl },
     ...(isLive ? [{ label: 'Volume da live', volume: liveStreamVolume ?? 100, setVolume: setLiveStreamVolume }] : []),
   ]
+
+  useEffect(() => {
+    if (showConnectionControls && hasActiveCall) {
+      peerManager?.refreshPeerConnectionStats?.()
+    }
+  }, [showConnectionControls, hasActiveCall, targetPeerId])
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -93,9 +168,26 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
   }, [onClose])
 
   const menuWidth = 260
-  const menuHeight = user.isLocal ? 150 : isLive ? 530 : 450
+  const menuHeight = user.isLocal ? 150 : (isLive ? 530 : 450) + (showConnectionControls ? 130 : 0)
   const clampedX = Math.min(Math.max(10, x), window.innerWidth - menuWidth - 10)
   const clampedY = Math.max(10, Math.min(y, window.innerHeight - menuHeight - 10))
+
+  const handleSwitchTransport = async (e: React.MouseEvent, target: TransportPreference) => {
+    e.stopPropagation()
+    if (!peerManager || typeof peerManager.switchPeerConnectionTransport !== 'function' || isSwitching) return
+    setSwitchError(null)
+    setIsSubmittingSwitch(true)
+    try {
+      const result = await peerManager.switchPeerConnectionTransport(targetPeerId, target)
+      if (!result.ok) {
+        setSwitchError(formatSwitchError(result.reason))
+      }
+    } catch {
+      setSwitchError('Não foi possível trocar a conexão')
+    } finally {
+      setIsSubmittingSwitch(false)
+    }
+  }
 
   const handleToggleSilenceForMe = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -288,6 +380,145 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
             </div>
           </button>
         </div>
+      )}
+
+      {showConnectionControls && (
+        <>
+          <div className="my-1.5 border-t border-dashed border-lira-rule/60" />
+          <div
+            className="px-2.5 py-2 bg-lira-surface rounded-[8px] border border-lira-quiet"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold tracking-wider uppercase text-lira-muted flex items-center gap-1">
+                {currentRoute === 'turn' ? (
+                  <Server className="w-3 h-3 text-cyan-400" />
+                ) : (
+                  <Wifi className="w-3 h-3 text-emerald-400" />
+                )}
+                Conexão
+              </span>
+              <span
+                data-testid="connection-current-route"
+                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[6px] border text-[10px] font-semibold ${
+                  isSwitching
+                    ? 'bg-lira-amber/15 text-lira-amber border-lira-amber/40'
+                    : currentRoute === 'direct'
+                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35'
+                    : currentRoute === 'turn'
+                    ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/35'
+                    : currentRoute === 'super-peer'
+                    ? 'bg-lira-amber/15 text-lira-amber border-lira-amber/40'
+                    : 'bg-lira-panel text-lira-muted border-lira-quiet'
+                }`}
+              >
+                {isSwitching ? (
+                  <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                ) : (
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      currentRoute === 'direct'
+                        ? 'bg-emerald-400'
+                        : currentRoute === 'turn'
+                        ? 'bg-cyan-400'
+                        : currentRoute === 'super-peer'
+                        ? 'bg-lira-amber'
+                        : 'bg-lira-muted'
+                    }`}
+                  />
+                )}
+                <span>{connectionLabel}</span>
+              </span>
+            </div>
+
+            <div className="text-[10px] text-lira-muted mt-1 flex items-center justify-between gap-1">
+              <span className="truncate font-mono tabular-nums">
+                {hasActiveCall
+                  ? [
+                      networkQuality.pingMs > 0 ? `${networkQuality.pingMs}ms` : null,
+                      currentRoute !== 'unknown' || networkQuality.pingMs > 0
+                        ? `${networkQuality.lossPct}% perda`
+                        : null,
+                      networkQuality.protocol ? networkQuality.protocol.toUpperCase() : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ') || 'Aguardando métricas'
+                  : 'Fora da chamada'}
+              </span>
+              <span className="shrink-0 text-[9px] font-semibold text-lira-muted">
+                {transportPreference === 'auto' ? 'Automático' : 'Manual'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-1.5 mt-2">
+              <button
+                type="button"
+                data-testid="connection-switch-direct"
+                disabled={
+                  !hasActiveCall ||
+                  isSwitching ||
+                  (currentRoute === 'direct' && transportPreference === 'direct')
+                }
+                onClick={(e) => {
+                  void handleSwitchTransport(e, 'direct')
+                }}
+                className={`flex items-center justify-center gap-1 px-2 py-1.5 rounded-[6px] border text-[11px] font-semibold transition-colors ${
+                  currentRoute === 'direct'
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : 'bg-lira-panel text-lira-ink border-lira-quiet hover:bg-lira-ground hover:text-lira-accent'
+                } disabled:opacity-45 disabled:cursor-not-allowed`}
+              >
+                <Wifi className="w-3 h-3 shrink-0" />
+                <span>P2P Direta</span>
+              </button>
+
+              <button
+                type="button"
+                data-testid="connection-switch-turn"
+                disabled={
+                  !hasActiveCall ||
+                  isSwitching ||
+                  (currentRoute === 'turn' && transportPreference === 'turn')
+                }
+                onClick={(e) => {
+                  void handleSwitchTransport(e, 'turn')
+                }}
+                className={`flex items-center justify-center gap-1 px-2 py-1.5 rounded-[6px] border text-[11px] font-semibold transition-colors ${
+                  currentRoute === 'turn'
+                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                    : 'bg-lira-panel text-lira-ink border-lira-quiet hover:bg-lira-ground hover:text-lira-accent'
+                } disabled:opacity-45 disabled:cursor-not-allowed`}
+              >
+                <Server className="w-3 h-3 shrink-0" />
+                <span>TURN</span>
+              </button>
+            </div>
+
+            {transportPreference !== 'auto' && (
+              <button
+                type="button"
+                data-testid="connection-switch-auto"
+                disabled={!hasActiveCall || isSwitching}
+                onClick={(e) => {
+                  void handleSwitchTransport(e, 'auto')
+                }}
+                className="w-full mt-1.5 flex items-center justify-center gap-1 px-2 py-1 rounded-[6px] text-[10px] font-semibold text-lira-muted hover:text-lira-ink hover:bg-lira-panel transition-colors disabled:opacity-45 disabled:cursor-not-allowed"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Voltar para automático</span>
+              </button>
+            )}
+
+            {switchError && (
+              <p
+                data-testid="connection-switch-error"
+                className="text-[10px] text-lira-error mt-1.5 leading-tight"
+              >
+                {switchError}
+              </p>
+            )}
+          </div>
+        </>
       )}
 
       {!user.isLocal && (
