@@ -518,4 +518,68 @@ describe('DynamicBufferManager - Link Health Degraded P2P Upgrade', () => {
     expect(stopRelaySpy).not.toHaveBeenCalled()
     expect(mgr.getPeerRoutingTier('peer-tier3')).toBe(3)
   })
+
+  it('publishes active direct and TURN connection routes and provider into useNetworkQualityStore', async () => {
+    const mgr = DynamicBufferManager.getInstance()
+    mgr.resetForNewCall()
+
+    const directPc: any = {
+      getStats: vi.fn(async () => mockStats(0, 100, 0.01, false)),
+      getReceivers: () => [],
+      getTransportInfo: () => ({ mode: 'direct', switching: false }),
+    }
+    const turnPc: any = {
+      getStats: vi.fn(async () => mockStats(0, 100, 0.01, true)),
+      getReceivers: () => [],
+      getTransportInfo: () => ({ mode: 'turn', relayTier: 'cloudflare', manualOverride: 'turn', switching: false }),
+    }
+
+    const mediaCalls = new Map<string, any>([
+      ['peer-direct', { peerConnection: directPc }],
+      ['peer-turn', { peerConnection: turnPc }],
+    ])
+    vi.spyOn(PeerManager.getInstance(), 'getMediaCalls').mockReturnValue(mediaCalls)
+
+    await mgr.evaluateAndAdjustBuffer()
+
+    const qualities = useNetworkQualityStore.getState().peerQualities
+    expect(qualities['peer-direct']?.route).toBe('direct')
+    expect(qualities['peer-direct']?.transportPreference).toBe('auto')
+    expect(qualities['peer-turn']?.route).toBe('turn')
+    expect(qualities['peer-turn']?.turnProvider).toBe('cloudflare')
+    expect(qualities['peer-turn']?.transportPreference).toBe('turn')
+  })
+
+  it('does not auto-escalate sustained packet loss while peer is manually locked to direct', async () => {
+    const mgr = DynamicBufferManager.getInstance()
+    mgr.resetForNewCall()
+
+    const mockForceDegraded = vi.fn(async () => true)
+    let cumulativeLoss = 0
+    let cumulativeRecv = 0
+    let currentStats = mockStats(0, 0)
+
+    const pc: any = {
+      getStats: vi.fn(async () => currentStats),
+      forceDegradedUpgrade: mockForceDegraded,
+      getReceivers: () => [],
+      getTransportInfo: () => ({ mode: 'direct', manualOverride: 'direct', switching: false }),
+    }
+
+    const mediaCalls = new Map<string, any>([['peer-manual-direct', { peerConnection: pc }]])
+    vi.spyOn(PeerManager.getInstance(), 'getMediaCalls').mockReturnValue(mediaCalls)
+
+    mgr.setPeerManualTransport('peer-manual-direct', 'direct')
+
+    for (let i = 0; i < 5; i++) {
+      cumulativeLoss += 20
+      cumulativeRecv += 80
+      currentStats = mockStats(cumulativeLoss, cumulativeRecv)
+      await mgr.evaluateAndAdjustBuffer()
+    }
+
+    expect(mockForceDegraded).not.toHaveBeenCalled()
+    expect(mgr.getPeerRoutingTier('peer-manual-direct')).toBe(1)
+    expect(useNetworkQualityStore.getState().peerQualities['peer-manual-direct']?.transportPreference).toBe('direct')
+  })
 })

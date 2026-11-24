@@ -1,5 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installRtcTransportPriority, observeVoiceRoute, DIRECT_ATTEMPT_MS, RELAY_ATTEMPT_MS, forceDegradedUpgrade } from '../../p2p/rtcTransportPriority'
+import {
+  installRtcTransportPriority,
+  observeVoiceRoute,
+  DIRECT_ATTEMPT_MS,
+  RELAY_ATTEMPT_MS,
+  forceDegradedUpgrade,
+  switchConnectionTransport,
+  setConnectionTransportAuto,
+  getConnectionTransportInfo,
+  preparePeerManualTransport,
+  notifyRemoteClearManualTransport,
+} from '../../p2p/rtcTransportPriority'
 import { MediaCallHandler } from '../../p2p/mediaCalls'
 import { appTrail } from '../../utils/breadcrumbs'
 
@@ -589,5 +600,237 @@ describe('automatic relay for sustained voice packet loss', () => {
     }
     await vi.advanceTimersByTimeAsync(0)
     expect(f.pc.createOffer).toHaveBeenCalledOnce()
+  })
+})
+
+describe('manual Direct / TURN transport switching', () => {
+  it('switches repeatedly between Direct and TURN without cooldown limits and clears switching on ICE connect', async () => {
+    const f = fixture(false, metered, 'media')
+    f.pc.change('connected')
+
+    const toTurn = await switchConnectionTransport(f.conn, 'turn')
+    expect(toTurn).toEqual({ ok: true, relayTier: 'cloudflare' })
+    expect(f.pc.setConfiguration).toHaveBeenLastCalledWith(expect.objectContaining({
+      iceServers: cloudflare,
+      iceTransportPolicy: 'relay',
+    }))
+    expect(f.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'OFFER',
+      payload: expect.objectContaining({
+        connectionId: 'dc_test',
+        liraIceRestart: 'cloudflare',
+        liraIceForceRelay: 1,
+        liraManualTransport: 'turn',
+      }),
+    }))
+    expect(getConnectionTransportInfo(f.conn)).toEqual({
+      mode: 'turn',
+      relayTier: 'cloudflare',
+      manualOverride: 'turn',
+      switching: true,
+    })
+
+    f.pc.change('connected')
+    expect(getConnectionTransportInfo(f.conn)?.switching).toBe(false)
+
+    const toDirect = await switchConnectionTransport(f.conn, 'direct')
+    expect(toDirect).toEqual({ ok: true })
+    expect(f.pc.setConfiguration).toHaveBeenLastCalledWith(expect.objectContaining({
+      iceServers: stun,
+      iceTransportPolicy: 'all',
+    }))
+    expect(f.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'OFFER',
+      payload: expect.objectContaining({
+        connectionId: 'dc_test',
+        liraIceRestart: 'direct',
+        liraManualTransport: 'direct',
+      }),
+    }))
+    expect(getConnectionTransportInfo(f.conn)).toEqual({
+      mode: 'direct',
+      relayTier: undefined,
+      manualOverride: 'direct',
+      switching: true,
+    })
+
+    f.pc.change('connected')
+    const backToTurn = await switchConnectionTransport(f.conn, 'turn')
+    expect(backToTurn).toEqual({ ok: true, relayTier: 'cloudflare' })
+    expect(f.pc.createOffer).toHaveBeenCalledTimes(3)
+  })
+
+  it('falls back to Metered TURN on manual TURN switch when Cloudflare returns no servers and errors if none exist', async () => {
+    const f1 = fixture(false, metered, 'media')
+    f1.pc.change('connected')
+    f1.load.mockResolvedValue([])
+    expect(await switchConnectionTransport(f1.conn, 'turn')).toEqual({ ok: true, relayTier: 'metered' })
+    expect(f1.pc.setConfiguration).toHaveBeenLastCalledWith(expect.objectContaining({
+      iceServers: metered,
+      iceTransportPolicy: 'relay',
+    }))
+
+    const f2 = fixture(false, [], 'media')
+    f2.pc.change('connected')
+    f2.load.mockResolvedValue([])
+    expect(await switchConnectionTransport(f2.conn, 'turn')).toEqual({ ok: false, reason: 'no_turn_servers' })
+    expect(getConnectionTransportInfo(f2.conn)?.switching).toBe(false)
+    expect(getConnectionTransportInfo(f2.conn)?.manualOverride).toBeUndefined()
+  })
+
+  it('routes callee manual switch requests to originator and answers direct restart offers in place', async () => {
+    const callee = fixture(true, metered, 'media')
+    callee.pc.change('connected')
+
+    expect(await switchConnectionTransport(callee.conn, 'turn')).toEqual({ ok: true })
+    expect(callee.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'CANDIDATE',
+      dst: 'remote',
+      payload: expect.objectContaining({
+        connectionId: 'dc_test',
+        liraRestartRequest: true,
+        liraTargetTransport: 'turn',
+      }),
+    }))
+
+    expect(await switchConnectionTransport(callee.conn, 'direct')).toEqual({ ok: true })
+    expect(callee.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'CANDIDATE',
+      dst: 'remote',
+      payload: expect.objectContaining({
+        connectionId: 'dc_test',
+        liraTransportSwitchRequest: 'direct',
+      }),
+    }))
+
+    await callee.peer._handleMessage({
+      type: 'OFFER',
+      src: 'remote',
+      payload: {
+        connectionId: 'dc_test',
+        liraIceRestart: 'direct',
+        liraManualTransport: 'direct',
+        sdp: { type: 'offer', sdp: 'direct-restart-offer' },
+      },
+    })
+    expect(callee.pc.setConfiguration).toHaveBeenLastCalledWith(expect.objectContaining({
+      iceServers: stun,
+      iceTransportPolicy: 'all',
+    }))
+    expect(callee.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'ANSWER',
+      payload: expect.objectContaining({
+        connectionId: 'dc_test',
+        liraIceRestart: 'direct',
+        liraManualTransport: 'direct',
+      }),
+    }))
+
+    const originator = fixture(false, metered, 'media')
+    originator.pc.change('connected')
+    originator.peer._handleMessage({
+      type: 'CANDIDATE',
+      src: 'remote',
+      payload: { connectionId: 'dc_test', liraTransportSwitchRequest: 'direct', reason: 'remote_manual_switch' },
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(originator.send).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'OFFER',
+      payload: expect.objectContaining({
+        connectionId: 'dc_test',
+        liraIceRestart: 'direct',
+        liraManualTransport: 'direct',
+      }),
+    }))
+  })
+
+  it('prevents automatic degradation fallback while pinned to manual direct until restored to auto', async () => {
+    const f = fixture(false, metered, 'media')
+    f.pc.change('connected')
+
+    await switchConnectionTransport(f.conn, 'direct')
+    f.pc.change('connected')
+    expect(f.pc.createOffer).toHaveBeenCalledTimes(1)
+
+    // Automatic forceDegradedUpgrade is blocked while manually pinned to direct
+    expect(await forceDegradedUpgrade(f.pc, 'sustained_packet_loss_or_jitter')).toBe(false)
+    expect(f.pc.createOffer).toHaveBeenCalledTimes(1)
+
+    // Voice route observer loss windows also do not auto-escalate while manually pinned to direct
+    for (let i = 0; i <= 3; i++) {
+      if (i > 0) await vi.advanceTimersByTimeAsync(10_000)
+      observeVoiceRoute(f.conn, {
+        pairId: 'direct',
+        relayed: false,
+        rttMs: 25,
+        inbound: { id: 'audio', timestamp: Date.now(), packets: 500 * i, lost: 85 * i },
+      })
+      await vi.advanceTimersByTimeAsync(0)
+    }
+    expect(f.pc.createOffer).toHaveBeenCalledTimes(1)
+
+    // Returning to auto re-enables automatic fallback
+    expect(setConnectionTransportAuto(f.conn)).toBe(true)
+    expect(getConnectionTransportInfo(f.conn)?.manualOverride).toBeUndefined()
+    expect(await forceDegradedUpgrade(f.pc, 'sustained_packet_loss_or_jitter')).toBe(true)
+    expect(f.pc.createOffer).toHaveBeenCalledTimes(2)
+  })
+
+  it('constructs redialed calls with relay policy when preparePeerManualTransport pins TURN and clears on remote signal', async () => {
+    const observedConfigs: any[] = []
+    const baseConfig = { iceServers: stun, iceTransportPolicy: 'all' }
+    const send = vi.fn()
+    const peer: any = {
+      options: { config: baseConfig },
+      socket: { send },
+      getConnection: () => undefined,
+      _handleMessage: vi.fn(),
+      _addConnection: vi.fn(),
+      on: vi.fn(),
+      call: vi.fn(() => {
+        observedConfigs.push(peer.options.config)
+        return { peer: 'remote', connectionId: 'mc_turn', type: 'media', peerConnection: new Connection(), on: vi.fn() }
+      }),
+    }
+    const load = vi.fn(async () => cloudflare)
+    installRtcTransportPriority(peer, { cloudflare: load, metered, discovery: stun })
+
+    const prepTurn = await preparePeerManualTransport(peer, 'remote', 'turn')
+    expect(prepTurn).toEqual({ ok: true, relayTier: 'cloudflare' })
+
+    const turnCall = peer.call('remote', {} as any)
+    peer._addConnection('remote', turnCall)
+    expect(observedConfigs[0]).toEqual(expect.objectContaining({
+      iceServers: cloudflare,
+      iceTransportPolicy: 'relay',
+    }))
+    // Base peer config is restored immediately after peer.call returns
+    expect(peer.options.config).toBe(baseConfig)
+    expect(getConnectionTransportInfo(turnCall)).toEqual({
+      mode: 'turn',
+      relayTier: 'cloudflare',
+      manualOverride: 'turn',
+      switching: true,
+    })
+    turnCall.peerConnection.change('connected')
+    expect(getConnectionTransportInfo(turnCall)?.switching).toBe(false)
+
+    // Remote peer clearing manual transport removes the pinned TURN entry
+    notifyRemoteClearManualTransport(peer, 'remote', 'mc_turn')
+    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'CANDIDATE',
+      dst: 'remote',
+      payload: { connectionId: 'mc_turn', liraClearManualTransport: 1 },
+    }))
+    peer._handleMessage({
+      type: 'CANDIDATE',
+      src: 'remote',
+      payload: { connectionId: 'mc_turn', liraClearManualTransport: 1 },
+    })
+
+    const nextCall = peer.call('remote', {} as any)
+    peer._addConnection('remote', nextCall)
+    expect(observedConfigs[1]).toBe(baseConfig)
+    expect(getConnectionTransportInfo(nextCall)?.manualOverride).toBeUndefined()
   })
 })

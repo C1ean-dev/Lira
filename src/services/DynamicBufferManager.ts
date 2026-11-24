@@ -1,9 +1,18 @@
 import { useMediaStore } from '../store/useMediaStore'
 import { useGameStore } from '../store/useGameStore'
-import { useNetworkQualityStore } from '../store/useNetworkQualityStore'
+import {
+  useNetworkQualityStore,
+  type ConnectionRoute,
+  type TurnProvider,
+  type TransportPreference,
+} from '../store/useNetworkQualityStore'
 import { MediaCallHandler } from '../p2p/mediaCalls'
 import { PeerManager } from '../p2p/PeerManager'
-import { forceDegradedUpgrade } from '../p2p/rtcTransportPriority'
+import {
+  forceDegradedUpgrade,
+  getConnectionTransportInfo,
+  type ConnectionTransportInfo,
+} from '../p2p/rtcTransportPriority'
 import {
   SuperPeerVoiceRelay,
   RECOVERY_MIN_HOLD_TIME_MS,
@@ -59,6 +68,31 @@ export const DYNAMIC_BUFFER_DEFAULT: Record<'audio' | 'video', AdaptiveBuffer> =
   },
 }
 
+function detectTurnProvider(
+  transportInfo: ConnectionTransportInfo | null,
+  localCand: any,
+  pc: RTCPeerConnection
+): TurnProvider {
+  if (transportInfo?.relayTier === 'cloudflare' || transportInfo?.relayTier === 'metered') {
+    return transportInfo.relayTier
+  }
+  const candUrl = typeof localCand?.url === 'string' ? localCand.url.toLowerCase() : ''
+  if (candUrl.includes('cloudflare')) return 'cloudflare'
+  if (candUrl.includes('metered')) return 'metered'
+  try {
+    const servers = pc.getConfiguration?.()?.iceServers || []
+    for (const server of servers) {
+      const urls = Array.isArray(server.urls) ? server.urls : [server.urls]
+      for (const url of urls) {
+        const lower = String(url).toLowerCase()
+        if (lower.includes('cloudflare')) return 'cloudflare'
+        if (lower.includes('metered')) return 'metered'
+      }
+    }
+  } catch {}
+  return 'unknown'
+}
+
 export class DynamicBufferManager {
   private static instance: DynamicBufferManager | null = null
   private monitorInterval: any = null
@@ -66,6 +100,7 @@ export class DynamicBufferManager {
   private lastStats: Map<string, TrackStatsSnapshot> = new Map()
   private peerHealthHistory: Map<string, Array<{ lossRate: number; jitterMs: number; timestamp: number }>> = new Map()
   private peerRoutingState: Map<string, PeerRoutingState> = new Map()
+  private peerManualTransport: Map<string, TransportPreference> = new Map()
   private evaluation: Promise<{ audio: number; video: number }> | null = null
 
   private buffers: Record<'audio' | 'video', AdaptiveBuffer> = {
@@ -83,9 +118,28 @@ export class DynamicBufferManager {
     return this.peerRoutingState.get(peerId)?.tier || 1
   }
 
+  public getPeerManualTransport(peerId: string): TransportPreference {
+    return this.peerManualTransport.get(peerId) || 'auto'
+  }
+
+  public setPeerManualTransport(peerId: string, preference: TransportPreference): void {
+    if (preference === 'auto') {
+      this.peerManualTransport.delete(peerId)
+    } else {
+      this.peerManualTransport.set(peerId, preference)
+      this.peerRoutingState.set(peerId, {
+        tier: preference === 'turn' ? 3 : 1,
+        tierStartedAt: Date.now(),
+        recoverySamples: [],
+      })
+      this.peerHealthHistory.delete(peerId)
+    }
+  }
+
   public clearPeerRoutingState(peerId: string): void {
     this.peerRoutingState.delete(peerId)
     this.peerHealthHistory.delete(peerId)
+    this.peerManualTransport.delete(peerId)
   }
 
   private constructor() {
@@ -105,6 +159,7 @@ export class DynamicBufferManager {
     this.lastStats.clear()
     this.peerHealthHistory.clear()
     this.peerRoutingState.clear()
+    this.peerManualTransport.clear()
     this.hasEvaluatedOnce = false
     useNetworkQualityStore.getState().clearAll()
   }
@@ -206,9 +261,13 @@ export class DynamicBufferManager {
         }
 
         let isRelayRoute = false
+        let localCand: any = undefined
+        let remoteCand: any = undefined
+        let protocol: string | undefined = undefined
         if (activePair) {
-          const localCand = candidateMap.get(activePair.localCandidateId)
-          const remoteCand = candidateMap.get(activePair.remoteCandidateId)
+          localCand = candidateMap.get(activePair.localCandidateId)
+          remoteCand = candidateMap.get(activePair.remoteCandidateId)
+          protocol = localCand?.relayProtocol || localCand?.protocol || remoteCand?.protocol
           if (localCand?.candidateType === 'relay' || remoteCand?.candidateType === 'relay') {
             isRelayRoute = true
           }
@@ -288,11 +347,10 @@ export class DynamicBufferManager {
           })
         })
 
-        useNetworkQualityStore.getState().setPeerQuality(peerId, {
-          pingMs: peerPingMs,
-          lossPct: Math.round(peerLossRatio * 100),
-          jitterMs: Math.round(peerJitterMs),
-        })
+        const transportInfo = getConnectionTransportInfo(call)
+        const manualPref: TransportPreference =
+          transportInfo?.manualOverride ?? this.peerManualTransport.get(peerId) ?? 'auto'
+        const superPeerRelay = SuperPeerVoiceRelay.getInstance()
 
         const history = this.peerHealthHistory.get(peerId) || []
         history.push({ lossRate: peerLossRatio, jitterMs: peerJitterMs, timestamp: now })
@@ -309,12 +367,32 @@ export class DynamicBufferManager {
           this.peerRoutingState.set(peerId, routingState)
         } else if (isRelayRoute && routingState.tier !== 3) {
           routingState.tier = 3
+        } else if (!isRelayRoute && routingState.tier === 3 && manualPref === 'direct' && !superPeerRelay.isRelayActiveForPeer(peerId)) {
+          routingState.tier = 1
         }
 
-        const superPeerRelay = SuperPeerVoiceRelay.getInstance()
+        const initialRoute: ConnectionRoute =
+          superPeerRelay.isRelayActiveForPeer(peerId) || (routingState.tier === 2 && !isRelayRoute)
+            ? 'super-peer'
+            : isRelayRoute
+            ? 'turn'
+            : activePair
+            ? 'direct'
+            : 'unknown'
+
+        useNetworkQualityStore.getState().setPeerQuality(peerId, {
+          pingMs: peerPingMs,
+          lossPct: Math.round(peerLossRatio * 100),
+          jitterMs: Math.round(peerJitterMs),
+          route: initialRoute,
+          turnProvider: initialRoute === 'turn' ? detectTurnProvider(transportInfo, localCand, pc) : undefined,
+          protocol,
+          transportPreference: manualPref,
+          isSwitchingTransport: Boolean(transportInfo?.switching),
+        })
 
         if (routingState.tier === 1) {
-          if (history.length === 3) {
+          if (manualPref !== 'direct' && history.length === 3) {
             const isSustainedDegradation = history.every(
               (sample) => sample.lossRate > 0.06 || (sample.lossRate > 0.03 && sample.jitterMs > 80)
             )
@@ -445,6 +523,21 @@ export class DynamicBufferManager {
           }
         }
 
+        const updatedRoute: ConnectionRoute =
+          superPeerRelay.isRelayActiveForPeer(peerId) || (routingState.tier === 2 && !isRelayRoute)
+            ? 'super-peer'
+            : isRelayRoute
+            ? 'turn'
+            : activePair
+            ? 'direct'
+            : 'unknown'
+        if (updatedRoute !== initialRoute) {
+          useNetworkQualityStore.getState().setPeerQuality(peerId, {
+            route: updatedRoute,
+            turnProvider: updatedRoute === 'turn' ? detectTurnProvider(getConnectionTransportInfo(call), localCand, pc) : undefined,
+          })
+        }
+
         if (peerPingMs > 0) {
           totalPeerPing += peerPingMs
           peerPingCount++
@@ -463,6 +556,7 @@ export class DynamicBufferManager {
         useNetworkQualityStore.getState().removePeerQuality(storedPeerId)
         this.peerHealthHistory.delete(storedPeerId)
         this.peerRoutingState.delete(storedPeerId)
+        this.peerManualTransport.delete(storedPeerId)
       }
     }
 
