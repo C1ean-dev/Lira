@@ -66,7 +66,7 @@ export const DoorKnockNotification: React.FC = () => {
   }
 
   return (
-    <div className="fixed top-20 right-6 z-[80] flex flex-col gap-2.5 max-w-sm w-full pointer-events-auto select-none font-mono">
+    <div className="fixed top-4 right-4 sm:right-6 z-[80] flex flex-col gap-2.5 max-w-[min(24rem,calc(100vw-var(--rail-width)-24px))] w-full pointer-events-auto select-none font-mono">
       {activeKnocks.map((knock) => (
         <div
           key={knock.id}

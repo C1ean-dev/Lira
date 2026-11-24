@@ -161,7 +161,7 @@ const OnlineUsersMenuInner: React.FC = () => {
   }
 
   return (
-    <div className="fixed top-16 left-3 right-3 sm:left-auto sm:right-4 w-auto sm:w-96 bg-lira-panel border border-dashed border-lira-rule rounded-[12px] z-[70] overflow-hidden flex flex-col max-h-[calc(100dvh-76px)] select-none font-mono text-lira-ink">
+    <div className="fixed top-3 sm:top-4 left-[calc(var(--rail-width)+8px)] right-2 sm:left-auto sm:right-4 w-auto sm:w-96 bg-lira-panel border border-dashed border-lira-rule rounded-[12px] z-[75] overflow-hidden flex flex-col max-h-[calc(100dvh-24px)] sm:max-h-[calc(100dvh-32px)] select-none font-mono text-lira-ink">
       <div className="p-4 border-b border-dashed border-lira-rule/60 bg-lira-ground flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-[8px] bg-lira-surface border border-lira-rule flex items-center justify-center text-lira-accent">

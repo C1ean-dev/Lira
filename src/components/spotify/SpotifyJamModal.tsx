@@ -76,7 +76,7 @@ export const SpotifyJamModal: React.FC = () => {
       role="dialog"
       aria-modal="true"
       aria-labelledby="spotify-dj-title"
-      className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-lira-ground/80 select-none font-mono"
+      className="fixed inset-0 z-[105] flex items-center justify-center p-4 bg-lira-ground/80 select-none font-mono"
     >
       <div className="bg-lira-panel border border-dashed border-lira-rule rounded-xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
         <div className="px-5 py-4 border-b border-dashed border-lira-rule/60 bg-lira-sidebar flex items-center justify-between">

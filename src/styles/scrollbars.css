@@ -26,3 +26,11 @@
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+.rail-scroll {
+  scrollbar-width: none;
+}
+
+.rail-scroll::-webkit-scrollbar {
+  display: none;
+}

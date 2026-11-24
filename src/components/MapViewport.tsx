@@ -13,6 +13,7 @@ import { Direction } from '../types/game'
 import { PlacedFurniture, PrivateZone, FloorType } from '../types/map'
 import { MapControlsWidget } from './MapControlsWidget'
 import { SimplifiedMapView } from './SimplifiedMapView'
+import { CurrentLocationPill } from './CurrentLocationPill'
 import { FurnitureContextMenu } from '../editor/FurnitureContextMenu'
 import { Button, Badge } from './ui'
 
@@ -181,7 +182,7 @@ export const MapViewport: React.FC = () => {
     const MAX_CANVAS_PIXELS = 1920 * 1080
     const applySize = () => {
       let w = canvas.parentElement?.clientWidth || window.innerWidth
-      let h = canvas.parentElement?.clientHeight || window.innerHeight - 56
+      let h = canvas.parentElement?.clientHeight || window.innerHeight
       const area = w * h
       if (area > MAX_CANVAS_PIXELS) {
         const scale = Math.sqrt(MAX_CANVAS_PIXELS / area)
@@ -252,7 +253,7 @@ export const MapViewport: React.FC = () => {
       const canvas = canvasRef.current
       const MAX_CANVAS_PIXELS = 1920 * 1080
       let w = canvas.parentElement?.clientWidth || window.innerWidth
-      let h = canvas.parentElement?.clientHeight || window.innerHeight - 56
+      let h = canvas.parentElement?.clientHeight || window.innerHeight
       if (w * h > MAX_CANVAS_PIXELS) {
         const scale = Math.sqrt(MAX_CANVAS_PIXELS / (w * h))
         w = Math.floor(w * scale)
@@ -802,7 +803,7 @@ export const MapViewport: React.FC = () => {
   return (
     <div
       onWheel={handleWheel}
-      className="relative flex-1 w-full h-[calc(100vh-56px)] overflow-hidden bg-lira-ground"
+      className="relative flex-1 w-full h-full overflow-hidden bg-lira-ground"
     >
       <canvas
         ref={canvasRef}
@@ -840,44 +841,48 @@ export const MapViewport: React.FC = () => {
         </Button>
       )}
 
-      {isEditorOpen && selectedPlacedFurnitureId && !isDraggingFurniture && mapViewMode !== 'simplified' && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-lira-panel border border-dashed border-lira-rule text-lira-ink px-4 py-2 rounded-[12px] flex items-center gap-3 text-xs font-mono font-semibold select-none z-30">
-          <span className="text-lira-muted">💡 Dica:</span>
-          <span className="text-lira-accent font-medium">Arraste a mobília para mover</span>
-          <span className="text-lira-rule">•</span>
-          <span className="text-lira-muted font-normal">Girar (<kbd className="px-1.5 py-0.5 rounded-[4px] bg-lira-surface border border-lira-quiet text-lira-amber font-mono text-[10px]">R</kbd>)</span>
-          <span className="text-lira-rule">•</span>
-          <span className="text-lira-muted font-normal">Deselecionar (<kbd className="px-1.5 py-0.5 rounded-[4px] bg-lira-surface border border-lira-quiet text-lira-ink font-mono text-[10px]">Esc</kbd> ou clique nela)</span>
-        </div>
-      )}
+      <div className="pointer-events-none absolute top-3 sm:top-4 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 max-w-[calc(100%-2rem)]">
+        <CurrentLocationPill />
 
-      {isEditorOpen && activeTool === 'paint_floor' && mapViewMode !== 'simplified' && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-lira-panel border border-dashed border-lira-online/60 text-lira-ink px-4 py-2 rounded-[12px] flex items-center gap-2.5 text-xs font-mono font-semibold select-none z-30">
-          <Sparkles className="w-4 h-4 text-lira-online" />
-          <span>Clique e arraste para pintar o piso (Shift + Clique preenche a sala inteira)</span>
-        </div>
-      )}
+        {isEditorOpen && selectedPlacedFurnitureId && !isDraggingFurniture && mapViewMode !== 'simplified' && (
+          <div className="pointer-events-auto bg-lira-panel border border-dashed border-lira-rule text-lira-ink px-4 py-2 rounded-[12px] flex items-center gap-3 text-xs font-mono font-semibold select-none">
+            <span className="text-lira-muted">💡 Dica:</span>
+            <span className="text-lira-accent font-medium">Arraste a mobília para mover</span>
+            <span className="text-lira-rule">•</span>
+            <span className="text-lira-muted font-normal">Girar (<kbd className="px-1.5 py-0.5 rounded-[4px] bg-lira-surface border border-lira-quiet text-lira-amber font-mono text-[10px]">R</kbd>)</span>
+            <span className="text-lira-rule">•</span>
+            <span className="text-lira-muted font-normal">Deselecionar (<kbd className="px-1.5 py-0.5 rounded-[4px] bg-lira-surface border border-lira-quiet text-lira-ink font-mono text-[10px]">Esc</kbd> ou clique nela)</span>
+          </div>
+        )}
 
-      {isEditorOpen && activeTool === 'place_furniture' && mapViewMode !== 'simplified' && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-lira-panel border border-dashed border-lira-rule text-lira-ink px-4 py-2 rounded-[12px] flex items-center gap-3 text-xs font-mono font-semibold select-none z-30">
-          <span className="text-lira-muted">Direção:</span>
-          <Badge variant="default">
-            {placementDirection === 'down' && '⬇️ Frente'}
-            {placementDirection === 'left' && '⬅️ Esquerda'}
-            {placementDirection === 'up' && '⬆️ Costas'}
-            {placementDirection === 'right' && '➡️ Direita'}
-          </Badge>
-          <Button
-            variant="primary"
-            size="xs"
-            onClick={() => rotatePlacementDirection()}
-            title="Girar objeto (Tecla R)"
-          >
-            <RotateCw className="w-3.5 h-3.5" />
-            <span>Girar (R)</span>
-          </Button>
-        </div>
-      )}
+        {isEditorOpen && activeTool === 'paint_floor' && mapViewMode !== 'simplified' && (
+          <div className="pointer-events-auto bg-lira-panel border border-dashed border-lira-online/60 text-lira-ink px-4 py-2 rounded-[12px] flex items-center gap-2.5 text-xs font-mono font-semibold select-none">
+            <Sparkles className="w-4 h-4 text-lira-online" />
+            <span>Clique e arraste para pintar o piso (Shift + Clique preenche a sala inteira)</span>
+          </div>
+        )}
+
+        {isEditorOpen && activeTool === 'place_furniture' && mapViewMode !== 'simplified' && (
+          <div className="pointer-events-auto bg-lira-panel border border-dashed border-lira-rule text-lira-ink px-4 py-2 rounded-[12px] flex items-center gap-3 text-xs font-mono font-semibold select-none">
+            <span className="text-lira-muted">Direção:</span>
+            <Badge variant="default">
+              {placementDirection === 'down' && '⬇️ Frente'}
+              {placementDirection === 'left' && '⬅️ Esquerda'}
+              {placementDirection === 'up' && '⬆️ Costas'}
+              {placementDirection === 'right' && '➡️ Direita'}
+            </Badge>
+            <Button
+              variant="primary"
+              size="xs"
+              onClick={() => rotatePlacementDirection()}
+              title="Girar objeto (Tecla R)"
+            >
+              <RotateCw className="w-3.5 h-3.5" />
+              <span>Girar (R)</span>
+            </Button>
+          </div>
+        )}
+      </div>
 
       {mapViewMode === 'simplified' && <SimplifiedMapView />}
 

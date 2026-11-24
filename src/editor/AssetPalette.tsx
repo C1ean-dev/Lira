@@ -263,8 +263,8 @@ export const AssetPalette: React.FC = () => {
       />
 
       <div
-        className={`absolute top-14 sm:top-16 right-2 left-2 sm:left-auto sm:right-4 w-auto sm:w-[380px] max-w-sm sm:max-w-md bg-lira-panel border border-dashed border-lira-rule rounded-[12px] z-40 overflow-hidden flex flex-col font-mono text-lira-ink ${
-          isCollapsed ? 'max-h-none' : 'max-h-[52vh] sm:max-h-[calc(100vh-100px)]'
+        className={`absolute top-3 sm:top-4 right-2 left-2 sm:left-auto sm:right-4 w-auto sm:w-[380px] max-w-sm sm:max-w-md bg-lira-panel border border-dashed border-lira-rule rounded-[12px] z-40 overflow-hidden flex flex-col font-mono text-lira-ink ${
+          isCollapsed ? 'max-h-none' : 'max-h-[52vh] sm:max-h-[calc(100vh-32px)]'
         } select-none`}
       >
         <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b border-dashed border-lira-rule/60 bg-lira-sidebar">

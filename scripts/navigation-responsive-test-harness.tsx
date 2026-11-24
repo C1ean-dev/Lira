@@ -2,6 +2,8 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { TopNavBar } from '../src/components/TopNavBar'
+import { CurrentLocationPill } from '../src/components/CurrentLocationPill'
+import { FullScreenGrid } from '../src/components/FullScreenGrid'
 import { DirectConnectTab } from '../src/components/lobby/DirectConnectTab'
 import { OnlineUsersMenu } from '../src/components/OnlineUsersMenu'
 import { ChatDrawer } from '../src/components/ChatDrawer'
@@ -21,7 +23,7 @@ let generation = 0
 const events = { avatar: 0, disconnect: 0, update: 0 }
 const zoneName = 'Nova Sala Privada para conversas e apresentações com um nome bastante comprido'
 
-function configure({ publicRoom = false, connectionStatus = 'connected', update = false } = {}) {
+function configure({ publicRoom = false, connectionStatus = 'connected', update = false, gridCall = false } = {}) {
   useGameStore.setState({ roomId: '651CAA21-6733-4B2C-8208-3C2617900000', isHost: true, isRoomPublic: publicRoom, isOnlineUsersOpen: false,
     connectionStatus: connectionStatus as any, remotePlayers: {}, localPlayer: { ...initialGame.localPlayer,
       id: 'local', name: 'ParticipanteComUmNomeMuitoCompridoParaOHeader', statusText: 'Disponível para conversar na sala', currentZoneId: 'room' } })
@@ -30,12 +32,19 @@ function configure({ publicRoom = false, connectionStatus = 'connected', update 
     room: { zoneId: 'room', djPeerId: 'remote', djName: 'Aravon', startedAt: 123, isDjActive: true, requests: [], requestsRevision: 0 },
   } })
   useUpdateStore.setState({ status: update ? 'ready' : 'idle', manualCheck: 'idle', updateInfo: null })
-  useMediaStore.setState({ isSettingsModalOpen: false })
+  useMediaStore.setState({ isSettingsModalOpen: false, isGridCallOpen: gridCall })
   useChatStore.setState({ isChatOpen: false })
   flushSync(() => root.render(<React.Fragment key={++generation}>
-    <TopNavBar onOpenAvatarModal={() => { events.avatar++ }} onDisconnect={() => { events.disconnect++ }}
-      hasUpdate={update} isUpdateReady={update} onApplyUpdate={() => { events.update++ }} />
-    <main className="flex-1" aria-label="Mapa de teste" style={{ background: 'repeating-conic-gradient(#dccbb4 0% 25%, #799eac 0% 50%) 0 / 40px 40px' }} />
+    <div className="flex flex-row h-screen w-screen overflow-hidden">
+      <TopNavBar onOpenAvatarModal={() => { events.avatar++ }} onDisconnect={() => { events.disconnect++ }}
+        hasUpdate={update} isUpdateReady={update} onApplyUpdate={() => { events.update++ }} />
+      <main className="relative flex-1 min-w-0 h-full" aria-label="Mapa de teste" style={{ background: 'repeating-conic-gradient(#dccbb4 0% 25%, #799eac 0% 50%) 0 / 40px 40px' }}>
+        <div className="pointer-events-none absolute top-3 sm:top-4 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center max-w-[calc(100%-2rem)]">
+          <CurrentLocationPill />
+        </div>
+      </main>
+    </div>
+    <FullScreenGrid />
     <SpotifyJamSideDisplay />
     <OnlineUsersMenu />
     <ChatDrawer />
@@ -52,7 +61,8 @@ function LobbyConnectFixture() {
     <DirectConnectTab
       userName={userName} setUserName={setUserName} onOpenAvatarCustomizer={() => {}}
       createRoomName={createRoomName} setCreateRoomName={setCreateRoomName}
-      roomInput={roomInput} setRoomInput={setRoomInput} error={null} loading={false}
+      roomInput={roomInput} setRoomInput={setRoomInput}
+      error={null} loading={false}
       onCreate={() => lobbyActions.push(`create:${createRoomName}`)} onJoin={code => lobbyActions.push(`join:${code}`)}
       onJoined={() => {}} beginDirectJoin={() => true} endDirectJoin={() => {}}
     />
@@ -65,5 +75,17 @@ function configureLobby() {
   flushSync(() => root.render(<LobbyConnectFixture key={++generation} />))
 }
 
-Object.assign(window, { navigationTesting: { configure, configureLobby, lobbyActions, events, zoneName, settingsOpen: () => useMediaStore.getState().isSettingsModalOpen } })
+Object.assign(window, {
+  navigationTesting: {
+    configure,
+    configureLobby,
+    lobbyActions,
+    events,
+    zoneName,
+    settingsOpen: () => useMediaStore.getState().isSettingsModalOpen,
+    gridCallOpen: () => useMediaStore.getState().isGridCallOpen,
+    chatOpen: () => useChatStore.getState().isChatOpen,
+    editorOpen: () => useMapStore.getState().isEditorOpen,
+  },
+})
 configure()

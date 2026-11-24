@@ -9,9 +9,7 @@ import {
   Download,
   FileText,
   Maximize2,
-  Minimize2,
   AlertCircle,
-  GripVertical,
   CheckCheck,
   Compass,
   Copy,
@@ -24,12 +22,9 @@ import {
   UserPlus,
 } from 'lucide-react'
 
-const DEFAULT_DRAWER_WIDTH = 440
-const MIN_DRAWER_WIDTH = 340
-const DEFAULT_CHANNELS_WIDTH = 144
-const MIN_CHANNELS_WIDTH = 110
+const DEFAULT_CHANNELS_WIDTH = 240
+const MIN_CHANNELS_WIDTH = 160
 
-const DRAWER_STORAGE_KEY = 'lira_chat_drawer_width'
 const CHANNELS_STORAGE_KEY = 'lira_chat_channels_width'
 import { useChatStore, getLocalDmChannelId } from '../store/useChatStore'
 import { useGameStore } from '../store/useGameStore'
@@ -249,19 +244,6 @@ const ChatDrawerInner: React.FC = () => {
   const [channelToDelete, setChannelToDelete] = useState<Channel | null>(null)
   const [roomToJoin, setRoomToJoin] = useState<{ code: string; name?: string } | null>(null)
 
-  const [drawerWidth, setDrawerWidth] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem(DRAWER_STORAGE_KEY)
-      if (saved) {
-        const val = parseInt(saved, 10)
-        if (!isNaN(val) && val >= MIN_DRAWER_WIDTH && val <= 1600) {
-          return val
-        }
-      }
-    } catch {}
-    return DEFAULT_DRAWER_WIDTH
-  })
-
   const [channelsWidth, setChannelsWidth] = useState<number>(() => {
     try {
       const saved = localStorage.getItem(CHANNELS_STORAGE_KEY)
@@ -275,31 +257,34 @@ const ChatDrawerInner: React.FC = () => {
     return DEFAULT_CHANNELS_WIDTH
   })
 
-  const [isResizingDrawer, setIsResizingDrawer] = useState(false)
   const [isResizingChannels, setIsResizingChannels] = useState(false)
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640)
   const [mobileTab, setMobileTab] = useState<'chat' | 'channels'>('chat')
 
-  const drawerWidthRef = useRef(drawerWidth)
-  drawerWidthRef.current = drawerWidth
-
+  const drawerRef = useRef<HTMLDivElement>(null)
   const channelsWidthRef = useRef(channelsWidth)
   channelsWidthRef.current = channelsWidth
+
+  const getRailOffset = useCallback(() => {
+    const left = drawerRef.current?.getBoundingClientRect().left
+    if (typeof left === 'number' && left > 0) return left
+    return typeof window !== 'undefined' && window.innerWidth < 640 ? 56 : 68
+  }, [])
 
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 640)
-      const maxW = Math.max(MIN_DRAWER_WIDTH, Math.floor(window.innerWidth * 0.92))
-      setDrawerWidth((prev) => (prev > maxW ? maxW : prev))
+      const maxChannelsW = Math.min(400, Math.max(MIN_CHANNELS_WIDTH, window.innerWidth - getRailOffset() - 280))
+      setChannelsWidth((prev) => (prev > maxChannelsW ? maxChannelsW : prev))
     }
     handleResize()
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
-  }, [])
+  }, [getRailOffset])
 
   useEffect(() => {
-    if (isResizingDrawer || isResizingChannels) {
+    if (isResizingChannels) {
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
     } else {
@@ -310,33 +295,7 @@ const ChatDrawerInner: React.FC = () => {
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
     }
-  }, [isResizingDrawer, isResizingChannels])
-
-  const handleDrawerResizeStart = useCallback((e: React.PointerEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsResizingDrawer(true)
-
-    const onPointerMove = (moveEv: PointerEvent) => {
-      const maxW = Math.max(MIN_DRAWER_WIDTH, Math.min(1200, Math.floor(window.innerWidth * 0.92)))
-      const minW = Math.max(MIN_DRAWER_WIDTH, channelsWidthRef.current + 180)
-      const nextWidth = Math.min(maxW, Math.max(minW, moveEv.clientX))
-      drawerWidthRef.current = nextWidth
-      setDrawerWidth(nextWidth)
-    }
-
-    const onPointerUp = () => {
-      setIsResizingDrawer(false)
-      window.removeEventListener('pointermove', onPointerMove)
-      window.removeEventListener('pointerup', onPointerUp)
-      try {
-        localStorage.setItem(DRAWER_STORAGE_KEY, String(drawerWidthRef.current))
-      } catch {}
-    }
-
-    window.addEventListener('pointermove', onPointerMove)
-    window.addEventListener('pointerup', onPointerUp)
-  }, [])
+  }, [isResizingChannels])
 
   const handleChannelsResizeStart = useCallback((e: React.PointerEvent) => {
     e.preventDefault()
@@ -344,8 +303,9 @@ const ChatDrawerInner: React.FC = () => {
     setIsResizingChannels(true)
 
     const onPointerMove = (moveEv: PointerEvent) => {
-      const maxW = Math.min(320, Math.max(MIN_CHANNELS_WIDTH, drawerWidthRef.current - 200))
-      const nextWidth = Math.min(maxW, Math.max(MIN_CHANNELS_WIDTH, moveEv.clientX))
+      const railOffset = getRailOffset()
+      const maxW = Math.min(400, Math.max(MIN_CHANNELS_WIDTH, window.innerWidth - railOffset - 280))
+      const nextWidth = Math.min(maxW, Math.max(MIN_CHANNELS_WIDTH, moveEv.clientX - railOffset))
       channelsWidthRef.current = nextWidth
       setChannelsWidth(nextWidth)
     }
@@ -361,7 +321,7 @@ const ChatDrawerInner: React.FC = () => {
 
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
-  }, [])
+  }, [getRailOffset])
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -417,7 +377,9 @@ const ChatDrawerInner: React.FC = () => {
         openChatPerson(person, { setActiveChannel, openDirectMessage })
         break
       case 'goto':
-        if (person.playerId) goToPlayer(person.playerId)
+        if (person.playerId && goToPlayer(person.playerId) !== 'missing') {
+          setChatOpen(false)
+        }
         break
       case 'invite':
         if (person.contactId) sendRoomInvite({ id: person.contactId, name: person.name })
@@ -722,9 +684,9 @@ const ChatDrawerInner: React.FC = () => {
 
   return (
     <div
-      style={isMobile ? undefined : { width: `${drawerWidth}px` }}
+      ref={drawerRef}
       onDragOver={(e) => {
-        if (isResizingDrawer || isResizingChannels) return
+        if (isResizingChannels) return
         e.preventDefault()
         setIsDragging(true)
       }}
@@ -740,50 +702,10 @@ const ChatDrawerInner: React.FC = () => {
           handleFileSelect(e.dataTransfer.files[0])
         }
       }}
-      className={`fixed left-0 bottom-0 ${
-        isMobile ? 'w-full max-w-full right-0' : 'max-w-[92vw]'
-      } bg-lira-panel border-r border-lira-quiet flex flex-col font-mono ${
-        isResizingDrawer ? '' : 'transition-[width] duration-150 ease-out'
-      } ${
-        isGridCallOpen ? 'top-0 z-[70]' : 'top-14 z-[70]'
-      }`}
+      className="fixed left-[var(--rail-width)] right-0 top-0 bottom-0 z-[70] bg-lira-panel flex flex-col font-mono"
     >
-      {!isMobile && (isResizingDrawer || isResizingChannels) && (
+      {!isMobile && isResizingChannels && (
         <div className="fixed inset-0 z-[9999] cursor-col-resize select-none bg-transparent" />
-      )}
-
-      {!isMobile && (
-        <div
-          onPointerDown={handleDrawerResizeStart}
-          onDoubleClick={() => {
-            setDrawerWidth(DEFAULT_DRAWER_WIDTH)
-            try {
-              localStorage.setItem(DRAWER_STORAGE_KEY, String(DEFAULT_DRAWER_WIDTH))
-            } catch {}
-          }}
-          className={`absolute top-0 -right-2 w-4 h-full cursor-col-resize z-50 select-none group flex items-center justify-center transition-colors ${
-            isResizingDrawer ? 'bg-lira-accent/20' : 'hover:bg-lira-accent/10'
-          }`}
-          title="Arraste para redimensionar o chat (duplo clique para restaurar 440px)"
-        >
-          <div
-            className={`w-1 rounded-full transition-all duration-150 relative flex items-center justify-center ${
-              isResizingDrawer
-                ? 'h-16 bg-lira-accent'
-                : 'h-8 bg-lira-rule/40 group-hover:h-12 group-hover:bg-lira-accent'
-            }`}
-          >
-            <div
-              className={`absolute pointer-events-none transition-opacity duration-150 ${
-                isResizingDrawer ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-              }`}
-            >
-              <div className="p-0.5 rounded bg-lira-surface text-lira-accent border border-lira-rule">
-                <GripVertical className="w-3 h-3" />
-              </div>
-            </div>
-          </div>
-        </div>
       )}
 
       {isDragging && (
@@ -829,29 +751,6 @@ const ChatDrawerInner: React.FC = () => {
         )}
 
         <div className="flex items-center gap-1">
-          {!isMobile && (
-            <button
-              type="button"
-              onClick={() => {
-                if (drawerWidth > 580) {
-                  setDrawerWidth(DEFAULT_DRAWER_WIDTH)
-                  try {
-                    localStorage.setItem(DRAWER_STORAGE_KEY, String(DEFAULT_DRAWER_WIDTH))
-                  } catch {}
-                } else {
-                  const expanded = Math.min(760, Math.floor(window.innerWidth * 0.85))
-                  setDrawerWidth(expanded)
-                  try {
-                    localStorage.setItem(DRAWER_STORAGE_KEY, String(expanded))
-                  } catch {}
-                }
-              }}
-              className="p-1 rounded-lg text-lira-muted hover:text-lira-ink hover:bg-lira-surface transition-colors"
-              title={drawerWidth > 580 ? 'Restaurar largura padrão (440px)' : 'Expandir largura do chat'}
-            >
-              {drawerWidth > 580 ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-            </button>
-          )}
           <button
             onClick={() => setChatOpen(false)}
             className="p-1.5 rounded-lg text-lira-muted hover:text-lira-ink hover:bg-lira-surface transition-colors"
@@ -919,7 +818,7 @@ const ChatDrawerInner: React.FC = () => {
             className={`relative -ml-1 -mr-1 w-2 h-full cursor-col-resize z-20 select-none group flex items-center justify-center transition-colors ${
               isResizingChannels ? 'bg-lira-accent/30' : 'hover:bg-lira-accent/20'
             }`}
-            title="Arraste para redimensionar canais (duplo clique para restaurar 144px)"
+            title="Arraste para redimensionar canais (duplo clique para restaurar 240px)"
           >
             <div
               className={`w-0.5 rounded-full transition-all duration-150 ${

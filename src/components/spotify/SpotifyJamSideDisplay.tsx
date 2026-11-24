@@ -86,7 +86,7 @@ export const SpotifyJamSideDisplay: React.FC = () => {
     return (
       <aside
         aria-label="DJ minimizado"
-        className="fixed top-16 right-4 z-[60] select-none font-mono"
+        className="fixed top-4 right-4 z-[60] max-w-[calc(100vw-var(--rail-width)-24px)] select-none font-mono"
       >
         <div className="flex items-center gap-2">
           <button
@@ -128,7 +128,7 @@ export const SpotifyJamSideDisplay: React.FC = () => {
   return (
     <aside
       aria-label="DJ"
-      className="fixed top-16 right-4 z-[60] w-80 bg-lira-panel border border-dashed border-lira-rule rounded-xl overflow-hidden select-none flex flex-col max-h-[calc(100vh-80px)] font-mono"
+      className="fixed top-4 right-4 z-[60] w-80 max-w-[calc(100vw-var(--rail-width)-24px)] bg-lira-panel border border-dashed border-lira-rule rounded-xl overflow-hidden select-none flex flex-col max-h-[calc(100vh-32px)] font-mono"
     >
       <div className="p-3 bg-lira-sidebar border-b border-dashed border-lira-rule/60 flex items-center justify-between">
         <div className="flex items-center gap-2.5 min-w-0">
