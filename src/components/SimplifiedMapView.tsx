@@ -178,9 +178,9 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onWheel={handleWheel}
-      className="relative flex-1 w-full h-[calc(100vh-56px)] overflow-hidden bg-lira-ground cursor-crosshair select-none flex items-center justify-center font-mono"
+      className="relative flex-1 w-full h-full overflow-hidden bg-lira-ground cursor-crosshair select-none flex items-center justify-center font-mono"
     >
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-lira-panel border border-dashed border-lira-rule text-lira-ink px-4 py-1.5 rounded-[8px] flex items-center gap-2 text-xs font-semibold pointer-events-none z-20">
+      <div className="absolute top-14 left-1/2 -translate-x-1/2 bg-lira-panel border border-dashed border-lira-rule text-lira-ink px-4 py-1.5 rounded-[8px] flex items-center gap-2 text-xs font-semibold pointer-events-none z-20">
         <Zap className="w-3.5 h-3.5 text-lira-online" />
         <span>Modo Simplificado (Baixo Consumo)</span>
         <span className="text-[10px] bg-lira-online/15 text-lira-online px-2 py-0.2 rounded-[4px] border border-lira-online/40">

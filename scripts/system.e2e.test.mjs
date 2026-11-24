@@ -43,12 +43,13 @@ test('dois usuários percorrem o Lira pela interface com mídia P2P real', {
     await step('criar espaço publica a sala para o outro usuário', async () => {
       await ana.getByLabel('Nome do espaço', { exact: true }).fill('Escritório E2E')
       await ana.getByRole('button', { name: 'Criar espaço', exact: true }).click()
-      await ana.getByRole('button', { name: 'Copiar link do convite' }).waitFor({ timeout: 60000 })
+      await ana.getByRole('button', { name: 'Mapa 2D', exact: true }).waitFor({ timeout: 60000 })
       await bruno.getByRole('button', { name: /Salas Disponíveis/ }).click()
       await bruno.getByText('Escritório E2E', { exact: true }).waitFor()
       assert.ok(system.rooms.size > 0, 'a publicação atravessa o relay entre perfis isolados')
     })
     await step('privacidade retira e republica a sala na lista do segundo usuário', async () => {
+      await ana.getByRole('button', { name: 'Sala e convites', exact: true }).click()
       await ana.getByTitle(/Esta sala está Pública/).click()
       await bruno.getByText('Escritório E2E', { exact: true }).waitFor({ state: 'hidden' })
       assert.equal(system.rooms.size, 0)
@@ -63,7 +64,7 @@ test('dois usuários percorrem o Lira pela interface com mídia P2P real', {
       await bruno.getByRole('button', { name: 'Conectar', exact: true }).click()
       await bruno.getByLabel('Código da sala', { exact: true }).fill(link)
       await bruno.getByRole('button', { name: 'Entrar na sala', exact: true }).click()
-      await bruno.getByRole('button', { name: 'Copiar link do convite' }).waitFor({ timeout: 60000 })
+      await bruno.getByRole('button', { name: 'Mapa 2D', exact: true }).waitFor({ timeout: 60000 })
       await Promise.all([ana, bruno].map(page => page.waitForFunction(() => window.liraE2E.snapshot().peers.length === 1)))
       assert.equal(await ana.evaluate(() => window.liraE2E.snapshot().roomId), await bruno.evaluate(() => window.liraE2E.snapshot().roomId))
       for (const page of [ana, bruno]) {
@@ -75,7 +76,7 @@ test('dois usuários percorrem o Lira pela interface com mídia P2P real', {
       }
     })
     await step('chat entrega mensagens nos dois sentidos e sincroniza novo canal', async () => {
-      for (const page of [ana, bruno]) await page.getByTitle('Abrir Chat e Canais', { exact: true }).click()
+      for (const page of [ana, bruno]) await page.getByRole('button', { name: 'Abrir Chat e Canais', exact: true }).click()
       await ana.getByPlaceholder('Mensagem em #general...').fill('Olá Bruno, teste de entrega E2E.')
       await ana.getByPlaceholder('Mensagem em #general...').press('Enter')
       await bruno.getByText('Olá Bruno, teste de entrega E2E.', { exact: true }).waitFor()
@@ -122,12 +123,12 @@ test('dois usuários percorrem o Lira pela interface com mídia P2P real', {
       for (const page of [ana, bruno]) await page.getByTitle('Fechar chat', { exact: true }).click()
     })
     await step('amizade exige a aceitação do destinatário e abre mensagem privada', async () => {
-      await ana.getByTitle('Ver Participantes Online, Amigos e Gerenciar Permissões', { exact: true }).click()
+      await ana.getByRole('button', { name: 'Participantes Online', exact: true }).click()
       await ana.getByTitle('Ações e Permissões do Usuário', { exact: true }).click()
       await ana.getByRole('button', { name: 'Adicionar aos Amigos', exact: true }).click()
       await ana.getByRole('heading', { name: /Pessoas no Espaço/ }).locator('../../..').getByRole('button').click()
       // A solicitação abre a conversa do remetente; o destinatário deve abri-la.
-      await bruno.getByTitle('Abrir Chat e Canais', { exact: true }).click()
+      await bruno.getByRole('button', { name: 'Abrir Chat e Canais', exact: true }).click()
       await bruno.getByRole('button', { name: /Ana E2E/ }).last().click()
       await bruno.getByTitle('Aceitar amizade', { exact: true }).click()
       await ana.getByText('Amizade Confirmada', { exact: true }).waitFor()
@@ -154,7 +155,7 @@ test('dois usuários percorrem o Lira pela interface com mídia P2P real', {
       for (const page of [ana, bruno]) await page.getByRole('button', { name: 'Fechar quadro branco' }).click()
     })
     await step('criar uma sala pelo editor sincroniza a zona e os dois entram pelo mapa 2D', async () => {
-      await ana.getByTitle('Editar Mobília, Pisos e Zonas do Espaço', { exact: true }).click()
+      await ana.getByRole('button', { name: 'Editar Espaço', exact: true }).click()
       await ana.getByRole('button', { name: 'Zonas & Paredes', exact: true }).click()
       await ana.getByPlaceholder('Ex: Sala de Reunião / Forja Medieval').fill('Sala E2E')
       await ana.getByRole('checkbox', { name: /Construir Paredes nesta Zona/ }).uncheck()
@@ -314,7 +315,7 @@ test('dois usuários percorrem o Lira pela interface com mídia P2P real', {
       await ana.getByRole('button', { name: 'Fechar transcrições e resumo' }).click()
     })
     async function leave(page) {
-      await page.getByTitle('Sair / Desconectar deste espaço', { exact: true }).click()
+      await page.getByRole('button', { name: 'Sair / Desconectar deste espaço', exact: true }).click()
       await page.getByRole('button', { name: 'Sim, Desconectar', exact: true }).click()
       await page.getByLabel('Seu Nickname').waitFor()
     }
@@ -323,12 +324,12 @@ test('dois usuários percorrem o Lira pela interface com mídia P2P real', {
       await ana.waitForFunction(() => window.liraE2E.snapshot().peers.length === 0)
       await bruno.getByLabel('Nome do espaço', { exact: true }).fill('Estúdio Bruno E2E')
       await bruno.getByRole('button', { name: 'Criar espaço', exact: true }).click()
-      await bruno.getByRole('button', { name: 'Copiar link do convite' }).waitFor()
-      await bruno.getByTitle('Abrir Chat e Canais', { exact: true }).click()
+      await bruno.getByRole('button', { name: 'Mapa 2D', exact: true }).waitFor()
+      await bruno.getByRole('button', { name: 'Abrir Chat e Canais', exact: true }).click()
       const friend = bruno.getByRole('region', { name: 'Amigos', exact: true }).getByRole('button', { name: /Ana E2E/ })
       await friend.click({ button: 'right' })
       await bruno.getByRole('menuitem', { name: 'Convidar para este espaço', exact: true }).click()
-      await ana.getByTitle('Abrir Chat e Canais', { exact: true }).click()
+      await ana.getByRole('button', { name: 'Abrir Chat e Canais', exact: true }).click()
       await ana.getByRole('region', { name: 'Amigos', exact: true }).getByRole('button', { name: /Bruno E2E/ }).click()
       await ana.getByRole('button', { name: 'Entrar no espaço', exact: true }).click()
       await ana.getByRole('button', { name: 'Sair e entrar', exact: true }).click()
@@ -343,7 +344,7 @@ test('dois usuários percorrem o Lira pela interface com mídia P2P real', {
       await ana.getByRole('button', { name: /^Salas Salvas/ }).click()
       await ana.getByText('Escritório E2E', { exact: true }).waitFor()
       await ana.getByTitle('Entrar neste Espaço', { exact: true }).click()
-      await ana.getByRole('button', { name: 'Copiar link do convite' }).waitFor({ timeout: 60000 })
+      await ana.getByRole('button', { name: 'Mapa 2D', exact: true }).waitFor({ timeout: 60000 })
       await ana.waitForFunction(() => window.liraE2E.snapshot().zones.some(zone => zone.name === 'Sala final E2E'))
       await leave(bruno)
       await bruno.getByRole('button', { name: /Salas Disponíveis/ }).click()

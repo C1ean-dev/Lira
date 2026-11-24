@@ -180,7 +180,7 @@ export const RoomSettingsModal: React.FC<Props> = ({ zone, isOpen, onClose, init
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-lira-ground/80 font-mono">
+    <div className="fixed inset-0 z-[105] flex items-center justify-center p-4 bg-lira-ground/80 font-mono">
       <div className="relative w-full max-w-lg bg-lira-panel border border-dashed border-lira-rule rounded-xl overflow-hidden flex flex-col max-h-[90vh] text-lira-ink">
         <div className="flex items-center justify-between px-6 py-4 border-b border-dashed border-lira-rule/60 bg-lira-sidebar">
           <div className="flex items-center gap-3">

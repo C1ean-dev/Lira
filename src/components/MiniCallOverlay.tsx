@@ -642,15 +642,22 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
   const containerRef = useRef<HTMLDivElement>(null)
   const dragStartRef = useRef<{ startX: number; startY: number; initX: number; initY: number; hasMoved: boolean } | null>(null)
 
+  const getRailWidth = () => {
+    if (typeof window === 'undefined') return 68
+    const raw = getComputedStyle(document.documentElement).getPropertyValue('--rail-width')
+    return parseFloat(raw) || (window.innerWidth < 640 ? 56 : 68)
+  }
+
   useEffect(() => {
     const handleResize = () => {
       setPosition((prev) => {
         if (!prev || !containerRef.current) return prev
         const rect = containerRef.current.getBoundingClientRect()
-        const maxX = Math.max(8, window.innerWidth - rect.width - 8)
+        const minX = getRailWidth() + 8
+        const maxX = Math.max(minX, window.innerWidth - rect.width - 8)
         const maxY = Math.max(8, window.innerHeight - rect.height - 8)
         return {
-          x: Math.min(Math.max(8, prev.x), maxX),
+          x: Math.min(Math.max(minX, prev.x), maxX),
           y: Math.min(Math.max(8, prev.y), maxY),
         }
       })
@@ -672,10 +679,11 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
       }
 
       const rect = containerRef.current.getBoundingClientRect()
-      const maxX = Math.max(8, window.innerWidth - rect.width - 8)
+      const minX = getRailWidth() + 8
+      const maxX = Math.max(minX, window.innerWidth - rect.width - 8)
       const maxY = Math.max(8, window.innerHeight - rect.height - 8)
 
-      const nextX = Math.min(Math.max(8, dragStartRef.current.initX + dx), maxX)
+      const nextX = Math.min(Math.max(minX, dragStartRef.current.initX + dx), maxX)
       const nextY = Math.min(Math.max(8, dragStartRef.current.initY + dy), maxY)
 
       setPosition({ x: nextX, y: nextY })
@@ -806,7 +814,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
             : undefined
         }
         className={`fixed z-40 flex flex-col items-start select-none touch-none ${
-          position ? '' : 'bottom-4 left-4'
+          position ? '' : 'bottom-4 left-[calc(var(--rail-width)+16px)]'
         } ${isDragging ? 'cursor-grabbing' : ''}`}
       >
         {hasActiveScreenShare && activeScreenStream && isFloatingPreviewVisible && (
@@ -825,7 +833,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
           </div>
         )}
 
-        <div className="bg-lira-panel border border-dashed border-lira-rule rounded-[12px] p-2.5 sm:p-3 max-w-[calc(100vw-24px)] sm:max-w-md font-mono">
+        <div className="bg-lira-panel border border-dashed border-lira-rule rounded-[12px] p-2.5 sm:p-3 max-w-[calc(100vw-var(--rail-width)-24px)] sm:max-w-md font-mono">
           <div className="flex items-center justify-between gap-2 sm:gap-4 px-1">
             <div
               onClick={() => {
