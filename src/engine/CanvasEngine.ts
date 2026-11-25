@@ -3,7 +3,6 @@ import { CameraManager } from './camera/CameraManager'
 import { InputHandler } from './input/InputHandler'
 import { checkCollision, checkZonePresence } from './physics/collision'
 import { findPath, hasLineOfSight } from './physics/pathfinding'
-import { WorldRenderer } from './rendering/worldRenderer'
 import { PixiWorldRenderer } from './pixi/PixiWorldRenderer'
 import { PetManager } from './pet/PetManager'
 import { AvatarEffectsManager } from './avatarEffects'
@@ -18,8 +17,8 @@ import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import { findSafePlayerPosition } from './physics/safePlayerPosition'
 
 export class CanvasEngine {
-  private canvas: HTMLCanvasElement
-  private ctx: CanvasRenderingContext2D
+  private viewportWidth: number = 800
+  private viewportHeight: number = 600
   private pixiRenderer: PixiWorldRenderer | null = null
   private isRunning: boolean = false
   private animationFrameId: number | null = null
@@ -52,25 +51,27 @@ export class CanvasEngine {
     if (e.key === 'Shift') this.isShiftPressed = false
   }
 
-  constructor(canvas: HTMLCanvasElement, pixiHost?: HTMLElement | null) {
-    this.canvas = canvas
-    const usePixi = Boolean(pixiHost && typeof document !== 'undefined')
-    const context = canvas.getContext('2d', { alpha: usePixi })
-    if (!context) throw new Error('Could not get Canvas 2D context')
-    this.ctx = context
-    this.ctx.imageSmoothingEnabled = false
+  constructor(viewportHost: HTMLElement | null, onRenderError?: (message: string) => void) {
+    this.viewportWidth = Math.max(2, viewportHost?.clientWidth || 800)
+    this.viewportHeight = Math.max(2, viewportHost?.clientHeight || 600)
 
     this.camera = new CameraManager()
     this.input = new InputHandler()
 
-    if (usePixi && pixiHost) {
-      this.pixiRenderer = new PixiWorldRenderer(pixiHost)
+    if (viewportHost && typeof document !== 'undefined') {
+      this.pixiRenderer = new PixiWorldRenderer(viewportHost, onRenderError)
       void this.pixiRenderer.init()
     }
   }
 
   public syncViewportSize(width: number, height: number) {
-    this.pixiRenderer?.syncSize(width, height)
+    this.viewportWidth = Math.max(2, Math.floor(width))
+    this.viewportHeight = Math.max(2, Math.floor(height))
+    this.pixiRenderer?.syncSize(this.viewportWidth, this.viewportHeight)
+  }
+
+  public getViewportSize(): { width: number; height: number } {
+    return { width: this.viewportWidth, height: this.viewportHeight }
   }
 
   private setupInputs() {
@@ -134,7 +135,7 @@ export class CanvasEngine {
   }
 
   public fitToScreen(percentage: number = 0.95) {
-    this.camera.fitToScreen(this.canvas, percentage)
+    this.camera.fitToScreen({ width: this.viewportWidth, height: this.viewportHeight }, percentage)
   }
 
   public start() {
@@ -470,42 +471,22 @@ export class CanvasEngine {
   }
 
   private render(currentTime: number) {
-    if (this.pixiRenderer?.renderFrame(this.camera, currentTime)) {
-      WorldRenderer.renderUiOverlayPass(
-        this.ctx,
-        this.canvas,
-        this.camera,
-        this.hoverTile,
-        this.zoneDragStart,
-        this.zoneDragCurrent,
-        currentTime,
-        this.fps,
-        this.input.finalDestination,
-        this.isShiftPressed
-      )
-      return
-    }
-
-    WorldRenderer.render(
-      this.ctx,
-      this.canvas,
-      this.camera,
-      this.hoverTile,
-      this.zoneDragStart,
-      this.zoneDragCurrent,
-      currentTime,
-      this.fps,
-      this.input.finalDestination,
-      this.isShiftPressed
-    )
+    this.pixiRenderer?.renderFrame(this.camera, currentTime, {
+      hoverTile: this.hoverTile,
+      zoneDragStart: this.zoneDragStart,
+      zoneDragCurrent: this.zoneDragCurrent,
+      fps: this.fps,
+      destination: this.input.finalDestination,
+      isShiftPressed: this.isShiftPressed,
+    })
   }
 
   public screenToTile(screenX: number, screenY: number, snapStep?: number): { x: number; y: number } {
-    return this.camera.screenToTile(this.canvas, screenX, screenY, snapStep)
+    return this.camera.screenToTile({ width: this.viewportWidth, height: this.viewportHeight }, screenX, screenY, snapStep)
   }
 
   public screenToWorld(screenX: number, screenY: number): { x: number; y: number } {
-    return this.camera.screenToWorld(this.canvas, screenX, screenY)
+    return this.camera.screenToWorld({ width: this.viewportWidth, height: this.viewportHeight }, screenX, screenY)
   }
 }
 

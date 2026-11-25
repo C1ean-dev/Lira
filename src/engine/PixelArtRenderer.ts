@@ -3,7 +3,6 @@ import { Direction } from '../types/game'
 import { TILE_SIZE } from './Constants'
 import { FloorRenderer } from './rendering/floorRenderer'
 import { WallRenderer, type ZoneWallTheme, getZoneWallTheme } from './rendering/wallRenderer'
-import { ZoneRenderer } from './rendering/zoneRenderer'
 import { FurnitureRenderer, type FurnitureDef } from './rendering/furnitureRenderer'
 
 export type { ZoneWallTheme, FurnitureDef }
@@ -11,7 +10,6 @@ export { getZoneWallTheme }
 export { FloorRenderer } from './rendering/floorRenderer'
 export { WallRenderer } from './rendering/wallRenderer'
 export { DoorRenderer } from './rendering/doorRenderer'
-export { ZoneRenderer } from './rendering/zoneRenderer'
 export { FurnitureRenderer } from './rendering/furnitureRenderer'
 
 export class PixelArtRenderer {
@@ -49,13 +47,5 @@ export class PixelArtRenderer {
 
   static drawFurniture(ctx: CanvasRenderingContext2D, furn: PlacedFurniture) {
     FurnitureRenderer.drawFurniture(ctx, furn)
-  }
-
-  static drawPrivateZone(
-    ctx: CanvasRenderingContext2D,
-    zone: PrivateZone,
-    isCurrent: boolean = false
-  ) {
-    ZoneRenderer.drawPrivateZone(ctx, zone, isCurrent)
   }
 }

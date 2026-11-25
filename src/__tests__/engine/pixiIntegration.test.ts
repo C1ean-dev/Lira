@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it } from 'vitest'
 import { addBuiltInFurniture } from '../../assets/builtInFurniture'
 import { readSpriteFrame } from '../../assets/spriteFrame'
@@ -7,6 +7,7 @@ import { AURA_OPTIONS } from '../../engine/avatarEffects/presets'
 import { checkCollision, isPlayerInZone } from '../../engine/physics/collision'
 import { mapAuraSpecToShaderPreset } from '../../engine/pixi/PixiAuraSystem'
 import { extractMapLights } from '../../engine/pixi/PixiLightingSystem'
+import { parseColorAlpha, parseHexColor } from '../../engine/pixi/PixiTextureCache'
 import { furnitureDrawOrder, pickEditorFurniture } from '../../engine/rendering/furnitureLayers'
 import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 import { houseZoneIdForFurniture, useMapStore } from '../../store/useMapStore'
@@ -129,5 +130,28 @@ describe('PixiJS integration & buildable Village/Halloween/Interiors assets', ()
     useSettingsStore.getState().setLightingMode('night')
     expect(useSettingsStore.getState().lightingEnabled).toBe(false)
     expect(useSettingsStore.getState().lightingMode).toBe('night')
+  })
+
+  it('uses 100% native PixiJS v8 engine with zero Canvas 2D world fallback', () => {
+    expect(existsSync('src/engine/rendering/worldRenderer.ts')).toBe(false)
+    expect(existsSync('src/engine/rendering/staticLayerCache.ts')).toBe(false)
+    expect(existsSync('src/engine/rendering/zoneRenderer.ts')).toBe(false)
+
+    const engineSrc = readFileSync('src/engine/CanvasEngine.ts', 'utf8')
+    expect(engineSrc).not.toMatch(/\bWorldRenderer\b/)
+    expect(engineSrc).not.toContain("getContext('2d'")
+
+    const pixiWorldSrc = readFileSync('src/engine/pixi/PixiWorldRenderer.ts', 'utf8')
+    expect(pixiWorldSrc).not.toMatch(/\bWorldRenderer\b/)
+    expect(pixiWorldSrc).not.toContain('bufferCanvas')
+    expect(pixiWorldSrc).not.toContain('Falling back to Canvas 2D')
+
+    const viewportSrc = readFileSync('src/components/MapViewport.tsx', 'utf8')
+    expect(viewportSrc).toContain('data-map-viewport="pixi"')
+    expect(viewportSrc).not.toContain('canvasRef')
+
+    expect(parseHexColor('#38bdf8')).toBe(0x38bdf8)
+    expect(parseHexColor('#f0a')).toBe(0xff00aa)
+    expect(parseColorAlpha('rgba(10, 20, 30, 0.55)')).toBeCloseTo(0.55)
   })
 })

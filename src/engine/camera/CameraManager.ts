@@ -77,15 +77,15 @@ export class CameraManager {
     this.y += (targetY - this.y) * factor
   }
 
-  public fitToScreen(canvas: HTMLCanvasElement, percentage: number = 0.95) {
+  public fitToScreen(viewport: { width: number; height: number }, percentage: number = 0.95) {
     const map = useMapStore.getState().mapData
     const mapPixelWidth = (map.width || 68) * TILE_SIZE
     const mapPixelHeight = (map.height || 40) * TILE_SIZE
 
-    if (mapPixelWidth === 0 || mapPixelHeight === 0 || canvas.width === 0 || canvas.height === 0) return
+    if (mapPixelWidth === 0 || mapPixelHeight === 0 || viewport.width === 0 || viewport.height === 0) return
 
-    const targetZoomX = (canvas.width * percentage) / mapPixelWidth
-    const targetZoomY = (canvas.height * percentage) / mapPixelHeight
+    const targetZoomX = (viewport.width * percentage) / mapPixelWidth
+    const targetZoomY = (viewport.height * percentage) / mapPixelHeight
     const optimalZoom = Math.min(targetZoomX, targetZoomY)
 
     this.setZoom(Math.max(0.4, Math.min(3.2, optimalZoom)))
@@ -95,13 +95,13 @@ export class CameraManager {
   }
 
   public screenToTile(
-    canvas: HTMLCanvasElement,
+    viewport: { width: number; height: number },
     screenX: number,
     screenY: number,
     snapStep: number = 1
   ): { x: number; y: number } {
-    const viewWidth = canvas.width / this.zoom
-    const viewHeight = canvas.height / this.zoom
+    const viewWidth = viewport.width / this.zoom
+    const viewHeight = viewport.height / this.zoom
     const offsetX = viewWidth / 2 - this.x
     const offsetY = viewHeight / 2 - this.y
 
@@ -129,12 +129,12 @@ export class CameraManager {
   }
 
   public screenToWorld(
-    canvas: HTMLCanvasElement,
+    viewport: { width: number; height: number },
     screenX: number,
     screenY: number
   ): { x: number; y: number } {
-    const viewWidth = canvas.width / this.zoom
-    const viewHeight = canvas.height / this.zoom
+    const viewWidth = viewport.width / this.zoom
+    const viewHeight = viewport.height / this.zoom
     const offsetX = viewWidth / 2 - this.x
     const offsetY = viewHeight / 2 - this.y
 

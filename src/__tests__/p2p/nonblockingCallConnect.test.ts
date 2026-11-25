@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PeerManager } from '../../p2p/PeerManager'
 import { MediaCallHandler } from '../../p2p/mediaCalls'
 import { CanvasEngine } from '../../engine/CanvasEngine'
-import { WorldRenderer } from '../../engine/rendering/worldRenderer'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { useGameStore } from '../../store/useGameStore'
 vi.mock('../../data/nativeAssets.json', () => ({ default: { categories: [], assets: [] } }))
@@ -93,15 +92,14 @@ describe('map animation during a pending connection', () => {
     const frames: FrameRequestCallback[] = []
     vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => { frames.push(fn); return frames.length })
     vi.stubGlobal('cancelAnimationFrame', vi.fn())
-    const render = vi.spyOn(WorldRenderer, 'render').mockImplementation(() => {})
     vi.spyOn(PeerManager, 'getInstance').mockReturnValue(pm)
     const settings = useSettingsStore.getState()
     useSettingsStore.setState({ targetFps: 0 })
     dial.mockImplementation((remote: any) => useGameStore.getState().setCallState(remote.id, 'connecting'))
     pm.checkZoneCallEligibility(useGameStore.getState().remotePlayers.a)
     vi.advanceTimersByTime(16)
-    const canvas = { getContext: () => ({ imageSmoothingEnabled: false }) } as unknown as HTMLCanvasElement
-    const engine = new CanvasEngine(canvas)
+    const engine = new CanvasEngine({ clientWidth: 800, clientHeight: 600 } as unknown as HTMLElement)
+    const render = vi.spyOn(engine as any, 'render')
     engine.input.simulateKey('d', true)
     const before = useGameStore.getState().localPlayer.x
     try {

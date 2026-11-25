@@ -1,4 +1,4 @@
-import { Application, CanvasSource, Container, Graphics, Sprite, Texture, TextureStyle } from 'pixi.js'
+import { Application, Container, Graphics, Sprite, Texture, TextureStyle } from 'pixi.js'
 import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 import { useGameStore } from '../../store/useGameStore'
 import { houseZoneIdForFurniture, useMapStore } from '../../store/useMapStore'
@@ -8,10 +8,15 @@ import type { Player } from '../../types/game'
 import type { PlacedFurniture } from '../../types/map'
 import { CameraManager } from '../camera/CameraManager'
 import { TILE_SIZE } from '../Constants'
-import { WorldRenderer } from '../rendering/worldRenderer'
 import { loadPackAtlases, type PackAtlases } from './packAtlas'
 import { PixiAuraSystem, type AuraActorInput } from './PixiAuraSystem'
+import { PixiEntityLayer } from './PixiEntityLayer'
+import { PixiFloorLayer } from './PixiFloorLayer'
+import { PixiFurnitureLayer } from './PixiFurnitureLayer'
 import { extractMapLights, PixiLightingSystem, type LightDescriptor } from './PixiLightingSystem'
+import { type OverlayRenderState, PixiOverlayLayer } from './PixiOverlayLayer'
+import { PixiTextureCache } from './PixiTextureCache'
+import { PixiWallLayer } from './PixiWallLayer'
 
 interface DynamicHouseNode {
   furnId: string
@@ -103,28 +108,33 @@ function createHouseNode(furn: PlacedFurniture, asset: CustomAsset, packs: PackA
 }
 
 /**
- * Coordinates PixiJS v8 WebGL rendering for Lira:
- * - Dynamic cutaway interior/roof layers for any user-placed House asset
- * - GPU GLSL avatar auras & additive particles
- * - Screen-space RenderTexture 2D lighting (multiply blend)
- * - Offscreen 2D bridge for floors, walls, furniture, avatars & pets
+ * 100% Native PixiJS v8 WebGL world renderer for Lira:
+ * - Static & animated floor tiles (RenderTexture + Sprites)
+ * - Procedural & custom room walls and doors
+ * - Layered furniture, interactive beds, and cutaway houses
+ * - Y-sorted avatars, pets, step trails, and GPU GLSL auras
+ * - Screen-space RenderTexture 2D dynamic lighting (multiply blend)
+ * - Unlit crisp UI overlays (zones, gizmos, name tags, reactions, FPS)
+ * No Canvas 2D fallback.
  */
 export class PixiWorldRenderer {
   private readonly host: HTMLElement
+  private readonly onError?: (message: string) => void
   private app: Application | null = null
   private lighting: PixiLightingSystem | null = null
   private auraSystem: PixiAuraSystem | null = null
 
-  private readonly worldContainer = new Container()
+  private readonly textures = new PixiTextureCache()
+  private readonly floorLayer = new PixiFloorLayer(this.textures)
   private readonly houseInteriorLayer = new Container()
+  private readonly wallLayer = new PixiWallLayer(this.textures)
+  private readonly furnitureLayer = new PixiFurnitureLayer(this.textures)
+  private readonly entityLayer = new PixiEntityLayer(this.textures)
   private readonly groundAuraLayer = new Container()
   private readonly roofLayer = new Container()
   private readonly overlayAuraLayer = new Container()
-
-  private readonly bufferCanvas: HTMLCanvasElement
-  private readonly bufferCtx: CanvasRenderingContext2D
-  private bufferTexture: Texture | null = null
-  private bufferSprite: Sprite | null = null
+  private readonly overlayLayer = new PixiOverlayLayer(this.textures)
+  private readonly worldContainer = new Container()
 
   private packAtlases: PackAtlases | null = null
   private packLoadStarted = false
@@ -138,18 +148,26 @@ export class PixiWorldRenderer {
   private disposed = false
   private initPromise: Promise<void> | null = null
   private lastTickMs = performance.now()
+  private pendingWidth = 800
+  private pendingHeight = 600
 
-  constructor(host: HTMLElement) {
+  constructor(host: HTMLElement, onError?: (message: string) => void) {
     this.host = host
-    this.bufferCanvas = document.createElement('canvas')
-    this.bufferCanvas.width = Math.max(2, host.clientWidth || 800)
-    this.bufferCanvas.height = Math.max(2, host.clientHeight || 600)
-    const ctx = this.bufferCanvas.getContext('2d')
-    if (!ctx) throw new Error('Could not create offscreen 2D buffer for PixiWorldRenderer')
-    ctx.imageSmoothingEnabled = false
-    this.bufferCtx = ctx
+    this.onError = onError
+    this.pendingWidth = Math.max(2, host.clientWidth || 800)
+    this.pendingHeight = Math.max(2, host.clientHeight || 600)
 
-    this.worldContainer.addChild(this.houseInteriorLayer, this.groundAuraLayer)
+    this.worldContainer.addChild(
+      this.floorLayer.container,
+      this.houseInteriorLayer,
+      this.wallLayer.container,
+      this.furnitureLayer.container,
+      this.entityLayer.groundEffectsLayer,
+      this.groundAuraLayer,
+      this.entityLayer.entityLayer,
+      this.roofLayer,
+      this.overlayAuraLayer
+    )
   }
 
   public isReady(): boolean {
@@ -171,8 +189,8 @@ export class PixiWorldRenderer {
       TextureStyle.defaultOptions.scaleMode = 'nearest'
       const app = new Application()
       await app.init({
-        width: Math.max(2, this.host.clientWidth || 800),
-        height: Math.max(2, this.host.clientHeight || 600),
+        width: this.pendingWidth,
+        height: this.pendingHeight,
         backgroundColor: 0x0c0e14,
         antialias: false,
         preference: 'webgl',
@@ -192,6 +210,7 @@ export class PixiWorldRenderer {
       app.canvas.addEventListener('webglcontextlost', (e) => {
         e.preventDefault()
         this.failed = true
+        this.onError?.('Contexto WebGL perdido no motor gráfico PixiJS v8.')
       })
 
       this.host.innerHTML = ''
@@ -201,48 +220,28 @@ export class PixiWorldRenderer {
       this.lighting = new PixiLightingSystem(app)
       this.auraSystem = new PixiAuraSystem(this.groundAuraLayer, this.overlayAuraLayer)
 
-      this.rebuildBufferTexture(this.bufferCanvas.width, this.bufferCanvas.height)
-      if (this.bufferSprite) {
-        // Order: houseInteriorLayer (underlay) -> bufferSprite (base map + furniture + entities) -> groundAuraLayer -> roofLayer -> overlayAuraLayer
-        this.worldContainer.addChildAt(this.bufferSprite, 1)
-        this.worldContainer.addChild(this.roofLayer, this.overlayAuraLayer)
-      }
-
-      app.stage.addChild(this.worldContainer, this.lighting.overlaySprite)
+      app.stage.addChild(
+        this.worldContainer,
+        this.lighting.overlaySprite,
+        this.overlayLayer.worldOverlay,
+        this.overlayLayer.hudLayer
+      )
       this.initialized = true
     } catch (err) {
-      console.warn('[PixiWorldRenderer] Falling back to Canvas 2D:', err)
       this.failed = true
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error('[PixiWorldRenderer] Falha ao inicializar WebGL/PixiJS v8:', err)
+      this.onError?.(`Falha ao inicializar PixiJS v8 (WebGL): ${msg}`)
     }
-  }
-
-  private rebuildBufferTexture(width: number, height: number): void {
-    const w = Math.max(2, Math.floor(width))
-    const h = Math.max(2, Math.floor(height))
-    this.bufferCanvas.width = w
-    this.bufferCanvas.height = h
-    this.bufferCtx.imageSmoothingEnabled = false
-
-    const oldTex = this.bufferTexture
-    const source = new CanvasSource({ resource: this.bufferCanvas, scaleMode: 'nearest' })
-    this.bufferTexture = new Texture({ source })
-
-    if (!this.bufferSprite) {
-      this.bufferSprite = new Sprite(this.bufferTexture)
-    } else {
-      this.bufferSprite.texture = this.bufferTexture
-    }
-    oldTex?.destroy(true)
   }
 
   public syncSize(width: number, height: number): void {
     const w = Math.max(2, Math.floor(width))
     const h = Math.max(2, Math.floor(height))
+    this.pendingWidth = w
+    this.pendingHeight = h
     if (this.app && (this.app.screen.width !== w || this.app.screen.height !== h)) {
       this.app.renderer.resize(w, h)
-    }
-    if (this.bufferCanvas.width !== w || this.bufferCanvas.height !== h) {
-      this.rebuildBufferTexture(w, h)
     }
   }
 
@@ -338,8 +337,8 @@ export class PixiWorldRenderer {
     return closedZoneIds
   }
 
-  public renderFrame(camera: CameraManager, currentTime: number): boolean {
-    if (!this.isReady() || !this.app || !this.lighting || !this.auraSystem || !this.bufferSprite || !this.bufferTexture) {
+  public renderFrame(camera: CameraManager, currentTime: number, overlayState: OverlayRenderState): boolean {
+    if (!this.isReady() || !this.app || !this.lighting || !this.auraSystem) {
       return false
     }
 
@@ -350,39 +349,42 @@ export class PixiWorldRenderer {
 
     const mapStore = useMapStore.getState()
     const map = mapStore.mapData
+    const customAssets = useCustomAssetsStore.getState().customAssets
     const gameStore = useGameStore.getState()
     const settings = useSettingsStore.getState()
     const localPlayer = gameStore.localPlayer
     const activeZoneId = localPlayer.currentZoneId ?? null
 
-    const zoom = Number.isFinite(camera.zoom) && camera.zoom > 0 ? camera.zoom : 1.0
-    const camX = Number.isFinite(camera.x) ? camera.x : 34 * TILE_SIZE
-    const camY = Number.isFinite(camera.y) ? camera.y : 20 * TILE_SIZE
+    if (!Number.isFinite(camera.zoom) || camera.zoom <= 0) camera.zoom = 1.0
+    if (!Number.isFinite(camera.x)) camera.x = 34 * TILE_SIZE
+    if (!Number.isFinite(camera.y)) camera.y = 20 * TILE_SIZE
+
+    const zoom = camera.zoom
+    const camX = camera.x
+    const camY = camera.y
     const viewWidth = this.app.screen.width / zoom
     const viewHeight = this.app.screen.height / zoom
     const worldOffsetX = (viewWidth / 2 - camX) * zoom
     const worldOffsetY = (viewHeight / 2 - camY) * zoom
 
+    const bounds = {
+      camMinX: camX - viewWidth / 2,
+      camMaxX: camX + viewWidth / 2,
+      camMinY: camY - viewHeight / 2,
+      camMaxY: camY + viewHeight / 2,
+      enableCulling: settings.enableCulling,
+    }
+
     this.app.renderer.background.color = 0x0c0e14
     this.worldContainer.scale.set(zoom)
     this.worldContainer.position.set(worldOffsetX, worldOffsetY)
-    this.bufferSprite.scale.set(1 / zoom)
-    this.bufferSprite.position.set(-worldOffsetX / zoom, -worldOffsetY / zoom)
 
     const closedZoneIds = this.syncDynamicHouses(dt, activeZoneId)
 
-    // Render base floors, walls, furniture & entities onto buffer (with cutaway interiors drawn cleanly on top of base floor)
-    WorldRenderer.renderWorldBasePass(this.bufferCtx, this.bufferCanvas, camera, currentTime, closedZoneIds, this.dynamicHouses.size > 0)
-    this.bufferTexture.source.update()
-
-    // Ensure houseInteriorLayer sits above base floor (bufferSprite) while entities render cleanly
-    // Note: bufferSprite draws base floor + furniture + entities; when houses exist, draw interior wood/walls in houseInteriorLayer?
-    // Wait: if bufferSprite is opaque, houseInteriorLayer below bufferSprite would be covered by base floor!
-    // Put houseInteriorLayer right ABOVE base floor? Even better: renderWorldBasePass already clears/fills opaque base floor.
-    // Let's keep houseInteriorLayer ABOVE bufferSprite? No — if houseInteriorLayer is above bufferSprite, it would cover sofas/avatars inside!
-    // Instead, WorldRenderer.renderWorldBasePass clips/punches out open house interiors OR draws interiors.png planks/walls directly under furniture!
-    // Wait: check if PixiJS houseInteriorLayer is needed when WorldRenderer clips or draws: if bufferSprite punches a transparent hole over open house footprints (clearRect), houseInteriorLayer underneath shines right through with PixiJS sharpness AND furniture/avatars sit above it? Wait — bufferSprite also draws the sofas/avatars!
-    // Let's put houseInteriorLayer AT index 0 (behind bufferSprite) AND inside renderWorldBasePass, skip painting opaque floor tiles inside open house zones? No, bufferCanvas starts opaque (`fillStyle = '#0c0e14'`). If we start bufferCanvas transparent (`clearRect`) and fill only outside open house interiors, OR simply draw `houseInteriorLayer` -> wait: why not put `houseInteriorLayer` at index 0 and skip the opaque background fill ONLY inside open house rects (leaving transparent pixels where `houseInteriorLayer` is visible, while sofas & avatars draw onto `bufferCtx` on top)? YES! That's 3 lines and gives crisp PixiJS `interiors.png` underneath + Lira furniture/avatars on top + PixiJS roofs above!
+    this.floorLayer.update(this.app.renderer, map, customAssets, currentTime)
+    this.wallLayer.update(map, customAssets, currentTime)
+    this.furnitureLayer.update(map, customAssets, currentTime)
+    this.entityLayer.update(localPlayer, gameStore.remotePlayers, closedZoneIds, bounds, currentTime)
 
     const auraActors: AuraActorInput[] = []
     const pushAuraActor = (p: Player, isLocal: boolean) => {
@@ -422,6 +424,17 @@ export class PixiWorldRenderer {
       activeZoneId
     )
 
+    this.overlayLayer.update(
+      this.app.screen.width,
+      this.app.screen.height,
+      zoom,
+      worldOffsetX,
+      worldOffsetY,
+      bounds,
+      overlayState,
+      currentTime
+    )
+
     this.app.render()
     return true
   }
@@ -430,15 +443,17 @@ export class PixiWorldRenderer {
     this.disposed = true
     for (const node of this.dynamicHouses.values()) this.removeHouseNode(node)
     this.dynamicHouses.clear()
+    this.floorLayer.destroy()
+    this.wallLayer.destroy()
+    this.furnitureLayer.destroy()
+    this.entityLayer.destroy()
+    this.overlayLayer.destroy()
     this.auraSystem?.destroy()
     this.lighting?.destroy()
-    this.bufferSprite?.destroy()
-    this.bufferTexture?.destroy(true)
+    this.textures.destroy()
     this.app?.destroy(true, { children: true })
     this.auraSystem = null
     this.lighting = null
-    this.bufferSprite = null
-    this.bufferTexture = null
     this.app = null
   }
 }

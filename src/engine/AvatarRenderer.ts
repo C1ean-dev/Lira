@@ -7,7 +7,9 @@ import { activitySequence } from '../utils/avatarActivityAnimations'
 export { NameTagRenderer } from './avatar/nameTagRenderer'
 export { AvatarAtlasManager } from './avatar/AvatarAtlasManager'
 
-const isDirectImageSource = (source: string): boolean =>
+export const DEFAULT_RETRO_ID = 'avatar_other_sliced_1788355059618_ozg3'
+
+export const isDirectImageSource = (source: string): boolean =>
   /^(?:data:image\/|blob:|https?:|file:|lira-sprite:)/i.test(source) || /[\\/]/.test(source) ||
   /\.(?:png|jpe?g|gif|webp|svg|avif|bmp|ico)(?:[?#]|$)/i.test(source)
 
@@ -16,7 +18,7 @@ export class AvatarRenderer {
 
   private static lastAtlasVersion: number = -1
 
-  private static resolveAtlasSub(
+  public static resolveAtlasSub(
     category: string,
     presetId: string,
     searchDir: Direction,
@@ -283,7 +285,6 @@ export class AvatarRenderer {
       return false
     }
 
-    const DEFAULT_RETRO_ID = 'avatar_other_sliced_1788355059618_ozg3'
     const otherComp =
       avatar.customComponents?.other ||
       (avatar.otherType && avatar.otherType !== 'default' && avatar.otherType !== 'none'
