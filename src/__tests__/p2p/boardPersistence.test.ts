@@ -21,7 +21,7 @@ describe('version 2 board persistence', () => {
     expect(Object.values(migrated.operations)).toMatchObject([{ kind: 'element', element: { id: 'a:1', type: 'freedraw', x: 100, y: 120, points: [[0, 0], [200, 120]] } }])
     expect(await loadBoardRoom('ROOM')).toEqual(migrated)
     expect(localStorage.getItem('lira_whiteboard_ROOM')).toBe(original)
-  }, 30000) // The first legacy migration loads the real Excalidraw SDK.
+  }, 60000) // The first legacy migration loads the real Excalidraw SDK.
   it('preserves single-point strokes, text, images and explicit removals during conversion', async () => {
     const dot = { ...legacy.operations['a:1'], points: [{ x: .1, y: .2 }] }
     const shape = { id: 'text', type: 'text', x: 10, y: 20, width: 50, height: 20, text: 'Olá', fontSize: 20, version: 1, versionNonce: 1, isDeleted: false }

@@ -44,4 +44,22 @@ describe('Cloudflare temporary TURN credentials', () => {
     await retry
     expect(fetcher).toHaveBeenCalledTimes(2)
   })
+
+  it('falls back to the next configured endpoint when the primary returns an error', async () => {
+    const now = 1000
+    const fetcher = vi.fn(async (url: string) => {
+      if (url.includes('legacy.example')) return { ok: false, status: 503 }
+      return { ok: true, json: async () => ({ iceServers, expiresAt: now + 3600000 }) }
+    })
+    const client = createCloudflareTurnClient(
+      ['https://legacy.example/turn/credentials', 'https://active.example/turn/credentials'],
+      fetcher as any,
+      () => now,
+    )
+    expect(await client()).toEqual(iceServers)
+    expect(fetcher.mock.calls.map(call => call[0])).toEqual([
+      'https://legacy.example/turn/credentials',
+      'https://active.example/turn/credentials',
+    ])
+  })
 })

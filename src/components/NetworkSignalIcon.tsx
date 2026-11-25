@@ -21,22 +21,18 @@ export const NetworkSignalIcon: React.FC<NetworkSignalIconProps> = ({
   const barsActive = rating === 'excellent' ? 4 : rating === 'good' ? 3 : rating === 'poor' ? 2 : 1
 
   const activeColor =
-    rating === 'excellent'
-      ? 'bg-emerald-400'
-      : rating === 'good'
-      ? 'bg-lime-400'
+    rating === 'excellent' || rating === 'good'
+      ? 'bg-lira-online'
       : rating === 'poor'
-      ? 'bg-amber-400'
-      : 'bg-rose-500'
+      ? 'bg-lira-amber'
+      : 'bg-lira-error'
 
   const activeTextColor =
-    rating === 'excellent'
-      ? 'text-emerald-400'
-      : rating === 'good'
-      ? 'text-lime-400'
+    rating === 'excellent' || rating === 'good'
+      ? 'text-lira-online'
       : rating === 'poor'
-      ? 'text-amber-400'
-      : 'text-rose-400'
+      ? 'text-lira-amber'
+      : 'text-lira-error'
 
   const ratingLabel =
     rating === 'excellent'
@@ -63,8 +59,8 @@ export const NetworkSignalIcon: React.FC<NetworkSignalIconProps> = ({
           return (
             <span
               key={index}
-              className={`rounded-sm transition-all ${barW} ${barH[index]} ${
-                isActive ? activeColor : 'bg-slate-700/60'
+              className={`rounded-sm transition-colors ${barW} ${barH[index]} ${
+                isActive ? activeColor : 'bg-lira-rule/40'
               }`}
             />
           )
@@ -72,7 +68,7 @@ export const NetworkSignalIcon: React.FC<NetworkSignalIconProps> = ({
       </div>
 
       {showPingText && (
-        <span className={`text-[10px] font-mono font-bold leading-none ${activeTextColor}`}>
+        <span className={`text-[10px] font-mono font-bold leading-none tabular-nums ${activeTextColor}`}>
           {pingMs > 0 ? `${pingMs}ms` : '<10ms'}
         </span>
       )}

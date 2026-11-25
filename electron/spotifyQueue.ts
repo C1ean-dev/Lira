@@ -11,6 +11,16 @@ export async function enqueueSpotifyTrackInPage(trackId: string): Promise<Spotif
   const paused = (): SpotifyDjRequestResult => ({ ok: false, error: 'A automação foi pausada porque esta aba está sendo usada. Volte à aba do player e tente novamente.' })
   if (!background()) return paused()
   const normalize = (text: string | null | undefined) => (text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
+  const accessibleText = (node: Node): string => {
+    if (node.nodeType === 3) return node.textContent || ''
+    if (node.nodeType === 1) {
+      const element = node as Element
+      if (element.getAttribute?.('aria-hidden') === 'true' || element.tagName?.toUpperCase() === 'KBD') return ''
+    }
+    const children = (node as ParentNode).childNodes
+    if (children && children.length) return Array.from(children, accessibleText).join(' ')
+    return node.textContent || ''
+  }
   const anchors = Array.from(document.querySelectorAll<HTMLAnchorElement>('main a[href*="/track/"], [role="main"] a[href*="/track/"]'))
   const matching = anchors.filter(link => {
     try {
@@ -39,7 +49,8 @@ export async function enqueueSpotifyTrackInPage(trackId: string): Promise<Spotif
     const menus = visibleMenus()
     item = menus.flatMap(menu => Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]'))).find(button => {
       const testId = button.getAttribute('data-testid') || ''
-      return testId.includes('add-to-queue') || /^(add to (?:your )?queue|adicionar (?:a )?(?:sua )?fila(?: de reproducao)?)$/.test(normalize(button.textContent))
+      const label = normalize(button.getAttribute('aria-label')) || normalize(accessibleText(button))
+      return testId.includes('add-to-queue') || /^(add to (?:your )?queue|adicionar (?:a )?(?:sua )?fila(?: de reproducao)?)$/.test(label)
     })
     if (item) break
     await new Promise(resolve => setTimeout(resolve, 50))

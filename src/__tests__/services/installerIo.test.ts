@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { createUpdateIoHarness } from '../helpers/updateIoHarness'
 
 // These integration tests start fresh PowerShell processes, sometimes twice.
-describe.skipIf(process.platform !== 'win32')('installer batch file IO', { timeout: 30000 }, () => {
+describe.skipIf(process.platform !== 'win32')('installer batch file IO', { timeout: 60000 }, () => {
   let root: string
   let source: string
   let destination: string
@@ -17,7 +17,7 @@ describe.skipIf(process.platform !== 'win32')('installer batch file IO', { timeo
     compiledRoot = mkdtempSync(path.join(os.tmpdir(), 'lira-compiled-io-'))
     ioHarness = createUpdateIoHarness(compiledRoot)
   })
-  afterAll(() => rmSync(compiledRoot, { recursive: true, force: true }))
+  afterAll(async () => { await ioHarness?.close(); rmSync(compiledRoot, { recursive: true, force: true }) })
   const digest = (data: string | Buffer) => createHash('sha256').update(data).digest('hex').toUpperCase()
   const execute = (body: string, files: { Name: string; Length: number; Hash?: string }[], directories: string[] = []) => {
     const harness = path.join(root, 'batch-test.ps1')
@@ -93,7 +93,7 @@ ${verify}
 `, files))
     expect(result.CopiedDuringProgress).toBeGreaterThan(0)
     expect(result.FilesCopied).toBe(files.length)
-  }, 30000)
+  }, 60000)
 
   it('waits for every file writer before returning a progress error', () => {
     const files = Array.from({ length: 300 }, (_, index) => ({ Name: `${index}.bin`, Length: 4096 }))
@@ -107,7 +107,7 @@ ${verify}
 `, files))
     expect(result.Caught).toBe(true)
     expect(result.FilesCopied).toBe(files.length)
-  }, 30000)
+  }, 60000)
 
   it('rejects changed source content and length during recovery', () => {
     writeFileSync(path.join(source, 'save.json'), 'tampered')

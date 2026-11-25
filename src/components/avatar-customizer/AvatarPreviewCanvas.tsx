@@ -3,6 +3,7 @@ import { Download, Dices } from 'lucide-react'
 import { AvatarConfig, PresenceStatus } from '../../types/game'
 import type { PlayerDetails } from '../../hooks/usePlayerDetails'
 import { AvatarRenderer } from '../../engine/AvatarRenderer'
+import { drawAvatarAuraPreview, drawAvatarStepsPreview } from '../../engine/avatarEffects'
 import { PetRenderer } from '../../engine/pet/PetRenderer'
 import { PetState } from '../../engine/pet/PetManager'
 
@@ -89,7 +90,9 @@ export const AvatarPreviewCanvas: React.FC<Props> = ({
         y: 0,
       }
 
+      drawAvatarStepsPreview(ctx, avatar, tick, 32)
       AvatarRenderer.drawPlayer(ctx, tempPlayer, true, tick, 32, showNameTags)
+      drawAvatarAuraPreview(ctx, avatar, tick, 32)
 
       if (avatar.pet && avatar.pet.type !== 'none') {
         const previewPet: PetState = {
@@ -144,14 +147,14 @@ export const AvatarPreviewCanvas: React.FC<Props> = ({
   }
 
   return (
-    <div className={className || "w-80 bg-[#1e1f22] border-l border-[#2b2d31] relative flex items-center justify-center p-4 shrink-0 overflow-hidden"}>
-      <div className="w-full h-full rounded-2xl overflow-hidden shadow-2xl relative border border-[#2b2d31]">
+    <div className={className || "w-80 bg-lira-sidebar border-l border-lira-quiet relative flex items-center justify-center p-4 shrink-0 overflow-hidden"}>
+      <div className="w-full h-full rounded-[12px] overflow-hidden relative border border-lira-rule">
         <canvas ref={previewCanvasRef} width={canvasWidth} height={canvasHeight} className="w-full h-full pixelated" />
 
         <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
           <button
             onClick={handleDownloadPNG}
-            className="p-1.5 sm:p-2 rounded-xl bg-[#18191c]/90 hover:bg-[#18191c] text-slate-300 hover:text-white border border-[#2b2d31] backdrop-blur-md shadow-lg transition-all active:scale-95"
+            className="p-1.5 sm:p-2 rounded-[8px] bg-lira-surface hover:bg-lira-ground text-lira-ink hover:text-lira-accent border border-lira-rule hover:border-lira-accent transition-colors"
             title="Baixar Avatar em PNG"
           >
             <Download className="w-4 h-4" />
@@ -160,10 +163,10 @@ export const AvatarPreviewCanvas: React.FC<Props> = ({
 
         <button
           onClick={onRandomize}
-          className="absolute bottom-2.5 right-2.5 p-2 sm:p-2.5 rounded-xl bg-[#18191c]/90 hover:bg-[#3b82f6] text-slate-300 hover:text-white border border-[#2b2d31] backdrop-blur-md shadow-xl transition-all hover:rotate-12 active:scale-95"
+          className="group absolute bottom-2.5 right-2.5 p-2 sm:p-2.5 rounded-[8px] bg-lira-surface hover:bg-lira-accent text-lira-accent hover:text-lira-ground border border-lira-rule hover:border-lira-accent transition-colors"
           title="Gerar Combinação Aleatória (Dados)"
         >
-          <Dices className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-400 group-hover:text-white" />
+          <Dices className="w-4 h-4 sm:w-5 sm:h-5 text-lira-accent group-hover:text-lira-ground" />
         </button>
       </div>
     </div>

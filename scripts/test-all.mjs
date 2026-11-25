@@ -14,7 +14,7 @@ export function testSuites() {
     env: { [flag]: '1' },
   })
   return [
-    { name: 'unit', command: process.execPath, args: [path.join(path.dirname(require.resolve('vitest/package.json')), 'vitest.mjs'), 'run', 'src/__tests__', '--maxWorkers=2', '--reporter', path.join(root, 'scripts/quiet-vitest-reporter.mjs')] },
+    { name: 'unit', command: process.execPath, args: [path.join(path.dirname(require.resolve('vitest/package.json')), 'vitest.mjs'), 'run', 'src/__tests__', '--reporter', path.join(root, 'scripts/quiet-vitest-reporter.mjs')] },
     { name: 'migration', command: process.env.LIRA_PYTHON || 'python', args: [path.join(root, 'scripts/quiet-unittest.py'), path.join(root, 'scripts/test_migrate_individual_library.py')] },
     { name: 'noise:guards', command: process.env.LIRA_PYTHON || 'python', args: ['-B', path.join(root, 'scripts/quiet-unittest.py'), path.join(root, 'scripts/noise-benchmark/test_report.py')] },
     nodeTest('core:browser', 'LIRA_RUN_BROWSER_TESTS', ['scripts/core-realtime.browser.test.mjs', 'scripts/chat-scroll.browser.test.mjs'], ['--test-force-exit']),

@@ -9,9 +9,7 @@ import {
   Download,
   FileText,
   Maximize2,
-  Minimize2,
   AlertCircle,
-  GripVertical,
   CheckCheck,
   Compass,
   Copy,
@@ -24,12 +22,9 @@ import {
   UserPlus,
 } from 'lucide-react'
 
-const DEFAULT_DRAWER_WIDTH = 440
-const MIN_DRAWER_WIDTH = 340
-const DEFAULT_CHANNELS_WIDTH = 144
-const MIN_CHANNELS_WIDTH = 110
+const DEFAULT_CHANNELS_WIDTH = 240
+const MIN_CHANNELS_WIDTH = 160
 
-const DRAWER_STORAGE_KEY = 'lira_chat_drawer_width'
 const CHANNELS_STORAGE_KEY = 'lira_chat_channels_width'
 import { useChatStore, getLocalDmChannelId } from '../store/useChatStore'
 import { useGameStore } from '../store/useGameStore'
@@ -43,12 +38,13 @@ import { PlayerAvatar } from './common/PlayerAvatar'
 import { MessageStatusIcon } from './chat/MessageStatusIcon'
 import { ChatUserContextMenu } from './chat/ChatUserContextMenu'
 import { ChatPeopleList } from './chat/ChatPeopleList'
+import { DmHeaderStatus } from './chat/DmHeaderStatus'
 import { requestPetFromChat } from '../services/petNetwork'
 import { prepareTtsCommand } from '../services/callTtsCore'
 import { sendCallTts } from '../services/callTts'
 import { MentionSuggestions } from './chat/MentionSuggestions'
 import { findMentionQuery, insertMention, updateMentions, prepareMentionMessage, mentionSegments, type MentionCandidate } from '../utils/chatMentions'
-import { renderChatContent } from '../utils/chatLinks'
+import { linkifyText } from '../utils/chatLinks'
 import { copyChatMessage, isImageAttachment } from '../utils/chatClipboard'
 import { buildMentionCandidates } from '../utils/mentionCandidates'
 import { ChatChannelList, ChannelEditing } from './chat/ChatChannelList'
@@ -61,7 +57,7 @@ import { RoomInviteCard } from './chat/RoomInviteCard'
 import { ConfirmModal } from './ConfirmModal'
 import { getPlayerUserId, findFriendKey, isSameParticipant } from '../utils/userId'
 import { getChatUserFriendState } from '../utils/chatUserActions'
-import { buildChatPeople, openChatPerson, ChatPerson } from '../utils/chatPeople'
+import { buildChatPeople, findActiveChatPerson, openChatPerson, ChatPerson } from '../utils/chatPeople'
 import { ChatPersonAction, getChatPersonMenu } from '../utils/chatPersonMenu'
 import { ChannelAction, getChannelMenu } from '../utils/roomChannels'
 import { getRoomInviteState, readRoomInvite } from '../utils/roomInvite'
@@ -72,22 +68,37 @@ import { useChatPagination } from '../hooks/useChatPagination'
 
 const MENU_ICON = 'w-4 h-4 shrink-0'
 
+function renderChatContent(content: string, mentions?: ChatMention[]): React.ReactNode {
+  if (!content) return null
+  const segments = mentionSegments(content, mentions)
+  return segments.map((part, index) => {
+    if (part.mention) {
+      return (
+        <span key={index} className="bg-lira-amber/15 text-lira-amber font-mono font-semibold rounded px-1">
+          {part.text}
+        </span>
+      )
+    }
+    return <React.Fragment key={index}>{linkifyText(part.text)}</React.Fragment>
+  })
+}
+
 const PERSON_ACTION_ICONS: Record<ChatPersonAction, React.ReactNode> = {
-  message: <MessageSquare className={`${MENU_ICON} text-indigo-400`} />,
-  goto: <Compass className={`${MENU_ICON} text-indigo-400`} />,
-  invite: <DoorOpen className={`${MENU_ICON} text-emerald-400`} />,
-  join: <LogIn className={`${MENU_ICON} text-emerald-400`} />,
-  'add-friend': <UserPlus className={`${MENU_ICON} text-indigo-400`} />,
-  'remove-friend': <UserMinus className={`${MENU_ICON} text-rose-400`} />,
-  'close-conversation': <X className={`${MENU_ICON} text-slate-400`} />,
-  'copy-name': <Copy className={`${MENU_ICON} text-slate-400`} />,
+  message: <MessageSquare className={`${MENU_ICON} text-lira-accent`} />,
+  goto: <Compass className={`${MENU_ICON} text-lira-accent`} />,
+  invite: <DoorOpen className={`${MENU_ICON} text-lira-online`} />,
+  join: <LogIn className={`${MENU_ICON} text-lira-online`} />,
+  'add-friend': <UserPlus className={`${MENU_ICON} text-lira-accent`} />,
+  'remove-friend': <UserMinus className={`${MENU_ICON} text-lira-error`} />,
+  'close-conversation': <X className={`${MENU_ICON} text-lira-muted`} />,
+  'copy-name': <Copy className={`${MENU_ICON} text-lira-muted`} />,
 }
 
 const CHANNEL_ACTION_ICONS: Record<ChannelAction, React.ReactNode> = {
-  'mark-read': <CheckCheck className={`${MENU_ICON} text-slate-400`} />,
-  rename: <Pencil className={`${MENU_ICON} text-indigo-400`} />,
-  delete: <Trash2 className={`${MENU_ICON} text-rose-400`} />,
-  create: <Plus className={`${MENU_ICON} text-emerald-400`} />,
+  'mark-read': <CheckCheck className={`${MENU_ICON} text-lira-muted`} />,
+  rename: <Pencil className={`${MENU_ICON} text-lira-accent`} />,
+  delete: <Trash2 className={`${MENU_ICON} text-lira-error`} />,
+  create: <Plus className={`${MENU_ICON} text-lira-online`} />,
 }
 
 function formatFileSize(bytes: number): string {
@@ -135,16 +146,16 @@ const SpotifyChatCard: React.FC<{ url: string }> = ({ url }) => {
   }
 
   return (
-    <div className="mt-2 p-2 bg-[#12151d] rounded-xl border border-emerald-500/30 flex items-center justify-between gap-2 shadow-inner">
+    <div className="mt-2 p-2 bg-lira-ground rounded-lg border border-dashed border-lira-online/50 flex items-center justify-between gap-2 font-mono">
       <div className="flex items-center gap-2 min-w-0">
-        <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+        <div className="w-6 h-6 rounded bg-lira-online/15 text-lira-online flex items-center justify-center shrink-0">
           <SpotifyIcon size={14} className="w-3.5 h-3.5" />
         </div>
         <div className="min-w-0">
-          <div className="text-[11px] font-bold text-slate-100 truncate">
+          <div className="text-[11px] font-display font-bold text-lira-ink truncate">
             {isJam ? 'Spotify Jam' : 'Spotify Music Link'}
           </div>
-          <div className="text-[9px] text-emerald-400 font-mono truncate max-w-[200px]">
+          <div className="text-[9px] text-lira-online font-mono truncate max-w-[200px]">
             {url}
           </div>
         </div>
@@ -153,7 +164,7 @@ const SpotifyChatCard: React.FC<{ url: string }> = ({ url }) => {
         <button
           type="button"
           onClick={handleOpen}
-          className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors"
+          className="px-2 py-1 bg-lira-online hover:bg-lira-ink text-lira-ground rounded text-[10px] font-bold flex items-center gap-1 transition-colors"
           title="Abrir no Spotify App ou Navegador"
         >
           <SpotifyIcon size={10} className="w-2.5 h-2.5" />
@@ -162,10 +173,10 @@ const SpotifyChatCard: React.FC<{ url: string }> = ({ url }) => {
         <button
           type="button"
           onClick={handleCopy}
-          className="p-1 text-slate-400 hover:text-white bg-slate-800 rounded-lg text-[10px] transition-colors"
+          className="p-1 text-lira-muted hover:text-lira-ink bg-lira-surface border border-lira-quiet rounded text-[10px] transition-colors"
           title="Copiar Link"
         >
-          {copied ? <CheckCheck className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+          {copied ? <CheckCheck className="w-3 h-3 text-lira-online" /> : <Copy className="w-3 h-3" />}
         </button>
       </div>
     </div>
@@ -233,19 +244,6 @@ const ChatDrawerInner: React.FC = () => {
   const [channelToDelete, setChannelToDelete] = useState<Channel | null>(null)
   const [roomToJoin, setRoomToJoin] = useState<{ code: string; name?: string } | null>(null)
 
-  const [drawerWidth, setDrawerWidth] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem(DRAWER_STORAGE_KEY)
-      if (saved) {
-        const val = parseInt(saved, 10)
-        if (!isNaN(val) && val >= MIN_DRAWER_WIDTH && val <= 1600) {
-          return val
-        }
-      }
-    } catch {}
-    return DEFAULT_DRAWER_WIDTH
-  })
-
   const [channelsWidth, setChannelsWidth] = useState<number>(() => {
     try {
       const saved = localStorage.getItem(CHANNELS_STORAGE_KEY)
@@ -259,31 +257,34 @@ const ChatDrawerInner: React.FC = () => {
     return DEFAULT_CHANNELS_WIDTH
   })
 
-  const [isResizingDrawer, setIsResizingDrawer] = useState(false)
   const [isResizingChannels, setIsResizingChannels] = useState(false)
 
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640)
   const [mobileTab, setMobileTab] = useState<'chat' | 'channels'>('chat')
 
-  const drawerWidthRef = useRef(drawerWidth)
-  drawerWidthRef.current = drawerWidth
-
+  const drawerRef = useRef<HTMLDivElement>(null)
   const channelsWidthRef = useRef(channelsWidth)
   channelsWidthRef.current = channelsWidth
+
+  const getRailOffset = useCallback(() => {
+    const left = drawerRef.current?.getBoundingClientRect().left
+    if (typeof left === 'number' && left > 0) return left
+    return typeof window !== 'undefined' && window.innerWidth < 640 ? 56 : 68
+  }, [])
 
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 640)
-      const maxW = Math.max(MIN_DRAWER_WIDTH, Math.floor(window.innerWidth * 0.92))
-      setDrawerWidth((prev) => (prev > maxW ? maxW : prev))
+      const maxChannelsW = Math.min(400, Math.max(MIN_CHANNELS_WIDTH, window.innerWidth - getRailOffset() - 280))
+      setChannelsWidth((prev) => (prev > maxChannelsW ? maxChannelsW : prev))
     }
     handleResize()
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
-  }, [])
+  }, [getRailOffset])
 
   useEffect(() => {
-    if (isResizingDrawer || isResizingChannels) {
+    if (isResizingChannels) {
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
     } else {
@@ -294,33 +295,7 @@ const ChatDrawerInner: React.FC = () => {
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
     }
-  }, [isResizingDrawer, isResizingChannels])
-
-  const handleDrawerResizeStart = useCallback((e: React.PointerEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsResizingDrawer(true)
-
-    const onPointerMove = (moveEv: PointerEvent) => {
-      const maxW = Math.max(MIN_DRAWER_WIDTH, Math.min(1200, Math.floor(window.innerWidth * 0.92)))
-      const minW = Math.max(MIN_DRAWER_WIDTH, channelsWidthRef.current + 180)
-      const nextWidth = Math.min(maxW, Math.max(minW, moveEv.clientX))
-      drawerWidthRef.current = nextWidth
-      setDrawerWidth(nextWidth)
-    }
-
-    const onPointerUp = () => {
-      setIsResizingDrawer(false)
-      window.removeEventListener('pointermove', onPointerMove)
-      window.removeEventListener('pointerup', onPointerUp)
-      try {
-        localStorage.setItem(DRAWER_STORAGE_KEY, String(drawerWidthRef.current))
-      } catch {}
-    }
-
-    window.addEventListener('pointermove', onPointerMove)
-    window.addEventListener('pointerup', onPointerUp)
-  }, [])
+  }, [isResizingChannels])
 
   const handleChannelsResizeStart = useCallback((e: React.PointerEvent) => {
     e.preventDefault()
@@ -328,8 +303,9 @@ const ChatDrawerInner: React.FC = () => {
     setIsResizingChannels(true)
 
     const onPointerMove = (moveEv: PointerEvent) => {
-      const maxW = Math.min(320, Math.max(MIN_CHANNELS_WIDTH, drawerWidthRef.current - 200))
-      const nextWidth = Math.min(maxW, Math.max(MIN_CHANNELS_WIDTH, moveEv.clientX))
+      const railOffset = getRailOffset()
+      const maxW = Math.min(400, Math.max(MIN_CHANNELS_WIDTH, window.innerWidth - railOffset - 280))
+      const nextWidth = Math.min(maxW, Math.max(MIN_CHANNELS_WIDTH, moveEv.clientX - railOffset))
       channelsWidthRef.current = nextWidth
       setChannelsWidth(nextWidth)
     }
@@ -345,7 +321,7 @@ const ChatDrawerInner: React.FC = () => {
 
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
-  }, [])
+  }, [getRailOffset])
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -386,6 +362,7 @@ const ChatDrawerInner: React.FC = () => {
     dmChannelIdFor: getLocalDmChannelId,
     getFriendPresence: (friend) => FriendsPresenceService.getInstance().getFriendStatus(friend),
   })
+  const activeDmPerson = findActiveChatPerson(people, activeChannel)
 
   const canManageChannels = !!roomId && isOwner
 
@@ -400,7 +377,9 @@ const ChatDrawerInner: React.FC = () => {
         openChatPerson(person, { setActiveChannel, openDirectMessage })
         break
       case 'goto':
-        if (person.playerId) goToPlayer(person.playerId)
+        if (person.playerId && goToPlayer(person.playerId) !== 'missing') {
+          setChatOpen(false)
+        }
         break
       case 'invite':
         if (person.contactId) sendRoomInvite({ id: person.contactId, name: person.name })
@@ -705,9 +684,9 @@ const ChatDrawerInner: React.FC = () => {
 
   return (
     <div
-      style={isMobile ? undefined : { width: `${drawerWidth}px` }}
+      ref={drawerRef}
       onDragOver={(e) => {
-        if (isResizingDrawer || isResizingChannels) return
+        if (isResizingChannels) return
         e.preventDefault()
         setIsDragging(true)
       }}
@@ -723,88 +702,48 @@ const ChatDrawerInner: React.FC = () => {
           handleFileSelect(e.dataTransfer.files[0])
         }
       }}
-      className={`fixed left-0 bottom-0 ${
-        isMobile ? 'w-full max-w-full right-0' : 'max-w-[92vw]'
-      } bg-[#12151d] border-r border-[#2a3142] flex flex-col shadow-2xl animate-in slide-in-from-left duration-200 ${
-        isResizingDrawer ? '' : 'transition-[width] duration-150 ease-out'
-      } ${
-        isGridCallOpen ? 'top-0 z-[70]' : 'top-14 z-[70]'
-      }`}
+      className="fixed left-[var(--rail-width)] right-0 top-0 bottom-0 z-[70] bg-lira-panel flex flex-col font-mono"
     >
-      {!isMobile && (isResizingDrawer || isResizingChannels) && (
+      {!isMobile && isResizingChannels && (
         <div className="fixed inset-0 z-[9999] cursor-col-resize select-none bg-transparent" />
       )}
 
-      {!isMobile && (
-        <div
-          onPointerDown={handleDrawerResizeStart}
-          onDoubleClick={() => {
-            setDrawerWidth(DEFAULT_DRAWER_WIDTH)
-            try {
-              localStorage.setItem(DRAWER_STORAGE_KEY, String(DEFAULT_DRAWER_WIDTH))
-            } catch {}
-          }}
-          className={`absolute top-0 -right-2 w-4 h-full cursor-col-resize z-50 select-none group flex items-center justify-center transition-colors ${
-            isResizingDrawer ? 'bg-indigo-500/20' : 'hover:bg-indigo-500/10'
-          }`}
-          title="Arraste para redimensionar o chat (duplo clique para restaurar 440px)"
-        >
-          <div
-            className={`w-1 rounded-full transition-all duration-150 relative flex items-center justify-center ${
-              isResizingDrawer
-                ? 'h-16 bg-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.9)]'
-                : 'h-8 bg-slate-600/40 group-hover:h-12 group-hover:bg-indigo-400 group-hover:shadow-[0_0_8px_rgba(99,102,241,0.6)]'
-            }`}
-          >
-            <div
-              className={`absolute pointer-events-none transition-opacity duration-150 ${
-                isResizingDrawer ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-              }`}
-            >
-              <div className="p-0.5 rounded-full bg-indigo-600 text-white shadow-md border border-indigo-400/50">
-                <GripVertical className="w-3 h-3" />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {isDragging && (
-        <div className="absolute inset-0 z-50 bg-indigo-950/85 backdrop-blur-sm border-2 border-dashed border-indigo-400 flex flex-col items-center justify-center gap-2 text-indigo-200 pointer-events-none animate-in fade-in duration-150">
-          <Paperclip className="w-10 h-10 text-indigo-400 animate-bounce" />
-          <span className="font-bold text-sm">Solte o arquivo para anexar ao chat</span>
-          <span className="text-xs text-indigo-300/70">Imagens, PDFs, documentos até 15MB</span>
+        <div className="absolute inset-0 z-50 bg-lira-ground/90 border-2 border-dashed border-lira-accent flex flex-col items-center justify-center gap-2 text-lira-ink pointer-events-none font-mono">
+          <Paperclip className="w-10 h-10 text-lira-accent animate-bounce" />
+          <span className="font-display font-bold text-base text-lira-accent">Solte o arquivo para anexar ao chat</span>
+          <span className="text-xs text-lira-muted">Imagens, PDFs, documentos até 15MB</span>
         </div>
       )}
 
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a3142] bg-[#1a1f2c] shrink-0">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-dashed border-lira-rule/60 bg-lira-sidebar shrink-0">
         <div className="flex items-center gap-2">
-          <MessageSquare className="w-5 h-5 text-indigo-400" />
-          <span className="font-bold text-sm text-slate-100">Chat & Canais</span>
+          <MessageSquare className="w-5 h-5 text-lira-accent" />
+          <span className="font-display font-bold text-base text-lira-accent">Chat & Canais</span>
         </div>
 
         {isMobile && (
-          <div className="flex gap-1 bg-[#12151d] p-0.5 rounded-xl border border-[#2a3142]">
+          <div className="flex gap-1 bg-lira-ground p-0.5 rounded-lg border border-lira-rule">
             <button
               onClick={() => setMobileTab('channels')}
-              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors ${
+              className={`px-2.5 py-1 text-xs font-bold rounded transition-colors ${
                 mobileTab === 'channels'
-                  ? 'bg-indigo-600 text-white shadow'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-lira-accent text-lira-ground'
+                  : 'text-lira-muted hover:text-lira-ink'
               }`}
             >
               Canais
             </button>
             <button
               onClick={() => setMobileTab('chat')}
-              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-colors flex items-center gap-1 ${
+              className={`px-2.5 py-1 text-xs font-bold rounded transition-colors flex items-center gap-1 ${
                 mobileTab === 'chat'
-                  ? 'bg-indigo-600 text-white shadow'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-lira-accent text-lira-ground'
+                  : 'text-lira-muted hover:text-lira-ink'
               }`}
             >
               <span>Chat</span>
-              <span className="text-[10px] text-slate-300 max-w-[65px] truncate font-normal">
+              <span className="text-[10px] opacity-80 max-w-[65px] truncate font-normal">
                 ({activeChannel.name})
               </span>
             </button>
@@ -812,32 +751,9 @@ const ChatDrawerInner: React.FC = () => {
         )}
 
         <div className="flex items-center gap-1">
-          {!isMobile && (
-            <button
-              type="button"
-              onClick={() => {
-                if (drawerWidth > 580) {
-                  setDrawerWidth(DEFAULT_DRAWER_WIDTH)
-                  try {
-                    localStorage.setItem(DRAWER_STORAGE_KEY, String(DEFAULT_DRAWER_WIDTH))
-                  } catch {}
-                } else {
-                  const expanded = Math.min(760, Math.floor(window.innerWidth * 0.85))
-                  setDrawerWidth(expanded)
-                  try {
-                    localStorage.setItem(DRAWER_STORAGE_KEY, String(expanded))
-                  } catch {}
-                }
-              }}
-              className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
-              title={drawerWidth > 580 ? 'Restaurar largura padrão (440px)' : 'Expandir largura do chat'}
-            >
-              {drawerWidth > 580 ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-            </button>
-          )}
           <button
             onClick={() => setChatOpen(false)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+            className="p-1.5 rounded-lg text-lira-muted hover:text-lira-ink hover:bg-lira-surface transition-colors"
             title="Fechar chat"
           >
             <X className="w-4 h-4" />
@@ -854,7 +770,7 @@ const ChatDrawerInner: React.FC = () => {
                 ? 'w-full flex-1 flex'
                 : 'hidden'
               : 'flex shrink-0'
-          } bg-[#0d1017] border-r border-[#2a3142] flex-col p-2 space-y-4 overflow-y-auto relative ${
+          } bg-lira-sidebar border-r border-lira-quiet flex-col p-2 space-y-4 overflow-y-auto relative ${
             isResizingChannels ? '' : 'transition-[width] duration-150 ease-out'
           }`}
         >
@@ -900,15 +816,15 @@ const ChatDrawerInner: React.FC = () => {
               } catch {}
             }}
             className={`relative -ml-1 -mr-1 w-2 h-full cursor-col-resize z-20 select-none group flex items-center justify-center transition-colors ${
-              isResizingChannels ? 'bg-indigo-500/30' : 'hover:bg-indigo-500/20'
+              isResizingChannels ? 'bg-lira-accent/30' : 'hover:bg-lira-accent/20'
             }`}
-            title="Arraste para redimensionar canais (duplo clique para restaurar 144px)"
+            title="Arraste para redimensionar canais (duplo clique para restaurar 240px)"
           >
             <div
               className={`w-0.5 rounded-full transition-all duration-150 ${
                 isResizingChannels
-                  ? 'h-10 bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.8)]'
-                  : 'h-6 bg-transparent group-hover:bg-indigo-400/80 group-hover:h-8'
+                  ? 'h-10 bg-lira-accent'
+                  : 'h-6 bg-transparent group-hover:bg-lira-accent/80 group-hover:h-8'
               }`}
             />
           </div>
@@ -921,47 +837,49 @@ const ChatDrawerInner: React.FC = () => {
                 ? 'w-full flex-1 flex'
                 : 'hidden'
               : 'flex-1 flex'
-          } flex-col bg-[#12151d] overflow-hidden`}
+          } flex-col bg-lira-panel overflow-hidden`}
         >
-          <div className="px-3 py-2 border-b border-[#2a3142] flex items-center justify-between bg-[#161a24] shrink-0">
-            <div className="flex items-center gap-1.5 truncate">
+          <div className="px-3 py-2 border-b border-dashed border-lira-rule/60 flex items-center justify-between gap-2 bg-lira-sidebar shrink-0">
+            <div className="flex items-center gap-1.5 min-w-0">
               {isMobile && (
                 <button
                   type="button"
                   onClick={() => setMobileTab('channels')}
-                  className="px-2 py-0.5 rounded-lg bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 text-[10px] font-bold flex items-center gap-1 mr-1 shrink-0"
+                  className="px-2 py-0.5 rounded bg-lira-surface text-lira-accent border border-lira-rule text-[10px] font-bold flex items-center gap-1 mr-1 shrink-0"
                 >
                   ← Canais
                 </button>
               )}
               {activeChannel.type === 'dm' ? (
-                <div className="w-4 h-4 rounded-full bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-[10px] font-bold text-indigo-300 shrink-0">
+                <div className="w-4 h-4 rounded-[4px] bg-lira-surface border border-lira-rule flex items-center justify-center text-[10px] font-bold text-lira-accent shrink-0">
                   @
                 </div>
               ) : activeChannel.type === 'zone' ? (
-                <Lock className="w-4 h-4 text-emerald-400 shrink-0" />
+                <Lock className="w-4 h-4 text-lira-online shrink-0" />
               ) : (
-                <Hash className="w-4 h-4 text-slate-400 shrink-0" />
+                <Hash className="w-4 h-4 text-lira-muted shrink-0" />
               )}
-              <span className="text-xs font-bold text-slate-200 truncate">{activeChannel.name}</span>
+              <span className="text-xs font-display font-bold text-lira-ink truncate">{activeChannel.name}</span>
             </div>
-            <span className="text-[10px] text-slate-400 truncate max-w-[50%]">
-              {activeChannel.type === 'dm'
-                ? `Conversa privada com ${activeChannel.name}`
-                : activeChannel.description}
-            </span>
+            {activeChannel.type === 'dm' ? (
+              <DmHeaderStatus person={activeDmPerson} fallbackName={activeChannel.name} />
+            ) : (
+              <span className="text-[10px] text-lira-muted truncate max-w-[50%]">
+                {activeChannel.description}
+              </span>
+            )}
           </div>
 
           <div ref={pagination.messagesRef} onScroll={pagination.onScroll} onWheel={pagination.onWheel} onTouchStart={pagination.onTouchStart} onTouchMove={pagination.onTouchMove} className="flex-1 min-h-0 p-3 overflow-y-auto">
             <div ref={pagination.contentRef} className="space-y-3">
             {filteredMessages.length === 0 ? (
-              <div className="text-center text-xs text-slate-400 py-8 space-y-1">
-                <div className="font-semibold text-slate-300">
+              <div className="text-center text-xs text-lira-muted py-8 px-4 m-2 rounded-xl border border-dashed border-lira-rule/60 bg-lira-ground/40 space-y-1">
+                <div className="font-display font-bold text-sm text-lira-accent">
                   {activeChannel.type === 'dm'
                     ? `Conversa direta com ${activeChannel.name}`
                     : 'Nenhuma mensagem enviada ainda.'}
                 </div>
-                <div className="text-[11px] text-slate-500">
+                <div className="text-[11px] text-lira-muted">
                   {activeChannel.type === 'dm'
                     ? 'Envie uma mensagem ou arquivo para iniciar o papo!'
                     : 'Envie uma mensagem ou arquivo para todos no canal!'}
@@ -996,17 +914,17 @@ const ChatDrawerInner: React.FC = () => {
                     return (
                       <div key={msg.id} onContextMenu={(e) => openUserMenu(e, msg)} className="group relative flex flex-col space-y-1">
                         <div className="flex items-baseline justify-between">
-                          <span className={`text-xs font-semibold ${isMine ? 'text-indigo-400' : 'text-slate-300'}`}>
+                          <span className={`text-xs font-semibold ${isMine ? 'text-lira-accent' : 'text-lira-ink'}`}>
                             {msg.senderName}
                           </span>
                           <div className="flex items-center gap-1 shrink-0">
-                            <span className="text-[10px] text-slate-400">
+                            <span className="text-[10px] font-mono text-lira-muted">
                               {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
                             {isMine && <MessageStatusIcon status={msg.status} />}
                           </div>
                         </div>
-                        <div className="text-xs text-slate-200 bg-[#1b202c] p-2.5 rounded-xl border border-[#2a3142]/60 break-words">
+                        <div className="text-xs text-lira-ink bg-lira-surface/60 p-2.5 rounded-lg border border-lira-quiet break-words">
                           {renderChatContent(msg.content)}
                         </div>
                       </div>
@@ -1020,11 +938,11 @@ const ChatDrawerInner: React.FC = () => {
                   return (
                     <div key={msg.id} onContextMenu={(e) => openUserMenu(e, msg)} className="group relative flex flex-col space-y-1">
                       <div className="flex items-baseline justify-between">
-                        <span className={`text-xs font-semibold ${isMine ? 'text-indigo-400' : 'text-slate-300'}`}>
+                        <span className={`text-xs font-semibold ${isMine ? 'text-lira-accent' : 'text-lira-ink'}`}>
                           {msg.senderName}
                         </span>
                         <div className="flex items-center gap-1 shrink-0">
-                          <span className="text-[10px] text-slate-400">
+                          <span className="text-[10px] font-mono text-lira-muted">
                             {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                           {isMine && <MessageStatusIcon status={msg.status} />}
@@ -1050,11 +968,11 @@ const ChatDrawerInner: React.FC = () => {
                   return (
                     <div key={msg.id} onContextMenu={(e) => openUserMenu(e, msg)} className="group relative flex flex-col space-y-1">
                       <div className="flex items-baseline justify-between">
-                        <span className={`text-xs font-semibold ${isMine ? 'text-indigo-400' : 'text-slate-300'}`}>
+                        <span className={`text-xs font-semibold ${isMine ? 'text-lira-accent' : 'text-lira-ink'}`}>
                           {msg.senderName}
                         </span>
                         <div className="flex items-center gap-1 shrink-0">
-                          <span className="text-[10px] text-slate-400">
+                          <span className="text-[10px] font-mono text-lira-muted">
                             {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                           {isMine && <MessageStatusIcon status={msg.status} />}
@@ -1086,21 +1004,21 @@ const ChatDrawerInner: React.FC = () => {
                           }
                           name={msg.senderName}
                           size="xs"
-                          className="rounded-full"
+                          className="rounded-[6px]"
                         />
-                        <span className={`text-xs font-semibold truncate ${isMine ? 'text-indigo-400' : 'text-slate-300'}`}>
+                        <span className={`text-xs font-semibold truncate ${isMine ? 'text-lira-accent' : 'text-lira-ink'}`}>
                           {msg.senderName}
                         </span>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
-                        <span className="text-[10px] text-slate-400">
+                        <span className="text-[10px] font-mono text-lira-muted">
                           {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                         {isMine && <MessageStatusIcon status={msg.status} />}
                       </div>
                     </div>
 
-                    <div className="text-xs text-slate-200 bg-[#1b202c] p-2.5 rounded-xl border border-[#2a3142]/60 break-words space-y-2">
+                    <div className="text-xs text-lira-ink bg-lira-surface/60 p-2.5 rounded-lg border border-lira-quiet break-words space-y-2">
                       {msg.content && (
                         <div>
                           <div className="whitespace-pre-wrap">{renderChatContent(msg.content, msg.mentions)}</div>
@@ -1113,7 +1031,7 @@ const ChatDrawerInner: React.FC = () => {
                       {hasAttachment && msg.attachment && (
                         <div>
                           {isImage ? (
-                            <div className="relative group/img rounded-lg overflow-hidden border border-[#2a3142] bg-black/40 max-w-[280px]">
+                            <div className="relative group/img rounded-lg overflow-hidden border border-lira-quiet bg-lira-ground max-w-[280px]">
                               <img
                                 src={msg.attachment.dataUrl}
                                 alt={msg.attachment.name}
@@ -1134,7 +1052,7 @@ const ChatDrawerInner: React.FC = () => {
                                       name: msg.attachment!.name,
                                     })
                                   }
-                                  className="p-1 rounded bg-black/70 hover:bg-black/90 text-white backdrop-blur-sm shadow"
+                                  className="p-1 rounded bg-lira-ground/90 hover:bg-lira-surface text-lira-ink border border-lira-rule"
                                   title="Expandir imagem"
                                 >
                                   <Maximize2 className="w-3.5 h-3.5" />
@@ -1142,7 +1060,7 @@ const ChatDrawerInner: React.FC = () => {
                                 <button
                                   type="button"
                                   onClick={() => copyChatMessage(msg).catch(() => {})}
-                                  className="p-1 rounded bg-black/70 hover:bg-black/90 text-white backdrop-blur-sm shadow"
+                                  className="p-1 rounded bg-lira-ground/90 hover:bg-lira-surface text-lira-ink border border-lira-rule"
                                   title="Copiar imagem"
                                 >
                                   <Copy className="w-3.5 h-3.5" />
@@ -1150,27 +1068,27 @@ const ChatDrawerInner: React.FC = () => {
                                 <button
                                   type="button"
                                   onClick={() => downloadAttachment(msg.attachment!)}
-                                  className="p-1 rounded bg-black/70 hover:bg-black/90 text-white backdrop-blur-sm shadow"
+                                  className="p-1 rounded bg-lira-ground/90 hover:bg-lira-surface text-lira-ink border border-lira-rule"
                                   title="Baixar imagem"
                                 >
                                   <Download className="w-3.5 h-3.5" />
                                 </button>
                               </div>
-                              <div className="px-2 py-1 bg-black/60 text-[10px] text-slate-300 truncate">
+                              <div className="px-2 py-1 bg-lira-ground text-[10px] text-lira-muted truncate border-t border-lira-quiet">
                                 {msg.attachment.name} • {formatFileSize(msg.attachment.size)}
                               </div>
                             </div>
                           ) : (
-                            <div className="flex items-center justify-between p-2 bg-[#12151d] hover:bg-[#151923] border border-[#2a3142] rounded-lg gap-2.5 transition-colors group/file">
+                            <div className="flex items-center justify-between p-2 bg-lira-ground hover:bg-lira-surface border border-lira-quiet rounded-lg gap-2.5 transition-colors group/file">
                               <div className="flex items-center gap-2 overflow-hidden">
-                                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+                                <div className="w-8 h-8 rounded bg-lira-surface border border-lira-rule flex items-center justify-center text-lira-accent shrink-0">
                                   <FileText className="w-4 h-4" />
                                 </div>
                                 <div className="overflow-hidden">
-                                  <div className="text-xs font-semibold text-slate-200 truncate max-w-[150px] group-hover/file:text-indigo-300 transition-colors">
+                                  <div className="text-xs font-semibold text-lira-ink truncate max-w-[150px] group-hover/file:text-lira-accent transition-colors">
                                     {msg.attachment.name}
                                   </div>
-                                  <div className="text-[10px] text-slate-400">
+                                  <div className="text-[10px] text-lira-muted">
                                     {formatFileSize(msg.attachment.size)}
                                   </div>
                                 </div>
@@ -1178,7 +1096,7 @@ const ChatDrawerInner: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => downloadAttachment(msg.attachment!)}
-                                className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-medium rounded-lg flex items-center gap-1.5 shadow transition-all shrink-0 active:scale-95"
+                                className="px-2.5 py-1.5 bg-lira-accent hover:bg-lira-ink text-lira-ground text-[11px] font-bold rounded flex items-center gap-1.5 transition-colors shrink-0"
                                 title="Baixar arquivo"
                               >
                                 <Download className="w-3.5 h-3.5" />
@@ -1196,10 +1114,10 @@ const ChatDrawerInner: React.FC = () => {
                           <button
                             key={emoji}
                             onClick={() => handleReact(msg.id, emoji)}
-                            className={`text-[11px] px-1.5 py-0.5 rounded-md border flex items-center gap-1 ${
+                            className={`text-[11px] px-1.5 py-0.5 rounded border flex items-center gap-1 font-mono ${
                               users.includes(localPlayer.id)
-                                ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300'
-                                : 'bg-[#1b202c] border-[#2a3142] text-slate-400'
+                                ? 'bg-lira-surface border-lira-accent text-lira-accent'
+                                : 'bg-lira-ground border-lira-quiet text-lira-muted'
                             }`}
                           >
                             <span>{emoji}</span>
@@ -1215,18 +1133,18 @@ const ChatDrawerInner: React.FC = () => {
             </div>
           </div>
 
-          <form onSubmit={handleSendMessage} className="p-3 border-t border-[#2a3142] bg-[#161a24] shrink-0">
+          <form onSubmit={handleSendMessage} className="p-3 border-t border-dashed border-lira-rule/60 bg-lira-sidebar shrink-0">
             <MentionSuggestions candidates={mentionSuggestions} selectedIndex={mentionIndex} onSelect={chooseMention} />
             {uploadError && (
-              <div className="mb-2 px-2.5 py-1.5 bg-rose-500/10 border border-rose-500/30 rounded-lg flex items-center justify-between text-xs text-rose-300 animate-in fade-in duration-150">
+              <div className="mb-2 px-2.5 py-1.5 bg-lira-error/15 border border-lira-error/40 rounded-lg flex items-center justify-between text-xs text-lira-error">
                 <div className="flex items-center gap-1.5">
-                  <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                  <AlertCircle className="w-3.5 h-3.5 text-lira-error shrink-0" />
                   <span>{uploadError}</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setUploadError(null)}
-                  className="text-rose-400 hover:text-rose-200"
+                  className="text-lira-error hover:text-lira-ink"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -1234,24 +1152,24 @@ const ChatDrawerInner: React.FC = () => {
             )}
 
             {pendingAttachment && (
-              <div className="mb-2 p-2 bg-[#1b202c] border border-indigo-500/40 rounded-xl flex items-center justify-between gap-2 shadow-lg animate-in slide-in-from-bottom-1 duration-150">
+              <div className="mb-2 p-2 bg-lira-surface border border-dashed border-lira-rule rounded-lg flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 overflow-hidden">
                   {isImageAttachment(pendingAttachment) ? (
                     <img
                       src={pendingAttachment.dataUrl}
                       alt={pendingAttachment.name}
-                      className="w-9 h-9 object-cover rounded-lg border border-[#2a3142] shrink-0"
+                      className="w-9 h-9 object-cover rounded border border-lira-quiet shrink-0"
                     />
                   ) : (
-                    <div className="w-9 h-9 bg-indigo-500/20 border border-indigo-500/30 rounded-lg flex items-center justify-center text-indigo-400 shrink-0">
+                    <div className="w-9 h-9 bg-lira-ground border border-lira-rule rounded flex items-center justify-center text-lira-accent shrink-0">
                       <FileText className="w-4 h-4" />
                     </div>
                   )}
                   <div className="overflow-hidden">
-                    <div className="text-xs font-semibold text-slate-100 truncate max-w-[200px]">
+                    <div className="text-xs font-semibold text-lira-ink truncate max-w-[200px]">
                       {pendingAttachment.name}
                     </div>
-                    <div className="text-[10px] text-slate-400">
+                    <div className="text-[10px] text-lira-muted">
                       {formatFileSize(pendingAttachment.size)}
                     </div>
                   </div>
@@ -1259,7 +1177,7 @@ const ChatDrawerInner: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setPendingAttachment(null)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                  className="p-1.5 rounded-lg text-lira-muted hover:text-lira-error hover:bg-lira-error/15 transition-colors"
                   title="Remover anexo"
                 >
                   <X className="w-4 h-4" />
@@ -1267,7 +1185,7 @@ const ChatDrawerInner: React.FC = () => {
               </div>
             )}
 
-            <div className="flex items-center gap-2 bg-[#12151d] border border-[#2a3142] rounded-xl px-2.5 py-1.5 focus-within:border-indigo-500 transition-colors">
+            <div className="flex items-center gap-2 bg-lira-ground border border-lira-rule rounded-lg px-2.5 py-1.5 focus-within:border-lira-accent transition-colors">
               <input
                 type="file"
                 ref={fileInputRef}
@@ -1283,7 +1201,7 @@ const ChatDrawerInner: React.FC = () => {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="p-1 rounded-lg text-slate-400 hover:text-indigo-400 hover:bg-slate-800/60 transition-colors"
+                className="p-1 rounded text-lira-muted hover:text-lira-accent hover:bg-lira-surface transition-colors"
                 title="Anexar arquivo ou imagem (até 15MB)"
               >
                 <Paperclip className="w-4 h-4" />
@@ -1326,13 +1244,13 @@ const ChatDrawerInner: React.FC = () => {
                     ? `Mensagem para @${activeChannel.name}...`
                     : `Mensagem em #${activeChannel.name}...`
                 }
-                className="flex-1 bg-transparent text-xs text-slate-100 placeholder-slate-400 focus:outline-none"
+                className="flex-1 bg-transparent text-xs font-mono text-lira-ink placeholder-lira-muted/60 focus:outline-none"
               />
 
               <button
                 type="submit"
                 disabled={!inputMessage.trim() && !pendingAttachment}
-                className="p-1.5 rounded-lg text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 disabled:opacity-30 disabled:hover:bg-transparent transition-all active:scale-95"
+                className="p-1.5 rounded text-lira-accent hover:text-lira-ink hover:bg-lira-surface disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
                 title="Enviar"
               >
                 <Send className="w-4 h-4" />
@@ -1344,14 +1262,14 @@ const ChatDrawerInner: React.FC = () => {
 
       {lightboxImage && (
         <div
-          className="fixed inset-0 z-[120] bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 z-[120] bg-lira-ground/90 flex flex-col items-center justify-center p-4"
           onClick={() => setLightboxImage(null)}
         >
           <div
             className="relative max-w-4xl max-h-[88vh] flex flex-col items-center"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="w-full flex items-center justify-between text-slate-200 mb-2 px-2">
+            <div className="w-full flex items-center justify-between text-lira-ink mb-2 px-2">
               <span className="text-xs font-semibold truncate max-w-sm">{lightboxImage.name}</span>
               <div className="flex items-center gap-2">
                 <button
@@ -1365,7 +1283,7 @@ const ChatDrawerInner: React.FC = () => {
                       dataUrl: lightboxImage.url,
                     })
                   }
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors flex items-center gap-1.5 text-xs font-medium"
+                  className="px-3 py-1.5 rounded-lg bg-lira-surface hover:border-lira-accent border border-lira-rule text-lira-ink transition-colors flex items-center gap-1.5 text-xs font-medium"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Baixar</span>
@@ -1383,7 +1301,7 @@ const ChatDrawerInner: React.FC = () => {
                       },
                     }).catch(() => {})
                   }
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors flex items-center gap-1.5 text-xs font-medium"
+                  className="px-3 py-1.5 rounded-lg bg-lira-surface hover:border-lira-accent border border-lira-rule text-lira-ink transition-colors flex items-center gap-1.5 text-xs font-medium"
                   title="Copiar imagem"
                 >
                   <Copy className="w-3.5 h-3.5" />
@@ -1392,7 +1310,7 @@ const ChatDrawerInner: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setLightboxImage(null)}
-                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+                  className="p-1.5 rounded-lg bg-lira-surface hover:border-lira-accent border border-lira-rule text-lira-ink transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1401,7 +1319,7 @@ const ChatDrawerInner: React.FC = () => {
             <img
               src={lightboxImage.url}
               alt={lightboxImage.name}
-              className="max-w-full max-h-[78vh] object-contain rounded-2xl border border-white/10 shadow-2xl"
+              className="max-w-full max-h-[78vh] object-contain rounded-xl border border-dashed border-lira-rule"
             />
           </div>
         </div>

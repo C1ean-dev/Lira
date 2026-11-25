@@ -37,7 +37,7 @@ function OptionContent({
       {option?.icon && (
         <span className="shrink-0 flex items-center justify-center">{option.icon}</span>
       )}
-      <span className={`truncate flex-1 ${isBold ? 'font-bold text-slate-100' : ''}`}>
+      <span className={`truncate flex-1 ${isBold ? 'font-bold text-lira-ink' : ''}`}>
         {option?.label || fallbackLabel}
       </span>
     </>
@@ -45,27 +45,79 @@ function OptionContent({
 }
 
 export function CustomDropdown<T extends string = string>({
-  value, options, onChange, labelPrefix, buttonClassName = '', size = 'sm', title, fullWidth = false,
+  value,
+  options,
+  onChange,
+  labelPrefix,
+  buttonClassName = '',
+  size = 'sm',
+  title,
+  fullWidth = false,
 }: CustomDropdownProps<T>) {
-  const selected = options.find(option => option.value === value)
+  const selected = options.find((option) => option.value === value)
   const encode = (value: string) => `lira:${value}`
-  return <Select.Root value={encode(value)} onValueChange={value => onChange(value.slice(5) as T)} disabled={!options.length}>
-    <Select.Trigger title={title} aria-label={labelPrefix || title}
-      className={`group inline-flex items-center justify-between gap-1.5 rounded-xl transition-all cursor-pointer select-none border bg-[#1b202c] hover:bg-[#232938] border-[#2a3142] text-slate-200 hover:text-white data-[state=open]:border-indigo-500/80 data-[state=open]:text-white ${fullWidth ? 'w-full' : ''} ${size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-3.5 py-2.5 text-xs'} ${buttonClassName}`}>
-      {labelPrefix && <span className="text-[11px] font-semibold text-slate-400 shrink-0">{labelPrefix}</span>}
-      <Select.Value><span className="flex items-center gap-1.5 min-w-0 flex-1 text-left">
-        <OptionContent option={selected} fallbackLabel={options.length ? value : 'Nenhuma opção disponível'} isBold />
-      </span></Select.Value>
-      <Select.Icon><ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-1.5 transition-transform group-data-[state=open]:rotate-180" /></Select.Icon>
-    </Select.Trigger>
-    <Select.Portal><Select.Content position="popper" align="start" sideOffset={6} collisionPadding={12}
-      style={{ minWidth: fullWidth ? 'var(--radix-select-trigger-width)' : 'max(150px, var(--radix-select-trigger-width))' }}
-      className="z-[999] max-h-60 overflow-hidden bg-[#12151d]/95 backdrop-blur-xl border border-[#2a3142] rounded-xl shadow-2xl p-1 select-none text-slate-200">
-      <Select.Viewport>{options.map(option => <Select.Item key={option.value} value={encode(option.value)}
-        className="relative flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg text-xs font-medium outline-none cursor-pointer text-slate-300 data-[highlighted]:bg-[#1f2638] data-[highlighted]:text-white data-[state=checked]:bg-indigo-600/20 data-[state=checked]:text-indigo-300">
-        <Select.ItemText><span className="flex items-center gap-2 min-w-0"><OptionContent option={option} /></span></Select.ItemText>
-        <Select.ItemIndicator><Check className="w-3.5 h-3.5 text-indigo-400 shrink-0 ml-1.5" /></Select.ItemIndicator>
-      </Select.Item>)}</Select.Viewport>
-    </Select.Content></Select.Portal>
-  </Select.Root>
+  return (
+    <Select.Root
+      value={encode(value)}
+      onValueChange={(value) => onChange(value.slice(5) as T)}
+      disabled={!options.length}
+    >
+      <Select.Trigger
+        title={title}
+        aria-label={labelPrefix || title}
+        className={`group inline-flex items-center justify-between gap-1.5 rounded-[8px] font-mono transition-colors cursor-pointer select-none border bg-lira-surface hover:border-lira-accent border-lira-rule text-lira-ink data-[state=open]:border-lira-accent data-[state=open]:text-lira-accent disabled:opacity-50 ${
+          fullWidth ? 'w-full' : ''
+        } ${size === 'sm' ? 'px-2.5 py-1 text-xs' : 'px-3.5 py-2 text-xs'} ${buttonClassName}`}
+      >
+        {labelPrefix && (
+          <span className="text-[11px] font-semibold text-lira-muted shrink-0">{labelPrefix}</span>
+        )}
+        <Select.Value>
+          <span className="flex items-center gap-1.5 min-w-0 flex-1 text-left">
+            <OptionContent
+              option={selected}
+              fallbackLabel={options.length ? value : 'Nenhuma opção disponível'}
+              isBold
+            />
+          </span>
+        </Select.Value>
+        <Select.Icon>
+          <ChevronDown className="w-3.5 h-3.5 text-lira-muted shrink-0 ml-1.5 transition-transform group-data-[state=open]:rotate-180 group-data-[state=open]:text-lira-accent" />
+        </Select.Icon>
+      </Select.Trigger>
+      <Select.Portal>
+        <Select.Content
+          position="popper"
+          align="start"
+          sideOffset={6}
+          collisionPadding={12}
+          style={{
+            minWidth: fullWidth
+              ? 'var(--radix-select-trigger-width)'
+              : 'max(150px, var(--radix-select-trigger-width))',
+          }}
+          className="z-[999] max-h-60 overflow-hidden bg-lira-panel border border-dashed border-lira-rule rounded-[12px] p-1 select-none text-lira-ink font-mono"
+        >
+          <Select.Viewport>
+            {options.map((option) => (
+              <Select.Item
+                key={option.value}
+                value={encode(option.value)}
+                className="relative flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-[8px] text-xs font-medium outline-none cursor-pointer text-lira-ink data-[highlighted]:bg-lira-surface data-[highlighted]:text-lira-accent data-[state=checked]:bg-lira-surface data-[state=checked]:text-lira-accent"
+              >
+                <Select.ItemText>
+                  <span className="flex items-center gap-2 min-w-0">
+                    <OptionContent option={option} />
+                  </span>
+                </Select.ItemText>
+                <Select.ItemIndicator>
+                  <Check className="w-3.5 h-3.5 text-lira-accent shrink-0 ml-1.5" />
+                </Select.ItemIndicator>
+              </Select.Item>
+            ))}
+          </Select.Viewport>
+        </Select.Content>
+      </Select.Portal>
+    </Select.Root>
+  )
 }

@@ -1,11 +1,53 @@
-# Atualização seletiva no Windows
+# Atualização seletiva e incremental no Windows
 
-O instalador continua sendo baixado por inteiro e o pacote é extraído temporariamente.
+As releases Windows x64 publicam o instalador completo (`Lira.Setup.<versão>.exe`) e os
+artefatos incrementais (`lira-win-x64-incremental.json.gz` e `lira-win-x64-payload.pack`).
+
+## Download e aplicação incremental (padrão)
+
+Quando a instalação já possui `resources/update-manifest.json` e `resources/updater/*.ps1`:
+
+1. O Lira baixa apenas `lira-win-x64-incremental.json.gz` (~40–60 KB) do CDN de Releases do
+   GitHub e compara cada arquivo externo e cada bloco individual de `resources/app.asar`
+   (por SHA-256) contra os arquivos locais e o cabeçalho do `app.asar` instalado.
+2. Apenas os blocos realmente alterados (tipicamente 1–6 MB de código JS/CSS/Electron,
+   reaproveitando Electron, GStreamer, DeepFilterNet WASM, fontes, sons e sprites locais)
+   são baixados do `lira-win-x64-payload.pack` via requisições HTTP `Range` (206) agrupadas.
+3. O novo `app.asar` é reconstruído bit a bit localmente e validado por SHA-256 por bloco e
+   no arquivo final antes de preparar o staging em `lira.update-stage`.
+4. `update-apply-incremental.ps1` executa `update-recovery.ps1 -Action SparseDeltaUpdate`
+   usando o mesmo formato transacional `FormatVersion 6` (backup apenas dos arquivos
+   substituídos/removidos + dados mutáveis do perfil + publicação atômica + rollback
+   automático), sem extrair o pacote 7z nem re-hashear os runtimes intactos.
+5. Se o manifesto incremental não estiver disponível (404), o servidor não suportar `Range`,
+   o delta ultrapassar 75% do instalador completo ou houver qualquer falha de integridade,
+   o cliente faz fallback automático para o instalador completo `Lira.Setup.<versão>.exe`.
+
+## Rotina automática ao ligar o PC
+
+- Controlada pela opção **Atualizar automaticamente ao ligar o PC** (`autoUpdateAtLogin`,
+  ativada por padrão nas Configurações de Sistema e no menu da bandeja).
+- O registro `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\com.lira.app` dispara
+  `Lira.exe --startup-update` ao logar no Windows (removido na desinstalação completa).
+- Com **Iniciar o Lira com o Windows** (`openAtLogin`) desligado, a rotina roda sem abrir
+  janela (nem GPU/renderer), faz retentativas limitadas caso a rede ainda esteja subindo,
+  aplica a atualização incremental em segundo plano e encerra — deixando o Lira já
+  atualizado para quando o usuário abri-lo. Se o usuário abrir o Lira durante o processo,
+  a rotina promove o lançamento automático (`--post-update`) e nunca encerra uma sessão ativa.
+- Com `openAtLogin` ativado, atualizações incrementais leves (até 35 MB) são aplicadas
+  antes de abrir a janela para entrar no Lira já atualizado; quedas de rede ou updates
+  estruturais grandes abrem o Lira imediatamente e delegam o download ao app.
+- O instalador NSIS também aceita `/NOLAUNCH` para não abrir o aplicativo após uma
+  atualização silenciosa de fallback no boot.
+
+## Instalador completo (fallback e primeira instalação)
+
+Quando o instalador NSIS completo é usado, o pacote é extraído temporariamente.
 Em instalações com `resources/update-manifest.json`, o instalador mantém os arquivos
 idênticos no lugar, publica somente as adições/substituições e remove somente arquivos
 pertencentes ao manifesto anterior. Arquivos desconhecidos são preservados; colisões
 com uma nova entrada de conteúdo diferente são recusadas antes da aplicação. `app.asar`
-continua sendo uma unidade: qualquer mudança nele substitui o arquivo inteiro.
+continua sendo uma unidade no instalador NSIS: qualquer mudança nele substitui o arquivo inteiro.
 
 ## Empacotamento
 

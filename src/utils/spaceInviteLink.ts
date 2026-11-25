@@ -2,7 +2,7 @@ import { ALL_INVITE_PREFIX, decodeAllInvite, decodeDirectInvite, decodeLanInvite
 import { sanitizeRoomCode } from './roomCode'
 
 export const SPACE_INVITE_SCHEME = 'lira'
-export const SPACE_INVITE_WEB_URL = 'https://lira-signaling.onrender.com/join'
+export const SPACE_INVITE_WEB_URL = 'https://p01--lira--tj9yvq5j5cgs.code.run/join'
 // Leave room for the executable path within Windows' command-line limit.
 export const MAX_SPACE_INVITE_LINK_LENGTH = 30000
 const invalid = () => new Error('Link de convite inválido. Peça um novo convite ao anfitrião.')
@@ -57,7 +57,7 @@ export function createSpaceInviteLink(invite: string): string {
 export function isSpaceInviteWebLink(value: string): boolean {
   try {
     const url = new URL(value)
-    return url.origin === 'https://lira-signaling.onrender.com' && /^\/join\/?$/.test(url.pathname)
+    return url.origin === 'https://p01--lira--tj9yvq5j5cgs.code.run' && /^\/join\/?$/.test(url.pathname)
   } catch { return false }
 }
 

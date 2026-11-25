@@ -45,9 +45,9 @@ describe('room privacy permissions', () => {
     useGameStore.setState({ roomId: 'PRIVACY-TEST', isRoomPublic: false, isOwner: false, isHost: true })
   })
 
-  it('lets the current host who did not create the room change privacy from desktop and mobile', () => {
+  it('lets the current host who did not create the room change privacy from the room popover', () => {
     const buttons = privacyButtons()
-    expect(buttons).toHaveLength(2)
+    expect(buttons).toHaveLength(1)
     for (const button of buttons) {
       useGameStore.setState({ isRoomPublic: false })
       expect(button.props.disabled).not.toBe(true)

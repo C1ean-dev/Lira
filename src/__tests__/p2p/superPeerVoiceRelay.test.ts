@@ -261,11 +261,19 @@ describe('SuperPeerVoiceRelay - Regras 1, 2 e 3 (UDP Sem Head-of-Line, CoordenaÃ
     expect(MediaCallHandler.directPeerStreams.has('peer-a')).toBe(false)
   })
 
+  it('returns false from isAvailable by default while audio media transport is not yet implemented', () => {
+    peerMgrNotHost()
+    const peerMgr = PeerManager.getInstance()
+    vi.spyOn(peerMgr, 'getConnection').mockReturnValue({ open: true } as any)
+    expect(relay.isAvailable('peer-a')).toBe(false)
+  })
+
   it('detects handshake timeout in isRelayFailing when requested > 6000ms ago and still inactive', () => {
     peerMgrNotHost()
     const peerMgr = PeerManager.getInstance()
     vi.spyOn(peerMgr, 'getConnection').mockReturnValue({ open: true } as any)
     vi.spyOn(peerMgr, 'sendVoiceRelayControl').mockImplementation(() => {})
+    vi.spyOn(relay, 'isAvailable').mockReturnValue(true)
 
     const now = Date.now()
     const started = relay.requestRelay('peer-unresponsive')
@@ -411,6 +419,29 @@ describe('SuperPeerVoiceRelay - Regras 1, 2 e 3 (UDP Sem Head-of-Line, CoordenaÃ
     mockChannel.binaryType = 'modified'
     hostPc.ondatachannel({ channel: mockChannel })
     expect(mockChannel.binaryType).toBe('modified')
+  })
+
+  it('does NOT treat DJ bots as eligible for Super-Peer voice relay', () => {
+    peerMgrNotHost()
+    const peerMgr = PeerManager.getInstance()
+    vi.spyOn(peerMgr, 'getConnection').mockReturnValue({ open: true, peer: 'peer-host' } as any)
+    useGameStore.setState({
+      remotePlayers: {
+        'custom-bot': { id: 'custom-bot', name: 'DJ', isDjBot: true } as any,
+        'peer-a': { id: 'peer-a', name: 'Alice' } as any,
+      },
+    })
+
+    const anyRelay = relay as any
+    const prevTransportEnabled = anyRelay.mediaTransportEnabled
+    anyRelay.mediaTransportEnabled = true
+    try {
+      expect(relay.isAvailable('dj-room-host-abc')).toBe(false)
+      expect(relay.isAvailable('custom-bot')).toBe(false)
+      expect(relay.isAvailable('peer-a')).toBe(true)
+    } finally {
+      anyRelay.mediaTransportEnabled = prevTransportEnabled
+    }
   })
 
   function peerMgrNotHost() {

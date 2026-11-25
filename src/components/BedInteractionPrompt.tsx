@@ -23,10 +23,10 @@ export function BedInteractionPrompt() {
   const active = session?.stage === 'active'
   const inviterPlayer = session && (remotes[session.initiatorId] || Object.values(remotes).find(r => r.gameId === session.initiatorId))
   const inviter = inviterPlayer?.name || 'Seu par'
-  const buttonClass = 'rounded-xl px-4 py-2 bg-rose-500/20 text-rose-200 hover:bg-rose-500/30 font-semibold'
+  const buttonClass = 'rounded-lg px-4 py-2 bg-lira-surface border border-lira-rule text-lira-accent hover:border-lira-accent hover:text-lira-ink font-mono font-semibold text-xs transition-colors'
   return <aside aria-label="Interação da cama" aria-live="polite"
-    className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[55] max-w-[calc(100vw-2rem)] rounded-2xl border border-rose-400/30 bg-[#12151d]/95 shadow-xl p-4 text-sm text-slate-100 flex flex-col gap-3">
-    <div className="flex items-center gap-2 font-semibold"><Heart className="w-4 h-4 text-rose-400" />Cama do Amor</div>
+    className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[55] max-w-[calc(100vw-2rem)] rounded-xl border border-dashed border-lira-rule bg-lira-panel p-4 text-xs font-mono text-lira-ink flex flex-col gap-3">
+    <div className="flex items-center gap-2 font-display font-bold text-sm text-lira-accent"><Heart className="w-4 h-4 text-lira-error" />Cama do Amor</div>
     {incoming ? <>
       <p>{inviter} convidou você para um momento a dois. A animação só começa se você aceitar.</p>
       <div className="flex gap-2">

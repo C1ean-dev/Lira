@@ -62,7 +62,7 @@ export async function localSystem() {
         if (request.url?.split('?')[0] !== '/__system-e2e.html') return next()
         try {
           const html = await server.transformIndexHtml(request.url,
-            '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,"></head><body><div id="root"></div><script type="module" src="/scripts/fixtures/system-e2e.ts"></script></body></html>')
+            '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,"><script>window.__LIRA_MUTE_SOUND_EFFECTS__=true;</script></head><body><div id="root"></div><script type="module" src="/scripts/fixtures/system-e2e.ts"></script></body></html>')
           response.setHeader('Content-Type', 'text/html'); response.end(html)
         } catch (error) { next(error) }
       })
@@ -94,8 +94,13 @@ export async function localSystem() {
         return route.abort()
       })
       await context.addInitScript(({ signalingPort, relayPort }) => {
-        if (location.protocol === 'http:' && localStorage.getItem('lira_hw_acceleration_enabled') === null) {
-          localStorage.setItem('lira_hw_acceleration_enabled', 'false')
+        window.__LIRA_MUTE_SOUND_EFFECTS__ = true
+        if (location.protocol === 'http:') {
+          if (localStorage.getItem('lira_hw_acceleration_enabled') === null) {
+            localStorage.setItem('lira_hw_acceleration_enabled', 'false')
+          }
+          localStorage.setItem('lira_sound_effects_enabled', 'false')
+          localStorage.setItem('lira_sound_effects_volume', '0')
         }
         let copiedText = ''
         Object.defineProperties(navigator.clipboard, {
@@ -122,6 +127,23 @@ export async function localSystem() {
             super(url.href, protocols)
           }
         }
+        const nativeGetUserMedia = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices)
+        Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { configurable: true, value: async constraints => {
+          if (!constraints?.video) return nativeGetUserMedia(constraints)
+          const audioStream = constraints.audio ? await nativeGetUserMedia({ audio: constraints.audio }).catch(() => null) : null
+          const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 480
+          const ctx = canvas.getContext('2d'); let frame = 0
+          const draw = () => { ctx.fillStyle = `hsl(${frame++ % 360} 80% 50%)`; ctx.fillRect(0, 0, 640, 480) }
+          draw()
+          const stream = canvas.captureStream(30)
+          const track = stream.getVideoTracks()[0]
+          const timer = setInterval(() => {
+            if (track.readyState === 'ended') clearInterval(timer)
+            else draw()
+          }, 33)
+          track.addEventListener('ended', () => clearInterval(timer), { once: true })
+          return new MediaStream([...(audioStream ? audioStream.getAudioTracks() : []), track])
+        } })
         Object.defineProperty(navigator.mediaDevices, 'getDisplayMedia', { configurable: true, value: async () => {
           const canvas = document.createElement('canvas'); canvas.width = 640; canvas.height = 360
           const ctx = canvas.getContext('2d'); let frame = 0

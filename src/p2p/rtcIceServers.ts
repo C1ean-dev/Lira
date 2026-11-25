@@ -25,11 +25,13 @@ export function buildIceServers(env: TurnEnvironment): RTCIceServer[] {
   const urls = (env.VITE_TURN_URLS ?? '').split(',').map(url => url.trim()).filter(Boolean)
   const username = env.VITE_TURN_USERNAME
   const credential = env.VITE_TURN_CREDENTIAL
+  const hasValidCredential = !!credential?.trim() && !/^https?:\/\//i.test(credential.trim())
   // A relay needs a real endpoint and its own credentials. Incomplete settings
-  // must not break direct calls or send invalid URLs to Chromium.
-  if (urls.length && username?.trim() && credential?.trim()
+  // (or an HTTP URL pasted into the password secret) must not break direct calls
+  // or send broken TURN credentials to Chromium.
+  if (urls.length && username?.trim() && hasValidCredential
     && urls.every(url => /^turns?:[^\s/?#]+(?:\?transport=(?:udp|tcp))?$/.test(url))) {
-    servers.push({ urls, username, credential })
+    servers.push({ urls, username, credential: credential! })
   }
   return servers
 }

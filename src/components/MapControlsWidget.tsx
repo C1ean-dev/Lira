@@ -49,15 +49,15 @@ export const MapControlsWidget: React.FC<MapControlsWidgetProps> = ({
   }, [isMenuOpen])
 
   return (
-    <div ref={menuRef} className="relative select-none pointer-events-auto">
+    <div ref={menuRef} className="relative select-none pointer-events-auto font-mono">
       {isMenuOpen && (
-        <div className="absolute bottom-14 right-0 w-72 bg-[#121622]/95 backdrop-blur-md border border-[#2a354a] rounded-2xl p-3 shadow-2xl space-y-2 z-50 animate-in fade-in zoom-in-95 duration-150">
-          <div className="flex items-center justify-between px-1 pb-1.5 border-b border-[#202838]">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-200">
-              <Map className="w-3.5 h-3.5 text-indigo-400" />
+        <div className="absolute bottom-14 right-0 w-72 bg-lira-panel border border-dashed border-lira-rule rounded-[12px] p-3 space-y-2 z-50">
+          <div className="flex items-center justify-between px-1 pb-2 border-b border-dashed border-lira-rule/60">
+            <div className="flex items-center gap-1.5 font-display text-sm font-bold text-lira-accent">
+              <Map className="w-3.5 h-3.5 text-lira-accent" />
               <span>Modo de Visualização</span>
             </div>
-            <span className="text-[10px] text-slate-400 font-medium">Layout</span>
+            <span className="text-[10px] font-mono text-lira-muted font-medium">Layout</span>
           </div>
 
           <div className="space-y-1.5">
@@ -66,36 +66,36 @@ export const MapControlsWidget: React.FC<MapControlsWidgetProps> = ({
                 setMapViewMode('immersive')
                 setIsMenuOpen(false)
               }}
-              className={`w-full p-2.5 rounded-xl border text-left transition-all flex items-start justify-between gap-2.5 ${
+              className={`w-full p-2.5 rounded-[8px] border text-left transition-colors flex items-start justify-between gap-2.5 ${
                 mapViewMode === 'immersive'
-                  ? 'bg-indigo-600/20 border-indigo-500/50 text-white shadow-sm'
-                  : 'bg-[#181e2e]/60 hover:bg-[#181e2e] border-transparent text-slate-300'
+                  ? 'bg-lira-surface border-lira-accent text-lira-ink'
+                  : 'bg-lira-ground hover:bg-lira-surface border-lira-quiet text-lira-muted hover:text-lira-ink'
               }`}
             >
               <div className="flex items-start gap-2.5">
                 <div
-                  className={`p-2 rounded-lg border ${
+                  className={`p-2 rounded-[6px] border ${
                     mapViewMode === 'immersive'
-                      ? 'bg-indigo-600 text-white border-indigo-400/40'
-                      : 'bg-slate-800 text-slate-400 border-slate-700'
+                      ? 'bg-lira-accent text-lira-ground border-lira-accent'
+                      : 'bg-lira-panel text-lira-muted border-lira-quiet'
                   }`}
                 >
                   <Gamepad2 className="w-4 h-4" />
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
+                  <div className="text-xs font-bold text-lira-ink flex items-center gap-1.5">
                     <span>Imersivo</span>
-                    <span className="text-[9px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.2 rounded font-semibold">
+                    <span className="text-[9px] bg-lira-surface text-lira-accent border border-lira-rule px-1.5 py-0.2 rounded-[4px] font-semibold">
                       Pixel Art
                     </span>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">
+                  <p className="text-[10px] text-lira-muted mt-0.5 leading-tight">
                     Móveis, avatares pixelados, animações e mapa decorado completo.
                   </p>
                 </div>
               </div>
               {mapViewMode === 'immersive' && (
-                <Check className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                <Check className="w-4 h-4 text-lira-accent shrink-0 mt-0.5" />
               )}
             </button>
 
@@ -104,85 +104,85 @@ export const MapControlsWidget: React.FC<MapControlsWidgetProps> = ({
                 setMapViewMode('simplified', true)
                 setIsMenuOpen(false)
               }}
-              className={`w-full p-2.5 rounded-xl border text-left transition-all flex items-start justify-between gap-2.5 ${
+              className={`w-full p-2.5 rounded-[8px] border text-left transition-colors flex items-start justify-between gap-2.5 ${
                 mapViewMode === 'simplified'
-                  ? 'bg-emerald-600/20 border-emerald-500/50 text-white shadow-sm'
-                  : 'bg-[#181e2e]/60 hover:bg-[#181e2e] border-transparent text-slate-300'
+                  ? 'bg-lira-surface border-lira-online text-lira-ink'
+                  : 'bg-lira-ground hover:bg-lira-surface border-lira-quiet text-lira-muted hover:text-lira-ink'
               }`}
             >
               <div className="flex items-start gap-2.5">
                 <div
-                  className={`p-2 rounded-lg border ${
+                  className={`p-2 rounded-[6px] border ${
                     mapViewMode === 'simplified'
-                      ? 'bg-emerald-600 text-white border-emerald-400/40'
-                      : 'bg-slate-800 text-slate-400 border-slate-700'
+                      ? 'bg-lira-online text-lira-ground border-lira-online'
+                      : 'bg-lira-panel text-lira-muted border-lira-quiet'
                   }`}
                 >
                   <Layers className="w-4 h-4" />
                 </div>
                 <div>
-                  <div className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
+                  <div className="text-xs font-bold text-lira-ink flex items-center gap-1.5">
                     <span>Simplificado</span>
-                    <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded font-semibold">
+                    <span className="text-[9px] bg-lira-online/15 text-lira-online border border-lira-online/40 px-1.5 py-0.2 rounded-[4px] font-semibold">
                       Leve
                     </span>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">
+                  <p className="text-[10px] text-lira-muted mt-0.5 leading-tight">
                     Visão esquemática das salas. Ideal para computadores mais simples.
                   </p>
                 </div>
               </div>
               {mapViewMode === 'simplified' && (
-                <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <Check className="w-4 h-4 text-lira-online shrink-0 mt-0.5" />
               )}
             </button>
           </div>
         </div>
       )}
 
-      <div className="bg-[#1b202c]/90 backdrop-blur-md border border-[#2a3142] rounded-2xl p-1.5 shadow-xl flex items-center gap-1.5 text-xs text-slate-300">
+      <div className="bg-lira-panel border border-lira-quiet rounded-[12px] p-1.5 flex items-center gap-1.5 text-xs text-lira-ink">
         <button
           onClick={() => setIsMenuOpen(!isMenuOpen)}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all ${
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-[8px] border text-xs font-bold transition-colors ${
             mapViewMode === 'simplified'
-              ? 'bg-emerald-600/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-600/30'
-              : 'bg-indigo-600/20 text-indigo-300 border-indigo-500/40 hover:bg-indigo-600/30'
+              ? 'bg-lira-online/15 text-lira-online border-lira-online/40 hover:border-lira-online'
+              : 'bg-lira-surface text-lira-accent border-lira-rule hover:border-lira-accent hover:text-lira-ink'
           }`}
           title="Alternar entre Modo Imersivo e Simplificado"
         >
           {mapViewMode === 'simplified' ? (
             <>
-              <Layers className="w-3.5 h-3.5 text-emerald-400" />
+              <Layers className="w-3.5 h-3.5 text-lira-online" />
               <span>Simplificado</span>
             </>
           ) : (
             <>
-              <Map className="w-3.5 h-3.5 text-indigo-400" />
+              <Map className="w-3.5 h-3.5 text-lira-accent" />
               <span>Mapa</span>
             </>
           )}
         </button>
 
-        <div className="h-4 w-px bg-slate-700" />
+        <div className="h-4 w-px border-l border-dashed border-lira-rule/60" />
 
         <div className="flex items-center gap-0.5">
           <button
             onClick={onZoomIn}
-            className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+            className="p-1.5 rounded-[6px] hover:bg-lira-surface text-lira-muted hover:text-lira-ink transition-colors"
             title="Aumentar Zoom (+)"
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={onZoomOut}
-            className="p-1.5 rounded-lg hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+            className="p-1.5 rounded-[6px] hover:bg-lira-surface text-lira-muted hover:text-lira-ink transition-colors"
             title="Diminuir Zoom (-)"
           >
             <Minus className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={onFitScreen}
-            className="p-1.5 rounded-lg hover:bg-indigo-600/30 text-indigo-400 hover:text-indigo-200 transition-colors"
+            className="p-1.5 rounded-[6px] hover:bg-lira-surface text-lira-accent hover:text-lira-ink transition-colors"
             title="Enquadrar Mapa na Tela"
           >
             <Maximize2 className="w-3.5 h-3.5" />
@@ -191,10 +191,10 @@ export const MapControlsWidget: React.FC<MapControlsWidgetProps> = ({
 
         {isPanned && onRecenter && (
           <>
-            <div className="h-4 w-px bg-slate-700" />
+            <div className="h-4 w-px border-l border-dashed border-lira-rule/60" />
             <button
               onClick={onRecenter}
-              className="p-1.5 rounded-lg bg-indigo-600/30 text-indigo-300 hover:bg-indigo-600 hover:text-white transition-colors animate-pulse"
+              className="p-1.5 rounded-[6px] bg-lira-accent text-lira-ground hover:bg-lira-ink transition-colors"
               title="Recentralizar no Jogador"
             >
               <LocateFixed className="w-3.5 h-3.5" />

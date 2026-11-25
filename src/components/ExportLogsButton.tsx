@@ -19,6 +19,9 @@ const TITLE =
 
 const OUTCOME_MS = 4000
 
+const DEFAULT_CLASS_NAME =
+  'inline-flex items-center justify-center gap-2 rounded-[8px] border border-lira-rule bg-lira-surface px-3 py-2 text-xs font-mono font-medium text-lira-accent transition-colors hover:border-lira-accent hover:text-lira-ink disabled:opacity-50'
+
 export function exportLogsLabel(status: ExportLogsStatus): string {
   return LABELS[status]
 }
@@ -43,7 +46,13 @@ export function ExportLogsButton({ className }: { className?: string }) {
   }
 
   return (
-    <button type="button" onClick={run} disabled={status === 'working'} className={className} title={TITLE}>
+    <button
+      type="button"
+      onClick={run}
+      disabled={status === 'working'}
+      className={className ?? DEFAULT_CLASS_NAME}
+      title={TITLE}
+    >
       <Download className="w-3.5 h-3.5" />
       <span>{exportLogsLabel(status)}</span>
     </button>

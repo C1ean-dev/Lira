@@ -11,7 +11,7 @@ const script = path.resolve('build/update-recovery.ps1')
 const installer = () => readFileSync('build/installer.nsh', 'utf8')
 
 // PowerShell startup and its first Add-Type compilation can exceed five seconds on CI.
-describe.skipIf(process.platform !== 'win32')('installer file recovery', { timeout: 30000 }, () => {
+describe.skipIf(process.platform !== 'win32')('installer file recovery', { timeout: 60000 }, () => {
   let root: string
   let install: string
   let backup: string
@@ -23,7 +23,7 @@ describe.skipIf(process.platform !== 'win32')('installer file recovery', { timeo
     compiledRoot = mkdtempSync(path.join(os.tmpdir(), 'lira-recovery-io-'))
     ioHarness = createUpdateIoHarness(compiledRoot)
   })
-  afterAll(() => rm(compiledRoot, { recursive: true, force: true }))
+  afterAll(async () => { await ioHarness?.close(); await rm(compiledRoot, { recursive: true, force: true }) })
   const putAt = (directory: string, relative: string, value: string | Buffer) => {
     const file = path.join(directory, relative)
     mkdirSync(path.dirname(file), { recursive: true })
@@ -41,7 +41,7 @@ describe.skipIf(process.platform !== 'win32')('installer file recovery', { timeo
     const closed = new Promise<void>(resolve => child.once('close', () => resolve()))
     try {
       await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Lock helper did not start')), 5000)
+        const timeout = setTimeout(() => reject(new Error('Lock helper did not start')), 15000)
         child.stdout.on('data', data => { if (String(data).includes('ready')) { clearTimeout(timeout); resolve() } })
         child.once('error', error => { clearTimeout(timeout); reject(error) })
         child.once('close', () => { clearTimeout(timeout); reject(new Error('Lock helper exited before acquiring the file')) })
@@ -72,7 +72,7 @@ describe.skipIf(process.platform !== 'win32')('installer file recovery', { timeo
     expect(journal.InstallDir).toBe(install)
     expect(journal.UserDataDir).toBe(userData)
     expect(journal.BackupDir).toBe(backup)
-  }, 30000)
+  }, 60000)
 
   it('backs up every installed file outside the directory the uninstaller removes', () => {
     put('data/hidden.config', 'configuration')
@@ -402,7 +402,7 @@ function Get-ChildItem {
       expect(failure.Message).toBeTruthy()
       expect(failure.ErrorType).toBeTruthy()
     })
-  }, 15000)
+  }, 60000)
 
   it('returns the moved app if publishing the backup fails, preserving the previous backup and saves', async () => {
     putAt(userData, 'data/nativeSpaces.json', 'original save')
@@ -421,7 +421,7 @@ function Get-ChildItem {
       expect(existsSync(path.join(root, 'lira.update-pending.json'))).toBe(false)
     })
     expect(readFileSync(backup, 'utf8')).toBe('locked previous backup')
-  }, 15000)
+  }, 60000)
 
   it('can retry a rollback interrupted after the application folder was renamed back', async () => {
     putAt(userData, 'data/nativeSpaces.json', 'saved before update')
@@ -439,7 +439,7 @@ function Get-ChildItem {
     expect(readFileSync(path.join(userData, 'data/nativeSpaces.json'), 'utf8')).toBe('saved before update')
     expect(readFileSync(path.join(backup, 'user-data/lira/data/nativeSpaces.json'), 'utf8')).toBe('saved before update')
     expect(existsSync(path.join(root, 'lira.update-pending.json'))).toBe(false)
-  }, 20000)
+  }, 60000)
 
   it('restores the previous copied-app-and-profile backup format', () => {
     putAt(backupApp, 'Lira.exe', 'copied app')

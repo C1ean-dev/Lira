@@ -11,6 +11,7 @@ import { RoomInviteCard } from '../chat/RoomInviteCard'
 import { MessageStatusIcon } from '../chat/MessageStatusIcon'
 import { StatusBadge } from '../common/StatusBadge'
 import { MoonPhaseIcon } from '../common/MoonPhaseIcon'
+import { Button, Input, Card } from '../ui'
 import { getPlayerUserId, getFriendUserId, isSameParticipant } from '../../utils/userId'
 import { getRoomInviteState, readRoomInvite } from '../../utils/roomInvite'
 import { useChatPagination } from '../../hooks/useChatPagination'
@@ -124,21 +125,21 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#07090e]/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
-      <div className="bg-[#161a24] border border-[#2b3345] rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl flex flex-col h-[580px] max-h-[92vh] animate-in zoom-in-95 duration-200">
-        <div className="bg-[#12151e] border-b border-[#262e40] p-4 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-lira-ground/85 p-4 font-mono text-lira-ink">
+      <Card variant="dashed" className="w-full max-w-xl overflow-hidden flex flex-col h-[580px] max-h-[92vh]">
+        <div className="bg-lira-surface border-b border-dashed border-lira-rule/60 p-4 flex items-center justify-between">
           <div className="flex items-center gap-3 min-w-0">
             <div className="relative shrink-0">
               <div
-                className="w-10 h-10 rounded-2xl flex items-center justify-center font-bold text-sm text-white border border-white/20 shadow-md"
+                className="w-10 h-10 rounded-[6px] flex items-center justify-center font-bold text-sm text-lira-ground border border-lira-rule"
                 style={{
                   backgroundColor:
-                    friend.avatar?.shirtColor || friend.avatar?.topColor || '#6366f1',
+                    friend.avatar?.shirtColor || friend.avatar?.topColor || '#d1b5ff',
                 }}
               >
                 {friend.name.charAt(0).toUpperCase()}
               </div>
-              <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full ring-2 ring-[#12151e] bg-[#12151e] overflow-hidden flex items-center justify-center">
+              <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full ring-2 ring-lira-surface bg-lira-surface overflow-hidden flex items-center justify-center">
                 <MoonPhaseIcon
                   status={
                     presence.isOnline
@@ -160,7 +161,7 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
                 return (
                   <>
                     <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-extrabold text-slate-100 truncate">
+                      <h3 className="font-display text-base font-bold text-lira-accent truncate">
                         {friend.name}
                       </h3>
                       <StatusBadge
@@ -169,21 +170,21 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
                       />
                     </div>
 
-                    <p className="text-[11px] text-slate-400 truncate mt-0.5 flex items-center gap-1.5">
+                    <p className="text-[11px] font-mono text-lira-muted truncate mt-0.5 flex items-center gap-1.5">
                       {presence.isOnline ? (
                         <>
-                          <span className="text-slate-300 font-medium">{displayStatusText}</span>
+                          <span className="text-lira-ink font-medium">{displayStatusText}</span>
                           {presence.inRoom && presence.roomName ? (
                             <>
-                              <span className="text-slate-600">•</span>
-                              <span className="text-indigo-300 font-medium truncate">
+                              <span className="text-lira-rule">•</span>
+                              <span className="text-lira-accent font-medium truncate">
                                 Em: {presence.roomName}
                               </span>
                             </>
                           ) : (
                             <>
-                              <span className="text-slate-600">•</span>
-                              <span className="text-slate-500">No Lobby / Tela Inicial</span>
+                              <span className="text-lira-rule">•</span>
+                              <span className="text-lira-muted">No Lobby / Tela Inicial</span>
                             </>
                           )}
                         </>
@@ -206,39 +207,42 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
 
           <div className="flex items-center gap-2">
             {presence.isOnline && presence.roomCode && onJoinRoom && (
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
                 onClick={() => onJoinRoom(presence.roomCode!)}
-                className="px-2.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 active:scale-95 transition-all flex items-center gap-1"
                 title="Entrar no mesmo espaço de trabalho"
               >
                 <span>Entrar na Sala</span>
                 <ArrowRight className="w-3.5 h-3.5" />
-              </button>
+              </Button>
             )}
 
-            <button
+            <Button
               type="button"
+              variant="icon"
+              size="icon"
               onClick={onClose}
-              className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+              className="h-8 w-8"
             >
-              <X className="w-5 h-5" />
-            </button>
+              <X className="w-4 h-4" />
+            </Button>
           </div>
         </div>
 
-        <div ref={pagination.messagesRef} onScroll={pagination.onScroll} onWheel={pagination.onWheel} onTouchStart={pagination.onTouchStart} onTouchMove={pagination.onTouchMove} className="flex-1 min-h-0 overflow-y-auto p-4 bg-[#11141c]/50">
+        <div ref={pagination.messagesRef} onScroll={pagination.onScroll} onWheel={pagination.onWheel} onTouchStart={pagination.onTouchStart} onTouchMove={pagination.onTouchMove} className="flex-1 min-h-0 overflow-y-auto p-4 bg-lira-panel">
           <div ref={pagination.contentRef} className="space-y-3">
           {chatMessages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400 space-y-3 select-none">
-              <div className="w-14 h-14 rounded-3xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-inner">
+            <div className="h-full flex flex-col items-center justify-center text-center p-6 text-lira-muted space-y-3 select-none">
+              <div className="w-14 h-14 rounded-[12px] bg-lira-surface border border-lira-rule flex items-center justify-center text-lira-accent">
                 <MessageSquare className="w-7 h-7" />
               </div>
               <div className="space-y-1">
-                <div className="text-sm font-bold text-slate-200">
+                <div className="font-display text-base font-bold text-lira-accent">
                   Nenhuma mensagem com {friend.name}
                 </div>
-                <div className="text-xs text-slate-500 max-w-xs">
+                <div className="text-xs font-mono text-lira-muted max-w-xs">
                   Envie uma mensagem direta para iniciar a conversa! Ela fica salva para consultas futuras.
                 </div>
               </div>
@@ -250,7 +254,7 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
                       setInputText(emoji + ' ')
                       inputRef.current?.focus()
                     }}
-                    className="w-8 h-8 rounded-xl bg-[#1b202c] hover:bg-indigo-600/20 border border-[#2b3345] hover:border-indigo-500/40 text-base transition-all active:scale-95"
+                    className="w-8 h-8 rounded-[8px] bg-lira-surface hover:border-lira-accent border border-lira-rule text-base transition-colors"
                   >
                     {emoji}
                   </button>
@@ -287,15 +291,15 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
                       className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-1`}
                     >
                       <div
-                        className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-xs shadow-sm break-words ${
+                        className={`max-w-[75%] rounded-[12px] px-3.5 py-2.5 text-xs font-mono break-words ${
                           isMe
-                            ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-tr-none'
-                            : 'bg-[#1e2433] text-slate-100 border border-[#2c354a] rounded-tl-none'
+                            ? 'bg-lira-accent text-lira-ground border border-lira-accent rounded-tr-none font-medium'
+                            : 'bg-lira-surface text-lira-ink border border-lira-rule rounded-tl-none'
                         }`}
                       >
                         <div>{renderChatContent(msg.content)}</div>
                       </div>
-                      <div className="flex items-center gap-1 text-[10px] text-slate-500 px-1">
+                      <div className="flex items-center gap-1 text-[10px] font-mono text-lira-muted px-1">
                         <span>{formatTime(msg.timestamp)}</span>
                         {isMe && <MessageStatusIcon status={msg.status} className="ml-0.5" />}
                       </div>
@@ -317,7 +321,7 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
                       onAccept={(reqId) => respondToFriendRequest(reqId, 'accepted')}
                       onDecline={(reqId) => respondToFriendRequest(reqId, 'declined')}
                     />
-                    <div className="flex items-center gap-1 text-[10px] text-slate-500 px-1">
+                    <div className="flex items-center gap-1 text-[10px] font-mono text-lira-muted px-1">
                       <span>{formatTime(msg.timestamp)}</span>
                       {isMe && <MessageStatusIcon status={msg.status} className="ml-0.5" />}
                     </div>
@@ -344,7 +348,7 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
                       recipientName={friend.name}
                       onJoin={() => onJoinRoom?.(invite.roomCode)}
                     />
-                    <div className="flex items-center gap-1 text-[10px] text-slate-500 px-1">
+                    <div className="flex items-center gap-1 text-[10px] font-mono text-lira-muted px-1">
                       <span>{formatTime(msg.timestamp)}</span>
                       {isMe && <MessageStatusIcon status={msg.status} className="ml-0.5" />}
                     </div>
@@ -358,21 +362,21 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
                   className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-1`}
                 >
                   <div
-                    className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-xs shadow-sm break-words ${
+                    className={`max-w-[75%] rounded-[12px] px-3.5 py-2.5 text-xs font-mono break-words ${
                       isMe
-                        ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-tr-none'
-                        : 'bg-[#1e2433] text-slate-100 border border-[#2c354a] rounded-tl-none'
+                        ? 'bg-lira-accent text-lira-ground border border-lira-accent rounded-tr-none font-medium'
+                        : 'bg-lira-surface text-lira-ink border border-lira-rule rounded-tl-none'
                     }`}
                   >
                     {!isMe && (
-                      <div className="text-[10px] font-bold text-indigo-300 mb-1">
+                      <div className="text-[10px] font-bold text-lira-accent mb-1">
                         {friend.name}
                       </div>
                     )}
                     <div>{renderChatContent(msg.content)}</div>
                   </div>
 
-                  <div className="flex items-center gap-1 text-[10px] text-slate-500 px-1">
+                  <div className="flex items-center gap-1 text-[10px] font-mono text-lira-muted px-1">
                     <span>{formatTime(msg.timestamp)}</span>
                     {isMe && <MessageStatusIcon status={msg.status} className="ml-0.5" />}
                   </div>
@@ -383,9 +387,9 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
           </div>
         </div>
 
-        <div className="px-4 py-1.5 bg-[#12151e]/80 border-t border-[#22293a] flex items-center gap-2 overflow-x-auto">
-          <span className="text-[10px] text-slate-500 font-semibold flex items-center gap-1">
-            <Smile className="w-3 h-3 text-slate-400" />
+        <div className="px-4 py-1.5 bg-lira-sidebar border-t border-dashed border-lira-rule/60 flex items-center gap-2 overflow-x-auto">
+          <span className="text-[10px] font-mono text-lira-muted font-semibold flex items-center gap-1">
+            <Smile className="w-3 h-3 text-lira-muted" />
             <span>Reagir:</span>
           </span>
           {QUICK_EMOJIS.map((emoji) => (
@@ -402,27 +406,28 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
 
         <form
           onSubmit={handleSendMessage}
-          className="p-3 bg-[#12151e] border-t border-[#262e40] flex items-center gap-2"
+          className="p-3 bg-lira-surface border-t border-dashed border-lira-rule/60 flex items-center gap-2"
         >
-          <input
+          <Input
             ref={inputRef}
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             placeholder={`Mensagem para ${friend.name}...`}
-            className="flex-1 bg-[#1a1f2b] border border-[#2b3345] rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+            className="flex-1"
           />
 
-          <button
+          <Button
             type="submit"
+            variant="primary"
+            size="icon"
             disabled={!inputText.trim()}
-            className="p-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white rounded-xl shadow-md shadow-indigo-600/30 transition-all active:scale-95 shrink-0"
             title="Enviar mensagem (Enter)"
           >
             <Send className="w-4 h-4" />
-          </button>
+          </Button>
         </form>
-      </div>
+      </Card>
     </div>
   )
 }

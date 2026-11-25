@@ -20,6 +20,7 @@ import { FriendsPresenceService } from '../../services/friendsPresenceService'
 import { PlayerAvatar } from '../common/PlayerAvatar'
 import { StatusBadge } from '../common/StatusBadge'
 import { MoonPhaseIcon } from '../common/MoonPhaseIcon'
+import { Button, Input, Badge, Card } from '../ui'
 
 interface Props {
   onOpenChat: (friend: FriendProfile) => void
@@ -174,62 +175,66 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-5 space-y-4">
+    <div className="flex-1 overflow-y-auto p-5 space-y-4 font-mono text-lira-ink bg-lira-panel">
       <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between">
         <div className="relative flex-1">
-          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
+          <Search className="w-3.5 h-3.5 text-lira-muted absolute left-3 top-1/2 -translate-y-1/2" />
+          <Input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Buscar amigos por nome ou sala..."
-            className="w-full bg-[#12151d] border border-[#2a3142] rounded-xl pl-9 pr-3 py-2 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+            className="pl-9 pr-3"
           />
         </div>
 
-        <button
+        <Button
           type="button"
+          variant="primary"
+          size="sm"
           onClick={() => setShowAddForm((prev) => !prev)}
-          className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/30 transition-all flex items-center justify-center gap-1.5 shrink-0"
+          className="h-9"
         >
           <UserPlus className="w-3.5 h-3.5" />
           <span>{showAddForm ? 'Fechar' : 'Adicionar Amigo'}</span>
-        </button>
+        </Button>
       </div>
 
       {showAddForm && (
         <form
           onSubmit={handleAddFriend}
-          className="p-3.5 bg-[#12151d] border border-indigo-500/30 rounded-2xl space-y-2.5 animate-in fade-in duration-200"
+          className="p-3.5 bg-lira-ground border border-dashed border-lira-rule rounded-[12px] space-y-2.5"
         >
-          <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-300">
-            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+          <div className="flex items-center gap-1.5 font-display text-sm font-bold text-lira-accent">
+            <Sparkles className="w-3.5 h-3.5 text-lira-accent" />
             <span>Adicionar Novo Amigo via Solicitação</span>
           </div>
 
-          <p className="text-[11px] text-slate-400">
+          <p className="text-[11px] font-mono text-lira-muted">
             Ao adicionar, uma solicitação interativa será enviada para o chat da outra pessoa para ela aceitar ou recusar.
           </p>
 
           {addFeedback && (
-            <div className="flex items-center gap-1.5 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl p-2">
-              <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+            <div className="flex items-center gap-1.5 text-xs text-lira-amber bg-lira-amber/15 border border-lira-amber/40 rounded-[8px] p-2">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 text-lira-amber" />
               <span>{addFeedback}</span>
             </div>
           )}
 
           <div className="flex gap-2">
-            <input
+            <Input
               type="text"
               value={newFriendName}
               onChange={(e) => setNewFriendName(e.target.value)}
               placeholder="Digite o nome ou apelido do amigo..."
-              className="flex-1 bg-[#181c26] border border-[#2a3142] rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+              className="flex-1"
             />
-            <button
+            <Button
               type="submit"
+              variant="primary"
+              size="sm"
               disabled={!newFriendName.trim()}
-              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl text-xs font-bold shadow transition-all flex items-center gap-1 shrink-0"
+              className="h-9"
             >
               {addSuccess ? (
                 <>
@@ -239,19 +244,19 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
               ) : (
                 <span>Enviar Solicitação</span>
               )}
-            </button>
+            </Button>
           </div>
         </form>
       )}
 
       {nonFriendOnlineUsers.length > 0 && (
-        <div className="p-3.5 bg-gradient-to-r from-indigo-950/30 via-[#141824] to-[#12151d] border border-indigo-500/20 rounded-2xl space-y-2.5 animate-in fade-in duration-200">
-          <div className="flex items-center justify-between text-xs font-bold text-indigo-300">
-            <div className="flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+        <Card variant="dashed" className="p-3.5 bg-lira-ground space-y-2.5">
+          <div className="flex items-center justify-between text-xs font-bold text-lira-accent">
+            <div className="flex items-center gap-1.5 font-display text-sm">
+              <Sparkles className="w-3.5 h-3.5 text-lira-accent" />
               <span>Pessoas Online no Espaço / Rede ({nonFriendOnlineUsers.length})</span>
             </div>
-            <span className="text-[10px] text-slate-400 font-normal">
+            <span className="text-[10px] font-mono text-lira-muted font-normal">
               Envie uma solicitação para virarem amigos
             </span>
           </div>
@@ -262,9 +267,10 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
               const isPending = req?.status === 'pending'
 
               return (
-                <div
+                <Card
                   key={user.userId}
-                  className="p-2.5 bg-[#181c28]/80 border border-slate-800 hover:border-indigo-500/30 rounded-xl flex items-center justify-between gap-2 transition-all"
+                  variant="surface"
+                  className="p-2.5 hover:border-lira-accent rounded-[8px] flex items-center justify-between gap-2 transition-colors"
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <PlayerAvatar
@@ -275,18 +281,20 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                       size="sm"
                     />
                     <div className="min-w-0">
-                      <div className="text-xs font-bold text-slate-200 truncate">
+                      <div className="text-xs font-bold text-lira-ink truncate">
                         {user.name}
                       </div>
-                      <div className="text-[10px] text-slate-400 truncate">
+                      <div className="text-[10px] text-lira-muted truncate">
                         {user.inRoom ? `Em: ${user.roomName || 'Sala'}` : 'No Lobby'}
                       </div>
                     </div>
                   </div>
 
                   {isPending ? (
-                    <button
+                    <Button
                       type="button"
+                      variant="quiet"
+                      size="xs"
                       onClick={() =>
                         onOpenChat({
                           id: user.userId,
@@ -297,15 +305,16 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                           statusText: 'Solicitação pendente',
                         })
                       }
-                      className="px-2.5 py-1 bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 rounded-lg text-[11px] font-semibold flex items-center gap-1 shrink-0 hover:bg-indigo-500/30"
                       title="Abrir conversa no chat"
                     >
-                      <Clock className="w-3 h-3 text-indigo-400" />
+                      <Clock className="w-3 h-3 text-lira-accent" />
                       <span>Pendente</span>
-                    </button>
+                    </Button>
                   ) : (
-                    <button
+                    <Button
                       type="button"
+                      variant="primary"
+                      size="xs"
                       disabled={isPending || sendingTargetIds.has(user.userId)}
                       onClick={() => {
                         if (isPending || sendingTargetIds.has(user.userId)) return
@@ -331,63 +340,63 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                           })
                         }, 1500)
                       }}
-                      className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-[11px] font-bold shadow-sm shadow-indigo-600/30 flex items-center gap-1 shrink-0 transition-all"
                     >
                       <UserPlus className="w-3 h-3" />
                       <span>Adicionar</span>
-                    </button>
+                    </Button>
                   )}
-                </div>
+                </Card>
               )
             })}
           </div>
-        </div>
+        </Card>
       )}
 
-      <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+      <div className="flex items-center justify-between text-xs font-mono text-lira-muted px-1">
         <div className="flex items-center gap-2">
-          <Users className="w-3.5 h-3.5 text-indigo-400" />
+          <Users className="w-3.5 h-3.5 text-lira-accent" />
           <span>
-            Total de amigos: <strong className="text-slate-200">{friends.length}</strong>
+            Total de amigos: <strong className="text-lira-ink">{friends.length}</strong>
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5 text-emerald-400 text-[11px] font-semibold">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+        <div className="flex items-center gap-1.5 text-lira-online text-[11px] font-semibold">
+          <span className="w-2 h-2 rounded-full bg-lira-online" />
           <span>{onlineFriends.length} online agora</span>
         </div>
       </div>
 
       {friends.length === 0 ? (
-        <div className="text-center py-12 px-4 rounded-3xl bg-[#12151d]/60 border border-[#2a3142] border-dashed space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 mx-auto flex items-center justify-center text-indigo-400">
+        <Card variant="dashed" className="text-center py-12 px-4 bg-lira-ground space-y-3">
+          <div className="w-12 h-12 rounded-[12px] bg-lira-surface border border-lira-rule mx-auto flex items-center justify-center text-lira-accent">
             <Users className="w-6 h-6" />
           </div>
           <div className="space-y-1">
-            <h4 className="text-sm font-bold text-slate-200">Sua lista de amigos está vazia</h4>
-            <p className="text-xs text-slate-400 max-w-sm mx-auto">
+            <h4 className="font-display text-base font-bold text-lira-accent">Sua lista de amigos está vazia</h4>
+            <p className="text-xs font-mono text-lira-muted max-w-sm mx-auto">
               Adicione amigos clicando no botão acima ou clique no ícone de estrela ⭐ ao lado de qualquer participante quando estiver dentro de uma sala!
             </p>
           </div>
-          <button
+          <Button
             type="button"
+            variant="primary"
+            size="md"
             onClick={() => setShowAddForm(true)}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow transition-all inline-flex items-center gap-1.5"
           >
             <UserPlus className="w-3.5 h-3.5" />
             <span>Adicionar Primeiro Amigo</span>
-          </button>
-        </div>
+          </Button>
+        </Card>
       ) : filteredFriends.length === 0 ? (
-        <div className="text-center py-8 text-xs text-slate-500">
+        <div className="text-center py-8 text-xs font-mono text-lira-muted">
           Nenhum amigo encontrado para "{searchQuery}"
         </div>
       ) : (
         <div className="space-y-4">
           {onlineFriends.length > 0 && (
             <div className="space-y-2">
-              <div className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5 px-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+              <div className="text-[10px] font-mono font-extrabold uppercase tracking-wider text-lira-online flex items-center gap-1.5 px-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-lira-online" />
                 <span>Online Agora ({onlineFriends.length})</span>
               </div>
 
@@ -401,12 +410,13 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                   const displayStatusText = friend.statusText || statusMeta.label || 'Disponível'
 
                   return (
-                    <div
+                    <Card
                       key={friend.id}
-                      className={`p-3.5 rounded-2xl bg-[#12151d] hover:bg-[#161a24] transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm ${
+                      variant="ground"
+                      className={`p-3.5 hover:bg-lira-surface/50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
                         unread > 0
-                          ? 'border-2 border-rose-500/60 shadow-lg shadow-rose-950/40 bg-gradient-to-r from-rose-950/20 via-[#12151d] to-[#12151d]'
-                          : 'border border-emerald-500/25 hover:border-emerald-500/40'
+                          ? 'border-lira-error bg-lira-surface/40'
+                          : 'border-lira-online/40 hover:border-lira-online'
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
@@ -419,44 +429,44 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
 
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs font-bold text-slate-100 truncate">
+                            <span className="font-display text-sm font-bold text-lira-ink truncate">
                               {friend.name}
                             </span>
                             <StatusBadge status={statusKey} label={displayStatusText} />
                             {unread > 0 && (
-                              <span className="text-[9px] bg-rose-500 text-white font-extrabold px-2 py-0.5 rounded-full shadow-md shadow-rose-500/40 flex items-center gap-1 animate-pulse">
-                                <MessageSquare className="w-2.5 h-2.5 fill-white" />
+                              <Badge variant="error" className="text-[9px] font-extrabold">
+                                <MessageSquare className="w-2.5 h-2.5 fill-current" />
                                 <span>{unread} nova{unread > 1 ? 's' : ''} mensagem{unread > 1 ? 'ens' : ''}</span>
-                              </span>
+                              </Badge>
                             )}
                           </div>
 
-                          <div className="text-[11px] text-slate-300 truncate mt-0.5 flex items-center gap-1.5">
-                            <span className="font-medium flex items-center gap-1 text-slate-200">
+                          <div className="text-[11px] font-mono text-lira-muted truncate mt-0.5 flex items-center gap-1.5">
+                            <span className="font-medium flex items-center gap-1 text-lira-ink">
                               <MoonPhaseIcon status={statusKey} className="w-3.5 h-3.5" />
                               <span className="truncate">{displayStatusText}</span>
                             </span>
                             {friend.inRoom && friend.roomName ? (
                               <>
-                                <span className="text-slate-600">•</span>
-                                <span className="text-indigo-300 font-medium flex items-center gap-1 truncate" title={`Na sala: ${friend.roomName}`}>
-                                  <Globe className="w-3 h-3 text-indigo-400 shrink-0" />
+                                <span className="text-lira-rule">•</span>
+                                <span className="text-lira-accent font-medium flex items-center gap-1 truncate" title={`Na sala: ${friend.roomName}`}>
+                                  <Globe className="w-3 h-3 text-lira-accent shrink-0" />
                                   <span className="truncate">Em: {friend.roomName}</span>
                                 </span>
                               </>
                             ) : (
                               <>
-                                <span className="text-slate-600">•</span>
-                                <span className="text-slate-500 truncate">No Lobby / Tela Inicial</span>
+                                <span className="text-lira-rule">•</span>
+                                <span className="text-lira-muted truncate">No Lobby / Tela Inicial</span>
                               </>
                             )}
                           </div>
 
                           {lastMsg && (
-                            <div className={`text-[11px] truncate mt-1 flex items-center gap-1.5 ${unread > 0 ? 'text-rose-300 font-medium' : 'text-slate-400'}`}>
-                              <MessageSquare className={`w-3 h-3 shrink-0 ${unread > 0 ? 'text-rose-400 animate-pulse' : 'text-slate-500'}`} />
+                            <div className={`text-[11px] font-mono truncate mt-1 flex items-center gap-1.5 ${unread > 0 ? 'text-lira-error font-medium' : 'text-lira-muted'}`}>
+                              <MessageSquare className={`w-3 h-3 shrink-0 ${unread > 0 ? 'text-lira-error' : 'text-lira-muted'}`} />
                               <span className="truncate">
-                                <span className={unread > 0 ? 'text-rose-200 font-bold' : 'text-slate-300'}>
+                                <span className={unread > 0 ? 'text-lira-error font-bold' : 'text-lira-ink'}>
                                   {lastMsg.senderName?.split(' ')[0]}:
                                 </span>{' '}
                                 {lastMsg.content}
@@ -468,62 +478,64 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
 
                       <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                         {friend.inRoom && friend.roomCode && (
-                          <button
+                          <Button
                             type="button"
+                            variant="secondary"
+                            size="sm"
                             onClick={() => onJoinRoom(friend.roomCode!)}
-                            className="px-2.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 transition-all flex items-center gap-1 active:scale-95"
                             title={`Entrar na sala "${friend.roomName || ''}"`}
                           >
                             <span>Entrar</span>
                             <ArrowRight className="w-3.5 h-3.5" />
-                          </button>
+                          </Button>
                         )}
 
-                        <button
+                        <Button
                           type="button"
+                          variant={unread > 0 ? 'destructive' : 'quiet'}
+                          size="sm"
                           onClick={() => onOpenChat(friend)}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 relative active:scale-95 ${
-                            unread > 0
-                              ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/40 border border-rose-400 animate-pulse'
-                              : 'bg-[#1b202c] hover:bg-indigo-600/20 text-slate-200 hover:text-indigo-300 border border-[#2a3142] hover:border-indigo-500/40'
-                          }`}
                         >
-                          <MessageSquare className={`w-3.5 h-3.5 ${unread > 0 ? 'fill-white text-white' : 'text-indigo-400'}`} />
+                          <MessageSquare className={`w-3.5 h-3.5 ${unread > 0 ? 'fill-current' : 'text-lira-accent'}`} />
                           <span>{unread > 0 ? `Responder (${unread})` : 'Chat'}</span>
-                        </button>
+                        </Button>
 
                         {isConfirming ? (
-                          <div className="flex items-center gap-1 bg-[#1a1f2c] p-1 rounded-xl border border-rose-500/40">
-                            <button
+                          <div className="flex items-center gap-1 bg-lira-surface p-1 rounded-[8px] border border-lira-error/50">
+                            <Button
                               type="button"
+                              variant="destructive"
+                              size="xs"
                               onClick={() => {
                                 removeFriend(friend.id)
                                 setConfirmDeleteId(null)
                               }}
-                              className="px-2 py-0.5 bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold rounded-lg transition-colors"
+                              className="h-6 px-2 text-[10px]"
                             >
                               Remover
-                            </button>
+                            </Button>
                             <button
                               type="button"
                               onClick={() => setConfirmDeleteId(null)}
-                              className="px-1.5 py-0.5 text-slate-400 hover:text-white text-[10px]"
+                              className="px-1.5 py-0.5 text-lira-muted hover:text-lira-ink text-[10px] font-mono"
                             >
                               X
                             </button>
                           </div>
                         ) : (
-                          <button
+                          <Button
                             type="button"
+                            variant="ghost"
+                            size="icon"
                             onClick={() => setConfirmDeleteId(friend.id)}
-                            className="p-1.5 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                            className="h-8 w-8 hover:text-lira-error hover:border-lira-error/40"
                             title="Remover dos amigos"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          </Button>
                         )}
                       </div>
-                    </div>
+                    </Card>
                   )
                 })}
               </div>
@@ -532,7 +544,7 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
 
           {offlineFriends.length > 0 && (
             <div className="space-y-2">
-              <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 px-1">
+              <div className="text-[10px] font-mono font-extrabold uppercase tracking-wider text-lira-muted px-1">
                 Offline ({offlineFriends.length})
               </div>
 
@@ -543,12 +555,13 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                   const isConfirming = confirmDeleteId === friend.id
 
                   return (
-                    <div
+                    <Card
                       key={friend.id}
-                      className={`p-3 rounded-2xl bg-[#12151d]/60 hover:bg-[#12151d] transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                      variant="ground"
+                      className={`p-3 hover:bg-lira-surface/40 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
                         unread > 0
-                          ? 'border-2 border-rose-500/60 shadow-lg shadow-rose-950/40 bg-gradient-to-r from-rose-950/20 via-[#12151d] to-[#12151d] opacity-100'
-                          : 'border border-[#2a3142] opacity-80 hover:opacity-100'
+                          ? 'border-lira-error bg-lira-surface/40 opacity-100'
+                          : 'border-lira-quiet opacity-80 hover:opacity-100'
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
@@ -562,18 +575,18 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
 
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs font-bold text-slate-300 truncate">
+                            <span className="font-display text-sm font-bold text-lira-muted truncate">
                               {friend.name}
                             </span>
                             {unread > 0 && (
-                              <span className="text-[9px] bg-rose-500 text-white font-extrabold px-2 py-0.5 rounded-full shadow-md shadow-rose-500/40 flex items-center gap-1 animate-pulse">
-                                <MessageSquare className="w-2.5 h-2.5 fill-white" />
+                              <Badge variant="error" className="text-[9px] font-extrabold">
+                                <MessageSquare className="w-2.5 h-2.5 fill-current" />
                                 <span>{unread} nova{unread > 1 ? 's' : ''} mensagem{unread > 1 ? 'ens' : ''}</span>
-                              </span>
+                              </Badge>
                             )}
                           </div>
 
-                          <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                          <div className="text-[10px] font-mono text-lira-muted truncate mt-0.5">
                             {friend.lastSeen
                               ? `Visto por último: ${new Date(friend.lastSeen).toLocaleDateString([], {
                                   day: '2-digit',
@@ -586,10 +599,10 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                           </div>
 
                           {lastMsg && (
-                            <div className={`text-[11px] truncate mt-1 flex items-center gap-1.5 ${unread > 0 ? 'text-rose-300 font-medium' : 'text-slate-400'}`}>
-                              <MessageSquare className={`w-3 h-3 shrink-0 ${unread > 0 ? 'text-rose-400 animate-pulse' : 'text-slate-500'}`} />
+                            <div className={`text-[11px] font-mono truncate mt-1 flex items-center gap-1.5 ${unread > 0 ? 'text-lira-error font-medium' : 'text-lira-muted'}`}>
+                              <MessageSquare className={`w-3 h-3 shrink-0 ${unread > 0 ? 'text-lira-error' : 'text-lira-muted'}`} />
                               <span className="truncate">
-                                <span className={unread > 0 ? 'text-rose-200 font-bold' : 'text-slate-300'}>
+                                <span className={unread > 0 ? 'text-lira-error font-bold' : 'text-lira-ink'}>
                                   {lastMsg.senderName?.split(' ')[0]}:
                                 </span>{' '}
                                 {lastMsg.content}
@@ -600,51 +613,52 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                        <button
+                        <Button
                           type="button"
+                          variant={unread > 0 ? 'destructive' : 'quiet'}
+                          size="sm"
                           onClick={() => onOpenChat(friend)}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 relative active:scale-95 ${
-                            unread > 0
-                              ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/40 border border-rose-400 animate-pulse'
-                              : 'bg-[#181c26] hover:bg-indigo-600/20 text-slate-300 hover:text-indigo-300 border border-[#2a3142] hover:border-indigo-500/40'
-                          }`}
                         >
-                          <MessageSquare className={`w-3.5 h-3.5 ${unread > 0 ? 'fill-white text-white' : 'text-indigo-400'}`} />
+                          <MessageSquare className={`w-3.5 h-3.5 ${unread > 0 ? 'fill-current' : 'text-lira-accent'}`} />
                           <span>{unread > 0 ? `Responder (${unread})` : 'Chat'}</span>
-                        </button>
+                        </Button>
 
                         {isConfirming ? (
-                          <div className="flex items-center gap-1 bg-[#1a1f2c] p-1 rounded-xl border border-rose-500/40">
-                            <button
+                          <div className="flex items-center gap-1 bg-lira-surface p-1 rounded-[8px] border border-lira-error/50">
+                            <Button
                               type="button"
+                              variant="destructive"
+                              size="xs"
                               onClick={() => {
                                 removeFriend(friend.id)
                                 setConfirmDeleteId(null)
                               }}
-                              className="px-2 py-0.5 bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold rounded-lg transition-colors"
+                              className="h-6 px-2 text-[10px]"
                             >
                               Remover
-                            </button>
+                            </Button>
                             <button
                               type="button"
                               onClick={() => setConfirmDeleteId(null)}
-                              className="px-1.5 py-0.5 text-slate-400 hover:text-white text-[10px]"
+                              className="px-1.5 py-0.5 text-lira-muted hover:text-lira-ink text-[10px] font-mono"
                             >
                               X
                             </button>
                           </div>
                         ) : (
-                          <button
+                          <Button
                             type="button"
+                            variant="ghost"
+                            size="icon"
                             onClick={() => setConfirmDeleteId(friend.id)}
-                            className="p-1.5 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                            className="h-8 w-8 hover:text-lira-error hover:border-lira-error/40"
                             title="Remover dos amigos"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          </Button>
                         )}
                       </div>
-                    </div>
+                    </Card>
                   )
                 })}
               </div>

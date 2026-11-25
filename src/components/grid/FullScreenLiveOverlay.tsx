@@ -141,7 +141,7 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
       aria-label="Transmissão em tela cheia"
       ref={theaterContainerRef}
       onMouseMove={handleMouseMove}
-      className="fixed inset-0 z-[100] bg-[#0c0e14] flex items-center justify-center overflow-hidden select-none cursor-default"
+      className="fixed inset-0 z-[100] bg-lira-ground flex items-center justify-center overflow-hidden select-none cursor-default font-mono"
     >
       {!liveGate.needsClick && (
         <div
@@ -162,7 +162,7 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
             }}
             onLoadedData={liveGate.onFrame}
             onPlaying={liveGate.onFrame}
-            className={`w-full h-full object-contain bg-black transition-transform duration-200 ${
+            className={`w-full h-full object-contain bg-lira-ground transition-transform duration-200 ${
               removeCaptureBorder ? 'scale-[1.01]' : 'scale-100'
             }`}
             onDoubleClick={handleDoubleClickVideo}
@@ -178,19 +178,19 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
           controlsVisible || infoOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         }`}
       >
-        <div className="flex items-center gap-3 bg-black/80 backdrop-blur-xl px-4 py-2 rounded-2xl border border-white/15 shadow-2xl">
+        <div className="flex items-center gap-3 bg-lira-panel/95 px-4 py-2 rounded-[12px] border border-dashed border-lira-rule">
           <LiveTransmissionInfo stream={activeStream} local={!!user.isLocal} peerName={user.name} onOpenChange={setInfoOpen} />
-          <div className="text-sm font-bold text-white flex items-center gap-2">
-            <span>{user.name}</span>
-            <span className="text-slate-400 font-normal text-xs">• Transmissão em Tela Cheia</span>
+          <div className="text-sm font-bold text-lira-ink flex items-center gap-2">
+            <span className="font-display text-base text-lira-accent">{user.name}</span>
+            <span className="text-lira-muted font-mono font-normal text-xs">• Transmissão em Tela Cheia</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           {liveGate.watching && (
             <button
               onClick={liveGate.stop}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-black/80 hover:bg-rose-600 text-white border border-white/15 backdrop-blur-xl shadow-2xl font-bold text-xs transition-all hover:scale-105"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-[8px] bg-lira-surface hover:bg-lira-error hover:text-lira-ground text-lira-error border border-lira-error/40 font-mono font-bold text-xs transition-colors"
               title="Deixar de receber o vídeo e o som desta transmissão"
             >
               <EyeOff className="w-4 h-4" />
@@ -200,7 +200,7 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
 
           {!user.isLocal && !liveGate.needsClick && (
             <div
-              className="flex items-center gap-2.5 bg-black/80 backdrop-blur-xl px-4 py-2 rounded-2xl border border-white/15 shadow-2xl"
+              className="flex items-center gap-2.5 bg-lira-panel/95 px-3.5 py-2 rounded-[12px] border border-dashed border-lira-rule"
               onMouseEnter={() => {
                 isInteractingWithVolumeRef.current = true
               }}
@@ -210,15 +210,15 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
             >
               <button
                 onClick={handleToggleMute}
-                className="p-1 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
+                className="p-1 rounded-[6px] text-lira-muted hover:text-lira-ink hover:bg-lira-surface transition-colors"
                 title={rawVolume === 0 ? 'Desmutar Transmissão (M)' : 'Mutar Transmissão (M)'}
               >
                 {rawVolume === 0 ? (
-                  <VolumeX className="w-4 h-4 text-rose-400" />
+                  <VolumeX className="w-4 h-4 text-lira-error" />
                 ) : rawVolume < 50 ? (
-                  <Volume1 className="w-4 h-4 text-indigo-400" />
+                  <Volume1 className="w-4 h-4 text-lira-accent" />
                 ) : (
-                  <Volume2 className="w-4 h-4 text-indigo-400" />
+                  <Volume2 className="w-4 h-4 text-lira-accent" />
                 )}
               </button>
 
@@ -234,11 +234,11 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
                 onMouseUp={() => {
                   isInteractingWithVolumeRef.current = false
                 }}
-                className="w-24 sm:w-28 h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400"
+                className="w-24 sm:w-28 h-1.5 bg-lira-surface rounded-[4px] appearance-none cursor-pointer accent-lira-accent"
                 title={`Volume da Transmissão: ${rawVolume}% (Use ↑/↓)`}
               />
 
-              <span className="text-xs font-mono font-bold text-slate-200 min-w-[34px] text-right">
+              <span className="text-xs font-mono tabular-nums font-bold text-lira-ink min-w-[34px] text-right">
                 {rawVolume}%
               </span>
             </div>
@@ -246,10 +246,10 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
 
           <button
             onClick={toggleRemoveCaptureBorder}
-            className={`flex items-center gap-2 px-3.5 py-2.5 rounded-2xl border backdrop-blur-xl shadow-2xl font-bold text-xs transition-all hover:scale-105 ${
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-[8px] border font-mono font-bold text-xs transition-colors ${
               removeCaptureBorder
-                ? 'bg-indigo-600/80 text-white border-indigo-400/40 hover:bg-indigo-600'
-                : 'bg-black/80 text-slate-400 border-white/15 hover:text-white'
+                ? 'bg-lira-surface text-lira-accent border-lira-accent'
+                : 'bg-lira-panel/95 text-lira-muted border-lira-rule hover:border-lira-accent hover:text-lira-ink'
             }`}
             title={
               removeCaptureBorder
@@ -263,7 +263,7 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
 
           <button
             onClick={onClose}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-black/80 hover:bg-rose-600 text-white border border-white/15 backdrop-blur-xl shadow-2xl font-bold text-xs transition-all hover:scale-105"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-[8px] bg-lira-surface hover:bg-lira-error hover:text-lira-ground text-lira-ink border border-lira-rule hover:border-lira-error font-mono font-bold text-xs transition-colors"
           >
             <Minimize2 className="w-4 h-4" />
             <span>Sair da Tela Cheia (ESC)</span>
@@ -272,16 +272,16 @@ export const FullScreenLiveOverlay: React.FC<Props> = ({ user, onClose }) => {
       </div>
 
       <div
-        className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-black/80 backdrop-blur-xl px-6 py-3 rounded-3xl border border-white/15 shadow-2xl transition-opacity duration-300 z-50 ${
+        className={`absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-lira-panel/95 px-5 py-2.5 rounded-[12px] border border-dashed border-lira-rule transition-opacity duration-300 z-50 ${
           controlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         }`}
       >
-        <span className="text-xs text-slate-300 font-medium flex items-center gap-2">
-          <span>Dê dois cliques no vídeo ou pressione <kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-white border border-slate-700 text-[10px]">ESC</kbd> para voltar</span>
+        <span className="text-xs text-lira-muted font-mono flex items-center gap-2">
+          <span>Dê dois cliques no vídeo ou pressione <kbd className="bg-lira-surface px-1.5 py-0.5 rounded-[4px] text-lira-accent border border-lira-rule text-[10px] font-mono">ESC</kbd> para voltar</span>
           {!user.isLocal && (
             <>
-              <span className="text-slate-500">•</span>
-              <span>Volume: <kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-white border border-slate-700 text-[10px]">↑</kbd> <kbd className="bg-slate-800 px-1.5 py-0.5 rounded text-white border border-slate-700 text-[10px]">↓</kbd></span>
+              <span className="text-lira-rule">•</span>
+              <span>Volume: <kbd className="bg-lira-surface px-1.5 py-0.5 rounded-[4px] text-lira-accent border border-lira-rule text-[10px] font-mono">↑</kbd> <kbd className="bg-lira-surface px-1.5 py-0.5 rounded-[4px] text-lira-accent border border-lira-rule text-[10px] font-mono">↓</kbd></span>
             </>
           )}
         </span>

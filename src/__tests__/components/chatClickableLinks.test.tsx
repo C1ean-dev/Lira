@@ -65,7 +65,7 @@ describe('chatClickableLinks and copy message content', () => {
       expect(useRoomJoinStore.getState().pendingRoomCode).toBe('ROOM-42')
     })
     it('opens Render HTTPS invitations inside the running application', () => {
-      openExternalUrl('https://lira-signaling.onrender.com/join#invite=ROOM-HTTPS')
+      openExternalUrl('https://p01--lira--tj9yvq5j5cgs.code.run/join#invite=ROOM-HTTPS')
       expect(useRoomJoinStore.getState().pendingRoomCode).toBe('ROOM-HTTPS')
     })
     it('delegates to window.electronAPI.openExternal in Electron environment', async () => {

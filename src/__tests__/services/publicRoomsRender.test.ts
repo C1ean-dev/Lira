@@ -19,7 +19,7 @@ describe('Render discovery alongside MQTT', () => {
   const ready = () => { render().open(); render().receive({ type: 'READY', protocolVersion: 1 }) }
   it('opens only Render as a raw JSON WebSocket and requires the protocol acknowledgement', () => {
     expect(roomSockets).toHaveLength(1); expect(render().protocols).toBeUndefined()
-    render().open(); expect(service.getBrokerServers()[2].status).toBe('connecting')
+    render().open(); expect(service.getBrokerServers()[2]).toMatchObject({ name: 'Lira', status: 'connecting' })
     render().receive({ type: 'READY', protocolVersion: 1 }); expect(service.getBrokerServers()[2].status).toBe('connected')
     expect(JSON.parse(render().send.mock.calls[0][0]).type).toBe('QUERY_ROOMS')
   })

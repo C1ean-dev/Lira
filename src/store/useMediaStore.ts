@@ -13,6 +13,7 @@ import { MediaManager } from '../media/MediaManager'
 import { PeerManager } from '../p2p/PeerManager'
 import { playSoundEffect, setSoundEffectsOptionsProvider } from '../utils/soundEffects'
 import { isAlmStream } from '../media/almStreams'
+import { calculateRecommendedSensitivityFromDb } from '../media/autoGate'
 
 export interface MicCalibration {
   noiseFloorDb: number
@@ -242,7 +243,13 @@ export const useMediaStore = create<MediaStore>((set, get) => ({
 
   micCalibrations: Object.fromEntries(Object.entries(saved.micCalibrations || {}).map(([id, value]) => {
     const calibration = value as MicCalibration
-    return [id, { ...calibration, recommendedMode: normalizeAudioProcessorMode(calibration.recommendedMode) }]
+    return [id, {
+      ...calibration,
+      recommendedMode: normalizeAudioProcessorMode(calibration.recommendedMode),
+      ...(Number.isFinite(calibration.noiseFloorDb)
+        ? { recommendedSensitivity: calculateRecommendedSensitivityFromDb(calibration.noiseFloorDb) }
+        : {}),
+    }]
   })),
   isCalibrating: false,
 

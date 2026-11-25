@@ -21,7 +21,10 @@ permissions:
 jobs:
   build-apk:
     name: Build Android APK
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, windows, x64]
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Checkout repository
@@ -62,18 +65,21 @@ jobs:
           node-version-file: '.node-version'
           cache: 'npm'
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          # The default list includes 'tools', a package the SDK no longer ships, which fails
-          # the step. Install what android/variables.gradle compiles against instead.
-          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+      - name: Configure local Java and Android SDK
+        run: |
+          java -version
+          SDK_DIR="$ANDROID_HOME"
+          if [ -z "$SDK_DIR" ]; then SDK_DIR="$ANDROID_SDK_ROOT"; fi
+          if [ -z "$SDK_DIR" ] && [ -n "$LOCALAPPDATA" ]; then SDK_DIR="$LOCALAPPDATA/Android/Sdk"; fi
+          if [ ! -d "$SDK_DIR/platforms/android-35" ]; then
+            echo "Android SDK platform android-35 not found in: $SDK_DIR" >&2
+            exit 1
+          fi
+          if command -v cygpath >/dev/null 2>&1; then
+            SDK_DIR=$(cygpath -w "$SDK_DIR")
+          fi
+          echo "ANDROID_HOME=$SDK_DIR" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_DIR" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         env:
@@ -110,8 +116,12 @@ jobs:
           LIRA_VERSION_NAME: ${{ steps.tag.outputs.version }}
           LIRA_VERSION_CODE: ${{ steps.tag.outputs.version_code }}
         run: |
-          chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          if [ -f "./gradlew.bat" ]; then
+            cmd.exe //c "gradlew.bat assembleRelease --no-daemon"
+          else
+            chmod +x gradlew
+            ./gradlew assembleRelease --no-daemon
+          fi
           if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
             cp app/build/outputs/apk/release/app-release.apk "../Lira-${{ steps.tag.outputs.tag_name }}.apk"
           else

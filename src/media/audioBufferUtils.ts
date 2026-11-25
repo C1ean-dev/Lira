@@ -1,7 +1,8 @@
 import { RNNOISE_PRE_EQ } from './RnnoiseProcessor'
-import { denoiseSamples, gateDenoisedSamples } from './rnnoiseOffline'
+import { autoGateDenoisedSamples, denoiseSamplesWithVad, gateDenoisedSamples } from './rnnoiseOffline'
 import { denoiseDeepFilterSamples } from './deepFilterOffline'
-import type { AudioProcessorMode } from '../types/audio'
+import type { AudioProcessorMode, SensitivityMode } from '../types/audio'
+import { AutoGate, MIN_MANUAL_OPEN_RMS } from './autoGate'
 import { createVoiceDynamics } from './voiceDynamics'
 
 function writeString(view: DataView, offset: number, str: string) {
@@ -102,42 +103,63 @@ type OfflineAudioContextClass = new (
   sampleRate: number
 ) => OfflineAudioContext
 
-async function renderRnnoisePreview(
+async function renderNeuralPreview(
   rawBuffer: AudioBuffer,
   sensitivityPercent: number,
   OfflineContextClass: OfflineAudioContextClass,
   mode: 'rnnoise' | 'deepfilter' = 'rnnoise',
+  gateMode: SensitivityMode = 'manual',
 ): Promise<AudioBuffer> {
   const offlineCtx = new OfflineContextClass(1, rawBuffer.length, rawBuffer.sampleRate)
   const source = offlineCtx.createBufferSource()
   source.buffer = rawBuffer
 
-  const hp = offlineCtx.createBiquadFilter()
-  hp.type = 'highpass'
-  hp.frequency.setValueAtTime(RNNOISE_PRE_EQ.highpassHz, 0)
-  hp.Q.setValueAtTime(RNNOISE_PRE_EQ.highpassQ, 0)
+  if (mode === 'deepfilter') {
+    source.connect(offlineCtx.destination)
+  } else {
+    const hp = offlineCtx.createBiquadFilter()
+    hp.type = 'highpass'
+    hp.frequency.setValueAtTime(RNNOISE_PRE_EQ.highpassHz, 0)
+    hp.Q.setValueAtTime(RNNOISE_PRE_EQ.highpassQ, 0)
 
-  const shelf = offlineCtx.createBiquadFilter()
-  shelf.type = 'highshelf'
-  shelf.frequency.setValueAtTime(RNNOISE_PRE_EQ.shelfHz, 0)
-  shelf.gain.setValueAtTime(RNNOISE_PRE_EQ.shelfGainDb, 0)
+    const shelf = offlineCtx.createBiquadFilter()
+    shelf.type = 'highshelf'
+    shelf.frequency.setValueAtTime(RNNOISE_PRE_EQ.shelfHz, 0)
+    shelf.gain.setValueAtTime(RNNOISE_PRE_EQ.shelfGainDb, 0)
 
-  source.connect(hp)
-  hp.connect(shelf)
-  shelf.connect(offlineCtx.destination)
+    source.connect(hp)
+    hp.connect(shelf)
+    shelf.connect(offlineCtx.destination)
+  }
   source.start(0)
 
   const rendered = await offlineCtx.startRendering()
   const channel = rendered.getChannelData(0)
-  const denoised = await (mode === 'deepfilter' ? denoiseDeepFilterSamples(channel) : denoiseSamples(channel))
-  channel.set(gateDenoisedSamples(denoised, rendered.sampleRate, sensitivityPercent))
+
+  if (mode === 'deepfilter') {
+    const denoised = await denoiseDeepFilterSamples(channel)
+    channel.set(
+      gateMode === 'auto'
+        ? denoised
+        : gateDenoisedSamples(denoised, rendered.sampleRate, sensitivityPercent)
+    )
+    return rendered
+  }
+
+  const { output, frameVads } = await denoiseSamplesWithVad(channel)
+  channel.set(
+    gateMode === 'auto'
+      ? autoGateDenoisedSamples(output, rendered.sampleRate, frameVads)
+      : gateDenoisedSamples(output, rendered.sampleRate, sensitivityPercent)
+  )
   return rendered
 }
 
 export async function processAudioBufferOffline(
   rawBuffer: AudioBuffer,
   recommendedMode: AudioProcessorMode = 'deepfilter',
-  sensitivityPercent: number = 20
+  sensitivityPercent: number = 20,
+  gateMode: SensitivityMode = 'manual',
 ): Promise<AudioBuffer> {
   const OfflineContextClass =
     typeof window !== 'undefined'
@@ -154,10 +176,18 @@ export async function processAudioBufferOffline(
   if (recommendedMode !== 'classic') {
     try {
       if (sampleRate !== 48000) throw new Error(`recording is at ${sampleRate} Hz`)
-      return await renderRnnoisePreview(rawBuffer, sensitivityPercent, OfflineContextClass, recommendedMode)
+      return await renderNeuralPreview(
+        rawBuffer,
+        sensitivityPercent,
+        OfflineContextClass,
+        recommendedMode,
+        gateMode
+      )
     } catch (err) {
       console.warn(`[audio] ${recommendedMode} preview unavailable, using fallback:`, err)
-      if (recommendedMode === 'deepfilter') return processAudioBufferOffline(rawBuffer, 'rnnoise', sensitivityPercent)
+      if (recommendedMode === 'deepfilter') {
+        return processAudioBufferOffline(rawBuffer, 'rnnoise', sensitivityPercent, gateMode)
+      }
     }
   }
 
@@ -189,20 +219,49 @@ export async function processAudioBufferOffline(
 
   const closeLevel = openLevel * closeRatio
   const timeStep = 0.01
-  const hopSize = Math.floor(sampleRate * timeStep)
-  const windowSize = Math.floor(sampleRate * windowDuration)
+  const hopSize = Math.max(1, Math.floor(sampleRate * timeStep))
+  const windowSize = Math.max(1, Math.floor(sampleRate * windowDuration))
 
-  let isGateOpen = false
+  const hopRms: number[] = []
   for (let i = 0; i < length; i += hopSize) {
-    const time = i / sampleRate
     const end = Math.min(length, i + windowSize)
     let sum = 0
     for (let j = i; j < end; j++) {
       sum += rawData[j] * rawData[j]
     }
-    const rms = Math.sqrt(sum / (end - i))
+    hopRms.push(Math.sqrt(sum / Math.max(1, end - i)))
+  }
 
-    if (sensitivityPercent >= 100) {
+  let autoGate: AutoGate | null = null
+  if (gateMode === 'auto') {
+    const sorted = [...hopRms].sort((a, b) => a - b)
+    const lowerHalf = sorted.slice(0, Math.max(1, Math.floor(sorted.length / 2)))
+    const initialFloorRms = lowerHalf[Math.floor(lowerHalf.length / 2)]
+    autoGate = new AutoGate({
+      minOpenRms: MIN_MANUAL_OPEN_RMS,
+      minCloseRms: MIN_MANUAL_OPEN_RMS * 0.6,
+      initialFloorRms,
+    })
+  }
+
+  const holdTimeSec = 0.22
+  let lastSpeechTime = -Infinity
+  let isGateOpen = false
+  for (let i = 0, hopIndex = 0; i < length; i += hopSize, hopIndex++) {
+    const time = i / sampleRate
+    const rms = hopRms[hopIndex]
+
+    if (autoGate) {
+      autoGate.update(rms, time * 1000)
+      let shouldOpen: boolean = isGateOpen
+      if (rms > autoGate.openLevel) {
+        shouldOpen = true
+      } else if (rms < autoGate.closeLevel) {
+        shouldOpen = false
+      }
+      if (shouldOpen) lastSpeechTime = time
+      isGateOpen = shouldOpen || (time - lastSpeechTime) < holdTimeSec
+    } else if (sensitivityPercent >= 100) {
       isGateOpen = false
     } else if (sensitivityPercent <= 0) {
       isGateOpen = true

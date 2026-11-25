@@ -30,6 +30,12 @@ import { waitForDjPeerReady } from './djPeerReady'
 import { djMusicSdp } from './djMusicSdp'
 import { connectLiveView, liveViewReporter } from '../media/liveView'
 import { DynamicBufferManager } from '../services/DynamicBufferManager'
+import {
+  useNetworkQualityStore,
+  type ConnectionRoute,
+  type TurnProvider,
+  type TransportPreference,
+} from '../store/useNetworkQualityStore'
 import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
 import { reportError } from '../utils/logger'
 import { registerReportContext } from '../utils/reportContext'
@@ -40,7 +46,16 @@ import { restoreRoomChannels } from '../services/roomChannelsService'
 import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
 import { buildIceServers } from './rtcIceServers'
 import { loadCloudflareIceServers } from './cloudflareTurn'
-import { installRtcTransportPriority } from './rtcTransportPriority'
+import {
+  installRtcTransportPriority,
+  switchConnectionTransport,
+  setConnectionTransportAuto,
+  pinConnectionTransportMode,
+  getConnectionTransportInfo,
+  preparePeerManualTransport,
+  clearPeerManualTransport,
+  notifyRemoteClearManualTransport,
+} from './rtcTransportPriority'
 import { SuperPeerVoiceRelay } from './SuperPeerVoiceRelay'
 import { createOfflinePeer, getDirectSignaling, installDirectSignaling } from './directSignaling'
 import { ManualConnection } from './manualConnection'
@@ -48,7 +63,7 @@ import { decodeDirectInvite, decodeLanInvite, encodeAllInvite, encodeDirectInvit
 
 export type { SignalingTier }
 export const SIGNALING_TIERS: SignalingTier[] = ['render', 'public', 'local', 'direct']
-export const RENDER_SIGNALING_HOST = 'lira-signaling.onrender.com'
+export const RENDER_SIGNALING_HOST = 'p01--lira--tj9yvq5j5cgs.code.run'
 const HOST_TRANSPORT_TIMEOUT_MS = 30_000
 const HOST_RECONNECT_DELAY_MS = 2500
 // Keep one attempt alive through the direct and both relay windows (8.5s).
@@ -351,6 +366,176 @@ export class PeerManager {
     if (forLocalLive && this.nativeCapture)
       return new Map([...this.mediaCalls].filter(([id]) => !this.nativeLive?.isSendingVideo(id)))
     return this.mediaCalls
+  }
+
+  public hasActiveMediaCall(peerId: string): boolean {
+    return Boolean(
+      this.mediaCalls.get(peerId) ||
+      this.liveVoiceCalls.get(peerId) ||
+      this.incomingLiveVoiceCalls.get(peerId)
+    )
+  }
+
+  public refreshPeerConnectionStats(): void {
+    void DynamicBufferManager.getInstance().evaluateAndAdjustBuffer()
+  }
+
+  public async switchPeerConnectionTransport(
+    peerId: string,
+    target: TransportPreference
+  ): Promise<{ ok: boolean; route?: ConnectionRoute; turnProvider?: TurnProvider; reason?: string }> {
+    const calls = Array.from(
+      new Set(
+        [
+          this.mediaCalls.get(peerId),
+          this.liveVoiceCalls.get(peerId),
+          this.incomingLiveVoiceCalls.get(peerId),
+        ].filter((c): c is MediaConnection => Boolean(c))
+      )
+    )
+    if (calls.length === 0) {
+      return { ok: false, reason: 'no_active_call' }
+    }
+
+    const bufferMgr = DynamicBufferManager.getInstance()
+    const qualityStore = useNetworkQualityStore.getState()
+    const previousQuality = qualityStore.peerQualities[peerId]
+    const previousPref = previousQuality?.transportPreference ?? 'auto'
+
+    if (target === 'auto') {
+      await preparePeerManualTransport(this.peer, peerId, 'auto')
+      for (const call of calls) setConnectionTransportAuto(call)
+      bufferMgr.setPeerManualTransport(peerId, 'auto')
+      qualityStore.setPeerQuality(peerId, {
+        transportPreference: 'auto',
+        isSwitchingTransport: false,
+      })
+      diagLog('p2p', 'rtc.manual-transport-auto', { peerId })
+      void bufferMgr.evaluateAndAdjustBuffer()
+      return { ok: true, route: previousQuality?.route }
+    }
+
+    const superPeerRelay = SuperPeerVoiceRelay.getInstance()
+    const wasSuperPeerActive =
+      superPeerRelay.isRelayActiveForPeer(peerId) || bufferMgr.getPeerRoutingTier(peerId) === 2
+
+    if (wasSuperPeerActive) {
+      superPeerRelay.stopRelay(peerId)
+      MediaCallHandler.restorePeerDirectStream(peerId)
+    }
+
+    const anyOnTurn = calls.some((c) => getConnectionTransportInfo(c)?.mode === 'turn')
+    if (
+      target === 'direct' &&
+      !anyOnTurn &&
+      previousQuality?.route !== 'turn' &&
+      (wasSuperPeerActive || previousQuality?.route === 'direct')
+    ) {
+      await preparePeerManualTransport(this.peer, peerId, 'direct')
+      for (const call of calls) pinConnectionTransportMode(call, 'direct')
+      bufferMgr.setPeerManualTransport(peerId, 'direct')
+      qualityStore.setPeerQuality(peerId, {
+        route: 'direct',
+        turnProvider: undefined,
+        transportPreference: 'direct',
+        isSwitchingTransport: false,
+      })
+      void bufferMgr.evaluateAndAdjustBuffer()
+      return { ok: true, route: 'direct' }
+    }
+
+    if (
+      target === 'turn' &&
+      !wasSuperPeerActive &&
+      previousQuality?.route === 'turn' &&
+      calls.every((c) => getConnectionTransportInfo(c)?.mode === 'turn')
+    ) {
+      await preparePeerManualTransport(this.peer, peerId, 'turn')
+      for (const call of calls) pinConnectionTransportMode(call, 'turn')
+      bufferMgr.setPeerManualTransport(peerId, 'turn')
+      qualityStore.setPeerQuality(peerId, {
+        route: 'turn',
+        transportPreference: 'turn',
+        isSwitchingTransport: false,
+      })
+      void bufferMgr.evaluateAndAdjustBuffer()
+      return { ok: true, route: 'turn', turnProvider: previousQuality?.turnProvider }
+    }
+
+    // In Chromium/libwebrtc, an in-place setConfiguration(relay) + iceRestart
+    // keeps the already-writable direct host/srflx pair selected. Redialing with
+    // a fresh RTCPeerConnection constructed with the target ICE policy guarantees
+    // the media transport switches reliably in both directions.
+    const prep = await preparePeerManualTransport(this.peer, peerId, target)
+    if (!prep.ok) {
+      qualityStore.setPeerQuality(peerId, {
+        transportPreference: previousPref,
+        isSwitchingTransport: false,
+      })
+      return { ok: false, reason: prep.reason || 'switch_failed' }
+    }
+
+    if (target === 'direct') {
+      for (const call of calls) {
+        notifyRemoteClearManualTransport(this.peer, peerId, call.connectionId)
+      }
+    }
+
+    const remotePlayer = useGameStore.getState().remotePlayers[peerId]
+    if (this.peer && remotePlayer) {
+      qualityStore.setPeerQuality(peerId, {
+        transportPreference: target,
+        ...(target === 'turn' && prep.relayTier ? { turnProvider: prep.relayTier } : { turnProvider: undefined }),
+        isSwitchingTransport: true,
+      })
+      diagLog('p2p', 'rtc.manual-transport-redial', {
+        peerId,
+        target,
+        relayTier: prep.relayTier,
+      })
+      this.retryZoneCall(peerId)
+      bufferMgr.setPeerManualTransport(peerId, target)
+      qualityStore.setPeerQuality(peerId, {
+        transportPreference: target,
+        ...(target === 'turn' && prep.relayTier ? { turnProvider: prep.relayTier } : { turnProvider: undefined }),
+        isSwitchingTransport: true,
+      })
+      return {
+        ok: true,
+        route: target === 'turn' ? 'turn' : 'direct',
+        ...(prep.relayTier ? { turnProvider: prep.relayTier } : {}),
+      }
+    }
+
+    // Fallback when remotePlayer record isn't present: attempt in-place switch.
+    const results = await Promise.all(
+      calls.map((call) => switchConnectionTransport(call, target, 'manual_user_switch'))
+    )
+    const primaryResult = results[0]
+    const anySucceeded = results.some((r) => r.ok)
+
+    if (!anySucceeded) {
+      clearPeerManualTransport(this.peer, peerId)
+      qualityStore.setPeerQuality(peerId, {
+        transportPreference: previousPref,
+        isSwitchingTransport: false,
+      })
+      return { ok: false, reason: primaryResult?.reason || 'switch_failed' }
+    }
+
+    bufferMgr.setPeerManualTransport(peerId, target)
+    const relayTier = results.find((r) => r.relayTier)?.relayTier
+    qualityStore.setPeerQuality(peerId, {
+      transportPreference: target,
+      ...(target === 'turn' && relayTier ? { turnProvider: relayTier } : {}),
+      isSwitchingTransport: calls.some((c) => Boolean(getConnectionTransportInfo(c)?.switching)),
+    })
+    void bufferMgr.evaluateAndAdjustBuffer()
+    return {
+      ok: true,
+      route: target === 'turn' ? 'turn' : 'direct',
+      ...(relayTier ? { turnProvider: relayTier } : {}),
+    }
   }
 
   public getAlmTransmissionCounters(stream: MediaStream, local: boolean) {
@@ -2316,6 +2501,34 @@ export class PeerManager {
             async document => {
               if (this.peer === owner && this.connections.get(peerId) === connection && connection.open) {
                 await useCustomAssetsStore.getState().syncRemoteCustomAssets(document.assets, document.categories)
+                if (document.deletedAssetIds?.length) {
+                  for (const id of document.deletedAssetIds) {
+                    await useCustomAssetsStore.getState().syncRemoteAssetDelete(id)
+                    if (this.isHost) this.sendCustomAssetDelete(id)
+                  }
+                }
+                if (this.isHost) {
+                  this.queueAssetTransfer(async () => {
+                    const legacyConnections = [...this.connections.entries()].filter(([pid, c]) => pid !== peerId && c.open && !this.individualLibraryPeers.has(c))
+                    for (const [pid, c] of this.connections.entries()) {
+                      if (pid !== peerId && c.open && this.individualLibraryPeers.has(c)) {
+                        await this.offerIndividualLibrary(c, document.assets, document.categories)
+                      }
+                    }
+                    if (!legacyConnections.length) return
+                    const atlas = await buildAtlas(document.assets, document.categories)
+                    const digest = await atlasDigest(atlas)
+                    if (this.peer !== owner) return
+                    for (const [, c] of legacyConnections) {
+                      this.sendToPeer(c, {
+                        type: 'CUSTOM_ASSETS_SYNC',
+                        senderId: owner.id,
+                        payload: { atlas, digest },
+                        timestamp: Date.now(),
+                      })
+                    }
+                  })
+                }
               }
             }).catch(error => console.error('[Assets] Invalid individual image transfer:', error))
         }
@@ -2390,6 +2603,7 @@ export class PeerManager {
   private onMediaCallConnected(peerId: string) {
     liveViewReporter.callConnected(peerId)
     if (useMediaStore.getState().isScreenSharing) this.startLiveVoiceCall(peerId)
+    void DynamicBufferManager.getInstance().evaluateAndAdjustBuffer()
   }
 
   private recoverLiveVideo(sharerId: string): void {
@@ -3079,6 +3293,7 @@ export class PeerManager {
     if (this.nativeCapture) this.nativeLive?.setCapture(this.nativeCapture)
     this.clearPendingZoneCalls()
     this.stopLiveVoiceCalls()
+    this.mediaCalls.forEach((_, peerId) => clearPeerManualTransport(this.peer, peerId))
     this.incomingLiveVoiceCalls?.forEach((call) => call.close())
     this.incomingLiveVoiceCalls?.clear()
     useMediaStore.getState().clearAllPeerStreams()

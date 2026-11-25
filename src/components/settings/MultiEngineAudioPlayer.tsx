@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useId } from 'react'
 import { Play, Pause, RotateCcw, Sparkles, Sliders, Cpu, Check } from 'lucide-react'
-import { AudioProcessorMode } from '../../types/audio'
+import { AudioProcessorMode, SensitivityMode } from '../../types/audio'
 
 export interface EngineSampleData {
   audioUrl: string
@@ -9,7 +9,8 @@ export interface EngineSampleData {
 
 interface Props {
   recommendedMode: AudioProcessorMode
-  recommendedSensitivity: number
+  recommendedSensitivity?: number
+  gateMode?: SensitivityMode
   activeMode: AudioProcessorMode
   samples: {
     classic: EngineSampleData
@@ -55,6 +56,7 @@ const ENGINES: {
 export const MultiEngineAudioPlayer: React.FC<Props> = ({
   recommendedMode,
   recommendedSensitivity,
+  gateMode = recommendedSensitivity !== undefined ? 'manual' : 'auto',
   activeMode,
   samples,
   onApplyEngine,
@@ -174,7 +176,7 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
   const centerY = viewBoxHeight / 2
 
   return (
-    <div className="rounded-xl p-3 border bg-gradient-to-r from-emerald-950/40 via-[#131a24] to-[#101720] border-emerald-500/30 shadow-lg shadow-emerald-950/20 space-y-2.5">
+    <div className="rounded-[8px] p-3 border bg-lira-surface border-lira-online/40 space-y-2.5 font-mono">
       <audio
         ref={classicRef}
         src={samples.classic.audioUrl}
@@ -244,27 +246,31 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
 
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 min-w-0">
-          <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-          <span className="text-xs font-bold text-slate-100 truncate">
+          <Sparkles className="w-3.5 h-3.5 text-lira-online shrink-0" />
+          <span className="text-xs font-bold text-lira-ink truncate">
             Como vai ficar com as alterações (3 Motores)
           </span>
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+          <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-[6px] bg-lira-online/15 text-lira-online border border-lira-online/30">
             Comparação A/B/C
           </span>
-          <span className="text-[9px] font-mono text-slate-400 px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700/60">
-            Gate: {recommendedSensitivity}%
+          <span className="text-[9px] font-mono tabular-nums text-lira-muted px-1.5 py-0.5 rounded-[4px] bg-lira-panel border border-lira-quiet">
+            {gateMode === 'manual' && recommendedSensitivity !== undefined
+              ? `Gate Manual: ${recommendedSensitivity}%`
+              : 'Gate: Automático'}
           </span>
         </div>
       </div>
 
-      <div className="text-[10px] text-slate-400 leading-tight">
-        Ouça a mesma gravação tratada individualmente por cada motor de supressão com o Noise Gate calibrado:
+      <div className="text-[10px] text-lira-muted leading-tight">
+        {gateMode === 'manual' && recommendedSensitivity !== undefined
+          ? `Ouça a mesma gravação tratada individualmente por cada motor de supressão com o Gate Manual sugerido (${recommendedSensitivity}%):`
+          : 'Ouça a mesma gravação tratada individualmente por cada motor de supressão (com Gate Automático):'}
       </div>
 
-      <div className="bg-slate-950/90 rounded-xl p-1.5 border border-slate-800/90 shadow-inner divide-y divide-slate-800/60">
+      <div className="bg-lira-ground rounded-[8px] p-1.5 border border-lira-quiet divide-y divide-lira-quiet">
         {ENGINES.map(({ id, name, desc, icon: Icon }) => {
           const isPlayingThis = playingEngine === id
           const isRecommended = recommendedMode === id
@@ -288,25 +294,25 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
           return (
             <div
               key={id}
-              className={`py-1.5 px-2 flex items-center gap-2.5 transition-colors rounded-lg ${
+              className={`py-1.5 px-2 flex items-center gap-2.5 transition-colors rounded-[6px] ${
                 isPlayingThis
-                  ? 'bg-emerald-950/30'
-                  : 'hover:bg-slate-900/50'
+                  ? 'bg-lira-surface'
+                  : 'hover:bg-lira-panel'
               }`}
             >
               <div className="w-28 shrink-0 flex flex-col justify-center">
                 <div className="flex items-center gap-1">
-                  <Icon className="w-3 h-3 text-emerald-400 shrink-0" />
-                  <span className="text-[10.5px] font-bold text-slate-200 truncate">
+                  <Icon className="w-3 h-3 text-lira-online shrink-0" />
+                  <span className="text-[10.5px] font-bold text-lira-ink truncate">
                     {name}
                   </span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <span className="text-[8.5px] text-slate-400 truncate">
+                  <span className="text-[8.5px] text-lira-muted truncate">
                     {desc}
                   </span>
                   {isRecommended && (
-                    <span className="text-[7.5px] font-bold uppercase tracking-wider px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                    <span className="text-[7.5px] font-bold uppercase tracking-wider px-1 py-0.2 rounded-[4px] bg-lira-amber/15 text-lira-amber border border-lira-amber/30 shrink-0">
                       ★ Sugerido
                     </span>
                   )}
@@ -316,10 +322,10 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => togglePlay(id)}
-                className={`w-7 h-7 rounded-full flex items-center justify-center transition-all shrink-0 active:scale-90 cursor-pointer shadow-sm ${
+                className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors shrink-0 cursor-pointer border ${
                   isPlayingThis
-                    ? 'bg-gradient-to-tr from-emerald-500 to-teal-400 text-white shadow-emerald-500/40 animate-pulse'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700/60'
+                    ? 'bg-lira-online text-lira-ground border-lira-online animate-pulse'
+                    : 'bg-lira-panel hover:bg-lira-surface text-lira-ink border-lira-rule'
                 }`}
                 title={isPlayingThis ? `Pausar ${name}` : `Ouvir com ${name}`}
               >
@@ -333,7 +339,7 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => handleRestart(id)}
-                className="p-1 text-slate-500 hover:text-slate-300 transition-colors shrink-0 cursor-pointer"
+                className="p-1 text-lira-muted hover:text-lira-ink transition-colors shrink-0 cursor-pointer"
                 title="Reiniciar do começo"
               >
                 <RotateCcw className="w-3 h-3" />
@@ -357,15 +363,12 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
                 >
                   <defs>
                     <linearGradient id={playedGradId} x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#10b981" />
-                      <stop offset="35%" stopColor="#14b8a6" />
-                      <stop offset="70%" stopColor="#06b6d4" />
-                      <stop offset="100%" stopColor="#3b82f6" />
+                      <stop offset="0%" stopColor="#b9e99f" />
+                      <stop offset="100%" stopColor="#d1b5ff" />
                     </linearGradient>
                     <linearGradient id={unplayedGradId} x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#064e3b" stopOpacity="0.45" />
-                      <stop offset="50%" stopColor="#0f766e" stopOpacity="0.4" />
-                      <stop offset="100%" stopColor="#1e3a8a" stopOpacity="0.4" />
+                      <stop offset="0%" stopColor="#826998" stopOpacity="0.45" />
+                      <stop offset="100%" stopColor="#826998" stopOpacity="0.4" />
                     </linearGradient>
                   </defs>
 
@@ -398,7 +401,7 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
                       y1={0}
                       x2={hoverScrubber.percent * viewBoxWidth}
                       y2={viewBoxHeight}
-                      stroke="#94a3b8"
+                      stroke="#c1b0d2"
                       strokeWidth="1"
                       strokeDasharray="2 2"
                       opacity="0.6"
@@ -412,25 +415,22 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
                         y1={1}
                         x2={0}
                         y2={viewBoxHeight - 1}
-                        stroke="#ffffff"
+                        stroke="#f3ecff"
                         strokeWidth="2"
                         strokeLinecap="round"
-                        style={{
-                          filter: 'drop-shadow(0 0 4px rgba(16, 185, 129, 0.9))',
-                        }}
                       />
                     </g>
                   )}
                 </svg>
               </div>
 
-              <div className="text-[9.5px] font-mono font-medium text-slate-400 shrink-0 w-14 text-right tabular-nums">
+              <div className="text-[9.5px] font-mono tabular-nums font-medium text-lira-muted shrink-0 w-14 text-right">
                 {formatTime(isPlayingThis ? currentPlayTime : 0)} / {formatTime(trackDuration)}
               </div>
 
               <div className="shrink-0 w-20 flex justify-end">
                 {isActive ? (
-                  <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                  <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-1 rounded-[6px] bg-lira-online/15 text-lira-online border border-lira-online/30 flex items-center gap-1">
                     <Check className="w-2.5 h-2.5" />
                     <span>Em Uso</span>
                   </span>
@@ -438,7 +438,7 @@ export const MultiEngineAudioPlayer: React.FC<Props> = ({
                   <button
                     type="button"
                     onClick={() => onApplyEngine(id)}
-                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[9.5px] font-bold uppercase tracking-wide transition-all active:scale-95 shadow-sm shadow-emerald-600/30 cursor-pointer"
+                    className="px-2.5 py-1 rounded-[6px] bg-lira-online hover:bg-lira-ink text-lira-ground text-[9.5px] font-mono font-bold uppercase tracking-wide transition-colors cursor-pointer"
                     title={`Definir ${name} como o motor ativo`}
                   >
                     Aplicar

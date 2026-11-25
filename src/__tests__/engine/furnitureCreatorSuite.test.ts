@@ -52,6 +52,62 @@ describe('furnitureCreatorSuite - Unified Studio & Atlas for Furniture, Floors, 
     expect((await import('../../assets/atlasService')).buildAtlas).toHaveBeenCalledWith([mockFloor], ['Geral'])
   })
 
+  it('exportCategoryAtlas should package only selectedIds and apply custom fileBaseName when provided', async () => {
+    const sofa: CustomAsset = {
+      id: 'furn_sofa_1',
+      name: 'Sofá Azul',
+      type: 'furniture',
+      category: 'Geral',
+      width: 2,
+      height: 1,
+      isObstacle: true,
+      frames: ['data:image/png;base64,sample1'],
+      createdAt: Date.now(),
+    }
+    const mew: CustomAsset = {
+      id: 'furn_mew_1',
+      name: 'MEW',
+      type: 'furniture',
+      category: 'pokemon',
+      width: 2,
+      height: 2,
+      isObstacle: true,
+      frames: ['data:image/png;base64,sample2'],
+      createdAt: Date.now(),
+    }
+    const estante: CustomAsset = {
+      id: 'furn_estante_1',
+      name: 'estante com vidro',
+      type: 'furniture',
+      category: 'pokemon',
+      width: 3,
+      height: 3,
+      isObstacle: true,
+      frames: ['data:image/png;base64,sample3'],
+      createdAt: Date.now(),
+    }
+
+    const atlasService = await import('../../assets/atlasService')
+    ;(atlasService.buildAtlas as any).mockClear()
+    ;(atlasService.buildAtlas as any).mockResolvedValueOnce({
+      xml: '<TextureAtlas imagePath="library.png"></TextureAtlas>',
+      png: 'data:image/png;base64,mock',
+    })
+
+    const result = await exportCategoryAtlas('furniture', [sofa, mew, estante], undefined, {
+      selectedIds: ['furn_mew_1', 'furn_estante_1'],
+      fileBaseName: 'pacote pokemon',
+    })
+    expect(atlasService.buildAtlas).toHaveBeenCalledTimes(1)
+    expect(atlasService.buildAtlas).toHaveBeenCalledWith([mew, estante], ['pokemon'])
+    expect(result.xmlString).toContain('imagePath="pacote-pokemon.png"')
+
+    ;(atlasService.buildAtlas as any).mockClear()
+    const empty = await exportCategoryAtlas('furniture', [sofa, mew], undefined, { selectedIds: [] })
+    expect(atlasService.buildAtlas).not.toHaveBeenCalled()
+    expect(empty.xmlString).toBe('')
+  })
+
   it('importPresetsIntoStore should create CustomAsset with proper type and obstacle settings for furniture, floor, and wall', async () => {
     const presets: ParsedAtlasPreset[] = [
       {

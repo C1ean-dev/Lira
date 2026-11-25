@@ -273,6 +273,7 @@ function Get-Process { param($Id, $ErrorAction) [pscustomobject]@{ Id = 70; Main
   }, 20_000)
 
   it.skipIf(process.platform !== 'win32')('matches the exact dedicated profile with Windows quoting and ignores personal browser processes', async () => {
+    const cases: { profile: string; fixture: string; script: string }[] = []
     for (const profile of ['C:\\Lira\\spotify-browser', "C:\\User's Music\\spotify-browser"]) {
       for (const argument of [`"--user-data-dir=${profile}"`, `--user-data-dir="${profile}"`]) {
         const fixture = Buffer.from(JSON.stringify([
@@ -280,17 +281,24 @@ function Get-Process { param($Id, $ErrorAction) [pscustomobject]@{ Id = 70; Main
           { ProcessId: 2, CommandLine: 'chrome.exe --profile-directory=Default' },
           { ProcessId: 70, CommandLine: `chrome.exe ${argument} --app=https://open.spotify.com` },
         ])).toString('base64')
-        const result = await querySpotifyBrowserWindow(profile, async script => {
-          const stub = `
-function Get-CimInstance { param($Filter, $Property) [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${fixture}')) | ConvertFrom-Json }
-function Get-Process { param($Id, $ErrorAction) if ($Id -ne 70) { throw 'Wrong browser process selected' }; [pscustomobject]@{ Id = 70; MainWindowHandle = [IntPtr]::new(42); MainWindowTitle = 'Spotify' } }
-`
-          return execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', stub + script], { encoding: 'utf8', windowsHide: true })
-        })
-        expect(result).toEqual({ processId: 70, handle: '42', title: 'Spotify' })
+        let capturedScript = ''
+        await querySpotifyBrowserWindow(profile, async script => { capturedScript = script; return '' })
+        cases.push({ profile, fixture, script: capturedScript })
       }
     }
-  }, 30_000)
+    const batch = cases.map(({ fixture, script }) => `& {
+function Get-CimInstance { param($Filter, $Property) [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${fixture}')) | ConvertFrom-Json }
+function Get-Process { param($Id, $ErrorAction) if ($Id -ne 70) { throw 'Wrong browser process selected' }; [pscustomobject]@{ Id = 70; MainWindowHandle = [IntPtr]::new(42); MainWindowTitle = 'Spotify' } }
+${script}
+}`).join('\n')
+    const raw = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(`@(\n${batch}\n) | ConvertTo-Json -Compress`, 'utf16le').toString('base64')], { encoding: 'utf8', windowsHide: true })
+    const outputs = JSON.parse(raw) as string[]
+    expect(outputs).toHaveLength(cases.length)
+    for (let i = 0; i < cases.length; i += 1) {
+      const result = await querySpotifyBrowserWindow(cases[i].profile, async () => outputs[i])
+      expect(result).toEqual({ processId: 70, handle: '42', title: 'Spotify' })
+    }
+  }, 60_000)
 
   it.skipIf(process.platform !== 'win32')('distinguishes a closed login window from a running profile and its debugging mode', async () => {
     const profile = "C:\\User's Music\\spotify-browser"

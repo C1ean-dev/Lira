@@ -33,6 +33,9 @@ module.exports = async context => {
     const runtime = path.join(context.appOutDir, 'resources', 'gstreamer')
     for (const file of [...runtimeFiles, 'UPSTREAM.txt', 'versions.txt'])
       assert(fs.existsSync(path.join(runtime, file)), `Arquivo do runtime GStreamer ausente no pacote: ${file}`)
+    const updater = path.join(context.appOutDir, 'resources', 'updater')
+    for (const file of ['update-recovery.ps1', 'update-io.ps1', 'update-delta.ps1', 'update-apply-incremental.ps1'])
+      assert(fs.existsSync(path.join(updater, file)), `Script do atualizador incremental ausente no pacote: ${file}`)
   }
   console.log(`[Production package] Validated ${files.length} files: compiled app, ws and electron-log only.`)
 }

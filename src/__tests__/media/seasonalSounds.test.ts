@@ -64,10 +64,10 @@ describe('seasonal audio assets', () => {
 
   it('resolves the same assets for installed Electron and a web app under a base path', () => {
     vi.stubGlobal('window', { location: new URL('file:///C:/Lira/dist/index.html') })
-    expect(seasonalSoundUrl('halloween', 'mute')).toBe('file:///C:/Lira/dist/sounds/seasonal/halloween/mute.wav?v=festive-2')
+    expect(seasonalSoundUrl('halloween', 'mute')).toBe('file:///C:/Lira/dist/sounds/seasonal/halloween/mute.wav?v=festive-3')
     vi.stubEnv('BASE_URL', '/lira/')
     vi.stubGlobal('window', { location: new URL('https://example.test/lira/') })
-    expect(seasonalSoundUrl('christmas', 'call')).toBe('https://example.test/lira/sounds/seasonal/christmas/call.wav?v=festive-2')
+    expect(seasonalSoundUrl('christmas', 'call')).toBe('https://example.test/lira/sounds/seasonal/christmas/call.wav?v=festive-3')
   })
 })
 

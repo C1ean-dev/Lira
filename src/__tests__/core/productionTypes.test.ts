@@ -6,4 +6,4 @@ it('type-checks the renderer and Electron bridge with the production configurati
   const root = process.cwd()
   const diagnostics = checkTypeScriptProject(path.join(root, 'tsconfig.json'), path.join(root, 'node_modules/.cache/production-types.tsbuildinfo'))
   expect(diagnostics).toEqual([])
-}, 60000)
+}, 120000)

@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 import { beforeAll, describe, expect, it, vi } from 'vitest'
-beforeAll(() => { vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ filter: 'none', measureText: (text: string) => ({ width: text.length * 10 }) } as any) })
+beforeAll(async () => {
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ filter: 'none', measureText: (text: string) => ({ width: text.length * 10 }) } as any)
+  await Promise.all([
+    import('../../collaboration/boardFile'),
+    import('../../collaboration/boardRestore'),
+    import('@excalidraw/excalidraw'),
+  ])
+})
 const shape = { id: 'shape', type: 'rectangle', x: -10, y: 20, width: 80, height: 30, version: 1, versionNonce: 1, isDeleted: false }
 describe('SDK scene file migration', () => {
   it('restores legacy geometry and stable object IDs through the real SDK', async () => {

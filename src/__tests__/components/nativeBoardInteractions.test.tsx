@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { beforeAll, describe, expect, it, vi } from 'vitest'
-beforeAll(() => { vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ filter: 'none' } as any) })
+beforeAll(async () => {
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ filter: 'none' } as any)
+  await import('../../collaboration/boardFile')
+})
 const shape = { id: 'shape', type: 'rectangle', x: 10, y: 20, width: 80, height: 30, version: 1, versionNonce: 1, isDeleted: false }
 describe('local-only imported drawings', () => {
   it('rejects remote image URLs and missing image bytes', async () => {

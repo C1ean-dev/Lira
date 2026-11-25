@@ -33,8 +33,8 @@ const ChannelNameEditor: React.FC<{
       }}
       onContextMenu={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-[#12151d] border border-indigo-500/60">
-        <Hash className="w-3 h-3 shrink-0 text-slate-400" />
+      <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-lira-ground border border-lira-accent/60">
+        <Hash className="w-3 h-3 shrink-0 text-lira-muted" />
         <input
           autoFocus
           value={name}
@@ -49,10 +49,10 @@ const ChannelNameEditor: React.FC<{
           maxLength={40}
           placeholder="nome-do-canal"
           aria-label={initialName ? 'Novo nome do canal' : 'Nome do novo canal'}
-          className="w-full min-w-0 bg-transparent text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
+          className="w-full min-w-0 bg-transparent text-xs font-mono text-lira-ink placeholder-lira-muted/60 focus:outline-none"
         />
       </div>
-      {error && <div className="text-[10px] leading-snug text-rose-300 px-2 pt-1">{error}</div>}
+      {error && <div className="text-[10px] font-mono leading-snug text-lira-error px-2 pt-1">{error}</div>}
     </form>
   )
 }
@@ -92,22 +92,22 @@ export const ChatChannelList: React.FC<Props> = ({
           e.stopPropagation()
           onContextMenu(e, ch)
         }}
-        className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${
+        className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-mono font-medium transition-colors border ${
           isCurrent
-            ? 'bg-indigo-600/30 text-indigo-400 font-semibold'
-            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+            ? 'bg-indigo-600/30 bg-lira-surface text-lira-accent font-semibold border-lira-rule/50'
+            : 'text-lira-muted hover:text-lira-ink hover:bg-lira-surface/60 border-transparent'
         }`}
       >
         <div className="flex items-center gap-1.5 truncate">
           {ch.type === 'zone' ? (
-            <Lock className="w-3 h-3 text-emerald-400 shrink-0" />
+            <Lock className="w-3 h-3 text-emerald-400 text-lira-online shrink-0" />
           ) : (
             <Hash className="w-3 h-3 shrink-0" />
           )}
           <span className="truncate">{ch.name}</span>
         </div>
         {ch.unreadCount > 0 && (
-          <span className="bg-indigo-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+          <span className="bg-indigo-500 bg-lira-accent text-lira-ground text-[10px] px-1.5 py-0.2 rounded font-mono font-bold">
             {ch.unreadCount}
           </span>
         )}
@@ -117,14 +117,14 @@ export const ChatChannelList: React.FC<Props> = ({
 
   return (
     <section aria-label="Canais" className="space-y-1" onContextMenu={(e) => onContextMenu(e, null)}>
-      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 py-1 flex items-center justify-between">
+      <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-lira-muted px-2 py-1 flex items-center justify-between">
         <span>Canais</span>
         {canManage ? (
           <button
             type="button"
             onClick={onStartCreate}
             title="Novo canal"
-            className="p-0.5 rounded text-slate-400 hover:text-indigo-300 hover:bg-slate-800/60 transition-colors"
+            className="p-0.5 rounded text-lira-muted hover:text-lira-accent hover:bg-lira-surface transition-colors"
           >
             <Plus className="w-3 h-3" />
           </button>

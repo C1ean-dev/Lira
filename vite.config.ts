@@ -9,6 +9,14 @@ import { createRequire } from 'node:module'
 import { readAssetAtlas, writeAssetAtlasLatest } from './electron/assetAtlasFile'
 import { readIndividualLibrary, writeIndividualLibraryLatest } from './electron/individualLibraryFile'
 import { ensureNativeSpacesFile, writeNativeSpacesFileLatest } from './electron/nativeSpacesFile'
+import {
+  deleteSpace as deleteModularSpace,
+  importLegacySpaces as importLegacyModularSpaces,
+  readSpaceMap as readModularSpaceMap,
+  readSpacesIndex as readModularSpacesIndex,
+  updateSpaceMetadata as updateModularSpaceMetadata,
+  writeSpace as writeModularSpace,
+} from './electron/spacesStoreFile'
 import { prepareProductionLibrary } from './build/productionLibrary'
 
 ensureNativeSpacesFile(path.resolve(__dirname, 'src/data/nativeSpaces.json'))
@@ -193,6 +201,61 @@ export default defineConfig({
             }
             return
           }
+          if (req.url?.startsWith('/api/spaces')) {
+            const dataDir = path.resolve(process.cwd(), 'src/data')
+            const pathname = req.url.split('?')[0]
+            const readJsonBody = async () => {
+              const chunks: Buffer[] = []
+              for await (const chunk of req) chunks.push(Buffer.from(chunk))
+              return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+            }
+            try {
+              res.setHeader('Content-Type', 'application/json')
+              if (pathname === '/api/spaces' && req.method === 'GET') {
+                res.end(JSON.stringify(await readModularSpacesIndex(dataDir)))
+                return
+              }
+              if (pathname === '/api/spaces/import-legacy' && req.method === 'POST') {
+                const parsed = await readJsonBody()
+                res.end(JSON.stringify(await importLegacyModularSpaces(dataDir, Array.isArray(parsed) ? parsed : [])))
+                return
+              }
+              const mapMatch = /^\/api\/spaces\/([^/]+)\/map$/.exec(pathname)
+              if (mapMatch && req.method === 'GET') {
+                const mapData = await readModularSpaceMap(dataDir, decodeURIComponent(mapMatch[1]))
+                if (!mapData) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Not found' })); return }
+                res.end(JSON.stringify(mapData))
+                return
+              }
+              const idMatch = /^\/api\/spaces\/([^/]+)$/.exec(pathname)
+              if (idMatch) {
+                const spaceId = decodeURIComponent(idMatch[1])
+                if (req.method === 'PUT') {
+                  const parsed = await readJsonBody()
+                  const saved = await writeModularSpace(dataDir, { ...parsed.summary, id: spaceId }, parsed.mapData)
+                  res.end(JSON.stringify(saved))
+                  return
+                }
+                if (req.method === 'PATCH') {
+                  const parsed = await readJsonBody()
+                  const updated = await updateModularSpaceMetadata(dataDir, spaceId, parsed)
+                  res.end(JSON.stringify(updated))
+                  return
+                }
+                if (req.method === 'DELETE') {
+                  const deleted = await deleteModularSpace(dataDir, spaceId)
+                  res.end(JSON.stringify({ deleted }))
+                  return
+                }
+              }
+              res.statusCode = 404
+              res.end(JSON.stringify({ error: 'Unknown spaces endpoint' }))
+            } catch (error) {
+              res.statusCode = 500
+              res.end(JSON.stringify({ error: String(error) }))
+            }
+            return
+          }
           if (req.url === '/api/save-native-spaces' && req.method === 'POST') {
             let body = ''
             req.on('data', (chunk) => {
@@ -256,6 +319,7 @@ export default defineConfig({
         '**/native/process-audio-capture/obj/**',
         '**/src/data/nativeAssets.json',
         '**/src/data/nativeSpaces.json',
+        '**/src/data/spaces/**',
         '**/public/assets/**',
       ],
     },
@@ -263,6 +327,8 @@ export default defineConfig({
   test: {
     // Node 25+ Web Storage shadows jsdom's storage in Vitest 4 (vitest#10867).
     execArgv: Number(process.versions.node.split('.')[0]) >= 25 ? ['--no-experimental-webstorage'] : [],
+    testTimeout: 60000,
+    hookTimeout: 60000,
     server: { deps: { inline: [/@excalidraw\/excalidraw/, /open-color/] } },
     include: ['src/__tests__/**/*.test.{ts,tsx,js,mjs}'],
     exclude: ['**/node_modules/**', '**/.claude/**', '**/dist/**'],

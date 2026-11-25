@@ -1296,30 +1296,30 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/85 backdrop-blur-md p-4 select-none animate-in fade-in duration-200"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-lira-ground/80 p-4 select-none font-mono text-lira-ink"
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <div className="bg-[#1e1f22] border border-[#383a40] w-full max-w-7xl h-[92vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden">
-        <div className="px-6 py-3 border-b border-[#2b2d31] flex items-center justify-between bg-[#18191c]">
+      <div className="bg-lira-panel border border-dashed border-lira-rule w-full max-w-7xl h-[92vh] rounded-[12px] flex flex-col overflow-hidden">
+        <div className="px-6 py-3 border-b border-dashed border-lira-rule/60 flex items-center justify-between bg-lira-sidebar">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#3b82f6]/20 border border-[#3b82f6]/40 flex items-center justify-center text-[#3b82f6]">
+            <div className="w-10 h-10 rounded-[8px] bg-lira-surface border border-lira-rule flex items-center justify-center text-lira-accent">
               <Scissors className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <h2 className="text-base font-display font-bold text-lira-accent flex items-center gap-2">
                 {editingAsset ? `Editar: ${editingAsset.name}` : 'Fatiador com Seletor Livre (Qualquer Tamanho)'}
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[#2b2d31] text-blue-400 border border-[#383a40]">
+                <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded-[6px] bg-lira-surface text-lira-accent border border-lira-rule">
                   {CATEGORY_LABELS[category]}
                 </span>
                 {editingAsset && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-[6px] bg-lira-ground text-lira-accent border border-lira-rule">
                     Modo Edição
                   </span>
                 )}
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs font-mono text-lira-muted">
                 {editingAsset
                   ? 'Reorganize frames, recorte novos passos da folha ou ajuste as direções deste personagem.'
                   : 'Recorte sprites de qualquer dimensão (16×16, 32×32, 64×64, 128×128 ou o tamanho máximo da folha).'}
@@ -1331,7 +1331,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
             <button
               type="button"
               onClick={() => setIsPixelStudioOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-blue-500/25 transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-[8px] bg-lira-accent hover:bg-lira-ink text-lira-ground text-xs font-mono font-bold border-2 border-lira-accent hover:border-lira-ink transition-colors cursor-pointer"
               title="Pintar e editar os pixels deste personagem no Estúdio Pixel Art"
             >
               <Paintbrush className="w-4 h-4" />
@@ -1342,9 +1342,9 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               type="button"
               onClick={() => setShowXmlModal(true)}
               disabled={!sourceImg || isAddingSheets}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#2b2d31] hover:bg-[#383a40] text-slate-300 hover:text-white text-xs font-semibold border border-[#383a40] transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] bg-lira-surface hover:border-lira-accent text-lira-muted hover:text-lira-ink text-xs font-mono font-semibold border border-lira-rule transition-colors cursor-pointer"
             >
-              <FileCode className="w-4 h-4 text-blue-400" />
+              <FileCode className="w-4 h-4 text-lira-accent" />
               <span>Ver XML Gerado</span>
             </button>
 
@@ -1352,17 +1352,17 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               type="button"
               onClick={handleDownloadXml}
               disabled={!sourceImg || isAddingSheets}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#2b2d31] hover:bg-[#383a40] text-slate-300 hover:text-white text-xs font-semibold border border-[#383a40] transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] bg-lira-surface hover:border-lira-online text-lira-muted hover:text-lira-ink text-xs font-mono font-semibold border border-lira-rule transition-colors cursor-pointer"
             >
-              <Download className="w-4 h-4 text-emerald-400" />
+              <Download className="w-4 h-4 text-lira-online" />
               <span>Baixar .xml</span>
             </button>
 
-            <div className="w-px h-6 bg-[#383a40] mx-1" />
+            <div className="w-px h-6 bg-lira-quiet mx-1" />
 
             <button
               onClick={onClose}
-              className="w-8 h-8 rounded-xl bg-[#2b2d31] hover:bg-[#383a40] text-slate-400 hover:text-white flex items-center justify-center transition-colors"
+              className="w-8 h-8 rounded-[8px] bg-lira-surface border border-lira-rule hover:border-lira-accent text-lira-muted hover:text-lira-ink flex items-center justify-center transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
@@ -1373,9 +1373,9 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
           <div
             ref={stageRef}
             data-spritesheet-stage
-            className="flex-1 min-w-0 min-h-0 relative bg-[#121316] overflow-hidden cursor-crosshair"
+            className="flex-1 min-w-0 min-h-0 relative bg-lira-ground overflow-hidden cursor-crosshair"
           >
-            <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 bg-[#18191c]/90 border border-[#383a40] backdrop-blur-md p-1.5 rounded-2xl shadow-xl">
+            <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5 bg-lira-sidebar border border-lira-rule p-1.5 rounded-[8px]">
               <button
                 type="button"
                 onClick={() =>
@@ -1384,12 +1384,12 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                     return Math.max(0.01, Math.round((z - step) * 100) / 100)
                   })
                 }
-                className="w-8 h-8 rounded-xl hover:bg-[#2b2d31] text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                className="w-8 h-8 rounded-[6px] hover:bg-lira-surface text-lira-muted hover:text-lira-ink flex items-center justify-center transition-colors cursor-pointer"
                 title="Diminuir Zoom"
               >
                 <ZoomOut className="w-4 h-4" />
               </button>
-              <span className="text-xs font-mono font-bold text-slate-300 px-2 min-w-[45px] text-center">
+              <span className="text-xs font-mono font-bold text-lira-ink px-2 min-w-[45px] text-center tabular-nums">
                 {zoom < 1 ? zoom.toFixed(2) : zoom}x
               </span>
               <button
@@ -1400,7 +1400,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                     return Math.min(10, Math.round((z + step) * 100) / 100)
                   })
                 }
-                className="w-8 h-8 rounded-xl hover:bg-[#2b2d31] text-slate-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                className="w-8 h-8 rounded-[6px] hover:bg-lira-surface text-lira-muted hover:text-lira-ink flex items-center justify-center transition-colors cursor-pointer"
                 title="Aumentar Zoom"
               >
                 <ZoomIn className="w-4 h-4" />
@@ -1408,18 +1408,18 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={fitSpritesheet}
-                className="flex items-center gap-1.5 px-2 py-1 rounded-xl text-xs font-semibold text-slate-300 hover:bg-[#2b2d31] hover:text-white"
+                className="flex items-center gap-1.5 px-2 py-1 rounded-[6px] text-xs font-mono font-semibold text-lira-muted hover:bg-lira-surface hover:text-lira-ink"
                 title="Ajustar spritesheet à área de edição"
               >
                 <Maximize2 className="w-3.5 h-3.5" />
                 <span>Ajustar</span>
               </button>
-              <div className="w-px h-4 bg-[#383a40] mx-1" />
+              <div className="w-px h-4 bg-lira-quiet mx-1" />
               <button
                 type="button"
                 onClick={() => setShowGrid(!showGrid)}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
-                  showGrid ? 'bg-[#3b82f6] text-white' : 'hover:bg-[#2b2d31] text-slate-400 hover:text-slate-200'
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-[6px] text-xs font-mono font-semibold transition-colors cursor-pointer ${
+                  showGrid ? 'bg-lira-accent text-lira-ground' : 'hover:bg-lira-surface text-lira-muted hover:text-lira-ink'
                 }`}
                 title="Alternar Grade"
               >
@@ -1429,26 +1429,26 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
             </div>
 
             {isPickingColor ? (
-              <div className="absolute bottom-4 z-10 flex items-center gap-2 bg-amber-500 text-slate-950 font-bold px-4 py-2 rounded-2xl text-xs shadow-xl animate-bounce">
+              <div className="absolute bottom-4 z-10 flex items-center gap-2 bg-lira-amber text-lira-ground font-mono font-bold px-4 py-2 rounded-[8px] text-xs">
                 <Pipette className="w-4 h-4" />
                 <span>Conta-gotas ativo: Clique em qualquer ponto da imagem para selecionar a cor de fundo!</span>
                 <button
                   type="button"
                   onClick={() => setIsPickingColor(false)}
-                  className="ml-2 px-2 py-0.5 rounded-lg bg-slate-900/30 hover:bg-slate-900/50 text-slate-950 text-[10px]"
+                  className="ml-2 px-2 py-0.5 rounded-[6px] bg-lira-ground/30 hover:bg-lira-ground/50 text-lira-ground text-[10px]"
                 >
                   Cancelar (Esc)
                 </button>
               </div>
             ) : (
-              <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 bg-[#18191c]/90 border border-[#383a40] backdrop-blur-md px-4 py-2 rounded-2xl text-xs text-slate-400 shadow-lg pointer-events-none">
+              <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 bg-lira-sidebar border border-lira-rule px-4 py-2 rounded-[8px] text-xs font-mono text-lira-muted pointer-events-none">
                 <span>
                   Seleção:{' '}
-                  <strong className="text-white">
+                  <strong className="text-lira-ink">
                     x: {selection.x}, y: {selection.y} ({selection.w}×{selection.h}px)
                   </strong>
                 </span>
-                <div className="w-px h-3 bg-[#383a40]" />
+                <div className="w-px h-3 bg-lira-quiet" />
                 <span>🖱️ Arraste dentro da seleção ou use setas do teclado para movê-la</span>
                 <span>•</span>
                 <span>🔍 Ctrl + Scroll: Zoom</span>
@@ -1461,7 +1461,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               <div className="min-w-full min-h-full w-max flex items-center justify-center px-6 pt-20 pb-20">
                 <div
                   style={{ width: (sourceImg?.naturalWidth || 0) * zoom, height: (sourceImg?.naturalHeight || 0) * zoom }}
-                  className="relative shrink-0 shadow-2xl outline outline-1 outline-slate-700/60"
+                  className="relative shrink-0 outline outline-1 outline-lira-rule"
                 >
                   <canvas
                     ref={canvasRef}
@@ -1476,27 +1476,27 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
             </div>
           </div>
 
-          <div className="w-96 shrink-0 border-l border-[#2b2d31] bg-[#18191c]/90 flex flex-col p-4 gap-3.5 overflow-y-auto">
-            <div className="flex flex-col gap-2 bg-[#2b2d31]/70 border border-[#383a40] p-3 rounded-2xl">
+          <div className="w-96 shrink-0 border-l border-lira-quiet bg-lira-sidebar flex flex-col p-4 gap-3.5 overflow-y-auto">
+            <div className="flex flex-col gap-2 bg-lira-panel border border-lira-quiet p-3 rounded-[12px]">
               <div className="flex items-center justify-between gap-2">
-                <label htmlFor="slicer-source-sheet" className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Spritesheets ({sourceSheets.length})</label>
+                <label htmlFor="slicer-source-sheet" className="text-[11px] font-mono font-bold text-lira-muted uppercase tracking-wider">Spritesheets ({sourceSheets.length})</label>
                 <button type="button" onClick={() => sourceFileInput.current?.click()} disabled={isAddingSheets}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#3b82f6]/20 hover:bg-[#3b82f6] text-[#60a5fa] hover:text-white text-[11px] font-bold disabled:opacity-50">
+                  className="flex items-center gap-1 px-2 py-1 rounded-[6px] bg-lira-surface hover:bg-lira-accent text-lira-accent hover:text-lira-ground border border-lira-rule text-[11px] font-mono font-bold disabled:opacity-50">
                   <Plus className="w-3 h-3" />{isAddingSheets ? 'Adicionando…' : 'Adicionar'}
                 </button>
               </div>
               <select id="slicer-source-sheet" value={activeSheetId} onChange={event => setActiveSheetId(event.target.value)}
-                className="w-full min-w-0 bg-[#1e1f22] border border-[#383a40] text-white text-xs px-3 py-2 rounded-xl">
+                className="w-full min-w-0 bg-lira-ground border border-lira-rule text-lira-ink font-mono text-xs px-3 py-2 rounded-[8px]">
                 {sourceSheets.map(sheet => <option key={sheet.id} value={sheet.id}>{sheet.name}</option>)}
               </select>
               <input ref={sourceFileInput} type="file" accept="image/png" multiple className="hidden" aria-label="Adicionar spritesheets PNG" onChange={event => void handleAddSheets(event.target.files)} />
-              {sheetError && <p role="alert" className="text-xs text-rose-300">{sheetError}</p>}
+              {sheetError && <p role="alert" className="text-xs font-mono text-lira-error">{sheetError}</p>}
             </div>
-            <div className="flex flex-col gap-2.5 bg-[#2b2d31]/70 border border-[#383a40] p-3 rounded-2xl">
+            <div className="flex flex-col gap-2.5 bg-lira-panel border border-lira-quiet p-3 rounded-[12px]">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-                  <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                  <Sparkles className="w-3.5 h-3.5 text-lira-accent" />
+                  <span className="text-[11px] font-mono font-bold text-lira-muted uppercase tracking-wider">
                     Remoção de Fundo
                   </span>
                 </div>
@@ -1507,40 +1507,40 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                     onChange={(e) => setEnableBgRemoval(e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="w-8 h-4 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#3b82f6]"></div>
+                  <div className="w-8 h-4 bg-lira-ground border border-lira-rule peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-lira-ground after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-lira-ink peer-checked:after:bg-lira-ground after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-lira-accent"></div>
                 </label>
               </div>
 
               {enableBgRemoval && (
-                <div className="flex flex-col gap-2.5 pt-1 border-t border-[#383a40]/60">
+                <div className="flex flex-col gap-2.5 pt-1 border-t border-dashed border-lira-rule/60">
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={handleAutoDetectBg}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-sm transition-all active:scale-95 cursor-pointer"
+                      className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-[8px] bg-lira-accent hover:bg-lira-ink text-lira-ground text-xs font-mono font-bold transition-colors cursor-pointer"
                       title="Detecta automaticamente a cor de fundo analisando as bordas e cantos da imagem e a remove"
                     >
-                      <Wand2 className="w-3.5 h-3.5 text-amber-300" />
+                      <Wand2 className="w-3.5 h-3.5" />
                       <span>Modo Automático</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={handleToggleEyedropper}
-                      className={`flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-xl text-xs font-bold border transition-all active:scale-95 cursor-pointer ${
+                      className={`flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-[8px] text-xs font-mono font-bold border transition-colors cursor-pointer ${
                         isPickingColor
-                          ? 'bg-amber-500 text-slate-900 border-amber-400 shadow-md shadow-amber-500/20 animate-pulse'
-                          : 'bg-[#1e1f22] hover:bg-[#2b2d31] text-slate-200 border-[#383a40]'
+                          ? 'bg-lira-amber text-lira-ground border-lira-amber'
+                          : 'bg-lira-surface hover:border-lira-accent text-lira-ink border-lira-rule'
                       }`}
                       title="Clique para ativar o conta-gotas e selecionar a cor diretamente na imagem"
                     >
-                      <Pipette className="w-3.5 h-3.5 text-blue-400" />
+                      <Pipette className="w-3.5 h-3.5 text-lira-accent" />
                       <span>{isPickingColor ? 'Clique...' : 'Conta-gotas'}</span>
                     </button>
 
                     <div className="relative group/picker shrink-0">
                       <div
-                        className="w-7 h-7 rounded-xl border border-white/30 shadow-inner flex items-center justify-center cursor-pointer overflow-hidden transition-transform hover:scale-105"
+                        className="w-7 h-7 rounded-[6px] border border-lira-rule flex items-center justify-center cursor-pointer overflow-hidden"
                         style={{ backgroundColor: targetColorHex }}
                         title={`Cor de fundo: ${targetColorHex} (Clique para ajustar)`}
                       >
@@ -1554,31 +1554,31 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between text-xs text-slate-300 bg-[#1e1f22]/60 px-2.5 py-1.5 rounded-xl border border-[#383a40]/40">
-                    <span className="text-[11px] font-semibold text-slate-400">Tolerância:</span>
+                  <div className="flex items-center justify-between text-xs font-mono text-lira-ink bg-lira-ground px-2.5 py-1.5 rounded-[8px] border border-lira-quiet">
+                    <span className="text-[11px] font-mono font-semibold text-lira-muted">Tolerância:</span>
                     <input
                       type="range"
                       min={0}
                       max={100}
                       value={tolerance}
                       onChange={(e) => setTolerance(parseInt(e.target.value))}
-                      className="w-28 accent-[#3b82f6] cursor-pointer"
+                      className="w-28 accent-[#d1b5ff] cursor-pointer"
                     />
-                    <span className="font-mono font-bold text-slate-200 w-8 text-right">{tolerance}%</span>
+                    <span className="font-mono font-bold text-lira-ink w-8 text-right tabular-nums">{tolerance}%</span>
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="flex flex-col gap-2 bg-[#2b2d31]/70 border border-[#383a40] p-3 rounded-2xl">
+            <div className="flex flex-col gap-2 bg-lira-panel border border-lira-quiet p-3 rounded-[12px]">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                <span className="text-[11px] font-mono font-bold text-lira-muted uppercase tracking-wider">
                   Presets ({presets.length})
                 </span>
                 <button
                   type="button"
                   onClick={handleAddNewPreset}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#3b82f6]/20 hover:bg-[#3b82f6] text-[#60a5fa] hover:text-white text-[11px] font-bold transition-all cursor-pointer"
+                  className="flex items-center gap-1 px-2 py-1 rounded-[6px] bg-lira-surface hover:bg-lira-accent text-lira-accent hover:text-lira-ground border border-lira-rule text-[11px] font-mono font-bold transition-colors cursor-pointer"
                 >
                   <Plus className="w-3 h-3" />
                   <span>Novo Preset</span>
@@ -1598,14 +1598,14 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                     })
                   }}
                   placeholder="Nome do Preset"
-                  className="flex-1 bg-[#1e1f22] border border-[#383a40] focus:border-[#3b82f6] text-white text-xs px-3 py-1.5 rounded-xl outline-none"
+                  className="flex-1 bg-lira-ground border border-lira-rule focus:border-lira-accent text-lira-ink font-mono text-xs px-3 py-1.5 rounded-[8px] outline-none"
                 />
 
                 {presets.length > 1 && (
                   <button
                     type="button"
                     onClick={() => handleRemovePreset(activePresetIndex)}
-                    className="w-8 h-8 rounded-xl bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                    className="w-8 h-8 rounded-[8px] bg-lira-error/15 hover:bg-lira-error text-lira-error hover:text-lira-ground border border-lira-error/40 flex items-center justify-center transition-colors cursor-pointer"
                     title="Excluir este preset"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -1619,10 +1619,10 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                     <button
                       key={p.id}
                       onClick={() => setActivePresetIndex(idx)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+                      className={`px-2.5 py-1 rounded-[6px] text-xs font-mono font-semibold whitespace-nowrap transition-colors cursor-pointer border ${
                         activePresetIndex === idx
-                          ? 'bg-[#3b82f6] text-white'
-                          : 'bg-[#1e1f22] text-slate-400 hover:text-slate-200'
+                          ? 'bg-lira-accent text-lira-ground border-lira-accent'
+                          : 'bg-lira-ground text-lira-muted border-lira-quiet hover:text-lira-ink'
                       }`}
                     >
                       {p.name || `Preset ${idx + 1}`}
@@ -1632,16 +1632,16 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               )}
             </div>
 
-            <div className="bg-[#2b2d31]/70 border border-[#383a40] p-3 rounded-2xl flex flex-col gap-2.5">
+            <div className="bg-lira-panel border border-lira-quiet p-3 rounded-[12px] flex flex-col gap-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                <span className="text-[11px] font-mono font-bold text-lira-muted uppercase tracking-wider">
                   Tamanho da Seleção
                 </span>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-[#1e1f22] text-blue-400 border border-[#383a40]">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-[6px] bg-lira-ground text-lira-accent border border-lira-rule">
                     Grade: {gridSnapSize}px
                   </span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-[#1e1f22] text-amber-400 border border-[#383a40]">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-[6px] bg-lira-ground text-lira-amber border border-lira-rule">
                     {selection.w}×{selection.h}px
                   </span>
                 </div>
@@ -1649,9 +1649,9 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
 
 
 
-              <div className="flex flex-col gap-1.5 bg-[#1e1f22] p-2 rounded-xl border border-[#383a40]/60">
-                <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span className="text-[10px] font-bold text-slate-300">Grade / Snap:</span>
+              <div className="flex flex-col gap-1.5 bg-lira-ground p-2 rounded-[8px] border border-lira-quiet">
+                <div className="flex items-center justify-between text-xs font-mono text-lira-muted">
+                  <span className="text-[10px] font-mono font-bold text-lira-ink">Grade / Snap:</span>
                   <div className="flex items-center gap-1">
                     <input
                       type="number"
@@ -1659,9 +1659,9 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                       max={Math.max(4096, sourceImg ? Math.max(sourceImg.naturalWidth, sourceImg.naturalHeight) : 4096)}
                       value={gridSnapSize}
                       onChange={(e) => handleUpdateGridSize(parseInt(e.target.value) || 1)}
-                      className="w-14 bg-[#141517] border border-[#383a40] focus:border-blue-500 text-blue-400 font-mono text-center text-xs px-1 py-0.5 rounded-lg outline-none"
+                      className="w-14 bg-lira-panel border border-lira-rule focus:border-lira-accent text-lira-accent font-mono text-center text-xs px-1 py-0.5 rounded-[6px] outline-none"
                     />
-                    <span className="text-[10px] text-slate-500">px</span>
+                    <span className="text-[10px] font-mono text-lira-muted">px</span>
                   </div>
                 </div>
 
@@ -1672,24 +1672,24 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                     max={Math.min(512, Math.max(64, sourceImg ? Math.min(sourceImg.naturalWidth, sourceImg.naturalHeight) : 64))}
                     value={gridSnapSize}
                     onChange={(e) => handleUpdateGridSize(parseInt(e.target.value) || 1)}
-                    className="flex-1 accent-blue-500 cursor-pointer h-1.5"
+                    className="flex-1 accent-[#d1b5ff] cursor-pointer h-1.5"
                     title="Ajuste fino da grade (sincroniza o seletor)"
                   />
-                  <span className="text-[9px] font-mono text-slate-400 min-w-[32px] text-right">
+                  <span className="text-[9px] font-mono text-lira-muted min-w-[32px] text-right tabular-nums">
                     {gridSnapSize}×{gridSnapSize}
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between gap-1 pt-1 border-t border-white/5">
+                <div className="flex items-center justify-between gap-1 pt-1 border-t border-dashed border-lira-rule/60">
                   {[1, 8, 16, 24, 32, 48, 64, 128].map((s) => (
                     <button
                       key={s}
                       type="button"
                       onClick={() => handleUpdateGridSize(s)}
-                      className={`flex-1 py-0.5 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                      className={`flex-1 py-0.5 rounded-[6px] text-[10px] font-mono font-bold border transition-colors cursor-pointer ${
                         gridSnapSize === s
-                          ? 'bg-blue-600 border-blue-400 text-white shadow'
-                          : 'bg-[#141517] border-[#383a40] text-slate-400 hover:text-white'
+                          ? 'bg-lira-accent border-lira-accent text-lira-ground'
+                          : 'bg-lira-panel border-lira-quiet text-lira-muted hover:text-lira-ink'
                       }`}
                       title={`Ajusta a grade para ${s}px e o seletor para ${s}×${s}px`}
                     >
@@ -1699,9 +1699,9 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 bg-[#1e1f22] p-2 rounded-xl border border-[#383a40]/60">
-                <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span className="text-[10px] font-semibold">Largura:</span>
+              <div className="grid grid-cols-2 gap-2 bg-lira-ground p-2 rounded-[8px] border border-lira-quiet">
+                <div className="flex items-center justify-between text-xs font-mono text-lira-muted">
+                  <span className="text-[10px] font-mono font-semibold">Largura:</span>
                   <div className="flex items-center gap-1">
                     <input
                       type="number"
@@ -1710,14 +1710,14 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                       step={gridSnapSize > 0 ? gridSnapSize : 1}
                       value={selection.w}
                       onChange={(e) => setExactDimensions(parseInt(e.target.value) || 1, selection.h)}
-                      className="w-16 bg-[#141517] border border-[#383a40] text-amber-300 font-mono text-center text-xs px-1 py-0.5 rounded-lg outline-none"
+                      className="w-16 bg-lira-panel border border-lira-rule text-lira-amber font-mono text-center text-xs px-1 py-0.5 rounded-[6px] outline-none"
                     />
-                    <span className="text-[10px] text-slate-500">px</span>
+                    <span className="text-[10px] font-mono text-lira-muted">px</span>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span className="text-[10px] font-semibold">Altura:</span>
+                <div className="flex items-center justify-between text-xs font-mono text-lira-muted">
+                  <span className="text-[10px] font-mono font-semibold">Altura:</span>
                   <div className="flex items-center gap-1">
                     <input
                       type="number"
@@ -1726,15 +1726,15 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                       step={gridSnapSize > 0 ? gridSnapSize : 1}
                       value={selection.h}
                       onChange={(e) => setExactDimensions(selection.w, parseInt(e.target.value) || 1)}
-                      className="w-16 bg-[#141517] border border-[#383a40] text-amber-300 font-mono text-center text-xs px-1 py-0.5 rounded-lg outline-none"
+                      className="w-16 bg-lira-panel border border-lira-rule text-lira-amber font-mono text-center text-xs px-1 py-0.5 rounded-[6px] outline-none"
                     />
-                    <span className="text-[10px] text-slate-500">px</span>
+                    <span className="text-[10px] font-mono text-lira-muted">px</span>
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 bg-[#1e1f22] p-2.5 rounded-xl border border-[#383a40]/60">
-                <div className="w-16 h-16 rounded-lg bg-[#141517] border border-[#383a40] flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
+              <div className="flex items-center gap-3 bg-lira-ground p-2.5 rounded-[8px] border border-lira-quiet">
+                <div className="w-16 h-16 rounded-[6px] bg-lira-panel border border-lira-quiet flex items-center justify-center overflow-hidden shrink-0">
                   {selectedRegionDataUrl ? (
                     <RasterImage
                       src={selectedRegionDataUrl}
@@ -1746,7 +1746,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                       className="object-contain [image-rendering:pixelated]"
                     />
                   ) : (
-                    <span className="text-[9px] text-slate-600">Vazio</span>
+                    <span className="text-[9px] font-mono text-lira-muted">Vazio</span>
                   )}
                 </div>
 
@@ -1755,20 +1755,20 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                     type="button"
                     onClick={() => handleAddSequentialFrames(activeDirectionTab)}
                     disabled={sequenceCount === 0}
-                    className="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-extrabold shadow-md shadow-emerald-600/30 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-[8px] bg-lira-online hover:bg-lira-ink text-lira-ground text-[11px] font-mono font-extrabold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     title={`Adiciona o frame selecionado e os frames à direita, de ${selection.w}×${selection.h}px, até o fim da linha`}
                   >
                     <Layers className="w-3.5 h-3.5" />
                     <span>+ {sequenceCount} Frames Sequenciais</span>
                   </button>
-                  <span className="text-[10px] text-slate-400">
+                  <span className="text-[10px] font-mono text-lira-muted">
                     Da seleção à direita: {selection.w}×{selection.h}px por frame.
                   </span>
 
                   <button
                     type="button"
                     onClick={() => handleAddCompositeFrame(activeDirectionTab)}
-                    className="flex items-center justify-center gap-1 py-1 px-2 rounded-lg bg-[#2b2d31] hover:bg-[#383a40] border border-[#383a40] text-slate-300 hover:text-white text-[10px] font-semibold transition-all cursor-pointer"
+                    className="flex items-center justify-center gap-1 py-1 px-2 rounded-[6px] bg-lira-surface hover:border-lira-accent border border-lira-rule text-lira-muted hover:text-lira-ink text-[10px] font-mono font-semibold transition-colors cursor-pointer"
                     title="Adiciona o recorte exato como 1 frame"
                   >
                     <Maximize2 className="w-3 h-3" />
@@ -1778,12 +1778,12 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               </div>
             </div>
 
-            <div className="bg-[#2b2d31]/70 border border-[#383a40] p-3 rounded-2xl flex flex-col gap-3">
+            <div className="bg-lira-panel border border-lira-quiet p-3 rounded-[12px] flex flex-col gap-3">
               {allPresets[activePresetIndex] && <CharacterAnimationTabs key={allPresets[activePresetIndex].id}
                 preset={allPresets[activePresetIndex]} activeAnimation={activeAnimation}
                 onSelect={id => { setActiveAnimation(id); setWalkTick(0); setDirectionMenuIndex(null); setDraggedFrameIndex(null); setDragOverFrameIndex(null) }}
                 onChange={next => setAllPresets(previous => previous.map(preset => preset.id === next.id ? next : preset))} />}
-              {activeAnimation !== 'walk' && <p className="text-[11px] text-slate-400">
+              {activeAnimation !== 'walk' && <p className="text-[11px] font-mono text-lira-muted">
                 {activeAnimation === 'yawn' ? 'Boceja a cada minuto sem interação.' : activeAnimation === 'sleep' ? 'Dorme após 5 minutos sem interação. Interaja para acordar.' : 'Adicione ou pinte os frames desta animação. Depois de salvar, ela aparece no botão de animações do mini display.'}
               </p>}
               {activeAnimation === 'walk' && <div className="grid grid-cols-4 gap-1.5">
@@ -1795,10 +1795,10 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                       key={d.id}
                       type="button"
                       onClick={() => setActiveDirectionTab(d.id)}
-                      className={`flex flex-col items-center py-2 px-1 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                      className={`flex flex-col items-center py-2 px-1 rounded-[8px] text-xs font-mono font-bold transition-colors border cursor-pointer ${
                         isSelectedTab
-                          ? 'bg-[#3b82f6] border-[#60a5fa] text-white shadow-md'
-                          : 'bg-[#1e1f22] border-[#383a40] text-slate-400 hover:text-white'
+                          ? 'bg-lira-accent border-lira-accent text-lira-ground'
+                          : 'bg-lira-ground border-lira-quiet text-lira-muted hover:text-lira-ink'
                       }`}
                     >
                       <span className="text-sm">{d.icon}</span>
@@ -1807,8 +1807,8 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                         className={`text-[9px] px-1.5 py-0.2 rounded-full mt-1 ${
                           frameCount > 0
                             ? isSelectedTab
-                              ? 'bg-white text-blue-600 font-extrabold'
-                              : 'bg-emerald-500/20 text-emerald-400'
+                              ? 'bg-lira-ground text-lira-accent font-extrabold'
+                              : 'bg-lira-online/20 text-lira-online'
                             : 'opacity-40'
                         }`}
                       >
@@ -1820,17 +1820,17 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               </div>}
 
               <div className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between text-[11px] text-slate-300 font-bold uppercase tracking-wider">
+                <div className="flex items-center justify-between text-[11px] font-mono text-lira-muted font-bold uppercase tracking-wider">
                   <span>{activeAnimation === 'walk' ? `Frames de ${DIRECTIONS.find(d => d.id === activeDirectionTab)?.label}:` : `Frames de ${animations.find(animation => animation.id === activeAnimation)?.label}:`}</span>
                   {activeDirectionFrames.length > 1 && (
-                    <span className="text-emerald-400 lowercase font-semibold text-[10px]">
+                    <span className="text-lira-online lowercase font-mono font-semibold text-[10px]">
                       {animations.find(animation => animation.id === activeAnimation)?.label.toLowerCase()} ({activeDirectionFrames.length} frames)
                     </span>
                   )}
                 </div>
 
                 {activeDirectionFrames.length === 0 ? (
-                  <div className="py-4 text-center text-xs text-slate-500 border border-dashed border-[#383a40] rounded-xl">
+                  <div className="py-4 text-center text-xs font-mono text-lira-muted border border-dashed border-lira-rule/60 rounded-[8px]">
                     Nenhum frame atribuído ainda. Selecione na imagem para adicionar.
                   </div>
                 ) : (
@@ -1873,22 +1873,22 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                             setDraggedFrameIndex(null)
                             setDragOverFrameIndex(null)
                           }}
-                          className={`group relative flex flex-col items-center p-1.5 rounded-xl bg-[#141517] border transition-all shrink-0 ${
+                          className={`group relative flex flex-col items-center p-1.5 rounded-[8px] bg-lira-ground border transition-colors shrink-0 ${
                             isDragOver
-                              ? 'border-indigo-400 bg-indigo-500/20 shadow-lg scale-105'
+                              ? 'border-lira-accent bg-lira-surface'
                               : isDragged
-                              ? 'opacity-40 border-dashed border-blue-500 scale-95'
-                              : 'border-slate-700 hover:border-slate-500'
+                              ? 'opacity-40 border-dashed border-lira-accent'
+                              : 'border-lira-quiet hover:border-lira-rule'
                           }`}
                         >
                           <div className="w-full flex items-center justify-between pb-1 cursor-grab active:cursor-grabbing">
-                            <span className="text-slate-600 hover:text-slate-400" title="Arraste para mover de lugar">
+                            <span className="text-lira-muted hover:text-lira-ink" title="Arraste para mover de lugar">
                               <GripVertical className="w-3 h-3" />
                             </span>
                             <button
                               type="button"
                               onClick={() => handleRemoveDirectionFrame(activeDirectionTab, idx)}
-                              className="w-4 h-4 rounded-full bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+                              className="w-4 h-4 rounded-full bg-lira-error/20 hover:bg-lira-error text-lira-error hover:text-lira-ground flex items-center justify-center transition-colors cursor-pointer"
                               title="Remover este frame"
                             >
                               <X className="w-2.5 h-2.5" />
@@ -1910,7 +1910,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                                 sliceRegion(sourceImg, frame.x, frame.y, fw, fh)
                               }
                             }}
-                            className="w-12 h-12 rounded-lg bg-[#18191c] hover:ring-2 hover:ring-blue-400 flex items-center justify-center overflow-hidden transition-all cursor-pointer"
+                            className="w-12 h-12 rounded-[6px] bg-lira-panel hover:ring-2 hover:ring-lira-accent flex items-center justify-center overflow-hidden transition-colors cursor-pointer"
                             title="Clique para posicionar a seleção neste frame"
                           >
                             <RasterImage
@@ -1920,10 +1920,10 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                             />
                           </button>
 
-                          <span className="text-[9px] font-bold text-slate-300 mt-1">
+                          <span className="text-[9px] font-mono font-bold text-lira-ink mt-1">
                             {activeAnimation === 'walk' ? idx === 0 ? '0 (Parado)' : `Passo ${idx}` : `Frame ${idx + 1}`}
                           </span>
-                          <span className="text-[8px] text-slate-500 font-mono">
+                          <span className="text-[8px] text-lira-muted font-mono">
                             {frame.w || 16}×{frame.h || 16}
                           </span>
 
@@ -1933,22 +1933,22 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                               e.stopPropagation()
                               setIsPixelStudioOpen(true)
                             }}
-                            className="flex items-center gap-1 px-1.5 py-0.5 mt-1 rounded bg-[#1e1f22] hover:bg-[#3b82f6] text-slate-300 hover:text-white text-[9px] font-bold transition-colors cursor-pointer"
+                            className="flex items-center gap-1 px-1.5 py-0.5 mt-1 rounded-[6px] bg-lira-surface hover:bg-lira-accent text-lira-ink hover:text-lira-ground text-[9px] font-mono font-bold transition-colors cursor-pointer"
                             title="Pintar e editar pixels no Estúdio Pixel Art"
                           >
-                            <Paintbrush className="w-2.5 h-2.5 text-blue-400" />
+                            <Paintbrush className="w-2.5 h-2.5" />
                             <span>Pintar</span>
                           </button>
 
-                          <div className="flex items-center gap-1 mt-1.5 pt-1 border-t border-slate-800/80 w-full justify-center">
+                          <div className="flex items-center gap-1 mt-1.5 pt-1 border-t border-lira-quiet w-full justify-center">
                             <button
                               type="button"
                               disabled={idx === 0}
                               onClick={() => handleMoveFrameOrder(activeDirectionTab, idx, idx - 1)}
                               className={`p-1 rounded transition-colors ${
                                 idx === 0
-                                  ? 'opacity-30 cursor-not-allowed text-slate-600'
-                                  : 'hover:bg-[#2b2d31] text-slate-400 hover:text-white cursor-pointer'
+                                  ? 'opacity-30 cursor-not-allowed text-lira-muted'
+                                  : 'hover:bg-lira-surface text-lira-muted hover:text-lira-ink cursor-pointer'
                               }`}
                               title="Mover frame para a esquerda"
                             >
@@ -1960,8 +1960,8 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                               onClick={() => setDirectionMenuIndex(isMenuOpen ? null : idx)}
                               className={`p-1 rounded transition-colors ${
                                 isMenuOpen
-                                  ? 'bg-indigo-600 text-white'
-                                  : 'hover:bg-[#2b2d31] text-indigo-400 hover:text-white cursor-pointer'
+                                  ? 'bg-lira-accent text-lira-ground'
+                                  : 'hover:bg-lira-surface text-lira-accent hover:text-lira-ink cursor-pointer'
                               }`}
                               title="Mover para outra direção (Frente, Costas, etc.)"
                             >
@@ -1974,8 +1974,8 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                               onClick={() => handleMoveFrameOrder(activeDirectionTab, idx, idx + 1)}
                               className={`p-1 rounded transition-colors ${
                                 idx === activeDirectionFrames.length - 1
-                                  ? 'opacity-30 cursor-not-allowed text-slate-600'
-                                  : 'hover:bg-[#2b2d31] text-slate-400 hover:text-white cursor-pointer'
+                                  ? 'opacity-30 cursor-not-allowed text-lira-muted'
+                                  : 'hover:bg-lira-surface text-lira-muted hover:text-lira-ink cursor-pointer'
                               }`}
                               title="Mover frame para a direita"
                             >
@@ -1984,8 +1984,8 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                           </div>
 
                           {activeAnimation === 'walk' && isMenuOpen && (
-                            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-30 bg-[#1e1f22] border border-indigo-500/40 rounded-xl p-1.5 shadow-2xl flex flex-col gap-1 w-28 animate-in fade-in zoom-in-95">
-                              <span className="text-[9px] font-bold text-slate-400 px-1 border-b border-white/10 pb-0.5">
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-30 bg-lira-panel border border-dashed border-lira-rule rounded-[8px] p-1.5 flex flex-col gap-1 w-28">
+                              <span className="text-[9px] font-mono font-bold text-lira-muted px-1 border-b border-dashed border-lira-rule/60 pb-0.5">
                                 Mover para:
                               </span>
                               {DIRECTIONS.filter((d) => d.id !== activeDirectionTab).map((d) => (
@@ -1993,7 +1993,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                                   key={d.id}
                                   type="button"
                                   onClick={() => handleMoveFrameToDirection(activeDirectionTab, idx, d.id)}
-                                  className="text-[10px] font-semibold text-slate-200 hover:text-white hover:bg-indigo-600/30 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors text-left cursor-pointer"
+                                  className="text-[10px] font-mono font-semibold text-lira-ink hover:text-lira-accent hover:bg-lira-surface px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors text-left cursor-pointer"
                                 >
                                   <span>{d.icon}</span>
                                   <span>{d.label}</span>
@@ -2002,7 +2002,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                               <button
                                 type="button"
                                 onClick={() => setDirectionMenuIndex(null)}
-                                className="text-[9px] text-slate-400 hover:text-white pt-0.5 text-center cursor-pointer"
+                                className="text-[9px] font-mono text-lira-muted hover:text-lira-ink pt-0.5 text-center cursor-pointer"
                               >
                                 Fechar
                               </button>
@@ -2016,40 +2016,40 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
               </div>
 
               {activeAnimation === 'walk' && (activeDirectionTab === 'left' || activeDirectionTab === 'right') && (
-                <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#383a40]/60">
+                <div className="flex items-center justify-between gap-2 pt-1 border-t border-dashed border-lira-rule/60">
                   <button
                     type="button"
                     onClick={() => handleMirrorLateral('left', 'right')}
-                    className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-xl bg-[#1e1f22] hover:bg-[#383a40] border border-[#383a40] text-slate-300 hover:text-white text-[11px] font-semibold transition-colors cursor-pointer"
+                    className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[8px] bg-lira-ground hover:bg-lira-surface border border-lira-rule text-lira-muted hover:text-lira-ink text-[11px] font-mono font-semibold transition-colors cursor-pointer"
                   >
-                    <FlipHorizontal className="w-3.5 h-3.5 text-indigo-400" />
+                    <FlipHorizontal className="w-3.5 h-3.5 text-lira-accent" />
                     <span>Espelhar Esq ➔ Dir</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handleMirrorLateral('right', 'left')}
-                    className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-xl bg-[#1e1f22] hover:bg-[#383a40] border border-[#383a40] text-slate-300 hover:text-white text-[11px] font-semibold transition-colors cursor-pointer"
+                    className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-[8px] bg-lira-ground hover:bg-lira-surface border border-lira-rule text-lira-muted hover:text-lira-ink text-[11px] font-mono font-semibold transition-colors cursor-pointer"
                   >
-                    <FlipHorizontal className="w-3.5 h-3.5 text-indigo-400" />
+                    <FlipHorizontal className="w-3.5 h-3.5 text-lira-accent" />
                     <span>Espelhar Dir ➔ Esq</span>
                   </button>
                 </div>
               )}
             </div>
 
-            <div className="bg-[#2b2d31]/70 border border-[#383a40] p-3 rounded-2xl flex flex-col gap-2">
+            <div className="bg-lira-panel border border-lira-quiet p-3 rounded-[12px] flex flex-col gap-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                <span className="text-[11px] font-mono font-bold text-lira-muted uppercase tracking-wider">
                   Pré-visualização do Loop
                 </span>
                 <button
                   type="button"
                   onClick={() => setIsPlayingWalk(!isPlayingWalk)}
-                  className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-[6px] text-xs font-mono font-bold transition-colors cursor-pointer border ${
                     isPlayingWalk
-                      ? 'bg-blue-500/20 text-blue-400'
-                      : 'bg-[#1e1f22] text-slate-400 hover:text-slate-200'
+                      ? 'bg-lira-surface text-lira-accent border-lira-accent'
+                      : 'bg-lira-ground text-lira-muted border-lira-quiet hover:text-lira-ink'
                   }`}
                 >
                   {isPlayingWalk ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
@@ -2057,8 +2057,8 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                 </button>
               </div>
 
-              <div className="flex items-center justify-center bg-[#141517] p-3 rounded-xl border border-[#383a40]/60">
-                <div className="w-16 h-16 rounded-xl bg-[#1e1f22] flex items-center justify-center overflow-hidden border border-slate-700/60 shadow-inner">
+              <div className="flex items-center justify-center bg-lira-ground p-3 rounded-[8px] border border-lira-quiet">
+                <div className="w-16 h-16 rounded-[8px] bg-lira-panel flex items-center justify-center overflow-hidden border border-lira-quiet">
                   {currentPreviewFrame ? (
                     <RasterImage
                       src={currentPreviewFrame}
@@ -2066,15 +2066,15 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                       className="w-12 h-12 object-contain [image-rendering:pixelated]"
                     />
                   ) : (
-                    <span className="text-xs text-slate-600">-</span>
+                    <span className="text-xs font-mono text-lira-muted">-</span>
                   )}
                 </div>
               </div>
             </div>
 
             {savedSuccessCount !== null && (
-              <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs animate-in fade-in">
-                <CheckCircle className="w-4 h-4 shrink-0 text-emerald-400" />
+              <div className="flex items-center gap-2 p-3 rounded-[8px] bg-lira-online/15 border border-lira-online/40 text-lira-online text-xs font-mono">
+                <CheckCircle className="w-4 h-4 shrink-0 text-lira-online" />
                 <span>
                   {editingAsset
                     ? `Alterações em "${editingAsset.name}" salvas com sucesso!`
@@ -2088,7 +2088,7 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
                 type="button"
                 onClick={handleSaveAndEquip}
                 disabled={isSaving || isAddingSheets || !sourceImg}
-                className="w-full py-3 rounded-2xl text-xs font-extrabold bg-[#3b82f6] hover:bg-blue-500 text-white shadow-lg shadow-blue-500/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-3 rounded-[12px] text-xs font-mono font-extrabold bg-lira-accent hover:bg-lira-ink text-lira-ground border-2 border-lira-accent hover:border-lira-ink transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <Check className="w-4 h-4" />
                 <span>{isSaving ? 'Salvando…' : editingAsset ? `Salvar Alterações em "${editingAsset.name}"` : 'Salvar Presets no Avatar'}</span>
@@ -2099,37 +2099,37 @@ export const AvatarSpritesheetSlicerModal: React.FC<Props> = ({
       </div>
 
       {showXmlModal && (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="bg-[#1e1f22] border border-[#383a40] w-full max-w-xl rounded-3xl shadow-2xl flex flex-col overflow-hidden max-h-[80vh]">
-            <div className="px-6 py-4 border-b border-[#2b2d31] flex items-center justify-between bg-[#18191c]">
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-lira-ground/80 p-4 font-mono">
+          <div className="bg-lira-panel border border-dashed border-lira-rule w-full max-w-xl rounded-[12px] flex flex-col overflow-hidden max-h-[80vh]">
+            <div className="px-6 py-4 border-b border-dashed border-lira-rule/60 flex items-center justify-between bg-lira-sidebar">
               <div className="flex items-center gap-2">
-                <FileCode className="w-5 h-5 text-blue-400" />
-                <h3 className="text-sm font-bold text-white">Sparrow TextureAtlas XML Gerado</h3>
+                <FileCode className="w-5 h-5 text-lira-accent" />
+                <h3 className="text-sm font-display font-bold text-lira-accent">Sparrow TextureAtlas XML Gerado</h3>
               </div>
               <button
                 onClick={() => setShowXmlModal(false)}
-                className="w-7 h-7 rounded-lg bg-[#2b2d31] text-slate-400 hover:text-white flex items-center justify-center"
+                className="w-7 h-7 rounded-[6px] bg-lira-surface border border-lira-rule text-lira-muted hover:text-lira-ink flex items-center justify-center"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="p-4 overflow-y-auto">
-              <pre className="text-[11px] font-mono bg-[#141517] p-4 rounded-xl border border-[#383a40] text-emerald-300 overflow-x-auto select-text">
+              <pre className="text-[11px] font-mono bg-lira-ground p-4 rounded-[8px] border border-lira-quiet text-lira-online overflow-x-auto select-text">
                 {generateXmlString()}
               </pre>
             </div>
 
-            <div className="px-6 py-3 border-t border-[#2b2d31] bg-[#18191c] flex items-center justify-end gap-2">
+            <div className="px-6 py-3 border-t border-dashed border-lira-rule/60 bg-lira-sidebar flex items-center justify-end gap-2">
               <button
                 onClick={() => setShowXmlModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
+                className="px-4 py-2 rounded-[8px] text-xs font-mono font-semibold text-lira-muted hover:text-lira-ink bg-lira-surface border border-lira-rule"
               >
                 Fechar
               </button>
               <button
                 onClick={handleDownloadXml}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#3b82f6] text-white hover:bg-blue-500 cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-[8px] text-xs font-mono font-bold bg-lira-accent text-lira-ground hover:bg-lira-ink cursor-pointer"
               >
                 <Download className="w-4 h-4" />
                 <span>Baixar Arquivo .xml</span>

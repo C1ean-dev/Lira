@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true)]
-  [ValidateSet('Backup', 'Apply', 'Verify', 'Restore', 'Commit', 'Cleanup')]
+  [ValidateSet('Backup', 'Apply', 'DeltaUpdate', 'SparseDeltaUpdate', 'Verify', 'Restore', 'Commit', 'Cleanup')]
   [string]$Action,
   [Parameter(Mandatory = $true)]
   [string]$InstallDir,
@@ -12,7 +12,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-if ($Action -in @('Backup', 'Apply', 'Verify', 'Restore', 'Commit')) { . "$PSScriptRoot\update-io.ps1" }
+if ($Action -in @('Backup', 'Apply', 'DeltaUpdate', 'SparseDeltaUpdate', 'Verify', 'Restore', 'Commit')) { . "$PSScriptRoot\update-io.ps1" }
 
 function Get-ManagedPath([string]$Target) {
   $absolute = [IO.Path]::GetFullPath($Target).TrimEnd('\')
@@ -34,6 +34,9 @@ $pendingPath = Join-Path $parent.FullName 'lira.update-pending.json'
 $pendingTempPath = "$pendingPath.tmp"
 $progressPath = Join-Path $parent.FullName 'lira.update-progress.jsonl'
 $errorPath = Join-Path $parent.FullName 'lira.update-errors.jsonl'
+$incrementalStagePath = Join-Path $parent.FullName 'lira.update-stage'
+$applyingLockPath = Join-Path $parent.FullName 'lira.update-applying.lock'
+$launchAfterFlagPath = Join-Path $parent.FullName 'lira.launch-after-update.flag'
 $profileStagingPath = "$userDataPath.update-restore"
 $managedTrees = @($installPath, $backupPath, $stagingPath, $userDataPath, $profileStagingPath)
 foreach ($left in $managedTrees) {
@@ -51,6 +54,7 @@ if (@($managedTrees | ForEach-Object { $_.ToUpperInvariant() } | Select-Object -
 # and retained when catalogs change; external browser profiles and downloaded modules stay live.
 $profileChangeKinds = @{
   'data\nativeSpaces.json' = 'File'
+  'data\spaces' = 'Directory'
   'data\nativeAssets.json' = 'File'
   'assets\library\catalog.json' = 'File'
   'Local Storage' = 'Directory'
@@ -58,6 +62,10 @@ $profileChangeKinds = @{
 $profileChangeParents = @('data', 'assets', 'assets\library')
 
 function Assert-RegularPath([string]$Target) {
+  if ('LiraUpdateIO' -as [type]) {
+    [LiraUpdateIO]::AssertRegularPath($Target)
+    return
+  }
   $ancestor = $Target
   while ($ancestor) {
     if (Test-Path -LiteralPath $ancestor) {
@@ -71,6 +79,10 @@ function Assert-RegularPath([string]$Target) {
 
 function Assert-RegularTree([string]$Target) {
   # Reject junctions and symlinks before any recursive copy/removal, including ancestors.
+  if ('LiraUpdateIO' -as [type]) {
+    [LiraUpdateIO]::AssertRegularTree($Target)
+    return
+  }
   Assert-RegularPath $Target
   if (Test-Path -LiteralPath $Target) {
     foreach ($item in Get-ChildItem -LiteralPath $Target -Recurse -Force) {
@@ -82,7 +94,7 @@ function Assert-RegularTree([string]$Target) {
 function Remove-UpdateTree([string]$Target) {
   # Check exact, resolved targets before every recursive removal.
   $resolved = [IO.Path]::GetFullPath($Target)
-  if ($resolved -notin @($installPath, $backupPath, $stagingPath, $profileStagingPath)) { throw 'Removal outside update directories.' }
+  if ($resolved -notin @($installPath, $backupPath, $stagingPath, $profileStagingPath, $incrementalStagePath)) { throw 'Removal outside update directories.' }
   Assert-RegularTree $resolved
   if (Test-Path -LiteralPath $resolved) { Remove-Item -LiteralPath $resolved -Recurse -Force }
 }
@@ -217,9 +229,18 @@ function Assert-ProfileChanges($Profile) {
     $seenParents += $parentState.Name
   }
   if ($seenParents.Count -ne $profileChangeParents.Count) { throw 'Missing profile parent state.' }
+  $directoryTargets = @($profileChangeKinds.Keys | Where-Object { $profileChangeKinds[$_] -eq 'Directory' })
   foreach ($directory in $Profile.Directories) {
-    if ($directory -notin $profileChangeParents -and $directory -ne 'Local Storage' -and
-        -not $directory.StartsWith('Local Storage\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Directory outside mutable profile scope.' }
+    $allowed = ($directory -in $profileChangeParents)
+    if (-not $allowed) {
+      foreach ($dirTarget in $directoryTargets) {
+        if ($directory -eq $dirTarget -or $directory.StartsWith($dirTarget + '\', [StringComparison]::OrdinalIgnoreCase)) {
+          $allowed = $true
+          break
+        }
+      }
+    }
+    if (-not $allowed) { throw 'Directory outside mutable profile scope.' }
   }
 }
 
@@ -546,9 +567,17 @@ switch ($Action) {
     if (-not $PayloadDir) { throw 'Missing incoming application directory.' }
     Apply-Delta $PayloadDir
   }
+  'DeltaUpdate' {
+    if (-not $PayloadDir) { throw 'Missing incoming application directory.' }
+    Invoke-DeltaUpdate $PayloadDir
+  }
+  'SparseDeltaUpdate' {
+    if (-not $PayloadDir) { throw 'Missing incoming application directory.' }
+    Invoke-SparseDeltaUpdate $PayloadDir
+  }
   'Verify' {
     $manifest = Read-DeltaManifest $installPath
-    foreach ($file in $manifest.Files) { Assert-DeltaFile $installPath $file }
+    Assert-DeltaFilesOnDisk $installPath $manifest.Files
     $null = Get-DeltaDescriptor $installPath 'Uninstall Lira.exe'
   }
   'Restore' {
@@ -648,19 +677,22 @@ switch ($Action) {
       if ($snapshot.PSObject.Properties.Name -contains 'FormatVersion' -and $snapshot.FormatVersion -eq 6) {
         if ($snapshot.Phase -ne 'Applied') { throw 'The differential update has not finished.' }
         $recovery = Read-Recovery
-        foreach ($file in $recovery.Snapshot.NewFiles) { Assert-DeltaFile $installPath $file }
+        [LiraUpdateIO]::VerifyFilesMetadata($installPath, (ConvertTo-UpdateFiles $recovery.Snapshot.NewFiles))
       }
       Remove-Item -LiteralPath $pendingPath -Force
     }
   }
   'Cleanup' {
     # A full uninstall removes recovery artifacts, while retaining the live profile.
-    foreach ($target in @($backupPath, $stagingPath, $profileStagingPath, $pendingPath, $pendingTempPath, $progressPath)) { Assert-RegularTree $target }
+    foreach ($target in @($backupPath, $stagingPath, $profileStagingPath, $incrementalStagePath, $pendingPath, $pendingTempPath, $progressPath, $applyingLockPath, $launchAfterFlagPath)) { Assert-RegularTree $target }
     Remove-UpdateTree $backupPath
     Remove-UpdateTree $stagingPath
     Remove-UpdateTree $profileStagingPath
+    Remove-UpdateTree $incrementalStagePath
     if (Test-Path -LiteralPath $pendingPath) { Remove-Item -LiteralPath $pendingPath -Force }
     if (Test-Path -LiteralPath $pendingTempPath) { Remove-Item -LiteralPath $pendingTempPath -Force }
     if (Test-Path -LiteralPath $progressPath) { Remove-Item -LiteralPath $progressPath -Force }
+    if (Test-Path -LiteralPath $applyingLockPath) { Remove-Item -LiteralPath $applyingLockPath -Force }
+    if (Test-Path -LiteralPath $launchAfterFlagPath) { Remove-Item -LiteralPath $launchAfterFlagPath -Force }
   }
 }

@@ -1,23 +1,15 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { load } from 'js-yaml'
 import { describe, expect, it } from 'vitest'
 
-describe('local regression tests', () => {
-  it('removes the dedicated GitHub Actions test workflow', () => {
+describe('realtime regression tests in CI and locally', () => {
+  it('keeps regression checks inside release.yml instead of a duplicate workflow', () => {
     expect(existsSync('.github/workflows/core-realtime.yml')).toBe(false)
-  })
-
-  it('keeps test execution and browser installation out of every CI workflow', () => {
-    for (const file of readdirSync('.github/workflows').filter(file => /\.ya?ml$/.test(file))) {
-      const workflow = load(readFileSync(`.github/workflows/${file}`, 'utf8')) as any
-      for (const job of Object.values(workflow.jobs) as any[]) {
-        for (const step of job.steps ?? []) {
-          expect(step.run ?? '', `${file}: ${step.name ?? 'run'}`).not.toMatch(
-            /\b(?:npm\s+(?:test|run\s+test[^\s]*)|npx\s+(?:vitest|playwright)|node\s+--test)\b/,
-          )
-        }
-      }
-    }
+    const workflow = load(readFileSync('.github/workflows/release.yml', 'utf8')) as any
+    const steps = workflow.jobs['build-and-release'].steps as Array<{ run?: string }>
+    expect(steps.some(step => /^npm test\b/.test(step.run ?? ''))).toBe(true)
+    expect(steps.some(step => step.run === 'npx playwright install chromium')).toBe(true)
+    expect(steps.some(step => step.run === 'npm run test:core:browser')).toBe(true)
   })
 
   it('preserves the local unit and browser test commands', () => {

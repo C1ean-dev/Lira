@@ -1,0 +1,95 @@
+:root,
+:root[data-theme="night"] {
+  color-scheme: dark;
+  --ground: #100c18;
+  --sidebar: #130e1c;
+  --panel: #151020;
+  --surface: #1e162b;
+  --ink: #f3ecff;
+  --muted: #c1b0d2;
+  --accent: #d1b5ff;
+  --rule: #826998;
+  --quiet-rule: color-mix(in srgb, var(--rule) 62%, var(--ground));
+  --online: #b9e99f;
+  --error: #ffb0bd;
+  --amber: #f5cc85;
+  --brand-tint: none;
+
+  --ground-rgb: 16 12 24;
+  --sidebar-rgb: 19 14 28;
+  --panel-rgb: 21 16 32;
+  --surface-rgb: 30 22 43;
+  --ink-rgb: 243 236 255;
+  --muted-rgb: 193 176 210;
+  --accent-rgb: 209 181 255;
+  --rule-rgb: 130 105 152;
+  --quiet-rule-rgb: 87 70 103;
+  --online-rgb: 185 233 159;
+  --error-rgb: 255 176 189;
+  --amber-rgb: 245 204 133;
+
+  --lira-ground: var(--ground);
+  --lira-sidebar: var(--sidebar);
+  --lira-panel: var(--panel);
+  --lira-surface: var(--surface);
+  --lira-ink: var(--ink);
+  --lira-muted: var(--muted);
+  --lira-accent: var(--accent);
+  --lira-rule: var(--rule);
+  --lira-quiet: var(--quiet-rule);
+  --lira-online: var(--online);
+  --lira-error: var(--error);
+  --lira-amber: var(--amber);
+
+  --display: "Pixelify Sans", "Martian Mono", monospace;
+  --body: "Martian Mono", "Inter", system-ui, -apple-system, sans-serif;
+  --mono: "Martian Mono", ui-monospace, SFMono-Regular, monospace;
+  --radius: 12px;
+  --control: 8px;
+  --rail-width: 68px;
+  --header-height: 60px;
+}
+
+:root[data-theme="day"] {
+  --ink: #fff3df;
+  --accent: #f5cc85;
+  --muted: #d2bea0;
+  --rule: #a18460;
+  --brand-tint: hue-rotate(130deg);
+
+  --ink-rgb: 255 243 223;
+  --accent-rgb: 245 204 133;
+  --muted-rgb: 210 190 160;
+  --rule-rgb: 161 132 96;
+  --quiet-rule-rgb: 106 86 69;
+}
+
+:root[data-theme="nature"] {
+  --ink: #eef8e9;
+  --accent: #b9e99f;
+  --muted: #b4c8ad;
+  --rule: #6b8862;
+  --brand-tint: hue-rotate(190deg);
+
+  --ink-rgb: 238 248 233;
+  --accent-rgb: 185 233 159;
+  --muted-rgb: 180 200 173;
+  --rule-rgb: 107 136 98;
+  --quiet-rule-rgb: 72 89 70;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--ground);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 639px) {
+  :root {
+    --rail-width: 56px;
+  }
+}

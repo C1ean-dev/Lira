@@ -5,6 +5,7 @@ import { checkCollision, checkZonePresence } from './physics/collision'
 import { findPath, hasLineOfSight } from './physics/pathfinding'
 import { WorldRenderer } from './rendering/worldRenderer'
 import { PetManager } from './pet/PetManager'
+import { AvatarEffectsManager } from './avatarEffects'
 import { useGameStore } from '../store/useGameStore'
 import { useMapStore } from '../store/useMapStore'
 import { useSettingsStore } from '../store/useSettingsStore'
@@ -246,6 +247,7 @@ export class CanvasEngine {
     }
 
     this.update(deltaTime)
+    this.updateAvatarEffects(deltaTime)
     this.render(currentTime)
 
     if (this.isRunning && useGameStore.getState().mapViewMode === 'immersive') {
@@ -435,6 +437,23 @@ export class CanvasEngine {
 
     const allActivePlayers = [local, ...Object.values(gameStore.remotePlayers)]
     PetManager.getInstance().update(deltaTime, allActivePlayers)
+  }
+
+  private updateAvatarEffects(deltaTime: number) {
+    const gameStore = useGameStore.getState()
+    const local = gameStore.localPlayer
+    const players = [local]
+    for (const remote of Object.values(gameStore.remotePlayers)) {
+      if (remote.isDjBot || remote.id.startsWith('dj-')) continue
+      if (remote.id === local.id || (remote.gameId && remote.gameId === local.id)) continue
+      players.push(remote)
+    }
+
+    AvatarEffectsManager.getInstance().update(deltaTime, {
+      players,
+      roomKey: gameStore.roomId || '__local__',
+      now: Date.now(),
+    })
   }
 
   private render(currentTime: number) {

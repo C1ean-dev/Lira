@@ -1,7 +1,7 @@
 import type { ResolvedSoundTheme, SoundEffectType } from './soundEffects'
 
 export type SeasonalSoundTheme = Exclude<ResolvedSoundTheme, 'default'>
-const SOUND_REVISION = 'festive-2'
+const SOUND_REVISION = 'festive-3'
 const decoded = new WeakMap<BaseAudioContext, Map<string, Promise<AudioBuffer>>>()
 
 export function seasonalSoundUrl(theme: SeasonalSoundTheme, type: SoundEffectType): string {

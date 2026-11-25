@@ -117,9 +117,9 @@ test('space invitation links reach the real app through Electron startup and a s
       buildTestPanelCss(path.join(temporary, 'app.css'), ['./src/**/*.{ts,tsx}']),
     ])
     await fs.mkdir(path.join(temporary, 'profile'))
-    await fs.writeFile(path.join(temporary, 'index.html'), '<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="app.css"></head><body><div id="root"></div><div id="chat"></div><script>window.testErrors=[];addEventListener("error",e=>window.testErrors.push(e.message));addEventListener("unhandledrejection",e=>window.testErrors.push(String(e.reason)));</script><script src="app.js"></script></body></html>')
+    await fs.writeFile(path.join(temporary, 'index.html'), '<!doctype html><html><head><meta charset="utf-8"><script>window.__LIRA_MUTE_SOUND_EFFECTS__=true;</script><link rel="stylesheet" href="app.css"></head><body><div id="root"></div><div id="chat"></div><script>window.testErrors=[];addEventListener("error",e=>window.testErrors.push(e.message));addEventListener("unhandledrejection",e=>window.testErrors.push(String(e.reason)));</script><script src="app.js"></script></body></html>')
     const env = { ...process.env }; delete env.ELECTRON_RUN_AS_NODE
-    electronApp = await _electron.launch({ executablePath: require('electron'), args: [entry, '--', link(complete)], env, timeout: 15000 })
+    electronApp = await _electron.launch({ executablePath: require('electron'), args: ['--mute-audio', entry, '--', link(complete)], env, timeout: 15000 })
     const page = await electronApp.firstWindow()
     page.setDefaultTimeout(7000)
     const errors = []
@@ -137,7 +137,7 @@ test('space invitation links reach the real app through Electron startup and a s
       assert.deepEqual(await page.evaluate(() => window.inviteEvents.filter(event => event[0] === 'all')), [['all', 'STARTUP', 'render']])
     })
     async function secondLaunch(invite) {
-      const child = spawn(require('electron'), [entry, '--', link(invite)], { env, windowsHide: true, stdio: 'ignore' })
+      const child = spawn(require('electron'), ['--mute-audio', entry, '--', link(invite)], { env, windowsHide: true, stdio: 'ignore' })
       children.push(child)
       await new Promise((resolve, reject) => {
         const timeout = setTimeout(() => { child.kill(); reject(new Error('Second launch timed out')) }, 10000)
@@ -159,7 +159,7 @@ test('space invitation links reach the real app through Electron startup and a s
       assert.equal(await page.evaluate(() => window.inviteEvents.filter(event => event[0] === 'disconnect').length), 1)
     })
     await t.test('Windows launches the registered app with a compressed complete invitation', { skip: process.platform !== 'win32' }, async () => {
-      secondElectronApp = await _electron.launch({ executablePath: require('electron'), args: [entry, '--instance=2'],
+      secondElectronApp = await _electron.launch({ executablePath: require('electron'), args: ['--mute-audio', entry, '--instance=2'],
         env: { ...env, INSTANCE: '2' }, timeout: 15000 })
       const secondPage = await secondElectronApp.firstWindow()
       await secondPage.getByLabel('Seu Nickname').waitFor()
@@ -187,10 +187,10 @@ test('space invitation links reach the real app through Electron startup and a s
     })
     await t.test('pasting a link and clicking a chat link both use the existing join flow', async () => {
       await page.evaluate(() => window.inviteTesting.reset('Visitante'))
-      await page.getByPlaceholder('Cole o código, convite ou link').fill('https://lira-signaling.onrender.com/join#invite=PASTED')
+      await page.getByPlaceholder('Cole o código, convite ou link').fill('https://p01--lira--tj9yvq5j5cgs.code.run/join#invite=PASTED')
       await page.getByRole('button', { name: 'Entrar na sala', exact: true }).click()
       await space.filter({ hasText: 'PASTED' }).waitFor()
-      await page.evaluate(value => window.inviteTesting.chat(value), 'https://lira-signaling.onrender.com/join#invite=CHAT')
+      await page.evaluate(value => window.inviteTesting.chat(value), 'https://p01--lira--tj9yvq5j5cgs.code.run/join#invite=CHAT')
       await page.locator('#chat a').click()
       await space.filter({ hasText: 'CHAT' }).waitFor()
     })
