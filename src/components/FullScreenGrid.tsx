@@ -146,7 +146,9 @@ const FullScreenGridInner: React.FC = () => {
     watchingLives,
   ])
 
-  const activePresenter = allInMeeting.find((u) => u.screenStream || u.isScreenSharing)
+  const activePresenter =
+    allInMeeting.find((u) => (u.screenStream || u.isScreenSharing) && u.liveWatching) ||
+    allInMeeting.find((u) => u.screenStream || u.isScreenSharing)
   const transcription = useSpaceTranscription()
   const focusedUser = focusedUserId
     ? allInMeeting.find((u) => u.id === focusedUserId)
