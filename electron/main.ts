@@ -58,6 +58,7 @@ import {
   INCREMENTAL_PLAN_FILE_NAME,
   INCREMENTAL_READY_FILE_NAME,
   prepareIncrementalUpdate,
+  rawFs,
   readStagedIncrementalPlan,
 } from './incrementalUpdater'
 import {
@@ -1073,7 +1074,7 @@ function isIncrementalUpdateStagedSync(targetVersion?: string): boolean {
     if (!Array.isArray(plan.StagedFiles) || plan.StagedFiles.length === 0) return false
     for (const file of plan.StagedFiles) {
       assertSafeRelativePath(file.Name)
-      const stat = fs.lstatSync(path.join(payloadDir, file.Name))
+      const stat = rawFs.lstatSync(path.join(payloadDir, file.Name))
       if (!stat.isFile() || stat.isSymbolicLink() || stat.size !== file.Length) return false
     }
     return true

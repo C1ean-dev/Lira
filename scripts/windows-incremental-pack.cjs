@@ -4,10 +4,12 @@ const path = require('node:path')
 const crypto = require('node:crypto')
 const zlib = require('node:zlib')
 
-const INCREMENTAL_FORMAT_VERSION = 1
+const INCREMENTAL_FORMAT_VERSION = 2
 const INCREMENTAL_MANIFEST_NAME = 'lira-win-x64-incremental.json.gz'
 const INCREMENTAL_PACK_NAME = 'lira-win-x64-payload.pack'
 const ASAR_RELATIVE_NAME = 'resources\\app.asar'
+const EXTERNAL_CHUNK_THRESHOLD = 4 * 1024 * 1024
+const EXTERNAL_CHUNK_SIZE = 256 * 1024
 
 const ALREADY_COMPRESSED_EXT = new Set([
   '.png', '.jpg', '.jpeg', '.webp', '.gif', '.ico',
@@ -284,7 +286,40 @@ async function appendFileSliceToPack(packState, keyHash, filePath, start, length
   return record
 }
 
-async function buildIncrementalReleaseArtifacts({ appOutDir, outputDir, version, manifest }) {
+async function appendChunkedFileToPack(packState, filePath, totalLength, compress, chunkSize = EXTERNAL_CHUNK_SIZE) {
+  const handle = await fsp.open(filePath, 'r')
+  const chunks = []
+  try {
+    let offset = 0
+    while (offset < totalLength) {
+      const length = Math.min(chunkSize, totalLength - offset)
+      const buf = await readExact(handle, length, offset)
+      const hash = crypto.createHash('sha256').update(buf).digest('hex').toUpperCase()
+      const loc = await appendBufferToPack(packState, hash, buf, compress && length > 64)
+      chunks.push({
+        Offset: offset,
+        Length: length,
+        Hash: hash,
+        PackOffset: loc.PackOffset,
+        PackLength: loc.PackLength,
+        Compression: loc.Compression,
+      })
+      offset += length
+    }
+  } finally {
+    await handle.close()
+  }
+  return chunks
+}
+
+async function buildIncrementalReleaseArtifacts({
+  appOutDir,
+  outputDir,
+  version,
+  manifest,
+  externalChunkThreshold = EXTERNAL_CHUNK_THRESHOLD,
+  externalChunkSize = EXTERNAL_CHUNK_SIZE,
+}) {
   if (!manifest || manifest.FormatVersion !== 1 || !Array.isArray(manifest.Files)) {
     throw new Error('Valid update-manifest object is required to build incremental artifacts')
   }
@@ -353,17 +388,25 @@ async function buildIncrementalReleaseArtifacts({ appOutDir, outputDir, version,
       .sort((a, b) => a.tier - b.tier || (a.file.Name < b.file.Name ? -1 : a.file.Name > b.file.Name ? 1 : 0))
 
     const topLocations = new Map()
+    const topChunks = new Map()
     for (const { file } of topFiles) {
       const fullPath = path.join(appOutDir, file.Name)
       const shouldCompress = file.Length > 64 && !isPrecompressedPath(file.Name)
-      const loc = await appendFileSliceToPack(packState, file.Hash, fullPath, 0, file.Length, shouldCompress)
-      topLocations.set(file.Name, loc)
+      if (file.Length >= externalChunkThreshold) {
+        const chunks = await appendChunkedFileToPack(packState, fullPath, file.Length, shouldCompress, externalChunkSize)
+        topChunks.set(file.Name, chunks)
+        topLocations.set(file.Name, { PackOffset: 0, PackLength: 0, Compression: 'raw' })
+      } else {
+        const loc = await appendFileSliceToPack(packState, file.Hash, fullPath, 0, file.Length, shouldCompress)
+        topLocations.set(file.Name, loc)
+      }
     }
 
     packedTopFiles = manifest.Files
       .filter(file => file.Name !== ASAR_RELATIVE_NAME)
       .map(file => {
         const loc = topLocations.get(file.Name)
+        const chunks = topChunks.get(file.Name)
         return {
           Name: file.Name,
           Length: file.Length,
@@ -371,6 +414,7 @@ async function buildIncrementalReleaseArtifacts({ appOutDir, outputDir, version,
           PackOffset: loc.PackOffset,
           PackLength: loc.PackLength,
           Compression: loc.Compression,
+          ...(chunks ? { Chunks: chunks } : {}),
         }
       })
 
@@ -432,6 +476,8 @@ module.exports = {
   INCREMENTAL_MANIFEST_NAME,
   INCREMENTAL_PACK_NAME,
   ASAR_RELATIVE_NAME,
+  EXTERNAL_CHUNK_THRESHOLD,
+  EXTERNAL_CHUNK_SIZE,
   parseAsarLayout,
   buildIncrementalReleaseArtifacts,
 }

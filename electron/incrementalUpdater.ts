@@ -1,7 +1,7 @@
 import http, { type IncomingMessage } from 'node:http'
 import https from 'node:https'
-import fs from 'node:fs'
-import fsp from 'node:fs/promises'
+import nodeFs from 'node:fs'
+import { createRequire } from 'node:module'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import zlib from 'node:zlib'
@@ -9,7 +9,28 @@ import { Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { GITHUB_REPO } from '../src/services/updateCheck'
 
-export const INCREMENTAL_FORMAT_VERSION = 1
+// Electron monkey-patches node:fs so paths ending in ".asar" behave like virtual directories.
+// Use Electron's unpatched "original-fs" whenever running under Electron so raw .asar files can
+// be opened, stat'd, hashed, and staged without virtual-filesystem interception or DEP0180 warnings.
+function loadRawFs(): typeof nodeFs {
+  if (process.versions?.electron) {
+    try {
+      const req = createRequire(import.meta.url)
+      const modName = 'original-fs'
+      const original = req(modName) as typeof nodeFs
+      if (original && typeof original.lstatSync === 'function' && original.promises) {
+        return original
+      }
+    } catch {}
+  }
+  return nodeFs
+}
+
+export const rawFs: typeof nodeFs = loadRawFs()
+const fs = rawFs
+const fsp = rawFs.promises
+
+export const INCREMENTAL_FORMAT_VERSION = 2
 export const INCREMENTAL_MANIFEST_NAME = 'lira-win-x64-incremental.json.gz'
 export const INCREMENTAL_PACK_NAME = 'lira-win-x64-payload.pack'
 export const ASAR_RELATIVE_NAME = 'resources\\app.asar'
@@ -36,10 +57,20 @@ export interface UpdateManifest {
   Files: UpdateManifestEntry[]
 }
 
+export interface PackedFileChunk {
+  Offset: number
+  Length: number
+  Hash: string
+  PackOffset: number
+  PackLength: number
+  Compression: 'gzip' | 'raw'
+}
+
 export interface PackedFileDescriptor extends UpdateManifestEntry {
   PackOffset: number
   PackLength: number
   Compression: 'gzip' | 'raw'
+  Chunks?: PackedFileChunk[]
 }
 
 export interface PackedAsarBlock {
@@ -86,6 +117,8 @@ export interface IncrementalStagePlan {
     AsarBlocksDownloaded: number
     ExternalFilesKept: number
     ExternalFilesDownloaded: number
+    ExternalChunksReused?: number
+    ExternalChunksDownloaded?: number
   }
 }
 
@@ -177,7 +210,9 @@ export function assertSafeRelativePath(name: string): void {
 export function validateIncrementalManifest(raw: unknown, expectedVersion?: string): IncrementalManifest {
   if (!raw || typeof raw !== 'object') throw new Error('Invalid incremental manifest')
   const m = raw as IncrementalManifest
-  if (m.FormatVersion !== INCREMENTAL_FORMAT_VERSION) throw new Error('Unsupported incremental manifest format')
+  if (m.FormatVersion !== 1 && m.FormatVersion !== INCREMENTAL_FORMAT_VERSION) {
+    throw new Error('Unsupported incremental manifest format')
+  }
   if (m.Platform !== 'win32' || m.Arch !== 'x64') throw new Error('Incompatible incremental manifest platform')
   if (typeof m.Version !== 'string' || !/^\d+\.\d+\.\d+$/.test(m.Version)) throw new Error('Invalid manifest version')
   if (expectedVersion) {
@@ -217,9 +252,32 @@ export function validateIncrementalManifest(raw: unknown, expectedVersion?: stri
   const seenPackedFiles = new Set<string>()
   for (const file of m.Files) {
     assertSafeRelativePath(file.Name)
-    assertPackSliceBounds(file.PackOffset, file.PackLength, file.Compression, m.PackSize)
     if (!Number.isSafeInteger(file.Length) || file.Length < 0 || !SHA256_RE.test(file.Hash)) {
       throw new Error(`Invalid packed file descriptor: ${file.Name}`)
+    }
+    if (file.Chunks !== undefined) {
+      if (!Array.isArray(file.Chunks) || file.Chunks.length === 0) {
+        throw new Error(`Invalid chunks array for ${file.Name}`)
+      }
+      let chunkCursor = 0
+      for (const chunk of file.Chunks) {
+        if (
+          !Number.isSafeInteger(chunk.Offset) ||
+          chunk.Offset !== chunkCursor ||
+          !Number.isSafeInteger(chunk.Length) ||
+          chunk.Length <= 0 ||
+          !SHA256_RE.test(chunk.Hash)
+        ) {
+          throw new Error(`Invalid chunk descriptor for ${file.Name}`)
+        }
+        assertPackSliceBounds(chunk.PackOffset, chunk.PackLength, chunk.Compression, m.PackSize)
+        chunkCursor += chunk.Length
+      }
+      if (chunkCursor !== file.Length) {
+        throw new Error(`Chunk lengths do not sum to total length for ${file.Name}`)
+      }
+    } else {
+      assertPackSliceBounds(file.PackOffset, file.PackLength, file.Compression, m.PackSize)
     }
     const lower = file.Name.toLowerCase()
     const expected = manifestFilesByLower.get(lower)
@@ -288,7 +346,7 @@ function assertPackSliceBounds(offset: number, length: number, compression: stri
 }
 
 export async function indexLocalAsar(asarPath: string): Promise<LocalAsarBlockIndex | null> {
-  let stat: fs.Stats
+  let stat: nodeFs.Stats
   try {
     stat = await fsp.stat(asarPath)
   } catch {
@@ -581,11 +639,28 @@ async function downloadWindowRange(
   }
 }
 
+async function writeChunkToStream(stream: nodeFs.WriteStream, chunk: Buffer): Promise<void> {
+  if (!stream.write(chunk)) {
+    await new Promise<void>((resolve, reject) => {
+      const onDrain = () => {
+        stream.removeListener('error', onError)
+        resolve()
+      }
+      const onError = (err: Error) => {
+        stream.removeListener('drain', onDrain)
+        reject(err)
+      }
+      stream.once('drain', onDrain)
+      stream.once('error', onError)
+    })
+  }
+}
+
 async function copySliceWithHash(
-  sourceHandle: fsp.FileHandle,
+  sourceHandle: nodeFs.promises.FileHandle,
   sourceOffset: number,
   length: number,
-  outputStream: fs.WriteStream,
+  outputStream: nodeFs.WriteStream,
   wholeHash: crypto.Hash,
 ): Promise<string> {
   const blockHash = crypto.createHash('sha256')
@@ -599,25 +674,11 @@ async function copySliceWithHash(
     const view = bytesRead === buffer.length ? buffer : buffer.subarray(0, bytesRead)
     blockHash.update(view)
     wholeHash.update(view)
-    if (!outputStream.write(Buffer.from(view))) {
-      await new Promise<void>((resolve, reject) => {
-        outputStream.once('drain', resolve)
-        outputStream.once('error', reject)
-      })
-    }
+    await writeChunkToStream(outputStream, Buffer.from(view))
     cursor += bytesRead
     remaining -= bytesRead
   }
   return blockHash.digest('hex').toUpperCase()
-}
-
-async function writeChunkToStream(stream: fs.WriteStream, chunk: Buffer): Promise<void> {
-  if (!stream.write(chunk)) {
-    await new Promise<void>((resolve, reject) => {
-      stream.once('drain', resolve)
-      stream.once('error', reject)
-    })
-  }
 }
 
 async function assembleAsar({
@@ -695,6 +756,113 @@ async function assembleAsar({
   }
   await fsp.rm(targetAsarPath, { force: true })
   await fsp.rename(tempAsarPath, targetAsarPath)
+}
+
+async function indexLocalFileChunks(
+  filePath: string,
+  chunkSize: number,
+): Promise<Map<string, { fileOffset: number; length: number }> | null> {
+  let stat: nodeFs.Stats
+  try {
+    stat = await fsp.lstat(filePath)
+  } catch {
+    return null
+  }
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size === 0 || chunkSize <= 0) return null
+  const handle = await fsp.open(filePath, 'r')
+  const byHash = new Map<string, { fileOffset: number; length: number }>()
+  try {
+    const buffer = Buffer.allocUnsafe(chunkSize)
+    let offset = 0
+    while (offset < stat.size) {
+      const toRead = Math.min(chunkSize, stat.size - offset)
+      let filled = 0
+      while (filled < toRead) {
+        const { bytesRead } = await handle.read(buffer, filled, toRead - filled, offset + filled)
+        if (bytesRead === 0) break
+        filled += bytesRead
+      }
+      if (filled === 0) break
+      const view = filled === buffer.length ? buffer : buffer.subarray(0, filled)
+      const hash = crypto.createHash('sha256').update(view).digest('hex').toUpperCase()
+      if (!byHash.has(hash)) {
+        byHash.set(hash, { fileOffset: offset, length: filled })
+      }
+      offset += filled
+    }
+    return byHash
+  } catch {
+    return null
+  } finally {
+    await handle.close()
+  }
+}
+
+async function assembleChunkedFile({
+  localFilePath,
+  localChunks,
+  fileMeta,
+  blobsDir,
+  targetPath,
+}: {
+  localFilePath: string
+  localChunks: Map<string, { fileOffset: number; length: number }> | null
+  fileMeta: PackedFileDescriptor
+  blobsDir: string
+  targetPath: string
+}): Promise<void> {
+  const chunks = fileMeta.Chunks
+  if (!chunks || chunks.length === 0) throw new Error(`Missing chunk list for ${fileMeta.Name}`)
+  await fsp.mkdir(path.dirname(targetPath), { recursive: true })
+  const tempPath = `${targetPath}.tmp`
+  const wholeHash = crypto.createHash('sha256')
+  let totalWritten = 0
+
+  const localHandle = localChunks ? await fsp.open(localFilePath, 'r') : null
+  const outStream = fs.createWriteStream(tempPath, { flags: 'w' })
+  try {
+    for (const chunk of chunks) {
+      const localMatch = localChunks?.get(chunk.Hash)
+      if (localHandle && localMatch && localMatch.length === chunk.Length) {
+        const copiedHash = await copySliceWithHash(localHandle, localMatch.fileOffset, chunk.Length, outStream, wholeHash)
+        if (copiedHash !== chunk.Hash) {
+          throw new Error(`Local chunk corrupted for ${fileMeta.Name} at offset ${chunk.Offset}`)
+        }
+        totalWritten += chunk.Length
+      } else {
+        const blobPath = path.join(blobsDir, `${chunk.Hash}.bin`)
+        const blobHandle = await fsp.open(blobPath, 'r')
+        try {
+          const copiedHash = await copySliceWithHash(blobHandle, 0, chunk.Length, outStream, wholeHash)
+          if (copiedHash !== chunk.Hash) {
+            throw new Error(`Downloaded chunk integrity mismatch for ${fileMeta.Name} at offset ${chunk.Offset}`)
+          }
+          totalWritten += chunk.Length
+        } finally {
+          await blobHandle.close()
+        }
+      }
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      outStream.once('error', reject)
+      outStream.end(resolve)
+    })
+  } catch (err) {
+    outStream.destroy()
+    await fsp.rm(tempPath, { force: true }).catch(() => {})
+    throw err
+  } finally {
+    await localHandle?.close()
+  }
+
+  const finalHash = wholeHash.digest('hex').toUpperCase()
+  if (totalWritten !== fileMeta.Length || finalHash !== fileMeta.Hash) {
+    await fsp.rm(tempPath, { force: true }).catch(() => {})
+    throw new Error(`Reconstructed file verification failed for ${fileMeta.Name}`)
+  }
+  await fsp.rm(targetPath, { force: true })
+  await fsp.rename(tempPath, targetPath)
 }
 
 async function readLocalUpdateManifest(installDir: string): Promise<UpdateManifest | null> {
@@ -856,9 +1024,44 @@ export async function prepareIncrementalUpdate(options: IncrementalStageOptions)
   }
 
   const zeroByteExternalFiles: PackedFileDescriptor[] = []
+  const chunkedExternalPlans: Array<{
+    file: PackedFileDescriptor
+    localPath: string
+    localChunks: Map<string, { fileOffset: number; length: number }> | null
+  }> = []
+  const missingBlobs = new Map<string, RangeSliceItem>(missingAsarBlobs)
+  let externalChunksReused = 0
+  let externalChunksDownloaded = 0
+
   for (const file of externalToDownload) {
     if (file.Length === 0) {
       zeroByteExternalFiles.push(file)
+      continue
+    }
+    if (file.Chunks && file.Chunks.length > 0) {
+      const localPath = path.join(installDir, file.Name)
+      const chunkSize = file.Chunks[0].Length
+      const localChunks = await indexLocalFileChunks(localPath, chunkSize)
+      for (const chunk of file.Chunks) {
+        const localMatch = localChunks?.get(chunk.Hash)
+        if (localMatch && localMatch.length === chunk.Length) {
+          externalChunksReused++
+        } else {
+          externalChunksDownloaded++
+          if (!missingBlobs.has(chunk.Hash)) {
+            missingBlobs.set(chunk.Hash, {
+              key: `chunk:${chunk.Hash}`,
+              packOffset: chunk.PackOffset,
+              packLength: chunk.PackLength,
+              rawLength: chunk.Length,
+              hash: chunk.Hash,
+              compression: chunk.Compression,
+              destinationPath: path.join(blobsDir, `${chunk.Hash}.bin`),
+            })
+          }
+        }
+      }
+      chunkedExternalPlans.push({ file, localPath, localChunks })
       continue
     }
     itemsToFetch.push({
@@ -870,6 +1073,11 @@ export async function prepareIncrementalUpdate(options: IncrementalStageOptions)
       compression: file.Compression,
       destinationPath: path.join(payloadDir, file.Name),
     })
+  }
+  for (const [hash, item] of missingBlobs) {
+    if (!missingAsarBlobs.has(hash)) {
+      itemsToFetch.push(item)
+    }
   }
 
   const windows = planByteRanges(itemsToFetch)
@@ -930,8 +1138,21 @@ export async function prepareIncrementalUpdate(options: IncrementalStageOptions)
       await writeVerifiedBytes(path.join(payloadDir, emptyFile.Name), Buffer.alloc(0), 0, emptyFile.Hash)
     }
 
+    if (chunkedExternalPlans.length > 0) {
+      onProgress(91, totalDownloadBytes, totalDownloadBytes)
+      for (const chunkPlan of chunkedExternalPlans) {
+        await assembleChunkedFile({
+          localFilePath: chunkPlan.localPath,
+          localChunks: chunkPlan.localChunks,
+          fileMeta: chunkPlan.file,
+          blobsDir,
+          targetPath: path.join(payloadDir, chunkPlan.file.Name),
+        })
+      }
+    }
+
     if (!asarUnchanged) {
-      onProgress(92, totalDownloadBytes, totalDownloadBytes)
+      onProgress(94, totalDownloadBytes, totalDownloadBytes)
       await assembleAsar({
         localAsarPath,
         localIndex: localAsarIndex,
@@ -976,6 +1197,8 @@ export async function prepareIncrementalUpdate(options: IncrementalStageOptions)
         AsarBlocksDownloaded: asarBlocksDownloaded,
         ExternalFilesKept: externalFilesKept,
         ExternalFilesDownloaded: externalToDownload.length,
+        ExternalChunksReused: externalChunksReused,
+        ExternalChunksDownloaded: externalChunksDownloaded,
       },
     }
 

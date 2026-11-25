@@ -7,9 +7,11 @@ artefatos incrementais (`lira-win-x64-incremental.json.gz` e `lira-win-x64-paylo
 
 Quando a instalação já possui `resources/update-manifest.json` e `resources/updater/*.ps1`:
 
-1. O Lira baixa apenas `lira-win-x64-incremental.json.gz` (~40–60 KB) do CDN de Releases do
-   GitHub e compara cada arquivo externo e cada bloco individual de `resources/app.asar`
-   (por SHA-256) contra os arquivos locais e o cabeçalho do `app.asar` instalado.
+1. O Lira baixa apenas `lira-win-x64-incremental.json.gz` (~70–110 KB) do CDN de Releases do
+   GitHub e compara cada arquivo externo (com blocos de 256 KB para binários grandes como
+   `Lira.exe`, evitando baixar ~100 MB apenas pelo carimbo de versão do `rcedit`) e cada
+   bloco individual de `resources/app.asar` (lido via `original-fs` sem interceptação ASAR
+   do Electron) por SHA-256 contra a instalação local.
 2. Apenas os blocos realmente alterados (tipicamente 1–6 MB de código JS/CSS/Electron,
    reaproveitando Electron, GStreamer, DeepFilterNet WASM, fontes, sons e sprites locais)
    são baixados do `lira-win-x64-payload.pack` via requisições HTTP `Range` (206) agrupadas.
