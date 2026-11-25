@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const electron = vi.hoisted(() => ({ app: { isPackaged: false, getPath: () => 'C:/test/lira-dev',
   getLoginItemSettings: vi.fn(() => ({ openAtLogin: false, executableWillLaunchAtLogin: true })), setLoginItemSettings: vi.fn() } }))
 vi.mock('electron', () => ({ ...electron, BrowserWindow: {}, Tray: {}, Menu: {}, nativeImage: {} }))
-vi.mock('fs', () => ({ default: { existsSync: () => false, mkdirSync: vi.fn(), writeFileSync: vi.fn() } }))
+const fsMock = vi.hoisted(() => ({ existsSync: () => false, mkdirSync: vi.fn(), writeFileSync: vi.fn() }))
+vi.mock('fs', () => ({ default: fsMock }))
 import { applyLoginItemSettings, TrayManager } from '../../../electron/trayManager'
 
 beforeEach(() => { vi.clearAllMocks(); electron.app.isPackaged = false })
@@ -22,6 +23,10 @@ describe('development login item isolation', () => {
     expect(tray.getSettings().openAtLogin).toBe(true)
     expect(tray.getSettings().autoUpdateAtLogin).toBe(true)
     expect(electron.app.setLoginItemSettings).toHaveBeenCalledOnce()
+    // Reconciled openAtLogin must be persisted to disk so --startup-update sees it after reboot.
+    expect(fsMock.writeFileSync).toHaveBeenCalled()
+    const persisted = JSON.parse(String(fsMock.writeFileSync.mock.calls[0][1]))
+    expect(persisted).toMatchObject({ openAtLogin: true, autoUpdateAtLogin: true })
     tray.updateSettings({ openAtLogin: false })
     expect(electron.app.setLoginItemSettings).toHaveBeenLastCalledWith(
       expect.objectContaining({ openAtLogin: true, path: process.execPath, args: ['--startup-update'] }),

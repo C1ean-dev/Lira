@@ -90,6 +90,9 @@ export class TrayManager {
           : undefined
         const reconciled = reconcileStartupLoginSettings(this.settings, hasPersisted, expectedReading, legacyReading)
         this.settings = reconciled.settings
+        if (!hasPersisted || reconciled.needsRewrite) {
+          writeSettingsToDisk(this.settings)
+        }
         if (reconciled.needsRewrite) {
           applyLoginItemSettings(this.settings)
         }

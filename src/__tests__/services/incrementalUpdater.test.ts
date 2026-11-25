@@ -469,6 +469,54 @@ describe('incremental ASAR + file pack updater', () => {
     expect(fs.existsSync(stageDir)).toBe(false)
   }, 60_000)
 
+  it('reconstructs chunked Lira.exe bit-for-bit when only 64 version bytes change (rcedit scenario)', async () => {
+    const root = makeTempDir('lira-inc-chunked-exe-')
+    const releaseDir = path.join(root, 'release')
+    const liveInstall = path.join(root, 'lira')
+
+    const v1 = await createSyntheticAppInstall(root, '1.0.0', { mainCode: 'console.log("v1");\n' })
+    const v2 = await createSyntheticAppInstall(root, '1.0.1', { mainCode: 'console.log("v2");\n' })
+
+    // Replace Lira.exe with a 1 MB binary where only 64 bytes near the end differ (like rcedit PE version stamp)
+    const exeV1 = deterministicBytes('real-electron-bin', 1024 * 1024)
+    const exeV2 = Buffer.from(exeV1)
+    for (let i = 0; i < 64; i++) exeV2[exeV2.length - 512 + i] ^= 0xff
+    await fsp.writeFile(path.join(v1.appDir, 'Lira.exe'), exeV1)
+    await fsp.writeFile(path.join(v2.appDir, 'Lira.exe'), exeV2)
+    await writeUpdateManifest(v1.appDir, '1.0.0')
+    const v2Manifest = await writeUpdateManifest(v2.appDir, '1.0.1')
+
+    await fsp.cp(v1.appDir, liveInstall, { recursive: true })
+    await buildIncrementalReleaseArtifacts({
+      appOutDir: v2.appDir,
+      outputDir: releaseDir,
+      version: '1.0.1',
+      manifest: v2Manifest,
+      externalChunkThreshold: 256 * 1024,
+      externalChunkSize: 64 * 1024,
+    })
+
+    const server = await startRangeServer(releaseDir)
+    const stageDir = path.join(root, 'stage-chunked-exe')
+    const staged = await prepareIncrementalUpdate({
+      installDir: liveInstall,
+      stageDir,
+      targetVersion: '1.0.1',
+      releaseBaseUrl: server.baseUrl,
+    })
+
+    expect(staged.ok).toBe(true)
+    if (!staged.ok) throw new Error(staged.reason)
+
+    // 15 of 16 chunks of Lira.exe reused locally; only 1 chunk (64 KB) + tiny ASAR code downloaded
+    expect(staged.plan.Stats.ExternalChunksReused).toBe(15)
+    expect(staged.plan.Stats.ExternalChunksDownloaded).toBe(1)
+    expect(server.stats().rangeBytesSent).toBeLessThan(80 * 1024)
+
+    const rebuiltExe = await fsp.readFile(path.join(stageDir, 'payload', 'Lira.exe'))
+    expect(rebuiltExe.equals(exeV2)).toBe(true)
+  }, 60_000)
+
   it('rejects malformed, version-mismatched, and path-traversal incremental manifests', () => {
     expect(() => validateIncrementalManifest(null)).toThrow()
     expect(() => validateIncrementalManifest({ FormatVersion: 99 })).toThrow()
