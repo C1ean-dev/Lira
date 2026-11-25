@@ -6,6 +6,7 @@ import { useMediaStore } from './store/useMediaStore'
 import { useChatStore } from './store/useChatStore'
 import { useMapStore } from './store/useMapStore'
 import { useUpdateStore, UPDATE_STALE_AFTER_MS } from './store/useUpdateStore'
+import { useProfileModalStore } from './store/useProfileModalStore'
 import { useRoomJoinStore } from './store/useRoomJoinStore'
 import { useSpotifyJamStore } from './store/useSpotifyJamStore'
 import { startAutoUpdateChecks } from './services/updateScheduler'
@@ -25,9 +26,12 @@ const loadAvatarCustomizerModal = () =>
   import('./components/AvatarCustomizerModal').then((m) => ({ default: m.AvatarCustomizerModal }))
 const loadAudioSettingsModal = () =>
   import('./components/AudioSettingsModal').then((m) => ({ default: m.AudioSettingsModal }))
+const loadUserProfileModal = () =>
+  import('./components/profile/UserProfileModal').then((m) => ({ default: m.UserProfileModal }))
 const SpaceShell = lazy(loadSpaceShell)
 const AvatarCustomizerModal = lazy(loadAvatarCustomizerModal)
 const AudioSettingsModal = lazy(loadAudioSettingsModal)
+const UserProfileModal = lazy(loadUserProfileModal)
 
 export const App: React.FC = () => {
   const [inLobby, setInLobby] = useState(true)
@@ -51,8 +55,10 @@ export const App: React.FC = () => {
   }, [])
 
   const isSettingsModalOpen = useMediaStore((s) => s.isSettingsModalOpen)
+  const isProfileModalOpen = useProfileModalStore((s) => s.isOpen)
   const mountAudioSettings = useMountOnFirstOpen(isSettingsModalOpen)
   const mountAvatarModal = useMountOnFirstOpen(isAvatarModalOpen)
+  const mountProfileModal = useMountOnFirstOpen(isProfileModalOpen)
 
   useEffect(() => {
     const preload = () => {
@@ -173,6 +179,14 @@ export const App: React.FC = () => {
           <AvatarCustomizerModal
             isOpen={isAvatarModalOpen}
             onClose={() => setIsAvatarModalOpen(false)}
+          />
+        )}
+      </Suspense>
+
+      <Suspense fallback={null}>
+        {mountProfileModal && (
+          <UserProfileModal
+            onOpenAvatarCustomizer={() => setIsAvatarModalOpen(true)}
           />
         )}
       </Suspense>

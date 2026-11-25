@@ -5,6 +5,7 @@ import { useUserNetworkQuality } from '../../store/useNetworkQualityStore'
 import { NetworkSignalIcon } from '../NetworkSignalIcon'
 import { attachStreamToVideo } from '../../media/attachVideoElement'
 import { AvatarConfig } from '../../types/game'
+import type { UserProfile } from '../../types/profile'
 import { PlayerAvatar } from '../common/PlayerAvatar'
 import { RemoteAudio } from '../common/RemoteAudio'
 import { SpotifyIcon } from '../common/SpotifyIcon'
@@ -30,6 +31,7 @@ export interface ParticipantData {
   isDjBot?: boolean
   profilePicture?: string
   avatar?: AvatarConfig
+  profile?: UserProfile
   shirtColor?: string
   statusEmoji?: string
   callState?: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed'
@@ -338,6 +340,7 @@ export const GridParticipantTile: React.FC<Props> = ({
                 name={user.name}
                 profilePicture={user.profilePicture}
                 avatar={user.avatar}
+                avatarFrame={user.profile?.avatarFrame}
                 size="4xl"
                 className="w-28 h-28 sm:w-32 sm:h-32 md:w-36 md:h-36 rounded-[12px] border border-dashed border-lira-rule"
               />

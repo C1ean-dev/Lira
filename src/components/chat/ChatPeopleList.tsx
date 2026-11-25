@@ -1,6 +1,8 @@
 import React from 'react'
 import { PlayerAvatar } from '../common/PlayerAvatar'
 import { ChatPeople, ChatPerson, getChatPersonStatusDisplay } from '../../utils/chatPeople'
+import { NameplateArtwork } from '../profile/ProfileBar'
+import { getNameplateStyle, resolveProfile } from '../../utils/profileUtils'
 
 interface Props {
   people: ChatPeople
@@ -22,31 +24,44 @@ const PersonRow: React.FC<Pick<Props, 'onOpen' | 'onContextMenu'> & { person: Ch
   onContextMenu,
 }) => {
   const statusDisplay = getChatPersonStatusDisplay(person)
+  const resolvedProfile = resolveProfile(person.avatarSource?.profile)
+  const nameplate = getNameplateStyle(resolvedProfile)
+  const useCustomBg = nameplate.hasCustomNameplate && !person.isCurrent
 
   return (
     <button
       type="button"
       onClick={() => onOpen(person)}
       onContextMenu={onContextMenu ? (e) => onContextMenu(e, person) : undefined}
-      className={`w-full flex items-center justify-between gap-1.5 px-2 py-1.5 rounded-lg text-xs font-mono transition-colors ${
+      style={
+        useCustomBg
+          ? { background: nameplate.background, borderColor: nameplate.borderColor }
+          : undefined
+      }
+      className={`relative overflow-hidden w-full flex items-center justify-between gap-1.5 px-2 py-1.5 rounded-lg text-xs font-mono transition-colors ${
         person.isCurrent
           ? person.isOnline
             ? 'bg-indigo-600/30 bg-lira-surface text-lira-accent font-semibold border border-lira-rule/50'
             : 'bg-indigo-600/30 bg-lira-surface/80 text-lira-muted font-semibold border border-lira-rule/40'
+          : useCustomBg
+          ? 'border text-slate-100 hover:brightness-110'
           : person.isOnline
           ? 'text-lira-ink hover:text-lira-accent hover:bg-lira-surface/60 border border-transparent'
           : 'text-lira-muted/70 hover:text-lira-ink hover:bg-lira-surface/50 border border-transparent'
       }`}
       title={whereabouts(person)}
     >
-      <div className="flex items-center gap-2 min-w-0 flex-1">
+      {useCustomBg && (
+        <NameplateArtwork nameplateId={nameplate.nameplateId} accentColor={nameplate.accentColor} />
+      )}
+      <div className="relative z-10 flex items-center gap-2 min-w-0 flex-1">
         <PlayerAvatar
           name={person.name}
           player={person.avatarSource}
           showStatus={true}
           status={person.status}
           size="sm"
-          className={person.isOnline ? 'rounded-[6px]' : 'rounded-[6px] opacity-45 grayscale'}
+          className={person.isOnline ? 'rounded-full' : 'rounded-full opacity-45 grayscale'}
         />
         <div className="flex flex-col min-w-0 text-left">
           <span className="truncate text-xs">{person.name}</span>
@@ -59,7 +74,7 @@ const PersonRow: React.FC<Pick<Props, 'onOpen' | 'onContextMenu'> & { person: Ch
         </div>
       </div>
       {person.unreadCount > 0 && (
-        <span className="bg-indigo-500 bg-lira-accent text-lira-ground text-[10px] px-1.5 py-0.2 rounded font-mono font-bold shrink-0">
+        <span className="bg-indigo-500 bg-lira-accent text-lira-ground text-[10px] px-1.5 py-0.2 rounded font-mono font-bold relative z-10 shrink-0">
           {person.unreadCount}
         </span>
       )}

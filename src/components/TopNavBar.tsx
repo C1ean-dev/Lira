@@ -31,6 +31,8 @@ import { LiraLogo } from './LiraLogo'
 import { useUpdateStore, versionBadgeLabel } from '../store/useUpdateStore'
 import { CURRENT_APP_VERSION } from '../services/updateService'
 import { PlayerAvatar } from './common/PlayerAvatar'
+import { resolveProfile } from '../utils/profileUtils'
+import { useProfileModalStore } from '../store/useProfileModalStore'
 import { UpdateDownloadIndicator } from './common/UpdateDownloadIndicator'
 import { UpdateChangelogHover } from './common/UpdateChangelogHover'
 import { isAndroid } from '../utils/platform'
@@ -53,7 +55,7 @@ const RAIL_ICON_BTN =
   'relative flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-[10px] border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lira-accent'
 
 export const TopNavBar: React.FC<Props> = ({
-  onOpenAvatarModal,
+  onOpenAvatarModal: _onOpenAvatarModal,
   onApplyUpdate,
   hasUpdate,
   isUpdateReady,
@@ -63,9 +65,11 @@ export const TopNavBar: React.FC<Props> = ({
   const localPlayerName = useGameStore((s) => s.localPlayer.name)
   const localPlayerProfilePicture = useGameStore((s) => s.localPlayer.profilePicture)
   const localPlayerAvatar = useGameStore((s) => s.localPlayer.avatar)
+  const localPlayerProfile = useGameStore((s) => s.localPlayer.profile)
   const localPlayerStatus = useGameStore((s) => s.localPlayer.status)
   const localPlayerStatusText = useGameStore((s) => s.localPlayer.statusText)
   const localPlayerCurrentZoneId = useGameStore((s) => s.localPlayer.currentZoneId)
+  const resolvedLocalProfile = useMemo(() => resolveProfile(localPlayerProfile), [localPlayerProfile])
   const roomId = useGameStore((s) => s.roomId)
   const updateInfo = useUpdateStore((s) => s.updateInfo)
   const updateStatus = useUpdateStore((s) => s.status)
@@ -731,15 +735,16 @@ export const TopNavBar: React.FC<Props> = ({
                   type="button"
                   onClick={() => {
                     setIsRoomMenuOpen(false)
-                    onOpenAvatarModal()
+                    useProfileModalStore.getState().openLocalProfile('view')
                   }}
-                  aria-label={`Editar perfil: ${localPlayerName}`}
+                  aria-label={`Ver / Editar perfil: ${localPlayerName}`}
                   className={`${RAIL_ICON_BTN} bg-lira-surface hover:border-lira-accent border-lira-quiet p-0`}
                 >
                   <PlayerAvatar
                     name={localPlayerName}
                     profilePicture={localPlayerProfilePicture}
                     avatar={localPlayerAvatar}
+                    avatarFrame={resolvedLocalProfile.avatarFrame}
                     status={localPlayerStatus}
                     showStatus={true}
                     size="sm"
@@ -754,7 +759,7 @@ export const TopNavBar: React.FC<Props> = ({
                   {localPlayerStatusText && (
                     <span className="text-[10px] text-lira-muted truncate">{localPlayerStatusText}</span>
                   )}
-                  <span className="text-[10px] text-lira-accent">Editar perfil</span>
+                  <span className="text-[10px] text-lira-accent">Ver / Editar perfil</span>
                 </div>
               </TooltipContent>
             </Tooltip>

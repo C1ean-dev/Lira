@@ -37,6 +37,10 @@ import { Player, UserRole } from '../types/game'
 import { goToPlayer } from '../utils/goToPlayer'
 import { PlayerAvatar } from './common/PlayerAvatar'
 import { SpotifyIcon } from './common/SpotifyIcon'
+import { NameplateArtwork } from './profile/ProfileBar'
+import { MedalBadgeList } from './profile/MedalBadgeList'
+import { getNameplateStyle, resolveProfile } from '../utils/profileUtils'
+import { buildProfileTargetFromPlayer, useProfileModalStore } from '../store/useProfileModalStore'
 import { getPlayerUserId, findFriendKey } from '../utils/userId'
 import { PeerManager } from '../p2p/PeerManager'
 
@@ -272,22 +276,45 @@ const OnlineUsersMenuInner: React.FC = () => {
             const isMenuOpen = selectedUserMenuId === player.id
             const pingMs = player.ping ?? (isLocal ? 12 : 38)
 
+            const resolvedProfile = resolveProfile(player.profile)
+            const nameplate = getNameplateStyle(resolvedProfile)
+
             return (
               <div
                 key={player.id}
-                className="p-3 rounded-[10px] bg-lira-ground hover:bg-lira-surface/60 border border-lira-quiet hover:border-lira-rule transition-colors space-y-2.5"
+                data-nameplate={nameplate.nameplateId}
+                style={
+                  nameplate.hasCustomNameplate
+                    ? { background: nameplate.background, borderColor: nameplate.borderColor }
+                    : undefined
+                }
+                className={`relative overflow-hidden p-3 rounded-[10px] border transition-colors space-y-2.5 ${
+                  nameplate.hasCustomNameplate
+                    ? 'hover:brightness-110'
+                    : 'bg-lira-ground hover:bg-lira-surface/60 border-lira-quiet hover:border-lira-rule'
+                }`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
+                <NameplateArtwork nameplateId={nameplate.nameplateId} accentColor={nameplate.accentColor} />
+                <div className="relative z-10 flex items-center justify-between gap-2">
+                  <div
+                    onClick={() =>
+                      useProfileModalStore
+                        .getState()
+                        .openProfile(buildProfileTargetFromPlayer(player, isLocal), 'view')
+                    }
+                    className="flex items-center gap-2.5 min-w-0 cursor-pointer group/profile"
+                    title={`Ver perfil de ${player.name}`}
+                  >
                     <PlayerAvatar
                       player={player}
                       showStatus={true}
                       size="md"
+                      className="rounded-full"
                     />
 
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-xs font-display font-bold text-lira-ink truncate">
+                        <span className="text-xs font-display font-bold text-lira-ink group-hover/profile:underline truncate">
                           {player.name}
                         </span>
                         {isLocal && (
@@ -314,6 +341,11 @@ const OnlineUsersMenuInner: React.FC = () => {
                           </span>
                         )}
                       </div>
+                      {resolvedProfile.medals && resolvedProfile.medals.length > 0 && (
+                        <div className="mt-1">
+                          <MedalBadgeList medals={resolvedProfile.medals} size="xs" maxVisible={5} />
+                        </div>
+                      )}
 
                       <div className="flex items-center gap-2 text-[10px] text-lira-muted mt-0.5">
                         <span className="flex items-center gap-0.5 text-lira-accent">
@@ -485,12 +517,24 @@ const OnlineUsersMenuInner: React.FC = () => {
                 </div>
 
                 {isMenuOpen && !isLocal && (
-                  <div className="p-3 bg-lira-surface rounded-[8px] border border-dashed border-lira-rule space-y-2.5">
+                  <div className="relative z-10 p-3 bg-lira-surface rounded-[8px] border border-dashed border-lira-rule space-y-2.5">
                     <div className="text-[10px] font-bold uppercase tracking-wider text-lira-muted">
                       Ações & Interação
                     </div>
 
                     <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        onClick={() => {
+                          useProfileModalStore
+                            .getState()
+                            .openProfile(buildProfileTargetFromPlayer(player, false), 'view')
+                          setSelectedUserMenuId(null)
+                        }}
+                        className="py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-xs flex items-center gap-1.5 border border-slate-700 transition-colors col-span-2"
+                      >
+                        <UserCheck className="w-3.5 h-3.5 text-sky-400" />
+                        <span>Ver Perfil Completo</span>
+                      </button>
                       <button
                         onClick={() => {
                           goToPlayer(player.id)

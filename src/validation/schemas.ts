@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { Player, PublicRoomInfo, ReactionItem, RoomKnockRequest } from '../types/game'
+import type { UserProfile } from '../types/profile'
 import type { ChatMessage, RoomChannel } from '../types/chat'
 import type { MapData, StoredMapData, PlacedFurniture, PrivateZone, FloorType, WallType } from '../types/map'
 import { MISSING_FURNITURE_DEF_ID } from '../types/map'
@@ -79,8 +80,27 @@ const avatarSchema = z.object({
   steps: z.object({ style: avatarStepsStyleSchema, color: text.optional(), custom: customAvatarEffectSchema.optional() }).optional(),
   customComponents: z.record(text, z.union([text, z.record(directionSchema, z.union([text, z.array(text)]).optional())])).optional(),
 }).passthrough()
+export const userProfileSchema = domain<UserProfile>(z.object({
+  handle: text.optional(),
+  pronouns: text.optional(),
+  bio: text.optional(),
+  memberSince: optionalFinite,
+  bannerPreset: text.optional(),
+  bannerColor: text.optional(),
+  bannerImage: text.optional(),
+  themePrimary: text.optional(),
+  themeAccent: text.optional(),
+  avatarFrame: text.optional(),
+  nameplate: text.optional(),
+  nameplateColor: text.optional(),
+  nameplateAccent: text.optional(),
+  medals: z.array(text).optional(),
+  games: z.array(text).optional(),
+}).passthrough())
+
 export const playerSchema = domain<Partial<Player>>(z.object({
   id: id.optional(), gameId: id.optional(), name: text.optional(), profilePicture: text.optional(),
+  profile: userProfileSchema.optional(),
   x: optionalFinite, y: optionalFinite, targetX: optionalFinite, targetY: optionalFinite,
   direction: directionSchema.optional(), isMoving: optionalBool, seatedOn: text.nullable().optional(),
   activityAnimation: text.optional(), activityAnimationStartedAt: optionalFinite, activityAnimationManual: optionalBool,
@@ -206,6 +226,7 @@ export const hubMessageSchema = z.object({ type: z.enum(['ANNOUNCE_ROOM', 'UNREG
   roomId: id.optional(), roomInfo: publicRoomSchema.optional(), timestamp: finite.default(0) })
 const presenceFields = {
   userId: id, gameId: text.optional(), name: text, profilePicture: text.optional(), avatar: avatarSchema.optional(),
+  profile: userProfileSchema.optional(),
   status: presenceStatusSchema.optional(), statusText: text.optional(), statusEmoji: text.optional(),
   roomCode: text.nullable().optional(), roomName: text.nullable().optional(), inRoom: z.boolean(), lastHeartbeat: finite,
 }

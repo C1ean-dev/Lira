@@ -1,5 +1,6 @@
 import { Channel } from '../types/chat'
 import { AvatarConfig, FriendProfile, PresenceStatus, STATUS_META } from '../types/game'
+import type { UserProfile } from '../types/profile'
 import { findFriendKey, getFriendUserId, getPlayerUserId, isUserId } from './userId'
 
 interface RoomPlayer {
@@ -8,6 +9,7 @@ interface RoomPlayer {
   name: string
   profilePicture?: string
   avatar?: AvatarConfig
+  profile?: UserProfile
   status?: PresenceStatus | string
   statusText?: string
   statusEmoji?: string
@@ -21,7 +23,7 @@ export interface ChatPerson {
   key: string
   kind: 'friend' | 'space' | 'conversation'
   name: string
-  avatarSource?: { name?: string; profilePicture?: string; avatar?: AvatarConfig }
+  avatarSource?: { name?: string; profilePicture?: string; avatar?: AvatarConfig; profile?: UserProfile }
   inSpace: boolean
   isOnline: boolean
   status: string

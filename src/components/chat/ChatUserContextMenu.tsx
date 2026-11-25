@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react'
-import { UserPlus, UserMinus, Clock, Copy } from 'lucide-react'
+import { UserPlus, UserMinus, Clock, Copy, UserCircle } from 'lucide-react'
 import { ChatUserFriendState } from '../../utils/chatUserActions'
 
 interface Props {
@@ -7,6 +7,7 @@ interface Props {
   y: number
   name: string
   friendState: ChatUserFriendState
+  onViewProfile?: () => void
   onAddFriend: () => void
   onRemoveFriend: () => void
   onCopyContent?: () => void
@@ -25,6 +26,7 @@ export const ChatUserContextMenu: React.FC<Props> = ({
   y,
   name,
   friendState,
+  onViewProfile,
   onAddFriend,
   onRemoveFriend,
   onCopyContent,
@@ -71,6 +73,13 @@ export const ChatUserContextMenu: React.FC<Props> = ({
       <div className="px-2.5 py-1.5 mb-1 border-b border-dashed border-lira-rule/60 text-xs font-display font-bold text-lira-accent truncate">
         {friendState === 'self' ? `${name} (Você)` : name}
       </div>
+
+      {onViewProfile && (
+        <button type="button" role="menuitem" onClick={run(onViewProfile)} className={`${itemClass} hover:bg-indigo-600/20 text-slate-100`}>
+          <UserCircle className="w-4 h-4 text-sky-400 shrink-0" />
+          <span>Ver perfil</span>
+        </button>
+      )}
 
       {friendState === 'can-add' && (
         <button type="button" role="menuitem" onClick={run(onAddFriend)} className={`${itemClass} hover:bg-lira-surface text-lira-ink`}>

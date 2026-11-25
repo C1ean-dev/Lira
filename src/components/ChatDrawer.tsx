@@ -35,6 +35,7 @@ import { FriendsPresenceService } from '../services/friendsPresenceService'
 import { Channel, ChatMessage, ChatAttachment, ChatMention } from '../types/chat'
 import { FriendRequestCard } from './chat/FriendRequestCard'
 import { PlayerAvatar } from './common/PlayerAvatar'
+import { buildProfileTargetFromFriend, buildProfileTargetFromPlayer, useProfileModalStore } from '../store/useProfileModalStore'
 import { MessageStatusIcon } from './chat/MessageStatusIcon'
 import { ChatUserContextMenu } from './chat/ChatUserContextMenu'
 import { ChatPeopleList } from './chat/ChatPeopleList'
@@ -989,19 +990,42 @@ const ChatDrawerInner: React.FC = () => {
                   )
                 }
 
+                const senderRemote = isMine
+                  ? undefined
+                  : remotePlayers[msg.senderId] ||
+                    Object.values(remotePlayers).find((p) => p.gameId === msg.senderId) ||
+                    Object.values(remotePlayers).find((p) => p.name === msg.senderName)
+                const senderFriend =
+                  !isMine && !senderRemote
+                    ? Object.values(friendProfiles).find(
+                        (f) => f.id === msg.senderId || f.actualUserId === msg.senderId || f.name === msg.senderName
+                      )
+                    : undefined
+                const senderEntity = isMine ? localPlayer : senderRemote || senderFriend
+
+                const handleOpenSenderProfile = () => {
+                  if (isMine) {
+                    useProfileModalStore.getState().openLocalProfile('view')
+                  } else if (senderRemote) {
+                    useProfileModalStore.getState().openProfile(buildProfileTargetFromPlayer(senderRemote, false), 'view')
+                  } else if (senderFriend) {
+                    useProfileModalStore.getState().openProfile(buildProfileTargetFromFriend(senderFriend), 'view')
+                  } else {
+                    useProfileModalStore.getState().openProfile({ userId: msg.senderId, name: msg.senderName }, 'view')
+                  }
+                }
+
                 return (
                   <div key={msg.id} onContextMenu={(e) => openUserMenu(e, msg)} className="group relative flex flex-col space-y-1">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 min-w-0">
+                      <button
+                        type="button"
+                        onClick={handleOpenSenderProfile}
+                        className="flex items-center gap-2 min-w-0 text-left hover:underline"
+                        title={`Ver perfil de ${msg.senderName}`}
+                      >
                         <PlayerAvatar
-                          player={
-                            isMine
-                              ? localPlayer
-                              : remotePlayers[msg.senderId] ||
-                                Object.values(remotePlayers).find((p) => p.gameId === msg.senderId) ||
-                                Object.values(remotePlayers).find((p) => p.name === msg.senderName) ||
-                                Object.values(friendProfiles).find((f) => f.name === msg.senderName)
-                          }
+                          player={senderEntity}
                           name={msg.senderName}
                           size="xs"
                           className="rounded-[6px]"
@@ -1009,7 +1033,7 @@ const ChatDrawerInner: React.FC = () => {
                         <span className={`text-xs font-semibold truncate ${isMine ? 'text-lira-accent' : 'text-lira-ink'}`}>
                           {msg.senderName}
                         </span>
-                      </div>
+                      </button>
                       <div className="flex items-center gap-1 shrink-0">
                         <span className="text-[10px] font-mono text-lira-muted">
                           {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -1341,6 +1365,25 @@ const ChatDrawerInner: React.FC = () => {
             y={userMenu.y}
             name={target.name}
             friendState={state}
+            onViewProfile={() => {
+              if (state === 'self') {
+                useProfileModalStore.getState().openLocalProfile('view')
+              } else {
+                const remote =
+                  remotePlayers[userMenu.msg.senderId] ||
+                  Object.values(remotePlayers).find(
+                    (p) => p.gameId === target.id || p.id === target.id || p.name === target.name
+                  )
+                const fp = friendKey ? friendProfiles[friendKey] : undefined
+                if (remote) {
+                  useProfileModalStore.getState().openProfile(buildProfileTargetFromPlayer(remote, false), 'view')
+                } else if (fp) {
+                  useProfileModalStore.getState().openProfile(buildProfileTargetFromFriend(fp), 'view')
+                } else {
+                  useProfileModalStore.getState().openProfile({ userId: target.id, name: target.name, avatar: target.avatar }, 'view')
+                }
+              }
+            }}
             onAddFriend={() => sendFriendRequest(target)}
             onRemoveFriend={() => friendKey && useGameStore.getState().removeFriend(friendKey)}
             onCopyContent={() => {

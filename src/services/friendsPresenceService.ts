@@ -1,5 +1,7 @@
 import { presenceMessageSchema, userPresenceSchema, friendPacketSchema } from '../validation/schemas'
 import { FriendProfile, PublicRoomInfo, PresenceStatus } from '../types/game'
+import type { UserProfile } from '../types/profile'
+import { sanitizeIncomingProfile, stripProfileMedia } from '../utils/profileUtils'
 import { ChatAttachment, ChatMessage, MessageDeliveryStatus } from '../types/chat'
 import { useGameStore, getLocalUserId } from '../store/useGameStore'
 import { useChatStore, getLocalDmChannelId } from '../store/useChatStore'
@@ -14,6 +16,7 @@ export interface UserPresence {
   name: string
   profilePicture?: string
   avatar?: any
+  profile?: UserProfile
   status?: string
   statusText?: string
   statusEmoji?: string
@@ -86,6 +89,7 @@ export class FriendsPresenceService {
   private sharedSignature = ''
   private sharedAvatar: unknown = undefined
   private sharedPicture: string | undefined = undefined
+  private sharedProfile: unknown = undefined
   private recentReceipts: Map<string, number> = new Map()
 
   private constructor() {
@@ -129,7 +133,10 @@ export class FriendsPresenceService {
         // This cache is only for short-lived discovery/status. Profile media is
         // already kept in friend profiles and sent over the live transports.
         // Serializing embedded images here blocks the UI on every heartbeat.
-        const list = Array.from(this.presenceMap.values(), ({ avatar, profilePicture, ...presence }) => presence)
+        const list = Array.from(this.presenceMap.values(), ({ avatar, profilePicture, profile, ...presence }) => ({
+          ...presence,
+          profile: stripProfileMedia(profile),
+        }))
         window.localStorage.setItem(STORAGE_CACHE_KEY, JSON.stringify(list))
       }
     } catch (e) {
@@ -281,6 +288,7 @@ export class FriendsPresenceService {
         name: linkText(raw.name, 60)?.trim() || 'Amigo',
         profilePicture: picture?.startsWith('data:image/') ? picture : undefined,
         avatar: raw.avatar && typeof raw.avatar === 'object' ? raw.avatar : undefined,
+        profile: sanitizeIncomingProfile(raw.profile),
         status: linkText(raw.status, 20),
         statusText: linkText(raw.statusText, 80),
         statusEmoji: linkText(raw.statusEmoji, 16),
@@ -498,10 +506,12 @@ export class FriendsPresenceService {
 
     const friendKey = findFriendKey(gameStore.friends, gameStore.friendProfiles, [p.userId, p.gameId])
     if (friendKey) {
+      const existing = gameStore.friendProfiles[friendKey]
       gameStore.updateFriendProfile(friendKey, {
         name: p.name,
-        profilePicture: p.profilePicture,
-        avatar: p.avatar,
+        profilePicture: p.profilePicture ?? existing?.profilePicture,
+        avatar: p.avatar ?? existing?.avatar,
+        profile: p.profile ?? existing?.profile,
         gameId: p.gameId,
         actualUserId: p.userId,
         status: (p.status as PresenceStatus) || 'available',
@@ -528,6 +538,7 @@ export class FriendsPresenceService {
             lastRoomName: p.roomName || undefined,
             profilePicture: p.profilePicture || profile.profilePicture,
             avatar: p.avatar || profile.avatar,
+            profile: p.profile || profile.profile,
           })
         }
       }
@@ -554,6 +565,7 @@ export class FriendsPresenceService {
       name: local.name,
       profilePicture: local.profilePicture,
       avatar: local.avatar,
+      profile: local.profile,
       status: local.status,
       statusText: local.statusText,
       statusEmoji: local.statusEmoji,
@@ -580,10 +592,12 @@ export class FriendsPresenceService {
     const changed =
       signature !== this.sharedSignature ||
       presence.avatar !== this.sharedAvatar ||
-      presence.profilePicture !== this.sharedPicture
+      presence.profilePicture !== this.sharedPicture ||
+      presence.profile !== this.sharedProfile
     this.sharedSignature = signature
     this.sharedAvatar = presence.avatar
     this.sharedPicture = presence.profilePicture
+    this.sharedProfile = presence.profile
 
     for (const userId of network.getLinkedUserIds()) {
       if (this.isFriendUser(userId)) {
