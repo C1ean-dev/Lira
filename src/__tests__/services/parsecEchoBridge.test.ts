@@ -14,21 +14,23 @@ describe('Parsec configuration bridge', () => {
     await import('../../../electron/preload')
     const api = bridge.exposeInMainWorld.mock.calls.find(([name]) => name === 'electronAPI')?.[1]
     expect(api.platform).toBe(process.platform)
-    bridge.invoke.mockResolvedValueOnce({ ok: true, restartRequired: true })
-    expect(await api.configureParsecEcho('C:\\untrusted.exe')).toEqual({ ok: true, restartRequired: true })
+    bridge.invoke.mockResolvedValueOnce({ ok: true, restartRequired: false })
+    expect(await api.configureParsecEcho('C:\\untrusted.exe')).toEqual({ ok: true, restartRequired: false })
     expect(bridge.invoke).toHaveBeenCalledExactlyOnceWith('configure-parsec-echo')
   })
 
-  it('accepts only the main window main frame and serializes repeated clicks', async () => {
+  it('accepts only the main window main frame and serializes startup and repeated calls', async () => {
     const mainFrame = {}
     const contents = { mainFrame }
-    const configure = vi.fn(async () => ({ ok: true, restartRequired: true }))
+    const configure = vi.fn(async () => ({ ok: true, restartRequired: false }))
     const handler = createParsecEchoHandler(() => contents, configure)
     const event = { sender: contents, senderFrame: mainFrame }
+    const startup = handler.run()
     const pending = handler(event)
     const repeated = handler(event)
-    expect(await pending).toEqual({ ok: true, restartRequired: true })
-    expect(await repeated).toEqual({ ok: true, restartRequired: true })
+    expect(await startup).toEqual({ ok: true, restartRequired: false })
+    expect(await pending).toEqual({ ok: true, restartRequired: false })
+    expect(await repeated).toEqual({ ok: true, restartRequired: false })
     expect(configure).toHaveBeenCalledOnce()
     await handler(event)
     expect(configure).toHaveBeenCalledTimes(2)

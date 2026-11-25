@@ -52,21 +52,23 @@ export const SpaceShell: React.FC<Props> = ({
 
   return (
   <SpaceTranscriptionProvider>
-    <TopNavBar
-      onOpenAvatarModal={onOpenAvatarModal}
-      onApplyUpdate={onApplyUpdate}
-      hasUpdate={hasUpdate}
-      isUpdateReady={isUpdateReady}
-      isUpdating={isUpdating}
-      onDisconnect={onDisconnect}
-    />
+    <div className="flex flex-row h-full w-full min-h-0 min-w-0 overflow-hidden">
+      <TopNavBar
+        onOpenAvatarModal={onOpenAvatarModal}
+        onApplyUpdate={onApplyUpdate}
+        hasUpdate={hasUpdate}
+        isUpdateReady={isUpdateReady}
+        isUpdating={isUpdating}
+        onDisconnect={onDisconnect}
+      />
 
-    <main className="relative flex-1 w-full overflow-hidden flex">
-      <MapViewport />
-      <AssetPalette />
-      <ChatDrawer />
-      <MiniCallOverlay />
-    </main>
+      <main className="relative flex-1 min-w-0 h-full overflow-hidden flex bg-lira-ground text-lira-ink">
+        <MapViewport />
+        <AssetPalette />
+        <ChatDrawer />
+        <MiniCallOverlay />
+      </main>
+    </div>
 
     <FullScreenGrid />
     <MeetingSummaryPanel />

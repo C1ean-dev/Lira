@@ -111,6 +111,13 @@ export function _resetSoundEffectsForTesting(): void {
 
 function getAudioContext(): AudioContext | null {
   try {
+    if (
+      (typeof window !== 'undefined' && (window as any).__LIRA_MUTE_SOUND_EFFECTS__) ||
+      (typeof globalThis !== 'undefined' && (globalThis as any).__LIRA_MUTE_SOUND_EFFECTS__)
+    ) {
+      return null
+    }
+
     const AudioContextClass =
       (typeof window !== 'undefined' && ((window as any).AudioContext || (window as any).webkitAudioContext)) ||
       (typeof globalThis !== 'undefined' && ((globalThis as any).AudioContext || (globalThis as any).webkitAudioContext)) ||
@@ -720,8 +727,19 @@ function playChristmasSound(ctx: AudioContext, masterGain: GainNode, type: Sound
 
 export function playSoundEffect(type: SoundEffectType, force: boolean = false): void {
   try {
+    if (
+      (typeof window !== 'undefined' && (window as any).__LIRA_MUTE_SOUND_EFFECTS__) ||
+      (typeof globalThis !== 'undefined' && (globalThis as any).__LIRA_MUTE_SOUND_EFFECTS__)
+    ) {
+      return
+    }
+
     const options = optionsProvider ? optionsProvider() : undefined
     if (!force && options && options.enabled === false) {
+      return
+    }
+
+    if (options && typeof options.volume === 'number' && options.volume <= 0) {
       return
     }
 

@@ -1,4 +1,5 @@
-import { getRnnoiseGlueSource, getWasmBytes, RNNOISE_GATE } from './RnnoiseProcessor'
+import { getRnnoiseGlueSource, getWasmBytes, RNNOISE_AUTO_GATE, RNNOISE_GATE } from './RnnoiseProcessor'
+import { AutoGate, GATE_RMS_SCALE } from './autoGate'
 
 const FRAME_SIZE = 480
 const FRAME_BYTES = FRAME_SIZE * 4
@@ -62,9 +63,14 @@ function loadModule(): Promise<RnnoiseModule> {
   return modulePromise
 }
 
-export async function denoiseSamples(input: Float32Array): Promise<Float32Array> {
+export async function denoiseSamplesWithVad(
+  input: Float32Array
+): Promise<{ output: Float32Array; frameVads: Float32Array }> {
   const output = new Float32Array(input.length)
-  if (input.length === 0) return output
+  if (input.length === 0) return { output, frameVads: new Float32Array(0) }
+
+  const frameCount = Math.ceil(input.length / FRAME_SIZE)
+  const frameVads = new Float32Array(frameCount)
 
   const module = await loadModule()
   const state = module._rnnoise_create(0)
@@ -72,7 +78,7 @@ export async function denoiseSamples(input: Float32Array): Promise<Float32Array>
   const outputPtr = module._malloc(FRAME_BYTES)
   try {
     if (!state || !inputPtr || !outputPtr) throw new Error('RNNoise allocation failed')
-    for (let offset = 0; offset < input.length; offset += FRAME_SIZE) {
+    for (let offset = 0, frameIndex = 0; offset < input.length; offset += FRAME_SIZE, frameIndex++) {
       const count = Math.min(FRAME_SIZE, input.length - offset)
       let heap = module.HEAPF32
       const inBase = inputPtr / 4
@@ -80,7 +86,8 @@ export async function denoiseSamples(input: Float32Array): Promise<Float32Array>
         const sample = i < count ? input[offset + i] * PCM_SCALE : 0
         heap[inBase + i] = Math.max(PCM_MIN, Math.min(PCM_MAX, sample))
       }
-      module._rnnoise_process_frame(state, outputPtr, inputPtr)
+      const vad = module._rnnoise_process_frame(state, outputPtr, inputPtr)
+      frameVads[frameIndex] = Number.isFinite(vad) ? Math.max(0, Math.min(1, vad)) : 0
       heap = module.HEAPF32
       const outBase = outputPtr / 4
       for (let i = 0; i < count; i++) {
@@ -91,6 +98,97 @@ export async function denoiseSamples(input: Float32Array): Promise<Float32Array>
     if (state) module._rnnoise_destroy(state)
     if (inputPtr) module._free(inputPtr)
     if (outputPtr) module._free(outputPtr)
+  }
+  return { output, frameVads }
+}
+
+export async function denoiseSamples(input: Float32Array): Promise<Float32Array> {
+  return (await denoiseSamplesWithVad(input)).output
+}
+
+function estimateNoiseFloorRms(frameRms: number[], frameVads?: Float32Array): number | undefined {
+  if (frameRms.length === 0) return undefined
+  const nonSpeech = frameVads
+    ? frameRms.filter((_, index) => (frameVads[index] ?? 0) < RNNOISE_AUTO_GATE.vadSoftSpeech)
+    : frameRms
+  const pool = nonSpeech.length > 0 ? nonSpeech : frameRms
+  const sorted = [...pool].sort((a, b) => a - b)
+  const lowerHalf = sorted.slice(0, Math.max(1, Math.floor(sorted.length / 2)))
+  return lowerHalf[Math.floor(lowerHalf.length / 2)]
+}
+
+export function autoGateDenoisedSamples(
+  samples: Float32Array,
+  sampleRate: number,
+  frameVads?: Float32Array
+): Float32Array {
+  const output = new Float32Array(samples.length)
+  if (samples.length === 0) return output
+
+  const hop = Math.max(1, Math.floor(sampleRate * 0.01))
+  const frameRms: number[] = []
+  for (let start = 0; start < samples.length; start += hop) {
+    const end = Math.min(samples.length, start + hop)
+    let sum = 0
+    for (let i = start; i < end; i++) sum += samples[i] * samples[i]
+    frameRms.push(Math.sqrt(sum / (end - start)))
+  }
+
+  const autoGate = new AutoGate({
+    minOpenRms: RNNOISE_AUTO_GATE.openLevel / GATE_RMS_SCALE,
+    minCloseRms: RNNOISE_AUTO_GATE.closeLevel / GATE_RMS_SCALE,
+    initialFloorRms: estimateNoiseFloorRms(frameRms, frameVads),
+  })
+
+  const holdSamples = (RNNOISE_GATE.holdMs / 1000) * sampleRate
+  const attack = 1 - Math.exp(-1 / (RNNOISE_GATE.attackTimeConstant * sampleRate))
+  const release = 1 - Math.exp(-1 / (RNNOISE_GATE.releaseTimeConstant * sampleRate))
+
+  let gateOpen = false
+  let gain = 0
+  let lastLoudAt = -Infinity
+
+  for (let start = 0, frameIndex = 0; start < samples.length; start += hop, frameIndex++) {
+    const end = Math.min(samples.length, start + hop)
+    const rms = frameRms[frameIndex]
+    const level = Math.min(1, rms * GATE_RMS_SCALE)
+    const speechProb = frameVads ? (frameVads[frameIndex] ?? 0) : 0
+    const nowMs = (start / sampleRate) * 1000
+
+    autoGate.update(rms, nowMs, Boolean(frameVads && speechProb >= RNNOISE_AUTO_GATE.vadSoftSpeech))
+    const autoOpenLevel = autoGate.openLevel * GATE_RMS_SCALE
+    const autoCloseLevel = autoGate.closeLevel * GATE_RMS_SCALE
+
+    let shouldOpen: boolean = gateOpen
+    if (frameVads) {
+      if (
+        speechProb >= RNNOISE_AUTO_GATE.vadSpeech ||
+        (speechProb >= RNNOISE_AUTO_GATE.vadSoftSpeech && level > RNNOISE_AUTO_GATE.softSpeechLevel) ||
+        level > autoOpenLevel
+      ) {
+        shouldOpen = true
+      } else if (speechProb < RNNOISE_AUTO_GATE.vadSilence && level < autoCloseLevel) {
+        shouldOpen = false
+      }
+    } else if (level > autoOpenLevel) {
+      shouldOpen = true
+    } else if (level < autoCloseLevel) {
+      shouldOpen = false
+    }
+
+    if (shouldOpen) lastLoudAt = start
+    const withinHold = start - lastLoudAt < holdSamples
+    gateOpen = shouldOpen || withinHold
+
+    const target = gateOpen ? 1 : 0
+    const rate = gateOpen ? attack : release
+    for (let i = start; i < end; i++) {
+      if (gain !== target) {
+        gain += (target - gain) * rate
+        if (Math.abs(target - gain) < 1e-6) gain = target
+      }
+      output[i] = samples[i] * gain
+    }
   }
   return output
 }

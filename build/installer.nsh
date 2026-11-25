@@ -2,6 +2,7 @@
 !include "WinMessages.nsh"
 
 !ifndef BUILD_UNINSTALLER
+  !include "FileFunc.nsh"
   Var liraUpdatePending
   Var liraProgressLabel
   Var liraDeltaUpdate
@@ -10,6 +11,7 @@
   Var liraFailureMessage
   Var liraRestartAfterFailure
   Var liraGuiEnding
+  Var liraNoLaunch
 !endif
 
 !macro LiraStage MSG
@@ -52,6 +54,13 @@
   StrCpy $liraFailureHandled "false"
   StrCpy $liraRestartAfterFailure "false"
   StrCpy $liraGuiEnding "false"
+  StrCpy $liraNoLaunch "false"
+  ${GetParameters} $R0
+  ClearErrors
+  ${GetOptions} $R0 "/NOLAUNCH" $R1
+  ${IfNot} ${Errors}
+    StrCpy $liraNoLaunch "true"
+  ${EndIf}
   nsExec::Exec `"$SYSDIR\cmd.exe" /c echo ======================================== >> "$TEMP\lira_install.log"`
   nsExec::Exec `"$SYSDIR\cmd.exe" /c echo [TIMESTAMP] %DATE% %TIME% >> "$TEMP\lira_install.log"`
   !insertmacro LogToInstallFile "=== INICIO DO INSTALADOR LIRA ==="
@@ -145,6 +154,13 @@
   WriteRegStr HKCU "Software\Classes\lira" "URL Protocol" ""
   WriteRegStr HKCU "Software\Classes\lira\DefaultIcon" "" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}",0'
   WriteRegStr HKCU "Software\Classes\lira\shell\open\command" "" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" -- "%1"'
+  # Enable silent startup auto-update on fresh installs (unless user settings already exist).
+  ${IfNot} ${FileExists} "$APPDATA\${APP_PACKAGE_NAME}\app-system-settings.json"
+    ReadRegStr $R0 HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "com.lira.app"
+    ${If} $R0 == ""
+      WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "com.lira.app" '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" --startup-update'
+    ${EndIf}
+  ${EndIf}
   !insertmacro LiraStage "Finalizando instalacao"
   !insertmacro LogToInstallFile `[customInstall] Arquivos extraidos para INSTDIR: $INSTDIR`
   !insertmacro LogToInstallFile "[customInstall] Descompactando INSTDIR via compact.exe (caso esteja em particao compactada)..."
@@ -158,18 +174,24 @@
   ${OrIfNot} ${FileExists} "$INSTDIR\resources\app.asar"
     Abort "Os arquivos da nova versao estao incompletos."
   ${EndIf}
-  nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\update-recovery.ps1" -Action Verify -InstallDir "$INSTDIR" -UserDataDir "$APPDATA\${APP_PACKAGE_NAME}"`
-  Pop $0
-  ${If} $0 != 0
-    Abort "A verificacao dos arquivos instalados falhou."
+  ${If} $liraDeltaUpdate != "true"
+    nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\update-recovery.ps1" -Action Verify -InstallDir "$INSTDIR" -UserDataDir "$APPDATA\${APP_PACKAGE_NAME}"`
+    Pop $0
+    ${If} $0 != 0
+      Abort "A verificacao dos arquivos instalados falhou."
+    ${EndIf}
   ${EndIf}
-  # Inicia o aplicativo atualizado imediatamente apos a conclusao da instalacao
-  !insertmacro LogToInstallFile `[customInstall] Iniciando app atualizado: $appExe`
-  SetOutPath "$INSTDIR"
-  ClearErrors
-  ExecShell "" "$appExe"
-  ${If} ${Errors}
-    Abort "Nao foi possivel abrir a nova versao do Lira."
+  # Inicia o aplicativo atualizado imediatamente apos a conclusao da instalacao (exceto quando /NOLAUNCH foi solicitado)
+  ${If} $liraNoLaunch != "true"
+    !insertmacro LogToInstallFile `[customInstall] Iniciando app atualizado: $appExe`
+    SetOutPath "$INSTDIR"
+    ClearErrors
+    ExecShell "" "$appExe"
+    ${If} ${Errors}
+      Abort "Nao foi possivel abrir a nova versao do Lira."
+    ${EndIf}
+  ${Else}
+    !insertmacro LogToInstallFile `[customInstall] /NOLAUNCH ativo; aplicativo nao sera aberto automaticamente.`
   ${EndIf}
   nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\update-recovery.ps1" -Action Commit -InstallDir "$INSTDIR" -UserDataDir "$APPDATA\${APP_PACKAGE_NAME}"`
   Pop $0
@@ -200,6 +222,7 @@
     ${If} $R0 == '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" -- "%1"'
       DeleteRegKey HKCU "Software\Classes\lira"
     ${EndIf}
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "com.lira.app"
     nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\update-recovery.ps1" -Action Cleanup -InstallDir "$INSTDIR" -UserDataDir "$APPDATA\${APP_PACKAGE_NAME}"`
     Pop $0
     ${If} $0 != 0
@@ -254,6 +277,10 @@ FunctionEnd
 Function LiraRestartPreservedApp
   ${If} $liraRestartAfterFailure == "true"
     StrCpy $liraRestartAfterFailure "false"
+    ${If} $liraNoLaunch == "true"
+      !insertmacro LogToInstallFile "[Rollback] /NOLAUNCH ativo; versao preservada nao sera reaberta automaticamente."
+      Return
+    ${EndIf}
     ${If} ${FileExists} "$INSTDIR\Lira.exe"
       SetOutPath "$INSTDIR"
       !insertmacro LogToInstallFile "[Rollback] Reabrindo versao preservada apos concluir o aviso."

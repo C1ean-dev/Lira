@@ -4,6 +4,14 @@ import {
   extractWaveformData,
   processAudioBufferOffline,
 } from './audioBufferUtils'
+import { calculateRecommendedSensitivity } from './autoGate'
+import type { SensitivityMode } from '../types/audio'
+
+export { calculateRecommendedSensitivity }
+
+export interface CalibrationOptions {
+  gateMode?: SensitivityMode
+}
 
 export interface ProcessedSampleInfo {
   mode: 'classic' | 'deepfilter' | 'rnnoise'
@@ -17,6 +25,7 @@ export interface CalibrationResult {
   snrDb: number
   recommendedMode: 'classic' | 'deepfilter' | 'rnnoise'
   recommendedSensitivity: number
+  gateMode?: SensitivityMode
   durationMs: number
   rawAudioUrl?: string
   processedAudioUrl?: string
@@ -63,11 +72,13 @@ export class MicCalibrator {
   public async calibrate(
     inputStream: MediaStream,
     durationMs: number = DEFAULT_DURATION_MS,
-    onProgress?: (p: CalibrationProgress) => void
+    onProgress?: (p: CalibrationProgress) => void,
+    options: CalibrationOptions = {}
   ): Promise<CalibrationResult> {
     this.dispose()
     this.revokeActiveUrls()
     this.aborted = false
+    const gateMode: SensitivityMode = options.gateMode ?? 'auto'
 
     const audioTrack = inputStream.getAudioTracks()[0]
     if (!audioTrack) {
@@ -117,7 +128,7 @@ export class MicCalibrator {
     return new Promise<CalibrationResult>((resolve) => {
       const tick = () => {
         if (this.aborted || !this.analyser) {
-          const result = this.buildResult(samples, peakRms, performance.now() - start)
+          const result = this.buildResult(samples, peakRms, performance.now() - start, gateMode)
           this.dispose()
           resolve(result)
           return
@@ -187,9 +198,9 @@ export class MicCalibrator {
         }
 
         if (elapsed >= durationMs) {
-          const result = this.buildResult(samples, peakRms, elapsed)
+          const result = this.buildResult(samples, peakRms, elapsed, gateMode)
 
-          this.processRecordedSamples(recordedChunks, result)
+          this.processRecordedSamples(recordedChunks, result, gateMode)
             .then(() => {
               this.dispose()
               if (onProgress) {
@@ -219,7 +230,8 @@ export class MicCalibrator {
 
   private async processRecordedSamples(
     recordedChunks: Float32Array[],
-    result: CalibrationResult
+    result: CalibrationResult,
+    gateMode: SensitivityMode
   ): Promise<void> {
     if (recordedChunks.length === 0 || !this.audioCtx) return
 
@@ -242,9 +254,9 @@ export class MicCalibrator {
       this.activeUrls.push(result.rawAudioUrl)
 
       const [classicBuffer, deepFilterBuffer, rnnoiseBuffer] = await Promise.all([
-        processAudioBufferOffline(rawBuffer, 'classic', result.recommendedSensitivity),
-        processAudioBufferOffline(rawBuffer, 'deepfilter', result.recommendedSensitivity),
-        processAudioBufferOffline(rawBuffer, 'rnnoise', result.recommendedSensitivity),
+        processAudioBufferOffline(rawBuffer, 'classic', result.recommendedSensitivity, gateMode),
+        processAudioBufferOffline(rawBuffer, 'deepfilter', result.recommendedSensitivity, gateMode),
+        processAudioBufferOffline(rawBuffer, 'rnnoise', result.recommendedSensitivity, gateMode),
       ])
 
       const classicBlob = audioBufferToWav(classicBuffer)
@@ -292,7 +304,8 @@ export class MicCalibrator {
   private buildResult(
     samples: number[],
     peakRms: number,
-    elapsedMs: number
+    elapsedMs: number,
+    gateMode: SensitivityMode = 'auto'
   ): CalibrationResult {
     if (samples.length === 0) {
       return {
@@ -300,7 +313,8 @@ export class MicCalibrator {
         peakRmsDb: -100,
         snrDb: 0,
         recommendedMode: 'classic',
-        recommendedSensitivity: 20,
+        recommendedSensitivity: calculateRecommendedSensitivity(0),
+        gateMode,
         durationMs: elapsedMs,
       }
     }
@@ -321,16 +335,15 @@ export class MicCalibrator {
       recommendedMode = 'classic'
     }
 
-    const sensitivity = Math.round(
-      Math.max(10, Math.min(35, (noiseFloorDb + 90) * 0.8))
-    )
+    const recommendedSensitivity = calculateRecommendedSensitivity(median)
 
     return {
       noiseFloorDb,
       peakRmsDb,
       snrDb,
       recommendedMode,
-      recommendedSensitivity: Number.isFinite(sensitivity) ? sensitivity : 20,
+      recommendedSensitivity,
+      gateMode,
       durationMs: elapsedMs,
     }
   }

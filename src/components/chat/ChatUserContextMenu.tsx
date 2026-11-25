@@ -19,7 +19,7 @@ const MENU_WIDTH = 224
 const MENU_HEIGHT = 150
 
 const itemClass =
-  'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left text-xs font-semibold transition-colors'
+  'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left text-xs font-mono font-semibold transition-colors'
 
 export const ChatUserContextMenu: React.FC<Props> = ({
   x,
@@ -66,11 +66,11 @@ export const ChatUserContextMenu: React.FC<Props> = ({
       ref={menuRef}
       role="menu"
       style={{ left, top }}
-      className="fixed z-[100] w-56 bg-[#12151d]/95 backdrop-blur-xl border border-[#2a3142] rounded-2xl shadow-2xl p-2 select-none text-slate-200"
+      className="fixed z-[100] w-56 bg-lira-panel border border-dashed border-lira-rule rounded-xl p-2 select-none text-lira-ink font-mono"
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
-      <div className="px-2.5 py-1.5 mb-1 border-b border-[#2a3142]/80 text-xs font-bold text-white truncate">
+      <div className="px-2.5 py-1.5 mb-1 border-b border-dashed border-lira-rule/60 text-xs font-display font-bold text-lira-accent truncate">
         {friendState === 'self' ? `${name} (Você)` : name}
       </div>
 
@@ -82,34 +82,34 @@ export const ChatUserContextMenu: React.FC<Props> = ({
       )}
 
       {friendState === 'can-add' && (
-        <button type="button" role="menuitem" onClick={run(onAddFriend)} className={`${itemClass} hover:bg-indigo-600/20 text-slate-100`}>
-          <UserPlus className="w-4 h-4 text-indigo-400 shrink-0" />
+        <button type="button" role="menuitem" onClick={run(onAddFriend)} className={`${itemClass} hover:bg-lira-surface text-lira-ink`}>
+          <UserPlus className="w-4 h-4 text-lira-accent shrink-0" />
           <span>Adicionar aos amigos</span>
         </button>
       )}
 
       {friendState === 'pending' && (
-        <button type="button" role="menuitem" disabled className={`${itemClass} opacity-50 cursor-not-allowed text-slate-300`}>
-          <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+        <button type="button" role="menuitem" disabled className={`${itemClass} opacity-50 cursor-not-allowed text-lira-muted`}>
+          <Clock className="w-4 h-4 text-lira-amber shrink-0" />
           <span>Solicitação pendente</span>
         </button>
       )}
 
       {friendState === 'friend' && (
-        <button type="button" role="menuitem" onClick={run(onRemoveFriend)} className={`${itemClass} hover:bg-rose-500/15 text-rose-300`}>
-          <UserMinus className="w-4 h-4 text-rose-400 shrink-0" />
+        <button type="button" role="menuitem" onClick={run(onRemoveFriend)} className={`${itemClass} hover:bg-lira-error/15 text-lira-error`}>
+          <UserMinus className="w-4 h-4 text-lira-error shrink-0" />
           <span>Remover dos amigos</span>
         </button>
       )}
 
       {onCopyContent ? (
-        <button type="button" role="menuitem" onClick={run(onCopyContent)} className={`${itemClass} hover:bg-slate-800/80 text-slate-200`}>
-          <Copy className="w-4 h-4 text-slate-400 shrink-0" />
+        <button type="button" role="menuitem" onClick={run(onCopyContent)} className={`${itemClass} hover:bg-lira-surface text-lira-ink`}>
+          <Copy className="w-4 h-4 text-lira-muted shrink-0" />
           <span>Copiar conteúdo</span>
         </button>
       ) : onCopyName ? (
-        <button type="button" role="menuitem" onClick={run(onCopyName)} className={`${itemClass} hover:bg-slate-800/80 text-slate-200`}>
-          <Copy className="w-4 h-4 text-slate-400 shrink-0" />
+        <button type="button" role="menuitem" onClick={run(onCopyName)} className={`${itemClass} hover:bg-lira-surface text-lira-ink`}>
+          <Copy className="w-4 h-4 text-lira-muted shrink-0" />
           <span>Copiar nome</span>
         </button>
       ) : null}

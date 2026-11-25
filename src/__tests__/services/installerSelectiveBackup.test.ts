@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, sym
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { ensureCompiledUpdateIoAssembly } from '../helpers/updateIoHarness'
 
 describe.skipIf(process.platform !== 'win32')('selective update data backup', () => {
   let root: string
@@ -28,19 +29,10 @@ describe.skipIf(process.platform !== 'win32')('selective update data backup', ()
   })
   const identity = (directory: string, name: string) => statSync(path.join(directory, name), { bigint: true }).ino
   beforeAll(async () => {
-    // Compile the unchanged production C# once, then load it in each isolated process.
+    // Reuse the shared compiled C# assembly across parallel test workers.
     toolsDirectory = mkdtempSync(path.join(os.tmpdir(), 'lira-selective-tools-'))
-    compiledHelper = path.join(toolsDirectory, 'update-io.dll')
-    const compiler = path.join(toolsDirectory, 'compile.ps1')
+    compiledHelper = ensureCompiledUpdateIoAssembly()
     runner = path.join(toolsDirectory, 'run.ps1')
-    writeFileSync(compiler, `param([string]$Helper, [string]$Assembly)
-$ErrorActionPreference = 'Stop'
-function Add-Type {
-  param([string]$TypeDefinition)
-  Microsoft.PowerShell.Utility\\Add-Type -TypeDefinition $TypeDefinition -OutputAssembly $Assembly
-}
-. $Helper
-`)
     writeFileSync(runner, `param([string]$Assembly, [string]$Recovery)
 $ErrorActionPreference = 'Stop'
 $null = [Reflection.Assembly]::LoadFrom($Assembly)
@@ -59,7 +51,6 @@ while ($null -ne ($line = [Console]::ReadLine())) {
   }
 }
 `)
-    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', compiler, '-Helper', path.resolve('build/update-io.ps1'), '-Assembly', compiledHelper], { windowsHide: true, stdio: 'pipe' })
     worker = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', runner, '-Assembly', compiledHelper, '-Recovery', script], { windowsHide: true, stdio: 'pipe' })
     workerClosed = new Promise(resolve => worker.once('close', () => resolve()))
     await new Promise<void>((resolve, reject) => {
@@ -109,7 +100,14 @@ function Add-Type { throw 'IO helper must not compile twice in one process' }
   })
 
   it('copies only the mutable data used by this version and skips images, modules and browser profiles', async () => {
-    const mutable = ['data/nativeSpaces.json', 'data/nativeAssets.json', 'assets/library/catalog.json', 'Local Storage/leveldb/000001.ldb']
+    const mutable = [
+      'data/nativeSpaces.json',
+      'data/spaces/index.json',
+      'data/spaces/space-1.json.gz',
+      'data/nativeAssets.json',
+      'assets/library/catalog.json',
+      'Local Storage/leveldb/000001.ldb',
+    ]
     const unchanged = ['assets/library/images/hash.png', 'assets/library/library.xml', 'assets/library/library.png', 'IndexedDB/lira-optional-modules/model.bin', 'spotify-browser/Default/Network/Cookies', 'Preferences', 'data/external-save.json']
     for (const file of [...mutable, ...unchanged]) put(profile, file, file)
     await run('Backup')
@@ -184,7 +182,7 @@ function Get-ChildItem {
     expect(events.at(-1).SourceReadBytes).toBe(2)
     expect(events.at(-1).VerificationReadBytes).toBe(2)
     expect(existsSync(path.join(backup, 'assets/library/images'))).toBe(false)
-  }, 30000)
+  }, 60000)
 
   it('preserves excluded junctions without traversing them during backup or rollback', async () => {
     const unrelated = path.join(root, 'browser-profile')

@@ -20,7 +20,7 @@ test('the real whiteboard editor opens and draws without the loading error', {
   })
   const vite = await createServer({
     cacheDir: 'node_modules/.cache/whiteboard-editor-browser-vite',
-    server: { host: '127.0.0.1', port, open: false, hmr: false },
+    server: { host: '127.0.0.1', port, open: false, hmr: false, fs: { strict: false } },
     logLevel: 'error',
     plugins: [{ name: 'whiteboard-editor-test', configureServer(server) {
       server.middlewares.use(async (request, response, next) => {
@@ -39,7 +39,7 @@ test('the real whiteboard editor opens and draws without the loading error', {
   const remoteOrigins = []
   try {
     await vite.listen()
-    browser = await chromium.launch({ headless: true, executablePath: process.env.LIRA_CHROMIUM_EXECUTABLE || undefined })
+    browser = await chromium.launch({ headless: true, executablePath: process.env.LIRA_CHROMIUM_EXECUTABLE || undefined, args: ['--mute-audio'] })
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
     await page.route('**/*', route => {
       const url = new URL(route.request().url())

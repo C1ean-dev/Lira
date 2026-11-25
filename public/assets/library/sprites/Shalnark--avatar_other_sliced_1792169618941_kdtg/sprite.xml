@@ -16,12 +16,12 @@
   <SubTexture name="other_avatar_other_sliced_1792169618941_kdtg_right_1" x="768" y="512" width="256" height="256"/>
   <SubTexture name="other_avatar_other_sliced_1792169618941_kdtg_right_2" x="1024" y="512" width="256" height="256"/>
   <SubTexture name="other_avatar_other_sliced_1792169618941_kdtg_right_3" x="0" y="768" width="256" height="256"/>
-  <SubTexture name="other_avatar_other_sliced_1792169618941_kdtg_yawn_down_0" x="256" y="768" width="256" height="256"/>
-  <SubTexture name="other_avatar_other_sliced_1792169618941_kdtg_yawn_down_1" x="512" y="768" width="256" height="256"/>
-  <SubTexture name="other_avatar_other_sliced_1792169618941_kdtg_yawn_down_2" x="768" y="768" width="256" height="256"/>
-  <SubTexture name="other_avatar_other_sliced_1792169618941_kdtg_yawn_down_3" x="1024" y="768" width="256" height="256"/>
-  <SubTexture name="other_avatar_other_sliced_1792169618941_kdtg_sleep_down_0" x="0" y="1024" width="256" height="256"/>
-  <SubTexture name="other_avatar_other_sliced_1792169618941_kdtg_sleep_down_1" x="256" y="1024" width="256" height="256"/>
-  <SubTexture name="other_avatar_other_sliced_1792169618941_kdtg_sleep_down_2" x="512" y="1024" width="256" height="256"/>
-  <SubTexture name="other_avatar_other_sliced_1792169618941_kdtg_sleep_down_3" x="768" y="1024" width="256" height="256"/>
+  <SubTexture name="other_avatar_other_sliced_1792169618941_kdtg_yawn_0" x="256" y="768" width="256" height="256"/>
+  <SubTexture name="other_avatar_other_sliced_1792169618941_kdtg_yawn_1" x="512" y="768" width="256" height="256"/>
+  <SubTexture name="other_avatar_other_sliced_1792169618941_kdtg_yawn_2" x="768" y="768" width="256" height="256"/>
+  <SubTexture name="other_avatar_other_sliced_1792169618941_kdtg_yawn_3" x="1024" y="768" width="256" height="256"/>
+  <SubTexture name="other_avatar_other_sliced_1792169618941_kdtg_sleep_0" x="0" y="1024" width="256" height="256"/>
+  <SubTexture name="other_avatar_other_sliced_1792169618941_kdtg_sleep_1" x="256" y="1024" width="256" height="256"/>
+  <SubTexture name="other_avatar_other_sliced_1792169618941_kdtg_sleep_2" x="512" y="1024" width="256" height="256"/>
+  <SubTexture name="other_avatar_other_sliced_1792169618941_kdtg_sleep_3" x="768" y="1024" width="256" height="256"/>
 </TextureAtlas>

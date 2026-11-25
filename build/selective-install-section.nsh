@@ -90,16 +90,11 @@ ${EndIf}
 
 ${If} $liraDeltaUpdate == "true"
   !insertmacro LiraStage "Preparando backup diferencial"
-  nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\update-recovery.ps1" -Action Backup -InstallDir "$INSTDIR" -PayloadDir "$liraPayloadDir" -UserDataDir "$APPDATA\${APP_PACKAGE_NAME}" -ProgressWindow "$liraProgressLabel"`
+  nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\update-recovery.ps1" -Action DeltaUpdate -InstallDir "$INSTDIR" -PayloadDir "$liraPayloadDir" -UserDataDir "$APPDATA\${APP_PACKAGE_NAME}" -ProgressWindow "$liraProgressLabel"`
   Pop $0
   ${If} ${FileExists} "$INSTDIR\..\lira.update-pending.json"
     StrCpy $liraUpdatePending "true"
   ${EndIf}
-  ${If} $0 != 0
-    Abort "Nao foi possivel preparar o backup diferencial."
-  ${EndIf}
-  nsExec::Exec `"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\update-recovery.ps1" -Action Apply -InstallDir "$INSTDIR" -PayloadDir "$liraPayloadDir" -UserDataDir "$APPDATA\${APP_PACKAGE_NAME}" -ProgressWindow "$liraProgressLabel"`
-  Pop $0
   ${If} $0 != 0
     Abort "Nao foi possivel aplicar a atualizacao diferencial."
   ${EndIf}

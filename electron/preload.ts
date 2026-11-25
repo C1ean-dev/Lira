@@ -34,6 +34,7 @@ export interface ProcessAudioCaptureInfo {
 
 export interface AppSettings {
   openAtLogin: boolean
+  autoUpdateAtLogin: boolean
   closeToTray: boolean
   minimizeToTray: boolean
 }
@@ -105,6 +106,12 @@ export interface IElectronAPI extends GStreamerCaptureAPI {
   loadNativeAssets: () => Promise<{ categories: string[]; assets: any[] } | null>
   saveNativeSpaces: (spaces: any[]) => Promise<boolean>
   loadNativeSpaces: () => Promise<any[] | null>
+  spacesList?: () => Promise<import('../src/types/spaces').SpacesIndexDocument | null>
+  spacesLoadMap?: (spaceId: string) => Promise<import('../src/types/map').StoredMapData | null>
+  spacesSave?: (summary: import('../src/types/spaces').SpaceSummary, mapData: import('../src/types/map').StoredMapData) => Promise<import('../src/types/spaces').SpaceSummary | null>
+  spacesUpdateMeta?: (spaceId: string, partial: Partial<import('../src/types/spaces').SpaceSummary>) => Promise<import('../src/types/spaces').SpaceSummary | null>
+  spacesDelete?: (spaceId: string) => Promise<boolean>
+  spacesImportLegacy?: (records: unknown[]) => Promise<import('../src/types/spaces').SpacesIndexDocument | null>
   checkFirewallStatus: () => Promise<{ isAllowed: boolean }>
   requestFirewallAccess: () => Promise<{ success: boolean; error?: string }>
   setFullScreen: (flag: boolean) => Promise<boolean>
@@ -254,6 +261,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadNativeAssets: () => ipcRenderer.invoke('load-native-assets'),
   saveNativeSpaces: (spaces: any[]) => ipcRenderer.invoke('save-native-spaces', spaces),
   loadNativeSpaces: () => ipcRenderer.invoke('load-native-spaces'),
+  spacesList: () => ipcRenderer.invoke('spaces:list'),
+  spacesLoadMap: (spaceId: string) => ipcRenderer.invoke('spaces:load-map', spaceId),
+  spacesSave: (summary, mapData) => ipcRenderer.invoke('spaces:save', { summary, mapData }),
+  spacesUpdateMeta: (spaceId: string, partial) => ipcRenderer.invoke('spaces:update-meta', { spaceId, partial }),
+  spacesDelete: (spaceId: string) => ipcRenderer.invoke('spaces:delete', spaceId),
+  spacesImportLegacy: (records: unknown[]) => ipcRenderer.invoke('spaces:import-legacy', records),
   checkFirewallStatus: () => ipcRenderer.invoke('check-firewall-status'),
   requestFirewallAccess: () => ipcRenderer.invoke('request-firewall-access'),
   setFullScreen: (flag: boolean) => ipcRenderer.invoke('set-fullscreen', flag),

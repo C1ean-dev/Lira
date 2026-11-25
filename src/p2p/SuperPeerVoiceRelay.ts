@@ -58,6 +58,10 @@ export class SuperPeerVoiceRelay {
   // Track attached peer connections
   private peerConnections: Map<string, { pc: RTCPeerConnection; isHost: boolean }> = new Map()
 
+  // Disabled by default until real Opus/PCM audio encoding & playback are implemented
+  // in startTransmitter/processReceiverPacket (currently placeholder silence frames).
+  private mediaTransportEnabled = false
+
   private sequence = 0
   private textEncoder = new TextEncoder()
   private textDecoder = new TextDecoder()
@@ -214,14 +218,25 @@ export class SuperPeerVoiceRelay {
    * Checks if Super-Peer relay is available and healthy for this node.
    */
   public isAvailable(targetPeerId: string): boolean {
+    if (!this.mediaTransportEnabled) {
+      return false
+    }
+
     const game = useGameStore.getState()
     const peerMgr = PeerManager.getInstance()
     const myId = game.localPlayer.id
     const roomCode = peerMgr.getRoomCode()
     const hostPeerId = game.connectionHostId || (roomCode ? `lira-${roomCode}-host` : '')
 
-    // Cannot relay if I am the host, or target is the host, or no host ID
-    if (peerMgr.isHost || !hostPeerId || myId === hostPeerId || targetPeerId === hostPeerId) {
+    // Cannot relay if I am the host, or target is the host, or target is a DJ bot, or no host ID
+    if (
+      peerMgr.isHost ||
+      !hostPeerId ||
+      myId === hostPeerId ||
+      targetPeerId === hostPeerId ||
+      targetPeerId.startsWith('dj-') ||
+      Boolean(game.remotePlayers[targetPeerId]?.isDjBot)
+    ) {
       return false
     }
 

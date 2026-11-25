@@ -127,6 +127,78 @@ export type AvatarComponentSlot =
 
 export type PetType = 'none' | 'dog' | 'cat' | 'meowth' | 'slime' | 'chick' | 'custom'
 
+export type AvatarEffectShape =
+  | 'flower'
+  | 'petal'
+  | 'star'
+  | 'sparkle'
+  | 'heart'
+  | 'flame'
+  | 'ember'
+  | 'sunray'
+  | 'lightning'
+  | 'snowflake'
+  | 'leaf'
+  | 'bubble'
+  | 'music'
+
+export type AvatarEffectMotion = 'float' | 'rise' | 'fall' | 'orbit' | 'spark'
+export type AvatarEffectDensity = 'subtle' | 'normal' | 'intense'
+
+export interface CustomAvatarEffectSpec {
+  id: string
+  name: string
+  kind: 'aura' | 'steps'
+  shapes: AvatarEffectShape[]
+  /** Optional custom pixel art matrix ('0' transparent, '1' primary, '2' accent, '3' outline). */
+  pixelMatrix?: string[]
+  color: string
+  motion: AvatarEffectMotion
+  density: AvatarEffectDensity
+}
+
+export type AvatarAuraStyle =
+  | 'none'
+  | 'floral_stars'
+  | 'fire'
+  | 'sunlight'
+  | 'hearts'
+  | 'stardust'
+  | 'lightning'
+  | 'frost'
+  | 'nature'
+  | 'petals'
+  | 'bubbles'
+  | 'music'
+  | 'custom'
+
+export type AvatarStepsStyle =
+  | 'none'
+  | 'floral_stars'
+  | 'fire'
+  | 'sunlight'
+  | 'lightning'
+  | 'frost'
+  | 'nature'
+  | 'petals'
+  | 'stars'
+  | 'hearts'
+  | 'bubbles'
+  | 'music'
+  | 'custom'
+
+export interface AvatarAuraConfig {
+  style: AvatarAuraStyle
+  color?: string
+  custom?: CustomAvatarEffectSpec
+}
+
+export interface AvatarStepsConfig {
+  style: AvatarStepsStyle
+  color?: string
+  custom?: CustomAvatarEffectSpec
+}
+
 export interface PetConfig {
   type: PetType
   name?: string
@@ -138,6 +210,8 @@ export interface PetConfig {
 
 export interface AvatarConfig {
   pet?: PetConfig
+  aura?: AvatarAuraConfig
+  steps?: AvatarStepsConfig
 
   customSkinUrl?: string
   customAvatarId?: string

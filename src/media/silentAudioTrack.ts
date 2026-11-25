@@ -9,7 +9,18 @@ export function silentAudioTrack(): MediaStreamTrack | null {
     if (!AudioContextClass) return null
 
     const audioContext: AudioContext = new AudioContextClass()
-    const made = audioContext.createMediaStreamDestination().stream.getAudioTracks()[0]
+    const destination = audioContext.createMediaStreamDestination()
+    try {
+      const osc = audioContext.createOscillator?.()
+      const gain = audioContext.createGain?.()
+      if (osc && gain) {
+        gain.gain.value = 0
+        osc.connect(gain)
+        gain.connect(destination)
+        osc.start?.()
+      }
+    } catch {}
+    const made = destination.stream?.getAudioTracks?.()[0]
     if (!made) {
       audioContext.close?.().catch(() => {})
       return null

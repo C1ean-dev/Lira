@@ -66,26 +66,26 @@ export const AutoCroppedThumbnail: React.FC<AutoCroppedThumbnailProps> = ({
   const isLoading = Boolean(src) && (isCropping || (!isImageLoaded && !hasError))
 
   const defaultContainerClass =
-    'w-12 h-12 rounded-xl mb-1.5 flex items-center justify-center relative shadow-sm overflow-hidden border border-slate-700/50'
+    'w-12 h-12 rounded-[8px] mb-1.5 flex items-center justify-center relative overflow-hidden border border-lira-quiet'
 
   return (
     <div
       className={className || defaultContainerClass}
-      style={{ backgroundColor: isSkinCategory && skinTone ? skinTone : '#18191c' }}
+      style={{ backgroundColor: isSkinCategory && skinTone ? skinTone : '#100c18' }}
     >
       {isLoading && (
         <div
           data-testid="thumbnail-loading-spinner"
           className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"
         >
-          <Loader2 className="w-5 h-5 text-blue-400 animate-spin" aria-label="Carregando..." />
+          <Loader2 className="w-5 h-5 text-lira-accent animate-spin" aria-label="Carregando..." />
         </div>
       )}
 
       {hasError ? (
         <div
           data-testid="thumbnail-error-fallback"
-          className="flex items-center justify-center w-full h-full text-slate-500"
+          className="flex items-center justify-center w-full h-full text-lira-muted"
           title="Erro ao carregar miniatura"
         >
           {fallbackIcon === 'pet' ? (

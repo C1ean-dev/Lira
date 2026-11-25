@@ -158,7 +158,7 @@ export const App: React.FC = () => {
   }, [pendingRoomCode, inLobby])
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#0c0e14] text-slate-100 overflow-hidden font-sans select-none">
+    <div className="flex flex-col h-screen w-screen bg-lira-ground text-lira-ink overflow-hidden font-sans select-none">
       {!inLobby && (
         <Suspense fallback={null}>
           <SpaceShell

@@ -157,12 +157,12 @@ export const GridParticipantTile: React.FC<Props> = ({
           e.stopPropagation()
           onContextMenu?.(user, e)
         }}
-        className={`group relative w-full aspect-video bg-[#12151d] rounded-2xl overflow-hidden border-2 transition-all flex items-center justify-center cursor-pointer shadow-md shrink-0 select-none ${
+        className={`group relative w-full aspect-video bg-lira-surface rounded-[8px] overflow-hidden border transition-colors flex items-center justify-center cursor-pointer shrink-0 select-none font-mono ${
           user.isSpeaking
-            ? 'border-emerald-500 ring-2 ring-emerald-500/30'
+            ? 'border-lira-online ring-1 ring-lira-online/40'
             : isFocused
-            ? 'border-indigo-500 ring-2 ring-indigo-500/40'
-            : 'border-[#2a3142] hover:border-slate-500'
+            ? 'border-lira-accent ring-1 ring-lira-accent/40'
+            : 'border-lira-quiet hover:border-lira-rule'
         }`}
       >
         {liveGate.needsClick ? (
@@ -171,7 +171,7 @@ export const GridParticipantTile: React.FC<Props> = ({
             profilePicture={user.profilePicture}
             avatar={user.avatar}
             size="lg"
-            className="w-10 h-10 rounded-full shadow-md border border-white/20"
+            className="w-10 h-10 rounded-[6px] border border-lira-quiet"
           />
         ) : isLive ? (
           <video
@@ -183,7 +183,7 @@ export const GridParticipantTile: React.FC<Props> = ({
             onCanPlay={() => videoRef.current?.play().catch(() => {})}
             onLoadedData={liveGate.onFrame}
             onPlaying={liveGate.onFrame}
-            className="w-full h-full object-contain bg-black"
+            className="w-full h-full object-contain bg-lira-ground"
           />
         ) : (
           <>
@@ -204,7 +204,7 @@ export const GridParticipantTile: React.FC<Props> = ({
                 profilePicture={user.profilePicture}
                 avatar={user.avatar}
                 size="lg"
-                className="w-10 h-10 rounded-full shadow-md border border-white/20"
+                className="w-10 h-10 rounded-[6px] border border-lira-quiet"
               />
             )}
           </>
@@ -217,40 +217,40 @@ export const GridParticipantTile: React.FC<Props> = ({
         {remoteAudio}
 
         {isLive && (
-          <div className="absolute top-1.5 left-1.5 flex items-center gap-1 px-1.5 py-0.5 bg-rose-600 text-white rounded-md text-[8px] font-bold shadow animate-pulse">
+          <div className="absolute top-1.5 left-1.5 flex items-center gap-1 px-1.5 py-0.5 bg-lira-error text-lira-ground rounded-[4px] text-[8px] font-mono font-bold">
             <Radio className="w-2.5 h-2.5" />
             <span>AO VIVO</span>
           </div>
         )}
 
         {!user.isLocal && !isLive && user.callState === 'reconnecting' && (
-          <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1 px-1.5 py-0.5 bg-amber-500 text-white rounded text-[8px] font-bold shadow animate-pulse">
-            <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+          <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1 px-1.5 py-0.5 bg-lira-amber text-lira-ground rounded-[4px] text-[8px] font-mono font-bold">
+            <span className="w-1.5 h-1.5 rounded-full bg-lira-ground animate-ping" />
             <span>RECONECTANDO</span>
           </div>
         )}
 
         {!user.isLocal && !isLive && user.callState === 'failed' && (
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-20 flex flex-col items-center justify-center p-1 text-center">
-            <span className="text-[10px] text-rose-400 font-bold mb-1">Chamada caiu</span>
+          <div className="absolute inset-0 bg-lira-ground/90 z-20 flex flex-col items-center justify-center p-1 text-center">
+            <span className="text-[10px] text-lira-error font-mono font-bold mb-1">Chamada caiu</span>
             <button
               onClick={(e) => {
                 e.stopPropagation()
                 user.onRetryCall?.()
               }}
-              className="px-2 py-0.5 bg-indigo-600 hover:bg-indigo-500 text-white text-[9px] rounded font-bold"
+              className="px-2 py-0.5 bg-lira-accent hover:bg-lira-ink text-lira-ground text-[9px] rounded-[6px] font-mono font-bold"
             >
               Reconectar
             </button>
           </div>
         )}
 
-        <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between px-2 py-0.5 bg-black/70 backdrop-blur-md rounded-lg text-[10px] text-white">
+        <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between px-2 py-0.5 bg-lira-ground/85 border border-lira-quiet rounded-[6px] text-[10px] font-mono text-lira-ink">
           <span className="truncate font-semibold flex items-center gap-1.5 min-w-0">
             <span className="truncate">{isLive ? `Tela (${user.name})` : user.isLocal ? `${user.name} (Você)` : user.name}</span>
             {(user.isDjBot || user.id.startsWith('dj-') || user.name.includes('DJ')) && (
-              <span className="inline-flex items-center gap-0.5 px-1 py-0.2 bg-[#1db954] text-black text-[8px] font-extrabold rounded shrink-0 shadow-sm" title="DJ">
-                <SpotifyIcon size={9} className="text-black" />
+              <span className="inline-flex items-center gap-0.5 px-1 py-0.2 bg-lira-online text-lira-ground text-[8px] font-extrabold rounded-[4px] shrink-0" title="DJ">
+                <SpotifyIcon size={9} className="text-lira-ground" />
                 <span>DJ</span>
               </span>
             )}
@@ -258,22 +258,22 @@ export const GridParticipantTile: React.FC<Props> = ({
           <div className="flex items-center gap-1 shrink-0">
             {user.isDeafened && (
               <span title={user.isLocal ? "Você mutou o som para si" : "Usuário mutou o som para si (ensurdecido)"} className="flex items-center">
-                <Headphones className="w-2.5 h-2.5 text-amber-400" />
+                <Headphones className="w-2.5 h-2.5 text-lira-amber" />
               </span>
             )}
             {!user.isLocal && isSilenced && (
               <span title="Silenciado para você (mútuo)" className="flex items-center">
-                <VolumeX className="w-2.5 h-2.5 text-amber-400" />
+                <VolumeX className="w-2.5 h-2.5 text-lira-amber" />
               </span>
             )}
             {!user.isLocal && !isSilenced && rawVolume === 0 && (
               <span title="Você mutou este áudio" className="flex items-center">
-                <VolumeX className="w-2.5 h-2.5 text-rose-400" />
+                <VolumeX className="w-2.5 h-2.5 text-lira-error" />
               </span>
             )}
             {user.isMuted && !isLive && (
               <span title={user.isMutedByAdmin ? "Mutado pelo Administrador" : "Microfone mutado"} className="flex items-center">
-                <MicOff className={`w-2.5 h-2.5 shrink-0 ${user.isMutedByAdmin ? 'text-amber-400' : 'text-rose-400'}`} />
+                <MicOff className={`w-2.5 h-2.5 shrink-0 ${user.isMutedByAdmin ? 'text-lira-amber' : 'text-lira-error'}`} />
               </span>
             )}
             <NetworkSignalIcon
@@ -300,12 +300,12 @@ export const GridParticipantTile: React.FC<Props> = ({
         e.stopPropagation()
         onContextMenu?.(user, e)
       }}
-      className={`group relative w-full h-full bg-[#12151d] rounded-3xl overflow-hidden border-2 transition-all flex items-center justify-center shadow-2xl cursor-pointer select-none ${
+      className={`group relative w-full h-full bg-lira-panel rounded-[12px] overflow-hidden border transition-colors flex items-center justify-center cursor-pointer select-none font-mono ${
         user.isSpeaking
-          ? 'border-emerald-500 shadow-emerald-500/20 shadow-lg ring-2 ring-emerald-500/30'
+          ? 'border-lira-online ring-1 ring-lira-online/40'
           : isFocused
-          ? 'border-indigo-500 ring-2 ring-indigo-500/30'
-          : 'border-[#2a3142] hover:border-slate-500'
+          ? 'border-lira-accent ring-1 ring-lira-accent/40'
+          : 'border-lira-quiet hover:border-lira-rule'
       }`}
     >
       {liveGate.needsClick ? null : isLive ? (
@@ -318,7 +318,7 @@ export const GridParticipantTile: React.FC<Props> = ({
           onCanPlay={() => videoRef.current?.play().catch(() => {})}
           onLoadedData={liveGate.onFrame}
           onPlaying={liveGate.onFrame}
-          className="w-full h-full object-contain bg-black"
+          className="w-full h-full object-contain bg-lira-ground"
         />
       ) : (
         <>
@@ -342,17 +342,17 @@ export const GridParticipantTile: React.FC<Props> = ({
                 avatar={user.avatar}
                 avatarFrame={user.profile?.avatarFrame}
                 size="4xl"
-                className="w-28 h-28 sm:w-32 sm:h-32 md:w-36 md:h-36 rounded-full shadow-2xl border-2 border-white/25 ring-4 ring-black/30 transition-transform duration-200"
+                className="w-28 h-28 sm:w-32 sm:h-32 md:w-36 md:h-36 rounded-[12px] border border-dashed border-lira-rule"
               />
-              <div className="text-sm sm:text-base font-bold text-slate-200 flex items-center gap-2 drop-shadow-md">
+              <div className="font-display text-base sm:text-lg font-bold text-lira-ink flex items-center gap-2">
                 <span>{user.name}</span>
                 {(user.isDjBot || user.id.startsWith('dj-') || user.name.includes('DJ')) && (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-[#1db954] text-black text-[10px] font-extrabold rounded-md shadow" title="DJ">
-                    <SpotifyIcon size={11} className="text-black" />
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-lira-online text-lira-ground text-[10px] font-mono font-extrabold rounded-[4px]" title="DJ">
+                    <SpotifyIcon size={11} className="text-lira-ground" />
                     <span>DJ</span>
                   </span>
                 )}
-                {user.isMuted && <MicOff className="w-3.5 h-3.5 text-rose-400" />}
+                {user.isMuted && <MicOff className="w-3.5 h-3.5 text-lira-error" />}
               </div>
             </div>
           )}
@@ -370,13 +370,13 @@ export const GridParticipantTile: React.FC<Props> = ({
           <LiveTransmissionInfo stream={activeStream} local={!!user.isLocal} peerName={user.name}
             onOpenSettings={user.isLocal ? onOpenScreenShareSettings : undefined} />
         ) : !user.isLocal && user.callState === 'reconnecting' ? (
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/95 text-white rounded-xl text-xs font-bold shadow-lg flex-shrink-0 animate-pulse pointer-events-auto">
-            <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-lira-amber text-lira-ground rounded-[8px] text-xs font-mono font-bold flex-shrink-0 pointer-events-auto">
+            <span className="w-2 h-2 rounded-full bg-lira-ground animate-ping" />
             <span>RECONECTANDO ÁUDIO/VÍDEO...</span>
           </div>
         ) : !user.isLocal && user.callState === 'connecting' ? (
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-indigo-500/95 text-white rounded-xl text-xs font-bold shadow-lg flex-shrink-0 animate-pulse pointer-events-auto">
-            <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-lira-surface border border-lira-accent text-lira-accent rounded-[8px] text-xs font-mono font-bold flex-shrink-0 pointer-events-auto">
+            <span className="w-2 h-2 rounded-full bg-lira-accent animate-ping" />
             <span>CONECTANDO ÁUDIO/VÍDEO...</span>
           </div>
         ) : (
@@ -384,15 +384,15 @@ export const GridParticipantTile: React.FC<Props> = ({
         )}
 
         {!user.isLocal && !isLive && user.callState === 'failed' && (
-          <div className="absolute inset-0 bg-black/85 backdrop-blur-md z-30 flex flex-col items-center justify-center p-4 text-center pointer-events-auto">
-            <span className="text-base text-rose-400 font-bold mb-1">Conexão de áudio/vídeo perdida</span>
-            <p className="text-xs text-slate-300 mb-3 max-w-xs">A chamada com este participante caiu devido a instabilidade na rede.</p>
+          <div className="absolute inset-0 bg-lira-ground/90 z-30 flex flex-col items-center justify-center p-4 text-center pointer-events-auto">
+            <span className="font-display text-lg text-lira-error font-bold mb-1">Conexão de áudio/vídeo perdida</span>
+            <p className="text-xs font-mono text-lira-muted mb-3 max-w-xs">A chamada com este participante caiu devido a instabilidade na rede.</p>
             <button
               onClick={(e) => {
                 e.stopPropagation()
                 user.onRetryCall?.()
               }}
-              className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg transition-all active:scale-95 cursor-pointer"
+              className="px-4 py-1.5 bg-lira-accent hover:bg-lira-ink text-lira-ground text-xs font-mono font-bold rounded-[8px] transition-colors cursor-pointer"
             >
               Reconectar Chamada
             </button>
@@ -402,7 +402,7 @@ export const GridParticipantTile: React.FC<Props> = ({
         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto">
           {!user.isLocal && (
             <div
-              className="relative group/vol flex items-center bg-black/80 hover:bg-black/95 rounded-xl border border-white/15 px-2 py-1.5 backdrop-blur-md shadow-md gap-1.5"
+              className="relative group/vol flex items-center bg-lira-panel/95 hover:border-lira-accent rounded-[8px] border border-lira-rule px-2 py-1.5 gap-1.5"
               onClick={(e) => e.stopPropagation()}
             >
               <button
@@ -411,15 +411,15 @@ export const GridParticipantTile: React.FC<Props> = ({
                   const nextVol = rawVolume === 0 ? 100 : 0
                   setVolume(nextVol)
                 }}
-                className="p-0.5 rounded text-slate-300 hover:text-white transition-colors"
+                className="p-0.5 rounded-[4px] text-lira-muted hover:text-lira-ink transition-colors"
                 title={isLive ? (rawVolume === 0 ? 'Desmutar transmissão' : 'Mutar transmissão') : (rawVolume === 0 ? 'Desmutar este participante' : 'Mutar este participante')}
               >
                 {rawVolume === 0 ? (
-                  <VolumeX className="w-3.5 h-3.5 text-rose-400" />
+                  <VolumeX className="w-3.5 h-3.5 text-lira-error" />
                 ) : rawVolume < 50 ? (
-                  <Volume1 className="w-3.5 h-3.5 text-indigo-400" />
+                  <Volume1 className="w-3.5 h-3.5 text-lira-accent" />
                 ) : (
-                  <Volume2 className="w-3.5 h-3.5 text-indigo-400" />
+                  <Volume2 className="w-3.5 h-3.5 text-lira-accent" />
                 )}
               </button>
 
@@ -433,11 +433,11 @@ export const GridParticipantTile: React.FC<Props> = ({
                     const val = Number(e.target.value)
                     setVolume(val)
                   }}
-                  className="w-16 h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400"
+                  className="w-16 h-1 bg-lira-surface rounded-[4px] appearance-none cursor-pointer accent-lira-accent"
                   aria-label={isLive ? 'Volume da live' : 'Volume da voz'}
                   title={`${isLive ? 'Volume da live' : 'Volume da voz'}: ${rawVolume}%`}
                 />
-                <span className="text-[10px] font-mono text-slate-200 min-w-[32px]">
+                <span className="text-[10px] font-mono tabular-nums text-lira-ink min-w-[32px]">
                   {rawVolume}%
                 </span>
               </div>
@@ -450,7 +450,7 @@ export const GridParticipantTile: React.FC<Props> = ({
                 e.stopPropagation()
                 liveGate.stop()
               }}
-              className="px-3 py-1.5 rounded-xl bg-black/80 hover:bg-rose-600 text-white backdrop-blur-md transition-all shadow-md flex items-center gap-1.5 text-xs font-bold"
+              className="px-3 py-1.5 rounded-[8px] bg-lira-panel/95 hover:bg-lira-error text-lira-error hover:text-lira-ground border border-lira-error/40 transition-colors flex items-center gap-1.5 text-xs font-mono font-bold"
               title="Deixar de receber o vídeo e o som desta transmissão"
             >
               <EyeOff className="w-4 h-4" />
@@ -460,7 +460,7 @@ export const GridParticipantTile: React.FC<Props> = ({
 
           <button
             onClick={handleFullscreenClick}
-            className="px-3 py-1.5 rounded-xl bg-black/80 hover:bg-indigo-600 text-white backdrop-blur-md transition-all shadow-md flex items-center gap-1.5 text-xs font-bold"
+            className="px-3 py-1.5 rounded-[8px] bg-lira-panel/95 hover:bg-lira-accent text-lira-ink hover:text-lira-ground border border-lira-rule hover:border-lira-accent transition-colors flex items-center gap-1.5 text-xs font-mono font-bold"
             title="Expandir Live em Tela Cheia do Monitor"
           >
             <Maximize className="w-4 h-4" />
@@ -473,8 +473,8 @@ export const GridParticipantTile: React.FC<Props> = ({
                 e.stopPropagation()
                 onFocus()
               }}
-              className={`p-2 rounded-xl backdrop-blur-md transition-colors shadow-md ${
-                isFocused ? 'bg-indigo-600 text-white' : 'bg-black/80 hover:bg-slate-700 text-white'
+              className={`p-2 rounded-[8px] border transition-colors ${
+                isFocused ? 'bg-lira-accent text-lira-ground border-lira-accent' : 'bg-lira-panel/95 hover:bg-lira-surface text-lira-ink border-lira-rule'
               }`}
               title={isFocused ? 'Desafixar' : 'Fixar / Destacar'}
             >
@@ -485,7 +485,7 @@ export const GridParticipantTile: React.FC<Props> = ({
       </div>
 
       <div className="absolute bottom-3 left-3 pointer-events-none z-10">
-        <div className="bg-black/80 backdrop-blur-md px-3.5 py-1.5 rounded-xl flex items-center gap-2 border border-white/10 text-xs font-semibold text-white pointer-events-auto">
+        <div className="bg-lira-panel/95 px-3.5 py-1.5 rounded-[8px] flex items-center gap-2 border border-dashed border-lira-rule text-xs font-mono font-semibold text-lira-ink pointer-events-auto">
           <span>{isLive ? `Tela de ${user.name}` : user.isLocal ? `${user.name} (Você)` : user.name}</span>
           <NetworkSignalIcon
             rating={networkQuality.rating}
@@ -496,35 +496,35 @@ export const GridParticipantTile: React.FC<Props> = ({
           />
           {user.isDeafened && (
             <span
-              className="flex items-center gap-1 text-[10px] text-amber-300 bg-amber-950/70 px-1.5 py-0.5 rounded border border-amber-800/50"
+              className="flex items-center gap-1 text-[10px] text-lira-amber bg-lira-amber/15 px-1.5 py-0.5 rounded-[4px] border border-lira-amber/40"
               title={user.isLocal ? "Você mutou o som para si" : "Usuário mutou o som para si (ensurdecido)"}
             >
-              <Headphones className="w-3 h-3 text-amber-400" />
+              <Headphones className="w-3 h-3 text-lira-amber" />
               <span>Som Desativado</span>
             </span>
           )}
           {!user.isLocal && isSilenced && (
-            <span className="flex items-center gap-1 text-[10px] text-amber-400 bg-amber-950/70 px-1.5 py-0.5 rounded border border-amber-800/40" title="Silenciado mutuamente">
+            <span className="flex items-center gap-1 text-[10px] text-lira-amber bg-lira-amber/15 px-1.5 py-0.5 rounded-[4px] border border-lira-amber/40" title="Silenciado mutuamente">
               <VolumeX className="w-3 h-3" />
               <span>Silenciado para você</span>
             </span>
           )}
           {!user.isLocal && !isSilenced && rawVolume === 0 && (
-            <span className="flex items-center gap-1 text-[10px] text-rose-400 bg-rose-950/60 px-1.5 py-0.5 rounded border border-rose-800/40">
+            <span className="flex items-center gap-1 text-[10px] text-lira-error bg-lira-error/15 px-1.5 py-0.5 rounded-[4px] border border-lira-error/40">
               <VolumeX className="w-3 h-3" />
               <span>Mutado para você</span>
             </span>
           )}
           {user.isMuted && !isLive && (
             <div
-              className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border ${
+              className={`flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-[4px] border ${
                 user.isMutedByAdmin
-                  ? 'text-amber-300 bg-amber-950/70 border-amber-800/50 font-bold'
-                  : 'text-rose-400 border-transparent'
+                  ? 'text-lira-amber bg-lira-amber/15 border-lira-amber/40 font-bold'
+                  : 'text-lira-error border-transparent'
               }`}
               title={user.isMutedByAdmin ? "Mutado pelo Administrador" : "Microfone mutado"}
             >
-              <MicOff className={`w-3.5 h-3.5 ${user.isMutedByAdmin ? 'text-amber-400' : 'text-rose-400'}`} />
+              <MicOff className={`w-3.5 h-3.5 ${user.isMutedByAdmin ? 'text-lira-amber' : 'text-lira-error'}`} />
               {user.isMutedByAdmin && <span>Mutado por ADM</span>}
             </div>
           )}

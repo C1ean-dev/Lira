@@ -115,17 +115,17 @@ export const CompositionStudio: React.FC<Props> = ({
   }, [setComposeZoom])
 
   return (
-    <div className="flex-1 flex flex-col bg-[#12151d] rounded-2xl border border-[#2b2d31] overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b2d31] bg-[#18191c]/80 shrink-0 flex-wrap gap-2">
+    <div className="flex-1 flex flex-col bg-lira-ground rounded-[12px] border border-lira-quiet overflow-hidden font-mono text-lira-ink">
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-dashed border-lira-rule/60 bg-lira-sidebar shrink-0 flex-wrap gap-2">
         <div className="flex items-center gap-1.5">
-          <div className="flex bg-[#12151d] p-1 rounded-xl border border-[#2b2d31]">
+          <div className="flex bg-lira-ground p-1 rounded-[8px] border border-lira-quiet">
             <button
               type="button"
               onClick={() => setComposeTool('move')}
-              className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1 text-xs font-mono font-bold rounded-[6px] transition-colors flex items-center gap-1.5 ${
                 composeTool === 'move'
-                  ? 'bg-indigo-600 text-white shadow'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-lira-accent text-lira-ground'
+                  : 'text-lira-muted hover:text-lira-ink'
               }`}
             >
               <Move className="w-3.5 h-3.5" />
@@ -138,10 +138,10 @@ export const CompositionStudio: React.FC<Props> = ({
                 setComposeTool('collision')
                 setShowCollisionOverlay(true)
               }}
-              className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1 text-xs font-mono font-bold rounded-[6px] transition-colors flex items-center gap-1.5 ${
                 composeTool === 'collision'
-                  ? 'bg-rose-600 text-white shadow animate-pulse'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-lira-error text-lira-ground'
+                  : 'text-lira-muted hover:text-lira-ink'
               }`}
             >
               <Brush className="w-3.5 h-3.5" />
@@ -151,8 +151,8 @@ export const CompositionStudio: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => { setComposeTool('seat'); setShowCollisionOverlay(true) }}
-                className={`px-3 py-1 text-xs font-bold rounded-lg flex items-center gap-1.5 ${
-                  composeTool === 'seat' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                className={`px-3 py-1 text-xs font-mono font-bold rounded-[6px] flex items-center gap-1.5 ${
+                  composeTool === 'seat' ? 'bg-lira-online text-lira-ground' : 'text-lira-muted hover:text-lira-ink'
                 }`}
                 title="Pinte as hitboxes onde o player pode sentar"
               >
@@ -166,30 +166,30 @@ export const CompositionStudio: React.FC<Props> = ({
             <button
               type="button"
               onClick={onFitLayersToBoard}
-              className="px-2.5 py-1 text-xs font-bold rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 hover:border-indigo-400 transition-all flex items-center gap-1.5"
+              className="px-2.5 py-1 text-xs font-mono font-bold rounded-[8px] bg-lira-surface hover:border-lira-accent text-lira-accent border border-lira-rule transition-colors flex items-center gap-1.5"
               title="Ajustar e centralizar camadas proporcionalmente ao tamanho atual da mesa"
             >
-              <Maximize2 className="w-3.5 h-3.5 text-indigo-400" />
+              <Maximize2 className="w-3.5 h-3.5 text-lira-accent" />
               <span className="hidden sm:inline">Ajustar à Mesa</span>
             </button>
           )}
 
-          <div className="flex items-center gap-1 bg-[#12151d] p-1 rounded-xl border border-[#2b2d31]">
+          <div className="flex items-center gap-1 bg-lira-ground p-1 rounded-[8px] border border-lira-quiet">
             <button
               type="button"
               onClick={() => setComposeZoom((z) => Math.max(1, z <= 4 ? z - 1 : z - 2))}
-              className="p-1 rounded text-slate-300 hover:text-white hover:bg-[#2b2d31]"
+              className="p-1 rounded text-lira-muted hover:text-lira-ink hover:bg-lira-surface"
               title="Reduzir Zoom"
             >
               <ZoomOut className="w-3.5 h-3.5" />
             </button>
-            <span className="text-[10px] font-mono font-bold text-slate-300 px-1 min-w-[24px] text-center">
+            <span className="text-[10px] font-mono font-bold text-lira-ink px-1 min-w-[24px] text-center tabular-nums">
               {composeZoom}x
             </span>
             <button
               type="button"
               onClick={() => setComposeZoom((z) => Math.min(24, z >= 4 ? z + 2 : z + 1))}
-              className="p-1 rounded text-slate-300 hover:text-white hover:bg-[#2b2d31]"
+              className="p-1 rounded text-lira-muted hover:text-lira-ink hover:bg-lira-surface"
               title="Aumentar Zoom (até 24x)"
             >
               <ZoomIn className="w-3.5 h-3.5" />
@@ -197,7 +197,7 @@ export const CompositionStudio: React.FC<Props> = ({
             <button
               type="button"
               onClick={() => setComposeZoom(pixelWidth <= 16 || pixelHeight <= 16 ? 8 : 2)}
-              className="px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-300 hover:text-white hover:bg-[#2b2d31]"
+              className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold text-lira-muted hover:text-lira-ink hover:bg-lira-surface"
               title="Resetar Zoom"
             >
               Reset
@@ -207,10 +207,10 @@ export const CompositionStudio: React.FC<Props> = ({
           <button
             type="button"
             onClick={() => setShowCollisionOverlay(!showCollisionOverlay)}
-            className={`p-1.5 rounded-xl border transition-colors ${
+            className={`p-1.5 rounded-[8px] border transition-colors ${
               showCollisionOverlay
-                ? 'bg-rose-600/20 border-rose-500 text-rose-400'
-                : 'bg-[#12151d] border-[#2b2d31] text-slate-400 hover:text-white'
+                ? 'bg-lira-error/15 border-lira-error text-lira-error'
+                : 'bg-lira-ground border-lira-quiet text-lira-muted hover:text-lira-ink'
             }`}
             title="Exibir/Ocultar hitboxes: colisão vermelha e assento verde"
           >
@@ -220,10 +220,10 @@ export const CompositionStudio: React.FC<Props> = ({
       </div>
 
       {elementType === 'furniture' && (
-        <div className="flex items-center justify-between px-4 py-2 bg-[#14161f] border-b border-[#2b2d31] shrink-0 flex-wrap gap-2">
+        <div className="flex items-center justify-between px-4 py-2 bg-lira-panel border-b border-dashed border-lira-rule/60 shrink-0 flex-wrap gap-2">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-300">Direção do Móvel:</span>
-            <div className="flex bg-[#18191c] p-1 rounded-xl border border-[#2b2d31] gap-1">
+            <span className="text-xs font-mono font-bold text-lira-muted">Direção do Móvel:</span>
+            <div className="flex bg-lira-ground p-1 rounded-[8px] border border-lira-quiet gap-1">
               {(
                 [
                   { dir: 'down' as Direction, label: '⬇️ Frente' },
@@ -245,15 +245,15 @@ export const CompositionStudio: React.FC<Props> = ({
                     key={d.dir}
                     type="button"
                     onClick={() => onSelectDirection?.(d.dir)}
-                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                    className={`px-3 py-1 text-xs font-mono font-bold rounded-[6px] transition-colors flex items-center gap-1.5 cursor-pointer ${
                       isSelected
-                        ? 'bg-indigo-600 text-white shadow'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-[#2b2d31]/50'
+                        ? 'bg-lira-accent text-lira-ground'
+                        : 'text-lira-muted hover:text-lira-ink hover:bg-lira-surface'
                     }`}
                   >
                     <span>{d.label}</span>
                     <span className={`text-[10px] font-mono px-1 py-0.2 rounded ${
-                      isSelected ? 'text-indigo-200 bg-indigo-700/50' : 'text-slate-500 bg-black/20'
+                      isSelected ? 'text-lira-accent bg-lira-ground' : 'text-lira-muted bg-lira-panel'
                     }`}>
                       {dimLabel}
                     </span>
@@ -261,8 +261,8 @@ export const CompositionStudio: React.FC<Props> = ({
                       <span
                         className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
                           isSelected
-                            ? 'bg-indigo-800 text-indigo-100'
-                            : 'bg-emerald-950 text-emerald-400 border border-emerald-800/60'
+                            ? 'bg-lira-ground text-lira-accent'
+                            : 'bg-lira-online/15 text-lira-online border border-lira-online/40'
                         }`}
                         title={`${count} quadro(s) configurado(s)`}
                       >
@@ -280,10 +280,10 @@ export const CompositionStudio: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={onCopyFromDownDirection}
-                className="px-2.5 py-1 text-xs font-bold rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer"
+                className="px-2.5 py-1 text-xs font-mono font-bold rounded-[8px] bg-lira-surface hover:border-lira-accent text-lira-ink border border-lira-rule transition-colors flex items-center gap-1.5 cursor-pointer"
                 title="Copiar as camadas da visão de Frente (⬇️) para esta direção"
               >
-                <Copy className="w-3.5 h-3.5 text-indigo-400" />
+                <Copy className="w-3.5 h-3.5 text-lira-accent" />
                 <span>Copiar da Frente</span>
               </button>
             )}
@@ -292,10 +292,10 @@ export const CompositionStudio: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={onAutoMirrorLeftRight}
-                className="px-2.5 py-1 text-xs font-bold rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 transition-all flex items-center gap-1.5 cursor-pointer"
+                className="px-2.5 py-1 text-xs font-mono font-bold rounded-[8px] bg-lira-surface hover:border-lira-accent text-lira-accent border border-lira-rule transition-colors flex items-center gap-1.5 cursor-pointer"
                 title="Espelhar horizontalmente as peças na mesa de composição"
               >
-                <FlipHorizontal className="w-3.5 h-3.5 text-indigo-400" />
+                <FlipHorizontal className="w-3.5 h-3.5 text-lira-accent" />
                 <span>Espelhar ⬅️ ↔ ➡️</span>
               </button>
             )}
@@ -303,8 +303,8 @@ export const CompositionStudio: React.FC<Props> = ({
         </div>
       )}
 
-      <div ref={stageRef} className="flex-1 overflow-auto p-6 bg-[#0e1015] relative flex">
-        <div className="m-auto relative border-2 border-indigo-500/50 rounded-2xl shadow-2xl overflow-hidden bg-[#18191c]/90 shrink-0">
+      <div ref={stageRef} className="flex-1 overflow-auto p-6 bg-lira-ground relative flex">
+        <div className="m-auto relative border-2 border-lira-rule rounded-[12px] overflow-hidden bg-lira-sidebar shrink-0">
           <canvas
             ref={composeCanvasRef}
             onMouseDown={onComposeMouseDown}
@@ -318,16 +318,16 @@ export const CompositionStudio: React.FC<Props> = ({
       </div>
 
       {elementType === 'furniture' && composeTool === 'seat' && (
-        <div className="p-3 bg-[#18191c] border-t border-[#2b2d31] flex items-center justify-between gap-3 text-xs text-emerald-300">
+        <div className="p-3 bg-lira-sidebar border-t border-dashed border-lira-rule/60 flex items-center justify-between gap-3 text-xs font-mono text-lira-online">
           <span>Pinte ou apague os blocos verdes para sentar ao clicar ou passar pela hitbox. O player olha na direção do móvel e levanta ao andar.</span>
-          <button type="button" onClick={onClearSeats} className="px-3 py-1 rounded-xl bg-slate-800 text-slate-200 shrink-0">Limpar Assentos</button>
+          <button type="button" onClick={onClearSeats} className="px-3 py-1 rounded-[8px] bg-lira-surface border border-lira-rule text-lira-ink shrink-0">Limpar Assentos</button>
         </div>
       )}
 
       {elementType === 'furniture' && composeTool === 'collision' && (
-        <div className="p-3 bg-[#18191c] border-t border-[#2b2d31] flex items-center justify-between shrink-0 animate-in fade-in duration-150">
-          <div className="flex items-center gap-2 text-xs text-rose-300">
-            <Shield className="w-4 h-4 text-rose-400" />
+        <div className="p-3 bg-lira-sidebar border-t border-dashed border-lira-rule/60 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2 text-xs font-mono text-lira-error">
+            <Shield className="w-4 h-4 text-lira-error" />
             <span>
               Clique ou arraste nos blocos do quadro para pintar/limpar a barreira física onde os avatares não passam.
             </span>
@@ -337,14 +337,14 @@ export const CompositionStudio: React.FC<Props> = ({
             <button
               type="button"
               onClick={onSetBottomHalfCollision}
-              className="px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 transition-colors"
+              className="px-3 py-1 rounded-[8px] bg-lira-surface hover:border-lira-accent text-xs font-mono font-bold text-lira-ink border border-lira-rule transition-colors"
             >
               Base Inferior (Padrão)
             </button>
             <button
               type="button"
               onClick={() => onSetAllCollision(true)}
-              className="px-3 py-1 rounded-xl bg-rose-600/30 hover:bg-rose-600/50 text-rose-300 border border-rose-500/40 text-xs font-bold transition-colors flex items-center gap-1"
+              className="px-3 py-1 rounded-[8px] bg-lira-error/15 hover:bg-lira-error/25 text-lira-error border border-lira-error/40 text-xs font-mono font-bold transition-colors flex items-center gap-1"
             >
               <CheckSquare className="w-3.5 h-3.5" />
               <span>Bloquear Tudo</span>
@@ -352,7 +352,7 @@ export const CompositionStudio: React.FC<Props> = ({
             <button
               type="button"
               onClick={() => onSetAllCollision(false)}
-              className="px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 border border-slate-700 transition-colors flex items-center gap-1"
+              className="px-3 py-1 rounded-[8px] bg-lira-surface hover:border-lira-accent text-xs font-mono font-bold text-lira-muted hover:text-lira-ink border border-lira-rule transition-colors flex items-center gap-1"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Limpar Tudo</span>

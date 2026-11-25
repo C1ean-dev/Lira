@@ -1,7 +1,7 @@
 # Atualizações pelo Render
 
 O Electron, o Android e a versão web consultam
-`https://lira-signaling.onrender.com/updates/lira/latest`. A resposta usa os
+`https://p01--lira--tj9yvq5j5cgs.code.run/updates/lira/latest`. A resposta usa os
 campos das releases (`tag_name`, `name`, `body`, `html_url`, `assets`), com os
 endereços dos instaladores apontando para `/updates/lira/assets/:assetId` no
 mesmo servidor. O tamanho do instalador Windows continua sendo usado na

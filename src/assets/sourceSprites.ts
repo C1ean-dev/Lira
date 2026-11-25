@@ -59,6 +59,16 @@ export async function compactSourceSprites(document: AtlasDocument): Promise<Atl
   for (const asset of document.assets) {
     const sources = frameSources(asset)
     if (!sources.length || sources.every(src => readSpriteFrame(src))) { assets.push(asset); continue }
+    const animationSources = [
+      ...asset.frames,
+      ...Object.values(asset.directionalFrames || {}).flatMap(sequence),
+      ...Object.values(asset.activityAnimations || {}).flatMap(sequence),
+      ...(asset.bedAnimation?.frames || []),
+    ].filter(Boolean)
+    if (asset.sourceXmlContent && animationSources.length > 0 && animationSources.every(src => readSpriteFrame(src))) {
+      assets.push(asset)
+      continue
+    }
     // A single standalone drawing is already a raw asset, with no duplicated cuts.
     if (!asset.sourceSheets?.length && !asset.sourceImageSrc && sources.length === 1) { assets.push(asset); continue }
     const replacements = new Map<string, string>()

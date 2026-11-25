@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TextureAtlas imagePath="f6b1abee9058a765ec12a6f28dc1d9d8e81d197e59fed948503fd2f43f88fecf.png">
+  <SubTexture name="furniture_custom_furniture_1793991567127_down_0" x="0" y="0" width="32" height="32"/>
+  <SubTexture name="furniture_custom_furniture_1793991567127_up_0" x="32" y="0" width="32" height="32"/>
+  <SubTexture name="furniture_custom_furniture_1793991567127_left_0" x="0" y="32" width="32" height="32"/>
+  <SubTexture name="furniture_custom_furniture_1793991567127_right_0" x="32" y="32" width="32" height="32"/>
+</TextureAtlas>

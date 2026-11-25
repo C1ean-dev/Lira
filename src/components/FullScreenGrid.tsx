@@ -174,26 +174,26 @@ const FullScreenGridInner: React.FC = () => {
 
   return (
     <>
-      <div role="region" aria-label="Chamada da sala" className="fixed inset-0 z-50 bg-[#0c0e14] flex flex-col justify-between p-3 select-none animate-in fade-in duration-200">
-        <div className="flex items-center justify-between px-4 py-2 bg-[#12151d]/90 backdrop-blur-md rounded-2xl border border-[#2a3142] shrink-0 mb-2">
+      <div role="region" aria-label="Chamada da sala" className="fixed top-0 right-0 bottom-0 left-[var(--rail-width)] z-50 bg-lira-ground flex flex-col justify-between p-3 select-none font-mono">
+        <div className="flex items-center justify-between px-4 py-2 bg-lira-panel rounded-[12px] border border-dashed border-lira-rule shrink-0 mb-2">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-              <h1 className="text-sm font-bold text-slate-100">{zoneTitle}</h1>
+              <span className="w-2.5 h-2.5 rounded-full bg-lira-online animate-pulse" />
+              <h1 className="font-display text-base font-bold text-lira-accent">{zoneTitle}</h1>
             </div>
-            <span className="text-xs bg-[#1b202c] border border-[#2a3142] text-slate-400 px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
-              <Shield className="w-3 h-3 text-emerald-400" />
+            <span className="text-[11px] font-mono bg-lira-surface border border-lira-quiet text-lira-muted px-2.5 py-0.5 rounded-[6px] flex items-center gap-1.5">
+              <Shield className="w-3 h-3 text-lira-online" />
               Espaço Criptografado & Isolado
             </span>
           </div>
 
           {adminNotice && (
-            <div className="flex items-center gap-2 px-3 py-1 bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded-xl text-xs font-semibold animate-in fade-in slide-in-from-top-2 duration-150">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+            <div className="flex items-center gap-2 px-3 py-1 bg-lira-amber/15 border border-lira-amber/40 text-lira-amber rounded-[8px] text-xs font-mono font-semibold">
+              <span className="w-2 h-2 rounded-full bg-lira-amber animate-ping" />
               <span>{adminNotice.message}</span>
               <button
                 onClick={() => setAdminNotice(null)}
-                className="p-0.5 hover:bg-amber-500/30 rounded text-amber-300"
+                className="p-0.5 hover:bg-lira-amber/25 rounded-[4px] text-lira-amber"
                 title="Fechar aviso"
               >
                 <X className="w-3.5 h-3.5" />
@@ -205,10 +205,10 @@ const FullScreenGridInner: React.FC = () => {
             {otherParticipants.length > 0 && (
               <button
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-xs font-mono font-semibold border transition-colors ${
                   isSidebarOpen
-                    ? 'bg-indigo-600 text-white border-indigo-500'
-                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                    ? 'bg-lira-accent text-lira-ground border-lira-accent'
+                    : 'bg-lira-surface text-lira-ink border-lira-rule hover:border-lira-accent hover:text-lira-accent'
                 }`}
                 title={isSidebarOpen ? 'Ocultar barra de participantes' : 'Exibir barra de participantes'}
               >
@@ -220,10 +220,10 @@ const FullScreenGridInner: React.FC = () => {
             {localPlayer.currentZoneId && (
               <button
                 onClick={() => setSpotifyJamModalOpen(true, localPlayer.currentZoneId)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-xs font-mono font-semibold border transition-colors ${
                   isJamActive
-                    ? 'bg-emerald-600/25 text-emerald-300 border-emerald-500/50 hover:bg-emerald-600/35 shadow-sm shadow-emerald-500/20'
-                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-emerald-400'
+                    ? 'bg-lira-online/15 text-lira-online border-lira-online/40 hover:bg-lira-online/25'
+                    : 'bg-lira-surface text-lira-ink border-lira-rule hover:border-lira-online hover:text-lira-online'
                 }`}
                 title={
                   isJamActive
@@ -231,10 +231,10 @@ const FullScreenGridInner: React.FC = () => {
                     : 'Spotify Jam nesta sala'
                 }
               >
-                <SpotifyIcon size={14} className={`w-3.5 h-3.5 ${isJamActive ? 'text-emerald-400 animate-pulse' : 'text-slate-400'}`} />
+                <SpotifyIcon size={14} className={`w-3.5 h-3.5 ${isJamActive ? 'text-lira-online animate-pulse' : 'text-lira-muted'}`} />
                 <span>Jam</span>
                 {isJamActive && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-lira-online animate-ping" />
                 )}
               </button>
             )}
@@ -246,17 +246,17 @@ const FullScreenGridInner: React.FC = () => {
               aria-expanded={isTranscriptOpen}
               aria-controls="call-transcript"
               title="Transcrição da chamada por participante"
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${isTranscriptOpen ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'}`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-xs font-mono font-semibold border transition-colors ${isTranscriptOpen ? 'bg-lira-accent text-lira-ground border-lira-accent' : 'bg-lira-surface text-lira-ink border-lira-rule hover:border-lira-accent hover:text-lira-accent'}`}
             >
               <FileText className="w-3.5 h-3.5" />
               <span>Transcrição</span>
-              {transcription?.status === 'recording' && <span aria-label="Transcrição ativa" className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />}
+              {transcription?.status === 'recording' && <span aria-label="Transcrição ativa" className="w-1.5 h-1.5 rounded-full bg-lira-online animate-pulse" />}
             </button>
 
             <CollaborationButtons />
             <button
               onClick={() => setGridCallOpen(false)}
-              className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition-colors"
+              className="flex items-center gap-2 px-3.5 py-1.5 rounded-[8px] bg-lira-surface border border-lira-rule hover:border-lira-accent hover:text-lira-accent text-xs font-mono font-semibold text-lira-ink transition-colors"
             >
               <Minimize2 className="w-4 h-4" />
               Voltar ao Mapa 2D
@@ -265,7 +265,7 @@ const FullScreenGridInner: React.FC = () => {
         </div>
 
         <div className="flex-1 w-full h-[calc(100vh-140px)] flex gap-3 items-stretch overflow-hidden">
-          <div className="flex-1 h-full min-w-0 bg-[#0c0e14] rounded-3xl overflow-hidden flex items-center justify-center">
+          <div className="flex-1 h-full min-w-0 bg-lira-ground rounded-[12px] overflow-hidden flex items-center justify-center">
             {focusedUser ? (
               <GridParticipantTile
                 user={focusedUser}
@@ -276,13 +276,13 @@ const FullScreenGridInner: React.FC = () => {
                 onContextMenu={handleParticipantContextMenu}
               />
             ) : (
-              <div className="text-slate-400 text-sm">Nenhum participante conectado</div>
+              <div className="text-lira-muted text-sm font-mono">Nenhum participante conectado</div>
             )}
           </div>
 
           {isSidebarOpen && otherParticipants.length > 0 && (
-            <div className="w-44 lg:w-48 h-full bg-[#12151d]/70 backdrop-blur-md rounded-3xl border border-[#2a3142] p-2 flex flex-col gap-2 overflow-y-auto shrink-0 animate-in slide-in-from-right-4 duration-200">
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1 py-0.5 flex items-center justify-between">
+            <div className="w-44 lg:w-48 h-full bg-lira-panel rounded-[12px] border border-lira-quiet p-2 flex flex-col gap-2 overflow-y-auto shrink-0">
+              <div className="text-[10px] font-mono font-bold text-lira-muted uppercase tracking-wider px-1 py-0.5 flex items-center justify-between border-b border-dashed border-lira-rule/60">
                 <span>Participantes ({otherParticipants.length})</span>
               </div>
 

@@ -75,6 +75,66 @@ describe('Parsec call echo integration', () => {
     expect(await fs.readdir(path.dirname(file))).toEqual(['config.txt'])
   })
 
+  it('recognizes when config.json already excludes Lira and avoids redundant writes or restarts', async () => {
+    const directory = path.join(options.appData!, 'Parsec')
+    await fs.mkdir(directory, { recursive: true })
+    const jsonPath = path.join(directory, 'config.json')
+    await fs.writeFile(jsonPath, JSON.stringify({
+      host_audio_cancel: { value: 2 },
+      echo_app_selection: { value: 'Lira.exe' },
+    }))
+    const restartParsec = vi.fn(async () => ({ running: true, restarted: true }))
+    const result = await configureParsecEcho({ ...options, restartParsec })
+    expect(result).toMatchObject({
+      ok: true,
+      alreadyConfigured: true,
+      restarted: false,
+      restartRequired: false,
+      configPath: jsonPath,
+    })
+    expect(restartParsec).not.toHaveBeenCalled()
+    expect(await fs.readdir(directory)).toEqual(['config.json'])
+  })
+
+  it('automatically restarts Parsec when the configuration changes and Parsec is open', async () => {
+    const file = await install()
+    const restartParsec = vi.fn(async () => ({ running: true, restarted: true }))
+    const result = await configureParsecEcho({ ...options, restartParsec })
+    expect(result).toMatchObject({
+      ok: true,
+      restarted: true,
+      restartRequired: false,
+      configPath: file,
+    })
+    expect(restartParsec).toHaveBeenCalledExactlyOnceWith(path.dirname(file))
+  })
+
+  it('does not require a manual restart when Parsec is closed during configuration', async () => {
+    const file = await install()
+    const restartParsec = vi.fn(async () => ({ running: false, restarted: false }))
+    const result = await configureParsecEcho({ ...options, restartParsec })
+    expect(result).toMatchObject({
+      ok: true,
+      restarted: false,
+      restartRequired: false,
+      configPath: file,
+    })
+    expect(restartParsec).toHaveBeenCalledExactlyOnceWith(path.dirname(file))
+  })
+
+  it('reports restartRequired if Parsec is running but cannot be restarted automatically', async () => {
+    const file = await install()
+    const restartParsec = vi.fn(async () => ({ running: true, restarted: false }))
+    const result = await configureParsecEcho({ ...options, restartParsec })
+    expect(result).toMatchObject({
+      ok: true,
+      restarted: false,
+      restartRequired: true,
+      configPath: file,
+    })
+    expect(restartParsec).toHaveBeenCalledExactlyOnceWith(path.dirname(file))
+  })
+
   it.each([
     { platform: 'linux' }, { osRelease: '10.0.19042' }, { packaged: false },
     { executablePath: 'C:\\Electron\\electron.exe' }, { executablePath: 'C:\\Lira\ninjected.exe' },

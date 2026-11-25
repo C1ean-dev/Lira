@@ -148,25 +148,26 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
   }
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200 select-none">
-      <div className="bg-[#1b202c] border border-[#2a3142] rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#2a3142] bg-[#12151d]/70">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-lira-ground/80 p-4 select-none font-mono">
+      <div className="bg-lira-panel border border-dashed border-lira-rule rounded-[12px] w-full max-w-3xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-dashed border-lira-rule/60 bg-lira-surface/50">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+            <div className="w-10 h-10 rounded-[8px] bg-lira-surface border border-lira-rule flex items-center justify-center text-lira-accent">
               <ScreenShare className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-slate-100">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-lira-accent">[ transmissão ]</span>
+                <h2 className="font-display text-lg font-bold text-lira-ink">
                   {isScreenSharing ? 'Configurações da Transmissão' : 'Compartilhar Tela & Áudio'}
                 </h2>
                 {isScreenSharing && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                  <span className="px-2 py-0.5 rounded-[6px] text-[10px] font-mono font-extrabold uppercase tracking-wide bg-lira-error/15 text-lira-error border border-lira-error/40">
                     Ao Vivo
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs font-mono text-lira-muted">
                 {isScreenSharing
                   ? 'Ajuste a resolução, FPS, volume ou selecione outra tela/janela em tempo real'
                   : 'Escolha uma tela inteira ou janela para transmitir para o espaço'}
@@ -176,21 +177,21 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
           <div className="flex items-center gap-2">
             <button
               onClick={fetchSources}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+              className="p-2 rounded-[8px] border border-lira-rule bg-lira-surface text-lira-muted hover:text-lira-ink hover:border-lira-accent transition-colors"
               title="Recarregar Janelas"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-lira-accent' : ''}`} />
             </button>
             <button
               onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+              className="p-2 rounded-[8px] border border-lira-rule bg-lira-surface text-lira-muted hover:text-lira-ink hover:border-lira-accent transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        <div className="flex gap-2 px-6 pt-3 border-b border-[#2a3142] bg-[#12151d]/40">
+        <div className="flex gap-2 px-6 pt-3 border-b border-dashed border-lira-rule/60 bg-lira-panel">
           <button
             onClick={() => {
               setActiveTab('screen')
@@ -198,10 +199,10 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 setSelectedSourceId(screens[0].id)
               }
             }}
-            className={`flex items-center gap-2 pb-3 px-3 text-xs font-bold border-b-2 transition-all ${
+            className={`flex items-center gap-2 pb-3 px-3 text-xs font-mono font-bold border-b-2 transition-colors ${
               activeTab === 'screen'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-lira-accent text-lira-accent'
+                : 'border-transparent text-lira-muted hover:text-lira-ink'
             }`}
           >
             <Monitor className="w-4 h-4" />
@@ -215,10 +216,10 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 setSelectedAudioSourceId(windows[0].id)
               }
             }}
-            className={`flex items-center gap-2 pb-3 px-3 text-xs font-bold border-b-2 transition-all ${
+            className={`flex items-center gap-2 pb-3 px-3 text-xs font-mono font-bold border-b-2 transition-colors ${
               activeTab === 'window'
-                ? 'border-indigo-500 text-indigo-400'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-lira-accent text-lira-accent'
+                : 'border-transparent text-lira-muted hover:text-lira-ink'
             }`}
           >
             <AppWindow className="w-4 h-4" />
@@ -229,14 +230,14 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
         <div className="p-6 overflow-y-auto flex-1 space-y-5">
           <div>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold text-slate-300">
+              <span className="text-xs font-semibold text-lira-ink">
                 {activeTab === 'screen' ? 'Selecione o Monitor' : 'Selecione a Janela do Aplicativo (ex: Chrome)'}
               </span>
               {!isElectron && (
                 <button
                   type="button"
                   onClick={handleNativePicker}
-                  className="text-[11px] font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 underline"
+                  className="text-[11px] font-semibold text-lira-accent hover:text-lira-ink flex items-center gap-1 underline"
                 >
                   <span>Usar Seletor do Sistema / Navegador</span>
                 </button>
@@ -244,38 +245,38 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
             </div>
 
             {activeTab === 'window' && (
-              <div className="mb-4 px-3.5 py-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl text-xs text-indigo-300 animate-in fade-in duration-150">
-                <p className="text-[11px] text-slate-300 leading-relaxed">
+              <div className="mb-4 px-3.5 py-2.5 bg-lira-surface border border-dashed border-lira-rule/60 rounded-[8px] text-xs text-lira-ink">
+                <p className="text-[11px] text-lira-muted leading-relaxed">
                   Para remover a borda o aplicativo precisa estar em tela cheia - ou utilize compartilhar a tela inteira
                 </p>
               </div>
             )}
 
             {loading ? (
-              <div className="text-center py-10 text-sm text-slate-400">Detectando telas disponíveis...</div>
+              <div className="text-center py-10 text-sm text-lira-muted border border-dashed border-lira-rule/60 rounded-[8px]">Detectando telas disponíveis...</div>
             ) : !isElectron ? (
-              <div className="p-6 text-center bg-[#12151d]/50 rounded-2xl border border-[#2a3142] space-y-3">
-                <p className="text-xs text-slate-300">
+              <div className="p-6 text-center bg-lira-ground rounded-[12px] border border-dashed border-lira-rule/60 space-y-3">
+                <p className="text-xs text-lira-muted">
                   Você está no navegador: a lista de miniaturas só existe no app desktop. Use o seletor
                   nativo do sistema para escolher a tela ou janela.
                 </p>
                 <button
                   type="button"
                   onClick={handleNativePicker}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md transition-all inline-flex items-center gap-2"
+                  className="px-4 py-2 rounded-[8px] bg-lira-accent hover:bg-lira-ink text-lira-ground text-xs font-mono font-bold transition-colors inline-flex items-center gap-2"
                 >
                   <ScreenShare className="w-4 h-4" />
                   Abrir Seletor de Telas do Sistema
                 </button>
               </div>
             ) : fetchError ? (
-              <div className="p-6 text-center bg-rose-950/30 rounded-2xl border border-rose-500/30 space-y-3">
-                <p className="text-xs text-rose-200">{fetchError}</p>
+              <div className="p-6 text-center bg-lira-error/10 rounded-[12px] border border-dashed border-lira-error/40 space-y-3">
+                <p className="text-xs text-lira-error">{fetchError}</p>
                 <div className="flex items-center justify-center gap-2">
                   <button
                     type="button"
                     onClick={fetchSources}
-                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition-all inline-flex items-center gap-2"
+                    className="px-4 py-2 rounded-[8px] bg-lira-surface border border-lira-rule hover:border-lira-accent text-lira-ink text-xs font-mono font-bold transition-colors inline-flex items-center gap-2"
                   >
                     <RefreshCw className="w-4 h-4" />
                     Tentar Novamente
@@ -284,7 +285,7 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                     <button
                       type="button"
                       onClick={handleNativePicker}
-                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md transition-all inline-flex items-center gap-2"
+                      className="px-4 py-2 rounded-[8px] bg-lira-accent hover:bg-lira-ink text-lira-ground text-xs font-mono font-bold transition-colors inline-flex items-center gap-2"
                     >
                       <ScreenShare className="w-4 h-4" />
                       Usar Seletor do Sistema
@@ -293,8 +294,8 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 </div>
               </div>
             ) : currentList.length === 0 ? (
-              <div className="p-6 text-center bg-[#12151d]/50 rounded-2xl border border-[#2a3142] space-y-3">
-                <p className="text-xs text-slate-300">
+              <div className="p-6 text-center bg-lira-ground rounded-[12px] border border-dashed border-lira-rule/60 space-y-3">
+                <p className="text-xs text-lira-muted">
                   {isElectron
                     ? 'Nenhuma fonte foi encontrada. Recarregue a lista para manter o áudio isolado da fonte selecionada.'
                     : 'Nenhuma miniatura capturada automaticamente. Você pode usar o seletor nativo do sistema com 1 clique!'}
@@ -303,7 +304,7 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                   <button
                     type="button"
                     onClick={handleNativePicker}
-                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md transition-all inline-flex items-center gap-2"
+                    className="px-4 py-2 rounded-[8px] bg-lira-accent hover:bg-lira-ink text-lira-ground text-xs font-mono font-bold transition-colors inline-flex items-center gap-2"
                   >
                     <ScreenShare className="w-4 h-4" />
                     Abrir Seletor de Telas do Sistema
@@ -323,27 +324,27 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                           setSelectedAudioSourceId(source.id)
                         }
                       }}
-                      className={`flex flex-col rounded-2xl border overflow-hidden text-left transition-all group ${
+                      className={`flex flex-col rounded-[8px] border overflow-hidden text-left transition-colors group ${
                         isSelected
-                          ? 'border-indigo-500 ring-2 ring-indigo-500/40 bg-indigo-500/10 shadow-lg'
-                          : 'border-[#2a3142] bg-[#12151d]/60 hover:border-slate-600'
+                          ? 'border-lira-accent ring-1 ring-lira-accent/40 bg-lira-surface'
+                          : 'border-lira-quiet bg-lira-ground hover:border-lira-rule'
                       }`}
                     >
-                      <div className="h-28 bg-black/60 overflow-hidden flex items-center justify-center p-2 relative">
+                      <div className="h-28 bg-lira-ground overflow-hidden flex items-center justify-center p-2 relative">
                         {source.thumbnail && source.thumbnail.length > 30 ? (
                           <img
                             src={source.thumbnail}
                             alt={source.name}
-                            className="w-full h-full object-contain rounded-lg"
+                            className="w-full h-full object-contain rounded-[4px]"
                           />
                         ) : (
-                          <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
+                          <div className="flex flex-col items-center justify-center gap-2 text-lira-muted">
                             {source.id.startsWith('screen:') ? (
-                              <Monitor className="w-10 h-10 text-indigo-400/80" />
+                              <Monitor className="w-10 h-10 text-lira-accent/80" />
                             ) : (
-                              <AppWindow className="w-10 h-10 text-indigo-400/80" />
+                              <AppWindow className="w-10 h-10 text-lira-accent/80" />
                             )}
-                            <span className="text-[10px] text-slate-400 font-medium text-center px-1 truncate max-w-[150px]">
+                            <span className="text-[10px] text-lira-muted font-medium text-center px-1 truncate max-w-[150px]">
                               {source.name}
                             </span>
                           </div>
@@ -352,14 +353,14 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                           <img
                             src={source.appIcon}
                             alt="App Icon"
-                            className="absolute bottom-1.5 right-1.5 w-4 h-4 rounded shadow bg-black/50 p-0.5"
+                            className="absolute bottom-1.5 right-1.5 w-4 h-4 rounded-[4px] bg-lira-panel border border-lira-quiet p-0.5"
                           />
                         )}
                       </div>
 
-                      <div className="p-2.5 bg-[#1b202c] border-t border-[#2a3142] flex items-center justify-between gap-1.5">
-                        <span className="text-[11px] font-medium text-slate-200 truncate">{source.name}</span>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0" />}
+                      <div className="p-2.5 bg-lira-surface border-t border-lira-quiet flex items-center justify-between gap-1.5">
+                        <span className="text-[11px] font-medium text-lira-ink truncate">{source.name}</span>
+                        {isSelected && <Check className="w-3.5 h-3.5 text-lira-accent shrink-0" />}
                       </div>
                     </button>
                   )
@@ -369,28 +370,28 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
           </div>
 
           {selectedSource && (
-            <div className="flex items-center gap-2 px-3.5 py-2 bg-indigo-950/30 border border-indigo-500/30 rounded-xl text-xs text-indigo-200">
-              <AppWindow className="w-4 h-4 text-indigo-400 shrink-0" />
+            <div className="flex items-center gap-2 px-3.5 py-2 bg-lira-surface border border-lira-rule rounded-[8px] text-xs text-lira-ink">
+              <AppWindow className="w-4 h-4 text-lira-accent shrink-0" />
               <span className="truncate">
-                Transmitindo: <strong className="text-indigo-300">{selectedSource.name}</strong>
+                Transmitindo: <strong className="text-lira-accent">{selectedSource.name}</strong>
               </span>
             </div>
           )}
 
           {isElectron && audioCapabilityError && (
-            <div className="rounded-xl border border-rose-500/40 bg-rose-950/30 px-3.5 py-3 text-xs text-rose-200">
-              <div className="font-semibold text-rose-100">Áudio isolado indisponível neste computador</div>
+            <div className="rounded-[8px] border border-lira-error/40 bg-lira-error/10 px-3.5 py-3 text-xs text-lira-error">
+              <div className="font-semibold text-lira-ink">Áudio isolado indisponível neste computador</div>
               <div className="mt-1 leading-relaxed">{audioCapabilityError}</div>
-              <div className="mt-1 text-[10px] text-rose-300/80">
+              <div className="mt-1 text-[10px] text-lira-error/80">
                 A apresentação fica bloqueada para evitar iniciar uma live sem o som selecionado.
               </div>
             </div>
           )}
 
-          <div className="bg-[#12151d]/60 rounded-2xl p-4 border border-[#2a3142] space-y-4">
+          <div className="bg-lira-ground rounded-[12px] p-4 border border-dashed border-lira-rule/60 space-y-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-200">
-                <Sliders className="w-4 h-4 text-indigo-400" />
+              <div className="flex items-center gap-2 font-display text-sm font-bold text-lira-accent">
+                <Sliders className="w-4 h-4 text-lira-accent" />
                 <span>Qualidade & Taxa de Quadros</span>
               </div>
               <button
@@ -401,25 +402,25 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                     ? 'Aceleração por GPU ativada (H.264). Clique para alternar para CPU (VP8).'
                     : 'Aceleração por GPU desativada (CPU/VP8). Clique para ativar aceleração por hardware H.264.'
                 }
-                className={`group flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all text-[10px] font-bold cursor-pointer hover:scale-[1.02] active:scale-[0.98] ${
+                className={`group flex items-center gap-1.5 px-2.5 py-1 rounded-[6px] border transition-colors text-[10px] font-mono font-bold cursor-pointer ${
                   isHardwareAccelerationEnabled
-                    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/25 shadow-sm shadow-emerald-500/10'
-                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700/80 hover:text-slate-200'
+                    ? 'bg-lira-online/15 border-lira-online/40 text-lira-online hover:bg-lira-online/25'
+                    : 'bg-lira-surface border-lira-quiet text-lira-muted hover:border-lira-rule hover:text-lira-ink'
                 }`}
               >
                 <span
-                  className={`w-1.5 h-1.5 rounded-full transition-all ${
+                  className={`w-1.5 h-1.5 rounded-full transition-colors ${
                     isHardwareAccelerationEnabled
-                      ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse'
-                      : 'bg-slate-500'
+                      ? 'bg-lira-online animate-pulse'
+                      : 'bg-lira-muted'
                   }`}
                 />
                 <span>{isHardwareAccelerationEnabled ? 'GPU / H.264 Acelerado' : 'CPU / Software (VP8)'}</span>
                 <span
-                  className={`text-[9px] px-1 py-0.2 rounded font-mono font-bold transition-colors ${
+                  className={`text-[9px] px-1 py-0.2 rounded-[4px] font-mono tabular-nums font-bold transition-colors ${
                     isHardwareAccelerationEnabled
-                      ? 'bg-emerald-500/25 text-emerald-200'
-                      : 'bg-slate-700 text-slate-300'
+                      ? 'bg-lira-online/20 text-lira-online'
+                      : 'bg-lira-panel text-lira-muted'
                   }`}
                 >
                   {isHardwareAccelerationEnabled ? 'ON' : 'OFF'}
@@ -430,8 +431,8 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
             <div className="space-y-4">
               <div>
                 <div className="mb-2 flex items-center justify-between">
-                  <label className="text-[11px] font-semibold text-slate-300">Prioridade da Transmissão</label>
-                  <span className="text-[10px] text-slate-400">
+                  <label className="text-[11px] font-semibold text-lira-ink">Prioridade da Transmissão</label>
+                  <span className="text-[10px] text-lira-muted">
                     {optimizationMode === 'quality'
                       ? 'Foco em resolução nítida e texto legível'
                       : 'Foco em taxa de quadros (FPS) estável'}
@@ -441,31 +442,31 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                   <button
                     type="button"
                     onClick={() => setScreenShareOptimizationMode('quality')}
-                    className={`p-3 rounded-2xl border text-left flex items-start gap-3 transition-all ${
+                    className={`p-3 rounded-[8px] border text-left flex items-start gap-3 transition-colors ${
                       optimizationMode === 'quality'
-                        ? 'border-indigo-500 bg-indigo-500/15 ring-2 ring-indigo-500/30 shadow-lg text-slate-100'
-                        : 'border-[#2a3142] bg-[#1b202c] text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                        ? 'border-lira-accent bg-lira-surface text-lira-ink'
+                        : 'border-lira-quiet bg-lira-panel text-lira-muted hover:text-lira-ink hover:border-lira-rule'
                     }`}
                   >
                     <div
-                      className={`p-2 rounded-xl mt-0.5 shrink-0 transition-colors ${
+                      className={`p-2 rounded-[6px] mt-0.5 shrink-0 transition-colors ${
                         optimizationMode === 'quality'
-                          ? 'bg-indigo-500/25 text-indigo-300'
-                          : 'bg-slate-800 text-slate-500'
+                          ? 'bg-lira-accent/20 text-lira-accent'
+                          : 'bg-lira-surface text-lira-muted'
                       }`}
                     >
                       <Sparkles className="w-4 h-4" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-100">Priorizar Qualidade</span>
+                        <span className="text-xs font-bold text-lira-ink">Priorizar Qualidade</span>
                         {optimizationMode === 'quality' && (
-                          <span className="flex items-center gap-1 text-[10px] font-bold text-indigo-400 bg-indigo-500/20 px-1.5 py-0.5 rounded-md border border-indigo-500/30">
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-lira-accent bg-lira-accent/15 px-1.5 py-0.5 rounded-[4px] border border-lira-accent/40">
                             <Check className="w-3 h-3" /> Ativo
                           </span>
                         )}
                       </div>
-                      <p className="text-[10px] text-slate-400 mt-1 leading-snug">
+                      <p className="text-[10px] text-lira-muted mt-1 leading-snug">
                         Mantém a resolução alta e texto nítido, ideal para leitura, código e trabalho.
                       </p>
                     </div>
@@ -474,31 +475,31 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                   <button
                     type="button"
                     onClick={() => setScreenShareOptimizationMode('smoothness')}
-                    className={`p-3 rounded-2xl border text-left flex items-start gap-3 transition-all ${
+                    className={`p-3 rounded-[8px] border text-left flex items-start gap-3 transition-colors ${
                       optimizationMode === 'smoothness'
-                        ? 'border-indigo-500 bg-indigo-500/15 ring-2 ring-indigo-500/30 shadow-lg text-slate-100'
-                        : 'border-[#2a3142] bg-[#1b202c] text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                        ? 'border-lira-accent bg-lira-surface text-lira-ink'
+                        : 'border-lira-quiet bg-lira-panel text-lira-muted hover:text-lira-ink hover:border-lira-rule'
                     }`}
                   >
                     <div
-                      className={`p-2 rounded-xl mt-0.5 shrink-0 transition-colors ${
+                      className={`p-2 rounded-[6px] mt-0.5 shrink-0 transition-colors ${
                         optimizationMode === 'smoothness'
-                          ? 'bg-indigo-500/25 text-indigo-300'
-                          : 'bg-slate-800 text-slate-500'
+                          ? 'bg-lira-accent/20 text-lira-accent'
+                          : 'bg-lira-surface text-lira-muted'
                       }`}
                     >
                       <Zap className="w-4 h-4" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-100">Priorizar Fluidez</span>
+                        <span className="text-xs font-bold text-lira-ink">Priorizar Fluidez</span>
                         {optimizationMode === 'smoothness' && (
-                          <span className="flex items-center gap-1 text-[10px] font-bold text-indigo-400 bg-indigo-500/20 px-1.5 py-0.5 rounded-md border border-indigo-500/30">
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-lira-accent bg-lira-accent/15 px-1.5 py-0.5 rounded-[4px] border border-lira-accent/40">
                             <Check className="w-3 h-3" /> Ativo
                           </span>
                         )}
                       </div>
-                      <p className="text-[10px] text-slate-400 mt-1 leading-snug">
+                      <p className="text-[10px] text-lira-muted mt-1 leading-snug">
                         Prioriza movimento fluido (60 FPS) estável, ideal para jogos dinâmicos e ação.
                       </p>
                     </div>
@@ -508,7 +509,7 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
               <div>
                 <div className="mb-1.5">
-                  <label className="text-[11px] font-semibold text-slate-300">Resolução de Vídeo</label>
+                  <label className="text-[11px] font-semibold text-lira-ink">Resolução de Vídeo</label>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {[
@@ -521,10 +522,10 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                       key={res.id}
                       type="button"
                       onClick={() => setResolution(res.id as any)}
-                      className={`py-2 px-2 rounded-xl text-center border transition-all ${
+                      className={`py-2 px-2 rounded-[8px] text-center border font-mono tabular-nums transition-colors ${
                         resolution === res.id
-                          ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300 shadow-md ring-1 ring-indigo-500/30'
-                          : 'border-[#2a3142] bg-[#1b202c] text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                          ? 'border-lira-accent bg-lira-surface text-lira-accent'
+                          : 'border-lira-quiet bg-lira-panel text-lira-muted hover:text-lira-ink hover:border-lira-rule'
                       }`}
                     >
                       <div className="text-xs font-bold">{res.label}</div>
@@ -536,7 +537,7 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
               <div>
                 <div className="mb-1.5">
-                  <label className="text-[11px] font-semibold text-slate-300">Taxa de Quadros (FPS)</label>
+                  <label className="text-[11px] font-semibold text-lira-ink">Taxa de Quadros (FPS)</label>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   {[
@@ -548,10 +549,10 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                       key={String(f.id)}
                       type="button"
                       onClick={() => setFps(f.id as any)}
-                      className={`py-2 px-2 rounded-xl text-center border transition-all ${
+                      className={`py-2 px-2 rounded-[8px] text-center border font-mono tabular-nums transition-colors ${
                         fps === f.id
-                          ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300 shadow-md ring-1 ring-indigo-500/30'
-                          : 'border-[#2a3142] bg-[#1b202c] text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                          ? 'border-lira-accent bg-lira-surface text-lira-accent'
+                          : 'border-lira-quiet bg-lira-panel text-lira-muted hover:text-lira-ink hover:border-lira-rule'
                       }`}
                     >
                       <div className="text-xs font-bold">{f.label}</div>
@@ -562,15 +563,15 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
               </div>
             </div>
 
-            <div className="pt-2 border-t border-[#2a3142]/60">
-              <div className="bg-[#1b202c] p-3.5 rounded-xl border border-[#2a3142] space-y-3">
+            <div className="pt-2 border-t border-dashed border-lira-rule/60">
+              <div className="bg-lira-panel p-3.5 rounded-[8px] border border-lira-quiet space-y-3">
                 <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-[11px] text-slate-300">
+                  <div className="flex items-center justify-between text-[11px] text-lira-ink">
                     <div className="flex items-center gap-1.5 font-semibold">
-                      <Volume2 className="w-3.5 h-3.5 text-indigo-400" />
+                      <Volume2 className="w-3.5 h-3.5 text-lira-accent" />
                       <span>Volume da Transmissão</span>
                     </div>
-                    <span className="font-bold text-indigo-400">{screenShareAudioVolume}%</span>
+                    <span className="font-mono tabular-nums font-bold text-lira-accent">{screenShareAudioVolume}%</span>
                   </div>
                   <input
                     type="range"
@@ -583,14 +584,14 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                       setScreenShareAudioVolume(val)
                       MediaManager.getInstance().updateScreenShareAudioVolume(val)
                     }}
-                    className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                    className="w-full h-2 bg-lira-surface rounded-[4px] appearance-none cursor-pointer accent-lira-accent"
                   />
                 </div>
 
-                <div className="flex items-center justify-between pt-2.5 border-t border-[#2a3142]/70">
+                <div className="flex items-center justify-between pt-2.5 border-t border-dashed border-lira-rule/60">
                   <div className="space-y-0.5 pr-2">
-                    <div className="text-xs font-semibold text-slate-200">Ducking de Voz Inteligente</div>
-                    <div className="text-[10px] text-slate-400 leading-tight">
+                    <div className="text-xs font-semibold text-lira-ink">Ducking de Voz Inteligente</div>
+                    <div className="text-[10px] text-lira-muted leading-tight">
                       Reduz automaticamente o áudio da tela em 75% enquanto você estiver falando
                     </div>
                   </div>
@@ -601,7 +602,7 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                       onChange={(e) => setDuckingEnabled(e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                    <div className="w-11 h-6 bg-lira-surface border border-lira-rule peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-lira-ground after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-lira-ink peer-checked:after:bg-lira-ground after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-lira-accent peer-checked:border-lira-accent"></div>
                   </label>
                 </div>
               </div>
@@ -609,10 +610,10 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
           </div>
         </div>
 
-        <div className="p-4 border-t border-[#2a3142] bg-[#12151d]/90 flex items-center justify-between">
-          <div className="text-xs text-slate-400">
+        <div className="p-4 border-t border-dashed border-lira-rule/60 bg-lira-surface/50 flex items-center justify-between">
+          <div className="text-xs font-mono tabular-nums text-lira-muted">
             Transmissão:{' '}
-            <strong className="text-indigo-400">
+            <strong className="text-lira-accent">
               {resolution === 'auto' ? 'Resolução Automática' : resolution} @{' '}
               {fps === 'auto' ? 'FPS Dinâmico' : `${fps} FPS`} •{' '}
               {optimizationMode === 'quality' ? 'Foco em Qualidade' : 'Foco em Fluidez'}
@@ -627,7 +628,7 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                   MediaManager.getInstance().stopScreenShare()
                   onClose()
                 }}
-                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 transition-all flex items-center gap-1.5"
+                className="px-3.5 py-2 rounded-[8px] text-xs font-mono font-bold bg-lira-error/15 hover:bg-lira-error text-lira-error hover:text-lira-ground border border-lira-error/40 transition-colors flex items-center gap-1.5"
                 title="Parar de transmitir agora"
               >
                 <StopCircle className="w-4 h-4" />
@@ -636,14 +637,14 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
             )}
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+              className="px-4 py-2 rounded-[8px] text-xs font-mono font-semibold text-lira-muted hover:text-lira-ink bg-lira-surface border border-lira-rule hover:border-lira-accent transition-colors"
             >
               Cancelar
             </button>
             <button
               onClick={handleConfirm}
               disabled={!selectedSourceId || !!audioCapabilityError}
-              className="px-5 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 text-white shadow-lg shadow-indigo-600/30 flex items-center gap-2 transition-all active:scale-98"
+              className="px-5 py-2 rounded-[8px] text-xs font-mono font-bold bg-lira-accent hover:bg-lira-ink border border-lira-accent hover:border-lira-ink disabled:cursor-not-allowed disabled:bg-lira-surface disabled:border-lira-quiet disabled:text-lira-muted text-lira-ground flex items-center gap-2 transition-colors"
             >
               <ScreenShare className="w-4 h-4" />
               {isScreenSharing ? 'Atualizar Transmissão' : 'Iniciar Apresentação'}

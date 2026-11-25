@@ -22,7 +22,7 @@ test('patched Mermaid converts diagrams through the Excalidraw integration', {
   let browser
   try {
     await vite.listen()
-    browser = await chromium.launch({ headless: true, executablePath: process.env.LIRA_CHROMIUM_EXECUTABLE || undefined })
+    browser = await chromium.launch({ headless: true, executablePath: process.env.LIRA_CHROMIUM_EXECUTABLE || undefined, args: ['--mute-audio'] })
     const page = await browser.newPage()
     await page.route('**/*', route => {
       if (new URL(route.request().url()).hostname === '127.0.0.1') return route.continue()

@@ -223,16 +223,41 @@ async function addAssets(incoming: CustomAsset[], broadcast: boolean, categories
   await queue(async () => {
     const state = useCustomAssetsStore.getState()
     const cats = [...new Set([...state.customCategories, ...(categories || []), ...incoming.map(a => a.category || 'Geral')])]
+    if (!broadcast) {
+      const currentMap = new Map(state.customAssets.map(a => [a.id, a]))
+      const hasNewCategory = cats.length !== state.customCategories.length || cats.some(c => !state.customCategories.includes(c))
+      const hasAssetChanges = incoming.some(a => {
+        const current = currentMap.get(a.id)
+        if (!current) return true
+        if (a.updatedAt && current.updatedAt) {
+          if (a.updatedAt > current.updatedAt) return true
+          if (a.updatedAt < current.updatedAt) return false
+        }
+        return JSON.stringify(current) !== JSON.stringify(a)
+      })
+      if (!hasNewCategory && !hasAssetChanges) {
+        return
+      }
+    }
     await commit(merge(state.customAssets, incoming), cats)
     if (broadcast) {
       const ids = new Set(incoming.map(asset => asset.id))
-      PeerManager.getInstance().sendCustomAssetsSync(useCustomAssetsStore.getState().customAssets.filter(asset => ids.has(asset.id)), cats)
+      const savedAssets = useCustomAssetsStore.getState().customAssets.filter(asset => ids.has(asset.id))
+      const assetsToSend = savedAssets.map(saved => {
+        const inc = incoming.find(i => i.id === saved.id)
+        if (inc && inc.frames?.some(f => typeof f === 'string' && f.startsWith('data:'))) {
+          return { ...saved, frames: inc.frames, directionalFrames: inc.directionalFrames || saved.directionalFrames }
+        }
+        return saved
+      })
+      PeerManager.getInstance().sendCustomAssetsSync(assetsToSend, cats)
     }
   })
 }
 async function deleteAsset(id: string, broadcast: boolean) {
   await queue(async () => {
     const state = useCustomAssetsStore.getState()
+    if (!broadcast && !state.customAssets.some(a => a.id === id) && state.deletedAssetIds.includes(id)) return
     await commit(state.customAssets.filter(a => a.id !== id), state.customCategories, [...new Set([...state.deletedAssetIds, id])])
     if (broadcast) PeerManager.getInstance().sendCustomAssetDelete(id)
   })
@@ -267,7 +292,11 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
       delete asset.slicerPresets
     }
     await commit(merge(state.customAssets, [asset]), [...new Set([...state.customCategories, asset.category])])
-    PeerManager.getInstance().sendCustomAssetAddOrUpdate(get().customAssets.find(saved => saved.id === id)!)
+    const saved = get().customAssets.find(s => s.id === id)!
+    const toSend = asset.frames?.some(f => typeof f === 'string' && f.startsWith('data:'))
+      ? { ...saved, frames: asset.frames, directionalFrames: asset.directionalFrames || saved.directionalFrames }
+      : saved
+    PeerManager.getInstance().sendCustomAssetAddOrUpdate(toSend)
   }),
   deleteCustomAsset: id => deleteAsset(id, true),
   syncRemoteAtlas: (_pair, document) => addAssets(document.assets, false, document.categories),

@@ -15,7 +15,7 @@ export const MessageStatusIcon: React.FC<MessageStatusIconProps> = ({
     return (
       <span
         title="Lido"
-        className={`inline-flex items-center text-sky-400 select-none ${className}`}
+        className={`inline-flex items-center text-sky-400 text-lira-accent select-none ${className}`}
       >
         <CheckCheck className="w-3.5 h-3.5" />
       </span>
@@ -26,7 +26,7 @@ export const MessageStatusIcon: React.FC<MessageStatusIconProps> = ({
     return (
       <span
         title="Entregue"
-        className={`inline-flex items-center text-slate-400 select-none ${className}`}
+        className={`inline-flex items-center text-slate-400 text-lira-muted select-none ${className}`}
       >
         <CheckCheck className="w-3.5 h-3.5" />
       </span>
@@ -36,7 +36,7 @@ export const MessageStatusIcon: React.FC<MessageStatusIconProps> = ({
   return (
     <span
       title="Enviado"
-      className={`inline-flex items-center text-slate-400 select-none ${className}`}
+      className={`inline-flex items-center text-slate-400 text-lira-muted select-none ${className}`}
     >
       <Check className="w-3.5 h-3.5" />
     </span>

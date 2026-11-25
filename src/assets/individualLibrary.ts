@@ -8,7 +8,55 @@ export interface LibraryLocation { catalog: LibraryCatalog; baseUrl: string }
 export const imageNamePattern = /^[a-f0-9]{64}\.(png|webp|jpg|gif)$/
 const imageNames = new Map<string, string>()
 const imageLocations = new Map<string, string>()
+interface PendingImageEntry { name: string; dataUrl: string; revocable: boolean }
+const pendingImages = new Map<string, PendingImageEntry>()
+const pendingUrlsByName = new Map<string, string>()
 const mimeExtensions: Record<string, string> = { 'image/png': 'png', 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/gif': 'gif' }
+
+function decodeBase64Bytes(base64: string): Uint8Array<ArrayBuffer> {
+  const binary = atob(base64)
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length))
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes
+}
+
+/**
+ * Registers a verified incoming image under a short blob URL so catalogs with
+ * hundreds of `<Sprite>` cuts do not duplicate multi-megabyte data URLs in RAM.
+ */
+export function registerPendingLibraryImage(name: string, dataUrl: string): string {
+  const existing = pendingUrlsByName.get(name)
+  if (existing && pendingImages.has(existing)) return existing
+  const match = /^data:(image\/(?:png|webp|jpeg|gif));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl)
+  let url: string
+  let revocable = false
+  if (match && typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+    const bytes = decodeBase64Bytes(match[2])
+    url = URL.createObjectURL(new Blob([bytes], { type: match[1] }))
+    revocable = true
+  } else {
+    url = `blob:lira-pending/${name}`
+  }
+  pendingImages.set(url, { name, dataUrl, revocable })
+  pendingUrlsByName.set(name, url)
+  return url
+}
+
+export function releasePendingLibraryImages(names?: Iterable<string>): void {
+  const targets = names ? [...names] : [...pendingUrlsByName.keys()]
+  for (const name of targets) {
+    const url = pendingUrlsByName.get(name)
+    if (!url) continue
+    if (imageLocations.get(name) === url) continue
+    const entry = pendingImages.get(url)
+    pendingImages.delete(url)
+    pendingUrlsByName.delete(name)
+    if (imageNames.get(url) === name) imageNames.delete(url)
+    if (entry?.revocable && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+      URL.revokeObjectURL(url)
+    }
+  }
+}
 
 /** Names are readable; the escaped ID keeps similarly named assets distinct. */
 export function libraryAssetFolder(asset: { name: string; id: string }): string {
@@ -42,20 +90,49 @@ export function isLibraryImageSource(value: string): boolean {
 export async function imageIdentity(dataUrl: string): Promise<string> {
   const match = /^data:(image\/(?:png|webp|jpeg|gif));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl)
   if (!match) throw new Error('Imagem da biblioteca inválida')
-  const bytes = Uint8Array.from(atob(match[2]), char => char.charCodeAt(0))
+  const bytes = decodeBase64Bytes(match[2])
   const hash = await crypto.subtle.digest('SHA-256', bytes)
   return [...new Uint8Array(hash)].map(n => n.toString(16).padStart(2, '0')).join('') + '.' + mimeExtensions[match[1]]
 }
 export async function imageDataUrl(src: string): Promise<string> {
   if (src.startsWith('data:')) return src
-  const response = await fetch(src)
-  if (!response.ok) throw new Error('Imagem da biblioteca ausente: ' + src)
-  const blob = await response.blob()
-  const mime = Object.keys(mimeExtensions).includes(blob.type) ? blob.type : 'image/png'
-  const bytes = new Uint8Array(await blob.arrayBuffer())
-  let binary = ''
-  for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192))
-  return `data:${mime};base64,${btoa(binary)}`
+  const pending = pendingImages.get(src)
+  if (pending) return pending.dataUrl
+  try {
+    const response = await fetch(src)
+    if (response.ok) {
+      const blob = await response.blob()
+      const mime = Object.keys(mimeExtensions).includes(blob.type) ? blob.type : 'image/png'
+      const bytes = new Uint8Array(await blob.arrayBuffer())
+      let binary = ''
+      for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192))
+      return `data:${mime};base64,${btoa(binary)}`
+    }
+  } catch {
+    // fetch failed (e.g. cross-scheme file:// or environment restrictions)
+  }
+  if (typeof Image !== 'undefined' && typeof document !== 'undefined') {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas')
+          canvas.width = img.naturalWidth
+          canvas.height = img.naturalHeight
+          const ctx = canvas.getContext('2d')
+          if (!ctx) { reject(new Error('Canvas 2D indisponível')); return }
+          ctx.drawImage(img, 0, 0)
+          resolve(canvas.toDataURL('image/png'))
+        } catch (e) {
+          reject(e)
+        }
+      }
+      img.onerror = () => reject(new Error('Imagem da biblioteca ausente: ' + src))
+      img.src = src
+    })
+  }
+  throw new Error('Imagem da biblioteca ausente: ' + src)
 }
 export function openLibrary(catalog: LibraryCatalog, imageUrl: (name: string) => string, register = true): AtlasDocument {
   if (![2, 3].includes(catalog?.version) || !Array.isArray(catalog.images) || catalog.images.some(n => typeof n !== 'string' || !imageNamePattern.test(n)) || new Set(catalog.images).size !== catalog.images.length || typeof catalog.document !== 'string') throw new Error('Catálogo de imagens inválido')
@@ -88,6 +165,12 @@ export async function buildLibrary(document: AtlasDocument): Promise<LibraryPack
       const frame = readSpriteFrame(value)
       if (frame) { await visit(frame.source); return }
       if (references.has(value)) return
+      const pending = pendingImages.get(value)
+      if (pending) {
+        references.set(value, pending.name)
+        images[pending.name] = pending.dataUrl
+        return
+      }
       const known = imageNames.get(value)
       if (known && !value.startsWith('data:')) { references.set(value, known); return }
       if (!isLibraryImageSource(value)) return

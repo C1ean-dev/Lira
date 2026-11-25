@@ -1,6 +1,9 @@
 import { create } from 'zustand'
 
 export type NetworkRating = 'excellent' | 'good' | 'poor' | 'bad'
+export type ConnectionRoute = 'direct' | 'super-peer' | 'turn' | 'unknown'
+export type TurnProvider = 'cloudflare' | 'metered' | 'unknown'
+export type TransportPreference = 'auto' | 'direct' | 'turn'
 
 export interface NetworkQuality {
   pingMs: number
@@ -8,6 +11,11 @@ export interface NetworkQuality {
   jitterMs: number
   rating: NetworkRating
   lastUpdated: number
+  route?: ConnectionRoute
+  turnProvider?: TurnProvider
+  protocol?: string
+  transportPreference?: TransportPreference
+  isSwitchingTransport?: boolean
 }
 
 interface NetworkQualityStore {

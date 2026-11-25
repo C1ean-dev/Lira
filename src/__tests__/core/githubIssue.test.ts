@@ -417,7 +417,7 @@ describe('createGithubIssue', () => {
 
     const res = await submitIssueToBackend(
       { title: 'Teste direto', description: 'Descricao direta' },
-      'https://lira-signaling.onrender.com/report-issue',
+      'https://p01--lira--tj9yvq5j5cgs.code.run/report-issue',
       mockFetch as unknown as typeof fetch
     )
 

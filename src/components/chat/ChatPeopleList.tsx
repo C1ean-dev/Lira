@@ -1,6 +1,6 @@
 import React from 'react'
 import { PlayerAvatar } from '../common/PlayerAvatar'
-import { ChatPeople, ChatPerson } from '../../utils/chatPeople'
+import { ChatPeople, ChatPerson, getChatPersonStatusDisplay } from '../../utils/chatPeople'
 import { NameplateArtwork } from '../profile/ProfileBar'
 import { getNameplateStyle, resolveProfile } from '../../utils/profileUtils'
 
@@ -10,8 +10,8 @@ interface Props {
   onContextMenu?: (e: React.MouseEvent, person: ChatPerson) => void
 }
 
-const HEADING_CLASS = 'text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 py-1'
-const EMPTY_CLASS = 'text-[11px] text-slate-400 px-2 py-1 italic'
+const HEADING_CLASS = 'text-[10px] font-mono font-bold uppercase tracking-wider text-lira-muted px-2 py-1'
+const EMPTY_CLASS = 'text-[11px] font-mono text-lira-muted/80 px-2 py-1 italic'
 
 const whereabouts = (person: ChatPerson): string =>
   person.inSpace
@@ -23,6 +23,7 @@ const PersonRow: React.FC<Pick<Props, 'onOpen' | 'onContextMenu'> & { person: Ch
   onOpen,
   onContextMenu,
 }) => {
+  const statusDisplay = getChatPersonStatusDisplay(person)
   const resolvedProfile = resolveProfile(person.avatarSource?.profile)
   const nameplate = getNameplateStyle(resolvedProfile)
   const useCustomBg = nameplate.hasCustomNameplate && !person.isCurrent
@@ -37,33 +38,43 @@ const PersonRow: React.FC<Pick<Props, 'onOpen' | 'onContextMenu'> & { person: Ch
           ? { background: nameplate.background, borderColor: nameplate.borderColor }
           : undefined
       }
-      className={`relative overflow-hidden w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition-all ${
+      className={`relative overflow-hidden w-full flex items-center justify-between gap-1.5 px-2 py-1.5 rounded-lg text-xs font-mono transition-colors ${
         person.isCurrent
-          ? 'bg-indigo-600/30 text-indigo-300 font-semibold border border-indigo-500/30'
+          ? person.isOnline
+            ? 'bg-indigo-600/30 bg-lira-surface text-lira-accent font-semibold border border-lira-rule/50'
+            : 'bg-indigo-600/30 bg-lira-surface/80 text-lira-muted font-semibold border border-lira-rule/40'
           : useCustomBg
           ? 'border text-slate-100 hover:brightness-110'
           : person.isOnline
-          ? 'text-slate-300 hover:text-white hover:bg-slate-800/40'
-          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+          ? 'text-lira-ink hover:text-lira-accent hover:bg-lira-surface/60 border border-transparent'
+          : 'text-lira-muted/70 hover:text-lira-ink hover:bg-lira-surface/50 border border-transparent'
       }`}
       title={whereabouts(person)}
     >
       {useCustomBg && (
         <NameplateArtwork nameplateId={nameplate.nameplateId} accentColor={nameplate.accentColor} />
       )}
-      <div className="relative z-10 flex items-center gap-2 truncate min-w-0">
+      <div className="relative z-10 flex items-center gap-2 min-w-0 flex-1">
         <PlayerAvatar
           name={person.name}
           player={person.avatarSource}
           showStatus={true}
           status={person.status}
-          size="xs"
-          className={person.isOnline ? 'rounded-full' : 'rounded-full opacity-70'}
+          size="sm"
+          className={person.isOnline ? 'rounded-full' : 'rounded-full opacity-45 grayscale'}
         />
-        <span className="truncate text-xs">{person.name}</span>
+        <div className="flex flex-col min-w-0 text-left">
+          <span className="truncate text-xs">{person.name}</span>
+          <span className="flex items-center gap-1 text-[10px] leading-tight min-w-0 font-normal">
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDisplay.dotClass}`} />
+            <span className={`truncate ${statusDisplay.isOnline ? statusDisplay.textClass : 'text-lira-muted/75'}`}>
+              {statusDisplay.statusLabel}
+            </span>
+          </span>
+        </div>
       </div>
       {person.unreadCount > 0 && (
-        <span className="bg-indigo-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold relative z-10 shrink-0">
+        <span className="bg-indigo-500 bg-lira-accent text-lira-ground text-[10px] px-1.5 py-0.2 rounded font-mono font-bold relative z-10 shrink-0">
           {person.unreadCount}
         </span>
       )}
@@ -73,6 +84,8 @@ const PersonRow: React.FC<Pick<Props, 'onOpen' | 'onContextMenu'> & { person: Ch
 
 export const ChatPeopleList: React.FC<Props> = ({ people, onOpen, onContextMenu }) => {
   const { friends, inSpace, conversations } = people
+  const onlineFriends = friends.filter((p) => p.isOnline)
+  const offlineFriends = friends.filter((p) => !p.isOnline)
   const hasFriendsHere = friends.some((p) => p.inSpace)
   const row = (person: ChatPerson) => (
     <PersonRow key={person.key} person={person} onOpen={onOpen} onContextMenu={onContextMenu} />
@@ -82,7 +95,30 @@ export const ChatPeopleList: React.FC<Props> = ({ people, onOpen, onContextMenu 
     <>
       <section aria-label="Amigos" className="space-y-1">
         <div className={HEADING_CLASS}>Amigos ({friends.length})</div>
-        {friends.length === 0 ? <div className={EMPTY_CLASS}>Nenhum amigo ainda</div> : friends.map(row)}
+        {friends.length === 0 ? (
+          <div className={EMPTY_CLASS}>Nenhum amigo ainda</div>
+        ) : (
+          <div className="space-y-1.5">
+            {onlineFriends.length > 0 && (
+              <div className="space-y-0.5" data-group="online">
+                <div className="flex items-center gap-1.5 px-2 pt-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-lira-online">
+                  <span className="w-1.5 h-1.5 rounded-full bg-lira-online shadow-[0_0_6px_rgb(var(--online-rgb)/0.9)] shrink-0" />
+                  <span>Online ({onlineFriends.length})</span>
+                </div>
+                {onlineFriends.map(row)}
+              </div>
+            )}
+            {offlineFriends.length > 0 && (
+              <div className="space-y-0.5" data-group="offline">
+                <div className="flex items-center gap-1.5 px-2 pt-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-lira-muted/80">
+                  <span className="w-1.5 h-1.5 rounded-full border border-lira-muted/70 bg-lira-ground shrink-0" />
+                  <span>Offline ({offlineFriends.length})</span>
+                </div>
+                {offlineFriends.map(row)}
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       <section aria-label="No espaço" className="space-y-1">

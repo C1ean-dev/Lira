@@ -1949,9 +1949,9 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
       : previewDataUrl
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-lira-ground/80 p-4 font-mono text-lira-ink">
       <div
-        className="relative w-full max-w-6xl h-[92vh] max-h-[860px] bg-[#1e1f22] border border-[#383a40] rounded-3xl shadow-2xl flex flex-col overflow-hidden text-slate-100"
+        className="relative w-full max-w-6xl h-[92vh] max-h-[860px] bg-lira-panel border border-dashed border-lira-rule rounded-[12px] flex flex-col overflow-hidden text-lira-ink"
         aria-busy={isTrimming}
         onKeyDownCapture={event => {
           if (isTrimming) {
@@ -1961,22 +1961,22 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
         }}
       >
         {isTrimming && <div className="absolute inset-0 z-40 cursor-wait" aria-hidden="true" />}
-        <div className="flex items-center justify-between px-6 py-2.5 border-b border-[#2b2d31] bg-[#18191c]">
+        <div className="flex items-center justify-between px-6 py-2.5 border-b border-dashed border-lira-rule/60 bg-lira-sidebar">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-2xl bg-[#3b82f6]/20 border border-[#3b82f6]/40 flex items-center justify-center text-[#3b82f6]">
+            <div className="w-9 h-9 rounded-[8px] bg-lira-surface border border-lira-rule flex items-center justify-center text-lira-accent">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                Estúdio Pixel Art: <span className="text-[#3b82f6]">{CATEGORY_LABELS[category]}</span>
+              <h2 className="text-base font-display font-bold text-lira-ink flex items-center gap-2">
+                Estúdio Pixel Art: <span className="text-lira-accent">{CATEGORY_LABELS[category]}</span>
               </h2>
             </div>
           </div>
           
           <div className="flex items-center gap-3">
             <div className="flex flex-col gap-1">
-              <div className="flex items-center justify-between gap-1.5 bg-[#2b2d31] border border-[#3f4147] px-2.5 py-1 rounded-xl text-xs">
-                <span className="text-[10px] font-bold text-slate-400 min-w-[55px]" title="Resolução da tela trabalhada (área de desenho)">Dimensões:</span>
+              <div className="flex items-center justify-between gap-1.5 bg-lira-surface border border-lira-quiet px-2.5 py-1 rounded-[8px] text-xs font-mono">
+                <span className="text-[10px] font-mono font-bold text-lira-muted min-w-[55px]" title="Resolução da tela trabalhada (área de desenho)">Dimensões:</span>
                 <div className="flex items-center gap-1">
                   <input
                     type="number"
@@ -1994,10 +1994,10 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                         e.currentTarget.blur()
                       }
                     }}
-                    className="w-12 bg-[#18191c] border border-[#383a40] rounded px-1 py-0.5 text-center text-white font-bold text-xs focus:outline-none focus:border-[#3b82f6]"
+                    className="w-12 bg-lira-ground border border-lira-rule rounded px-1 py-0.5 text-center text-lira-ink font-mono font-bold text-xs focus:outline-none focus:border-lira-accent"
                     title="Resolução da tela trabalhada em pixels"
                   />
-                  <span className="text-slate-400 text-xs">×</span>
+                  <span className="text-lira-muted text-xs">×</span>
                   <input
                     type="number"
                     min={1}
@@ -2014,15 +2014,15 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                         e.currentTarget.blur()
                       }
                     }}
-                    className="w-12 bg-[#18191c] border border-[#383a40] rounded px-1 py-0.5 text-center text-white font-bold text-xs focus:outline-none focus:border-[#3b82f6]"
+                    className="w-12 bg-lira-ground border border-lira-rule rounded px-1 py-0.5 text-center text-lira-ink font-mono font-bold text-xs focus:outline-none focus:border-lira-accent"
                     title="Resolução da tela trabalhada em pixels"
                   />
-                  <span className="text-[10px] text-slate-400 font-medium">px</span>
+                  <span className="text-[10px] text-lira-muted font-mono font-medium">px</span>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-1.5 bg-[#2b2d31] border border-[#3f4147] px-2.5 py-1 rounded-xl text-xs">
-                <span className="text-[10px] font-bold text-slate-400 min-w-[55px]" title="Tamanho final de exibição do asset no mapa/jogo e no preview">Tamanho:</span>
+              <div className="flex items-center justify-between gap-1.5 bg-lira-surface border border-lira-quiet px-2.5 py-1 rounded-[8px] text-xs font-mono">
+                <span className="text-[10px] font-mono font-bold text-lira-muted min-w-[55px]" title="Tamanho final de exibição do asset no mapa/jogo e no preview">Tamanho:</span>
                 <div className="flex items-center gap-1">
                   <input
                     type="number"
@@ -2037,10 +2037,10 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                         e.currentTarget.blur()
                       }
                     }}
-                    className="w-12 bg-[#18191c] border border-[#383a40] rounded px-1 py-0.5 text-center text-white font-bold text-xs focus:outline-none focus:border-[#3b82f6]"
+                    className="w-12 bg-lira-ground border border-lira-rule rounded px-1 py-0.5 text-center text-lira-ink font-mono font-bold text-xs focus:outline-none focus:border-lira-accent"
                     title="Tamanho final de exibição do asset no mapa/jogo e preview em pixels"
                   />
-                  <span className="text-slate-400 text-xs">×</span>
+                  <span className="text-lira-muted text-xs">×</span>
                   <input
                     type="number"
                     min={1}
@@ -2054,17 +2054,17 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                         e.currentTarget.blur()
                       }
                     }}
-                    className="w-12 bg-[#18191c] border border-[#383a40] rounded px-1 py-0.5 text-center text-white font-bold text-xs focus:outline-none focus:border-[#3b82f6]"
+                    className="w-12 bg-lira-ground border border-lira-rule rounded px-1 py-0.5 text-center text-lira-ink font-mono font-bold text-xs focus:outline-none focus:border-lira-accent"
                     title="Tamanho final de exibição do asset no mapa/jogo e preview em pixels"
                   />
-                  <span className="text-[10px] text-slate-400 font-medium">px</span>
+                  <span className="text-[10px] text-lira-muted font-mono font-medium">px</span>
                 </div>
               </div>
             </div>
 
             {(category === 'furniture' || category === 'wall') && (
               <label
-                className="flex items-center gap-1.5 cursor-pointer bg-[#2b2d31] border border-[#3f4147] px-2.5 py-1 rounded-xl text-xs"
+                className="flex items-center gap-1.5 cursor-pointer bg-lira-surface border border-lira-quiet px-2.5 py-1 rounded-[8px] text-xs font-mono"
                 title={
                   category === 'furniture'
                     ? 'Bloqueia a passagem só nos quadrados de 32 px que têm pixels visíveis. As partes transparentes ficam livres.'
@@ -2075,9 +2075,9 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                   type="checkbox"
                   checked={isObstacle}
                   onChange={(e) => setIsObstacle(e.target.checked)}
-                  className="rounded text-indigo-500 cursor-pointer"
+                  className="rounded text-lira-accent cursor-pointer"
                 />
-                <span className="text-[11px] font-bold text-slate-300">🛡️ Obstáculo</span>
+                <span className="text-[11px] font-mono font-bold text-lira-ink">🛡️ Obstáculo</span>
               </label>
             )}
 
@@ -2086,11 +2086,11 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               value={customName}
               onChange={(e) => setCustomName(e.target.value)}
               placeholder="Nome do Preset..."
-              className="bg-[#2b2d31] border border-[#3f4147] rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#3b82f6] w-48"
+              className="bg-lira-ground border border-lira-rule rounded-[8px] px-3 py-1.5 text-xs font-mono text-lira-ink placeholder-lira-muted focus:outline-none focus:border-lira-accent w-48"
             />
             <button
               onClick={onClose}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#2b2d31] hover:bg-[#383a40] text-slate-300 hover:text-white text-xs font-semibold border border-[#3f4147] transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-[8px] bg-lira-surface hover:border-lira-accent text-lira-muted hover:text-lira-ink text-xs font-mono font-semibold border border-lira-rule transition-colors cursor-pointer"
               title="Cancelar e descartar alterações"
             >
               <X className="w-4 h-4" /> Cancelar
@@ -2098,7 +2098,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
             <button
               onClick={handleFinalSave}
               disabled={isTrimming}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#3b82f6] hover:bg-[#2563eb] text-white text-xs font-bold shadow-lg shadow-[#3b82f6]/25 transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-[8px] bg-lira-accent hover:bg-lira-ink text-lira-ground text-xs font-mono font-bold border-2 border-lira-accent hover:border-lira-ink transition-colors cursor-pointer"
             >
               <Check className="w-4 h-4" /> Salvar Preset
             </button>
@@ -2106,13 +2106,13 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
         </div>
 
         <div className="flex-1 flex overflow-hidden">
-          <div className="w-20 border-r border-[#2b2d31] bg-[#18191c]/80 flex flex-col items-center py-4 gap-3">
-            <div className="flex flex-col gap-1.5 bg-[#2b2d31] p-1.5 rounded-2xl border border-[#383a40]">
+          <div className="w-20 border-r border-lira-quiet bg-lira-sidebar flex flex-col items-center py-4 gap-3">
+            <div className="flex flex-col gap-1.5 bg-lira-panel p-1.5 rounded-[12px] border border-lira-quiet">
               <button
                 onClick={() => setTool('pencil')}
                 title="Lápis (Pincel)"
-                className={`p-2.5 rounded-xl transition-all cursor-pointer ${
-                  tool === 'pencil' ? 'bg-[#3b82f6] text-white shadow' : 'text-slate-400 hover:text-white'
+                className={`p-2.5 rounded-[8px] transition-colors cursor-pointer ${
+                  tool === 'pencil' ? 'bg-lira-accent text-lira-ground' : 'text-lira-muted hover:text-lira-ink'
                 }`}
               >
                 <Pencil className="w-4 h-4" />
@@ -2120,8 +2120,8 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               <button
                 onClick={() => setTool('eraser')}
                 title="Borracha"
-                className={`p-2.5 rounded-xl transition-all cursor-pointer ${
-                  tool === 'eraser' ? 'bg-[#3b82f6] text-white shadow' : 'text-slate-400 hover:text-white'
+                className={`p-2.5 rounded-[8px] transition-colors cursor-pointer ${
+                  tool === 'eraser' ? 'bg-lira-accent text-lira-ground' : 'text-lira-muted hover:text-lira-ink'
                 }`}
               >
                 <Eraser className="w-4 h-4" />
@@ -2129,8 +2129,8 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               <button
                 onClick={() => setTool('bucket')}
                 title="Preencher (Balde)"
-                className={`p-2.5 rounded-xl transition-all cursor-pointer ${
-                  tool === 'bucket' ? 'bg-[#3b82f6] text-white shadow' : 'text-slate-400 hover:text-white'
+                className={`p-2.5 rounded-[8px] transition-colors cursor-pointer ${
+                  tool === 'bucket' ? 'bg-lira-accent text-lira-ground' : 'text-lira-muted hover:text-lira-ink'
                 }`}
               >
                 <PaintBucket className="w-4 h-4" />
@@ -2138,8 +2138,8 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               <button
                 onClick={() => setTool('picker')}
                 title="Conta-gotas (Pipeta) - Tecla I"
-                className={`p-2.5 rounded-xl transition-all cursor-pointer ${
-                  tool === 'picker' ? 'bg-[#3b82f6] text-white shadow' : 'text-slate-400 hover:text-white'
+                className={`p-2.5 rounded-[8px] transition-colors cursor-pointer ${
+                  tool === 'picker' ? 'bg-lira-accent text-lira-ground' : 'text-lira-muted hover:text-lira-ink'
                 }`}
               >
                 <Pipette className="w-4 h-4" />
@@ -2147,23 +2147,23 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               <button
                 onClick={() => setTool('move')}
                 title="Mover e Redimensionar Imagem (V) - Arraste com o botão esquerdo para mover, scroll do mouse para expandir ou diminuir a imagem"
-                className={`p-2.5 rounded-xl transition-all cursor-pointer ${
-                  tool === 'move' ? 'bg-[#3b82f6] text-white shadow' : 'text-slate-400 hover:text-white'
+                className={`p-2.5 rounded-[8px] transition-colors cursor-pointer ${
+                  tool === 'move' ? 'bg-lira-accent text-lira-ground' : 'text-lira-muted hover:text-lira-ink'
                 }`}
               >
                 <Move className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="w-10 h-px bg-[#2b2d31]" />
+            <div className="w-10 h-px bg-lira-quiet" />
 
             <div className="flex flex-col gap-1.5">
               <button
                 onClick={handleUndo}
                 disabled={!canUndo}
                 title="Desfazer (Ctrl+Z)"
-                className={`p-2.5 rounded-xl transition-all cursor-pointer ${
-                  canUndo ? 'text-slate-300 hover:bg-[#2b2d31]' : 'text-slate-600 opacity-40 cursor-not-allowed'
+                className={`p-2.5 rounded-[8px] transition-colors cursor-pointer ${
+                  canUndo ? 'text-lira-muted hover:text-lira-ink hover:bg-lira-surface' : 'text-lira-muted opacity-40 cursor-not-allowed'
                 }`}
               >
                 <Undo2 className="w-4 h-4" />
@@ -2172,8 +2172,8 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                 onClick={handleRedo}
                 disabled={!canRedo}
                 title="Refazer (Ctrl+Y)"
-                className={`p-2.5 rounded-xl transition-all cursor-pointer ${
-                  canRedo ? 'text-slate-300 hover:bg-[#2b2d31]' : 'text-slate-600 opacity-40 cursor-not-allowed'
+                className={`p-2.5 rounded-[8px] transition-colors cursor-pointer ${
+                  canRedo ? 'text-lira-muted hover:text-lira-ink hover:bg-lira-surface' : 'text-lira-muted opacity-40 cursor-not-allowed'
                 }`}
               >
                 <Redo2 className="w-4 h-4" />
@@ -2181,13 +2181,13 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               <button
                 onClick={handleClear}
                 title="Limpar Grade"
-                className="p-2.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-[#2b2d31] transition-all cursor-pointer"
+                className="p-2.5 rounded-[8px] text-lira-muted hover:text-lira-error hover:bg-lira-surface transition-colors cursor-pointer"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="w-10 h-px bg-[#2b2d31]" />
+            <div className="w-10 h-px bg-lira-quiet" />
 
             <div className="flex flex-col items-center gap-1.5">
               <input
@@ -2199,10 +2199,10 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                     setRecentColors([e.target.value, ...recentColors.slice(0, 7)])
                   }
                 }}
-                className="w-9 h-9 rounded-xl cursor-pointer border border-[#4e5058] bg-transparent"
+                className="w-9 h-9 rounded-[8px] cursor-pointer border border-lira-rule bg-transparent"
                 title="Escolher Cor Livre"
               />
-              <span className="text-[10px] font-mono text-slate-400 uppercase">{color.slice(1, 7)}</span>
+              <span className="text-[10px] font-mono text-lira-muted uppercase">{color.slice(1, 7)}</span>
             </div>
           </div>
 
@@ -2215,7 +2215,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                 startPanning(e.clientX, e.clientY)
               }
             }}
-            className={`flex-1 overflow-hidden relative select-none bg-[#141517] ${
+            className={`flex-1 overflow-hidden relative select-none bg-lira-ground ${
               isPanning
                 ? 'cursor-grabbing'
                 : isSpacePressed
@@ -2224,16 +2224,16 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
             }`}
           >
             {scaleDisplay && (
-              <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 bg-blue-600/90 text-white font-bold text-xs px-3.5 py-1.5 rounded-full shadow-2xl backdrop-blur-md pointer-events-none flex items-center gap-1.5 border border-blue-400/50 animate-pulse">
+              <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20 bg-lira-surface text-lira-ink font-mono font-bold text-xs px-3.5 py-1.5 rounded-[8px] pointer-events-none flex items-center gap-1.5 border border-lira-accent">
                 <span>🔍 Redimensionando Imagem:</span>
-                <span className="font-mono bg-blue-800/80 px-2 py-0.5 rounded-md text-yellow-300">
+                <span className="font-mono bg-lira-ground px-2 py-0.5 rounded-[6px] text-lira-amber">
                   {scaleDisplay}
                 </span>
               </div>
             )}
 
             <div className="absolute top-4 left-6 z-10 flex flex-col items-start gap-2 max-w-[calc(100%-3rem)]">
-              <div className="flex flex-wrap items-center gap-2 bg-[#18191c]/90 border border-[#383a40] backdrop-blur-md px-3 py-1.5 rounded-2xl shadow-lg">
+              <div className="flex flex-wrap items-center gap-2 bg-lira-sidebar border border-lira-rule px-3 py-1.5 rounded-[8px]">
                 <button
                   onClick={() => {
                     const currentZ = zoom
@@ -2245,12 +2245,12 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                       setPanOffset((prev) => ({ x: prev.x * k, y: prev.y * k }))
                     }
                   }}
-                  className="p-1.5 rounded-lg hover:bg-[#2b2d31] text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  className="p-1.5 rounded-[6px] hover:bg-lira-surface text-lira-muted hover:text-lira-ink transition-colors cursor-pointer"
                   title="Diminuir Zoom (Ctrl + Scroll para baixo)"
                 >
                   <ZoomOut className="w-4 h-4" />
                 </button>
-                <span className="text-xs font-mono font-bold text-slate-300 min-w-[42px] text-center">
+                <span className="text-xs font-mono font-bold text-lira-ink min-w-[42px] text-center tabular-nums">
                   {zoom < 1 ? zoom.toFixed(2) : zoom}x
                 </span>
                 <button
@@ -2264,13 +2264,13 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                       setPanOffset((prev) => ({ x: prev.x * k, y: prev.y * k }))
                     }
                   }}
-                  className="p-1.5 rounded-lg hover:bg-[#2b2d31] text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  className="p-1.5 rounded-[6px] hover:bg-lira-surface text-lira-muted hover:text-lira-ink transition-colors cursor-pointer"
                   title="Aumentar Zoom (Ctrl + Scroll para cima)"
                 >
                   <ZoomIn className="w-4 h-4" />
                 </button>
 
-                <div className="w-px h-4 bg-[#383a40] mx-1" />
+                <div className="w-px h-4 bg-lira-quiet mx-1" />
 
                 {(panOffset.x !== 0 || panOffset.y !== 0 || zoom !== defaultZoom) && (
                   <button
@@ -2278,7 +2278,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                       setPanOffset({ x: 0, y: 0 })
                       setZoom(defaultZoom)
                     }}
-                    className="px-2.5 py-1 rounded-lg bg-[#2b2d31] hover:bg-[#383a40] text-slate-300 text-[11px] font-semibold transition-all cursor-pointer"
+                    className="px-2.5 py-1 rounded-[6px] bg-lira-surface hover:border-lira-accent border border-lira-rule text-lira-ink text-[11px] font-mono font-semibold transition-colors cursor-pointer"
                     title="Centralizar e redefinir zoom original"
                   >
                     Centralizar
@@ -2287,35 +2287,35 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 
                 <button
                   onClick={() => setShowGrid(!showGrid)}
-                  className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                    showGrid ? 'bg-[#3b82f6]/20 text-[#3b82f6]' : 'text-slate-400 hover:text-white'
+                  className={`p-1.5 rounded-[6px] transition-colors cursor-pointer ${
+                    showGrid ? 'bg-lira-surface text-lira-accent border border-lira-accent' : 'text-lira-muted hover:text-lira-ink'
                   }`}
                   title="Alternar Grade de Pixels"
                 >
                   <Grid className="w-4 h-4" />
                 </button>
-                <div className="w-px h-4 bg-[#383a40] mx-1" />
+                <div className="w-px h-4 bg-lira-quiet mx-1" />
                 <button
                   type="button"
                   onClick={() => void handleTrimTransparentBorders()}
                   disabled={isTrimming || isFrameLoading}
                   aria-busy={isTrimming}
                   title="Remover as bordas transparentes de todos os quadros da direção selecionada, sem cortar pixels desenhados"
-                  className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-[#2b2d31] text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+                  className="flex items-center gap-1.5 px-2 py-1.5 rounded-[6px] text-lira-muted hover:text-lira-ink hover:bg-lira-surface text-xs font-mono font-semibold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                 >
                   <Crop className="w-4 h-4" aria-hidden="true" />
                   {isTrimming ? 'Aparando…' : 'Aparar bordas'}
                 </button>
               </div>
               {trimFeedback && (
-                <p role="status" className="max-w-full rounded-lg bg-[#18191c]/95 px-3 py-2 text-xs text-slate-300">
+                <p role="status" className="max-w-full rounded-[8px] bg-lira-sidebar border border-lira-quiet px-3 py-2 text-xs font-mono text-lira-ink">
                   {trimFeedback}
                 </p>
               )}
             </div>
 
             <div
-              className="absolute rounded-2xl shadow-2xl overflow-hidden border-2 border-[#383a40] shrink-0"
+              className="absolute rounded-[12px] overflow-hidden border-2 border-lira-rule shrink-0"
               style={{
                 width: canvasPixelWidth * pixelScale,
                 height: canvasPixelHeight * pixelScale,
@@ -2327,13 +2327,13 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                 top: '50%',
                 transform: `translate(calc(-50% + ${panOffset.x}px), calc(-50% + ${panOffset.y}px))`,
                 backgroundImage: `
-                  linear-gradient(45deg, #18191c 25%, transparent 25%),
-                  linear-gradient(-45deg, #18191c 25%, transparent 25%),
-                  linear-gradient(45deg, transparent 75%, #18191c 75%),
-                  linear-gradient(-45deg, transparent 75%, #18191c 75%)
+                  linear-gradient(45deg, #100c18 25%, transparent 25%),
+                  linear-gradient(-45deg, #100c18 25%, transparent 25%),
+                  linear-gradient(45deg, transparent 75%, #100c18 75%),
+                  linear-gradient(-45deg, transparent 75%, #100c18 75%)
                 `,
                 backgroundSize: `${pixelScale * 2}px ${pixelScale * 2}px`,
-                backgroundColor: '#232428',
+                backgroundColor: '#1e162b',
               }}
             >
               <canvas
@@ -2378,7 +2378,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 
               {hoverPixel && !isPanning && tool !== 'move' && (
                 <div
-                  className="absolute pointer-events-none border border-white/80 shadow-xs"
+                  className="absolute pointer-events-none border border-lira-ink/80"
                   style={{
                     left: hoverPixel.x * pixelScale,
                     top: hoverPixel.y * pixelScale,
@@ -2391,63 +2391,63 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
             </div>
 
             <div data-section="Bottom Dock: Status & Controls" className="absolute bottom-3 z-10 flex flex-col items-center gap-2 max-w-[95%] pointer-events-none">
-              <div data-section="Status & Controls Bar" className="flex items-center gap-4 bg-[#18191c]/90 border border-[#383a40] backdrop-blur-md px-4 py-1.5 rounded-2xl text-xs text-slate-400 shadow-lg pointer-events-auto">
+              <div data-section="Status & Controls Bar" className="flex items-center gap-4 bg-lira-sidebar border border-lira-rule px-4 py-1.5 rounded-[8px] text-xs font-mono text-lira-muted pointer-events-auto">
                 <span>
-                  Pixel: <strong className="text-white">{hoverPixel ? `${hoverPixel.x}, ${hoverPixel.y}` : '-'}</strong>
+                  Pixel: <strong className="text-lira-ink">{hoverPixel ? `${hoverPixel.x}, ${hoverPixel.y}` : '-'}</strong>
                 </span>
 
-                <div className="w-px h-3 bg-[#383a40]" />
-                <div className="text-[11px] text-slate-400 flex items-center gap-2 select-none">
+                <div className="w-px h-3 bg-lira-quiet" />
+                <div className="text-[11px] font-mono text-lira-muted flex items-center gap-2 select-none">
                   {tool === 'move' ? (
                     <>
-                      <span>🖐️ <strong className="text-blue-300">Mover Imagem:</strong> Arraste ou use setas</span>
-                      <div className="flex items-center gap-1 ml-1 bg-[#2b2d31] p-0.5 rounded-lg border border-[#383a40]">
+                      <span>🖐️ <strong className="text-lira-accent">Mover Imagem:</strong> Arraste ou use setas</span>
+                      <div className="flex items-center gap-1 ml-1 bg-lira-surface p-0.5 rounded-[6px] border border-lira-quiet">
                         <button
                           onClick={() => nudgeTransform(-1, 0)}
                           title="Mover 1px para a Esquerda (Seta Esquerda)"
-                          className="px-1.5 py-0.5 rounded hover:bg-[#383a40] text-slate-300 hover:text-white text-xs font-mono font-bold cursor-pointer"
+                          className="px-1.5 py-0.5 rounded hover:bg-lira-ground text-lira-muted hover:text-lira-ink text-xs font-mono font-bold cursor-pointer"
                         >
                           ←
                         </button>
                         <button
                           onClick={() => nudgeTransform(0, -1)}
                           title="Mover 1px para Cima (Seta Cima)"
-                          className="px-1.5 py-0.5 rounded hover:bg-[#383a40] text-slate-300 hover:text-white text-xs font-mono font-bold cursor-pointer"
+                          className="px-1.5 py-0.5 rounded hover:bg-lira-ground text-lira-muted hover:text-lira-ink text-xs font-mono font-bold cursor-pointer"
                         >
                           ↑
                         </button>
                         <button
                           onClick={() => nudgeTransform(0, 1)}
                           title="Mover 1px para Baixo (Seta Baixo)"
-                          className="px-1.5 py-0.5 rounded hover:bg-[#383a40] text-slate-300 hover:text-white text-xs font-mono font-bold cursor-pointer"
+                          className="px-1.5 py-0.5 rounded hover:bg-lira-ground text-lira-muted hover:text-lira-ink text-xs font-mono font-bold cursor-pointer"
                         >
                           ↓
                         </button>
                         <button
                           onClick={() => nudgeTransform(1, 0)}
                           title="Mover 1px para a Direita (Seta Direita)"
-                          className="px-1.5 py-0.5 rounded hover:bg-[#383a40] text-slate-300 hover:text-white text-xs font-mono font-bold cursor-pointer"
+                          className="px-1.5 py-0.5 rounded hover:bg-lira-ground text-lira-muted hover:text-lira-ink text-xs font-mono font-bold cursor-pointer"
                         >
                           →
                         </button>
                       </div>
                       <span>•</span>
-                      <span>🔍 <strong className="text-blue-300">Scroll:</strong> Redimensionar</span>
-                      <div className="flex items-center gap-1 ml-1 bg-[#2b2d31] p-0.5 rounded-lg border border-[#383a40]">
+                      <span>🔍 <strong className="text-lira-accent">Scroll:</strong> Redimensionar</span>
+                      <div className="flex items-center gap-1 ml-1 bg-lira-surface p-0.5 rounded-[6px] border border-lira-quiet">
                         <button
                           onClick={() => stepScaleTransform(0.9)}
                           title="Diminuir Imagem (-10%) (Scroll para baixo ou Tecla -)"
-                          className="px-2 py-0.5 rounded hover:bg-[#383a40] text-slate-300 hover:text-white text-xs font-mono font-bold cursor-pointer"
+                          className="px-2 py-0.5 rounded hover:bg-lira-ground text-lira-muted hover:text-lira-ink text-xs font-mono font-bold cursor-pointer"
                         >
                           -
                         </button>
-                        <span className="text-[11px] font-mono font-semibold text-slate-300 px-1 min-w-[36px] text-center">
+                        <span className="text-[11px] font-mono font-semibold text-lira-ink px-1 min-w-[36px] text-center tabular-nums">
                           {Math.round(transformScaleState * 100)}%
                         </span>
                         <button
                           onClick={() => stepScaleTransform(1.1)}
                           title="Aumentar Imagem (+10%) (Scroll para cima ou Tecla +)"
-                          className="px-2 py-0.5 rounded hover:bg-[#383a40] text-slate-300 hover:text-white text-xs font-mono font-bold cursor-pointer"
+                          className="px-2 py-0.5 rounded hover:bg-lira-ground text-lira-muted hover:text-lira-ink text-xs font-mono font-bold cursor-pointer"
                         >
                           +
                         </button>
@@ -2456,7 +2456,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                       <button
                         onClick={fitTransform}
                         title="Enquadrar arte inteira dentro da tela (ajusta a escala para caber 100% sem cortes)"
-                        className="px-2 py-0.5 rounded-lg bg-[#2b2d31] hover:bg-[#383a40] text-emerald-300 hover:text-emerald-200 text-xs font-semibold border border-[#383a40] transition-colors cursor-pointer"
+                        className="px-2 py-0.5 rounded-[6px] bg-lira-surface hover:border-lira-online text-lira-online text-xs font-mono font-semibold border border-lira-rule transition-colors cursor-pointer"
                       >
                         📐 Enquadrar
                       </button>
@@ -2464,22 +2464,22 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                       <button
                         onClick={resetTransform}
                         title="Restaurar tamanho (100%) e posição original do desenho"
-                        className="px-2 py-0.5 rounded-lg bg-[#2b2d31] hover:bg-[#383a40] text-yellow-300 hover:text-yellow-200 text-xs font-semibold border border-[#383a40] transition-colors cursor-pointer"
+                        className="px-2 py-0.5 rounded-[6px] bg-lira-surface hover:border-lira-amber text-lira-amber text-xs font-mono font-semibold border border-lira-rule transition-colors cursor-pointer"
                       >
                         ↺ Resetar
                       </button>
                       <span>•</span>
-                      <span>🖐️ <strong className="text-slate-300">Dir / Espaço:</strong> Mover tela</span>
+                      <span>🖐️ <strong className="text-lira-ink">Dir / Espaço:</strong> Mover tela</span>
                     </>
                   ) : (
                     <>
-                      <span>🖱️ <strong className="text-slate-300">Esq:</strong> Pintar</span>
+                      <span>🖱️ <strong className="text-lira-ink">Esq:</strong> Pintar</span>
                       <span>•</span>
-                      <span>🖐️ <strong className="text-slate-300">Botão Direito / Espaço:</strong> Mover</span>
+                      <span>🖐️ <strong className="text-lira-ink">Botão Direito / Espaço:</strong> Mover</span>
                       <span>•</span>
-                      <span>🔄 <strong className="text-slate-300">Scroll:</strong> Rolar</span>
+                      <span>🔄 <strong className="text-lira-ink">Scroll:</strong> Rolar</span>
                       <span>•</span>
-                      <span>🔍 <strong className="text-slate-300">Ctrl+Scroll:</strong> Zoom no Cursor</span>
+                      <span>🔍 <strong className="text-lira-ink">Ctrl+Scroll:</strong> Zoom no Cursor</span>
                     </>
                   )}
                 </div>
@@ -2487,56 +2487,56 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
             </div>
           </div>
 
-          <div data-section="Right Panel: Palette & Live Animation Preview" className="w-72 border-l border-[#2b2d31] bg-[#18191c]/80 flex flex-col p-4 gap-4 overflow-y-auto">
-            <div className="bg-[#2b2d31] border border-[#383a40] rounded-2xl p-3 flex flex-col gap-2.5">
+          <div data-section="Right Panel: Palette & Live Animation Preview" className="w-72 border-l border-lira-quiet bg-lira-sidebar flex flex-col p-4 gap-4 overflow-y-auto">
+            <div className="bg-lira-panel border border-lira-quiet rounded-[12px] p-3 flex flex-col gap-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                <span className="text-[11px] font-mono font-bold text-lira-muted uppercase tracking-wider">
                   Pré-visualização {isMultiFrame ? 'Animada' : ''}
                 </span>
                 {isMultiFrame && (
-                  <span className="text-[10px] font-mono font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded-md border border-blue-500/30">
+                  <span className="text-[10px] font-mono font-bold text-lira-accent bg-lira-surface px-1.5 py-0.5 rounded-[6px] border border-lira-rule">
                     Q{animFrameIndex + 1}/{currentDirectionFrames.length}
                   </span>
                 )}
               </div>
 
-              <div className="flex items-center justify-around bg-[#1e1f22] p-3 rounded-xl border border-[#383a40]/60">
+              <div className="flex items-center justify-around bg-lira-ground p-3 rounded-[8px] border border-lira-quiet">
                 <div className="flex flex-col items-center gap-1">
                   <div
-                    className="border border-slate-700 rounded bg-[#18191c] flex items-center justify-center overflow-hidden"
+                    className="border border-lira-quiet rounded bg-lira-panel flex items-center justify-center overflow-hidden"
                     style={{ width: Math.min(64, Math.max(16, tamanhoWidth)), height: Math.min(64, Math.max(16, tamanhoHeight)) }}
                   >
                     {displayPreviewUrl && (
                       <RasterImage src={displayPreviewUrl} alt="1x" className="w-full h-full object-contain [image-rendering:pixelated]" />
                     )}
                   </div>
-                  <span className="text-[10px] text-slate-400">1x ({tamanhoWidth}×{tamanhoHeight})</span>
+                  <span className="text-[10px] font-mono text-lira-muted">1x ({tamanhoWidth}×{tamanhoHeight})</span>
                 </div>
 
                 <div className="flex flex-col items-center gap-1">
                   <div
-                    className="border border-slate-700 rounded-lg bg-[#18191c] flex items-center justify-center overflow-hidden"
+                    className="border border-lira-quiet rounded-[8px] bg-lira-panel flex items-center justify-center overflow-hidden"
                     style={{ width: Math.min(96, canvasPixelWidth * 1.5), height: Math.min(96, canvasPixelHeight * 1.5) }}
                   >
                     {displayPreviewUrl && (
                       <RasterImage src={displayPreviewUrl} alt="2x" className="w-full h-full object-contain [image-rendering:pixelated]" />
                     )}
                   </div>
-                  <span className="text-[10px] text-slate-400">Preview</span>
+                  <span className="text-[10px] font-mono text-lira-muted">Preview</span>
                 </div>
               </div>
 
               {isMultiFrame && (
-                <div className="flex items-center justify-between bg-[#1e1f22] px-2.5 py-1.5 rounded-xl border border-[#383a40]/60 text-xs">
+                <div className="flex items-center justify-between bg-lira-ground px-2.5 py-1.5 rounded-[8px] border border-lira-quiet text-xs font-mono">
                   <button
                     onClick={() => setIsPlaying(!isPlaying)}
-                    className="flex items-center gap-1 text-slate-200 hover:text-white font-semibold cursor-pointer"
+                    className="flex items-center gap-1 text-lira-ink hover:text-lira-accent font-semibold cursor-pointer"
                     title={isPlaying ? 'Pausar Animação' : 'Reproduzir Animação'}
                   >
                     {isPlaying ? (
-                      <Pause className="w-3.5 h-3.5 text-amber-400" />
+                      <Pause className="w-3.5 h-3.5 text-lira-amber" />
                     ) : (
-                      <Play className="w-3.5 h-3.5 text-emerald-400" />
+                      <Play className="w-3.5 h-3.5 text-lira-online" />
                     )}
                     <span>{isPlaying ? 'Pausar' : 'Play'}</span>
                   </button>
@@ -2550,10 +2550,10 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                       <button
                         key={spd.val}
                         onClick={() => setAnimSpeedMs(spd.val)}
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-colors ${
+                        className={`px-1.5 py-0.5 rounded-[6px] text-[10px] font-mono font-bold cursor-pointer transition-colors ${
                           animSpeedMs === spd.val
-                            ? 'bg-blue-500 text-white'
-                            : 'text-slate-400 hover:text-white bg-[#2b2d31]'
+                            ? 'bg-lira-accent text-lira-ground'
+                            : 'text-lira-muted hover:text-lira-ink bg-lira-surface'
                         }`}
                         title={`Velocidade de reprodução: ${spd.label}`}
                       >
@@ -2565,10 +2565,10 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               )}
 
               <div data-section="Animation frames of the active direction" className="flex flex-col gap-1.5 mt-1">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                <span className="text-[10px] font-mono font-bold text-lira-muted uppercase tracking-wider">
                   {category === 'floor' || singleSequence ? 'Quadros' : `Quadros (${DIRECTIONS.find((direction) => direction.id === activeDirection)?.label})`}
                 </span>
-                <div className="flex flex-col gap-2 bg-[#1e1f22] p-2 rounded-xl border border-[#383a40]/60">
+                <div className="flex flex-col gap-2 bg-lira-ground p-2 rounded-[8px] border border-lira-quiet">
                   <div className="flex flex-wrap items-start gap-1 max-h-[9.5rem] overflow-y-auto px-0.5 pt-2 pb-1">
                     {currentDirectionFrames.map((frameData, idx) => {
                       const isFrameActive = idx === activeFrameIndex
@@ -2617,19 +2617,19 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                               ? `Quadro Q${idx + 1} (Clique para selecionar, arraste ou use as setas para reposicionar)`
                               : `Quadro Q${idx + 1}`
                           }
-                          className={`group relative flex flex-col items-center p-1 rounded-xl border transition-all select-none min-w-[44px] ${
+                          className={`group relative flex flex-col items-center p-1 rounded-[8px] border transition-colors select-none min-w-[44px] ${
                             currentDirectionFrames.length > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
                           } ${
                             isDragged
-                              ? 'opacity-35 scale-95 border-dashed border-blue-400 bg-blue-500/10'
+                              ? 'opacity-35 border-dashed border-lira-accent bg-lira-surface'
                               : isDragOver
-                              ? 'border-blue-400 bg-blue-500/25 ring-2 ring-blue-500/60 scale-105 shadow-lg shadow-blue-500/30'
+                              ? 'border-lira-accent bg-lira-surface ring-1 ring-lira-accent'
                               : isFrameActive
-                              ? 'bg-[#3b82f6]/25 border-[#3b82f6] shadow-md shadow-blue-500/25 scale-105'
-                              : 'bg-[#2b2d31] border-[#383a40] hover:border-slate-500 hover:bg-[#32353b]'
+                              ? 'bg-lira-surface border-lira-accent'
+                              : 'bg-lira-panel border-lira-quiet hover:border-lira-rule hover:bg-lira-surface'
                           }`}
                         >
-                          <div className="w-9 h-9 rounded-lg bg-[#141517] border border-slate-700/60 flex items-center justify-center overflow-hidden pointer-events-none">
+                          <div className="w-9 h-9 rounded-[6px] bg-lira-ground border border-lira-quiet flex items-center justify-center overflow-hidden pointer-events-none">
                             {frameData ? (
                               <RasterImage
                                 src={isFrameActive ? previewDataUrl || frameData : frameData}
@@ -2638,7 +2638,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                                 className="w-8 h-8 [image-rendering:pixelated]"
                               />
                             ) : (
-                              <span className="text-[9px] text-slate-500 italic">Vazio</span>
+                              <span className="text-[9px] font-mono text-lira-muted italic">Vazio</span>
                             )}
                           </div>
 
@@ -2653,7 +2653,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                                     handleMoveFrame(idx, idx - 1)
                                   }}
                                   title="Mover para a esquerda"
-                                  className="p-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700/80 transition-all cursor-pointer opacity-70 group-hover:opacity-100"
+                                  className="p-0.5 rounded text-lira-muted hover:text-lira-ink hover:bg-lira-surface transition-opacity cursor-pointer opacity-70 group-hover:opacity-100"
                                 >
                                   <ChevronLeft className="w-2.5 h-2.5" />
                                 </button>
@@ -2662,8 +2662,8 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                               )}
 
                               <span
-                                className={`text-[9px] font-bold leading-none ${
-                                  isFrameActive ? 'text-blue-300' : 'text-slate-400'
+                                className={`text-[9px] font-mono font-bold leading-none ${
+                                  isFrameActive ? 'text-lira-accent' : 'text-lira-muted'
                                 }`}
                               >
                                 Q{idx + 1}
@@ -2678,7 +2678,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                                     handleMoveFrame(idx, idx + 1)
                                   }}
                                   title="Mover para a direita"
-                                  className="p-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-700/80 transition-all cursor-pointer opacity-70 group-hover:opacity-100"
+                                  className="p-0.5 rounded text-lira-muted hover:text-lira-ink hover:bg-lira-surface transition-opacity cursor-pointer opacity-70 group-hover:opacity-100"
                                 >
                                   <ChevronRight className="w-2.5 h-2.5" />
                                 </button>
@@ -2688,8 +2688,8 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                             </div>
                           ) : (
                             <span
-                              className={`text-[9px] font-bold mt-0.5 ${
-                                isFrameActive ? 'text-blue-300' : 'text-slate-400'
+                              className={`text-[9px] font-mono font-bold mt-0.5 ${
+                                isFrameActive ? 'text-lira-accent' : 'text-lira-muted'
                               }`}
                             >
                               Q{idx + 1}
@@ -2703,7 +2703,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                               onClick={(event) => handleDeleteFrame(event, idx)}
                               onMouseDown={(event) => event.stopPropagation()}
                               title="Excluir este quadro"
-                              className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 hover:bg-rose-600 text-white flex items-center justify-center text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity shadow cursor-pointer z-10"
+                              className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-lira-error text-lira-ground flex items-center justify-center text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-10"
                             >
                               ×
                             </button>
@@ -2717,7 +2717,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                     <button
                       onClick={handleAddFrame}
                       title="Adicionar Novo Quadro em Branco"
-                      className="flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl bg-[#2b2d31] hover:bg-[#383a40] border border-[#383a40] text-blue-400 hover:text-white text-[11px] font-bold transition-all cursor-pointer"
+                      className="flex items-center justify-center gap-1 px-2 py-1.5 rounded-[8px] bg-lira-panel hover:bg-lira-surface border border-lira-rule text-lira-accent hover:text-lira-ink text-[11px] font-mono font-bold transition-colors cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>Novo</span>
@@ -2726,7 +2726,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                     <button
                       onClick={handleDuplicateFrame}
                       title="Duplicar Quadro Atual (Perfeito para ajustar passos de caminhada!)"
-                      className="flex items-center justify-center gap-1 px-2 py-1.5 rounded-xl bg-[#2b2d31] hover:bg-[#383a40] border border-[#383a40] text-indigo-300 hover:text-white text-[11px] font-bold transition-all cursor-pointer"
+                      className="flex items-center justify-center gap-1 px-2 py-1.5 rounded-[8px] bg-lira-panel hover:bg-lira-surface border border-lira-rule text-lira-accent hover:text-lira-ink text-[11px] font-mono font-bold transition-colors cursor-pointer"
                     >
                       <Copy className="w-3.5 h-3.5" />
                       <span>Duplicar</span>
@@ -2734,25 +2734,25 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 
                     {currentDirectionFrames.length > 1 && (
                       <div
-                        className="col-span-2 flex items-center justify-between bg-[#2b2d31] border border-[#383a40] rounded-xl p-0.5"
+                        className="col-span-2 flex items-center justify-between bg-lira-panel border border-lira-quiet rounded-[8px] p-0.5"
                         title="Mover a posição do quadro ativo na animação (ou arraste os quadros diretamente)"
                       >
                         <button
                           onClick={() => handleMoveFrame(activeFrameIndex, activeFrameIndex - 1)}
                           disabled={activeFrameIndex <= 0}
                           title="Mover quadro ativo para a esquerda (Alt + ←)"
-                          className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-[#383a40] disabled:opacity-20 disabled:cursor-not-allowed transition-all cursor-pointer"
+                          className="p-1.5 rounded-[6px] text-lira-muted hover:text-lira-ink hover:bg-lira-surface disabled:opacity-20 disabled:cursor-not-allowed transition-colors cursor-pointer"
                         >
                           <ChevronLeft className="w-3.5 h-3.5" />
                         </button>
-                        <span className="text-[10px] font-bold text-slate-400 px-1 select-none flex items-center gap-1">
+                        <span className="text-[10px] font-mono font-bold text-lira-muted px-1 select-none flex items-center gap-1">
                           Mover quadro
                         </span>
                         <button
                           onClick={() => handleMoveFrame(activeFrameIndex, activeFrameIndex + 1)}
                           disabled={activeFrameIndex >= currentDirectionFrames.length - 1}
                           title="Mover quadro ativo para a direita (Alt + →)"
-                          className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-[#383a40] disabled:opacity-20 disabled:cursor-not-allowed transition-all cursor-pointer"
+                          className="p-1.5 rounded-[6px] text-lira-muted hover:text-lira-ink hover:bg-lira-surface disabled:opacity-20 disabled:cursor-not-allowed transition-colors cursor-pointer"
                         >
                           <ChevronRight className="w-3.5 h-3.5" />
                         </button>
@@ -2765,10 +2765,10 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               <span className="hidden" aria-hidden="true">4 Directions Mini Previews</span>
               {category !== 'floor' && !singleSequence && (
                 <div className="flex flex-col gap-1.5 mt-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <span className="text-[10px] font-mono font-bold text-lira-muted uppercase tracking-wider">
                     Quadros das 4 Direções
                   </span>
-                  <div className="grid grid-cols-4 gap-1.5 bg-[#1e1f22] p-2 rounded-xl border border-[#383a40]/60">
+                  <div className="grid grid-cols-4 gap-1.5 bg-lira-ground p-2 rounded-[8px] border border-lira-quiet">
                     {DIRECTIONS.map((dirItem) => {
                       const frames = directionalFrames[dirItem.id] || []
                       const frameCount = frames.length
@@ -2780,13 +2780,13 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                         <div
                           key={dirItem.id}
                           onClick={() => switchDirection(dirItem.id)}
-                          className={`flex flex-col items-center gap-1 p-1 rounded-lg cursor-pointer border transition-all ${
+                          className={`flex flex-col items-center gap-1 p-1 rounded-[6px] cursor-pointer border transition-colors ${
                             activeDirection === dirItem.id
-                              ? 'border-[#3b82f6] bg-[#3b82f6]/10 scale-105'
-                              : 'border-transparent hover:bg-[#2b2d31]'
+                              ? 'border-lira-accent bg-lira-surface'
+                              : 'border-transparent hover:bg-lira-panel'
                           }`}
                         >
-                          <div className="w-8 h-8 rounded bg-[#18191c] border border-slate-700/60 flex items-center justify-center overflow-hidden relative">
+                          <div className="w-8 h-8 rounded bg-lira-panel border border-lira-quiet flex items-center justify-center overflow-hidden relative">
                             {thumbUrl ? (
                               <RasterImage
                                 src={thumbUrl}
@@ -2797,12 +2797,12 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                               <span className="text-[11px] opacity-40">{dirItem.icon}</span>
                             )}
                             {frameCount > 1 && (
-                              <span className="absolute bottom-0 right-0 bg-blue-600/90 text-[8px] font-bold text-white px-1 rounded-tl">
+                              <span className="absolute bottom-0 right-0 bg-lira-accent text-[8px] font-mono font-bold text-lira-ground px-1 rounded-tl">
                                 {frameCount}
                               </span>
                             )}
                           </div>
-                          <span className="text-[9px] font-semibold text-slate-400">{dirItem.label}</span>
+                          <span className="text-[9px] font-mono font-semibold text-lira-muted">{dirItem.label}</span>
                         </div>
                       )
                     })}
@@ -2816,7 +2816,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                           ? 'Espelhar todos os quadros da Esquerda para a Direita'
                           : 'Espelhar todos os quadros da Direita para a Esquerda'
                       }
-                      className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#2b2d31] hover:bg-[#383a40] border border-[#383a40] text-indigo-300 hover:text-white text-[11px] font-semibold transition-all cursor-pointer"
+                      className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-[8px] bg-lira-panel hover:bg-lira-surface border border-lira-rule text-lira-accent hover:text-lira-ink text-[11px] font-mono font-semibold transition-colors cursor-pointer"
                     >
                       <FlipHorizontal className="w-3.5 h-3.5" />
                       <span>Espelhar {activeDirection === 'left' ? 'p/ Direita ➡️' : 'p/ Esquerda ⬅️'}</span>
@@ -2828,20 +2828,20 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
 
             <div data-section="Curated Color Swatches & Color Wheel" className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                <span className="text-[11px] font-mono font-bold text-lira-muted uppercase tracking-wider">
                   Paleta Pixel Art
                 </span>
                 <button
                   onClick={() => setShowColorWheel(!showColorWheel)}
-                  className={`flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-2 py-0.5 rounded-[6px] text-[11px] font-mono font-semibold border transition-colors cursor-pointer ${
                     showColorWheel
-                      ? 'bg-[#3b82f6] text-white border-blue-400 shadow-md'
-                      : 'bg-[#2b2d31] hover:bg-[#383a40] text-slate-300 border-[#383a40]'
+                      ? 'bg-lira-accent text-lira-ground border-lira-accent'
+                      : 'bg-lira-panel hover:bg-lira-surface text-lira-ink border-lira-rule'
                   }`}
                   title="Abrir Roda de Cores Livre"
                 >
                   <span
-                    className="w-3 h-3 rounded-full shrink-0 shadow-xs"
+                    className="w-3 h-3 rounded-full shrink-0"
                     style={{ background: 'conic-gradient(red, yellow, lime, cyan, blue, magenta, red)' }}
                   />
                   <span>Roda de Cores</span>
@@ -2849,7 +2849,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
               </div>
 
               {showColorWheel && (
-                <div className="flex justify-center animate-in fade-in zoom-in-95 duration-150 my-1">
+                <div className="flex justify-center my-1">
                   <ColorWheelPicker
                     color={color}
                     onChange={(newCol) => {
@@ -2864,7 +2864,7 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                 </div>
               )}
 
-              <div className="grid grid-cols-6 gap-1.5 bg-[#2b2d31] p-2.5 rounded-2xl border border-[#383a40]">
+              <div className="grid grid-cols-6 gap-1.5 bg-lira-panel p-2.5 rounded-[12px] border border-lira-quiet">
                 {PRESET_PALETTE.map((swatch) => (
                   <button
                     key={swatch}
@@ -2875,10 +2875,10 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
                       }
                     }}
                     style={{ backgroundColor: swatch }}
-                    className={`w-7 h-7 rounded-lg transition-transform hover:scale-110 aspect-square cursor-pointer ${
+                    className={`w-7 h-7 rounded-[6px] aspect-square cursor-pointer ${
                       color.toLowerCase() === swatch.toLowerCase()
-                        ? 'ring-2 ring-white scale-105 shadow-md'
-                        : 'border border-black/20'
+                        ? 'ring-2 ring-lira-ink'
+                        : 'border border-lira-ground'
                     }`}
                   />
                 ))}
@@ -2886,15 +2886,15 @@ export const AvatarPixelArtModal: React.FC<Props> = ({
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Cores Recentes</span>
+              <span className="text-[11px] font-mono font-bold text-lira-muted uppercase tracking-wider">Cores Recentes</span>
               <div className="flex gap-1.5 flex-wrap">
                 {recentColors.map((rc, idx) => (
                   <button
                     key={`${rc}_${idx}`}
                     onClick={() => setColor(rc)}
                     style={{ backgroundColor: rc }}
-                    className={`w-6 h-6 rounded-md transition-transform hover:scale-110 cursor-pointer ${
-                      color.toLowerCase() === rc.toLowerCase() ? 'ring-2 ring-white' : 'border border-black/30'
+                    className={`w-6 h-6 rounded-[6px] cursor-pointer ${
+                      color.toLowerCase() === rc.toLowerCase() ? 'ring-2 ring-lira-ink' : 'border border-lira-ground'
                     }`}
                   />
                 ))}

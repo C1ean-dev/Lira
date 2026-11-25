@@ -222,7 +222,7 @@ test('individual sprite images decode and edited thumbnails refresh in HTTP and 
     const require = createRequire(import.meta.url)
     const environment = { ...process.env }
     delete environment.ELECTRON_RUN_AS_NODE
-    electron = await _electron.launch({ executablePath: require('electron'), args: [main], env: environment })
+    electron = await _electron.launch({ executablePath: require('electron'), args: ['--mute-audio', main], env: environment })
     const page = await electron.firstWindow()
     const errors = []
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()) })

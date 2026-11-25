@@ -28,6 +28,8 @@ export const DEFAULT_AVATAR: AvatarConfig = {
   customAvatarId: 'avatar_other_sliced_1788355059618_ozg3',
   otherColor: '#000000',
   pet: { type: 'none' },
+  aura: { style: 'none', color: '#a855f7' },
+  steps: { style: 'none', color: '#a855f7' },
 }
 
 export const FURNITURE_CATALOG: FurnitureDefinition[] = []

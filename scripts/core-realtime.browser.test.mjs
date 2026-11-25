@@ -25,7 +25,7 @@ test('two real browser sessions exchange media and recover calls', {
       server.middlewares.use((request, response, next) => {
         if (request.url !== '/__core-realtime-test.html') return next()
         response.setHeader('Content-Type', 'text/html')
-        response.end('<!doctype html><html><head><title>Lira synthetic media test</title></head><body></body></html>')
+        response.end('<!doctype html><html><head><title>Lira synthetic media test</title><script>window.__LIRA_MUTE_SOUND_EFFECTS__=true;</script></head><body></body></html>')
       })
     } }],
   })
@@ -37,7 +37,7 @@ test('two real browser sessions exchange media and recover calls', {
     const base = `http://127.0.0.1:${vite.httpServer.address().port}`
     browser = await chromium.launch({
       headless: true, executablePath: process.env.LIRA_CHROMIUM_EXECUTABLE || undefined,
-      args: ['--autoplay-policy=no-user-gesture-required', '--disable-background-timer-throttling', '--disable-renderer-backgrounding'],
+      args: ['--autoplay-policy=no-user-gesture-required', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--mute-audio'],
     })
     const contexts = await Promise.all([browser.newContext(), browser.newContext()])
     const [host, guest] = await Promise.all(contexts.map(context => context.newPage()))
@@ -53,6 +53,8 @@ test('two real browser sessions exchange media and recover calls', {
     async function prepare(page, name) {
       await page.goto(`${base}/__core-realtime-test.html`)
       await page.evaluate(async ({ name, signalingPort }) => {
+        delete window.MediaStreamTrackProcessor
+        window.__LIRA_MUTE_SOUND_EFFECTS__ = true
         window.__LIRA_LOCAL_SIGNALING_PORT__ = signalingPort
         const [{ PeerManager }, { MediaManager }, { MediaCallHandler, SHARED_RTC_CONFIG }, { useGameStore }, { useMediaStore }, { useLiveWatchStore }, { liveViewReporter }] = await Promise.all([
           import('/src/p2p/PeerManager.ts'), import('/src/media/MediaManager.ts'), import('/src/p2p/mediaCalls.ts'),
@@ -83,7 +85,7 @@ test('two real browser sessions exchange media and recover calls', {
         }
         const camera = source(320, 240, 440)
         useGameStore.getState().setLocalPlayer({ name, currentZoneId: 'core-room', isScreenSharing: false, isMuted: false, isCameraOff: false })
-        useMediaStore.setState({ localStream: camera, isMuted: false, isCameraOff: false, isScreenSharing: false, selectedAudioOutput: 'default' })
+        useMediaStore.setState({ soundEffectsEnabled: false, soundEffectsVolume: 0, localStream: camera, isMuted: false, isCameraOff: false, isScreenSharing: false, selectedAudioOutput: 'default' })
         window.core = { peer: PeerManager.getInstance(), media: MediaManager.getInstance(), game: useGameStore, store: useMediaStore, watch: useLiveWatchStore, liveViewReporter, source, camera, resources, MediaCallHandler }
       }, { name, signalingPort: signalingServer.address().port })
     }
@@ -116,13 +118,12 @@ test('two real browser sessions exchange media and recover calls', {
       })
     }
     for (const page of [host, guest]) {
-      await page.waitForFunction(async () => {
-        const call = [...core.peer.mediaCalls.values()][0]
-        if (!call) return false
-        const values = [...(await call.peerConnection.getStats()).values()]
-        return ['audio', 'video'].every(kind => values.some(item => item.type === 'inbound-rtp' && (item.kind || item.mediaType) === kind && item.bytesReceived > 0))
-      }, null, { timeout: 15000 })
-      const result = await stats(page)
+      const deadline = Date.now() + 15000
+      let result = await stats(page)
+      while (Date.now() < deadline && (result.audio <= 0 || result.video <= 0)) {
+        await new Promise(resolve => setTimeout(resolve, 200))
+        result = await stats(page)
+      }
       assert.ok(result.audio > 0 && result.video > 0, 'bidirectional audio and video RTP')
     }
     t.diagnostic('Real PeerJS connection and bidirectional audio/video RTP passed.')

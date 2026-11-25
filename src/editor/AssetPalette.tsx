@@ -27,7 +27,7 @@ import { PaletteFooterActions } from './palette/PaletteFooterActions'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { AvatarSpritesheetSlicerModal } from '../components/avatar-customizer/AvatarSpritesheetSlicerModal'
 import { AtlasImportModal } from '../components/avatar-customizer/AtlasImportModal'
-import { exportCategoryAtlas } from '../engine/avatar/avatarAtlasExporter'
+import { AtlasExportModal } from '../components/avatar-customizer/AtlasExportModal'
 
 export const AssetPalette: React.FC = () => {
   const {
@@ -78,6 +78,14 @@ export const AssetPalette: React.FC = () => {
   const [isDirectSlicerOpen, setIsDirectSlicerOpen] = useState(false)
 
   const [atlasImportModal, setAtlasImportModal] = useState<{
+    isOpen: boolean
+    category: 'furniture' | 'floor' | 'wall'
+  }>({
+    isOpen: false,
+    category: 'furniture',
+  })
+
+  const [atlasExportModal, setAtlasExportModal] = useState<{
     isOpen: boolean
     category: 'furniture' | 'floor' | 'wall'
   }>({
@@ -217,8 +225,11 @@ export const AssetPalette: React.FC = () => {
     })
   }
 
-  const handleExportAtlas = async (cat: 'furniture' | 'floor' | 'wall') => {
-    await exportCategoryAtlas(cat, customAssets)
+  const handleExportAtlas = (cat: 'furniture' | 'floor' | 'wall') => {
+    setAtlasExportModal({
+      isOpen: true,
+      category: cat,
+    })
   }
 
   const handleSlicerSaveComplete = (createdAssets: CustomAsset[]) => {
@@ -252,14 +263,14 @@ export const AssetPalette: React.FC = () => {
       />
 
       <div
-        className={`absolute top-14 sm:top-16 right-2 left-2 sm:left-auto sm:right-4 w-auto sm:w-[380px] max-w-sm sm:max-w-md bg-[#1b202c]/95 backdrop-blur-md border border-[#2a3142] rounded-2xl shadow-2xl z-40 overflow-hidden flex flex-col ${
-          isCollapsed ? 'max-h-none' : 'max-h-[52vh] sm:max-h-[calc(100vh-100px)]'
-        } animate-in fade-in slide-in-from-right-4 duration-200 select-none`}
+        className={`absolute top-3 sm:top-4 right-2 left-2 sm:left-auto sm:right-4 w-auto sm:w-[380px] max-w-sm sm:max-w-md bg-lira-panel border border-dashed border-lira-rule rounded-[12px] z-40 overflow-hidden flex flex-col font-mono text-lira-ink ${
+          isCollapsed ? 'max-h-none' : 'max-h-[52vh] sm:max-h-[calc(100vh-32px)]'
+        } select-none`}
       >
-        <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b border-[#2a3142] bg-[#12151d]/70">
+        <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b border-dashed border-lira-rule/60 bg-lira-sidebar">
           <div className="flex items-center gap-1.5 sm:gap-2">
-            <Layers className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-400" />
-            <span className="font-bold text-xs sm:text-sm text-slate-100">Editor de Espaço</span>
+            <Layers className="w-4 h-4 sm:w-5 sm:h-5 text-lira-accent" />
+            <span className="font-display font-bold text-xs sm:text-sm text-lira-accent">Editor de Espaço</span>
           </div>
           <div className="flex items-center gap-1 sm:gap-1.5">
             <EditorHistoryControls />
@@ -269,7 +280,7 @@ export const AssetPalette: React.FC = () => {
                   activeTab === 'furniture' ? 'furniture' : activeTab === 'floors' ? 'floor' : 'wall'
                 )
               }
-              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold text-[11px] sm:text-xs shadow-md transition-all border border-white/10 cursor-pointer"
+              className="flex items-center gap-1 px-2 py-1 rounded-[6px] bg-lira-accent hover:bg-lira-ink text-lira-ground font-mono font-bold text-[11px] sm:text-xs transition-colors border border-lira-accent cursor-pointer"
               title="Criar novo elemento no Estúdio Pixel Art"
             >
               <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
@@ -277,14 +288,14 @@ export const AssetPalette: React.FC = () => {
             </button>
             <button
               onClick={() => setIsCollapsed(!isCollapsed)}
-              className="p-1 rounded-lg hover:bg-slate-700/50 text-slate-400 hover:text-slate-200 transition-colors"
+              className="p-1 rounded-[6px] hover:bg-lira-surface text-lira-muted hover:text-lira-ink transition-colors"
               title={isCollapsed ? 'Expandir painel de ferramentas' : 'Recolher painel para visualizar o mapa'}
             >
               {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
             </button>
             <button
               onClick={() => setEditorOpen(false)}
-              className="p-1 rounded-lg hover:bg-slate-700/50 text-slate-400 hover:text-slate-200 transition-colors"
+              className="p-1 rounded-[6px] hover:bg-lira-surface text-lira-muted hover:text-lira-ink transition-colors"
               title="Fechar editor"
             >
               <X className="w-4 h-4" />
@@ -305,7 +316,7 @@ export const AssetPalette: React.FC = () => {
 
         {!isCollapsed && (
           <>
-            <div className="grid grid-cols-3 p-1.5 gap-1 bg-[#12151d]/40 border-b border-[#2a3142]">
+            <div className="grid grid-cols-3 p-1.5 gap-1 bg-lira-sidebar border-b border-dashed border-lira-rule/60">
           <button
             onClick={() => {
               setActiveTab('furniture')
@@ -315,10 +326,10 @@ export const AssetPalette: React.FC = () => {
                 setActiveTool('place_furniture')
               }
             }}
-            className={`flex flex-col items-center py-2 px-1 rounded-xl text-xs font-medium transition-all ${
+            className={`flex flex-col items-center py-2 px-1 rounded-[8px] text-xs font-mono font-bold transition-colors border ${
               activeTab === 'furniture'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                ? 'bg-lira-accent text-lira-ground border-lira-accent'
+                : 'text-lira-muted border-transparent hover:text-lira-ink hover:bg-lira-surface'
             }`}
           >
             <Armchair className="w-4 h-4 mb-1" />
@@ -334,10 +345,10 @@ export const AssetPalette: React.FC = () => {
                 setActiveTool('paint_floor')
               }
             }}
-            className={`flex flex-col items-center py-2 px-1 rounded-xl text-xs font-medium transition-all ${
+            className={`flex flex-col items-center py-2 px-1 rounded-[8px] text-xs font-mono font-bold transition-colors border ${
               activeTab === 'floors'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                ? 'bg-lira-accent text-lira-ground border-lira-accent'
+                : 'text-lira-muted border-transparent hover:text-lira-ink hover:bg-lira-surface'
             }`}
           >
             <LayoutGrid className="w-4 h-4 mb-1" />
@@ -353,10 +364,10 @@ export const AssetPalette: React.FC = () => {
                 setActiveTool('draw_zone')
               }
             }}
-            className={`flex flex-col items-center py-2 px-1 rounded-xl text-xs font-medium transition-all ${
+            className={`flex flex-col items-center py-2 px-1 rounded-[8px] text-xs font-mono font-bold transition-colors border ${
               activeTab === 'zones'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+                ? 'bg-lira-accent text-lira-ground border-lira-accent'
+                : 'text-lira-muted border-transparent hover:text-lira-ink hover:bg-lira-surface'
             }`}
           >
             <Square className="w-4 h-4 mb-1" />
@@ -475,6 +486,16 @@ export const AssetPalette: React.FC = () => {
           onImportSuccess={() => {
             syncAllAssetsToDisk()
           }}
+        />
+      )}
+
+      {atlasExportModal.isOpen && (
+        <AtlasExportModal
+          isOpen={atlasExportModal.isOpen}
+          onClose={() => setAtlasExportModal((prev) => ({ ...prev, isOpen: false }))}
+          category={atlasExportModal.category}
+          customAssets={customAssets}
+          initialSubCategory={atlasExportModal.category === 'furniture' ? effectiveCategory : undefined}
         />
       )}
     </>

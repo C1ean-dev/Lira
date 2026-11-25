@@ -1,6 +1,6 @@
 import { openImageLibrary, writeImageLibrary } from './libraryDatabase'
 import hasBundledLibrary from 'virtual:lira-individual-library'
-import { buildLibrary, openLibrary, imageDataUrl, knownLibraryImage, libraryImagePath, type LibraryLocation, type LibraryPacket } from './individualLibrary'
+import { buildLibrary, openLibrary, imageDataUrl, knownLibraryImage, libraryImagePath, releasePendingLibraryImages, type LibraryLocation, type LibraryPacket } from './individualLibrary'
 import type { AtlasDocument } from './atlasFormat'
 import { compactSourceSprites } from './sourceSprites'
 import { addBuiltInFurniture } from './builtInFurniture'
@@ -56,15 +56,24 @@ export async function loadStoredLibrary(): Promise<AtlasDocument | null> {
 }
 export async function saveStoredLibrary(document: AtlasDocument): Promise<AtlasDocument> {
   const packet = await buildLibrary(await compactSourceSprites(document))
+  const savedNames = Object.keys(packet.images)
   const api = window.electronAPI
-  if (api?.saveIndividualLibrary) return openLocation(await api.saveIndividualLibrary(packet))
+  if (api?.saveIndividualLibrary) {
+    const opened = openLocation(await api.saveIndividualLibrary(packet))
+    releasePendingLibraryImages(savedNames)
+    return opened
+  }
   if (import.meta.env.DEV) {
     const response = await fetch('/api/individual-library', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(packet) })
     if (!response.ok) throw new Error('Falha ao salvar imagens individuais')
-    return openLocation({ catalog: packet.catalog, baseUrl: baseUrl() })
+    const opened = openLocation({ catalog: packet.catalog, baseUrl: baseUrl() })
+    releasePendingLibraryImages(savedNames)
+    return opened
   }
   await saveIndexedLibrary(packet)
-  return (await loadStoredLibrary())!
+  const opened = (await loadStoredLibrary())!
+  releasePendingLibraryImages(savedNames)
+  return opened
 }
 async function saveIndexedLibrary(packet: LibraryPacket) {
   const db = await database()

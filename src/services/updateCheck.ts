@@ -1,8 +1,8 @@
 import { isNewerVersion } from '../utils/versionUtils'
 export { isNewerVersion } from '../utils/versionUtils'
 export const GITHUB_REPO = 'C1ean-dev/Lira'
-export const UPDATE_CACHE_URL = 'https://lira-signaling.onrender.com/updates/lira/latest'
-const ASSET_PREFIX = 'https://lira-signaling.onrender.com/updates/lira/assets/'
+export const UPDATE_CACHE_URL = 'https://p01--lira--tj9yvq5j5cgs.code.run/updates/lira/latest'
+const ASSET_PREFIX = 'https://p01--lira--tj9yvq5j5cgs.code.run/updates/lira/assets/'
 
 export interface UpdateInfo {
   hasUpdate: boolean
@@ -16,14 +16,24 @@ export interface UpdateInfo {
   checkFailed?: boolean
 }
 
+export interface UpdateCheckTimeouts {
+  cacheTimeoutMs?: number
+  githubTimeoutMs?: number
+}
+
 /** Prefer Render's verified installers; query GitHub if Render cannot confirm the latest release. */
-export async function checkCachedUpdate(currentVersion: string, platform: 'windows' | 'android', fetcher: typeof fetch = fetch): Promise<UpdateInfo & { assetSize: number }> {
+export async function checkCachedUpdate(
+  currentVersion: string,
+  platform: 'windows' | 'android',
+  fetcher: typeof fetch = fetch,
+  timeouts: UpdateCheckTimeouts = {},
+): Promise<UpdateInfo & { assetSize: number }> {
   const fallback = { hasUpdate: false, currentVersion, latestVersion: currentVersion, releaseName: '', releaseNotes: '',
     downloadUrl: null, releaseUrl: `https://github.com/${GITHUB_REPO}/releases`, checkFailed: true, assetSize: 0 }
   const sources = [
     // Render can need time to wake up or finish caching new installers.
-    { url: UPDATE_CACHE_URL, timeout: 65000, cached: true },
-    { url: `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, timeout: 15000, cached: false },
+    { url: UPDATE_CACHE_URL, timeout: timeouts.cacheTimeoutMs ?? 65000, cached: true },
+    { url: `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, timeout: timeouts.githubTimeoutMs ?? 15000, cached: false },
   ]
   for (const source of sources) {
     const controller = new AbortController()

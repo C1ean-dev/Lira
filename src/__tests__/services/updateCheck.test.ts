@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { checkCachedUpdate, UPDATE_CACHE_URL } from '../../services/updateCheck'
 
 const github = 'https://api.github.com/repos/C1ean-dev/Lira/releases/latest'
-const exe = 'https://lira-signaling.onrender.com/updates/lira/assets/10'
-const apk = 'https://lira-signaling.onrender.com/updates/lira/assets/11'
+const exe = 'https://p01--lira--tj9yvq5j5cgs.code.run/updates/lira/assets/10'
+const apk = 'https://p01--lira--tj9yvq5j5cgs.code.run/updates/lira/assets/11'
 const release = () => ({ tag_name: 'v2.0.0', name: 'Lira', body: 'Correções', stale: false,
   assets: [{ name: 'Lira.Setup.2.0.0.exe', browser_download_url: exe, size: 100 },
     { name: 'Lira-v2.0.0.apk', browser_download_url: apk, size: 200 }] })

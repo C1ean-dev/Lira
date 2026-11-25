@@ -146,12 +146,50 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([u8arr], { type: mime })
 }
 
-export async function exportCategoryAtlas(category: string, customAssets: import('../../types/customAsset').CustomAsset[], _avatar?: unknown): Promise<{ xmlString: string; pngDataUrl?: string }> {
-  const assets = customAssets.filter(a => ['furniture', 'floor', 'wall'].includes(category) ? a.type === category : a.type === 'avatar' && a.avatarSlot === category)
+export interface ExportCategoryAtlasOptions {
+  selectedIds?: string[]
+  fileBaseName?: string
+}
+
+export function sanitizeAtlasFileBaseName(rawName: string | undefined, fallback: string): string {
+  const cleaned = (rawName || '')
+    .trim()
+    .replace(/\.(png|xml|zip)$/i, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return cleaned || fallback
+}
+
+export function filterCategoryAssets(
+  category: string,
+  customAssets: import('../../types/customAsset').CustomAsset[],
+  selectedIds?: ReadonlySet<string> | string[]
+): import('../../types/customAsset').CustomAsset[] {
+  const byCategory = customAssets.filter(a =>
+    ['furniture', 'floor', 'wall'].includes(category)
+      ? a.type === category
+      : a.type === 'avatar' && a.avatarSlot === category
+  )
+  if (!selectedIds) return byCategory
+  const idSet = selectedIds instanceof Set ? selectedIds : new Set(selectedIds)
+  return byCategory.filter(a => idSet.has(a.id))
+}
+
+export async function exportCategoryAtlas(
+  category: string,
+  customAssets: import('../../types/customAsset').CustomAsset[],
+  _avatar?: unknown,
+  options?: ExportCategoryAtlasOptions
+): Promise<{ xmlString: string; pngDataUrl?: string }> {
+  const assets = filterCategoryAssets(category, customAssets, options?.selectedIds)
+  if (options?.selectedIds && assets.length === 0) {
+    return { xmlString: '' }
+  }
+  const baseName = sanitizeAtlasFileBaseName(options?.fileBaseName, category)
   const { buildAtlas } = await import('../../assets/atlasService')
   const pair = await buildAtlas(assets, [...new Set(assets.map(a => a.category))])
-  const xml = pair.xml.replace('imagePath="library.png"', `imagePath="${category}.png"`)
-  downloadFile(`${category}.png`, pair.png, 'image/png')
-  downloadFile(`${category}.xml`, xml, 'application/xml')
+  const xml = pair.xml.replace('imagePath="library.png"', `imagePath="${baseName}.png"`)
+  downloadFile(`${baseName}.png`, pair.png, 'image/png')
+  downloadFile(`${baseName}.xml`, xml, 'application/xml')
   return { xmlString: xml, pngDataUrl: pair.png }
 }

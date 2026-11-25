@@ -15,17 +15,17 @@ describe('space invitation links', () => {
     const link = new URL(createSpaceInviteLink('ROOM-42'))
     expect(link.protocol).toBe('https:')
     expect(link.hash).toBe('#invite=ROOM-42')
-    expect(link.origin + link.pathname).toBe('https://lira-signaling.onrender.com/join')
+    expect(link.origin + link.pathname).toBe('https://p01--lira--tj9yvq5j5cgs.code.run/join')
     expect(link.search).toBe('')
     expect(normalizeSpaceInvite(link.href)).toBe('ROOM-42')
   })
   it.each([
     'https://example.com/join#invite=ROOM',
-    'https://lira-signaling.onrender.com/join#invite=ROOM&invite=OTHER',
-    'https://user:password@lira-signaling.onrender.com/join#invite=ROOM',
-    'https://lira-signaling.onrender.com/join?url=evil#invite=ROOM',
-    'https://lira-signaling.onrender.com/join#invite=lira%3A%2F%2Fjoin%3Finvite%3DROOM',
-    'https://lira-signaling.onrender.com/join#invite=https%3A%2F%2Fexample.com',
+    'https://p01--lira--tj9yvq5j5cgs.code.run/join#invite=ROOM&invite=OTHER',
+    'https://user:password@p01--lira--tj9yvq5j5cgs.code.run/join#invite=ROOM',
+    'https://p01--lira--tj9yvq5j5cgs.code.run/join?url=evil#invite=ROOM',
+    'https://p01--lira--tj9yvq5j5cgs.code.run/join#invite=lira%3A%2F%2Fjoin%3Finvite%3DROOM',
+    'https://p01--lira--tj9yvq5j5cgs.code.run/join#invite=https%3A%2F%2Fexample.com',
   ])('rejects malformed HTTPS invitations: %s', link => {
     expect(() => readSpaceInviteWebLink(link)).toThrow(/inválido/)
   })

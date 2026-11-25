@@ -43,7 +43,7 @@ automaticamente ao ambiente de execução do Render.
 No cliente, somente o endereço público do serviço é configurável:
 
 ```dotenv
-VITE_TURN_CREDENTIALS_URL=https://lira-signaling.onrender.com/turn/credentials
+VITE_TURN_CREDENTIALS_URL=https://p01--lira--tj9yvq5j5cgs.code.run/turn/credentials
 ```
 
 Esse endereço é o padrão quando a variável está vazia. Para outro backend,

@@ -1,6 +1,7 @@
+// @vitest-environment jsdom
 import React from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { TopNavBar } from '../../components/TopNavBar'
 import { useGameStore } from '../../store/useGameStore'
 
@@ -14,9 +15,16 @@ vi.mock('../../store/useGameStore', async importOriginal => {
   ) }
 })
 
-const renderBar = () => renderToStaticMarkup(<TopNavBar onOpenAvatarModal={() => {}} />)
+function openRoomPopover() {
+  render(<TopNavBar onOpenAvatarModal={() => {}} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Sala e convites' }))
+}
 
-describe('room publication in the navigation bar', () => {
+describe('room publication in the navigation rail', () => {
+  afterEach(() => {
+    cleanup()
+  })
+
   beforeEach(() => {
     useGameStore.setState({ roomId: 'TEST', isRoomPublic: true, isOwner: true, signalingTier: 'render' })
     publication.servers = []
@@ -26,41 +34,48 @@ describe('room publication in the navigation bar', () => {
     publication.servers = [
       { name: 'EMQX', host: 'broker.emqx.io' },
       { name: 'HiveMQ', host: 'broker.hivemq.com' },
-      { name: 'Render', host: 'lira-signaling.onrender.com' },
+      { name: 'Lira', host: 'p01--lira--tj9yvq5j5cgs.code.run' },
     ]
-    const html = renderBar()
+    openRoomPopover()
     for (const server of publication.servers) {
-      expect(html).toContain(`aria-label="Sala publicada em ${server.name}"`)
-      expect(html).toContain(`title="${server.host}"`)
+      const badge = screen.getByLabelText(`Sala publicada em ${server.name}`)
+      expect(badge.getAttribute('title')).toBe(server.host)
     }
-    expect(html).not.toContain('Servidor de sinalização P2P ativo')
+    expect(document.body.textContent).not.toContain('Servidor de sinalização P2P ativo')
   })
 
   it('shows a pending state when the room has no active publication', () => {
-    expect(renderBar()).toContain('Aguardando publicação')
+    openRoomPopover()
+    expect(screen.getByText('Aguardando publicação')).toBeTruthy()
   })
 
-  it('uses the available space for publication instead of hiding it below 1800px', () => {
-    publication.servers = [{ name: 'Render', host: 'lira-signaling.onrender.com' }]
-    const html = renderBar()
-    const badge = html.match(/<span[^>]*aria-label="Sala publicada em Render"[^>]*>/)?.[0]
-    expect(badge).toBeDefined()
-    expect(badge).not.toContain('hidden')
-    expect(badge).not.toContain('min-[1800px]')
-    expect(html).toContain('aria-label="Servidores de publicação"')
-    expect(html).not.toContain('max-w-[260px]')
+  it('shows publication badges inside the room popover cleanly', () => {
+    publication.servers = [{ name: 'Lira', host: 'p01--lira--tj9yvq5j5cgs.code.run' }]
+    openRoomPopover()
+    const container = screen.getByLabelText('Servidores de publicação')
+    const badge = screen.getByLabelText('Sala publicada em Lira')
+    expect(container).toBeTruthy()
+    expect(badge.className).not.toContain('hidden')
+    expect(badge.className).not.toContain('min-[1800px]')
+
+    cleanup()
     publication.servers = []
-    const pending = renderBar().match(/<span[^>]*>Aguardando publicação<\/span>/)?.[0]
-    expect(pending).toBeDefined()
-    expect(pending).not.toContain('min-[1800px]')
+    openRoomPopover()
+    const pending = screen.getByText('Aguardando publicação')
+    expect(pending.className).not.toContain('min-[1800px]')
   })
 
   it('hides publication services when the room becomes private or is left', () => {
-    publication.servers = [{ name: 'Render', host: 'lira-signaling.onrender.com' }]
+    publication.servers = [{ name: 'Lira', host: 'p01--lira--tj9yvq5j5cgs.code.run' }]
     useGameStore.setState({ isRoomPublic: false })
-    expect(renderBar()).not.toContain('Sala publicada em')
-    expect(renderBar()).not.toContain('Aguardando publicação')
+    openRoomPopover()
+    expect(screen.queryByLabelText(/Sala publicada em/)).toBeNull()
+    expect(screen.queryByText('Aguardando publicação')).toBeNull()
+
+    cleanup()
     useGameStore.setState({ roomId: null, isRoomPublic: true })
-    expect(renderBar()).not.toContain('Sala publicada em')
+    openRoomPopover()
+    expect(screen.queryByLabelText(/Sala publicada em/)).toBeNull()
+    expect(screen.queryByText('Aguardando publicação')).toBeNull()
   })
 })

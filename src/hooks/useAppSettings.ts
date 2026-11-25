@@ -2,12 +2,14 @@ import { useState, useEffect, useCallback } from 'react'
 
 export interface AppSettings {
   openAtLogin: boolean
+  autoUpdateAtLogin: boolean
   closeToTray: boolean
   minimizeToTray: boolean
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
   openAtLogin: false,
+  autoUpdateAtLogin: true,
   closeToTray: true,
   minimizeToTray: false,
 }

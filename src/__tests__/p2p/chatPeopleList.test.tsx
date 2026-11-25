@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { ChatPeopleList } from '../../components/chat/ChatPeopleList'
+import { DmHeaderStatus } from '../../components/chat/DmHeaderStatus'
 import { ChatPeople, ChatPerson } from '../../utils/chatPeople'
 
 const person = (name: string, extra: Partial<ChatPerson> = {}): ChatPerson => ({
@@ -110,12 +111,26 @@ describe('ChatPeopleList', () => {
     expect(rowOf(html, 'Dan')).toContain('Status: Offline')
   })
 
-  it('dims who is offline', () => {
+  it('dims who is offline and separates online from offline friends', () => {
     const html = render({ friends: [person('Bob'), elsewhere('Dan', false)] })
-    expect(rowOf(html, 'Dan')).toContain('opacity-70')
-    expect(rowOf(html, 'Dan')).toContain('text-slate-400')
-    expect(rowOf(html, 'Bob')).not.toContain('opacity-70')
-    expect(rowOf(html, 'Bob')).toContain('text-slate-300')
+    const friends = section(html, 'Amigos')!
+    expect(friends).toContain('Online (1)')
+    expect(friends).toContain('Offline (1)')
+    expect(friends.indexOf('Online (1)')).toBeLessThan(friends.indexOf('Offline (1)'))
+
+    expect(rowOf(html, 'Dan')).toContain('opacity-45 grayscale')
+    expect(rowOf(html, 'Dan')).toContain('text-lira-muted/70')
+    expect(rowOf(html, 'Dan')).toContain('>Offline</span>')
+    expect(rowOf(html, 'Bob')).not.toContain('grayscale')
+    expect(rowOf(html, 'Bob')).toContain('text-lira-ink')
+    expect(rowOf(html, 'Bob')).toContain('>Disponível</span>')
+  })
+
+  it('shows the custom status text of online friends in the sidebar', () => {
+    const html = render({
+      friends: [elsewhere('Ann', true, { status: 'busy', statusText: 'Em reunião' })],
+    })
+    expect(rowOf(html, 'Ann')).toContain('>Em reunião</span>')
   })
 
   it('shows the unread count only when there is one', () => {
@@ -136,5 +151,30 @@ describe('ChatPeopleList', () => {
       friends: [elsewhere('Bob', true, { avatarSource: { name: 'Bob', profilePicture: picture } })],
     })
     expect(rowOf(html, 'Bob')).toContain(`src="${picture}"`)
+  })
+})
+
+describe('DmHeaderStatus', () => {
+  it('shows Online and the person status when online', () => {
+    const html = renderToStaticMarkup(
+      <DmHeaderStatus
+        person={elsewhere('Ann', true, { status: 'focusing', statusText: 'Em foco' })}
+        fallbackName="Ann"
+      />
+    )
+    expect(html).toContain('>Online</span>')
+    expect(html).toContain('>Em foco</span>')
+    expect(html).not.toContain('Conversa privada')
+  })
+
+  it('shows Offline when the person is offline or missing', () => {
+    const offlineHtml = renderToStaticMarkup(
+      <DmHeaderStatus person={elsewhere('Ann', false)} fallbackName="Ann" />
+    )
+    expect(offlineHtml).toContain('>Offline</span>')
+    expect(offlineHtml).not.toContain('>Online</span>')
+
+    const missingHtml = renderToStaticMarkup(<DmHeaderStatus person={null} fallbackName="Ann" />)
+    expect(missingHtml).toContain('>Offline</span>')
   })
 })

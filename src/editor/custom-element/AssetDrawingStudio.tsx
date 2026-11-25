@@ -166,30 +166,30 @@ export const AssetDrawingStudio: React.FC<Props> = ({ width, height, source, pre
     }
     preview = previewCache.current.rectangles
   }
-  return <section aria-label="Desenho da camada" className="flex min-h-0 flex-1 flex-col gap-3" onKeyDown={event => {
+  return <section aria-label="Desenho da camada" className="flex min-h-0 flex-1 flex-col gap-3 font-mono text-lira-ink" onKeyDown={event => {
     if (!(event.ctrlKey || event.metaKey) || /INPUT|TEXTAREA|SELECT/.test((event.target as HTMLElement).tagName)) return
     if (event.key.toLowerCase() === 'z') { event.preventDefault(); event.stopPropagation(); event.shiftKey ? redo() : undo() }
     if (event.key.toLowerCase() === 'y') { event.preventDefault(); event.stopPropagation(); redo() }
   }}>
-    <div role="toolbar" aria-label="Ferramentas de desenho" className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-700 bg-[#18191c] p-2">
-      {tools.map(item => <button type="button" key={item.id} aria-label={item.name} title={item.name} aria-pressed={tool === item.id} onClick={() => setTool(item.id)} className={`rounded-lg p-2 ${tool === item.id ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-700'}`}><item.icon size={17} /></button>)}
-      <span className="mx-1 h-6 border-l border-slate-700" />
-      <button type="button" disabled={!editor.current?.canUndo} onClick={undo} aria-label="Desfazer" title="Desfazer (Ctrl/Cmd+Z)" className="p-1 disabled:opacity-30"><Undo2 size={17} /></button>
-      <button type="button" disabled={!editor.current?.canRedo} onClick={redo} aria-label="Refazer" title="Refazer (Ctrl/Cmd+Shift+Z)" className="p-1 disabled:opacity-30"><Redo2 size={17} /></button>
-      <button type="button" onClick={() => changeZoom(liveView.current.zoom / 1.5)} aria-label="Diminuir zoom"><ZoomOut size={17} /></button><span className="w-9 text-center text-xs">{Math.round(zoom * 100)}%</span>
-      <button type="button" onClick={() => changeZoom(liveView.current.zoom * 1.5)} aria-label="Aumentar zoom"><ZoomIn size={17} /></button>
-      <button type="button" onClick={fit} aria-label="Ajustar desenho à área" title="Ajustar desenho à área" className="p-1"><Maximize2 size={17} /></button>
-      <button type="button" aria-label="Grade de pixels" aria-pressed={grid} onClick={() => setGrid(value => !value)} className={`p-1 ${grid ? 'text-indigo-400' : 'text-slate-400'}`}><Grid2X2 size={17} /></button>
-      <button type="button" disabled={!ready} onClick={() => { finish(); if (editor.current?.trim()) publish() }} className="flex gap-1 items-center rounded-lg bg-slate-800 p-2 text-xs disabled:opacity-30"><Crop size={15} />Aparar bordas</button>
-      <label className="ml-auto flex items-center gap-2 text-xs text-slate-300">
+    <div role="toolbar" aria-label="Ferramentas de desenho" className="flex flex-wrap items-center gap-2 rounded-[12px] border border-lira-quiet bg-lira-sidebar p-2">
+      {tools.map(item => <button type="button" key={item.id} aria-label={item.name} title={item.name} aria-pressed={tool === item.id} onClick={() => setTool(item.id)} className={`rounded-[8px] p-2 ${tool === item.id ? 'bg-lira-accent text-lira-ground' : 'text-lira-muted hover:text-lira-ink hover:bg-lira-surface'}`}><item.icon size={17} /></button>)}
+      <span className="mx-1 h-6 border-l border-lira-quiet" />
+      <button type="button" disabled={!editor.current?.canUndo} onClick={undo} aria-label="Desfazer" title="Desfazer (Ctrl/Cmd+Z)" className="p-1 text-lira-muted hover:text-lira-ink disabled:opacity-30"><Undo2 size={17} /></button>
+      <button type="button" disabled={!editor.current?.canRedo} onClick={redo} aria-label="Refazer" title="Refazer (Ctrl/Cmd+Shift+Z)" className="p-1 text-lira-muted hover:text-lira-ink disabled:opacity-30"><Redo2 size={17} /></button>
+      <button type="button" onClick={() => changeZoom(liveView.current.zoom / 1.5)} aria-label="Diminuir zoom" className="text-lira-muted hover:text-lira-ink"><ZoomOut size={17} /></button><span className="w-9 text-center text-xs font-mono text-lira-ink tabular-nums">{Math.round(zoom * 100)}%</span>
+      <button type="button" onClick={() => changeZoom(liveView.current.zoom * 1.5)} aria-label="Aumentar zoom" className="text-lira-muted hover:text-lira-ink"><ZoomIn size={17} /></button>
+      <button type="button" onClick={fit} aria-label="Ajustar desenho à área" title="Ajustar desenho à área" className="p-1 text-lira-muted hover:text-lira-ink"><Maximize2 size={17} /></button>
+      <button type="button" aria-label="Grade de pixels" aria-pressed={grid} onClick={() => setGrid(value => !value)} className={`p-1 ${grid ? 'text-lira-accent' : 'text-lira-muted'}`}><Grid2X2 size={17} /></button>
+      <button type="button" disabled={!ready} onClick={() => { finish(); if (editor.current?.trim()) publish() }} className="flex gap-1 items-center rounded-[8px] bg-lira-surface border border-lira-rule hover:border-lira-accent p-2 text-xs font-mono text-lira-ink disabled:opacity-30"><Crop size={15} />Aparar bordas</button>
+      <label className="ml-auto flex items-center gap-2 text-xs font-mono text-lira-muted">
         Cor do desenho
-        <input type="color" aria-label="Escolher cor do desenho" title="Escolher qualquer cor para desenhar" value={color} onChange={event => setColor(event.target.value)} className="h-7 w-9 cursor-pointer rounded border border-slate-600 bg-transparent" />
-        <span className="font-mono text-[11px] text-slate-400">{color.toUpperCase()}</span>
+        <input type="color" aria-label="Escolher cor do desenho" title="Escolher qualquer cor para desenhar" value={color} onChange={event => setColor(event.target.value)} className="h-7 w-9 cursor-pointer rounded-[6px] border border-lira-rule bg-transparent" />
+        <span className="font-mono text-[11px] text-lira-muted">{color.toUpperCase()}</span>
       </label>
-      <label className="flex items-center gap-1 text-xs text-slate-300">Pincel <select aria-label="Tamanho do pincel" value={size} onChange={event => setSize(Number(event.target.value))} className="rounded bg-slate-800 p-1">{[1, 2, 4, 8].map(value => <option key={value} value={value}>{value}px</option>)}</select></label>
+      <label className="flex items-center gap-1 text-xs font-mono text-lira-muted">Pincel <select aria-label="Tamanho do pincel" value={size} onChange={event => setSize(Number(event.target.value))} className="rounded-[6px] bg-lira-ground border border-lira-rule text-lira-ink p-1">{[1, 2, 4, 8].map(value => <option key={value} value={value}>{value}px</option>)}</select></label>
     </div>
     <div ref={viewport} tabIndex={0} aria-label="Área de navegação do desenho"
-      className="relative flex-1 min-h-40 overflow-hidden rounded-2xl border border-slate-700 bg-[#111318] touch-none outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+      className="relative flex-1 min-h-40 overflow-hidden rounded-[12px] border border-lira-quiet bg-lira-ground touch-none outline-none focus-visible:ring-2 focus-visible:ring-lira-accent"
       style={{ cursor: isPanning ? 'grabbing' : undefined }}
       onContextMenu={event => event.preventDefault()}
       onKeyDown={event => { if (event.code === 'Space' || event.key === ' ') { event.preventDefault(); spaceHeld.current = true; hideHover() } }}
@@ -230,8 +230,8 @@ export const AssetDrawingStudio: React.FC<Props> = ({ width, height, source, pre
       onPointerUp={() => { pan.current = undefined; setIsPanning(false); finish() }}
       onPointerCancel={() => { pan.current = undefined; spaceHeld.current = false; setIsPanning(false); finish() }}
       onLostPointerCapture={() => { pan.current = undefined; setIsPanning(false) }}>
-      <div data-pixel-board className="absolute" style={{ left: view.x, top: view.y, backgroundColor: '#22252e', backgroundImage: 'conic-gradient(#181a20 25%, transparent 0 50%, #181a20 0 75%, transparent 0)', backgroundSize: '16px 16px' }}>
-        <canvas ref={canvas} width={width} height={height} tabIndex={0} aria-label="Tela de desenho de pixels" className="block touch-none outline-none focus:ring-2 focus:ring-indigo-400" style={{ width: (editor.current?.image.width || width) * zoom, height: (editor.current?.image.height || height) * zoom, imageRendering: 'pixelated', cursor: isPanning ? 'grabbing' : drawingToolCursor(tool) }}
+      <div data-pixel-board className="absolute" style={{ left: view.x, top: view.y, backgroundColor: '#1e162b', backgroundImage: 'conic-gradient(#100c18 25%, transparent 0 50%, #100c18 0 75%, transparent 0)', backgroundSize: '16px 16px' }}>
+        <canvas ref={canvas} width={width} height={height} tabIndex={0} aria-label="Tela de desenho de pixels" className="block touch-none outline-none focus:ring-2 focus:ring-lira-accent" style={{ width: (editor.current?.image.width || width) * zoom, height: (editor.current?.image.height || height) * zoom, imageRendering: 'pixelated', cursor: isPanning ? 'grabbing' : drawingToolCursor(tool) }}
           onPointerEnter={trackHover} onPointerLeave={hideHover}
           onPointerDown={event => {
             trackHover(event)
@@ -261,8 +261,8 @@ export const AssetDrawingStudio: React.FC<Props> = ({ width, height, source, pre
         </svg>}
       </div>
     </div>
-    {error && <p role="alert" className="text-xs text-rose-300">{error}</p>}
-    <p className="text-xs text-slate-400">Roda do mouse: zoom no cursor · Botão direito ou Espaço + arraste: mover a tela · Esquerdo: desenhar</p>
-    <p className="text-xs text-slate-400">{layerName ? `Editando: ${layerName}.` : 'Desenhe para criar a primeira camada.'} As outras camadas, direções, animações e colisões são preservadas.</p>
+    {error && <p role="alert" className="text-xs font-mono text-lira-error">{error}</p>}
+    <p className="text-xs font-mono text-lira-muted">Roda do mouse: zoom no cursor · Botão direito ou Espaço + arraste: mover a tela · Esquerdo: desenhar</p>
+    <p className="text-xs font-mono text-lira-muted">{layerName ? `Editando: ${layerName}.` : 'Desenhe para criar a primeira camada.'} As outras camadas, direções, animações e colisões são preservadas.</p>
   </section>
 }

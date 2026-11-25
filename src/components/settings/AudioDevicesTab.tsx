@@ -25,6 +25,7 @@ import {
 } from '../../utils/soundEffects'
 import { MediaManager } from '../../media/MediaManager'
 import { attachStreamToVideo } from '../../media/attachVideoElement'
+import { resolveNoiseProcessorPreference } from '../../media/noiseSuppressionStatus'
 import { AudioDeviceInfo, SensitivityMode } from '../../types/audio'
 import { CustomDropdown } from '../common/CustomDropdown'
 import { toDeviceOptions } from './deviceOptions'
@@ -68,6 +69,11 @@ export const AudioDevicesTab: React.FC<Props> = ({
   const setSoundTheme = useMediaStore((s) => s.setSoundTheme)
   const micCalibrations = useMediaStore((s) => s.micCalibrations)
   const currentCalibration = micCalibrations[selectedAudioInput]
+  const processingMode = useMediaStore(resolveNoiseProcessorPreference)
+  const isNoiseSuppressionEnabled = useMediaStore((s) => s.isNoiseSuppressionEnabled)
+  const deepFilterStatus = useMediaStore((s) => s.deepFilterStatus)
+  const isDeepFilterContinuous =
+    isNoiseSuppressionEnabled && processingMode === 'deepfilter' && deepFilterStatus === 'ready'
 
   const activeSeasonalTheme = resolveEffectiveSoundTheme('auto')
 
@@ -216,7 +222,7 @@ export const AudioDevicesTab: React.FC<Props> = ({
 
   const handleThresholdChange = (val: number) => {
     setManualSensitivityThreshold(val)
-    MediaManager.getInstance().updateSensitivity(sensitivityMode, val)
+    MediaManager.getInstance().updateSensitivity('manual', val)
   }
 
   const handleTestMicToggle = async () => {
@@ -225,21 +231,20 @@ export const AudioDevicesTab: React.FC<Props> = ({
   }
 
   return (
-    <div className="space-y-6">
-      <ParsecEchoSettings />
-      <div className="bg-[#12151d]/70 rounded-2xl p-4 border border-[#2a3142] space-y-3.5">
+    <div className="space-y-6 font-mono">
+      <div className="bg-lira-ground rounded-[12px] p-4 border border-dashed border-lira-rule/60 space-y-3.5">
         <div className="flex items-center justify-between">
-          <label className="flex items-center gap-2 text-xs font-bold text-slate-200">
-            <Video className="w-4 h-4 text-indigo-400" />
+          <label className="flex items-center gap-2 text-xs font-bold text-lira-ink">
+            <Video className="w-4 h-4 text-lira-accent" />
             <span>Dispositivo de Vídeo (Câmera / Webcam)</span>
           </label>
           <button
             type="button"
             onClick={() => (isTestingCamera ? stopCameraTest() : startCameraTest())}
-            className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-md ${
+            className={`px-3 py-1.5 text-xs font-mono font-bold rounded-[8px] border transition-colors flex items-center gap-1.5 ${
               isTestingCamera
-                ? 'bg-rose-600 hover:bg-rose-500 text-white animate-pulse'
-                : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                ? 'bg-lira-error/15 hover:bg-lira-error border-lira-error/40 text-lira-error hover:text-lira-ground animate-pulse'
+                : 'bg-lira-accent hover:bg-lira-ink border-lira-accent hover:border-lira-ink text-lira-ground'
             }`}
           >
             {isTestingCamera ? <VideoOff className="w-3.5 h-3.5" /> : <Video className="w-3.5 h-3.5" />}
@@ -253,15 +258,15 @@ export const AudioDevicesTab: React.FC<Props> = ({
           onChange={handleVideoInputChange}
           fullWidth
           size="md"
-          buttonClassName="bg-[#12151d] hover:bg-[#181d2a] border-[#2a3142]"
+          buttonClassName="bg-lira-surface hover:border-lira-accent border-lira-rule"
         />
 
         {isObsVirtualCamera && (
-          <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-2.5 text-xs text-amber-300">
-            <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <div className="p-3 bg-lira-amber/10 border border-dashed border-lira-amber/40 rounded-[8px] flex items-start gap-2.5 text-xs text-lira-amber">
+            <Info className="w-4 h-4 text-lira-amber shrink-0 mt-0.5" />
             <div>
               <span className="font-bold">OBS Virtual Camera detectada</span>
-              <p className="text-[11px] text-amber-200/80 mt-0.5">
+              <p className="text-[11px] text-lira-amber/80 mt-0.5">
                 Se a imagem estiver preta, abra o OBS Studio e clique em <b>"Iniciar Câmera Virtual"</b>, ou selecione sua webcam física na lista acima.
               </p>
             </div>
@@ -269,14 +274,14 @@ export const AudioDevicesTab: React.FC<Props> = ({
         )}
 
         {cameraError && (
-          <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-start gap-2.5 text-xs text-rose-300">
-            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+          <div className="p-3 bg-lira-error/10 border border-dashed border-lira-error/40 rounded-[8px] flex items-start gap-2.5 text-xs text-lira-error">
+            <AlertTriangle className="w-4 h-4 text-lira-error shrink-0 mt-0.5" />
             <span>{cameraError}</span>
           </div>
         )}
 
         {isTestingCamera && (
-          <div className="relative w-full aspect-video max-h-56 bg-black rounded-xl overflow-hidden border border-[#2a3142] shadow-inner flex items-center justify-center">
+          <div className="relative w-full aspect-video max-h-56 bg-lira-ground rounded-[8px] overflow-hidden border border-lira-quiet flex items-center justify-center">
             <video
               ref={(el) => {
                 videoPreviewRef.current = el
@@ -294,8 +299,8 @@ export const AudioDevicesTab: React.FC<Props> = ({
               muted
               className="w-full h-full object-cover -scale-x-100"
             />
-            <div className="absolute top-2 left-2 px-2 py-0.5 bg-emerald-500/90 text-white text-[10px] font-bold rounded-md flex items-center gap-1 shadow">
-              <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+            <div className="absolute top-2 left-2 px-2 py-0.5 bg-lira-online text-lira-ground text-[10px] font-mono font-bold rounded-[4px] flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-lira-ground animate-pulse" />
               <span>PRÉVIA EM TEMPO REAL</span>
             </div>
           </div>
@@ -305,8 +310,8 @@ export const AudioDevicesTab: React.FC<Props> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div className="space-y-2">
           <div className="flex items-center justify-between h-7">
-            <label className="flex items-center gap-2 text-xs font-bold text-slate-200">
-              <Mic className="w-4 h-4 text-indigo-400" />
+            <label className="flex items-center gap-2 text-xs font-bold text-lira-ink">
+              <Mic className="w-4 h-4 text-lira-accent" />
               <span>Dispositivo de Entrada (Microfone)</span>
             </label>
           </div>
@@ -316,13 +321,13 @@ export const AudioDevicesTab: React.FC<Props> = ({
             onChange={handleInputChange}
             fullWidth
             size="md"
-            buttonClassName="bg-[#12151d] hover:bg-[#181d2a] border-[#2a3142]"
+            buttonClassName="bg-lira-surface hover:border-lira-accent border-lira-rule"
           />
 
           <div className="pt-2">
-            <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1.5">
+            <div className="flex items-center justify-between text-[11px] text-lira-muted mb-1.5">
               <span>Volume de Entrada (Ganho)</span>
-              <span className="font-bold text-indigo-400">{inputVolume}%</span>
+              <span className="font-mono tabular-nums font-bold text-lira-accent">{inputVolume}%</span>
             </div>
             <input
               type="range"
@@ -330,25 +335,25 @@ export const AudioDevicesTab: React.FC<Props> = ({
               max={200}
               value={inputVolume}
               onChange={(e) => handleInputVolumeChange(Number(e.target.value))}
-              className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+              className="w-full h-2 bg-lira-surface rounded-[4px] appearance-none cursor-pointer accent-lira-accent"
             />
           </div>
         </div>
 
         <div className="space-y-2">
           <div className="flex items-center justify-between h-7">
-            <label className="flex items-center gap-2 text-xs font-bold text-slate-200">
-              <Headphones className="w-4 h-4 text-indigo-400" />
+            <label className="flex items-center gap-2 text-xs font-bold text-lira-ink">
+              <Headphones className="w-4 h-4 text-lira-accent" />
               <span>Dispositivo de Saída</span>
             </label>
             <button
               type="button"
               disabled={isPlayingTestSound}
               onClick={() => onPlayTestSound(selectedAudioOutput)}
-              className={`text-[10px] font-bold px-2 py-1 rounded-lg border transition-all flex items-center gap-1 ${
+              className={`text-[10px] font-mono font-bold px-2 py-1 rounded-[6px] border transition-colors flex items-center gap-1 ${
                 isPlayingTestSound
-                  ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400 animate-pulse cursor-not-allowed opacity-80'
-                  : 'bg-[#12151d] border-[#2a3142] text-slate-300 hover:text-white hover:bg-slate-800'
+                  ? 'bg-lira-online/15 border-lira-online text-lira-online animate-pulse cursor-not-allowed opacity-80'
+                  : 'bg-lira-surface border-lira-rule text-lira-ink hover:text-lira-accent hover:border-lira-accent'
               }`}
               title="Testar saída de áudio"
             >
@@ -362,13 +367,13 @@ export const AudioDevicesTab: React.FC<Props> = ({
             onChange={handleOutputChange}
             fullWidth
             size="md"
-            buttonClassName="bg-[#12151d] hover:bg-[#181d2a] border-[#2a3142]"
+            buttonClassName="bg-lira-surface hover:border-lira-accent border-lira-rule"
           />
 
           <div className="pt-2">
-            <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1.5">
+            <div className="flex items-center justify-between text-[11px] text-lira-muted mb-1.5">
               <span>Volume de Saída dos Participantes</span>
-              <span className="font-bold text-indigo-400">{outputVolume}%</span>
+              <span className="font-mono tabular-nums font-bold text-lira-accent">{outputVolume}%</span>
             </div>
             <input
               type="range"
@@ -376,25 +381,25 @@ export const AudioDevicesTab: React.FC<Props> = ({
               max={100}
               value={outputVolume}
               onChange={(e) => handleOutputVolumeChange(Number(e.target.value))}
-              className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+              className="w-full h-2 bg-lira-surface rounded-[4px] appearance-none cursor-pointer accent-lira-accent"
             />
           </div>
         </div>
       </div>
 
-      <div className="bg-[#12151d]/70 rounded-2xl p-4 border border-[#2a3142] space-y-3.5">
+      <div className="bg-lira-ground rounded-[12px] p-4 border border-dashed border-lira-rule/60 space-y-3.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4 text-emerald-400" />
-            <span className="text-xs font-bold text-slate-200">Teste do Microfone</span>
+            <Activity className="w-4 h-4 text-lira-online" />
+            <span className="font-display text-sm font-bold text-lira-ink">Teste do Microfone</span>
           </div>
           <button
             type="button"
             onClick={handleTestMicToggle}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md ${
+            className={`px-3.5 py-1.5 rounded-[8px] border text-xs font-mono font-bold transition-colors flex items-center gap-1.5 ${
               isTestingMic
-                ? 'bg-rose-600 text-white animate-pulse'
-                : 'bg-indigo-600 hover:bg-indigo-500 text-white'
+                ? 'bg-lira-error/15 border-lira-error/40 text-lira-error animate-pulse'
+                : 'bg-lira-accent hover:bg-lira-ink border-lira-accent hover:border-lira-ink text-lira-ground'
             }`}
           >
             <Radio className="w-3.5 h-3.5" />
@@ -403,70 +408,70 @@ export const AudioDevicesTab: React.FC<Props> = ({
         </div>
 
         {isTestingMic && (
-          <div className="text-[11px] text-indigo-300 bg-indigo-500/10 border border-indigo-500/30 p-2.5 rounded-xl flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-indigo-400 shrink-0" />
+          <div className="text-[11px] text-lira-accent bg-lira-surface border border-lira-rule p-2.5 rounded-[8px] flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-lira-accent shrink-0" />
             <span>Fale no microfone para ouvir o retorno em tempo real nos seus fones de ouvido!</span>
           </div>
         )}
 
         <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-[10px] text-slate-400">
+          <div className="flex items-center justify-between text-[10px] text-lira-muted">
             <span>Nível de Entrada Sonoro</span>
-            <span className={isGateOpen ? 'text-emerald-400 font-bold' : 'text-slate-500'}>
+            <span className={isGateOpen ? 'text-lira-online font-bold' : 'text-lira-muted'}>
               {isGateOpen ? '● Microfone Aberto (Voz Detectada)' : '○ Filtrando Ruído'}
             </span>
           </div>
 
-          <div className="relative w-full h-4 bg-slate-950 rounded-full overflow-hidden border border-[#2a3142] p-0.5">
+          <div className="relative w-full h-4 bg-lira-panel rounded-[6px] overflow-hidden border border-lira-quiet p-0.5">
             <div
-              className={`h-full rounded-full transition-all duration-75 ${
+              className={`h-full rounded-[4px] transition-all duration-75 ${
                 isGateOpen
-                  ? 'bg-gradient-to-r from-emerald-500 via-teal-400 to-amber-400 shadow-lg shadow-emerald-500/30'
-                  : 'bg-slate-600/40'
+                  ? 'bg-lira-online'
+                  : 'bg-lira-surface'
               }`}
               style={{ width: `${Math.min(100, Math.max(0, localAudioLevel * 100))}%` }}
             />
 
             {sensitivityMode === 'manual' && (
               <div
-                className="absolute top-0 bottom-0 w-1 bg-amber-400 z-10 shadow-md pointer-events-none"
+                className="absolute top-0 bottom-0 w-1 bg-lira-amber z-10 pointer-events-none"
                 style={{ left: `${manualSensitivityThreshold}%` }}
                 title={`Limiar de Sensibilidade Manual: ${manualSensitivityThreshold}%`}
               >
-                <div className="w-2.5 h-2.5 bg-amber-400 rotate-45 -translate-x-1/3 -translate-y-1/3 rounded-xs" />
+                <div className="w-2.5 h-2.5 bg-lira-amber rotate-45 -translate-x-1/3 -translate-y-1/3 rounded-xs" />
               </div>
             )}
 
             {sensitivityMode === 'auto' && autoThresholdPercent > 0 && (
               <div
-                className="absolute top-0 bottom-0 w-1 bg-emerald-400/90 z-10 shadow-md transition-all duration-150 pointer-events-none"
+                className="absolute top-0 bottom-0 w-1 bg-lira-online z-10 transition-all duration-150 pointer-events-none"
                 style={{ left: `${autoThresholdPercent}%` }}
                 title={`Limiar Adaptativo Atual: ${autoThresholdPercent}%`}
               >
-                <div className="w-2.5 h-2.5 bg-emerald-400 rotate-45 -translate-x-1/3 -translate-y-1/3 rounded-xs opacity-90 shadow-sm" />
+                <div className="w-2.5 h-2.5 bg-lira-online rotate-45 -translate-x-1/3 -translate-y-1/3 rounded-xs opacity-90" />
               </div>
             )}
           </div>
         </div>
       </div>
 
-      <div className="bg-[#12151d]/70 rounded-2xl p-4 border border-[#2a3142] space-y-3">
+      <div className="bg-lira-ground rounded-[12px] p-4 border border-dashed border-lira-rule/60 space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <span className="text-xs font-bold text-slate-200">Sensibilidade de Entrada (Noise Gate)</span>
-            <p className="text-[11px] text-slate-400">
+            <span className="font-display text-sm font-bold text-lira-ink">Sensibilidade de Entrada (Noise Gate)</span>
+            <p className="text-[11px] text-lira-muted">
               Determina o volume mínimo para o microfone abrir e transmitir sua voz
             </p>
           </div>
 
-          <div className="flex bg-[#1b202c] p-1 rounded-xl border border-[#2a3142]">
+          <div className="flex bg-lira-panel p-1 rounded-[8px] border border-lira-quiet">
             <button
               type="button"
               onClick={() => handleSensitivityModeToggle('auto')}
-              className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all ${
+              className={`px-3 py-1 text-[11px] font-mono font-bold rounded-[6px] transition-colors ${
                 sensitivityMode === 'auto'
-                  ? 'bg-indigo-600 text-white shadow'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-lira-accent text-lira-ground'
+                  : 'text-lira-muted hover:text-lira-ink'
               }`}
             >
               Automático
@@ -474,10 +479,10 @@ export const AudioDevicesTab: React.FC<Props> = ({
             <button
               type="button"
               onClick={() => handleSensitivityModeToggle('manual')}
-              className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all ${
+              className={`px-3 py-1 text-[11px] font-mono font-bold rounded-[6px] transition-colors ${
                 sensitivityMode === 'manual'
-                  ? 'bg-indigo-600 text-white shadow'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-lira-accent text-lira-ground'
+                  : 'text-lira-muted hover:text-lira-ink'
               }`}
             >
               Manual
@@ -487,21 +492,21 @@ export const AudioDevicesTab: React.FC<Props> = ({
 
         {sensitivityMode === 'manual' ? (
           <div className="space-y-1.5 pt-1">
-            <div className="flex items-center justify-between text-[11px] text-slate-300">
+            <div className="flex items-center justify-between text-[11px] text-lira-ink">
               <div className="flex items-center gap-2">
                 <span>Limiar de Ativação Manual</span>
                 {currentCalibration && currentCalibration.recommendedSensitivity !== manualSensitivityThreshold && (
                   <button
                     type="button"
                     onClick={() => handleThresholdChange(currentCalibration.recommendedSensitivity)}
-                    className="text-[9.5px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors cursor-pointer"
-                    title="Usar limiar recomendado na calibração do microfone"
+                    className="text-[9.5px] font-mono tabular-nums px-1.5 py-0.5 rounded-[4px] bg-lira-amber/15 text-lira-amber hover:bg-lira-amber/25 transition-colors cursor-pointer"
+                    title="Usar limiar manual sugerido pela análise do microfone"
                   >
-                    Usar calibrado ({currentCalibration.recommendedSensitivity}%)
+                    Usar sugerido ({currentCalibration.recommendedSensitivity}%)
                   </button>
                 )}
               </div>
-              <span className="font-bold text-amber-400">{manualSensitivityThreshold}%</span>
+              <span className="font-mono tabular-nums font-bold text-lira-amber">{manualSensitivityThreshold}%</span>
             </div>
             <input
               type="range"
@@ -509,80 +514,69 @@ export const AudioDevicesTab: React.FC<Props> = ({
               max={100}
               value={manualSensitivityThreshold}
               onChange={(e) => handleThresholdChange(Number(e.target.value))}
-              className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+              className="w-full h-2 bg-lira-surface rounded-[4px] appearance-none cursor-pointer accent-lira-amber"
             />
-            <p className="text-[10px] text-slate-500">
+            <p className="text-[10px] text-lira-muted">
               Ajuste a barra para que o ruído de fundo fique à esquerda do marcador amarelo e sua voz normal fique à direita.
             </p>
           </div>
         ) : (
-          <div className="text-[11px] text-emerald-300/90 bg-emerald-500/10 border border-emerald-500/20 p-2.5 rounded-xl space-y-1.5">
+          <div className="text-[11px] text-lira-online bg-lira-online/10 border border-dashed border-lira-online/30 p-2.5 rounded-[8px]">
             <div className="flex items-center justify-between gap-2">
               <span>
-                O sistema detecta dinamicamente os barulhos da sua sala e calibra o corte automaticamente.
+                {isDeepFilterContinuous
+                  ? 'O DeepFilterNet remove o ruído continuamente sem precisar fechar o microfone; o limiar acompanha apenas o indicador de voz.'
+                  : 'O sistema detecta dinamicamente os barulhos da sua sala e ajusta o corte automaticamente em tempo real.'}
               </span>
               {autoThresholdPercent > 0 && (
                 <span
-                  className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-mono font-bold border border-emerald-500/30 shrink-0"
+                  className="text-[10px] px-2 py-0.5 rounded-[4px] bg-lira-online/15 text-lira-online font-mono tabular-nums font-bold border border-lira-online/30 shrink-0"
                   title="Limiar adaptativo calculado em tempo real para o ruído da sala"
                 >
-                  Corte atual: ~{autoThresholdPercent}%
+                  {isDeepFilterContinuous ? `Detecção: ~${autoThresholdPercent}%` : `Corte atual: ~${autoThresholdPercent}%`}
                 </span>
               )}
             </div>
-            {currentCalibration && (
-              <div className="text-[10px] text-slate-400 pl-6 flex items-center gap-1.5">
-                <span>Calibração recomendou {currentCalibration.recommendedSensitivity}%.</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleSensitivityModeToggle('manual')
-                    handleThresholdChange(currentCalibration.recommendedSensitivity)
-                  }}
-                  className="text-emerald-400 underline hover:text-emerald-300 font-medium cursor-pointer"
-                >
-                  Mudar para Manual ({currentCalibration.recommendedSensitivity}%)
-                </button>
-              </div>
-            )}
           </div>
         )}
       </div>
 
-      <div className="bg-[#12151d]/70 rounded-2xl p-4 border border-[#2a3142] space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
+      <div className="bg-lira-ground rounded-[12px] p-4 border border-dashed border-lira-rule/60 space-y-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-0.5 min-w-0">
             <div className="flex items-center gap-2">
-              <Volume2 className="w-4 h-4 text-indigo-400" />
-              <span className="text-xs font-bold text-slate-200">Efeitos Sonoros</span>
+              <Volume2 className="w-4 h-4 text-lira-accent shrink-0" />
+              <span className="font-display text-sm font-bold text-lira-ink">Efeitos Sonoros</span>
             </div>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-lira-muted">
               Sons de notificação ao mutar microfone, ensurdecer, entrar ou sair de chamadas e transmissão
             </p>
           </div>
 
           <button
             type="button"
+            role="switch"
+            aria-checked={soundEffectsEnabled}
             onClick={() => setSoundEffectsEnabled(!soundEffectsEnabled)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${
-              soundEffectsEnabled ? 'bg-indigo-600' : 'bg-slate-700'
+            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-lira-accent cursor-pointer ${
+              soundEffectsEnabled ? 'bg-lira-accent border-lira-accent' : 'bg-lira-surface border-lira-rule'
             }`}
             title={soundEffectsEnabled ? 'Desativar efeitos sonoros' : 'Ativar efeitos sonoros'}
           >
             <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                soundEffectsEnabled ? 'translate-x-6' : 'translate-x-1'
+              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full transition-transform ${
+                soundEffectsEnabled ? 'translate-x-[23px] bg-lira-ground' : 'translate-x-[3px] bg-lira-ink'
               }`}
             />
           </button>
         </div>
 
         {soundEffectsEnabled && (
-          <div className="space-y-3 pt-1 border-t border-[#1e2330]">
+          <div className="space-y-3 pt-2 border-t border-dashed border-lira-rule/60">
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-[11px] text-slate-300">
-                <span className="text-slate-400 font-medium">Volume dos Efeitos</span>
-                <span className="font-bold text-indigo-400 font-mono">{soundEffectsVolume}%</span>
+              <div className="flex items-center justify-between text-[11px] text-lira-ink">
+                <span className="text-lira-muted font-medium">Volume dos Efeitos</span>
+                <span className="font-mono tabular-nums font-bold text-lira-accent">{soundEffectsVolume}%</span>
               </div>
               <input
                 type="range"
@@ -590,17 +584,17 @@ export const AudioDevicesTab: React.FC<Props> = ({
                 max={100}
                 value={soundEffectsVolume}
                 onChange={(e) => setSoundEffectsVolume(Number(e.target.value))}
-                className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                className="w-full h-2 bg-lira-surface rounded-[4px] appearance-none cursor-pointer accent-lira-accent"
               />
             </div>
 
-            <div className="space-y-2 pt-1 border-t border-[#1e2330]">
+            <div className="space-y-2 pt-2 border-t border-dashed border-lira-rule/60">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-amber-400" />
-                    <span className="text-xs font-bold text-slate-200">Tema dos Efeitos (Sons por Data)</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-semibold flex items-center gap-1">
+                    <Sparkles className="w-4 h-4 text-lira-amber" />
+                    <span className="text-xs font-bold text-lira-ink">Tema dos Efeitos (Sons por Data)</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-[6px] bg-lira-surface text-lira-accent border border-lira-rule font-semibold flex items-center gap-1">
                       <span>{SOUND_THEMES[soundTheme === 'auto' ? activeSeasonalTheme : soundTheme].icon}</span>
                       <span>
                         {soundTheme === 'auto'
@@ -609,14 +603,14 @@ export const AudioDevicesTab: React.FC<Props> = ({
                       </span>
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
+                  <p className="text-[11px] text-lira-muted mt-0.5">
                     Alterne entre temas sazonais (Halloween de terror, Natal com sinos) ou selecione detecção automática por data
                   </p>
                 </div>
               </div>
 
               {/* Switch de seleção de sons / temas */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-[#151922] rounded-xl border border-[#2a3142]">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-lira-panel rounded-[8px] border border-lira-quiet">
                 {(['auto', 'default', 'halloween', 'christmas'] as SoundTheme[]).map((themeKey) => {
                   const info = SOUND_THEMES[themeKey]
                   const isSelected = soundTheme === themeKey
@@ -628,10 +622,10 @@ export const AudioDevicesTab: React.FC<Props> = ({
                         setSoundTheme(themeKey)
                         playSoundEffect('unmute', true)
                       }}
-                      className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      className={`flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-[6px] text-xs font-mono font-bold transition-colors cursor-pointer ${
                         isSelected
-                          ? 'bg-indigo-600 text-white shadow'
-                          : 'text-slate-400 hover:text-slate-200 hover:bg-[#1f2637]'
+                          ? 'bg-lira-accent text-lira-ground'
+                          : 'text-lira-muted hover:text-lira-ink hover:bg-lira-surface'
                       }`}
                       title={info.description}
                     >
@@ -642,9 +636,9 @@ export const AudioDevicesTab: React.FC<Props> = ({
                 })}
               </div>
 
-              <div className="text-[10.5px] text-slate-400 bg-[#161a24] p-2 rounded-xl border border-[#232938] flex items-center justify-between">
+              <div className="text-[10.5px] text-lira-muted bg-lira-panel p-2 rounded-[8px] border border-lira-quiet flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                  <Calendar className="w-3.5 h-3.5 text-lira-accent shrink-0" />
                   <span>
                     {soundTheme === 'auto'
                       ? `Calendário detectado: Sons de ${SOUND_THEMES[activeSeasonalTheme].name} (${SOUND_THEMES[activeSeasonalTheme].icon}) ativos automaticamente.`
@@ -655,7 +649,7 @@ export const AudioDevicesTab: React.FC<Props> = ({
                   <button
                     type="button"
                     onClick={() => setSoundTheme('auto')}
-                    className="text-[10px] text-indigo-400 hover:text-indigo-300 underline font-medium cursor-pointer shrink-0 ml-2"
+                    className="text-[10px] text-lira-accent hover:text-lira-ink underline font-medium cursor-pointer shrink-0 ml-2"
                   >
                     Usar data automática
                   </button>
@@ -664,7 +658,7 @@ export const AudioDevicesTab: React.FC<Props> = ({
             </div>
 
             <div className="space-y-2 pt-1">
-              <span className="text-[10.5px] font-semibold text-slate-400 uppercase tracking-wider">
+              <span className="text-[10.5px] font-semibold text-lira-muted uppercase tracking-wider">
                 Testar Sons de Ação
               </span>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -689,10 +683,10 @@ export const AudioDevicesTab: React.FC<Props> = ({
                       key={type}
                       type="button"
                       onClick={() => playSoundEffect(type, true)}
-                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[#1b202c] hover:bg-[#252c3d] border border-[#2a3142] hover:border-indigo-500/50 text-slate-300 hover:text-white transition-all text-left group cursor-pointer"
+                      className="flex items-center gap-2 px-2.5 py-1.5 rounded-[8px] bg-lira-panel hover:bg-lira-surface border border-lira-quiet hover:border-lira-accent text-lira-ink hover:text-lira-accent transition-colors text-left group cursor-pointer"
                       title={`Ouvir som: ${meta.label}`}
                     >
-                      <span className="text-sm shrink-0 group-hover:scale-110 transition-transform">
+                      <span className="text-sm shrink-0">
                         {meta.icon}
                       </span>
                       <span className="text-[11px] font-medium truncate">{meta.label}</span>
@@ -704,6 +698,8 @@ export const AudioDevicesTab: React.FC<Props> = ({
           </div>
         )}
       </div>
+
+      <ParsecEchoSettings />
     </div>
   )
 }

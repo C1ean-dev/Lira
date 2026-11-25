@@ -50,10 +50,34 @@ export const publicRoomSchema = domain<PublicRoomInfo>(z.object({ id, code: id, 
 }).passthrough())
 const directionSchema = z.enum(['up', 'down', 'left', 'right'])
 const presenceStatusSchema = z.enum(['available', 'busy', 'focusing', 'away'])
+const avatarEffectShapeSchema = z.enum([
+  'flower', 'petal', 'star', 'sparkle', 'heart', 'flame', 'ember',
+  'sunray', 'lightning', 'snowflake', 'leaf', 'bubble', 'music',
+])
+const customAvatarEffectSchema = z.object({
+  id: z.string().min(1).max(128),
+  name: z.string().min(1).max(64),
+  kind: z.enum(['aura', 'steps']),
+  shapes: z.array(avatarEffectShapeSchema).max(16),
+  pixelMatrix: z.array(z.string().max(12)).max(12).optional(),
+  color: text.max(32),
+  motion: z.enum(['float', 'rise', 'fall', 'orbit', 'spark']),
+  density: z.enum(['subtle', 'normal', 'intense']),
+}).passthrough()
+const avatarAuraStyleSchema = z.enum([
+  'none', 'floral_stars', 'fire', 'sunlight', 'hearts', 'stardust',
+  'lightning', 'frost', 'nature', 'petals', 'bubbles', 'music', 'custom',
+])
+const avatarStepsStyleSchema = z.enum([
+  'none', 'floral_stars', 'fire', 'sunlight', 'lightning', 'frost',
+  'nature', 'petals', 'stars', 'hearts', 'bubbles', 'music', 'custom',
+])
 const avatarSchema = z.object({
   ...Object.fromEntries(['skinTone', 'skinColor', 'skinDetail', 'eyeType', 'eyeColor', 'hairStyle', 'hairColor', 'facialHair', 'facialHairColor', 'topType', 'shirtType', 'topColor', 'shirtColor', 'jacketType', 'jacketColor', 'bottomType', 'bottomColor', 'pantsColor', 'shoesType', 'shoesColor', 'hatType', 'hatColor', 'glassesType', 'glassesColor', 'accessory', 'accessoryColor', 'otherType', 'otherColor', 'customSkinUrl', 'customAvatarId'].map(key => [key, text.optional()])),
   pet: z.object({ type: z.enum(['none', 'dog', 'cat', 'meowth', 'slime', 'chick', 'custom']), name: text.optional(), personality: text.optional(), color: text.optional(), customAssetId: text.optional(),
     directionalFrames: z.record(directionSchema, z.union([text, z.array(text)]).optional()).optional() }).optional(),
+  aura: z.object({ style: avatarAuraStyleSchema, color: text.optional(), custom: customAvatarEffectSchema.optional() }).optional(),
+  steps: z.object({ style: avatarStepsStyleSchema, color: text.optional(), custom: customAvatarEffectSchema.optional() }).optional(),
   customComponents: z.record(text, z.union([text, z.record(directionSchema, z.union([text, z.array(text)]).optional())])).optional(),
 }).passthrough()
 export const userProfileSchema = domain<UserProfile>(z.object({
