@@ -457,7 +457,8 @@ export const LobbyModal: React.FC<Props> = ({
     if (!enterGuardRef.current.tryEnter()) return
 
     const spaceId = targetSpaceId || selectedSpaceId
-    const targetSpace = savedSpaces.find((s) => s.id === spaceId) || savedSpaces[0]
+    const latestSpaces = useSavedSpacesStore.getState().savedSpaces
+    const targetSpace = latestSpaces.find((s) => s.id === spaceId) || latestSpaces[0]
     if (!targetSpace) {
       enterGuardRef.current.release()
       setError('Nenhum espaço salvo encontrado.')

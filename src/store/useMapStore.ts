@@ -13,6 +13,8 @@ import { useCustomAssetsStore } from './useCustomAssetsStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { hydrateMapData, compressMapDataForStorage } from '../utils/mapSerialization'
 
+export const houseZoneIdForFurniture = (furnId: string): string => `house-zone-${furnId}`
+
 const MAP_STORAGE_KEY = 'lira_custom_map'
 
 const mapPreferences = createStoredState(MAP_STORAGE_KEY, storedMapSchema.nullable(), null)
@@ -210,9 +212,24 @@ export const useMapStore = create<MapStore>((baseSet, get) => {
       const updatedFurniture = state.mapData.furniture.map((f) =>
         f.id === id ? { ...f, ...partial } : f
       )
+      const linkedZoneId = houseZoneIdForFurniture(id)
+      const hasLinkedZone = (state.mapData.zones || []).some((z) => z.id === linkedZoneId)
+      const updatedZones =
+        hasLinkedZone && (partial.x !== undefined || partial.y !== undefined)
+          ? state.mapData.zones.map((z) =>
+              z.id === linkedZoneId
+                ? {
+                    ...z,
+                    ...(partial.x !== undefined ? { x: Math.round(partial.x) } : {}),
+                    ...(partial.y !== undefined ? { y: Math.round(partial.y) } : {}),
+                  }
+                : z
+            )
+          : state.mapData.zones
       const updatedMap = {
         ...state.mapData,
         furniture: updatedFurniture,
+        zones: updatedZones,
       }
       saveMap(updatedMap)
       return { mapData: updatedMap }
@@ -221,9 +238,12 @@ export const useMapStore = create<MapStore>((baseSet, get) => {
   removeFurnitureById: (id) =>
     set((state) => {
       const updatedFurniture = state.mapData.furniture.filter((f) => f.id !== id)
+      const linkedZoneId = houseZoneIdForFurniture(id)
+      const updatedZones = (state.mapData.zones || []).filter((z) => z.id !== linkedZoneId)
       const updatedMap = {
         ...state.mapData,
         furniture: updatedFurniture,
+        zones: updatedZones,
       }
       saveMap(updatedMap)
       return {
@@ -303,9 +323,29 @@ export const useMapStore = create<MapStore>((baseSet, get) => {
 
   addFurniture: (furniture) =>
     set((state) => {
+      const asset = useCustomAssetsStore.getState().getAssetById(furniture.defId)
+      let nextZones = state.mapData.zones || []
+      if (asset?.houseShell) {
+        const linkedZoneId = houseZoneIdForFurniture(furniture.id)
+        const existingZone = nextZones.find((z) => z.id === linkedZoneId)
+        const linkedZone: PrivateZone = {
+          ...(existingZone || {}),
+          id: linkedZoneId,
+          name: existingZone?.name || asset.name,
+          color: existingZone?.color || asset.houseShell.defaultZoneColor || getNextAvailableZoneColor(nextZones),
+          x: Math.round(furniture.x),
+          y: Math.round(furniture.y),
+          width: asset.width,
+          height: asset.height,
+          hasWalls: false,
+          description: existingZone?.description || `${asset.name} • Sala privada`,
+        }
+        nextZones = [...nextZones.filter((z) => z.id !== linkedZoneId), linkedZone]
+      }
       const updatedMap = {
         ...state.mapData,
         furniture: [...state.mapData.furniture.filter((f) => f.id !== furniture.id), furniture],
+        zones: nextZones,
       }
       saveMap(updatedMap)
       return { mapData: updatedMap }
@@ -315,7 +355,7 @@ export const useMapStore = create<MapStore>((baseSet, get) => {
     let removedAny = false
     set((state) => {
       const customAssets = useCustomAssetsStore.getState().customAssets
-      const remainingFurniture = state.mapData.furniture.filter((f) => {
+      const matchesTile = (f: PlacedFurniture) => {
         const custom = customAssets.find((a) => a.id === f.defId)
         const def = custom || FURNITURE_CATALOG.find((cat) => cat.id === f.defId)
         const { tileW: w, tileH: h } = resolveFurnitureDimensions(f, custom, def)
@@ -329,17 +369,30 @@ export const useMapStore = create<MapStore>((baseSet, get) => {
           Math.floor(tileX) + 1 > f.x &&
           Math.floor(tileY) < f.y + h &&
           Math.floor(tileY) + 1 > f.y
-        if (isPointInside || isTileOverlap) {
-          removedAny = true
-          return false
-        }
-        return true
-      })
+        return isPointInside || isTileOverlap
+      }
 
-      if (removedAny) {
+      const matched = state.mapData.furniture.filter(matchesTile)
+      if (matched.length === 0) return state
+
+      // Prefer erasing furniture/decorations inside a house before deleting the house shell itself.
+      const hasNonHouseMatch = matched.some((f) => !customAssets.find((a) => a.id === f.defId)?.houseShell)
+      const toRemoveIds = new Set(
+        (hasNonHouseMatch
+          ? matched.filter((f) => !customAssets.find((a) => a.id === f.defId)?.houseShell)
+          : matched
+        ).map((f) => f.id)
+      )
+
+      const remainingFurniture = state.mapData.furniture.filter((f) => !toRemoveIds.has(f.id))
+      if (remainingFurniture.length !== state.mapData.furniture.length) {
+        removedAny = true
+        const removedZoneIds = new Set(Array.from(toRemoveIds, (id) => houseZoneIdForFurniture(id)))
+        const remainingZones = (state.mapData.zones || []).filter((z) => !removedZoneIds.has(z.id))
         const updatedMap = {
           ...state.mapData,
           furniture: remainingFurniture,
+          zones: remainingZones,
         }
         saveMap(updatedMap)
         return { mapData: updatedMap }

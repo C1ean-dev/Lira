@@ -44,6 +44,14 @@ export interface DirectionalDimension {
   pixelHeight?: number
 }
 
+export interface HouseShellConfig {
+  doorCols: number[]
+  overhangPx?: number
+  interiorTint?: number
+  wallTint?: number
+  defaultZoneColor?: string
+}
+
 export interface CustomAsset {
   id: string
   name: string
@@ -57,6 +65,8 @@ export interface CustomAsset {
   pixelHeight?: number
   isObstacle: boolean
   isTabletopDecoration?: boolean
+  isFloorRug?: boolean
+  houseShell?: HouseShellConfig
   consumptionFrames?: string[]
   collisionGrid?: boolean[][]
   seatGrid?: boolean[][]

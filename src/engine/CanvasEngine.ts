@@ -4,6 +4,7 @@ import { InputHandler } from './input/InputHandler'
 import { checkCollision, checkZonePresence } from './physics/collision'
 import { findPath, hasLineOfSight } from './physics/pathfinding'
 import { WorldRenderer } from './rendering/worldRenderer'
+import { PixiWorldRenderer } from './pixi/PixiWorldRenderer'
 import { PetManager } from './pet/PetManager'
 import { AvatarEffectsManager } from './avatarEffects'
 import { useGameStore } from '../store/useGameStore'
@@ -19,6 +20,7 @@ import { findSafePlayerPosition } from './physics/safePlayerPosition'
 export class CanvasEngine {
   private canvas: HTMLCanvasElement
   private ctx: CanvasRenderingContext2D
+  private pixiRenderer: PixiWorldRenderer | null = null
   private isRunning: boolean = false
   private animationFrameId: number | null = null
   private unsubscribeViewMode: (() => void) | null = null
@@ -50,9 +52,10 @@ export class CanvasEngine {
     if (e.key === 'Shift') this.isShiftPressed = false
   }
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, pixiHost?: HTMLElement | null) {
     this.canvas = canvas
-    const context = canvas.getContext('2d', { alpha: false })
+    const usePixi = Boolean(pixiHost && typeof document !== 'undefined')
+    const context = canvas.getContext('2d', { alpha: usePixi })
     if (!context) throw new Error('Could not get Canvas 2D context')
     this.ctx = context
     this.ctx.imageSmoothingEnabled = false
@@ -60,6 +63,14 @@ export class CanvasEngine {
     this.camera = new CameraManager()
     this.input = new InputHandler()
 
+    if (usePixi && pixiHost) {
+      this.pixiRenderer = new PixiWorldRenderer(pixiHost)
+      void this.pixiRenderer.init()
+    }
+  }
+
+  public syncViewportSize(width: number, height: number) {
+    this.pixiRenderer?.syncSize(width, height)
   }
 
   private setupInputs() {
@@ -215,6 +226,8 @@ export class CanvasEngine {
 
   public dispose() {
     this.stop()
+    this.pixiRenderer?.dispose()
+    this.pixiRenderer = null
   }
 
   private loop = (currentTime: number) => {
@@ -457,6 +470,22 @@ export class CanvasEngine {
   }
 
   private render(currentTime: number) {
+    if (this.pixiRenderer?.renderFrame(this.camera, currentTime)) {
+      WorldRenderer.renderUiOverlayPass(
+        this.ctx,
+        this.canvas,
+        this.camera,
+        this.hoverTile,
+        this.zoneDragStart,
+        this.zoneDragCurrent,
+        currentTime,
+        this.fps,
+        this.input.finalDestination,
+        this.isShiftPressed
+      )
+      return
+    }
+
     WorldRenderer.render(
       this.ctx,
       this.canvas,

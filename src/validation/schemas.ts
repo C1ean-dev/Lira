@@ -27,6 +27,7 @@ const optionalBool = z.boolean().optional()
 export const graphicsSettingsSchema = z.object({
   targetFps: optionalFinite, showFpsCounter: optionalBool, enableCulling: optionalBool,
   moveSpeed: optionalFinite, showNameTags: optionalBool,
+  lightingEnabled: optionalBool, lightingMode: z.enum(['day', 'sunset', 'night', 'auto']).optional(),
 })
 export const audioSettingsSchema = z.object({
   selectedAudioInput: text.optional(), selectedAudioOutput: text.optional(), selectedVideoInput: text.optional(),

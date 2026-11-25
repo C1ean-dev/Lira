@@ -142,7 +142,7 @@ export class PetRenderer {
     ctx.drawImage(img, drawX, drawY, petSize, petSize)
   }
 
-  private static drawNameTag(
+  public static drawNameTag(
     ctx: CanvasRenderingContext2D,
     px: number,
     py: number,

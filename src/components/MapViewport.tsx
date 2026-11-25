@@ -27,6 +27,7 @@ function restoreZoomOrFit(engine: CanvasEngine) {
 }
 
 export const MapViewport: React.FC = () => {
+  const pixiHostRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const engineRef = useRef<CanvasEngine | null>(null)
 
@@ -176,7 +177,7 @@ export const MapViewport: React.FC = () => {
     if (!canvasRef.current) return
 
     const canvas = canvasRef.current
-    const engine = new CanvasEngine(canvas)
+    const engine = new CanvasEngine(canvas, pixiHostRef.current)
     engineRef.current = engine
 
     const MAX_CANVAS_PIXELS = 1920 * 1080
@@ -193,6 +194,7 @@ export const MapViewport: React.FC = () => {
         canvas.width = w
         canvas.height = h
       }
+      engine.syncViewportSize(w, h)
     }
 
     let resizeRaf = 0
@@ -261,6 +263,7 @@ export const MapViewport: React.FC = () => {
       }
       canvas.width = w
       canvas.height = h
+      engineRef.current.syncViewportSize(w, h)
       const local = useGameStore.getState().localPlayer
       engineRef.current.camera.x = (local?.x ?? 34) * 32
       engineRef.current.camera.y = (local?.y ?? 20) * 32
@@ -324,7 +327,16 @@ export const MapViewport: React.FC = () => {
       if (clickedFurn && activeTool !== 'paint_floor' && activeTool !== 'paint_wall' && activeTool !== 'draw_zone') {
         if (activeTool === 'eraser') {
           if (eraserTarget === 'furniture') {
-            if (customAssets.find(asset => asset.id === clickedFurn.defId)?.isTabletopDecoration) {
+            const clickedAsset = customAssets.find(asset => asset.id === clickedFurn.defId)
+            if (clickedAsset?.houseShell) {
+              useMapStore.getState().removeFurnitureById(clickedFurn.id)
+              PeerManager.getInstance().broadcast({
+                type: 'MAP_SYNC',
+                senderId: 'host',
+                payload: { mapData: useMapStore.getState().mapData },
+                timestamp: Date.now(),
+              })
+            } else if (clickedAsset?.isTabletopDecoration) {
               useMapStore.getState().removeFurnitureById(clickedFurn.id)
               PeerManager.getInstance().sendMapEdit('remove_furniture', { id: clickedFurn.id, x: tile.x, y: tile.y })
             } else {
@@ -415,7 +427,17 @@ export const MapViewport: React.FC = () => {
           rotation: rotMap[placementDirection],
         }
         addFurniture(newFurn)
-        PeerManager.getInstance().sendMapEdit('add_furniture', { furniture: newFurn })
+        const placedAsset = useCustomAssetsStore.getState().getAssetById(selectedFurnitureDefId)
+        if (placedAsset?.houseShell) {
+          PeerManager.getInstance().broadcast({
+            type: 'MAP_SYNC',
+            senderId: 'host',
+            payload: { mapData: useMapStore.getState().mapData },
+            timestamp: Date.now(),
+          })
+        } else {
+          PeerManager.getInstance().sendMapEdit('add_furniture', { furniture: newFurn })
+        }
       } else if (activeTool === 'eraser') {
         if (eraserTarget === 'furniture') {
           const hadFurniture = removeFurnitureAt(tile.x, tile.y)
@@ -558,9 +580,19 @@ export const MapViewport: React.FC = () => {
       if (drag.isDragging) {
         const currentFurn = useMapStore.getState().mapData.furniture.find((f) => f.id === drag.id)
         if (currentFurn) {
-          PeerManager.getInstance().sendMapEdit('add_furniture', {
-            furniture: currentFurn,
-          })
+          const movedAsset = useCustomAssetsStore.getState().getAssetById(currentFurn.defId)
+          if (movedAsset?.houseShell) {
+            PeerManager.getInstance().broadcast({
+              type: 'MAP_SYNC',
+              senderId: 'host',
+              payload: { mapData: useMapStore.getState().mapData },
+              timestamp: Date.now(),
+            })
+          } else {
+            PeerManager.getInstance().sendMapEdit('add_furniture', {
+              furniture: currentFurn,
+            })
+          }
         }
         return
       } else {
@@ -805,6 +837,12 @@ export const MapViewport: React.FC = () => {
       onWheel={handleWheel}
       className="relative flex-1 w-full h-full overflow-hidden bg-lira-ground"
     >
+      <div
+        ref={pixiHostRef}
+        className={`absolute inset-0 pointer-events-none ${
+          mapViewMode === 'simplified' ? 'hidden' : 'block'
+        }`}
+      />
       <canvas
         ref={canvasRef}
         onMouseDown={handleCanvasMouseDown}
@@ -815,7 +853,7 @@ export const MapViewport: React.FC = () => {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchEnd}
-        className={`w-full h-full pixelated touch-none select-none ${
+        className={`relative z-10 w-full h-full pixelated touch-none select-none ${
           isDraggingFurniture
             ? 'cursor-grabbing'
             : isEditorOpen && (hoveredFurnitureId || (isMovingFurniture && selectedPlacedFurnitureId))

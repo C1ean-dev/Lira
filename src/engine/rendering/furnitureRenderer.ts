@@ -150,9 +150,15 @@ export class FurnitureRenderer {
           ctx.imageSmoothingEnabled = false
         }
 
-        const { offsetX, offsetY, drawWidth, drawHeight } = resolveSpritePlacement(imgW, imgH, targetW, targetH)
-        ctx.drawImage(img, px + offsetX, py + offsetY, drawWidth, drawHeight)
-        if (scene) drawBedClothMotion(ctx, img, { x: px + offsetX, y: py + offsetY, width: drawWidth, height: drawHeight }, scene.elapsedMs)
+        if (customAsset.houseShell) {
+          const drawWidth = targetW
+          const drawHeight = Math.round(targetW * (imgH / Math.max(1, imgW)))
+          ctx.drawImage(img, px, py + targetH - drawHeight, drawWidth, drawHeight)
+        } else {
+          const { offsetX, offsetY, drawWidth, drawHeight } = resolveSpritePlacement(imgW, imgH, targetW, targetH)
+          ctx.drawImage(img, px + offsetX, py + offsetY, drawWidth, drawHeight)
+          if (scene) drawBedClothMotion(ctx, img, { x: px + offsetX, y: py + offsetY, width: drawWidth, height: drawHeight }, scene.elapsedMs)
+        }
       } else {
         ctx.fillStyle = customAsset.iconColor || '#e03131'
         ctx.fillRect(px + 1, py + 1, Math.max(2, targetW - 2), Math.max(2, targetH - 2))
