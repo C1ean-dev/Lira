@@ -20,6 +20,10 @@ import { FriendsPresenceService } from '../../services/friendsPresenceService'
 import { PlayerAvatar } from '../common/PlayerAvatar'
 import { StatusBadge } from '../common/StatusBadge'
 import { MoonPhaseIcon } from '../common/MoonPhaseIcon'
+import { NameplateArtwork } from '../profile/ProfileBar'
+import { MedalBadgeList } from '../profile/MedalBadgeList'
+import { getNameplateStyle, resolveProfile } from '../../utils/profileUtils'
+import { buildProfileTargetFromFriend, useProfileModalStore } from '../../store/useProfileModalStore'
 
 interface Props {
   onOpenChat: (friend: FriendProfile) => void
@@ -399,29 +403,49 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                   const statusKey = (friend.status as PresenceStatus) || 'available'
                   const statusMeta = STATUS_META[statusKey] || STATUS_META.available
                   const displayStatusText = friend.statusText || statusMeta.label || 'Disponível'
+                  const resolvedProfile = resolveProfile(friend.profile)
+                  const nameplate = getNameplateStyle(resolvedProfile)
 
                   return (
                     <div
                       key={friend.id}
-                      className={`p-3.5 rounded-2xl bg-[#12151d] hover:bg-[#161a24] transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm ${
+                      style={
+                        nameplate.hasCustomNameplate && unread === 0
+                          ? { background: nameplate.background, borderColor: nameplate.borderColor }
+                          : undefined
+                      }
+                      className={`relative overflow-hidden p-3.5 rounded-2xl transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm ${
                         unread > 0
                           ? 'border-2 border-rose-500/60 shadow-lg shadow-rose-950/40 bg-gradient-to-r from-rose-950/20 via-[#12151d] to-[#12151d]'
-                          : 'border border-emerald-500/25 hover:border-emerald-500/40'
+                          : nameplate.hasCustomNameplate
+                          ? 'border hover:brightness-110'
+                          : 'bg-[#12151d] hover:bg-[#161a24] border border-emerald-500/25 hover:border-emerald-500/40'
                       }`}
                     >
-                      <div className="flex items-center gap-3 min-w-0">
+                      {nameplate.hasCustomNameplate && unread === 0 && (
+                        <NameplateArtwork nameplateId={nameplate.nameplateId} accentColor={nameplate.accentColor} />
+                      )}
+                      <div
+                        onClick={() =>
+                          useProfileModalStore.getState().openProfile(buildProfileTargetFromFriend(friend), 'view')
+                        }
+                        className="relative z-10 flex items-center gap-3 min-w-0 cursor-pointer group/fp"
+                        title={`Ver perfil de ${friend.name}`}
+                      >
                         <PlayerAvatar
                           player={friend}
                           showStatus={true}
                           status={statusKey}
                           size="md"
+                          className="rounded-full"
                         />
 
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs font-bold text-slate-100 truncate">
+                            <span className="text-xs font-bold text-slate-100 group-hover/fp:underline truncate drop-shadow-[0_1px_1px_rgba(0,0,0,0.7)]">
                               {friend.name}
                             </span>
+                            <MedalBadgeList medals={resolvedProfile.medals} size="xs" maxVisible={4} />
                             <StatusBadge status={statusKey} label={displayStatusText} />
                             {unread > 0 && (
                               <span className="text-[9px] bg-rose-500 text-white font-extrabold px-2 py-0.5 rounded-full shadow-md shadow-rose-500/40 flex items-center gap-1 animate-pulse">
@@ -466,7 +490,7 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      <div className="relative z-10 flex items-center gap-2 shrink-0 self-end sm:self-center">
                         {friend.inRoom && friend.roomCode && (
                           <button
                             type="button"
@@ -551,18 +575,24 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                           : 'border border-[#2a3142] opacity-80 hover:opacity-100'
                       }`}
                     >
-                      <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        onClick={() =>
+                          useProfileModalStore.getState().openProfile(buildProfileTargetFromFriend(friend), 'view')
+                        }
+                        className="flex items-center gap-3 min-w-0 cursor-pointer group/ofp"
+                        title={`Ver perfil de ${friend.name}`}
+                      >
                         <PlayerAvatar
                           player={friend}
                           showStatus={true}
                           status="offline"
                           size="sm"
-                          className="opacity-75"
+                          className="rounded-full opacity-75"
                         />
 
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs font-bold text-slate-300 truncate">
+                            <span className="text-xs font-bold text-slate-300 group-hover/ofp:underline truncate">
                               {friend.name}
                             </span>
                             {unread > 0 && (
@@ -599,7 +629,7 @@ export const FriendsTab: React.FC<Props> = ({ onOpenChat, onJoinRoom }) => {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      <div className="relative z-10 flex items-center gap-2 shrink-0 self-end sm:self-center">
                         <button
                           type="button"
                           onClick={() => onOpenChat(friend)}

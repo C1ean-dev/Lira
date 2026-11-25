@@ -4,6 +4,9 @@ import { AvatarConfig, PresenceStatus, STATUS_OPTIONS } from '../../types/game'
 import { PlayerAvatar } from '../common/PlayerAvatar'
 import { ImageCropModal } from '../common/ImageCropModal'
 import { MoonPhaseIcon } from '../common/MoonPhaseIcon'
+import { useGameStore } from '../../store/useGameStore'
+import { useProfileModalStore } from '../../store/useProfileModalStore'
+import { ProfileBar } from '../profile/ProfileBar'
 
 interface Props {
   name: string
@@ -29,6 +32,7 @@ export const ProfileSettingsPanel: React.FC<Props> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [cropModalOpen, setCropModalOpen] = useState(false)
   const [rawImageToCrop, setRawImageToCrop] = useState<string | null>(null)
+  const localProfile = useGameStore((s) => s.localPlayer.profile)
 
   const hasCustomPicture = !!(profilePicture && profilePicture.trim() !== '')
 
@@ -112,6 +116,7 @@ export const ProfileSettingsPanel: React.FC<Props> = ({
               name={name}
               profilePicture={profilePicture}
               avatar={avatar}
+              avatarFrame={localProfile?.avatarFrame}
               status={status}
               showStatus={true}
               size="2xl"
@@ -123,6 +128,7 @@ export const ProfileSettingsPanel: React.FC<Props> = ({
               name={name}
               profilePicture={profilePicture}
               avatar={avatar}
+              avatarFrame={localProfile?.avatarFrame}
               status={status}
               showStatus={true}
               size="lg"
@@ -274,6 +280,38 @@ export const ProfileSettingsPanel: React.FC<Props> = ({
             )
           })}
         </div>
+      </div>
+
+      <div className="bg-[#1e1f22] p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-indigo-500/30 flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div>
+            <h4 className="text-xs font-extrabold text-white flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Perfil Estilizado, Bordas, Medalhas &amp; Jogos</span>
+            </h4>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Personalize sua barra de perfil, moldura da imagem, medalhas e mural de jogos.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => useProfileModalStore.getState().openLocalProfile('view')}
+            className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/30 transition-all active:scale-95"
+          >
+            Abrir Perfil Interativo
+          </button>
+        </div>
+
+        <ProfileBar
+          name={name || 'Você'}
+          profilePicture={profilePicture}
+          avatar={avatar}
+          profile={localProfile}
+          status={status}
+          avatarSize="sm"
+          compact={true}
+          onClick={() => useProfileModalStore.getState().openLocalProfile('view')}
+        />
       </div>
 
       <ImageCropModal

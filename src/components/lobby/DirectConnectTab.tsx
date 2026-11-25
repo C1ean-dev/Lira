@@ -1,7 +1,11 @@
 import React, { useId } from 'react'
-import { User, PlusCircle, LogIn, Sparkles, Clipboard } from 'lucide-react'
+import { User, PlusCircle, LogIn, Sparkles, Clipboard, Award } from 'lucide-react'
 import { useMediaStore } from '../../store/useMediaStore'
+import { useGameStore } from '../../store/useGameStore'
+import { useProfileModalStore } from '../../store/useProfileModalStore'
 import { DirectConnectionPanel } from './DirectConnectionPanel'
+import { ProfileBar } from '../profile/ProfileBar'
+import { MedalBadgeList } from '../profile/MedalBadgeList'
 import { normalizeSpaceInvite } from '../../utils/spaceInviteLink'
 
 interface Props {
@@ -31,6 +35,7 @@ export const DirectConnectTab: React.FC<Props> = ({
   roomInput, setRoomInput, directFallback, error, loading, onCreate, onJoin, onJoined, beginDirectJoin, endDirectJoin,
 }) => {
   const fieldId = useId()
+  const localPlayer = useGameStore((s) => s.localPlayer)
   let code = roomInput.trim()
   // A direct offer must still use the existing answer exchange panel.
   try { code = normalizeSpaceInvite(code) } catch { /* The join action displays validation errors. */ }
@@ -38,6 +43,38 @@ export const DirectConnectTab: React.FC<Props> = ({
 
   return (
     <div className="space-y-4 overflow-y-auto p-4 sm:p-6">
+      <ProfileBar
+        name={userName.trim() || localPlayer.name}
+        profilePicture={localPlayer.profilePicture}
+        avatar={localPlayer.avatar}
+        profile={localPlayer.profile}
+        status={localPlayer.status}
+        avatarSize="md"
+        onClick={() => useProfileModalStore.getState().openLocalProfile('view')}
+        title="Clique para visualizar ou personalizar seu perfil completo"
+        subtitle={
+          localPlayer.profile?.medals?.length ? (
+            <MedalBadgeList medals={localPlayer.profile.medals} size="xs" maxVisible={5} className="mt-0.5" />
+          ) : (
+            <span>Personalize bordas, barra, medalhas e mural</span>
+          )
+        }
+        rightSlot={
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              useProfileModalStore.getState().openLocalProfile('view')
+            }}
+            className="px-2.5 py-1.5 rounded-xl bg-black/45 hover:bg-black/65 border border-white/15 text-xs font-bold text-slate-100 flex items-center gap-1.5 transition-colors"
+            title="Abrir personalização de perfil"
+          >
+            <Award className="w-3.5 h-3.5 text-indigo-300" />
+            <span className="hidden sm:inline">Perfil</span>
+          </button>
+        }
+      />
+
       <div>
         <label htmlFor={`${fieldId}-name`} className="mb-1.5 block text-xs font-semibold text-slate-300">Seu Nickname</label>
         <div className="flex gap-2">

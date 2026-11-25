@@ -1,3 +1,5 @@
+import type { UserProfile } from './profile'
+
 export type Direction = 'up' | 'down' | 'left' | 'right'
 export type AvatarActivityAnimation = 'yawn' | 'sleep' | (string & {})
 
@@ -194,6 +196,7 @@ export interface Player {
   gameId?: string
   name: string
   profilePicture?: string
+  profile?: UserProfile
   x: number
   y: number
   targetX?: number
@@ -295,11 +298,13 @@ export interface FriendProfile {
   name: string
   profilePicture?: string
   avatar?: AvatarConfig
+  profile?: UserProfile
   gameId?: string
   actualUserId?: string
   status?: PresenceStatus
   statusText?: string
   lastSeen?: number
+  friendSince?: number
   lastRoomCode?: string
   lastRoomName?: string
   isOnline?: boolean

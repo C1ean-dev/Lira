@@ -87,6 +87,7 @@ const FullScreenGridInner: React.FC = () => {
         name: localPlayer.name,
         profilePicture: localPlayer.profilePicture,
         avatar: localPlayer.avatar,
+        profile: localPlayer.profile,
         stream: localStream,
         screenStream: localScreenStream,
         isMuted,
@@ -103,6 +104,7 @@ const FullScreenGridInner: React.FC = () => {
         const fp = friendProfiles[p.id] || (p.gameId ? friendProfiles[p.gameId] : undefined)
         const resolvedPic = p.profilePicture || fp?.profilePicture
         const resolvedAvatar = p.avatar || fp?.avatar
+        const resolvedProfile = p.profile || fp?.profile
 
         return {
           id: p.id,
@@ -110,6 +112,7 @@ const FullScreenGridInner: React.FC = () => {
           name: p.name,
           profilePicture: resolvedPic,
           avatar: resolvedAvatar,
+          profile: resolvedProfile,
           stream: p.isScreenSharing ? peerVoiceStreams[p.id] || null : peerStreams[p.id] || null,
           screenStream: peerScreenStreams[p.id] || (p.isScreenSharing ? peerStreams[p.id] : null),
           isMuted: p.isMuted,

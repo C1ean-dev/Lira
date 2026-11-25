@@ -17,3 +17,21 @@
 .animate-pulse-ring {
   animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+
+@keyframes profile-spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-profile-spin {
+  animation: profile-spin-slow 14s linear infinite;
+}
+
+@keyframes profile-glow {
+  0%, 100% { opacity: 0.78; filter: brightness(1); }
+  50% { opacity: 1; filter: brightness(1.18); }
+}
+
+.animate-profile-glow {
+  animation: profile-glow 3s ease-in-out infinite;
+}

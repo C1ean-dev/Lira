@@ -31,6 +31,9 @@ import { NetworkSignalIcon } from './NetworkSignalIcon'
 import { useNetworkQualityStore } from '../store/useNetworkQualityStore'
 import { STATUS_META } from '../types/game'
 import { PlayerAvatar } from './common/PlayerAvatar'
+import { NameplateArtwork } from './profile/ProfileBar'
+import { getNameplateStyle, resolveProfile } from '../utils/profileUtils'
+import { useProfileModalStore } from '../store/useProfileModalStore'
 import { UpdateDownloadIndicator } from './common/UpdateDownloadIndicator'
 import { UpdateChangelogHover } from './common/UpdateChangelogHover'
 import { isAndroid } from '../utils/platform'
@@ -61,9 +64,12 @@ export const TopNavBar: React.FC<Props> = ({
   const localPlayerName = useGameStore((s) => s.localPlayer.name)
   const localPlayerProfilePicture = useGameStore((s) => s.localPlayer.profilePicture)
   const localPlayerAvatar = useGameStore((s) => s.localPlayer.avatar)
+  const localPlayerProfile = useGameStore((s) => s.localPlayer.profile)
   const localPlayerStatus = useGameStore((s) => s.localPlayer.status)
   const localPlayerStatusText = useGameStore((s) => s.localPlayer.statusText)
   const localPlayerCurrentZoneId = useGameStore((s) => s.localPlayer.currentZoneId)
+  const resolvedLocalProfile = useMemo(() => resolveProfile(localPlayerProfile), [localPlayerProfile])
+  const localNameplate = useMemo(() => getNameplateStyle(resolvedLocalProfile), [resolvedLocalProfile])
   const roomId = useGameStore((s) => s.roomId)
   const updateInfo = useUpdateStore((s) => s.updateInfo)
   const updateStatus = useUpdateStore((s) => s.status)
@@ -482,24 +488,41 @@ onClick={() => PeerManager.getInstance().reconnect()}
         </button>
 
         <button
-          onClick={onOpenAvatarModal}
-          title={`Editar perfil: ${localPlayerName}`}
-          className="flex shrink-0 items-center gap-2 px-2 min-[1800px]:pr-3 py-1 bg-[#1b202c] hover:bg-slate-800 border border-[#2a3142] rounded-xl transition-all group"
+          onClick={() => useProfileModalStore.getState().openLocalProfile('view')}
+          title={`Ver perfil: ${localPlayerName}`}
+          data-nameplate={localNameplate.nameplateId}
+          style={
+            localNameplate.hasCustomNameplate
+              ? { background: localNameplate.background, borderColor: localNameplate.borderColor }
+              : undefined
+          }
+          className={`relative overflow-hidden flex shrink-0 items-center gap-2 px-2 min-[1800px]:pr-3 py-1 border rounded-xl transition-all group ${
+            localNameplate.hasCustomNameplate
+              ? 'hover:brightness-110 shadow-sm'
+              : 'bg-[#1b202c] hover:bg-slate-800 border-[#2a3142]'
+          }`}
         >
-          <PlayerAvatar
-            name={localPlayerName}
-            profilePicture={localPlayerProfilePicture}
-            avatar={localPlayerAvatar}
-            status={localPlayerStatus}
-            showStatus={true}
-            size="sm"
-          />
-          <div className="hidden min-[1800px]:block min-w-0 max-w-[80px] text-left">
-            <div className="truncate text-xs font-bold text-slate-200 group-hover:text-white leading-tight">
-              {localPlayerName}
-            </div>
-            <div className="text-[10px] text-slate-400 leading-tight truncate max-w-[80px]">
-              {localPlayerStatusText}
+          <NameplateArtwork nameplateId={localNameplate.nameplateId} accentColor={localNameplate.accentColor} />
+          <div className="relative z-10 flex items-center gap-2">
+            <PlayerAvatar
+              name={localPlayerName}
+              profilePicture={localPlayerProfilePicture}
+              avatar={localPlayerAvatar}
+              avatarFrame={resolvedLocalProfile.avatarFrame}
+              status={localPlayerStatus}
+              showStatus={true}
+              size="sm"
+              className="rounded-full"
+            />
+            <div className="hidden min-[1800px]:block min-w-0 max-w-[125px] text-left">
+              <div className="flex items-center gap-1 min-w-0">
+                <span className="truncate text-xs font-bold text-slate-100 group-hover:text-white leading-tight drop-shadow-[0_1px_1px_rgba(0,0,0,0.7)]">
+                  {localPlayerName}
+                </span>
+              </div>
+              <div className="text-[10px] text-slate-300/80 leading-tight truncate max-w-[115px]">
+                {localPlayerStatusText}
+              </div>
             </div>
           </div>
         </button>
@@ -603,26 +626,36 @@ onClick={() => PeerManager.getInstance().reconnect()}
           <button type="button"
             onClick={() => {
               setIsMobileMenuOpen(false)
-              onOpenAvatarModal()
+              useProfileModalStore.getState().openLocalProfile('view')
             }}
-            className="flex shrink-0 w-full items-center justify-between gap-3 p-3 rounded-2xl bg-[#1b202c] border border-[#475569] text-left cursor-pointer hover:border-indigo-400 transition-colors"
+            style={
+              localNameplate.hasCustomNameplate
+                ? { background: localNameplate.background, borderColor: localNameplate.borderColor }
+                : undefined
+            }
+            className={`relative overflow-hidden flex shrink-0 w-full items-center justify-between gap-3 p-3 rounded-2xl border text-left cursor-pointer hover:border-indigo-400 transition-colors ${
+              localNameplate.hasCustomNameplate ? '' : 'bg-[#1b202c] border-[#475569]'
+            }`}
           >
-            <div className="flex min-w-0 items-center gap-3">
+            <NameplateArtwork nameplateId={localNameplate.nameplateId} accentColor={localNameplate.accentColor} />
+            <div className="relative z-10 flex min-w-0 items-center gap-3">
               <PlayerAvatar
                 name={localPlayerName}
                 profilePicture={localPlayerProfilePicture}
                 avatar={localPlayerAvatar}
+                avatarFrame={resolvedLocalProfile.avatarFrame}
                 status={localPlayerStatus}
                 showStatus={true}
                 size="md"
+                className="rounded-full"
               />
               <div className="min-w-0">
                 <div className="truncate text-sm font-bold text-slate-100" title={localPlayerName}>{localPlayerName}</div>
                 <div className="truncate text-xs text-slate-300">{localPlayerStatusText}</div>
               </div>
             </div>
-            <span className="shrink-0 whitespace-nowrap text-xs text-indigo-200 font-semibold px-2 py-1 rounded-lg bg-indigo-950 border border-indigo-700">
-              Editar Perfil
+            <span className="relative z-10 shrink-0 whitespace-nowrap text-xs text-indigo-200 font-semibold px-2 py-1 rounded-lg bg-indigo-950/90 border border-indigo-700">
+              Ver Perfil
             </span>
           </button>
 
@@ -764,7 +797,7 @@ onClick={() => PeerManager.getInstance().reconnect()}
           <DirectConnectionPanel role="host" />
         </div>
       </dialog>}
-      {isReportIssueOpen && createPortal(<ReportIssueModal isOpen onClose={closeReportIssue} />, document.body)}
+      {isReportIssueOpen && typeof document !== 'undefined' && createPortal(<ReportIssueModal isOpen onClose={closeReportIssue} />, document.body)}
     </header>
   )
 }

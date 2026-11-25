@@ -1,6 +1,8 @@
 import React from 'react'
 import { PlayerAvatar } from '../common/PlayerAvatar'
 import { ChatPeople, ChatPerson } from '../../utils/chatPeople'
+import { NameplateArtwork } from '../profile/ProfileBar'
+import { getNameplateStyle, resolveProfile } from '../../utils/profileUtils'
 
 interface Props {
   people: ChatPeople
@@ -20,38 +22,54 @@ const PersonRow: React.FC<Pick<Props, 'onOpen' | 'onContextMenu'> & { person: Ch
   person,
   onOpen,
   onContextMenu,
-}) => (
-  <button
-    type="button"
-    onClick={() => onOpen(person)}
-    onContextMenu={onContextMenu ? (e) => onContextMenu(e, person) : undefined}
-    className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition-all ${
-      person.isCurrent
-        ? 'bg-indigo-600/30 text-indigo-300 font-semibold border border-indigo-500/30'
-        : person.isOnline
-        ? 'text-slate-300 hover:text-white hover:bg-slate-800/40'
-        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
-    }`}
-    title={whereabouts(person)}
-  >
-    <div className="flex items-center gap-2 truncate">
-      <PlayerAvatar
-        name={person.name}
-        player={person.avatarSource}
-        showStatus={true}
-        status={person.status}
-        size="xs"
-        className={person.isOnline ? 'rounded-full' : 'rounded-full opacity-70'}
-      />
-      <span className="truncate text-xs">{person.name}</span>
-    </div>
-    {person.unreadCount > 0 && (
-      <span className="bg-indigo-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-        {person.unreadCount}
-      </span>
-    )}
-  </button>
-)
+}) => {
+  const resolvedProfile = resolveProfile(person.avatarSource?.profile)
+  const nameplate = getNameplateStyle(resolvedProfile)
+  const useCustomBg = nameplate.hasCustomNameplate && !person.isCurrent
+
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(person)}
+      onContextMenu={onContextMenu ? (e) => onContextMenu(e, person) : undefined}
+      style={
+        useCustomBg
+          ? { background: nameplate.background, borderColor: nameplate.borderColor }
+          : undefined
+      }
+      className={`relative overflow-hidden w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs transition-all ${
+        person.isCurrent
+          ? 'bg-indigo-600/30 text-indigo-300 font-semibold border border-indigo-500/30'
+          : useCustomBg
+          ? 'border text-slate-100 hover:brightness-110'
+          : person.isOnline
+          ? 'text-slate-300 hover:text-white hover:bg-slate-800/40'
+          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+      }`}
+      title={whereabouts(person)}
+    >
+      {useCustomBg && (
+        <NameplateArtwork nameplateId={nameplate.nameplateId} accentColor={nameplate.accentColor} />
+      )}
+      <div className="relative z-10 flex items-center gap-2 truncate min-w-0">
+        <PlayerAvatar
+          name={person.name}
+          player={person.avatarSource}
+          showStatus={true}
+          status={person.status}
+          size="xs"
+          className={person.isOnline ? 'rounded-full' : 'rounded-full opacity-70'}
+        />
+        <span className="truncate text-xs">{person.name}</span>
+      </div>
+      {person.unreadCount > 0 && (
+        <span className="bg-indigo-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold relative z-10 shrink-0">
+          {person.unreadCount}
+        </span>
+      )}
+    </button>
+  )
+}
 
 export const ChatPeopleList: React.FC<Props> = ({ people, onOpen, onContextMenu }) => {
   const { friends, inSpace, conversations } = people

@@ -4,6 +4,9 @@ import { playerSchema } from '../validation/schemas'
 import { create } from 'zustand'
 import { avatarWithAssetReferences } from '../assets/avatarReferences'
 import { Player, PresenceStatus, PresenceInfo, sanitizePresence, STATUS_META, ReactionItem, AvatarConfig, UserRole, PlayerPermissions, ConnectionStatus, RoomKnockRequest, KnockStatus, FriendProfile } from '../types/game'
+import { UserProfile } from '../types/profile'
+import { DEFAULT_USER_PROFILE } from '../data/profileCatalog'
+import { resolveProfile } from '../utils/profileUtils'
 import { SignalingTier, CURRENT_LIRA_VERSION, MIN_COMPATIBLE_VERSION } from '../types/p2p'
 import { DEFAULT_AVATAR } from '../engine/Constants'
 import { PublicRoomsService } from '../services/publicRoomsService'
@@ -22,6 +25,7 @@ interface SavedProfile {
   id?: string
   name?: string
   profilePicture?: string
+  profile?: UserProfile
   avatar?: AvatarConfig
   status?: PresenceStatus
   statusText?: string
@@ -74,8 +78,12 @@ const syncPublicRoomRegistration = (roomId: string | null, isPublic: boolean, ro
 const saved = loadSavedProfile() || {}
 
 const savedUserId = isUserId(saved.id) ? saved.id : generateUserId()
+const initialProfile: UserProfile = {
+  ...resolveProfile(saved.profile),
+  memberSince: saved.profile?.memberSince || Date.now(),
+}
 if (saved.id !== savedUserId) {
-  saveProfile({ id: savedUserId })
+  saveProfile({ id: savedUserId, profile: initialProfile })
 }
 
 interface RoomSessionOptions {
@@ -256,7 +264,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
           name: profileData?.name || remote?.name || 'Amigo',
           profilePicture: profileData?.profilePicture || remote?.profilePicture,
           avatar: profileData?.avatar || remote?.avatar,
+          profile: profileData?.profile || remote?.profile,
           gameId: profileData?.gameId || remote?.gameId,
+          friendSince: Date.now(),
           lastSeen: Date.now(),
           ...profileData,
         }
@@ -284,6 +294,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         [profile.id]: {
           ...state.friendProfiles[profile.id],
           ...profile,
+          friendSince: state.friendProfiles[profile.id]?.friendSince ?? profile.friendSince ?? Date.now(),
           lastSeen: profile.lastSeen || Date.now(),
         },
       }
@@ -306,6 +317,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
                 ...nextProfiles[profile.id],
                 profilePicture: nextProfiles[profile.id].profilePicture ?? old.profilePicture,
                 avatar: nextProfiles[profile.id].avatar ?? old.avatar,
+                profile: nextProfiles[profile.id].profile ?? old.profile,
+                friendSince: nextProfiles[profile.id].friendSince ?? old.friendSince,
               }
             }
             delete nextProfiles[key]
@@ -452,6 +465,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     },
     avatar: saved.avatar ? { ...DEFAULT_AVATAR, ...saved.avatar } : { ...DEFAULT_AVATAR },
     profilePicture: saved.profilePicture || '',
+    profile: initialProfile,
     ...sanitizePresence(saved, { allowManualAway: true }),
     currentZoneId: null,
     lastUpdated: Date.now(),
@@ -465,15 +479,33 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   setLocalPlayer: (data) => {
     if (data.avatar) data = { ...data, avatar: avatarWithAssetReferences(data.avatar) }
-    if (data.name !== undefined || data.avatar !== undefined || data.profilePicture !== undefined) {
+    const currentProfile = get().localPlayer.profile || DEFAULT_USER_PROFILE
+    const nextProfile =
+      data.profile !== undefined
+        ? {
+            ...resolveProfile({
+              ...currentProfile,
+              ...data.profile,
+            }),
+            memberSince: data.profile.memberSince ?? currentProfile.memberSince ?? Date.now(),
+          }
+        : undefined
+    const nextData = nextProfile !== undefined ? { ...data, profile: nextProfile } : data
+    if (
+      nextData.name !== undefined ||
+      nextData.avatar !== undefined ||
+      nextData.profilePicture !== undefined ||
+      nextData.profile !== undefined
+    ) {
       saveProfile({
-        name: data.name,
-        avatar: data.avatar,
-        profilePicture: data.profilePicture,
+        name: nextData.name,
+        avatar: nextData.avatar,
+        profilePicture: nextData.profilePicture,
+        profile: nextData.profile,
       })
     }
     set((state) => ({
-      localPlayer: { ...state.localPlayer, ...data, lastUpdated: Date.now() },
+      localPlayer: { ...state.localPlayer, ...nextData, lastUpdated: Date.now() },
     }))
   },
 
@@ -591,6 +623,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
             name: player.name || existingFp.name,
             profilePicture: player.profilePicture !== undefined ? player.profilePicture : existingFp.profilePicture,
             avatar: player.avatar || existingFp.avatar,
+            profile: player.profile !== undefined ? player.profile : existingFp.profile,
             lastSeen: Date.now(),
           },
         }

@@ -37,6 +37,10 @@ import { Player, UserRole } from '../types/game'
 import { goToPlayer } from '../utils/goToPlayer'
 import { PlayerAvatar } from './common/PlayerAvatar'
 import { SpotifyIcon } from './common/SpotifyIcon'
+import { NameplateArtwork } from './profile/ProfileBar'
+import { MedalBadgeList } from './profile/MedalBadgeList'
+import { getNameplateStyle, resolveProfile } from '../utils/profileUtils'
+import { buildProfileTargetFromPlayer, useProfileModalStore } from '../store/useProfileModalStore'
 import { getPlayerUserId, findFriendKey } from '../utils/userId'
 import { PeerManager } from '../p2p/PeerManager'
 
@@ -274,26 +278,49 @@ const OnlineUsersMenuInner: React.FC = () => {
             const pingColor = pingMs < 60 ? 'text-emerald-400' : pingMs < 120 ? 'text-amber-400' : 'text-rose-400'
             const pingDot = pingMs < 60 ? 'bg-emerald-400' : pingMs < 120 ? 'bg-amber-400' : 'bg-rose-400'
 
+            const resolvedProfile = resolveProfile(player.profile)
+            const nameplate = getNameplateStyle(resolvedProfile)
+
             return (
               <div
                 key={player.id}
-                className="p-3 rounded-2xl bg-[#12151d]/70 hover:bg-[#12151d] border border-[#2a3142] transition-all space-y-2.5"
+                data-nameplate={nameplate.nameplateId}
+                style={
+                  nameplate.hasCustomNameplate
+                    ? { background: nameplate.background, borderColor: nameplate.borderColor }
+                    : undefined
+                }
+                className={`relative overflow-hidden p-3 rounded-2xl border transition-all space-y-2.5 ${
+                  nameplate.hasCustomNameplate
+                    ? 'hover:brightness-110'
+                    : 'bg-[#12151d]/70 hover:bg-[#12151d] border-[#2a3142]'
+                }`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
+                <NameplateArtwork nameplateId={nameplate.nameplateId} accentColor={nameplate.accentColor} />
+                <div className="relative z-10 flex items-center justify-between gap-2">
+                  <div
+                    onClick={() =>
+                      useProfileModalStore
+                        .getState()
+                        .openProfile(buildProfileTargetFromPlayer(player, isLocal), 'view')
+                    }
+                    className="flex items-center gap-2.5 min-w-0 cursor-pointer group/profile"
+                    title={`Ver perfil de ${player.name}`}
+                  >
                     <PlayerAvatar
                       player={player}
                       showStatus={true}
                       size="md"
+                      className="rounded-full"
                     />
 
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-xs font-bold text-slate-100 truncate">
+                        <span className="text-xs font-bold text-slate-100 group-hover/profile:text-white group-hover/profile:underline truncate drop-shadow-[0_1px_1px_rgba(0,0,0,0.7)]">
                           {player.name}
                         </span>
                         {isLocal && (
-                          <span className="text-[9px] bg-slate-800 text-slate-300 px-1.5 py-0.2 rounded border border-slate-700 font-semibold">
+                          <span className="text-[9px] bg-slate-800/90 text-slate-300 px-1.5 py-0.2 rounded border border-slate-700 font-semibold">
                             Você
                           </span>
                         )}
@@ -316,6 +343,11 @@ const OnlineUsersMenuInner: React.FC = () => {
                           </span>
                         )}
                       </div>
+                      {resolvedProfile.medals && resolvedProfile.medals.length > 0 && (
+                        <div className="mt-1">
+                          <MedalBadgeList medals={resolvedProfile.medals} size="xs" maxVisible={5} />
+                        </div>
+                      )}
 
                       <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
                         <span className="flex items-center gap-0.5 text-indigo-300">
@@ -487,12 +519,24 @@ const OnlineUsersMenuInner: React.FC = () => {
                 </div>
 
                 {isMenuOpen && !isLocal && (
-                  <div className="p-3 bg-[#181c26] rounded-xl border border-indigo-500/30 space-y-2.5 animate-in fade-in duration-150">
+                  <div className="relative z-10 p-3 bg-[#181c26]/95 rounded-xl border border-indigo-500/30 space-y-2.5 animate-in fade-in duration-150">
                     <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                       Ações & Interação
                     </div>
 
                     <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        onClick={() => {
+                          useProfileModalStore
+                            .getState()
+                            .openProfile(buildProfileTargetFromPlayer(player, false), 'view')
+                          setSelectedUserMenuId(null)
+                        }}
+                        className="py-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-xs flex items-center gap-1.5 border border-slate-700 transition-colors col-span-2"
+                      >
+                        <UserCheck className="w-3.5 h-3.5 text-sky-400" />
+                        <span>Ver Perfil Completo</span>
+                      </button>
                       <button
                         onClick={() => {
                           goToPlayer(player.id)

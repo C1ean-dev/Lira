@@ -11,11 +11,13 @@ import {
   Radio,
   Check,
   Lock,
+  UserCircle,
 } from 'lucide-react'
 import { ParticipantData } from './GridParticipantTile'
 import { useMediaStore } from '../../store/useMediaStore'
 import { useGameStore } from '../../store/useGameStore'
 import { useMapStore } from '../../store/useMapStore'
+import { buildProfileTargetFromPlayer, useProfileModalStore } from '../../store/useProfileModalStore'
 import { PeerManager } from '../../p2p/PeerManager'
 import { useSpotifyJamStore } from '../../store/useSpotifyJamStore'
 import { MediaManager } from '../../media/MediaManager'
@@ -248,6 +250,34 @@ export const ParticipantContextMenu: React.FC<Props> = ({ user, x, y, onClose })
 
       {!user.isLocal && (
         <div className="space-y-1">
+          {!user.isDjBot && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                if (remotePlayer) {
+                  useProfileModalStore.getState().openProfile(buildProfileTargetFromPlayer(remotePlayer, false), 'view')
+                } else {
+                  useProfileModalStore.getState().openProfile(
+                    {
+                      userId: user.gameId || user.id,
+                      peerId: user.id,
+                      name: user.name,
+                      profilePicture: user.profilePicture,
+                      avatar: user.avatar,
+                      profile: user.profile,
+                    },
+                    'view'
+                  )
+                }
+                onClose()
+              }}
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left text-xs font-semibold hover:bg-indigo-600/20 text-slate-100 transition-colors"
+            >
+              <UserCircle className="w-4 h-4 text-sky-400 shrink-0" />
+              <span>Ver Perfil Completo</span>
+            </button>
+          )}
           <button
             onClick={handleToggleSilenceForMe}
             className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all ${

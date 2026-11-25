@@ -1,8 +1,10 @@
 import React, { useMemo, useState } from 'react'
 import { AvatarConfig, PresenceStatus, STATUS_META } from '../../types/game'
+import { AvatarFrameId, UserProfile } from '../../types/profile'
 import { getPlayerAvatarSrc } from '../../utils/avatarUtils'
 import { MoonPhaseIcon } from './MoonPhaseIcon'
 import { SpotifyIcon } from './SpotifyIcon'
+import { AvatarFrameOverlay } from '../profile/AvatarFrameOverlay'
 import { useCustomAssetsStore, onCustomAssetsChange } from '../../store/useCustomAssetsStore'
 import { getAssetImageRevision } from '../../assets/assetRevision'
 
@@ -11,6 +13,7 @@ export interface PlayerAvatarProps {
     name?: string
     profilePicture?: string
     avatar?: AvatarConfig
+    profile?: UserProfile
     status?: PresenceStatus | 'offline' | string
     spotifyActivity?: {
       track: string
@@ -22,6 +25,7 @@ export interface PlayerAvatarProps {
   name?: string
   profilePicture?: string
   avatar?: AvatarConfig
+  avatarFrame?: AvatarFrameId
   status?: PresenceStatus | 'offline' | string
   showStatus?: boolean
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl'
@@ -47,6 +51,7 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
   name,
   profilePicture,
   avatar,
+  avatarFrame,
   status,
   showStatus = false,
   size = 'md',
@@ -62,6 +67,7 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
   const effectiveName = name || player?.name || 'Player'
   const effectiveCustomPic = profilePicture !== undefined ? profilePicture : player?.profilePicture
   const effectiveAvatar = avatar || player?.avatar
+  const effectiveFrame: AvatarFrameId = avatarFrame ?? player?.profile?.avatarFrame ?? 'none'
   const effectiveStatus = status || player?.status || 'available'
   const isDjBot = Boolean((player as any)?.isDjBot || effectiveName === 'Spotify DJ' || effectiveName === 'DJ Spotify')
 
@@ -121,38 +127,45 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
     )
   }
 
+  const hasFrame = effectiveFrame && effectiveFrame !== 'none'
+  const isCompactFrame = size === 'xs' || size === 'sm'
+
   return (
     <div
       onClick={onClick}
-      className={`relative shrink-0 flex items-center justify-center overflow-hidden border border-white/15 shadow-sm select-none ${
-        customSizeClass || sizeClasses.container
-      } ${className}`}
+      className={`relative shrink-0 flex items-center justify-center shadow-sm select-none ${
+        hasFrame ? '' : 'border border-white/15'
+      } ${customSizeClass || sizeClasses.container} ${className}`}
       style={{ backgroundColor: hasCustomPic ? '#12151d' : `${bgColor}25` }}
     >
-      {!imgError && avatarSrc ? (
-        <img
-          src={avatarSrc}
-          alt={alt || effectiveName}
-          onError={() => setImgError(true)}
-          className={`w-full h-full ${
-            hasCustomPic
-              ? 'object-cover'
-              : `object-contain pixelated ${characterPadding} transition-transform duration-150`
-          }`}
-          loading="lazy"
-        />
-      ) : (
-        <div
-          className="w-full h-full flex items-center justify-center font-bold text-white uppercase"
-          style={{ backgroundColor: bgColor }}
-        >
-          {effectiveName.charAt(0)}
-        </div>
-      )}
+      <div className="w-full h-full rounded-[inherit] overflow-hidden flex items-center justify-center">
+        {!imgError && avatarSrc ? (
+          <img
+            src={avatarSrc}
+            alt={alt || effectiveName}
+            onError={() => setImgError(true)}
+            className={`w-full h-full ${
+              hasCustomPic
+                ? 'object-cover'
+                : `object-contain pixelated ${characterPadding} transition-transform duration-150`
+            }`}
+            loading="lazy"
+          />
+        ) : (
+          <div
+            className="w-full h-full flex items-center justify-center font-bold text-white uppercase"
+            style={{ backgroundColor: bgColor }}
+          >
+            {effectiveName.charAt(0)}
+          </div>
+        )}
+      </div>
+
+      {hasFrame && <AvatarFrameOverlay frame={effectiveFrame} compact={isCompactFrame} />}
 
       {showStatus && (
         <div
-          className={`absolute -bottom-0.5 -right-0.5 rounded-full ring-2 ring-[#12151d] overflow-hidden flex items-center justify-center bg-[#12151d] ${sizeClasses.dot}`}
+          className={`absolute -bottom-0.5 -right-0.5 z-20 rounded-full ring-2 ring-[#12151d] overflow-hidden flex items-center justify-center bg-[#12151d] ${sizeClasses.dot}`}
           title={`Status: ${statusMeta.label}${(statusMeta as any).moonPhase ? ` (${(statusMeta as any).moonPhase})` : ''}`}
         >
           <MoonPhaseIcon status={effectiveStatus} className="w-full h-full" withBackground={true} />
@@ -172,7 +185,7 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
               window.open(`https://open.spotify.com/search/${encodeURIComponent(query)}`, '_blank')
             }
           }}
-          className={`absolute -top-0.5 -right-0.5 rounded-full ring-2 ring-[#12151d] overflow-hidden flex items-center justify-center bg-[#1db954] text-black shadow-md cursor-pointer hover:scale-125 transition-transform ${sizeClasses.dot}`}
+          className={`absolute -top-0.5 -right-0.5 z-20 rounded-full ring-2 ring-[#12151d] overflow-hidden flex items-center justify-center bg-[#1db954] text-black shadow-md cursor-pointer hover:scale-125 transition-transform ${sizeClasses.dot}`}
           title={`Ouvindo no Spotify: ${player.spotifyActivity.track}${player.spotifyActivity.artist ? ` - ${player.spotifyActivity.artist}` : ''} (Clique para abrir)`}
         >
           <SpotifyIcon size={10} className="w-full h-full text-black p-0.5" />
