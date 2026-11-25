@@ -29,6 +29,7 @@ import {
   AudioLines,
   EyeOff,
   GripHorizontal,
+  Play,
 } from 'lucide-react'
 
 const NOISE_ENGINES = [
@@ -105,6 +106,10 @@ interface VideoTileProps {
   suppressAudio?: boolean
   liveOptIn?: boolean
   liveWatching?: boolean
+  liveInvite?: 'available' | 'watching' | 'local'
+  isLiveSelected?: boolean
+  onWatchLive?: () => void
+  onFocusLive?: () => void
 }
 
 export const VideoTile: React.FC<VideoTileProps> = ({
@@ -128,6 +133,10 @@ export const VideoTile: React.FC<VideoTileProps> = ({
   suppressAudio = false,
   liveOptIn = false,
   liveWatching = false,
+  liveInvite,
+  isLiveSelected = false,
+  onWatchLive,
+  onFocusLive,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const frameRef = useRef<HTMLDivElement | null>(null)
@@ -184,11 +193,19 @@ export const VideoTile: React.FC<VideoTileProps> = ({
         onContextMenu?.(e)
       }}
       className={`group relative w-32 h-24 bg-lira-surface rounded-[8px] overflow-hidden border transition-colors flex items-center justify-center shrink-0 cursor-pointer select-none font-mono ${
-        isScreenTrack
-          ? 'border-lira-error hover:border-lira-error'
+        isScreenTrack || liveInvite
+          ? isLiveSelected
+            ? 'border-lira-error ring-1 ring-lira-error/40'
+            : 'border-lira-error hover:border-lira-error'
           : 'border-lira-quiet hover:border-lira-accent'
       }`}
-      title={isScreenTrack ? 'Transmissão de Tela - Clique para expandir' : 'Clique para expandir em tela cheia'}
+      title={
+        liveInvite === 'available'
+          ? `${name} abriu uma live - Clique em Assistir para ver`
+          : isScreenTrack
+          ? 'Transmissão de Tela - Clique para expandir'
+          : 'Clique para expandir em tela cheia'
+      }
     >
       {!liveGate.needsClick && (
         <video
@@ -227,8 +244,56 @@ export const VideoTile: React.FC<VideoTileProps> = ({
         />
       )}
 
+      {liveInvite === 'available' && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 pb-4 bg-lira-ground/80 pointer-events-none font-mono">
+          <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-lira-error">
+            <Radio className="w-2.5 h-2.5 text-lira-error animate-pulse" />
+            <span>Abriu live</span>
+          </span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onWatchLive?.()
+            }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            className="pointer-events-auto flex items-center gap-1 px-2.5 py-1 rounded-[6px] bg-lira-error hover:bg-lira-error/90 text-lira-ground text-[10px] font-bold transition-colors active:scale-95 cursor-pointer"
+            title={`Assistir à live de ${name}`}
+          >
+            <Play className="w-2.5 h-2.5 fill-current" />
+            <span>Assistir</span>
+          </button>
+        </div>
+      )}
+
       {(liveGate.needsClick || liveGate.connecting) && (
         <LiveWatchPrompt size="tile" name={name} connecting={liveGate.connecting} onWatch={liveGate.watch} />
+      )}
+
+      {(liveInvite === 'watching' || liveInvite === 'local') && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            onFocusLive?.()
+          }}
+          onDoubleClick={(e) => e.stopPropagation()}
+          className={`absolute top-1.5 left-1.5 z-10 flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] text-[8px] font-mono font-bold transition-colors cursor-pointer ${
+            isLiveSelected
+              ? 'bg-lira-error text-lira-ground animate-pulse'
+              : 'bg-lira-error/85 hover:bg-lira-error text-lira-ground'
+          }`}
+          title={
+            liveInvite === 'local'
+              ? 'Mostrar sua tela no mini display'
+              : isLiveSelected
+              ? `Assistindo live de ${name}`
+              : `Mostrar live de ${name} no mini display`
+          }
+        >
+          <Radio className="w-2.5 h-2.5" />
+          <span>{isLiveSelected ? 'AO VIVO' : liveInvite === 'local' ? 'SUA LIVE' : 'VER LIVE'}</span>
+        </button>
       )}
 
       {(isScreenSharing || isScreenTrack) && (
@@ -269,7 +334,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
 
       {!isLocal && !liveGate.needsClick && (
         <div
-          className="absolute top-1.5 right-1.5 group/vol flex items-center bg-lira-panel/95 hover:border-lira-accent border border-lira-rule rounded-[6px] px-1 py-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
+          className="absolute top-1.5 right-1.5 z-10 group/vol flex items-center bg-lira-panel/95 hover:border-lira-accent border border-lira-rule rounded-[6px] px-1 py-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
           onClick={(e) => e.stopPropagation()}
         >
           {liveGate.watching && (
@@ -337,7 +402,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
         </div>
       )}
 
-      <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between px-2 py-0.5 bg-lira-ground/85 border border-lira-quiet rounded-[6px] text-[10px] font-mono text-lira-ink">
+      <div className="absolute bottom-1.5 left-1.5 right-1.5 z-10 flex items-center justify-between px-2 py-0.5 bg-lira-ground/85 border border-lira-quiet rounded-[6px] text-[10px] font-mono text-lira-ink">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="truncate font-medium">
             {isScreenTrack ? `Tela (${name})` : isLocal ? `${name} (Você)` : name}
@@ -389,13 +454,15 @@ export const VideoTile: React.FC<VideoTileProps> = ({
 }
 
 interface FloatingScreenPreviewProps {
-  stream: MediaStream
+  stream: MediaStream | null
   presenterId?: string
   presenterName: string
   isLocal: boolean
   suppressAudio?: boolean
   asksFirst?: boolean
   watching?: boolean
+  lives?: Array<{ id: string; label: string; isLocal: boolean }>
+  onSelectLive?: (id: string) => void
   onExpand: () => void
   onClose: () => void
 }
@@ -408,6 +475,8 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
   suppressAudio = false,
   asksFirst = false,
   watching = false,
+  lives,
+  onSelectLive,
   onExpand,
   onClose,
 }) => {
@@ -530,6 +599,29 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
         </div>
       </div>
 
+      {lives && lives.length > 1 && (
+        <div className="flex items-center gap-1 px-2 py-1 bg-lira-surface/80 border-b border-dashed border-lira-rule/60 overflow-x-auto">
+          {lives.map((entry) => {
+            const isCurrent = entry.id === presenterId
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => onSelectLive?.(entry.id)}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-[6px] text-[10px] font-mono font-bold transition-colors shrink-0 cursor-pointer ${
+                  isCurrent
+                    ? 'bg-lira-accent text-lira-ground border border-lira-accent'
+                    : 'bg-lira-panel text-lira-muted border border-lira-quiet hover:text-lira-ink hover:border-lira-accent'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${isCurrent ? 'bg-lira-error animate-pulse' : 'bg-lira-error/70'}`} />
+                <span className="truncate max-w-[96px]">{entry.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       <div
         onClick={onExpand}
         ref={frameRef}
@@ -633,6 +725,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
   const [isActiveStreamMenuOpen, setIsActiveStreamMenuOpen] = useState(false)
   const [isNoiseMenuOpen, setIsNoiseMenuOpen] = useState(false)
   const [isFloatingPreviewVisible, setIsFloatingPreviewVisible] = useState(true)
+  const [selectedLiveId, setSelectedLiveId] = useState<string | null>(null)
   const [isRoomSettingsOpen, setIsRoomSettingsOpen] = useState(false)
   const [isCardCollapsed, setIsCardCollapsed] = useState(false)
   const [contextMenuState, setContextMenuState] = useState<{ user: ParticipantData; x: number; y: number } | null>(null)
@@ -761,29 +854,72 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
     (p) => callStates[p.id] === 'reconnecting'
   )
 
-  const remotePresenters = peersInSameZone.filter((p) => p.isScreenSharing && (peerScreenStreams[p.id] || peerStreams[p.id]))
-  const remotePresenter = remotePresenters.find((p) => watchingLives[p.id]) || remotePresenters[0]
-  const hasActiveScreenShare = isScreenSharing || !!remotePresenter
+  const previewableLives: Array<{
+    id: string
+    name: string
+    stream: MediaStream | null
+    isLocal: boolean
+    asksFirst: boolean
+    watching: boolean
+    watchedAt: number
+  }> = []
 
-  const activeScreenStream = isScreenSharing
-    ? localScreenStream
-    : remotePresenter
-    ? peerScreenStreams[remotePresenter.id] || peerStreams[remotePresenter.id]
-    : null
+  if (isScreenSharing && localScreenStream) {
+    previewableLives.push({
+      id: localPlayer.id,
+      name: localPlayer.name,
+      stream: localScreenStream,
+      isLocal: true,
+      asksFirst: false,
+      watching: false,
+      watchedAt: 0,
+    })
+  }
 
-  const presenterId = isScreenSharing
-    ? localPlayer.id
-    : remotePresenter
-    ? remotePresenter.id
-    : ''
+  const pendingRemoteLives = peersInSameZone.filter(
+    (p) => p.isScreenSharing && p.liveOptIn && !watchingLives[p.id]
+  )
 
-  const presenterName = isScreenSharing
-    ? localPlayer.name
-    : remotePresenter
-    ? remotePresenter.name
-    : ''
+  for (const peer of peersInSameZone) {
+    if (!peer.isScreenSharing) continue
+    const screenStream = peerScreenStreams[peer.id] || peerStreams[peer.id] || null
+    const asksFirst = !!peer.liveOptIn
+    const watching = !!watchingLives[peer.id]
+    if ((asksFirst && watching) || (!asksFirst && screenStream)) {
+      previewableLives.push({
+        id: peer.id,
+        name: peer.name,
+        stream: screenStream,
+        isLocal: false,
+        asksFirst,
+        watching,
+        watchedAt: watchingLives[peer.id] || 0,
+      })
+    }
+  }
 
-  const isPresenterLocal = isScreenSharing
+  const mostRecentWatchedLive = previewableLives
+    .filter((entry) => !entry.isLocal && entry.watching)
+    .sort((a, b) => b.watchedAt - a.watchedAt)[0]
+
+  const activeLive =
+    (selectedLiveId ? previewableLives.find((entry) => entry.id === selectedLiveId) : undefined) ||
+    mostRecentWatchedLive ||
+    previewableLives[0] ||
+    null
+
+  const hasPreviewableLive = !!activeLive
+
+  const handleWatchPeerLive = (peerId: string) => {
+    useLiveWatchStore.getState().watch(peerId)
+    setSelectedLiveId(peerId)
+    setIsFloatingPreviewVisible(true)
+  }
+
+  const handleFocusLive = (liveId: string) => {
+    setSelectedLiveId(liveId)
+    setIsFloatingPreviewVisible(true)
+  }
 
   const handleOpenRoomChat = () => {
     const chatStore = useChatStore.getState()
@@ -817,16 +953,23 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
           position ? '' : 'bottom-4 left-[calc(var(--rail-width)+16px)]'
         } ${isDragging ? 'cursor-grabbing' : ''}`}
       >
-        {hasActiveScreenShare && activeScreenStream && isFloatingPreviewVisible && (
+        {activeLive && isFloatingPreviewVisible && (
           <div className="absolute bottom-full left-0 pb-2">
             <FloatingScreenPreview
-              stream={activeScreenStream}
-              presenterId={presenterId}
-              presenterName={presenterName}
-              isLocal={isPresenterLocal}
+              key={activeLive.id}
+              stream={activeLive.stream}
+              presenterId={activeLive.id}
+              presenterName={activeLive.name}
+              isLocal={activeLive.isLocal}
               suppressAudio={suppressAudio}
-              asksFirst={!isPresenterLocal && !!remotePresenter?.liveOptIn}
-              watching={!isPresenterLocal && !!remotePresenter && !!watchingLives[remotePresenter.id]}
+              asksFirst={activeLive.asksFirst}
+              watching={activeLive.watching}
+              lives={previewableLives.map((entry) => ({
+                id: entry.id,
+                label: entry.isLocal ? 'Sua Tela' : entry.name,
+                isLocal: entry.isLocal,
+              }))}
+              onSelectLive={handleFocusLive}
               onExpand={() => setGridCallOpen(true)}
               onClose={() => setIsFloatingPreviewVisible(false)}
             />
@@ -880,7 +1023,23 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                 </button>
               )}
 
-              {hasActiveScreenShare && !isFloatingPreviewVisible && (
+              {isCardCollapsed && pendingRemoteLives.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsCardCollapsed(false)}
+                  className="px-2 py-0.5 rounded-[6px] bg-lira-error/15 text-lira-error border border-lira-error/40 hover:bg-lira-error hover:text-lira-ground transition-colors text-[10px] font-mono font-bold flex items-center gap-1 animate-pulse"
+                  title={
+                    pendingRemoteLives.length === 1
+                      ? `${pendingRemoteLives[0].name} abriu live - Clique para ver`
+                      : `${pendingRemoteLives.length} pessoas abriram live - Clique para ver`
+                  }
+                >
+                  <Radio className="w-3 h-3" />
+                  <span>{pendingRemoteLives.length === 1 ? '1 live' : `${pendingRemoteLives.length} lives`}</span>
+                </button>
+              )}
+
+              {hasPreviewableLive && !isFloatingPreviewVisible && (
                 <button
                   onClick={() => setIsFloatingPreviewVisible(true)}
                   className="px-2 py-0.5 rounded-[6px] bg-lira-error/15 text-lira-error border border-lira-error/40 hover:bg-lira-error hover:text-lira-ground transition-colors text-[10px] font-mono font-bold flex items-center gap-1"
@@ -943,6 +1102,9 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               isCameraOff={isCameraOff}
               isLocal={true}
               isScreenSharing={false}
+              liveInvite={isScreenSharing && localScreenStream ? 'local' : undefined}
+              isLiveSelected={isFloatingPreviewVisible && activeLive?.id === localPlayer.id}
+              onFocusLive={() => handleFocusLive(localPlayer.id)}
               profilePicture={localPlayer.profilePicture}
               avatar={localPlayer.avatar}
               suppressAudio={suppressAudio}
@@ -972,6 +1134,8 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               const friendProfile = friendProfiles[peer.id] || (peer.gameId ? friendProfiles[peer.gameId] : undefined)
               const resolvedPic = peer.profilePicture || friendProfile?.profilePicture
               const resolvedAvatar = peer.avatar || friendProfile?.avatar
+              const isPeerPendingLive = Boolean(peer.isScreenSharing && peer.liveOptIn && !watchingLives[peer.id])
+              const isPeerPreviewableLive = previewableLives.some((entry) => entry.id === peer.id)
 
               return (
                 <VideoTile
@@ -988,6 +1152,10 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                   isScreenTrack={false}
                   liveOptIn={peer.liveOptIn}
                   liveWatching={!!watchingLives[peer.id]}
+                  liveInvite={isPeerPendingLive ? 'available' : isPeerPreviewableLive ? 'watching' : undefined}
+                  isLiveSelected={isFloatingPreviewVisible && activeLive?.id === peer.id}
+                  onWatchLive={() => handleWatchPeerLive(peer.id)}
+                  onFocusLive={() => handleFocusLive(peer.id)}
                   profilePicture={resolvedPic}
                   avatar={resolvedAvatar}
                   suppressAudio={suppressAudio}
