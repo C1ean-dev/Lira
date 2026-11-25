@@ -13,7 +13,7 @@ import { PixiAuraSystem, type AuraActorInput } from './PixiAuraSystem'
 import { PixiEntityLayer } from './PixiEntityLayer'
 import { PixiFloorLayer } from './PixiFloorLayer'
 import { PixiFurnitureLayer } from './PixiFurnitureLayer'
-import { extractMapLights, PixiLightingSystem, type LightDescriptor } from './PixiLightingSystem'
+import { buildPlayerPersonalLights, extractMapLights, PixiLightingSystem, type LightDescriptor } from './PixiLightingSystem'
 import { type OverlayRenderState, PixiOverlayLayer } from './PixiOverlayLayer'
 import { PixiTextureCache } from './PixiTextureCache'
 import { PixiWallLayer } from './PixiWallLayer'
@@ -141,6 +141,7 @@ export class PixiWorldRenderer {
   private readonly dynamicHouses = new Map<string, DynamicHouseNode>()
   private lastLightFurnRef: unknown = null
   private lastLightZonesRef: unknown = null
+  private lastLightAssetsRef: unknown = null
   private cachedMapLights: LightDescriptor[] = []
 
   private initialized = false
@@ -403,12 +404,19 @@ export class PixiWorldRenderer {
       pushAuraActor(remote, false)
     }
 
-    const dynamicLights = this.auraSystem.update(dt, timeSec, auraActors)
+    const auraLights = this.auraSystem.update(dt, timeSec, auraActors)
+    const personalLights = buildPlayerPersonalLights(localPlayer, gameStore.remotePlayers, closedZoneIds)
+    const dynamicLights = [...personalLights, ...auraLights]
 
-    if (this.lastLightFurnRef !== map.furniture || this.lastLightZonesRef !== map.zones) {
+    if (
+      this.lastLightFurnRef !== map.furniture ||
+      this.lastLightZonesRef !== map.zones ||
+      this.lastLightAssetsRef !== customAssets
+    ) {
       this.lastLightFurnRef = map.furniture
       this.lastLightZonesRef = map.zones
-      this.cachedMapLights = extractMapLights(map)
+      this.lastLightAssetsRef = customAssets
+      this.cachedMapLights = extractMapLights(map, customAssets)
     }
 
     this.lighting.update(

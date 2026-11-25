@@ -6,12 +6,14 @@ import { createVillagePackAssets } from '../../assets/villagePackAssets'
 import { AURA_OPTIONS } from '../../engine/avatarEffects/presets'
 import { checkCollision, isPlayerInZone } from '../../engine/physics/collision'
 import { mapAuraSpecToShaderPreset } from '../../engine/pixi/PixiAuraSystem'
-import { extractMapLights } from '../../engine/pixi/PixiLightingSystem'
+import { buildPlayerPersonalLights, extractMapLights } from '../../engine/pixi/PixiLightingSystem'
 import { parseColorAlpha, parseHexColor } from '../../engine/pixi/PixiTextureCache'
 import { furnitureDrawOrder, pickEditorFurniture } from '../../engine/rendering/furnitureLayers'
 import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 import { houseZoneIdForFurniture, useMapStore } from '../../store/useMapStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import { DEFAULT_FURNITURE_LIGHT, type CustomAsset } from '../../types/customAsset'
+import { useGameStore } from '../../store/useGameStore'
 import { compressMapDataForStorage, hydrateMapData } from '../../utils/mapSerialization'
 
 const originalSettings = useSettingsStore.getState()
@@ -153,5 +155,52 @@ describe('PixiJS integration & buildable Village/Halloween/Interiors assets', ()
     expect(parseHexColor('#38bdf8')).toBe(0x38bdf8)
     expect(parseHexColor('#f0a')).toBe(0xff00aa)
     expect(parseColorAlpha('rgba(10, 20, 30, 0.55)')).toBeCloseTo(0.55)
+  })
+
+  it('builds personal player lights and resolves CustomAsset / PlacedFurniture light overrides', () => {
+    const local = { ...useGameStore.getState().localPlayer, id: 'local', x: 10, y: 12, currentZoneId: null }
+    const visibleRemote = { ...local, id: 'remote-1', x: 14, y: 12, currentZoneId: null }
+    const hiddenRemote = { ...local, id: 'remote-2', x: 5, y: 5, currentZoneId: 'closed-house' }
+    const personal = buildPlayerPersonalLights(local, { [visibleRemote.id]: visibleRemote, [hiddenRemote.id]: hiddenRemote }, new Set(['closed-house']))
+    expect(personal.some((l) => l.name === 'Luz do Jogador' && l.x === 10.5 * 32 && l.radius >= 120)).toBe(true)
+    expect(personal.some((l) => l.name === 'Luz de Jogador' && l.x === 14.5 * 32)).toBe(true)
+    expect(personal.some((l) => l.x === 5.5 * 32)).toBe(false)
+
+    const litAsset: CustomAsset = {
+      id: 'custom_crystal',
+      name: 'Cristal Brilhante',
+      type: 'furniture',
+      category: 'Geral',
+      width: 2,
+      height: 2,
+      isObstacle: true,
+      frames: [],
+      createdAt: 1,
+      light: { ...DEFAULT_FURNITURE_LIGHT, enabled: true, color: '#38bdf8', radius: 220, intensity: 0.9, flicker: true },
+    }
+    useCustomAssetsStore.setState({ customAssets: [litAsset] })
+    useMapStore.getState().addFurniture({ id: 'c1', defId: 'custom_crystal', x: 4, y: 6 })
+    useMapStore.getState().addFurniture({
+      id: 'c2',
+      defId: 'custom_crystal',
+      x: 8,
+      y: 6,
+      light: { enabled: true, color: '#f472b6', radius: 180, intensity: 0.75, flicker: false },
+    })
+    useMapStore.getState().addFurniture({
+      id: 'c3',
+      defId: 'custom_crystal',
+      x: 12,
+      y: 6,
+      light: { ...DEFAULT_FURNITURE_LIGHT, enabled: false },
+    })
+
+    const mapLights = extractMapLights(useMapStore.getState().mapData, [litAsset])
+    // Multi-tile 2x2 centered at (x+1)*32, (y+1)*32
+    expect(mapLights.some((l) => l.x === 5 * 32 && l.y === 7 * 32 && l.color === '#38bdf8' && l.radius === 220 && l.flicker)).toBe(true)
+    // Placed instance override color/radius takes priority
+    expect(mapLights.some((l) => l.x === 9 * 32 && l.y === 7 * 32 && l.color === '#f472b6' && l.radius === 180)).toBe(true)
+    // Disabled instance override emits zero light
+    expect(mapLights.some((l) => l.x === 13 * 32 && l.y === 7 * 32)).toBe(false)
   })
 })

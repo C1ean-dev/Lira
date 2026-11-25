@@ -127,6 +127,7 @@ export const AssetPalette: React.FC = () => {
       isObstacle: a.isObstacle,
       spriteKey: a.id,
       iconColor: a.iconColor || '#e03131',
+      light: a.light,
       isCustom: true,
       updatedAt: a.updatedAt,
     }))

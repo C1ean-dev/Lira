@@ -1,7 +1,11 @@
 import { Application, Container, Graphics, RenderTexture, Sprite, Texture } from 'pixi.js'
+import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 import type { LightingMode } from '../../store/useSettingsStore'
+import type { CustomAsset } from '../../types/customAsset'
+import type { Player } from '../../types/game'
 import type { MapData, PrivateZone } from '../../types/map'
 import { TILE_SIZE } from '../Constants'
+import { resolveFurnitureDimensions } from '../rendering/furnitureRenderer'
 
 export interface LightDescriptor {
   name: string
@@ -66,10 +70,51 @@ function findContainingZone(zones: readonly PrivateZone[], tx: number, ty: numbe
   return ''
 }
 
-/** Derives automatic 2D point lights from zones, pack props, and illuminated furniture. */
-export function extractMapLights(map: MapData): LightDescriptor[] {
+/** Builds automatic personal lantern lights for the local player and visible remote players. */
+export function buildPlayerPersonalLights(
+  localPlayer: Player,
+  remotePlayers: Record<string, Player>,
+  closedZoneIds: ReadonlySet<string>
+): LightDescriptor[] {
+  const lights: LightDescriptor[] = [
+    {
+      name: 'Luz do Jogador',
+      x: (localPlayer.x + 0.5) * TILE_SIZE,
+      y: (localPlayer.y + 0.55) * TILE_SIZE,
+      color: '#ffebd2',
+      radius: 135,
+      intensity: 0.72,
+      zoneId: localPlayer.currentZoneId || undefined,
+    },
+  ]
+
+  for (const remote of Object.values(remotePlayers)) {
+    if (remote.isDjBot || remote.id.startsWith('dj-')) continue
+    if (remote.id === localPlayer.id || (remote.gameId && remote.gameId === localPlayer.id)) continue
+    if (remote.currentZoneId && closedZoneIds.has(remote.currentZoneId)) continue
+    lights.push({
+      name: 'Luz de Jogador',
+      x: (remote.x + 0.5) * TILE_SIZE,
+      y: (remote.y + 0.55) * TILE_SIZE,
+      color: '#ffebd2',
+      radius: 110,
+      intensity: 0.55,
+      zoneId: remote.currentZoneId || undefined,
+    })
+  }
+
+  return lights
+}
+
+/** Derives automatic 2D point lights from zones, custom light configs, pack props, and illuminated furniture. */
+export function extractMapLights(map: MapData, customAssets?: readonly CustomAsset[]): LightDescriptor[] {
   const lights: LightDescriptor[] = []
   const zones = map.zones || []
+  const assets = customAssets ?? useCustomAssetsStore.getState().customAssets
+  const assetById = new Map<string, CustomAsset>()
+  for (const asset of assets) {
+    assetById.set(asset.id, asset)
+  }
 
   for (const z of zones) {
     lights.push({
@@ -85,9 +130,32 @@ export function extractMapLights(map: MapData): LightDescriptor[] {
 
   for (const furn of map.furniture || []) {
     const id = furn.defId.toLowerCase()
-    const cx = (furn.x + 0.5) * TILE_SIZE
-    const cy = (furn.y + 0.5) * TILE_SIZE
-    const zoneId = findContainingZone(zones, furn.x + 0.5, furn.y + 0.5)
+    const customAsset = assetById.get(furn.defId)
+    const { tileW, tileH } = resolveFurnitureDimensions(furn, customAsset)
+    const cx = (furn.x + tileW * 0.5) * TILE_SIZE
+    const cy = (furn.y + tileH * 0.5) * TILE_SIZE
+    const zoneId = findContainingZone(zones, furn.x + tileW * 0.5, furn.y + tileH * 0.5)
+
+    // Explicit per-instance light override takes top priority
+    const explicitLight = furn.light ?? customAsset?.light
+    if (explicitLight !== undefined) {
+      if (explicitLight.enabled) {
+        lights.push({
+          name: customAsset?.name || furn.defId,
+          x: cx,
+          y: cy,
+          color: explicitLight.color || '#ffd580',
+          radius: Math.max(30, Math.min(500, explicitLight.radius)),
+          intensity: Math.max(0.05, Math.min(1.2, explicitLight.intensity)),
+          flicker: Boolean(explicitLight.flicker),
+          zoneId: zoneId || undefined,
+        })
+      }
+      continue
+    }
+
+    const tileCenterX = (furn.x + 0.5) * TILE_SIZE
+    const tileCenterY = (furn.y + 0.5) * TILE_SIZE
 
     if (id === 'lira_pack_cauldron_v1') {
       const px = (furn.x + 1) * TILE_SIZE
@@ -100,15 +168,15 @@ export function extractMapLights(map: MapData): LightDescriptor[] {
       const py = (furn.y + (large ? 1 : 0.5)) * TILE_SIZE
       lights.push({ name: 'Abóbora Iluminada', x: px, y: py, color: '#ff7b1c', radius: large ? 150 : 120, intensity: 0.92, flicker: true })
     } else if (id === 'lira_pack_spooky_lamp_v1') {
-      lights.push({ name: 'Lampião Assombrado', x: cx, y: furn.y * TILE_SIZE + 12, color: '#fbbf24', radius: 165, intensity: 0.92, flicker: true })
+      lights.push({ name: 'Lampião Assombrado', x: tileCenterX, y: furn.y * TILE_SIZE + 12, color: '#fbbf24', radius: 165, intensity: 0.92, flicker: true })
     } else if (id === 'lira_pack_village_lamp_v1') {
-      lights.push({ name: 'Poste da Vila', x: cx, y: furn.y * TILE_SIZE + 12, color: '#ffd580', radius: 175, intensity: 0.92 })
+      lights.push({ name: 'Poste da Vila', x: tileCenterX, y: furn.y * TILE_SIZE + 12, color: '#ffd580', radius: 175, intensity: 0.92 })
     } else if (id === 'lira_pack_tombstone_candles_v1') {
-      lights.push({ name: 'Velas Tumba', x: cx, y: cy - 6, color: '#fb923c', radius: 105, intensity: 0.78, flicker: true })
+      lights.push({ name: 'Velas Tumba', x: tileCenterX, y: tileCenterY - 6, color: '#fb923c', radius: 105, intensity: 0.78, flicker: true })
     } else if (id === 'lira_int_lamp_v1') {
-      lights.push({ name: 'Abajur', x: cx, y: cy, color: '#fde047', radius: 125, intensity: 0.8, zoneId })
+      lights.push({ name: 'Abajur', x: tileCenterX, y: tileCenterY, color: '#fde047', radius: 125, intensity: 0.8, zoneId })
     } else if (id === 'lira_int_fireplace_v1') {
-      lights.push({ name: 'Lareira', x: cx, y: cy, color: '#ff8f3a', radius: 185, intensity: 0.95, flicker: true, zoneId })
+      lights.push({ name: 'Lareira', x: tileCenterX, y: tileCenterY, color: '#ff8f3a', radius: 185, intensity: 0.95, flicker: true, zoneId })
     } else if (id.startsWith('lira_house_')) {
       const w = id.includes('blue') ? 10 : id.includes('witch') ? 8 : 7
       const h = id.includes('blue') ? 5 : 6

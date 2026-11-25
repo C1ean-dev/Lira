@@ -116,7 +116,14 @@ export const playerSchema = domain<Partial<Player>>(z.object({
   spotifyActivity: z.object({ track: text, artist: text, isPlaying: z.boolean(), startedAt: optionalFinite }).optional(),
   isDjBot: optionalBool, djOwnerId: text.optional(), appVersion: text.optional(), minCompatibleVersion: text.optional(), isOutdated: optionalBool,
 }).passthrough())
-const furnitureWireSchema = z.object({ id, defId: id, x: finite, y: finite, rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(), direction: directionSchema.optional(), tintColor: text.optional(), consumptionStage: finite.int().min(0).max(3).optional() }).passthrough()
+const furnitureLightSchema = z.object({
+  enabled: z.boolean(),
+  color: text.max(32),
+  radius: finite.min(20).max(600),
+  intensity: finite.min(0).max(1.5),
+  flicker: optionalBool,
+}).passthrough()
+const furnitureWireSchema = z.object({ id, defId: id, x: finite, y: finite, rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(), direction: directionSchema.optional(), tintColor: text.optional(), consumptionStage: finite.int().min(0).max(3).optional(), light: furnitureLightSchema.optional() }).passthrough()
 const furniture = domain<PlacedFurniture>(furnitureWireSchema)
 const zoneWireSchema = z.object({ id, name: text, color: text.optional(), x: finite, y: finite, width: finite.positive(), height: finite.positive(), description: text.optional(), maxCapacity: optionalFinite, hasWalls: optionalBool, wallType: text.optional(), admins: z.array(id).optional(), members: z.array(id).optional(), authorizedPeers: z.array(id).optional(), isLocked: optionalBool, allowKnock: optionalBool, welcomeMessage: text.optional() }).passthrough()
 const zone = domain<PrivateZone>(zoneWireSchema)

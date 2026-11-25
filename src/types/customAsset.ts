@@ -52,6 +52,22 @@ export interface HouseShellConfig {
   defaultZoneColor?: string
 }
 
+export interface FurnitureLightConfig {
+  enabled: boolean
+  color: string
+  radius: number
+  intensity: number
+  flicker?: boolean
+}
+
+export const DEFAULT_FURNITURE_LIGHT: FurnitureLightConfig = {
+  enabled: false,
+  color: '#ffd580',
+  radius: 150,
+  intensity: 0.85,
+  flicker: false,
+}
+
 export interface CustomAsset {
   id: string
   name: string
@@ -67,6 +83,7 @@ export interface CustomAsset {
   isTabletopDecoration?: boolean
   isFloorRug?: boolean
   houseShell?: HouseShellConfig
+  light?: FurnitureLightConfig
   consumptionFrames?: string[]
   collisionGrid?: boolean[][]
   seatGrid?: boolean[][]

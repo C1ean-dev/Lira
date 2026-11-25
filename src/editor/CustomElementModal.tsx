@@ -16,7 +16,7 @@ import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import { useMapStore } from '../store/useMapStore'
 import { useGameStore } from '../store/useGameStore'
 import { PeerManager } from '../p2p/PeerManager'
-import { CustomAsset, CustomAssetType, DirectionalDimension } from '../types/customAsset'
+import { CustomAsset, CustomAssetType, DEFAULT_FURNITURE_LIGHT, DirectionalDimension, FurnitureLightConfig } from '../types/customAsset'
 import { Direction } from '../types/game'
 import {
   cropImage,
@@ -41,6 +41,7 @@ import { LayerManager } from './custom-element/LayerManager'
 import { AnimationTimeline } from './custom-element/AnimationTimeline'
 import { TransparencyControls } from './custom-element/TransparencyControls'
 import { AssetPropertiesForm } from './custom-element/AssetPropertiesForm'
+import { FurnitureLightControls } from './custom-element/FurnitureLightControls'
 
 export const CustomElementModal: React.FC = () => {
   const {
@@ -110,6 +111,7 @@ export const CustomElementModal: React.FC = () => {
   })
 
   const [collisionFromSprite, setCollisionFromSprite] = useState(false)
+  const [furnitureLight, setFurnitureLight] = useState<FurnitureLightConfig>({ ...DEFAULT_FURNITURE_LIGHT })
   const [composeTool, setComposeTool] = useState<'move' | 'collision' | 'seat'>('move')
   const [composeZoom, setComposeZoom] = useState<number>(2)
   const [showCollisionOverlay, setShowCollisionOverlay] = useState<boolean>(true)
@@ -485,6 +487,7 @@ export const CustomElementModal: React.FC = () => {
         setElementName(asset.name)
         setElementType(asset.type)
         setCollisionFromSprite(!!asset.collisionFromSprite)
+        setFurnitureLight(asset.light ? { ...DEFAULT_FURNITURE_LIGHT, ...asset.light } : { ...DEFAULT_FURNITURE_LIGHT })
         setCategory(asset.category || 'Geral')
         setTileWidth(asset.width)
         setTileHeight(asset.height)
@@ -530,6 +533,7 @@ export const CustomElementModal: React.FC = () => {
       setElementType(initialAssetType || 'furniture')
       setBlankCanvasSize({ width: 64, height: 64 })
       setCollisionFromSprite(false)
+      setFurnitureLight({ ...DEFAULT_FURNITURE_LIGHT })
       setCompositeLayers([]); setFrameLayerStates([]); setFrames([]); setCroppedClips([])
       setSelectedLayerId(null); setSelectedFrameIdx(0)
       setTileWidth(2); setTileHeight(2); setPixelWidth(64); setPixelHeight(64)
@@ -1893,6 +1897,7 @@ export const CustomElementModal: React.FC = () => {
           elementType === 'furniture' && Object.keys(finalDirCollisionsRecord).length > 0
             ? finalDirCollisionsRecord
             : undefined,
+        light: elementType === 'furniture' && furnitureLight.enabled ? { ...furnitureLight } : undefined,
         frameRateMs,
       })
 
@@ -1950,6 +1955,7 @@ export const CustomElementModal: React.FC = () => {
         elementType === 'furniture' && Object.keys(finalDirCollisionsRecord).length > 0
           ? finalDirCollisionsRecord
           : undefined,
+      light: elementType === 'furniture' && furnitureLight.enabled ? { ...furnitureLight } : undefined,
       frameRateMs,
       iconColor: elementType === 'avatar' ? '#8b5cf6' : isFloor ? '#20c997' : isWall ? '#f59f00' : '#e03131',
       createdAt: Date.now(),
@@ -2159,6 +2165,13 @@ export const CustomElementModal: React.FC = () => {
               Obstáculo com colisão
               <span className="ml-auto text-[10px] font-mono text-lira-muted">Ajuste por tile em Montagem</span>
             </label>
+
+            {elementType === 'furniture' && (
+              <FurnitureLightControls
+                light={furnitureLight}
+                onChange={setFurnitureLight}
+              />
+            )}
 
             {studioMode === 'draw' && elementType === 'furniture' && <div className="rounded-[8px] border border-lira-quiet bg-lira-panel p-3">
               <p className="text-xs font-mono text-lira-muted mb-2">Direção do desenho</p>

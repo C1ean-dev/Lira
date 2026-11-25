@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { Move, Trash2, Palette, X, Check, Pencil, RotateCw } from 'lucide-react'
+import { Move, Trash2, Palette, X, Check, Pencil, RotateCw, Lightbulb } from 'lucide-react'
 import { useMapStore } from '../store/useMapStore'
 import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import { FURNITURE_CATALOG } from '../engine/Constants'
 import { PeerManager } from '../p2p/PeerManager'
 import { Direction } from '../types/game'
+import { DEFAULT_FURNITURE_LIGHT, type FurnitureLightConfig } from '../types/customAsset'
+import { FurnitureLightControls } from './custom-element/FurnitureLightControls'
 
 const TINT_PALETTE = [
   { name: 'Original', color: undefined },
@@ -35,6 +37,7 @@ export const FurnitureContextMenu: React.FC = () => {
   } = useMapStore()
 
   const [showColorPalette, setShowColorPalette] = useState<boolean>(false)
+  const [showLightPanel, setShowLightPanel] = useState<boolean>(false)
 
   const selectedFurn = selectedPlacedFurnitureId
     ? mapData.furniture.find((f) => f.id === selectedPlacedFurnitureId)
@@ -72,6 +75,7 @@ export const FurnitureContextMenu: React.FC = () => {
         setSelectedPlacedFurnitureId(null)
         setIsMovingFurniture(false)
         setShowColorPalette(false)
+        setShowLightPanel(false)
       } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
         e.preventDefault()
         const dx = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0
@@ -113,6 +117,16 @@ export const FurnitureContextMenu: React.FC = () => {
     })
   }
 
+  const effectiveLight: FurnitureLightConfig =
+    selectedFurn.light ?? customAsset?.light ?? { ...DEFAULT_FURNITURE_LIGHT }
+
+  const handleChangeLight = (nextLight?: FurnitureLightConfig) => {
+    updateFurniture(selectedFurn.id, { light: nextLight })
+    PeerManager.getInstance().sendMapEdit('add_furniture', {
+      furniture: { ...selectedFurn, light: nextLight },
+    })
+  }
+
   const dirBadge = (() => {
     const dir: Direction = selectedFurn.direction || (
       selectedFurn.rotation === 90 ? 'left' :
@@ -127,6 +141,27 @@ export const FurnitureContextMenu: React.FC = () => {
 
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 font-mono text-lira-ink">
+      {showLightPanel && (
+        <div className="bg-lira-panel p-3 rounded-[12px] border border-dashed border-lira-rule flex flex-col gap-2">
+          <div className="flex items-center justify-between text-xs font-mono font-bold text-lira-amber pb-1 border-b border-dashed border-lira-rule/60">
+            <span>Iluminação 2D da Mobília</span>
+            <button
+              type="button"
+              onClick={() => setShowLightPanel(false)}
+              className="text-lira-muted hover:text-lira-ink p-0.5"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <FurnitureLightControls
+            compact
+            light={effectiveLight}
+            onChange={(next) => handleChangeLight(next)}
+            onResetToDefault={selectedFurn.light !== undefined ? () => handleChangeLight(undefined) : undefined}
+          />
+        </div>
+      )}
+
       {showColorPalette && (
         <div className="bg-lira-panel p-3 rounded-[12px] border border-dashed border-lira-rule flex flex-col gap-2">
           <div className="flex items-center justify-between text-xs font-mono font-bold text-lira-accent pb-1 border-b border-dashed border-lira-rule/60">
@@ -206,7 +241,10 @@ export const FurnitureContextMenu: React.FC = () => {
 
         <button
           type="button"
-          onClick={() => setShowColorPalette(!showColorPalette)}
+          onClick={() => {
+            setShowColorPalette(!showColorPalette)
+            setShowLightPanel(false)
+          }}
           className={`px-3 py-1.5 rounded-[8px] text-xs font-mono font-bold flex items-center gap-1.5 transition-colors border ${
             showColorPalette
               ? 'bg-lira-online text-lira-ground border-lira-online'
@@ -216,6 +254,23 @@ export const FurnitureContextMenu: React.FC = () => {
         >
           <Palette className="w-3.5 h-3.5 text-lira-online" />
           <span>Trocar de Cor</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setShowLightPanel(!showLightPanel)
+            setShowColorPalette(false)
+          }}
+          className={`px-3 py-1.5 rounded-[8px] text-xs font-mono font-bold flex items-center gap-1.5 transition-colors border ${
+            showLightPanel || effectiveLight.enabled
+              ? 'bg-lira-amber text-lira-ground border-lira-amber'
+              : 'bg-lira-surface hover:border-lira-amber text-lira-ink border-lira-rule'
+          }`}
+          title="Adicionar ou editar luz 2D emitida por esta mobília"
+        >
+          <Lightbulb className="w-3.5 h-3.5" />
+          <span>Luz</span>
         </button>
 
         {customAsset && (
@@ -248,6 +303,7 @@ export const FurnitureContextMenu: React.FC = () => {
             setSelectedPlacedFurnitureId(null)
             setIsMovingFurniture(false)
             setShowColorPalette(false)
+            setShowLightPanel(false)
           }}
           className="p-1.5 text-lira-muted hover:text-lira-ink rounded-[6px] hover:bg-lira-surface transition-colors ml-1"
           title="Fechar seleção"

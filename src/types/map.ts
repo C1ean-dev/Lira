@@ -1,3 +1,5 @@
+import type { FurnitureLightConfig } from './customAsset'
+
 export type FloorType = 
   | 'wood_parquet'
   | 'wood_light' 
@@ -46,6 +48,7 @@ export interface PlacedFurniture {
   direction?: 'down' | 'left' | 'up' | 'right'
   tintColor?: string
   consumptionStage?: 0 | 1 | 2 | 3
+  light?: FurnitureLightConfig
 }
 
 export interface PrivateZone {

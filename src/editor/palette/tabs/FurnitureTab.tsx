@@ -240,6 +240,15 @@ export const FurnitureTab: React.FC<Props> = ({
                       </button>
                     )}
 
+                    {item.light?.enabled ? (
+                      <span
+                        className="text-[10px] leading-none opacity-90 group-hover:hidden"
+                        title="Emite Luz 2D"
+                      >
+                        💡
+                      </span>
+                    ) : null}
+
                     {item.isObstacle ? (
                       <span
                         className="text-[10px] leading-none opacity-80 group-hover:hidden"
