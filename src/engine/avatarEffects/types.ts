@@ -64,6 +64,8 @@ export interface ResolvedEffectSpec {
   motion: AvatarEffectMotion
   density: AvatarEffectDensity
   glowHalo?: boolean
+  groundCircle?: boolean
+  groundCircleSize?: number
 }
 
 export interface AuraOptionMeta {
@@ -74,6 +76,8 @@ export interface AuraOptionMeta {
   motion: AvatarEffectMotion
   density: AvatarEffectDensity
   glowHalo?: boolean
+  groundCircle?: boolean
+  groundCircleSize?: number
   previewShapes: readonly ParticleShape[]
 }
 

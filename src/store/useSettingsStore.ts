@@ -4,6 +4,8 @@ import { graphicsSettingsSchema } from '../validation/schemas'
 
 const SETTINGS_STORAGE_KEY = 'lira_graphics_settings'
 
+export type LightingMode = 'day' | 'sunset' | 'night' | 'auto'
+
 export interface GraphicsSettings {
   targetFps: number
   showFpsCounter: boolean
@@ -11,6 +13,8 @@ export interface GraphicsSettings {
   moveSpeed: number
   currentFps: number
   showNameTags: boolean
+  lightingEnabled: boolean
+  lightingMode: LightingMode
 }
 
 interface SettingsStore extends GraphicsSettings {
@@ -20,6 +24,8 @@ interface SettingsStore extends GraphicsSettings {
   setMoveSpeed: (speed: number) => void
   setCurrentFps: (fps: number) => void
   setShowNameTags: (show: boolean) => void
+  setLightingEnabled: (enabled: boolean) => void
+  setLightingMode: (mode: LightingMode) => void
 }
 
 const preferences = createStoredState(SETTINGS_STORAGE_KEY, graphicsSettingsSchema, {})
@@ -32,6 +38,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   moveSpeed: saved.moveSpeed ?? 8.0,
   currentFps: 60,
   showNameTags: saved.showNameTags ?? true,
+  lightingEnabled: saved.lightingEnabled ?? true,
+  lightingMode: saved.lightingMode ?? 'day',
 
   setTargetFps: (fps: number) => {
     set({ targetFps: fps })
@@ -56,6 +64,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setShowNameTags: (show: boolean) => {
     set({ showNameTags: show })
     saveSettings({ showNameTags: show })
+  },
+  setLightingEnabled: (enabled: boolean) => {
+    set({ lightingEnabled: enabled })
+    saveSettings({ lightingEnabled: enabled })
+  },
+  setLightingMode: (mode: LightingMode) => {
+    set({ lightingMode: mode })
+    saveSettings({ lightingMode: mode })
   },
 }))
 

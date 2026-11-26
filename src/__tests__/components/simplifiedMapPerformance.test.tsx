@@ -3,12 +3,12 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SimplifiedMapView } from '../../components/SimplifiedMapView'
 import { useGameStore } from '../../store/useGameStore'
-import { useMapStore } from '../../store/useMapStore'
+import { useMapStore, houseZoneIdForFurniture } from '../../store/useMapStore'
 import { PeerManager } from '../../p2p/PeerManager'
 import { PrivateZone } from '../../types/map'
 import { checkCollision, isPlayerInZone } from '../../engine/physics/collision'
 import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
-import type { CustomAsset } from '../../types/customAsset'
+import { DEFAULT_HOUSE_SHELL, type CustomAsset } from '../../types/customAsset'
 
 const captured = vi.hoisted(() => ({ elements: [] as React.ReactElement[] }))
 vi.mock('react/jsx-runtime', async (importOriginal) => {
@@ -176,5 +176,64 @@ describe('simplified map low consumption', () => {
     displayedRoom.props.onClick({ stopPropagation() {} })
     expect(sendPlayerUpdate).not.toHaveBeenCalled()
     expect(useGameStore.getState().localPlayer.currentZoneId).toBeNull()
+  })
+
+  it('displays houses as private rooms and teleports in and out cleanly', () => {
+    const houseAsset: CustomAsset = {
+      id: 'house-simple',
+      name: 'Casa Simples',
+      type: 'furniture',
+      category: 'Casas',
+      width: 6,
+      height: 5,
+      isObstacle: true,
+      frames: [],
+      createdAt: 1,
+      houseShell: { ...DEFAULT_HOUSE_SHELL, defaultInteriorWidth: 12, defaultInteriorHeight: 10 },
+    }
+    useCustomAssetsStore.setState({ customAssets: [houseAsset] })
+    useMapStore.getState().addFurniture({ id: 'h-simp', defId: houseAsset.id, x: 20, y: 8, houseName: 'Casa Azul' })
+    useGameStore.setState({
+      remotePlayers: {
+        peer: {
+          ...originalGame.localPlayer,
+          id: 'peer',
+          name: 'Clara',
+          currentHouseId: 'h-simp',
+          currentZoneId: houseZoneIdForFurniture('h-simp'),
+        },
+      },
+    })
+
+    const html = mount()
+    expect(html).toContain('Casa Azul')
+    expect(html).toContain('Clara')
+
+    const houseCard = captured.elements.find(({ props }) => props.title === 'Casa Azul - Clique para entrar')!
+    houseCard.props.onClick({ stopPropagation() {} })
+
+    expect(useMapStore.getState().activeHouseId).toBe('h-simp')
+    expect(useGameStore.getState().localPlayer).toMatchObject({
+      currentHouseId: 'h-simp',
+      currentZoneId: houseZoneIdForFurniture('h-simp'),
+    })
+    expect(sendPlayerUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        currentHouseId: 'h-simp',
+        currentZoneId: houseZoneIdForFurniture('h-simp'),
+      })
+    )
+
+    // Clicking a regular private room while inside a house teleports out cleanly
+    captured.elements = []
+    mount()
+    const regularRoom = captured.elements.find(({ props }) => props.title === `${room.name} - Clique para entrar`)!
+    regularRoom.props.onClick({ stopPropagation() {} })
+
+    expect(useMapStore.getState().activeHouseId).toBeNull()
+    expect(useGameStore.getState().localPlayer).toMatchObject({
+      currentHouseId: null,
+      currentZoneId: room.id,
+    })
   })
 })

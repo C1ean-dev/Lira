@@ -178,9 +178,10 @@ interface CustomAssetsState {
   initialStudioMode: 'draw' | 'crop' | 'compose'
   initialAssetType: CustomAssetType
   initialCategory: string
+  initialIsHouse: boolean
   setCustomModalOpen: (open: boolean) => void
   setEditingAssetId: (id: string | null) => void
-  openCreateModal: (mode?: 'draw' | 'crop' | 'compose', initialCategory?: string, initialAssetType?: CustomAssetType) => void
+  openCreateModal: (mode?: 'draw' | 'crop' | 'compose', initialCategory?: string, initialAssetType?: CustomAssetType, initialIsHouse?: boolean) => void
   openEditModal: (id: string, mode?: 'draw' | 'crop' | 'compose') => void
   addCustomAsset: (asset: CustomAsset) => Promise<void>
   addCustomAssets: (assets: CustomAsset[]) => Promise<void>
@@ -271,10 +272,13 @@ export const useCustomAssetsStore = create<CustomAssetsState>((set, get) => ({
   initialStudioMode: 'draw',
   initialAssetType: 'furniture',
   initialCategory: 'Geral',
-  setCustomModalOpen: open => set({ isCustomModalOpen: open, editingAssetId: open ? get().editingAssetId : null }),
+  initialIsHouse: false,
+  setCustomModalOpen: open => set({ isCustomModalOpen: open, editingAssetId: open ? get().editingAssetId : null, ...(open ? {} : { initialIsHouse: false }) }),
   setEditingAssetId: id => set({ editingAssetId: id }),
-  openCreateModal: (mode = 'draw', initialCategory = 'Geral', initialAssetType = 'furniture') => set({ isCustomModalOpen: true, editingAssetId: null, initialStudioMode: mode, initialCategory, initialAssetType }),
-  openEditModal: (id, mode = 'compose') => set({ isCustomModalOpen: true, editingAssetId: id, initialStudioMode: mode, initialAssetType: get().getAssetById(id)?.type || 'furniture' }),
+  openCreateModal: (mode = 'draw', initialCategory = 'Geral', initialAssetType = 'furniture', initialIsHouse = false) =>
+    set({ isCustomModalOpen: true, editingAssetId: null, initialStudioMode: mode, initialCategory, initialAssetType, initialIsHouse }),
+  openEditModal: (id, mode = 'compose') =>
+    set({ isCustomModalOpen: true, editingAssetId: id, initialStudioMode: mode, initialAssetType: get().getAssetById(id)?.type || 'furniture', initialIsHouse: Boolean(get().getAssetById(id)?.houseShell) }),
   addCustomAsset: asset => addAssets([asset], true),
   addCustomAssets: assets => addAssets(assets, true),
   updateCustomAsset: (id, partial) => queue(async () => {

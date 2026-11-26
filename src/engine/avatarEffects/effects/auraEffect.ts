@@ -11,6 +11,7 @@ import type {
   AvatarEffectContext,
   AvatarEffectModule,
   AvatarEffectParticle,
+  ParticleShape,
   ResolvedEffectSpec,
 } from '../types'
 
@@ -25,6 +26,7 @@ interface ActiveHalo {
   y: number
   color: string
   phase: number
+  radius: number
 }
 
 function densityIntervalFactor(density: AvatarEffectDensity): number {
@@ -59,7 +61,7 @@ export class AuraEffect implements AvatarEffectModule {
     maxParticles?: number
     rng?: () => number
   }) {
-    this.emitIntervalSec = options?.emitIntervalSec ?? 0.34
+    this.emitIntervalSec = options?.emitIntervalSec ?? 0.26
     this.entryBurstCount = options?.entryBurstCount ?? 18
     this.reentryGraceMs = options?.reentryGraceMs ?? 1500
     this.maxParticles = options?.maxParticles ?? 220
@@ -86,6 +88,7 @@ export class AuraEffect implements AvatarEffectModule {
 
     if (this.lastRoomKey !== null && this.lastRoomKey !== context.roomKey) {
       this.owners.clear()
+      this.particles = []
     }
     this.lastRoomKey = context.roomKey
 
@@ -100,19 +103,20 @@ export class AuraEffect implements AvatarEffectModule {
       }
 
       activeIds.add(player.id)
-      if (spec.glowHalo) {
+      if (spec.groundCircle ?? spec.glowHalo) {
         this.halos.push({
           x: (player.x + 0.5) * TILE_SIZE,
-          y: (player.y + 0.52) * TILE_SIZE,
+          y: (player.y + 0.72) * TILE_SIZE,
           color: spec.color,
           phase: i * 1.3,
+          radius: (spec.groundCircleSize ?? 56) * 0.5,
         })
       }
 
       const customSig = aura.custom
-        ? `${aura.custom.id}:${aura.custom.motion}:${aura.custom.density}:${aura.custom.shapes.join(',')}:${aura.custom.pixelMatrix?.join('|') || ''}`
+        ? `${aura.custom.id}:${aura.custom.motion}:${aura.custom.density}:${aura.custom.shapes.join(',')}:${aura.custom.pixelMatrix?.join('|') || ''}:${aura.custom.groundCircle ? 1 : 0}:${aura.custom.groundCircleSize ?? ''}`
         : ''
-      const styleKey = `${aura.style}:${spec.color.toLowerCase()}:${customSig}`
+      const styleKey = `${aura.style}:${spec.color.toLowerCase()}:${spec.groundCircle ? 1 : 0}:${spec.groundCircleSize ?? ''}:${customSig}`
       let owner = this.owners.get(player.id)
 
       const interval = this.emitIntervalSec * densityIntervalFactor(spec.density)
@@ -150,7 +154,7 @@ export class AuraEffect implements AvatarEffectModule {
     for (let i = 0; i < this.halos.length; i++) {
       const halo = this.halos[i]
       const pulse = 0.78 + 0.22 * Math.sin(currentTime / 420 + halo.phase)
-      const radius = 21 + pulse * 5
+      const radius = halo.radius * (0.92 + pulse * 0.08)
       const grad = ctx.createRadialGradient(halo.x, halo.y, 2, halo.x, halo.y, radius)
       grad.addColorStop(0, hexToRgba(halo.color, 0.26 * pulse))
       grad.addColorStop(0.55, hexToRgba(halo.color, 0.12 * pulse))
@@ -169,6 +173,7 @@ export class AuraEffect implements AvatarEffectModule {
   }
 
   private spawnEntryBurst(tileX: number, tileY: number, spec: ResolvedEffectSpec): void {
+    if (!spec.pixelMatrix && spec.shapes.length === 0) return
     const palette = deriveEffectPalette(spec.color)
     const originX = (tileX + 0.5) * TILE_SIZE
     const originY = (tileY + 0.38) * TILE_SIZE
@@ -181,7 +186,10 @@ export class AuraEffect implements AvatarEffectModule {
 
       const angle = (i / count) * Math.PI * 2 + (this.rng() - 0.5) * 0.45
       const speed = 18 + this.rng() * 28
-      const shape = spec.shapes[Math.floor(this.rng() * spec.shapes.length) % spec.shapes.length]
+      const shape: ParticleShape =
+        spec.shapes.length > 0
+          ? spec.shapes[Math.floor(this.rng() * spec.shapes.length) % spec.shapes.length]
+          : 'sparkle'
       const { color, secondaryColor, twinkle } = spec.pixelMatrix
         ? { color: palette.flowerPrimary, secondaryColor: palette.highlight, twinkle: spec.motion === 'orbit' || spec.motion === 'spark' }
         : resolveParticleColors(shape, palette, this.rng)
@@ -210,12 +218,16 @@ export class AuraEffect implements AvatarEffectModule {
   }
 
   private spawnAmbientParticle(tileX: number, tileY: number, spec: ResolvedEffectSpec): void {
+    if (!spec.pixelMatrix && spec.shapes.length === 0) return
     if (this.particles.length >= this.maxParticles) {
       this.particles.shift()
     }
 
     const palette = deriveEffectPalette(spec.color)
-    const shape = spec.shapes[Math.floor(this.rng() * spec.shapes.length) % spec.shapes.length]
+    const shape: ParticleShape =
+      spec.shapes.length > 0
+        ? spec.shapes[Math.floor(this.rng() * spec.shapes.length) % spec.shapes.length]
+        : 'sparkle'
     const { color, secondaryColor, twinkle } = spec.pixelMatrix
       ? { color: palette.flowerPrimary, secondaryColor: palette.highlight, twinkle: spec.motion === 'orbit' || spec.motion === 'spark' }
       : resolveParticleColors(shape, palette, this.rng)

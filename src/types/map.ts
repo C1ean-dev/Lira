@@ -1,3 +1,5 @@
+import type { FurnitureLightConfig } from './customAsset'
+
 export type FloorType = 
   | 'wood_parquet'
   | 'wood_light' 
@@ -45,7 +47,9 @@ export interface PlacedFurniture {
   rotation?: 0 | 90 | 180 | 270
   direction?: 'down' | 'left' | 'up' | 'right'
   tintColor?: string
+  houseName?: string
   consumptionStage?: 0 | 1 | 2 | 3
+  light?: FurnitureLightConfig
 }
 
 export interface PrivateZone {
@@ -77,6 +81,37 @@ export interface FloorRectangle {
   floor: FloorType
 }
 
+export interface HouseInteriorExit {
+  x: number
+  y: number
+  width: number
+}
+
+export interface HouseInteriorSpace {
+  houseId: string
+  defId: string
+  name: string
+  width: number
+  height: number
+  tileSize: number
+  spawnPoint: { x: number; y: number }
+  exitDoor: HouseInteriorExit
+  floors: FloorType[][]
+  walls: (WallType | null)[][]
+  furniture: PlacedFurniture[]
+  zones: PrivateZone[]
+  defaultFloor?: FloorType
+  floorRectangles?: FloorRectangle[]
+  floorOverrides?: Record<string, FloorType>
+  wallOverrides?: Record<string, WallType | null>
+  accentColor?: string
+}
+
+export interface StoredHouseInteriorSpace extends Omit<HouseInteriorSpace, 'floors' | 'walls'> {
+  floors?: FloorType[][]
+  walls?: (WallType | null)[][]
+}
+
 export interface MapData {
   id: string
   name: string
@@ -92,15 +127,17 @@ export interface MapData {
   floorRectangles?: FloorRectangle[]
   floorOverrides?: Record<string, FloorType>
   wallOverrides?: Record<string, WallType | null>
+  houseInteriors?: Record<string, HouseInteriorSpace>
 }
 
-export interface StoredMapData extends Omit<MapData, 'floors' | 'walls'> {
+export interface StoredMapData extends Omit<MapData, 'floors' | 'walls' | 'houseInteriors'> {
   floors?: FloorType[][]
   walls?: (WallType | null)[][]
   defaultFloor?: FloorType
   floorRectangles?: FloorRectangle[]
   floorOverrides?: Record<string, FloorType>
   wallOverrides?: Record<string, WallType | null>
+  houseInteriors?: Record<string, StoredHouseInteriorSpace>
 }
 
 export type EditorTool = 

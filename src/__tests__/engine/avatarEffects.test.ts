@@ -281,4 +281,106 @@ describe('Avatar Aura & Steps modular effects', () => {
     drawEffectPresetIcon(ctx, ['sparkle'], '#facc15', 44, 44, ['010', '121', '010'])
     expect(ctx.fillRect).toHaveBeenCalled()
   })
+
+  it('supports optional groundCircle, size clamping, and objectless circle-only custom auras', () => {
+    const circleOnlySpec: CustomAvatarEffectSpec = {
+      id: 'custom_circle_only',
+      name: 'Circulo Arcano',
+      kind: 'aura',
+      shapes: [],
+      color: '#38bdf8',
+      motion: 'orbit',
+      density: 'normal',
+      groundCircle: true,
+      groundCircleSize: 200,
+    }
+
+    const resolvedCircleOnly = resolveAuraSpec({
+      style: 'custom',
+      color: '#38bdf8',
+      custom: circleOnlySpec,
+    })
+    expect(resolvedCircleOnly).not.toBeNull()
+    expect(resolvedCircleOnly?.shapes).toEqual([])
+    expect(resolvedCircleOnly?.groundCircle).toBe(true)
+    expect(resolvedCircleOnly?.groundCircleSize).toBe(128)
+
+    const resolvedSmall = resolveAuraSpec({
+      style: 'custom',
+      custom: { ...circleOnlySpec, groundCircleSize: 8 },
+    })
+    expect(resolvedSmall?.groundCircleSize).toBe(24)
+
+    const explicitNoCircle = resolveAuraSpec({
+      style: 'fire',
+      groundCircle: false,
+      groundCircleSize: 96,
+    })
+    expect(explicitNoCircle?.groundCircle).toBe(false)
+    expect(explicitNoCircle?.groundCircleSize).toBe(96)
+
+    const auraEffect = new AuraEffect({ entryBurstCount: 10, emitIntervalSec: 0.25, rng: () => 0.2 })
+    const circlePlayer = makePlayer({
+      id: 'c-circle',
+      name: 'Arcano',
+      x: 6,
+      y: 6,
+      avatar: {
+        ...DEFAULT_AVATAR,
+        aura: { style: 'custom', color: '#38bdf8', custom: circleOnlySpec, groundCircle: true, groundCircleSize: 96 },
+      },
+    })
+    auraEffect.update(0.05, makeContext({ players: [circlePlayer], roomKey: 'r1', now: 1000 }))
+    auraEffect.update(0.3, makeContext({ players: [circlePlayer], roomKey: 'r1', now: 1300 }))
+    expect(auraEffect.getParticles()).toHaveLength(0)
+
+    const objectPlayer = makePlayer({
+      id: 'c-objs',
+      name: 'Coracoes',
+      x: 9,
+      y: 9,
+      avatar: {
+        ...DEFAULT_AVATAR,
+        aura: {
+          style: 'custom',
+          color: '#ec4899',
+          custom: {
+            id: 'custom_hearts',
+            name: 'So Coracao',
+            kind: 'aura',
+            shapes: ['heart', 'flame'],
+            color: '#ec4899',
+            motion: 'rise',
+            density: 'normal',
+            groundCircle: false,
+            groundCircleSize: 56,
+          },
+          groundCircle: false,
+        },
+      },
+    })
+    auraEffect.update(0.05, makeContext({ players: [circlePlayer, objectPlayer], roomKey: 'r1', now: 1400 }))
+    const spawned = auraEffect.getParticles()
+    expect(spawned.length).toBeGreaterThan(0)
+    expect(spawned.every((p) => p.shape === 'heart' || p.shape === 'flame')).toBe(true)
+
+    const parsed = playerSchema.parse({
+      id: 'u-circle',
+      name: 'Circulo',
+      avatar: {
+        ...DEFAULT_AVATAR,
+        aura: {
+          style: 'custom',
+          color: '#38bdf8',
+          groundCircle: true,
+          groundCircleSize: 84,
+          custom: { ...circleOnlySpec, groundCircleSize: 84 },
+        },
+      },
+    })
+    expect(parsed.avatar?.aura?.groundCircle).toBe(true)
+    expect(parsed.avatar?.aura?.groundCircleSize).toBe(84)
+    expect(parsed.avatar?.aura?.custom?.groundCircle).toBe(true)
+    expect(parsed.avatar?.aura?.custom?.groundCircleSize).toBe(84)
+  })
 })

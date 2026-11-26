@@ -5,14 +5,25 @@ import { useMapStore } from '../store/useMapStore'
 import { useMediaStore } from '../store/useMediaStore'
 import { MediaManager } from '../media/MediaManager'
 import { PeerManager } from '../p2p/PeerManager'
+import { enterHouse } from '../services/houseNavigation'
 import { PrivateZone } from '../types/map'
 import { Player } from '../types/game'
 import { knockOnLockedDoor } from '../utils/doorKnockHelper'
 import { useSimplifiedMapSnapshot } from '../hooks/useSimplifiedMapSnapshot'
 import { findSafePlayerPosition } from '../engine/physics/safePlayerPosition'
 
+interface SimplifiedHouseCard {
+  houseId: string
+  name: string
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
-  const { localPlayer, remotePlayers, width, height, zones } = useSimplifiedMapSnapshot()
+  const { localPlayer, remotePlayers, width, height, zones, furniture, houseInteriors, customAssets } =
+    useSimplifiedMapSnapshot()
 
   const [zoom, setZoom] = useState(1.0)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -21,6 +32,8 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
 
   const mapWidth = Math.max(20, width || 70)
   const mapHeight = Math.max(15, height || 45)
+  const boardWidth = 860
+  const boardHeight = Math.round(boardWidth * (mapHeight / mapWidth))
 
   const getZoneIcon = (name: string) => {
     const n = name.toLowerCase()
@@ -51,7 +64,7 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
     const { x: targetX, y: targetY } = destination
 
     const prevZoneId = localPlayer.currentZoneId
-    if (prevZoneId && prevZoneId !== zone.id) {
+    if ((prevZoneId && prevZoneId !== zone.id) || useGameStore.getState().proximityPeerIds.length > 0) {
       if (useMediaStore.getState().isScreenSharing) {
         MediaManager.getInstance().stopScreenShare()
       }
@@ -59,10 +72,15 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
       PeerManager.getInstance().endAllZoneMediaCalls()
     }
 
+    if (useMapStore.getState().activeHouseId !== null || localPlayer.currentHouseId) {
+      useMapStore.getState().setActiveHouseId(null)
+    }
+
     setLocalPlayer({
       x: targetX,
       y: targetY,
       currentZoneId: zone.id,
+      currentHouseId: null,
       isMoving: false,
       seatedOn: null,
     })
@@ -71,11 +89,21 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
       x: targetX,
       y: targetY,
       currentZoneId: zone.id,
+      currentHouseId: null,
       isMoving: false,
       seatedOn: null,
     })
 
     useMapStore.getState().checkAndUnlockEmptyZones()
+  }
+
+  const handleHouseClick = (house: SimplifiedHouseCard, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const { localPlayer } = useGameStore.getState()
+    if (localPlayer.currentHouseId === house.houseId) return
+    const exists = useMapStore.getState().mapData.furniture.some((f) => f.id === house.houseId)
+    if (!exists) return
+    enterHouse(house.houseId, { skipTransition: true })
   }
 
   const handleFloorClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -107,8 +135,9 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
     if (!destination) return
     const newZoneId = destination.currentZoneId
     const prevZoneId = localPlayer.currentZoneId
+    const wasInHouse = useMapStore.getState().activeHouseId !== null || Boolean(localPlayer.currentHouseId)
 
-    if (prevZoneId && prevZoneId !== newZoneId) {
+    if ((prevZoneId && prevZoneId !== newZoneId) || wasInHouse) {
       if (useMediaStore.getState().isScreenSharing) {
         MediaManager.getInstance().stopScreenShare()
       }
@@ -116,10 +145,15 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
       PeerManager.getInstance().endAllZoneMediaCalls()
     }
 
+    if (wasInHouse) {
+      useMapStore.getState().setActiveHouseId(null)
+    }
+
     setLocalPlayer({
       x: destination.x,
       y: destination.y,
       currentZoneId: newZoneId,
+      currentHouseId: null,
       isMoving: false,
       seatedOn: null,
     })
@@ -128,9 +162,14 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
       x: destination.x,
       y: destination.y,
       currentZoneId: newZoneId,
+      currentHouseId: null,
       isMoving: false,
       seatedOn: null,
     })
+
+    if (newZoneId === null) {
+      PeerManager.getInstance().syncProximityCalls?.()
+    }
 
     useMapStore.getState().checkAndUnlockEmptyZones()
   }
@@ -160,17 +199,93 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
     setZoom((prev) => Math.max(0.6, Math.min(2.2, Number((prev + delta).toFixed(2)))))
   }
 
-  const playersByZone = useMemo(() => {
-    const grouped = new Map<string | null, Player[]>()
+  const houses = useMemo<SimplifiedHouseCard[]>(() => {
+    if (!furniture?.length || !customAssets?.length) return []
+    const assetById = new Map(customAssets.map((a) => [a.id, a]))
+    const result: SimplifiedHouseCard[] = []
+    for (const furn of furniture) {
+      const asset = assetById.get(furn.defId)
+      if (!asset?.houseShell) continue
+      const interior = houseInteriors?.[furn.id]
+      result.push({
+        houseId: furn.id,
+        name: furn.houseName || interior?.name || asset.name || 'Casa',
+        x: furn.x,
+        y: furn.y,
+        width: asset.width,
+        height: asset.height,
+      })
+    }
+    return result
+  }, [furniture, customAssets, houseInteriors])
+
+  const { playersByZone, playersByHouse } = useMemo(() => {
+    const byZone = new Map<string | null, Player[]>()
+    const byHouse = new Map<string, Player[]>()
     for (const player of Object.values(remotePlayers)) {
       if (player.isDjBot || player.id.startsWith('dj-')) continue
+      if (player.currentHouseId) {
+        const list = byHouse.get(player.currentHouseId)
+        if (list) list.push(player)
+        else byHouse.set(player.currentHouseId, [player])
+        continue
+      }
       const zoneId = player.currentZoneId || null
-      const players = grouped.get(zoneId)
+      const players = byZone.get(zoneId)
       if (players) players.push(player)
-      else grouped.set(zoneId, [player])
+      else byZone.set(zoneId, [player])
     }
-    return grouped
+    return { playersByZone: byZone, playersByHouse: byHouse }
   }, [remotePlayers])
+
+  const spaceCards = [
+    ...(zones || []).map((zone) => {
+      const isLocalInside = !localPlayer.currentHouseId && localPlayer.currentZoneId === zone.id
+      const isAuthorized = !zone.isLocked || useMapStore.getState().isPeerAuthorizedForZone(zone.id, localPlayer.id, localPlayer.name)
+      const occupants = playersByZone.get(zone.id) || []
+      return {
+        key: `zone:${zone.id}`,
+        isHouse: false,
+        name: zone.name,
+        x: zone.x,
+        y: zone.y,
+        width: zone.width,
+        height: zone.height,
+        isLocked: Boolean(zone.isLocked),
+        isAuthorized,
+        showCrown: Boolean(zone.admins && zone.admins.includes(localPlayer.name)),
+        icon: zone.isLocked ? <Lock className="w-3 h-3 text-lira-error shrink-0" /> : <span>{getZoneIcon(zone.name)}</span>,
+        isLocalInside,
+        occupants,
+        title:
+          zone.isLocked && !isAuthorized
+            ? `${zone.name} (Trancada - Clique para bater na porta)`
+            : `${zone.name} - Clique para entrar`,
+        onClick: (e: React.MouseEvent) => handleRoomClick(zone, e),
+      }
+    }),
+    ...houses.map((house) => {
+      const isLocalInside = localPlayer.currentHouseId === house.houseId
+      const occupants = playersByHouse.get(house.houseId) || []
+      return {
+        key: `house:${house.houseId}`,
+        isHouse: true,
+        name: house.name,
+        x: house.x,
+        y: house.y,
+        width: house.width,
+        height: house.height,
+        isLocked: false,
+        isAuthorized: true,
+        showCrown: false,
+        icon: <span>🏠</span>,
+        isLocalInside,
+        occupants,
+        title: `${house.name} - Clique para entrar`,
+        onClick: (e: React.MouseEvent) => handleHouseClick(house, e),
+      }
+    }),
+  ]
 
   return (
     <div
@@ -192,8 +307,8 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
         onClick={handleFloorClick}
         className="relative rounded-3xl bg-[#0e2a2e]/60 border border-[#194c52]/70 overflow-hidden"
         style={{
-          width: '860px',
-          height: `${Math.round(860 * (mapHeight / mapWidth))}px`,
+          width: `${boardWidth}px`,
+          height: `${boardHeight}px`,
           maxHeight: '78vh',
           transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
           transformOrigin: 'center center',
@@ -211,30 +326,38 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
           <span>🏢 Corredor Geral ({mapWidth}x{mapHeight})</span>
         </div>
 
-        {zones?.map((zone) => {
-          const leftPercent = (zone.x / mapWidth) * 100
-          const topPercent = (zone.y / mapHeight) * 100
-          const widthPercent = (zone.width / mapWidth) * 100
-          const heightPercent = (zone.height / mapHeight) * 100
+        {spaceCards.map((card) => {
+          let leftPercent = (card.x / mapWidth) * 100
+          let topPercent = (card.y / mapHeight) * 100
+          let widthPercent = (card.width / mapWidth) * 100
+          let heightPercent = (card.height / mapHeight) * 100
 
-          const isLocalInside = localPlayer.currentZoneId === zone.id
-          const isAuthorized = !zone.isLocked || useMapStore.getState().isPeerAuthorizedForZone(zone.id, localPlayer.id, localPlayer.name)
-          const playersInZone = playersByZone.get(zone.id) || []
-          const totalInZone = playersInZone.length + (isLocalInside ? 1 : 0)
+          if (card.isHouse) {
+            const rawW = (card.width / mapWidth) * boardWidth
+            const rawH = (card.height / mapHeight) * boardHeight
+            const rawCenterX = ((card.x + card.width * 0.5) / mapWidth) * boardWidth
+            const rawCenterY = ((card.y + card.height * 0.5) / mapHeight) * boardHeight
+            const boxW = Math.min(boardWidth - 8, Math.max(rawW, 172))
+            const boxH = Math.min(boardHeight - 34, Math.max(rawH, 108))
+            const boxX = Math.max(4, Math.min(boardWidth - boxW - 4, rawCenterX - boxW / 2))
+            const boxY = Math.max(28, Math.min(boardHeight - boxH - 6, rawCenterY - boxH / 2))
+            leftPercent = (boxX / boardWidth) * 100
+            topPercent = (boxY / boardHeight) * 100
+            widthPercent = (boxW / boardWidth) * 100
+            heightPercent = (boxH / boardHeight) * 100
+          }
+
+          const totalInside = card.occupants.length + (card.isLocalInside ? 1 : 0)
 
           return (
             <div
-              key={zone.id}
-              onClick={(e) => handleRoomClick(zone, e)}
-              title={
-                zone.isLocked && !isAuthorized
-                  ? `${zone.name} (Trancada - Clique para bater na porta)`
-                  : `${zone.name} - Clique para entrar`
-              }
-              className={`absolute rounded-[12px] cursor-pointer flex flex-col items-center justify-between p-2.5 group ${
-                isLocalInside
+              key={card.key}
+              onClick={card.onClick}
+              title={card.title}
+              className={`absolute rounded-[12px] cursor-pointer flex flex-col items-center justify-between p-2 pb-3 gap-1.5 group ${
+                card.isLocalInside
                   ? 'bg-lira-surface border-2 border-lira-online z-10'
-                  : zone.isLocked && !isAuthorized
+                  : card.isLocked && !card.isAuthorized
                   ? 'bg-lira-panel hover:bg-lira-surface border border-dashed border-lira-error/50 hover:border-lira-error'
                   : 'bg-lira-panel hover:bg-lira-surface border border-dashed border-lira-rule/70 hover:border-lira-accent'
               }`}
@@ -245,30 +368,26 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
                 height: `${heightPercent}%`,
               }}
             >
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-[8px] bg-lira-ground border border-lira-quiet text-lira-ink text-xs font-display font-bold pointer-events-none max-w-[90%] truncate">
-                {zone.isLocked ? (
-                  <Lock className="w-3 h-3 text-lira-error shrink-0" />
-                ) : (
-                  <span>{getZoneIcon(zone.name)}</span>
-                )}
-                <span className="truncate">{zone.name}</span>
-                {zone.isLocked && !isAuthorized && (
-                  <span className="text-[9px] font-mono bg-lira-error/15 text-lira-error px-1.5 py-0.2 rounded-[4px] border border-lira-error/40 font-semibold">
+              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-[8px] bg-lira-ground border border-lira-quiet text-lira-ink text-[11px] font-display font-bold pointer-events-none max-w-full shrink-0">
+                <span className="shrink-0">{card.icon}</span>
+                <span className="min-w-0 truncate">{card.name}</span>
+                {card.isLocked && !card.isAuthorized && (
+                  <span className="text-[9px] font-mono bg-lira-error/15 text-lira-error px-1.5 py-0.2 rounded-[4px] border border-lira-error/40 font-semibold shrink-0">
                     Bater
                   </span>
                 )}
-                {zone.admins && zone.admins.includes(localPlayer.name) && (
+                {card.showCrown && (
                   <Crown className="w-3 h-3 text-lira-amber shrink-0" />
                 )}
-                {totalInZone > 0 && (
-                  <span className="ml-1 text-[10px] font-mono bg-lira-surface text-lira-accent px-1.5 py-0.2 rounded-[4px] border border-lira-rule font-semibold">
-                    {totalInZone}
+                {totalInside > 0 && (
+                  <span className="ml-0.5 text-[10px] font-mono bg-lira-surface text-lira-accent px-1.5 py-0.2 rounded-[4px] border border-lira-rule font-semibold shrink-0">
+                    {totalInside}
                   </span>
                 )}
               </div>
 
               <div className="flex items-center gap-2 mt-auto flex-wrap justify-center pointer-events-none pb-1">
-                {isLocalInside && (
+                {card.isLocalInside && (
                   <div className="flex flex-col items-center">
                     <div className="flex items-center gap-1.5 bg-lira-accent text-lira-ground px-2 py-0.5 rounded-[6px] border border-lira-accent text-[11px] font-bold">
                       <div className="w-3.5 h-3.5 rounded-[4px] bg-lira-ground/20 flex items-center justify-center text-[8px]">
@@ -287,7 +406,7 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
                   </div>
                 )}
 
-                {playersInZone.map((remote) => (
+                {card.occupants.map((remote) => (
                   <div key={remote.id} className="flex flex-col items-center">
                     <div className="flex items-center gap-1 bg-lira-surface text-lira-ink px-1.5 py-0.5 rounded-[6px] border border-lira-rule text-[10px] font-medium">
                       <div className="w-1.5 h-1.5 rounded-full bg-lira-online" />
@@ -304,21 +423,21 @@ export const SimplifiedMapView = React.memo(function SimplifiedMapView() {
                 ))}
               </div>
 
-              {isLocalInside && (
+              {card.isLocalInside && (
                 <div className="absolute -top-2.5 -right-2.5 bg-lira-online text-lira-ground font-extrabold text-[9px] px-2 py-0.5 rounded-[6px] border border-lira-online flex items-center gap-1">
                   <div className="w-1.5 h-1.5 rounded-full bg-lira-ground" />
                   <span>Sua Sala</span>
                 </div>
               )}
 
-              <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1/3 max-w-[48px] h-1.5 bg-lira-ground border-t border-lira-rule rounded-t-sm flex items-center justify-center pointer-events-none">
+              <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1/3 max-w-[48px] h-1.5 bg-lira-ground border-t border-l-rule rounded-t-sm flex items-center justify-center pointer-events-none">
                 <div className="w-2.5 h-0.5 bg-lira-amber rounded-full" />
               </div>
             </div>
           )
         })}
 
-        {!localPlayer.currentZoneId && (
+        {!localPlayer.currentZoneId && !localPlayer.currentHouseId && (
           <div
             className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center pointer-events-none z-30"
             style={{

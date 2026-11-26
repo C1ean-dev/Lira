@@ -13,6 +13,10 @@ export {
   SHAPE_OPTIONS,
   MOTION_OPTIONS,
   DENSITY_OPTIONS,
+  MIN_AURA_GROUND_CIRCLE_SIZE,
+  MAX_AURA_GROUND_CIRCLE_SIZE,
+  DEFAULT_AURA_GROUND_CIRCLE_SIZE,
+  clampAuraGroundCircleSize,
   resolveAuraSpec,
   resolveStepsSpec,
   hasNonEmptyPixelMatrix,
@@ -26,6 +30,7 @@ export {
   stepEffectParticles,
 } from './pixelSprites'
 export {
+  drawAuraGroundCircle,
   drawAvatarAuraPreview,
   drawAvatarStepsPreview,
   drawEffectPresetIcon,

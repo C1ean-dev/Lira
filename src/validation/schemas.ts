@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { Player, PublicRoomInfo, ReactionItem, RoomKnockRequest } from '../types/game'
 import type { UserProfile } from '../types/profile'
 import type { ChatMessage, RoomChannel } from '../types/chat'
-import type { MapData, StoredMapData, PlacedFurniture, PrivateZone, FloorType, WallType } from '../types/map'
+import type { MapData, StoredMapData, PlacedFurniture, PrivateZone, FloorType, WallType, HouseInteriorSpace, StoredHouseInteriorSpace } from '../types/map'
 import { MISSING_FURNITURE_DEF_ID } from '../types/map'
 import type { CustomAsset } from '../types/customAsset'
 import type { PersistedAtlas } from '../assets/atlasFormat'
@@ -27,6 +27,7 @@ const optionalBool = z.boolean().optional()
 export const graphicsSettingsSchema = z.object({
   targetFps: optionalFinite, showFpsCounter: optionalBool, enableCulling: optionalBool,
   moveSpeed: optionalFinite, showNameTags: optionalBool,
+  lightingEnabled: optionalBool, lightingMode: z.enum(['day', 'sunset', 'night', 'auto']).optional(),
 })
 export const audioSettingsSchema = z.object({
   selectedAudioInput: text.optional(), selectedAudioOutput: text.optional(), selectedVideoInput: text.optional(),
@@ -63,6 +64,8 @@ const customAvatarEffectSchema = z.object({
   color: text.max(32),
   motion: z.enum(['float', 'rise', 'fall', 'orbit', 'spark']),
   density: z.enum(['subtle', 'normal', 'intense']),
+  groundCircle: optionalBool,
+  groundCircleSize: optionalFinite,
 }).passthrough()
 const avatarAuraStyleSchema = z.enum([
   'none', 'floral_stars', 'fire', 'sunlight', 'hearts', 'stardust',
@@ -76,7 +79,7 @@ const avatarSchema = z.object({
   ...Object.fromEntries(['skinTone', 'skinColor', 'skinDetail', 'eyeType', 'eyeColor', 'hairStyle', 'hairColor', 'facialHair', 'facialHairColor', 'topType', 'shirtType', 'topColor', 'shirtColor', 'jacketType', 'jacketColor', 'bottomType', 'bottomColor', 'pantsColor', 'shoesType', 'shoesColor', 'hatType', 'hatColor', 'glassesType', 'glassesColor', 'accessory', 'accessoryColor', 'otherType', 'otherColor', 'customSkinUrl', 'customAvatarId'].map(key => [key, text.optional()])),
   pet: z.object({ type: z.enum(['none', 'dog', 'cat', 'meowth', 'slime', 'chick', 'custom']), name: text.optional(), personality: text.optional(), color: text.optional(), customAssetId: text.optional(),
     directionalFrames: z.record(directionSchema, z.union([text, z.array(text)]).optional()).optional() }).optional(),
-  aura: z.object({ style: avatarAuraStyleSchema, color: text.optional(), custom: customAvatarEffectSchema.optional() }).optional(),
+  aura: z.object({ style: avatarAuraStyleSchema, color: text.optional(), custom: customAvatarEffectSchema.optional(), groundCircle: optionalBool, groundCircleSize: optionalFinite }).optional(),
   steps: z.object({ style: avatarStepsStyleSchema, color: text.optional(), custom: customAvatarEffectSchema.optional() }).optional(),
   customComponents: z.record(text, z.union([text, z.record(directionSchema, z.union([text, z.array(text)]).optional())])).optional(),
 }).passthrough()
@@ -104,7 +107,7 @@ export const playerSchema = domain<Partial<Player>>(z.object({
   x: optionalFinite, y: optionalFinite, targetX: optionalFinite, targetY: optionalFinite,
   direction: directionSchema.optional(), isMoving: optionalBool, seatedOn: text.nullable().optional(),
   activityAnimation: text.optional(), activityAnimationStartedAt: optionalFinite, activityAnimationManual: optionalBool,
-  currentZoneId: text.nullable().optional(), avatar: avatarSchema.optional(),
+  currentZoneId: text.nullable().optional(), currentHouseId: text.nullable().optional(), avatar: avatarSchema.optional(),
   status: presenceStatusSchema.optional(), statusText: text.optional(), statusEmoji: text.optional(),
   lastUpdated: optionalFinite, ping: optionalFinite, isOwner: optionalBool, isHost: optionalBool,
   role: z.enum(['owner', 'host', 'admin', 'member', 'guest']).optional(),
@@ -115,14 +118,35 @@ export const playerSchema = domain<Partial<Player>>(z.object({
   spotifyActivity: z.object({ track: text, artist: text, isPlaying: z.boolean(), startedAt: optionalFinite }).optional(),
   isDjBot: optionalBool, djOwnerId: text.optional(), appVersion: text.optional(), minCompatibleVersion: text.optional(), isOutdated: optionalBool,
 }).passthrough())
-const furnitureWireSchema = z.object({ id, defId: id, x: finite, y: finite, rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(), direction: directionSchema.optional(), tintColor: text.optional(), consumptionStage: finite.int().min(0).max(3).optional() }).passthrough()
+const furnitureLightSchema = z.object({
+  enabled: z.boolean(),
+  color: text.max(32),
+  radius: finite.min(20).max(600),
+  intensity: finite.min(0).max(1.5),
+  flicker: optionalBool,
+}).passthrough()
+const furnitureWireSchema = z.object({ id, defId: id, x: finite, y: finite, rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(), direction: directionSchema.optional(), tintColor: text.optional(), houseName: text.optional(), consumptionStage: finite.int().min(0).max(3).optional(), light: furnitureLightSchema.optional() }).passthrough()
 const furniture = domain<PlacedFurniture>(furnitureWireSchema)
 const zoneWireSchema = z.object({ id, name: text, color: text.optional(), x: finite, y: finite, width: finite.positive(), height: finite.positive(), description: text.optional(), maxCapacity: optionalFinite, hasWalls: optionalBool, wallType: text.optional(), admins: z.array(id).optional(), members: z.array(id).optional(), authorizedPeers: z.array(id).optional(), isLocked: optionalBool, allowKnock: optionalBool, welcomeMessage: text.optional() }).passthrough()
 const zone = domain<PrivateZone>(zoneWireSchema)
-const mapWireSchema = z.object({ id, name: text, width: finite.positive(), height: finite.positive(),
-  tileSize: finite.positive(), defaultFloor: text.optional(), floorRectangles: z.array(z.object({ x: finite, y: finite, width: finite.positive(), height: finite.positive(), floor: text })).optional(), floorOverrides: z.record(text, text).optional(), wallOverrides: z.record(text, text.nullable()).optional(), spawnPoint: z.object({ x: finite, y: finite }),
+const innerMapWireSchema = z.object({
+  id, name: text, width: finite.positive(), height: finite.positive(),
+  tileSize: finite.positive(), defaultFloor: text.optional(),
+  floorRectangles: z.array(z.object({ x: finite, y: finite, width: finite.positive(), height: finite.positive(), floor: text })).optional(),
+  floorOverrides: z.record(text, text).optional(),
+  wallOverrides: z.record(text, text.nullable()).optional(),
+  spawnPoint: z.object({ x: finite, y: finite }),
   furniture: z.array(furniture), zones: z.array(zone), floors: z.array(z.array(text)), walls: z.array(z.array(text.nullable())),
 }).passthrough()
+const houseInteriorWireSchema = innerMapWireSchema.omit({ id: true }).extend({
+  houseId: id,
+  defId: text,
+  exitDoor: z.object({ x: finite, y: finite, width: finite.positive() }),
+  accentColor: text.optional(),
+})
+const mapWireSchema = innerMapWireSchema.extend({
+  houseInteriors: z.record(id, houseInteriorWireSchema).optional(),
+})
 export const mapSchema = domain<MapData>(mapWireSchema)
 const storedZoneSchema = zoneWireSchema.extend({
   welcomeMessage: text.nullish().transform(message => message ?? undefined),
@@ -133,23 +157,33 @@ const storedFurnitureSchema = furnitureWireSchema.extend({
     return value
   }, id),
 })
+const storedHouseInteriorSchema = domain<StoredHouseInteriorSpace>(innerMapWireSchema.partial().omit({ id: true }).extend({
+  houseId: id.optional(),
+  defId: text.optional(),
+  exitDoor: z.object({ x: finite, y: finite, width: finite.positive() }).optional(),
+  accentColor: text.optional(),
+  furniture: z.array(storedFurnitureSchema).optional(),
+  zones: z.array(storedZoneSchema).optional(),
+}))
 export const storedMapSchema = domain<StoredMapData>(mapWireSchema.partial().extend({
   id: id.default('custom_map'),
   furniture: z.array(storedFurnitureSchema).optional(),
   zones: z.array(storedZoneSchema).optional(),
+  houseInteriors: z.record(id, storedHouseInteriorSchema).optional(),
 }))
 export const savedSpaceSchema = z.object({ id: text.optional(), roomCode: text.optional(), name: text.optional(), description: text.optional(), color: text.optional(), createdAt: optionalFinite, updatedAt: optionalFinite, mapData: storedMapSchema.optional(), channels: z.array(z.object({ id, name: text, description: text.optional() })).optional() }).passthrough()
 const channel = domain<RoomChannel>(z.object({ id, name: text, description: text.optional() }))
+const optionalHouseId = { houseId: id.nullable().optional() }
 const mapEdit = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('consume_furniture'), data: z.object({ mapId: id, id, expected: finite.int() }) }),
-  z.object({ action: z.literal('set_floor'), data: z.object({ x: finite, y: finite, floor: domain<FloorType>(text) }) }),
-  z.object({ action: z.literal('paint_floor_in_zone'), data: z.object({ zoneId: id, floor: domain<FloorType>(text) }) }),
-  z.object({ action: z.literal('set_wall'), data: z.object({ x: finite, y: finite, wall: domain<WallType>(text).nullable() }) }),
-  z.object({ action: z.literal('add_furniture'), data: z.object({ furniture }) }),
-  z.object({ action: z.literal('remove_furniture'), data: z.object({ id: id.optional(), x: optionalFinite, y: optionalFinite }) }),
-  z.object({ action: z.literal('add_zone'), data: z.object({ zone }) }),
-  z.object({ action: z.literal('remove_zone'), data: z.object({ id }) }),
-  z.object({ action: z.literal('update_zone'), data: z.object({ id, partial: domain<Partial<PrivateZone>>(zoneWireSchema.partial()).optional(), zone: zone.optional() }) }),
+  z.object({ action: z.literal('consume_furniture'), data: z.object({ mapId: id, id, expected: finite.int(), ...optionalHouseId }) }),
+  z.object({ action: z.literal('set_floor'), data: z.object({ x: finite, y: finite, floor: domain<FloorType>(text), ...optionalHouseId }) }),
+  z.object({ action: z.literal('paint_floor_in_zone'), data: z.object({ zoneId: id, floor: domain<FloorType>(text), ...optionalHouseId }) }),
+  z.object({ action: z.literal('set_wall'), data: z.object({ x: finite, y: finite, wall: domain<WallType>(text).nullable(), ...optionalHouseId }) }),
+  z.object({ action: z.literal('add_furniture'), data: z.object({ furniture, ...optionalHouseId }) }),
+  z.object({ action: z.literal('remove_furniture'), data: z.object({ id: id.optional(), x: optionalFinite, y: optionalFinite, ...optionalHouseId }) }),
+  z.object({ action: z.literal('add_zone'), data: z.object({ zone, ...optionalHouseId }) }),
+  z.object({ action: z.literal('remove_zone'), data: z.object({ id, ...optionalHouseId }) }),
+  z.object({ action: z.literal('update_zone'), data: z.object({ id, partial: domain<Partial<PrivateZone>>(zoneWireSchema.partial()).optional(), zone: zone.optional(), ...optionalHouseId }) }),
 ])
 const atlas = domain<PersistedAtlas>(object)
 const asset = domain<CustomAsset>(z.object({ id, name: text, type: text }).passthrough())

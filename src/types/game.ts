@@ -155,6 +155,10 @@ export interface CustomAvatarEffectSpec {
   color: string
   motion: AvatarEffectMotion
   density: AvatarEffectDensity
+  /** Whether to render a glowing magic circle on the ground under the avatar (aura only). */
+  groundCircle?: boolean
+  /** Diameter (width in world px, 24..128) of the ground circle (aura only). */
+  groundCircleSize?: number
 }
 
 export type AvatarAuraStyle =
@@ -191,6 +195,8 @@ export interface AvatarAuraConfig {
   style: AvatarAuraStyle
   color?: string
   custom?: CustomAvatarEffectSpec
+  groundCircle?: boolean
+  groundCircleSize?: number
 }
 
 export interface AvatarStepsConfig {
@@ -287,6 +293,7 @@ export interface Player {
   statusText?: string
   statusEmoji?: string
   currentZoneId?: string | null
+  currentHouseId?: string | null
   lastUpdated: number
   isOwner?: boolean
   isHost?: boolean

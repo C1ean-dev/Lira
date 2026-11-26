@@ -39,8 +39,8 @@ interface Props {
   pixelHeight?: number
   setBoardSizeInTiles: (w: number, h: number) => void
   composeCanvasRef: React.RefObject<HTMLCanvasElement>
-  composeTool: 'move' | 'collision' | 'seat'
-  setComposeTool: (tool: 'move' | 'collision' | 'seat') => void
+  composeTool: 'move' | 'collision' | 'seat' | 'door'
+  setComposeTool: (tool: 'move' | 'collision' | 'seat' | 'door') => void
   composeZoom: number
   setComposeZoom: (z: number | ((prev: number) => number)) => void
   showCollisionOverlay: boolean
@@ -49,6 +49,8 @@ interface Props {
   onSetAllCollision: (solid: boolean) => void
   onSetBottomHalfCollision: () => void
   onClearSeats?: () => void
+  isHouse?: boolean
+  onClearDoors?: () => void
   onFitLayersToBoard?: () => void
   onComposeMouseDown: (e: React.MouseEvent<HTMLCanvasElement>) => void
   onComposeMouseMove: (e: React.MouseEvent<HTMLCanvasElement>) => void
@@ -79,6 +81,8 @@ export const CompositionStudio: React.FC<Props> = ({
   onSetAllCollision,
   onSetBottomHalfCollision,
   onClearSeats,
+  isHouse = false,
+  onClearDoors,
   onFitLayersToBoard,
   onComposeMouseDown,
   onComposeMouseMove,
@@ -158,6 +162,19 @@ export const CompositionStudio: React.FC<Props> = ({
               >
                 <Brush className="w-3.5 h-3.5" />
                 <span>Pintar Assento</span>
+              </button>
+            )}
+            {elementType === 'furniture' && isHouse && (
+              <button
+                type="button"
+                onClick={() => { setComposeTool('door'); setShowCollisionOverlay(true) }}
+                className={`px-3 py-1 text-xs font-mono font-bold rounded-[6px] flex items-center gap-1.5 ${
+                  composeTool === 'door' ? 'bg-lira-amber text-lira-ground' : 'text-lira-muted hover:text-lira-amber'
+                }`}
+                title="Marque os tiles onde fica a porta de entrada para o interior da casa"
+              >
+                <Brush className="w-3.5 h-3.5" />
+                <span>Pintar Porta</span>
               </button>
             )}
           </div>
@@ -321,6 +338,15 @@ export const CompositionStudio: React.FC<Props> = ({
         <div className="p-3 bg-lira-sidebar border-t border-dashed border-lira-rule/60 flex items-center justify-between gap-3 text-xs font-mono text-lira-online">
           <span>Pinte ou apague os blocos verdes para sentar ao clicar ou passar pela hitbox. O player olha na direção do móvel e levanta ao andar.</span>
           <button type="button" onClick={onClearSeats} className="px-3 py-1 rounded-[8px] bg-lira-surface border border-lira-rule text-lira-ink shrink-0">Limpar Assentos</button>
+        </div>
+      )}
+
+      {elementType === 'furniture' && isHouse && composeTool === 'door' && (
+        <div className="p-3 bg-lira-sidebar border-t border-dashed border-lira-rule/60 flex items-center justify-between gap-3 text-xs font-mono text-lira-amber">
+          <span>Clique ou arraste nos blocos dourados para definir as portas de entrada (portal para o interior da casa).</span>
+          {onClearDoors && (
+            <button type="button" onClick={onClearDoors} className="px-3 py-1 rounded-[8px] bg-lira-surface border border-lira-rule text-lira-ink shrink-0">Resetar Portas</button>
+          )}
         </div>
       )}
 

@@ -33,7 +33,7 @@ describe('individual library renderer storage', () => {
     expect(document?.categories).toContain('Quarto')
     expect(document?.categories).toContain('Comidas')
     expect(document?.categories).toContain('Bebidas')
-    expect(document?.assets.filter(asset => asset.isTabletopDecoration)).toHaveLength(28)
+    expect(document?.assets.filter(asset => asset.isTabletopDecoration)).toHaveLength(30)
   })
   it('uses native file URLs and saves only new bytes through the desktop bridge', async () => {
     const packet = await buildLibrary({ assets: [hero], categories: [] })

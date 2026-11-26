@@ -11,8 +11,13 @@ import {
   Sparkles,
   Laptop,
   LocateFixed,
+  Sun,
+  Moon,
+  Sunset,
+  Clock,
 } from 'lucide-react'
 import { useGameStore } from '../store/useGameStore'
+import { useSettingsStore, type LightingMode } from '../store/useSettingsStore'
 
 interface MapControlsWidgetProps {
   onZoomIn: () => void
@@ -33,8 +38,18 @@ export const MapControlsWidget: React.FC<MapControlsWidgetProps> = ({
 }) => {
   const mapViewMode = useGameStore((s) => s.mapViewMode)
   const setMapViewMode = useGameStore((s) => s.setMapViewMode)
+  const lightingEnabled = useSettingsStore((s) => s.lightingEnabled)
+  const lightingMode = useSettingsStore((s) => s.lightingMode)
+  const setLightingEnabled = useSettingsStore((s) => s.setLightingEnabled)
+  const setLightingMode = useSettingsStore((s) => s.setLightingMode)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
+
+  const cycleLightingMode = () => {
+    const order: LightingMode[] = ['day', 'sunset', 'night', 'auto']
+    const next = order[(order.indexOf(lightingMode) + 1) % order.length]
+    setLightingMode(next)
+  }
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -137,6 +152,53 @@ export const MapControlsWidget: React.FC<MapControlsWidgetProps> = ({
               )}
             </button>
           </div>
+
+          <div className="pt-2 border-t border-dashed border-lira-rule/60 space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[11px] font-bold text-lira-ink flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-lira-amber" />
+                <span>Iluminação 2D (PixiJS)</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setLightingEnabled(!lightingEnabled)}
+                className={`px-2 py-0.5 rounded-[5px] text-[10px] font-bold border transition-colors ${
+                  lightingEnabled
+                    ? 'bg-lira-online/15 text-lira-online border-lira-online/40'
+                    : 'bg-lira-ground text-lira-muted border-lira-quiet'
+                }`}
+              >
+                {lightingEnabled ? 'ON' : 'OFF'}
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {(
+                [
+                  { id: 'day', label: 'Dia', icon: Sun },
+                  { id: 'sunset', label: 'Pôr do Sol', icon: Sunset },
+                  { id: 'night', label: 'Noite', icon: Moon },
+                  { id: 'auto', label: 'Ciclo Auto', icon: Clock },
+                ] as const
+              ).map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => {
+                    if (!lightingEnabled) setLightingEnabled(true)
+                    setLightingMode(id)
+                  }}
+                  className={`flex items-center gap-1.5 px-2 py-1.5 rounded-[6px] border text-[10px] font-bold transition-colors ${
+                    lightingEnabled && lightingMode === id
+                      ? 'bg-lira-surface border-lira-accent text-lira-ink'
+                      : 'bg-lira-ground border-lira-quiet text-lira-muted hover:text-lira-ink'
+                  }`}
+                >
+                  <Icon className="w-3 h-3 text-lira-amber shrink-0" />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
@@ -164,6 +226,28 @@ export const MapControlsWidget: React.FC<MapControlsWidgetProps> = ({
         </button>
 
         <div className="h-4 w-px border-l border-dashed border-lira-rule/60" />
+
+        {mapViewMode !== 'simplified' && (
+          <>
+            <button
+              type="button"
+              onClick={cycleLightingMode}
+              className="p-1.5 rounded-[6px] hover:bg-lira-surface text-lira-amber hover:text-lira-ink transition-colors"
+              title={`Iluminação 2D: ${lightingEnabled ? lightingMode : 'desligada'} (clique para alternar)`}
+            >
+              {lightingMode === 'night' ? (
+                <Moon className="w-3.5 h-3.5" />
+              ) : lightingMode === 'sunset' ? (
+                <Sunset className="w-3.5 h-3.5" />
+              ) : lightingMode === 'auto' ? (
+                <Clock className="w-3.5 h-3.5" />
+              ) : (
+                <Sun className="w-3.5 h-3.5" />
+              )}
+            </button>
+            <div className="h-4 w-px border-l border-dashed border-lira-rule/60" />
+          </>
+        )}
 
         <div className="flex items-center gap-0.5">
           <button

@@ -1,14 +1,28 @@
 import React from 'react'
-import { Lock, MapPin, Users } from 'lucide-react'
+import { Home, Lock, MapPin, Users } from 'lucide-react'
 import { useGameStore } from '../store/useGameStore'
-import { useMapStore } from '../store/useMapStore'
+import { selectActiveMapData, useMapStore } from '../store/useMapStore'
 
 export const CurrentLocationPill: React.FC = () => {
   const currentZoneId = useGameStore((s) => s.localPlayer.currentZoneId)
-  const zones = useMapStore((s) => s.mapData.zones)
-  const currentZone = zones.find((z) => z.id === currentZoneId)
-  const name = currentZone ? currentZone.name : 'Corredor Geral'
-  const color = currentZone ? currentZone.color : '#6b7280'
+  const proximityCount = useGameStore((s) =>
+    s.localPlayer.currentZoneId === null && !s.localPlayer.currentHouseId ? s.proximityPeerIds.length : 0
+  )
+  const activeInterior = useMapStore((s) =>
+    s.activeHouseId ? s.mapData.houseInteriors?.[s.activeHouseId] ?? null : null
+  )
+  const activeMap = useMapStore(selectActiveMapData)
+  const currentZone = activeMap.zones.find((z) => z.id === currentZoneId)
+  const name = currentZone
+    ? activeInterior
+      ? `${activeInterior.name} · ${currentZone.name}`
+      : currentZone.name
+    : activeInterior
+      ? `Dentro: ${activeInterior.name}`
+      : proximityCount > 0
+        ? `Corredor Geral · Proximidade (${proximityCount + 1})`
+        : 'Corredor Geral'
+  const color = currentZone?.color || activeInterior?.accentColor || (proximityCount > 0 ? '#22c55e' : '#6b7280')
 
   return (
     <div
@@ -24,6 +38,8 @@ export const CurrentLocationPill: React.FC = () => {
       />
       {currentZone?.isLocked ? (
         <Lock className="h-3.5 w-3.5 shrink-0 text-lira-amber" aria-hidden="true" />
+      ) : activeInterior && !currentZone ? (
+        <Home className="h-3.5 w-3.5 shrink-0 text-lira-amber" aria-hidden="true" />
       ) : currentZone ? (
         <Users className="h-3.5 w-3.5 shrink-0 text-lira-accent" aria-hidden="true" />
       ) : (

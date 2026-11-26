@@ -137,6 +137,8 @@ export const App: React.FC = () => {
     PeerManager.getInstance().disconnect()
     MediaManager.getInstance().stopAllMedia()
     useGameStore.getState().setOnlineUsersOpen(false)
+    useGameStore.getState().setCurrentHouseId(null)
+    useMapStore.getState().setActiveHouseId(null)
     useMapStore.getState().setEditorOpen(false)
     useSpotifyJamStore.getState().clearAllJams()
     setInLobby(true)

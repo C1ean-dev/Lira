@@ -1,30 +1,42 @@
 import { consumeTabletopAt } from '../services/tabletopConsumption'
+import { enterHouse, exitHouse } from '../services/houseNavigation'
 import { CameraManager } from './camera/CameraManager'
 import { InputHandler } from './input/InputHandler'
 import { checkCollision, checkZonePresence } from './physics/collision'
 import { findPath, hasLineOfSight } from './physics/pathfinding'
-import { WorldRenderer } from './rendering/worldRenderer'
+import { PixiWorldRenderer } from './pixi/PixiWorldRenderer'
 import { PetManager } from './pet/PetManager'
 import { AvatarEffectsManager } from './avatarEffects'
 import { useGameStore } from '../store/useGameStore'
-import { useMapStore } from '../store/useMapStore'
+import { selectActiveMapData, useMapStore } from '../store/useMapStore'
 import { useSettingsStore } from '../store/useSettingsStore'
 import { PeerManager } from '../p2p/PeerManager'
 import { getZoneDoorTarget } from '../utils/doorKnockHelper'
 import { findFurnitureSeatAt } from './physics/seating'
+import type { CustomAsset } from '../types/customAsset'
 import type { MapData } from '../types/map'
 import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import { findSafePlayerPosition } from './physics/safePlayerPosition'
+import {
+  findHouseAtTile,
+  findTriggeredHouseEntry,
+  isPlayerOnHouseExit,
+  resolveHouseWorldDoorTiles,
+} from './houseInterior'
+import { isPlayerInCorridor } from './proximityCall'
 
 export class CanvasEngine {
-  private canvas: HTMLCanvasElement
-  private ctx: CanvasRenderingContext2D
+  private viewportWidth: number = 800
+  private viewportHeight: number = 600
+  private pixiRenderer: PixiWorldRenderer | null = null
   private isRunning: boolean = false
   private animationFrameId: number | null = null
   private unsubscribeViewMode: (() => void) | null = null
   private unsubscribeMap: (() => void) | null = null
   private unsubscribeAssets: (() => void) | null = null
   private repairingPosition = false
+  private portalCooldownUntil: number = 0
+  private lastProximityCheckAt: number = 0
 
   public camera: CameraManager
   public input: InputHandler
@@ -50,16 +62,27 @@ export class CanvasEngine {
     if (e.key === 'Shift') this.isShiftPressed = false
   }
 
-  constructor(canvas: HTMLCanvasElement) {
-    this.canvas = canvas
-    const context = canvas.getContext('2d', { alpha: false })
-    if (!context) throw new Error('Could not get Canvas 2D context')
-    this.ctx = context
-    this.ctx.imageSmoothingEnabled = false
+  constructor(viewportHost: HTMLElement | null, onRenderError?: (message: string) => void) {
+    this.viewportWidth = Math.max(2, viewportHost?.clientWidth || 800)
+    this.viewportHeight = Math.max(2, viewportHost?.clientHeight || 600)
 
     this.camera = new CameraManager()
     this.input = new InputHandler()
 
+    if (viewportHost && typeof document !== 'undefined') {
+      this.pixiRenderer = new PixiWorldRenderer(viewportHost, onRenderError)
+      void this.pixiRenderer.init()
+    }
+  }
+
+  public syncViewportSize(width: number, height: number) {
+    this.viewportWidth = Math.max(2, Math.floor(width))
+    this.viewportHeight = Math.max(2, Math.floor(height))
+    this.pixiRenderer?.syncSize(this.viewportWidth, this.viewportHeight)
+  }
+
+  public getViewportSize(): { width: number; height: number } {
+    return { width: this.viewportWidth, height: this.viewportHeight }
   }
 
   private setupInputs() {
@@ -72,10 +95,49 @@ export class CanvasEngine {
     if (consumeTabletopAt(tileX, tileY)) { this.input.clearPath(); return }
     const local = useGameStore.getState().localPlayer
     const mapStore = useMapStore.getState()
-    const map = mapStore.mapData
+    const map = mapStore.getActiveMapData()
 
     let targetX = Math.floor(tileX)
     let targetY = Math.floor(tileY)
+
+    if (!mapStore.isEditorOpen && mapStore.activeHouseId) {
+      const interior = mapStore.getActiveHouseInterior()
+      if (
+        interior &&
+        targetX >= interior.exitDoor.x &&
+        targetX < interior.exitDoor.x + interior.exitDoor.width &&
+        targetY >= interior.exitDoor.y
+      ) {
+        targetY = interior.exitDoor.y
+      }
+    }
+
+    if (!mapStore.isEditorOpen && !mapStore.activeHouseId) {
+      const assetById = new Map<string, CustomAsset>()
+      for (const a of useCustomAssetsStore.getState().customAssets) assetById.set(a.id, a)
+      const clickedHouse = findHouseAtTile(map, targetX, targetY, assetById)
+      if (clickedHouse && !clickedHouse.isDoorTile) {
+        const doors = resolveHouseWorldDoorTiles(
+          clickedHouse.house,
+          clickedHouse.asset.width,
+          clickedHouse.asset.height,
+          clickedHouse.asset.houseShell
+        )
+        let bestDoor = doors[0]
+        let bestDist = Infinity
+        for (const d of doors) {
+          const dist = Math.hypot(d.x - local.x, d.y - local.y)
+          if (dist < bestDist) {
+            bestDist = dist
+            bestDoor = d
+          }
+        }
+        if (bestDoor) {
+          targetX = bestDoor.x
+          targetY = bestDoor.y
+        }
+      }
+    }
 
     const targetZone = map.zones?.find(
       (z) =>
@@ -123,7 +185,7 @@ export class CanvasEngine {
   }
 
   public fitToScreen(percentage: number = 0.95) {
-    this.camera.fitToScreen(this.canvas, percentage)
+    this.camera.fitToScreen({ width: this.viewportWidth, height: this.viewportHeight }, percentage)
   }
 
   public start() {
@@ -135,8 +197,15 @@ export class CanvasEngine {
       else this.resume()
     })
     this.unsubscribeMap = useMapStore.subscribe((state, previous) => {
-      const map = state.mapData, before = previous.mapData
-      if (map.furniture !== before.furniture || map.walls !== before.walls ||
+      if (state.activeHouseId !== previous.activeHouseId) {
+        this.portalCooldownUntil = performance.now() + 450
+        this.input.clearPath()
+        this.stuckCounter = 0
+        this.camera.resetPan()
+      }
+      const map = selectActiveMapData(state)
+      const before = selectActiveMapData(previous)
+      if (map.id !== before.id || map.furniture !== before.furniture || map.walls !== before.walls ||
           map.zones !== before.zones || map.width !== before.width || map.height !== before.height ||
           (previous.isEditorOpen && !state.isEditorOpen)) this.repairPlayerPosition()
     })
@@ -159,7 +228,9 @@ export class CanvasEngine {
   }
 
   private repairPlayerPosition() {
-    const { mapData: map, isEditorOpen } = useMapStore.getState()
+    const mapStore = useMapStore.getState()
+    const map = mapStore.getActiveMapData()
+    const isEditorOpen = mapStore.isEditorOpen
     const local = useGameStore.getState().localPlayer
     if (this.repairingPosition || isEditorOpen || !checkCollision(local.x, local.y, map)) return
     this.repairingPosition = true
@@ -215,6 +286,8 @@ export class CanvasEngine {
 
   public dispose() {
     this.stop()
+    this.pixiRenderer?.dispose()
+    this.pixiRenderer = null
   }
 
   private loop = (currentTime: number) => {
@@ -260,7 +333,7 @@ export class CanvasEngine {
   private standUp() {
     const store = useGameStore.getState()
     const local = store.localPlayer
-    const seat = findFurnitureSeatAt(local.x + 0.5, local.y + 0.5, useMapStore.getState().mapData)
+    const seat = findFurnitureSeatAt(local.x + 0.5, local.y + 0.5, useMapStore.getState().getActiveMapData())
     this.ignoredSeat = seat?.id || null
     store.setLocalPlayer({ seatedOn: null })
     PeerManager.getInstance().sendPlayerUpdate({ seatedOn: null })
@@ -286,7 +359,7 @@ export class CanvasEngine {
     const gameStore = useGameStore.getState()
     const mapStore = useMapStore.getState()
     const local = gameStore.localPlayer
-    const map = mapStore.mapData
+    const map = mapStore.getActiveMapData()
     const moveSpeed = useSettingsStore.getState().moveSpeed || 8.0
 
     const currentSeat = findFurnitureSeatAt(local.x + 0.5, local.y + 0.5, map)
@@ -413,7 +486,35 @@ export class CanvasEngine {
       }
       this.camera.followPlayer(finalX, finalY, deltaTime)
 
+      if (!mapStore.isEditorOpen && now >= this.portalCooldownUntil) {
+        if (!mapStore.activeHouseId) {
+          const assetById = new Map<string, CustomAsset>()
+          for (const a of useCustomAssetsStore.getState().customAssets) assetById.set(a.id, a)
+          const entry = findTriggeredHouseEntry(map, finalX, finalY, assetById)
+          if (entry && enterHouse(entry.house.id)) {
+            this.portalCooldownUntil = now + 450
+            this.input.clearPath()
+            this.stuckCounter = 0
+            this.camera.resetPan()
+            return
+          }
+        } else {
+          const interior = mapStore.getActiveHouseInterior()
+          if (interior && isPlayerOnHouseExit(finalX, finalY, interior.exitDoor) && exitHouse()) {
+            this.portalCooldownUntil = now + 450
+            this.input.clearPath()
+            this.stuckCounter = 0
+            this.camera.resetPan()
+            return
+          }
+        }
+      }
+
       checkZonePresence(finalX, finalY, map)
+      if (isPlayerInCorridor(useGameStore.getState().localPlayer) && now - this.lastProximityCheckAt >= 120) {
+        this.lastProximityCheckAt = now
+        PeerManager.getInstance().scheduleProximitySync?.()
+      }
     } else {
       if (local.isMoving) {
         let finalDirection = local.direction
@@ -429,6 +530,9 @@ export class CanvasEngine {
         gameStore.setLocalPosition(local.x, local.y, finalDirection, false)
         PeerManager.getInstance().sendMovement(local.x, local.y, finalDirection, false)
         this.lastMovementBroadcast = performance.now()
+        if (isPlayerInCorridor(useGameStore.getState().localPlayer)) {
+          PeerManager.getInstance().syncProximityCalls?.()
+        }
       }
 
       this.camera.followPlayer(local.x, local.y, deltaTime)
@@ -442,41 +546,39 @@ export class CanvasEngine {
   private updateAvatarEffects(deltaTime: number) {
     const gameStore = useGameStore.getState()
     const local = gameStore.localPlayer
+    const localHouseId = local.currentHouseId ?? null
     const players = [local]
     for (const remote of Object.values(gameStore.remotePlayers)) {
       if (remote.isDjBot || remote.id.startsWith('dj-')) continue
       if (remote.id === local.id || (remote.gameId && remote.gameId === local.id)) continue
+      if ((remote.currentHouseId ?? null) !== localHouseId) continue
       players.push(remote)
     }
 
     AvatarEffectsManager.getInstance().update(deltaTime, {
       players,
-      roomKey: gameStore.roomId || '__local__',
+      roomKey: `${gameStore.roomId || '__local__'}:${localHouseId ?? 'root'}`,
       now: Date.now(),
     })
   }
 
   private render(currentTime: number) {
-    WorldRenderer.render(
-      this.ctx,
-      this.canvas,
-      this.camera,
-      this.hoverTile,
-      this.zoneDragStart,
-      this.zoneDragCurrent,
-      currentTime,
-      this.fps,
-      this.input.finalDestination,
-      this.isShiftPressed
-    )
+    this.pixiRenderer?.renderFrame(this.camera, currentTime, {
+      hoverTile: this.hoverTile,
+      zoneDragStart: this.zoneDragStart,
+      zoneDragCurrent: this.zoneDragCurrent,
+      fps: this.fps,
+      destination: this.input.finalDestination,
+      isShiftPressed: this.isShiftPressed,
+    })
   }
 
   public screenToTile(screenX: number, screenY: number, snapStep?: number): { x: number; y: number } {
-    return this.camera.screenToTile(this.canvas, screenX, screenY, snapStep)
+    return this.camera.screenToTile({ width: this.viewportWidth, height: this.viewportHeight }, screenX, screenY, snapStep)
   }
 
   public screenToWorld(screenX: number, screenY: number): { x: number; y: number } {
-    return this.camera.screenToWorld(this.canvas, screenX, screenY)
+    return this.camera.screenToWorld({ width: this.viewportWidth, height: this.viewportHeight }, screenX, screenY)
   }
 }
 

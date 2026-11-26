@@ -271,6 +271,15 @@ export const STEPS_OPTIONS: readonly StepsOptionMeta[] = [
 const AURA_MAP = new Map(AURA_OPTIONS.map((opt) => [opt.id, opt]))
 const STEPS_MAP = new Map(STEPS_OPTIONS.map((opt) => [opt.id, opt]))
 
+export const MIN_AURA_GROUND_CIRCLE_SIZE = 24
+export const MAX_AURA_GROUND_CIRCLE_SIZE = 128
+export const DEFAULT_AURA_GROUND_CIRCLE_SIZE = 56
+
+export function clampAuraGroundCircleSize(size?: number): number {
+  if (typeof size !== 'number' || !Number.isFinite(size)) return DEFAULT_AURA_GROUND_CIRCLE_SIZE
+  return Math.max(MIN_AURA_GROUND_CIRCLE_SIZE, Math.min(MAX_AURA_GROUND_CIRCLE_SIZE, Math.round(size)))
+}
+
 export function hasNonEmptyPixelMatrix(matrix?: readonly string[]): boolean {
   if (!matrix || matrix.length === 0) return false
   return matrix.some((row) => /[123]/.test(row))
@@ -283,26 +292,34 @@ export function resolveAuraSpec(config?: AvatarAuraConfig): ResolvedEffectSpec |
     const custom = config.custom
     if (!custom) return null
     const hasMatrix = hasNonEmptyPixelMatrix(custom.pixelMatrix)
+    const groundCircle = config.groundCircle ?? custom.groundCircle ?? false
+    const groundCircleSize = clampAuraGroundCircleSize(config.groundCircleSize ?? custom.groundCircleSize)
     const shapes: readonly ParticleShape[] =
-      custom.shapes.length > 0 ? custom.shapes : ['sparkle']
+      custom.shapes.length > 0 ? custom.shapes : (hasMatrix || groundCircle ? [] : ['sparkle'])
     return {
       shapes,
       pixelMatrix: hasMatrix ? custom.pixelMatrix : undefined,
       color: config.color || custom.color || DEFAULT_AVATAR_EFFECT_COLOR,
       motion: custom.motion || 'float',
       density: custom.density || 'normal',
-      glowHalo: custom.motion === 'orbit' || custom.shapes.includes('sunray') || custom.shapes.includes('flame'),
+      glowHalo: groundCircle,
+      groundCircle,
+      groundCircleSize,
     }
   }
 
   const preset = AURA_MAP.get(config.style)
   if (!preset || preset.previewShapes.length === 0) return null
+  const groundCircle = config.groundCircle ?? Boolean(preset.glowHalo)
+  const groundCircleSize = clampAuraGroundCircleSize(config.groundCircleSize ?? preset.groundCircleSize)
   return {
     shapes: preset.previewShapes,
     color: config.color || preset.defaultColor,
     motion: preset.motion,
     density: preset.density,
-    glowHalo: preset.glowHalo,
+    glowHalo: groundCircle,
+    groundCircle,
+    groundCircleSize,
   }
 }
 

@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react'
-import { Move, Trash2, Palette, X, Check, Pencil, RotateCw } from 'lucide-react'
-import { useMapStore } from '../store/useMapStore'
+import { Move, Trash2, Palette, X, Check, Pencil, RotateCw, Lightbulb, DoorOpen, Home } from 'lucide-react'
+import { selectActiveMapData, useMapStore } from '../store/useMapStore'
 import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import { FURNITURE_CATALOG } from '../engine/Constants'
 import { PeerManager } from '../p2p/PeerManager'
 import { Direction } from '../types/game'
+import { DEFAULT_FURNITURE_LIGHT, DEFAULT_HOUSE_SHELL, type FurnitureLightConfig, type HouseShellConfig } from '../types/customAsset'
+import { enterHouse } from '../services/houseNavigation'
+import { findBorderWallType } from '../engine/houseInterior'
+import { FurnitureLightControls } from './custom-element/FurnitureLightControls'
+import { HouseConfigControls } from './custom-element/HouseConfigControls'
 
 const TINT_PALETTE = [
   { name: 'Original', color: undefined },
@@ -23,21 +28,25 @@ const TINT_PALETTE = [
 ]
 
 export const FurnitureContextMenu: React.FC = () => {
+  const activeMap = useMapStore(selectActiveMapData)
   const {
-    mapData,
+    mapData: rootMapData,
     selectedPlacedFurnitureId,
     setSelectedPlacedFurnitureId,
     isMovingFurniture,
     setIsMovingFurniture,
     updateFurniture,
     removeFurnitureById,
+    updateHouseInteriorConfig,
     isEditorOpen,
   } = useMapStore()
 
   const [showColorPalette, setShowColorPalette] = useState<boolean>(false)
+  const [showLightPanel, setShowLightPanel] = useState<boolean>(false)
+  const [showHousePanel, setShowHousePanel] = useState<boolean>(false)
 
   const selectedFurn = selectedPlacedFurnitureId
-    ? mapData.furniture.find((f) => f.id === selectedPlacedFurnitureId)
+    ? activeMap.furniture.find((f) => f.id === selectedPlacedFurnitureId)
     : null
 
   const handleRotate = useCallback(() => {
@@ -72,12 +81,14 @@ export const FurnitureContextMenu: React.FC = () => {
         setSelectedPlacedFurnitureId(null)
         setIsMovingFurniture(false)
         setShowColorPalette(false)
+        setShowLightPanel(false)
+        setShowHousePanel(false)
       } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
         e.preventDefault()
         const dx = e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0
         const dy = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0
-        const newX = Math.max(0, Math.min(mapData.width - 1, selectedFurn.x + dx))
-        const newY = Math.max(0, Math.min(mapData.height - 1, selectedFurn.y + dy))
+        const newX = Math.max(0, Math.min(activeMap.width - 1, selectedFurn.x + dx))
+        const newY = Math.max(0, Math.min(activeMap.height - 1, selectedFurn.y + dy))
         updateFurniture(selectedFurn.id, { x: newX, y: newY })
         PeerManager.getInstance().sendMapEdit('add_furniture', {
           furniture: { ...selectedFurn, x: newX, y: newY },
@@ -86,7 +97,7 @@ export const FurnitureContextMenu: React.FC = () => {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isEditorOpen, selectedFurn, handleRotate, setSelectedPlacedFurnitureId, setIsMovingFurniture, mapData.width, mapData.height, updateFurniture])
+  }, [isEditorOpen, selectedFurn, handleRotate, setSelectedPlacedFurnitureId, setIsMovingFurniture, activeMap.width, activeMap.height, updateFurniture])
 
   if (!isEditorOpen || !selectedPlacedFurnitureId || !selectedFurn) {
     return null
@@ -94,11 +105,22 @@ export const FurnitureContextMenu: React.FC = () => {
 
   const customAsset = useCustomAssetsStore.getState().getAssetById(selectedFurn.defId)
   const furnDef = customAsset || FURNITURE_CATALOG.find((f) => f.id === selectedFurn.defId)
-  const furnName = furnDef?.name || 'Mobília Selecionada'
+  const isHouse = Boolean(customAsset?.houseShell)
+  const existingInterior = isHouse ? rootMapData.houseInteriors?.[selectedFurn.id] : undefined
+  const furnName = selectedFurn.houseName || existingInterior?.name || furnDef?.name || 'Mobília Selecionada'
 
   const handleDelete = () => {
     removeFurnitureById(selectedFurn.id)
-    PeerManager.getInstance().sendMapEdit('remove_furniture', { id: selectedFurn.id, x: selectedFurn.x, y: selectedFurn.y })
+    if (isHouse) {
+      PeerManager.getInstance().broadcast({
+        type: 'MAP_SYNC',
+        senderId: 'host',
+        payload: { mapData: useMapStore.getState().mapData },
+        timestamp: Date.now(),
+      })
+    } else {
+      PeerManager.getInstance().sendMapEdit('remove_furniture', { id: selectedFurn.id, x: selectedFurn.x, y: selectedFurn.y })
+    }
     setSelectedPlacedFurnitureId(null)
   }
 
@@ -110,6 +132,16 @@ export const FurnitureContextMenu: React.FC = () => {
     updateFurniture(selectedFurn.id, { tintColor: colorHex })
     PeerManager.getInstance().sendMapEdit('add_furniture', {
       furniture: { ...selectedFurn, tintColor: colorHex },
+    })
+  }
+
+  const effectiveLight: FurnitureLightConfig =
+    selectedFurn.light ?? customAsset?.light ?? { ...DEFAULT_FURNITURE_LIGHT }
+
+  const handleChangeLight = (nextLight?: FurnitureLightConfig) => {
+    updateFurniture(selectedFurn.id, { light: nextLight })
+    PeerManager.getInstance().sendMapEdit('add_furniture', {
+      furniture: { ...selectedFurn, light: nextLight },
     })
   }
 
@@ -125,8 +157,98 @@ export const FurnitureContextMenu: React.FC = () => {
     return { label: 'Frente', icon: '⬇️' }
   })()
 
+  const liveHouseShell: HouseShellConfig = {
+    ...DEFAULT_HOUSE_SHELL,
+    ...(customAsset?.houseShell || {}),
+    defaultInteriorWidth: existingInterior?.width ?? customAsset?.houseShell?.defaultInteriorWidth ?? DEFAULT_HOUSE_SHELL.defaultInteriorWidth,
+    defaultInteriorHeight: existingInterior?.height ?? customAsset?.houseShell?.defaultInteriorHeight ?? DEFAULT_HOUSE_SHELL.defaultInteriorHeight,
+    defaultInteriorFloor: existingInterior?.defaultFloor ?? customAsset?.houseShell?.defaultInteriorFloor ?? DEFAULT_HOUSE_SHELL.defaultInteriorFloor,
+    defaultInteriorWall:
+      existingInterior
+        ? findBorderWallType(existingInterior.walls)
+        : (customAsset?.houseShell?.defaultInteriorWall !== undefined
+            ? customAsset.houseShell.defaultInteriorWall
+            : DEFAULT_HOUSE_SHELL.defaultInteriorWall),
+    defaultZoneColor: existingInterior?.accentColor ?? selectedFurn.tintColor ?? customAsset?.houseShell?.defaultZoneColor ?? DEFAULT_HOUSE_SHELL.defaultZoneColor,
+  }
+
+  const syncRootMap = () => {
+    PeerManager.getInstance().broadcast({
+      type: 'MAP_SYNC',
+      senderId: 'host',
+      payload: { mapData: useMapStore.getState().mapData },
+      timestamp: Date.now(),
+    })
+  }
+
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 font-mono text-lira-ink">
+      {showHousePanel && isHouse && (
+        <div className="bg-lira-panel p-3 rounded-[12px] border border-dashed border-lira-amber/70 flex flex-col gap-2 w-80">
+          <div className="flex items-center justify-between text-xs font-mono font-bold text-lira-amber pb-1 border-b border-dashed border-lira-rule/60">
+            <span>Configurar Interior da Casa</span>
+            <button
+              type="button"
+              onClick={() => setShowHousePanel(false)}
+              className="text-lira-muted hover:text-lira-ink p-0.5"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <HouseConfigControls
+            compact
+            isHouse
+            houseName={selectedFurn.houseName ?? existingInterior?.name ?? customAsset?.name ?? ''}
+            onChangeHouseName={(name) => {
+              updateHouseInteriorConfig(selectedFurn.id, { name })
+              syncRootMap()
+            }}
+            houseShell={liveHouseShell}
+            onChange={(next) => {
+              updateHouseInteriorConfig(selectedFurn.id, {
+                width: next.defaultInteriorWidth,
+                height: next.defaultInteriorHeight,
+                wallType: next.defaultInteriorWall,
+              })
+              syncRootMap()
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setShowHousePanel(false)
+              setSelectedPlacedFurnitureId(null)
+              enterHouse(selectedFurn.id)
+            }}
+            className="w-full py-1.5 rounded-[8px] bg-lira-amber hover:bg-lira-ink text-lira-ground text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+          >
+            <DoorOpen className="w-3.5 h-3.5" />
+            <span>Entrar no Interior para Mobiliar</span>
+          </button>
+        </div>
+      )}
+
+      {showLightPanel && (
+        <div className="bg-lira-panel p-3 rounded-[12px] border border-dashed border-lira-rule flex flex-col gap-2">
+          <div className="flex items-center justify-between text-xs font-mono font-bold text-lira-amber pb-1 border-b border-dashed border-lira-rule/60">
+            <span>Iluminação 2D da Mobília</span>
+            <button
+              type="button"
+              onClick={() => setShowLightPanel(false)}
+              className="text-lira-muted hover:text-lira-ink p-0.5"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <FurnitureLightControls
+            compact
+            light={effectiveLight}
+            onChange={(next) => handleChangeLight(next)}
+            onResetToDefault={selectedFurn.light !== undefined ? () => handleChangeLight(undefined) : undefined}
+          />
+        </div>
+      )}
+
       {showColorPalette && (
         <div className="bg-lira-panel p-3 rounded-[12px] border border-dashed border-lira-rule flex flex-col gap-2">
           <div className="flex items-center justify-between text-xs font-mono font-bold text-lira-accent pb-1 border-b border-dashed border-lira-rule/60">
@@ -204,18 +326,77 @@ export const FurnitureContextMenu: React.FC = () => {
           <span>Girar <span className="text-lira-amber font-mono text-[11px]">({dirBadge.icon} {dirBadge.label})</span></span>
         </button>
 
+        {isHouse && (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedPlacedFurnitureId(null)
+                setShowHousePanel(false)
+                enterHouse(selectedFurn.id)
+              }}
+              className="px-3 py-1.5 rounded-[8px] bg-lira-online hover:bg-lira-ink text-lira-ground text-xs font-mono font-bold flex items-center gap-1.5 transition-colors"
+              title="Entrar nesta casa para decorar ou ajustar o espaço interno"
+            >
+              <DoorOpen className="w-3.5 h-3.5" />
+              <span>Entrar no Interior</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowHousePanel(!showHousePanel)
+                setShowColorPalette(false)
+                setShowLightPanel(false)
+              }}
+              className={`px-3 py-1.5 rounded-[8px] text-xs font-mono font-bold flex items-center gap-1.5 transition-colors border ${
+                showHousePanel
+                  ? 'bg-lira-amber text-lira-ground border-lira-amber'
+                  : 'bg-lira-surface hover:border-lira-amber text-lira-amber border-lira-rule'
+              }`}
+              title="Definir nome e tamanho customizado do interior da casa"
+            >
+              <Home className="w-3.5 h-3.5" />
+              <span>Configurar Casa</span>
+            </button>
+          </>
+        )}
+
+        {!isHouse && (
+          <button
+            type="button"
+            onClick={() => {
+              setShowColorPalette(!showColorPalette)
+              setShowLightPanel(false)
+              setShowHousePanel(false)
+            }}
+            className={`px-3 py-1.5 rounded-[8px] text-xs font-mono font-bold flex items-center gap-1.5 transition-colors border ${
+              showColorPalette
+                ? 'bg-lira-online text-lira-ground border-lira-online'
+                : 'bg-lira-surface hover:border-lira-accent text-lira-ink border-lira-rule'
+            }`}
+            title="Trocar cor ou aplicar tom na mobília"
+          >
+            <Palette className="w-3.5 h-3.5 text-lira-online" />
+            <span>Trocar de Cor</span>
+          </button>
+        )}
+
         <button
           type="button"
-          onClick={() => setShowColorPalette(!showColorPalette)}
+          onClick={() => {
+            setShowLightPanel(!showLightPanel)
+            setShowColorPalette(false)
+            setShowHousePanel(false)
+          }}
           className={`px-3 py-1.5 rounded-[8px] text-xs font-mono font-bold flex items-center gap-1.5 transition-colors border ${
-            showColorPalette
-              ? 'bg-lira-online text-lira-ground border-lira-online'
-              : 'bg-lira-surface hover:border-lira-accent text-lira-ink border-lira-rule'
+            showLightPanel || effectiveLight.enabled
+              ? 'bg-lira-amber text-lira-ground border-lira-amber'
+              : 'bg-lira-surface hover:border-lira-amber text-lira-ink border-lira-rule'
           }`}
-          title="Trocar cor ou aplicar tom na mobília"
+          title="Adicionar ou editar luz 2D emitida por esta mobília"
         >
-          <Palette className="w-3.5 h-3.5 text-lira-online" />
-          <span>Trocar de Cor</span>
+          <Lightbulb className="w-3.5 h-3.5" />
+          <span>Luz</span>
         </button>
 
         {customAsset && (
@@ -248,6 +429,8 @@ export const FurnitureContextMenu: React.FC = () => {
             setSelectedPlacedFurnitureId(null)
             setIsMovingFurniture(false)
             setShowColorPalette(false)
+            setShowLightPanel(false)
+            setShowHousePanel(false)
           }}
           className="p-1.5 text-lira-muted hover:text-lira-ink rounded-[6px] hover:bg-lira-surface transition-colors ml-1"
           title="Fechar seleção"

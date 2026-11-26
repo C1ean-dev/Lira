@@ -21,16 +21,32 @@ export function useRemotePlayerDetails(onlyCurrentZone = false): PlayerDetails[]
     let previous: PlayerDetails[] = []
     let previousPlayers: Record<string, Player> | undefined
     let previousZone: string | null | undefined
+    let previousProximityIds: string[] | undefined
     return (state: ReturnType<typeof useGameStore.getState>) => {
       const zoneId = onlyCurrentZone ? state.localPlayer.currentZoneId : undefined
-      if (state.remotePlayers === previousPlayers && zoneId === previousZone) return previous
+      const proximityIds = onlyCurrentZone && zoneId === null ? state.proximityPeerIds : undefined
+      if (
+        state.remotePlayers === previousPlayers &&
+        zoneId === previousZone &&
+        proximityIds === previousProximityIds
+      ) {
+        return previous
+      }
       previousPlayers = state.remotePlayers
       previousZone = zoneId
+      previousProximityIds = proximityIds
+      const proximitySet = proximityIds ? new Set(proximityIds) : null
       const byId = new Map(previous.map((peer) => [peer.id, peer]))
       const next: PlayerDetails[] = []
       for (const peer of Object.values(state.remotePlayers)) {
         if (peer.isDjBot || peer.id.startsWith('dj-')) continue
-        if (onlyCurrentZone && peer.currentZoneId !== zoneId) continue
+        if (onlyCurrentZone) {
+          if (zoneId !== null) {
+            if (peer.currentZoneId !== zoneId) continue
+          } else if (!proximitySet?.has(peer.id)) {
+            continue
+          }
+        }
         const details = playerDetails(peer)
         const old = byId.get(peer.id)
         next.push(old && shallow(old, details) ? old : details)

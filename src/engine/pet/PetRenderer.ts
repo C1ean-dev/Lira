@@ -3,15 +3,15 @@ import { TILE_SIZE } from '../Constants'
 import { PetState } from './PetManager'
 import { getCustomAssetImage, useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 
-const PET_BASELINE = 26
-const CUSTOM_PET_SIZE = 28
-const MAX_PET_BOB = 1.5
+export const PET_BASELINE = 26
+export const CUSTOM_PET_SIZE = 28
+export const MAX_PET_BOB = 1.5
 const NAME_TAG_GAP = 4
 
-const MEOWTH_SPRITE_URL =
+export const MEOWTH_SPRITE_URL =
   '/assets/pet/5660688_738696_lazy91_meowth-sprite-sheet.fff89e386a74ef7fd067b8f49695f124.png'
 
-const MEOWTH_FRAMES: Record<Direction, { x: number; y: number; w: number; h: number }[]> = {
+export const MEOWTH_FRAMES: Record<Direction, { x: number; y: number; w: number; h: number }[]> = {
   down: [
     { x: 0, y: 32, w: 80, h: 80 },
     { x: 0, y: 112, w: 80, h: 80 },
@@ -142,7 +142,7 @@ export class PetRenderer {
     ctx.drawImage(img, drawX, drawY, petSize, petSize)
   }
 
-  private static drawNameTag(
+  public static drawNameTag(
     ctx: CanvasRenderingContext2D,
     px: number,
     py: number,
