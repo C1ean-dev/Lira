@@ -1,16 +1,16 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { afterEach, describe, expect, it } from 'vitest'
+import { Container, type Application } from 'pixi.js'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { addBuiltInFurniture } from '../../assets/builtInFurniture'
 import { readSpriteFrame } from '../../assets/spriteFrame'
 import { createVillagePackAssets } from '../../assets/villagePackAssets'
 import { AURA_OPTIONS } from '../../engine/avatarEffects/presets'
-import { checkCollision, isPlayerInZone } from '../../engine/physics/collision'
-import { mapAuraSpecToShaderPreset } from '../../engine/pixi/PixiAuraSystem'
-import { buildPlayerPersonalLights, extractMapLights } from '../../engine/pixi/PixiLightingSystem'
+import { checkCollision } from '../../engine/physics/collision'
+import { mapAuraSpecToShaderPreset, PixiAuraSystem } from '../../engine/pixi/PixiAuraSystem'
+import { extractMapLights, PixiLightingSystem } from '../../engine/pixi/PixiLightingSystem'
 import { parseColorAlpha, parseHexColor } from '../../engine/pixi/PixiTextureCache'
-import { furnitureDrawOrder, pickEditorFurniture } from '../../engine/rendering/furnitureLayers'
 import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
-import { houseZoneIdForFurniture, useMapStore } from '../../store/useMapStore'
+import { useMapStore } from '../../store/useMapStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { DEFAULT_FURNITURE_LIGHT, type CustomAsset } from '../../types/customAsset'
 import { useGameStore } from '../../store/useGameStore'
@@ -23,6 +23,8 @@ const originalMap = useMapStore.getState().mapData
 afterEach(() => {
   useSettingsStore.setState(originalSettings)
   useCustomAssetsStore.setState(originalAssets)
+  useMapStore.getState().setActiveHouseId(null)
+  useGameStore.getState().setCurrentHouseId(null)
   useMapStore.getState().setMapData(originalMap)
 })
 
@@ -53,52 +55,51 @@ describe('PixiJS integration & buildable Village/Halloween/Interiors assets', ()
     expect(merged.some((a) => a.id === 'lira_int_sofa_v1')).toBe(true)
   })
 
-  it('auto-links placed houses to PrivateZones, handles doorway collision, and prioritizes interior furniture in editor', () => {
+  it('auto-creates customizable houseInteriors for placed houses, handles portal door collision, and serializes interiors', () => {
     const packAssets = createVillagePackAssets('./')
     useCustomAssetsStore.setState({ customAssets: packAssets })
 
     const houseAsset = packAssets.find((a) => a.id === 'lira_house_village_red_v1')!
-    const sofaAsset = packAssets.find((a) => a.id === 'lira_int_sofa_v1')!
 
     useMapStore.getState().addFurniture({ id: 'h-1', defId: houseAsset.id, x: 10, y: 10 })
-    const linkedZoneId = houseZoneIdForFurniture('h-1')
     let map = useMapStore.getState().mapData
-    let zone = map.zones.find((z) => z.id === linkedZoneId)
-    expect(zone).toMatchObject({ id: linkedZoneId, x: 10, y: 10, width: 7, height: 6, hasWalls: false })
+    expect(map.zones).toHaveLength(0)
+    expect(map.houseInteriors?.['h-1']).toMatchObject({
+      houseId: 'h-1',
+      defId: houseAsset.id,
+      name: houseAsset.name,
+      width: 14,
+      height: 11,
+    })
 
-    // Doorway column 1 (x=11, y=15) is walkable; solid facade wall (x=13, y=15) blocks; interior (13, 13) triggers Zone
+    // Doorway column 1 (x=11, y=15) is walkable portal threshold; solid house tiles (13, 15) & (13, 13) block
     expect(checkCollision(11, 15, map)).toBe(false)
     expect(checkCollision(13, 15, map)).toBe(true)
-    expect(isPlayerInZone(13, 13, zone!, map)).toBe(true)
+    expect(checkCollision(13, 13, map)).toBe(true)
 
-    // Placing a sofa inside the house does not drag the house shell
-    expect(pickEditorFurniture(map.furniture, packAssets, 12.5, 12.5, sofaAsset)).toBeUndefined()
-    useMapStore.getState().addFurniture({ id: 's-1', defId: sofaAsset.id, x: 12, y: 12 })
+    // Resizing/renaming the house interior updates both interior dimensions and exterior label
+    useMapStore.getState().updateHouseInteriorConfig('h-1', {
+      name: 'Casa Renovada',
+      width: 20,
+      height: 15,
+    })
     map = useMapStore.getState().mapData
-    const ordered = furnitureDrawOrder(map.furniture, packAssets)
-    expect(ordered.map((f) => f.id)).toEqual(['h-1', 's-1'])
+    expect(map.houseInteriors?.['h-1']).toMatchObject({ name: 'Casa Renovada', width: 20, height: 15 })
+    expect(map.furniture.find((f) => f.id === 'h-1')?.houseName).toBe('Casa Renovada')
 
-    // Moving the house updates its linked zone position
-    useMapStore.getState().updateFurniture('h-1', { x: 14, y: 8 })
-    zone = useMapStore.getState().mapData.zones.find((z) => z.id === linkedZoneId)
-    expect(zone).toMatchObject({ x: 14, y: 8 })
-
-    // Erasing on the sofa tile removes only the sofa, leaving the house intact
-    useMapStore.getState().removeFurnitureAt(12.5, 12.5)
-    expect(useMapStore.getState().mapData.furniture.map((f) => f.id)).toEqual(['h-1'])
-
-    // Deleting the house removes its linked zone too
+    // Deleting the house removes its interior space too
     useMapStore.getState().removeFurnitureById('h-1')
-    expect(useMapStore.getState().mapData.zones.some((z) => z.id === linkedZoneId)).toBe(false)
+    expect(useMapStore.getState().mapData.houseInteriors?.['h-1']).toBeUndefined()
 
-    // Map serialization preserves placed house + zone cleanly
+    // Map serialization preserves placed house + custom interior cleanly
     useMapStore.getState().addFurniture({ id: 'h-2', defId: houseAsset.id, x: 6, y: 6 })
+    useMapStore.getState().updateHouseInteriorConfig('h-2', { width: 16, height: 12 })
     const hydrated = hydrateMapData(compressMapDataForStorage(useMapStore.getState().mapData))
     expect(hydrated.furniture.some((f) => f.id === 'h-2')).toBe(true)
-    expect(hydrated.zones.some((z) => z.id === houseZoneIdForFurniture('h-2'))).toBe(true)
+    expect(hydrated.houseInteriors?.['h-2']).toMatchObject({ width: 16, height: 12 })
   })
 
-  it('maps every Lira AvatarAuraStyle preset into a GPU shader preset', () => {
+  it('maps every Lira AvatarAuraStyle preset into a GPU shader preset with objects & ground circle config', () => {
     expect(mapAuraSpecToShaderPreset(null)).toBeNull()
     expect(mapAuraSpecToShaderPreset({ style: 'none' })).toBeNull()
 
@@ -109,22 +110,150 @@ describe('PixiJS integration & buildable Village/Halloween/Interiors assets', ()
       expect(mapped!.colorA).toHaveLength(3)
       expect(mapped!.colorB).toHaveLength(3)
       expect(mapped!.speed).toBeGreaterThan(0)
+      expect(mapped!.shapes.length).toBeGreaterThan(0)
+      expect(mapped!.groundCircle).toBe(Boolean(option.glowHalo))
     }
+
+    const firePreset = mapAuraSpecToShaderPreset({ style: 'fire' })
+    expect(firePreset?.groundCircle).toBe(true)
+    expect(firePreset?.shapes).toContain('flame')
+
+    const flowersPreset = mapAuraSpecToShaderPreset({ style: 'floral_stars' })
+    expect(flowersPreset?.groundCircle).toBe(false)
+    expect(flowersPreset?.shapes).toContain('flower')
+
+    const customNoCircle = mapAuraSpecToShaderPreset({
+      style: 'custom',
+      color: '#ec4899',
+      groundCircle: false,
+      custom: {
+        id: 'c-1',
+        name: 'Corações',
+        kind: 'aura',
+        shapes: ['heart', 'star'],
+        color: '#ec4899',
+        motion: 'float',
+        density: 'normal',
+        groundCircle: false,
+      },
+    })
+    expect(customNoCircle?.groundCircle).toBe(false)
+    expect(customNoCircle?.shapes).toEqual(['heart', 'star'])
+
+    const customCircleOnly = mapAuraSpecToShaderPreset({
+      style: 'custom',
+      color: '#38bdf8',
+      groundCircle: true,
+      groundCircleSize: 96,
+      custom: {
+        id: 'c-2',
+        name: 'Anel Azul',
+        kind: 'aura',
+        shapes: [],
+        color: '#38bdf8',
+        motion: 'orbit',
+        density: 'normal',
+        groundCircle: true,
+        groundCircleSize: 96,
+      },
+    })
+    expect(customCircleOnly?.groundCircle).toBe(true)
+    expect(customCircleOnly?.groundCircleSize).toBe(96)
+    expect(customCircleOnly?.shapes).toEqual([])
   })
 
-  it('extracts automatic 2D point lights from placed cauldron, Jack-o-lanterns, lamps, and houses', () => {
+  it('toggles and resizes PixiAuraSystem ground circle sprites based on aura config', () => {
+    const groundContainer = new Container()
+    const overlayContainer = new Container()
+    const auraSys = new PixiAuraSystem(groundContainer, overlayContainer)
+
+    const lightsOff = auraSys.update(0.016, 1, [
+      {
+        id: 'p-1',
+        px: 160,
+        py: 160,
+        aura: {
+          style: 'floral_stars',
+          color: '#a855f7',
+          groundCircle: false,
+        },
+      },
+    ])
+    expect(lightsOff).toHaveLength(0)
+    expect(groundContainer.children.every((c) => !c.visible)).toBe(true)
+
+    const lightsOn = auraSys.update(0.016, 2, [
+      {
+        id: 'p-1',
+        px: 160,
+        py: 160,
+        aura: {
+          style: 'custom',
+          color: '#38bdf8',
+          groundCircle: true,
+          groundCircleSize: 88,
+          custom: {
+            id: 'ring',
+            name: 'Ring',
+            kind: 'aura',
+            shapes: [],
+            color: '#38bdf8',
+            motion: 'orbit',
+            density: 'normal',
+            groundCircle: true,
+            groundCircleSize: 88,
+          },
+        },
+      },
+    ])
+    expect(lightsOn).toHaveLength(1)
+    expect(groundContainer.children).toHaveLength(1)
+    const groundSprite = groundContainer.children[0]
+    expect(groundSprite.visible).toBe(true)
+    expect(groundSprite.width).toBe(88)
+    expect(groundSprite.height).toBe(Math.round(88 * 0.64))
+
+    const lightsBackOff = auraSys.update(0.016, 3, [
+      {
+        id: 'p-1',
+        px: 160,
+        py: 160,
+        aura: {
+          style: 'floral_stars',
+          color: '#a855f7',
+          groundCircle: false,
+        },
+      },
+    ])
+    expect(lightsBackOff).toHaveLength(0)
+    expect(groundSprite.visible).toBe(false)
+
+    auraSys.destroy()
+  })
+
+  it('extracts automatic 2D point lights from placed cauldron, Jack-o-lanterns, lamps, and houses without adding room lights', () => {
     const packAssets = createVillagePackAssets('./')
     useCustomAssetsStore.setState({ customAssets: packAssets })
+    useMapStore.getState().addOrUpdateZone({
+      id: 'zone-no-light',
+      name: 'Sala Sem Luz',
+      x: 2,
+      y: 2,
+      width: 6,
+      height: 5,
+      color: '#3b82f6',
+    })
     useMapStore.getState().addFurniture({ id: 'h-1', defId: 'lira_house_village_red_v1', x: 8, y: 8 })
     useMapStore.getState().addFurniture({ id: 'c-1', defId: 'lira_pack_cauldron_v1', x: 18, y: 14 })
     useMapStore.getState().addFurniture({ id: 'j-1', defId: 'lira_pack_jack_large_v1', x: 16, y: 14 })
     useMapStore.getState().addFurniture({ id: 'l-1', defId: 'lira_pack_spooky_lamp_v1', x: 20, y: 12 })
 
     const lights = extractMapLights(useMapStore.getState().mapData)
+    expect(lights.some((l) => l.name === 'Sala Sem Luz')).toBe(false)
     expect(lights.some((l) => l.name === 'Caldeirão Mágico' && l.flicker)).toBe(true)
     expect(lights.some((l) => l.name === 'Abóbora Iluminada' && l.flicker)).toBe(true)
     expect(lights.some((l) => l.name === 'Lampião Assombrado')).toBe(true)
-    expect(lights.some((l) => l.zoneId === houseZoneIdForFurniture('h-1'))).toBe(true)
+    expect(lights.some((l) => l.name === 'Casa da Vila')).toBe(true)
   })
 
   it('persists lightingEnabled and lightingMode in useSettingsStore', () => {
@@ -157,15 +286,7 @@ describe('PixiJS integration & buildable Village/Halloween/Interiors assets', ()
     expect(parseColorAlpha('rgba(10, 20, 30, 0.55)')).toBeCloseTo(0.55)
   })
 
-  it('builds personal player lights and resolves CustomAsset / PlacedFurniture light overrides', () => {
-    const local = { ...useGameStore.getState().localPlayer, id: 'local', x: 10, y: 12, currentZoneId: null }
-    const visibleRemote = { ...local, id: 'remote-1', x: 14, y: 12, currentZoneId: null }
-    const hiddenRemote = { ...local, id: 'remote-2', x: 5, y: 5, currentZoneId: 'closed-house' }
-    const personal = buildPlayerPersonalLights(local, { [visibleRemote.id]: visibleRemote, [hiddenRemote.id]: hiddenRemote }, new Set(['closed-house']))
-    expect(personal.some((l) => l.name === 'Luz do Jogador' && l.x === 10.5 * 32 && l.radius >= 120)).toBe(true)
-    expect(personal.some((l) => l.name === 'Luz de Jogador' && l.x === 14.5 * 32)).toBe(true)
-    expect(personal.some((l) => l.x === 5.5 * 32)).toBe(false)
-
+  it('resolves CustomAsset / PlacedFurniture light overrides', () => {
     const litAsset: CustomAsset = {
       id: 'custom_crystal',
       name: 'Cristal Brilhante',
@@ -202,5 +323,52 @@ describe('PixiJS integration & buildable Village/Halloween/Interiors assets', ()
     expect(mapLights.some((l) => l.x === 9 * 32 && l.y === 7 * 32 && l.color === '#f472b6' && l.radius === 180)).toBe(true)
     // Disabled instance override emits zero light
     expect(mapLights.some((l) => l.x === 13 * 32 && l.y === 7 * 32)).toBe(false)
+  })
+
+  it('resizes the 2D lighting overlaySprite bounds when app.screen dimensions change', () => {
+    const screen = { width: 800, height: 600 }
+    const mockApp = {
+      screen,
+      renderer: { render: vi.fn() },
+    } as unknown as Application
+
+    const lighting = new PixiLightingSystem(mockApp)
+    expect(lighting.overlaySprite.texture.dynamic).toBe(true)
+
+    lighting.update(true, 'night', 0.016, 1, 1, 0, 0, [], [], null)
+    expect(lighting.overlaySprite.visible).toBe(true)
+    lighting.overlaySprite.didViewUpdate = false
+
+    screen.width = 1440
+    screen.height = 900
+    lighting.update(true, 'night', 0.016, 2, 1, 0, 0, [], [], null)
+
+    expect(lighting.overlaySprite.didViewUpdate).toBe(true)
+    expect(lighting.overlaySprite.texture.width).toBe(1440)
+    expect(lighting.overlaySprite.texture.height).toBe(900)
+    expect(lighting.overlaySprite.visualBounds.maxX).toBe(1440)
+    expect(lighting.overlaySprite.visualBounds.maxY).toBe(900)
+    expect(lighting.overlaySprite.width).toBe(1440)
+    expect(lighting.overlaySprite.height).toBe(900)
+
+    lighting.update(true, 'day', 0.016, 3, 1, 0, 0, [], [], null)
+    expect(lighting.overlaySprite.visible).toBe(false)
+    lighting.overlaySprite.didViewUpdate = false
+
+    screen.width = 1920
+    screen.height = 1080
+    lighting.update(true, 'day', 0.016, 4, 1, 0, 0, [], [], null)
+    expect(lighting.overlaySprite.visible).toBe(false)
+    expect(lighting.overlaySprite.didViewUpdate).toBe(false)
+
+    lighting.update(true, 'night', 0.016, 5, 1, 0, 0, [], [], null)
+    expect(lighting.overlaySprite.visible).toBe(true)
+    expect(lighting.overlaySprite.didViewUpdate).toBe(true)
+    expect(lighting.overlaySprite.texture.width).toBe(1920)
+    expect(lighting.overlaySprite.texture.height).toBe(1080)
+    expect(lighting.overlaySprite.visualBounds.maxX).toBe(1920)
+    expect(lighting.overlaySprite.visualBounds.maxY).toBe(1080)
+
+    lighting.destroy()
   })
 })

@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 import { CollaborationButtons } from './collaboration/CollaborationButtons'
 import { useGameStore } from '../store/useGameStore'
-import { useMapStore } from '../store/useMapStore'
+import { selectActiveMapData, useMapStore } from '../store/useMapStore'
 import { useChatStore } from '../store/useChatStore'
 import { useMediaStore } from '../store/useMediaStore'
 import { PeerManager } from '../p2p/PeerManager'
@@ -88,7 +88,10 @@ export const TopNavBar: React.FC<Props> = ({
   const remotePlayerCount = useGameStore(
     (s) => Object.values(s.remotePlayers).filter((p) => !p.isDjBot && !p.id.startsWith('dj-')).length
   )
-  const mapZones = useMapStore((s) => s.mapData.zones)
+  const mapZones = useMapStore((s) => selectActiveMapData(s).zones)
+  const activeInterior = useMapStore((s) =>
+    s.activeHouseId ? s.mapData.houseInteriors?.[s.activeHouseId] ?? null : null
+  )
   const isEditorOpen = useMapStore((s) => s.isEditorOpen)
   const toggleEditor = useMapStore((s) => s.toggleEditor)
   const isChatOpen = useChatStore((s) => s.isChatOpen)
@@ -163,8 +166,14 @@ export const TopNavBar: React.FC<Props> = ({
   }, [isRoomMenuOpen, updatePopoverPosition])
 
   const currentZone = mapZones.find((z) => z.id === localPlayerCurrentZoneId)
-  const currentZoneName = currentZone ? currentZone.name : 'Corredor Geral'
-  const currentZoneColor = currentZone ? currentZone.color : '#6b7280'
+  const currentZoneName = currentZone
+    ? activeInterior
+      ? `${activeInterior.name} · ${currentZone.name}`
+      : currentZone.name
+    : activeInterior
+      ? `🏠 ${activeInterior.name}`
+      : 'Corredor Geral'
+  const currentZoneColor = currentZone?.color || activeInterior?.accentColor || '#6b7280'
   const isAndroidPlatform = isAndroid()
   const isDownloadingUpdate = updateStatus === 'downloading'
   const updatePercent = Math.round(

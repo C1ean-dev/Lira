@@ -1,11 +1,13 @@
 import React from 'react'
+import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import { useGameStore } from '../store/useGameStore'
 import { useMapStore } from '../store/useMapStore'
 
 function readSnapshot() {
   const { localPlayer, remotePlayers } = useGameStore.getState()
-  const { width, height, zones } = useMapStore.getState().mapData
-  return { localPlayer, remotePlayers, width, height, zones }
+  const { width, height, zones, furniture, houseInteriors } = useMapStore.getState().mapData
+  const { customAssets } = useCustomAssetsStore.getState()
+  return { localPlayer, remotePlayers, width, height, zones, furniture, houseInteriors, customAssets }
 }
 
 type Snapshot = ReturnType<typeof readSnapshot>
@@ -15,9 +17,19 @@ const listeners = new Set<() => void>()
 
 function sample() {
   const next = readSnapshot()
-  if (snapshot && snapshot.localPlayer === next.localPlayer &&
-      snapshot.remotePlayers === next.remotePlayers && snapshot.zones === next.zones &&
-      snapshot.width === next.width && snapshot.height === next.height) return
+  if (
+    snapshot &&
+    snapshot.localPlayer === next.localPlayer &&
+    snapshot.remotePlayers === next.remotePlayers &&
+    snapshot.zones === next.zones &&
+    snapshot.width === next.width &&
+    snapshot.height === next.height &&
+    snapshot.furniture === next.furniture &&
+    snapshot.houseInteriors === next.houseInteriors &&
+    snapshot.customAssets === next.customAssets
+  ) {
+    return
+  }
   snapshot = next
   listeners.forEach(listener => listener())
 }

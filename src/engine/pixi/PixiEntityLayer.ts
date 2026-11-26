@@ -228,7 +228,6 @@ export class PixiEntityLayer {
   public update(
     localPlayer: Player,
     remotePlayers: Record<string, Player>,
-    closedZoneIds: ReadonlySet<string>,
     bounds: { camMinX: number; camMaxX: number; camMinY: number; camMaxY: number; enableCulling: boolean },
     nowMs: number
   ): void {
@@ -239,9 +238,9 @@ export class PixiEntityLayer {
     const customById = new Map<string, CustomAsset>()
     for (const a of customAssets) customById.set(a.id, a)
 
+    const localHouseId = localPlayer.currentHouseId ?? null
     const remoteList = Object.values(remotePlayers).filter((p) => !p.isDjBot && !p.id.startsWith('dj-'))
-    const isHiddenBehindRoof = (p: Player) =>
-      Boolean(p.currentZoneId && closedZoneIds.has(p.currentZoneId))
+    const isInDifferentSubspace = (p: Player) => (p.currentHouseId ?? null) !== localHouseId
 
     const entities: (
       | { kind: 'player'; y: number; key: string; player: Player; isLocal: boolean }
@@ -250,7 +249,7 @@ export class PixiEntityLayer {
 
     for (const p of remoteList) {
       if (p.id === localPlayer.id || (p.gameId && p.gameId === localPlayer.id)) continue
-      if (isHiddenBehindRoof(p)) continue
+      if (isInDifferentSubspace(p)) continue
       if (bounds.enableCulling) {
         const ppx = (p.x + 0.5) * TILE_SIZE
         const ppy = (p.y + 0.5) * TILE_SIZE
@@ -265,7 +264,7 @@ export class PixiEntityLayer {
     for (let i = -1; i < remoteList.length; i++) {
       const p = i === -1 ? localPlayer : remoteList[i]
       if (i !== -1 && (p.id === localPlayer.id || (p.gameId && p.gameId === localPlayer.id))) continue
-      if (i !== -1 && isHiddenBehindRoof(p)) continue
+      if (i !== -1 && isInDifferentSubspace(p)) continue
       if (p.avatar?.pet && p.avatar.pet.type !== 'none') {
         const pet = petManager.getPet(p.id)
         if (pet) {

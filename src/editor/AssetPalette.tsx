@@ -10,19 +10,23 @@ import {
   Sparkles,
   ChevronDown,
   ChevronUp,
+  Home,
+  ArrowLeft,
 } from 'lucide-react'
-import { useMapStore } from '../store/useMapStore'
+import { selectActiveMapData, useMapStore } from '../store/useMapStore'
 import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import { WallType, FloorType } from '../types/map'
 import { Direction } from '../types/game'
 import { CustomAsset } from '../types/customAsset'
 import { FURNITURE_CATALOG } from '../engine/Constants'
+import { exitHouse } from '../services/houseNavigation'
 import { createEmptyWorkspace } from './templates'
 import { PeerManager } from '../p2p/PeerManager'
 import { ActiveItemSummary } from './palette/ActiveItemSummary'
 import { FurnitureTab } from './palette/tabs/FurnitureTab'
 import { FloorsTab } from './palette/tabs/FloorsTab'
 import { ZonesTab } from './palette/tabs/ZonesTab'
+import { HousesTab, type HousePaletteItem } from './palette/tabs/HousesTab'
 import { PaletteFooterActions } from './palette/PaletteFooterActions'
 import { ConfirmModal } from '../components/ConfirmModal'
 import { AvatarSpritesheetSlicerModal } from '../components/avatar-customizer/AvatarSpritesheetSlicerModal'
@@ -30,6 +34,7 @@ import { AtlasImportModal } from '../components/avatar-customizer/AtlasImportMod
 import { AtlasExportModal } from '../components/avatar-customizer/AtlasExportModal'
 
 export const AssetPalette: React.FC = () => {
+  const activeMap = useMapStore(selectActiveMapData)
   const {
     isEditorOpen,
     setEditorOpen,
@@ -42,6 +47,7 @@ export const AssetPalette: React.FC = () => {
     selectedWall,
     setSelectedWall,
     mapData,
+    activeHouseId,
     zoneDraft,
     setZoneDraft,
     removeZone,
@@ -66,7 +72,7 @@ export const AssetPalette: React.FC = () => {
   } = useCustomAssetsStore()
 
   const categories = getAllCategories()
-  const [activeTab, setActiveTab] = useState<'furniture' | 'floors' | 'zones'>('furniture')
+  const [activeTab, setActiveTab] = useState<'furniture' | 'floors' | 'zones' | 'houses'>('furniture')
   const [furnitureCategory, setFurnitureCategory] = useState<string>(() => categories[0] || 'Geral')
   const [isCollapsed, setIsCollapsed] = useState(false)
 
@@ -116,8 +122,23 @@ export const AssetPalette: React.FC = () => {
     .map((a) => ({ id: a.id, name: `✨ ${a.name}`, isCustom: true, updatedAt: a.updatedAt }))
   const walls = [...customWalls, ...baseWalls]
 
+  const allHouses: HousePaletteItem[] = customAssets
+    .filter((a): a is CustomAsset & { houseShell: NonNullable<CustomAsset['houseShell']> } =>
+      a.type === 'furniture' && Boolean(a.houseShell)
+    )
+    .map((a) => ({
+      id: a.id,
+      name: a.name,
+      width: a.width,
+      height: a.height,
+      houseShell: a.houseShell,
+      isCustom: true,
+      iconColor: a.iconColor || '#f59e0b',
+      updatedAt: a.updatedAt,
+    }))
+
   const customFurnitureDefs = customAssets
-    .filter((a) => a.type === 'furniture')
+    .filter((a) => a.type === 'furniture' && !a.houseShell)
     .map((a) => ({
       id: a.id,
       name: a.name,
@@ -132,8 +153,18 @@ export const AssetPalette: React.FC = () => {
       updatedAt: a.updatedAt,
     }))
   const allFurniture = [...customFurnitureDefs, ...FURNITURE_CATALOG]
+  const activeInterior = activeHouseId ? mapData.houseInteriors?.[activeHouseId] ?? null : null
 
-  const effectiveCategory = categories.includes(furnitureCategory) ? furnitureCategory : (categories[0] || 'Geral')
+  const furnitureCategories = categories.filter(
+    (cat) =>
+      cat === 'Todos' ||
+      cat === 'Customizados' ||
+      cat === 'Geral' ||
+      allFurniture.some((f) => f.category === cat)
+  )
+  const effectiveCategory = furnitureCategories.includes(furnitureCategory)
+    ? furnitureCategory
+    : (furnitureCategories[0] || 'Geral')
 
   const filteredFurniture = useMemo(() => {
     if (effectiveCategory === 'Todos') return allFurniture
@@ -147,16 +178,21 @@ export const AssetPalette: React.FC = () => {
 
   const handleDeleteZone = (id: string) => {
     removeZone(id)
-    PeerManager.getInstance().broadcast({
-      type: 'MAP_EDIT',
-      senderId: 'local',
-      payload: { action: 'remove_zone', data: { id } },
-      timestamp: Date.now(),
-    })
+    PeerManager.getInstance().sendMapEdit('remove_zone', { id })
   }
 
   const handleConfirmReset = () => {
     setIsResetConfirmOpen(false)
+    if (activeHouseId) {
+      useMapStore.getState().resetActiveHouseInterior()
+      PeerManager.getInstance().broadcast({
+        type: 'MAP_SYNC',
+        senderId: 'host',
+        payload: { mapData: useMapStore.getState().mapData },
+        timestamp: Date.now(),
+      })
+      return
+    }
     const emptyMap = createEmptyWorkspace()
     useMapStore.getState().setMapData(emptyMap, true)
     PeerManager.getInstance().broadcast({
@@ -251,7 +287,7 @@ export const AssetPalette: React.FC = () => {
 
   const currentFloor = floors.find((f) => f.id === selectedFloor)
   const currentWall = walls.find((w) => w.id === selectedWall)
-  const currentFurniture = allFurniture.find((f) => f.id === selectedFurnitureDefId)
+  const currentFurniture = [...allFurniture, ...allHouses].find((f) => f.id === selectedFurnitureDefId)
 
   return (
     <>
@@ -271,16 +307,22 @@ export const AssetPalette: React.FC = () => {
         <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b border-dashed border-lira-rule/60 bg-lira-sidebar">
           <div className="flex items-center gap-1.5 sm:gap-2">
             <Layers className="w-4 h-4 sm:w-5 sm:h-5 text-lira-accent" />
-            <span className="font-display font-bold text-xs sm:text-sm text-lira-accent">Editor de Espaço</span>
+            <span className="font-display font-bold text-xs sm:text-sm text-lira-accent">
+              {activeInterior ? 'Editor de Casa' : 'Editor de Espaço'}
+            </span>
           </div>
           <div className="flex items-center gap-1 sm:gap-1.5">
             <EditorHistoryControls />
             <button
-              onClick={() =>
-                openStudioForCreate(
-                  activeTab === 'furniture' ? 'furniture' : activeTab === 'floors' ? 'floor' : 'wall'
-                )
-              }
+              onClick={() => {
+                if (activeTab === 'houses') {
+                  openCreateModal('compose', 'Casas', 'furniture', true)
+                } else {
+                  openStudioForCreate(
+                    activeTab === 'furniture' ? 'furniture' : activeTab === 'floors' ? 'floor' : 'wall'
+                  )
+                }
+              }}
               className="flex items-center gap-1 px-2 py-1 rounded-[6px] bg-lira-accent hover:bg-lira-ink text-lira-ground font-mono font-bold text-[11px] sm:text-xs transition-colors border border-lira-accent cursor-pointer"
               title="Criar novo elemento no Estúdio Pixel Art"
             >
@@ -304,6 +346,22 @@ export const AssetPalette: React.FC = () => {
           </div>
         </div>
 
+        {activeInterior && (
+          <div className="px-3 py-2 bg-lira-amber/10 border-b border-dashed border-lira-amber/40 flex items-center justify-between gap-2 text-[11px] font-mono">
+            <div className="flex items-center gap-1.5 min-w-0 text-lira-amber font-bold">
+              <Home className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">{activeInterior.name} ({activeInterior.width}×{activeInterior.height})</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => exitHouse()}
+              className="px-2 py-1 rounded-[6px] bg-lira-surface hover:bg-lira-amber text-lira-amber hover:text-lira-ground border border-lira-amber/50 text-[10px] font-bold flex items-center gap-1 shrink-0 transition-colors"
+            >
+              <ArrowLeft className="w-3 h-3" />
+              <span>Voltar ao Mapa</span>
+            </button>
+          </div>
+        )}
         <ActiveItemSummary
           activeTool={activeTool}
           zoneDraft={zoneDraft}
@@ -317,7 +375,7 @@ export const AssetPalette: React.FC = () => {
 
         {!isCollapsed && (
           <>
-            <div className="grid grid-cols-3 p-1.5 gap-1 bg-lira-sidebar border-b border-dashed border-lira-rule/60">
+            <div className="grid grid-cols-4 p-1.5 gap-1 bg-lira-sidebar border-b border-dashed border-lira-rule/60">
           <button
             onClick={() => {
               setActiveTab('furniture')
@@ -372,14 +430,33 @@ export const AssetPalette: React.FC = () => {
             }`}
           >
             <Square className="w-4 h-4 mb-1" />
-            Zonas & Paredes
+            Zonas
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('houses')
+              if (activeTool === 'eraser') {
+                setEraserTarget('furniture')
+              } else {
+                setActiveTool(activeHouseId ? 'select' : 'place_furniture')
+              }
+            }}
+            className={`flex flex-col items-center py-2 px-1 rounded-[8px] text-xs font-mono font-bold transition-colors border ${
+              activeTab === 'houses'
+                ? 'bg-lira-amber text-lira-ground border-lira-amber'
+                : 'text-lira-muted border-transparent hover:text-lira-amber hover:bg-lira-surface'
+            }`}
+          >
+            <Home className="w-4 h-4 mb-1" />
+            Casas
           </button>
         </div>
 
         <div className="p-2 sm:p-4 overflow-y-auto flex-1 space-y-3 sm:space-y-4">
           {activeTab === 'furniture' && (
             <FurnitureTab
-              categories={categories}
+              categories={furnitureCategories}
               furnitureCategory={effectiveCategory}
               setFurnitureCategory={setFurnitureCategory}
               addCategory={addCategory}
@@ -397,6 +474,24 @@ export const AssetPalette: React.FC = () => {
               onOpenStudioCreate={() => openStudioForCreate('furniture')}
               onOpenStudioEdit={(id) => openStudioForEdit(id, 'furniture')}
               onOpenSlicer={(id) => handleOpenSlicer('furniture', id)}
+              onOpenAtlasImport={() => handleOpenAtlasImport('furniture')}
+              onExportAtlas={() => handleExportAtlas('furniture')}
+            />
+          )}
+
+          {activeTab === 'houses' && (
+            <HousesTab
+              houses={allHouses}
+              rootMapData={mapData}
+              activeHouseId={activeHouseId}
+              selectedFurnitureDefId={selectedFurnitureDefId}
+              setSelectedFurnitureDefId={setSelectedFurnitureDefId}
+              activeTool={activeTool}
+              setActiveTool={setActiveTool}
+              onOpenHouseCreate={() => openCreateModal('compose', 'Casas', 'furniture', true)}
+              onOpenHouseEdit={(id) => openEditModal(id, 'compose')}
+              onDeleteHouseAsset={(defId) => removeFurnitureByDefId(defId)}
+              deleteCustomAsset={deleteCustomAsset}
               onOpenAtlasImport={() => handleOpenAtlasImport('furniture')}
               onExportAtlas={() => handleExportAtlas('furniture')}
             />
@@ -429,7 +524,7 @@ export const AssetPalette: React.FC = () => {
               zoneDraft={zoneDraft}
               setZoneDraft={setZoneDraft}
               walls={walls}
-              mapData={mapData}
+              mapData={activeMap}
               handleDeleteZone={handleDeleteZone}
               openEditModal={openEditModal}
               deleteCustomAsset={deleteCustomAsset}
@@ -453,8 +548,12 @@ export const AssetPalette: React.FC = () => {
 
       <ConfirmModal
         isOpen={isResetConfirmOpen}
-        title="Limpar Espaço de Trabalho"
-        message="Tem certeza que deseja limpar todo o mapa e começar um espaço em branco? Esta ação apagará todas as mobílias e divisórias atuais."
+        title={activeInterior ? `Limpar Interior: ${activeInterior.name}` : 'Limpar Espaço de Trabalho'}
+        message={
+          activeInterior
+            ? 'Tem certeza que deseja limpar os móveis e divisórias internas desta casa? A casa continuará posicionada no mapa principal.'
+            : 'Tem certeza que deseja limpar todo o mapa e começar um espaço em branco? Esta ação apagará todas as mobílias e divisórias atuais.'
+        }
         confirmText="Limpar Tudo"
         confirmVariant="danger"
         onConfirm={handleConfirmReset}

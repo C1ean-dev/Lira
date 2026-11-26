@@ -78,7 +78,7 @@ export class CameraManager {
   }
 
   public fitToScreen(viewport: { width: number; height: number }, percentage: number = 0.95) {
-    const map = useMapStore.getState().mapData
+    const map = useMapStore.getState().getActiveMapData()
     const mapPixelWidth = (map.width || 68) * TILE_SIZE
     const mapPixelHeight = (map.height || 40) * TILE_SIZE
 

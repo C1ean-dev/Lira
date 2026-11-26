@@ -249,6 +249,7 @@ export const LobbyModal: React.FC<Props> = ({
       const playerPayload: Player = {
         ...useGameStore.getState().localPlayer,
         name: userName.trim(),
+        currentHouseId: null,
         isCameraOff: true,
         isMuted: true,
       }
@@ -301,6 +302,7 @@ export const LobbyModal: React.FC<Props> = ({
       const playerPayload: Player = {
         ...useGameStore.getState().localPlayer,
         name: userName.trim(),
+        currentHouseId: null,
         isCameraOff: true,
         isMuted: true,
       }
@@ -408,6 +410,7 @@ export const LobbyModal: React.FC<Props> = ({
         x: newMap.spawnPoint.x,
         y: newMap.spawnPoint.y,
         currentZoneId: null,
+        currentHouseId: null,
       })
 
       const randomColors = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4']
@@ -419,6 +422,7 @@ export const LobbyModal: React.FC<Props> = ({
         x: newMap.spawnPoint.x,
         y: newMap.spawnPoint.y,
         currentZoneId: null,
+        currentHouseId: null,
         isCameraOff: useMediaStore.getState().isCameraOff ?? true,
         isMuted: useMediaStore.getState().isMuted ?? true,
       }
@@ -486,6 +490,7 @@ export const LobbyModal: React.FC<Props> = ({
         x: spawnX,
         y: spawnY,
         currentZoneId: null,
+        currentHouseId: null,
       })
 
       useMediaStore.getState().setMuted(true)

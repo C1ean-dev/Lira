@@ -183,7 +183,6 @@ export class PixiFurnitureLayer {
 
     for (const furn of ordered) {
       const customAsset = assetById.get(furn.defId)
-      if (customAsset?.houseShell) continue
 
       seenIds.add(furn.id)
       let node = this.nodes.get(furn.id)
@@ -251,12 +250,20 @@ export class PixiFurnitureLayer {
             node.sprite.visible = true
           }
 
-          const { offsetX, offsetY, drawWidth, drawHeight } = resolveSpritePlacement(
-            tex.width,
-            tex.height,
-            targetW,
-            targetH
-          )
+          const aspectH = targetW * (tex.height / Math.max(1, tex.width))
+          const useHouseBottomAnchor =
+            Boolean(customAsset.houseShell) &&
+            ((customAsset.houseShell?.overhangPx ?? 0) > 0 || aspectH > targetH + 1)
+
+          const placement = useHouseBottomAnchor
+            ? {
+                offsetX: 0,
+                offsetY: targetH - aspectH,
+                drawWidth: targetW,
+                drawHeight: aspectH,
+              }
+            : resolveSpritePlacement(tex.width, tex.height, targetW, targetH)
+          const { offsetX, offsetY, drawWidth, drawHeight } = placement
 
           let sx = drawWidth / Math.max(1, tex.width)
           let sy = drawHeight / Math.max(1, tex.height)
@@ -292,7 +299,11 @@ export class PixiFurnitureLayer {
           node.gfx.visible = true
         }
 
-        this.syncTintOverlay(node, furn.tintColor, targetW, targetH)
+        if (!customAsset.houseShell) {
+          this.syncTintOverlay(node, furn.tintColor, targetW, targetH)
+        } else if (node.tintGfx) {
+          node.tintGfx.visible = false
+        }
         continue
       }
 

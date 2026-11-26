@@ -1,4 +1,5 @@
 import type { CustomAsset, HouseShellConfig } from '../types/customAsset'
+import { buildHouseCollisionGrid } from '../engine/houseInterior'
 import { spriteFrame } from './spriteFrame'
 
 const CREATED_AT = 1793000000000
@@ -7,27 +8,8 @@ function resolveAssetBase(base = import.meta.env.BASE_URL): string {
   return base === '/' && typeof window !== 'undefined' && window.location?.protocol === 'file:' ? './' : base
 }
 
-function makeHouseCollisionGrid(width: number, height: number, doorCols: number[]): boolean[][] {
-  const doorSet = new Set(doorCols)
-  const grid: boolean[][] = []
-  for (let r = 0; r < height; r++) {
-    const row: boolean[] = []
-    for (let c = 0; c < width; c++) {
-      if (r === 0 || c === 0 || c === width - 1) {
-        row.push(true)
-      } else if (r === height - 1) {
-        row.push(!doorSet.has(c))
-      } else {
-        row.push(false)
-      }
-    }
-    grid.push(row)
-  }
-  return grid
-}
-
 /**
- * Built-in Village, Halloween, Interiors, and placeable Cutaway House assets
+ * Built-in Village, Halloween, Interiors, and placeable Portal House assets
  * sliced directly from `public/assets/packs/{village,halloween,interiors}.png`.
  */
 export function createVillagePackAssets(base = import.meta.env.BASE_URL): CustomAsset[] {
@@ -124,7 +106,7 @@ export function createVillagePackAssets(base = import.meta.env.BASE_URL): Custom
       pixelWidth: width * 32,
       pixelHeight: height * 32,
       isObstacle: true,
-      collisionGrid: makeHouseCollisionGrid(width, height, houseShell.doorCols),
+      collisionGrid: buildHouseCollisionGrid(width, height, houseShell),
       houseShell,
       frames: [frame],
       thumbnail: frame,
@@ -145,17 +127,32 @@ export function createVillagePackAssets(base = import.meta.env.BASE_URL): Custom
   const houses: CustomAsset[] = [
     houseAsset('lira_house_village_red_v1', 'Casa da Vila', villageSheet, [68, 123, 72, 101], 7, 6, {
       doorCols: [1, 2],
+      doorCells: [{ col: 1, row: 5 }, { col: 2, row: 5 }],
       overhangPx: 122,
+      defaultInteriorWidth: 14,
+      defaultInteriorHeight: 11,
+      defaultInteriorFloor: 'wood_parquet',
+      defaultInteriorWall: 'wood_panel',
       defaultZoneColor: '#f97316',
     }, '#ea580c'),
     houseAsset('lira_house_village_blue_v1', 'Pousada da Vila', villageSheet, [148, 155, 115, 69], 10, 5, {
       doorCols: [2, 3],
+      doorCells: [{ col: 2, row: 4 }, { col: 3, row: 4 }],
       overhangPx: 32,
+      defaultInteriorWidth: 18,
+      defaultInteriorHeight: 13,
+      defaultInteriorFloor: 'wood_parquet',
+      defaultInteriorWall: 'brick_red',
       defaultZoneColor: '#38bdf8',
     }, '#2563eb'),
     houseAsset('lira_house_witch_tower_v1', 'Torre da Bruxa', halloweenSheet, [356, 34, 121, 188], 8, 6, {
       doorCols: [2, 3],
+      doorCells: [{ col: 2, row: 5 }, { col: 3, row: 5 }],
       overhangPx: 218,
+      defaultInteriorWidth: 12,
+      defaultInteriorHeight: 12,
+      defaultInteriorFloor: 'wood_parquet',
+      defaultInteriorWall: 'stone_dark',
       interiorTint: 0xcbd5f5,
       wallTint: 0x94a3b8,
       defaultZoneColor: '#a855f7',

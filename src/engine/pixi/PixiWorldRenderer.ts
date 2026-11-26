@@ -1,111 +1,19 @@
-import { Application, Container, Graphics, Sprite, Texture, TextureStyle } from 'pixi.js'
+import { Application, Container, TextureStyle } from 'pixi.js'
 import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 import { useGameStore } from '../../store/useGameStore'
-import { houseZoneIdForFurniture, useMapStore } from '../../store/useMapStore'
+import { useMapStore } from '../../store/useMapStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
-import type { CustomAsset } from '../../types/customAsset'
 import type { Player } from '../../types/game'
-import type { PlacedFurniture } from '../../types/map'
 import { CameraManager } from '../camera/CameraManager'
 import { TILE_SIZE } from '../Constants'
-import { loadPackAtlases, type PackAtlases } from './packAtlas'
 import { PixiAuraSystem, type AuraActorInput } from './PixiAuraSystem'
 import { PixiEntityLayer } from './PixiEntityLayer'
 import { PixiFloorLayer } from './PixiFloorLayer'
 import { PixiFurnitureLayer } from './PixiFurnitureLayer'
-import { buildPlayerPersonalLights, extractMapLights, PixiLightingSystem, type LightDescriptor } from './PixiLightingSystem'
+import { extractMapLights, PixiLightingSystem, type LightDescriptor } from './PixiLightingSystem'
 import { type OverlayRenderState, PixiOverlayLayer } from './PixiOverlayLayer'
 import { PixiTextureCache } from './PixiTextureCache'
 import { PixiWallLayer } from './PixiWallLayer'
-
-interface DynamicHouseNode {
-  furnId: string
-  defId: string
-  x: number
-  y: number
-  zoneId: string
-  interiorContainer: Container
-  exteriorContainer: Container
-  alpha: number
-}
-
-function resolveExteriorTexture(defId: string, packs: PackAtlases): Texture {
-  if (defId === 'lira_house_village_blue_v1') return packs.village.houseBlue
-  if (defId === 'lira_house_witch_tower_v1') return packs.halloween.houseWitch
-  return packs.village.houseRed
-}
-
-function createHouseNode(furn: PlacedFurniture, asset: CustomAsset, packs: PackAtlases): DynamicHouseNode {
-  const shell = asset.houseShell!
-  const zx = Math.round(furn.x)
-  const zy = Math.round(furn.y)
-  const zw = asset.width
-  const zh = asset.height
-
-  const interiorContainer = new Container()
-  interiorContainer.alpha = 0
-  interiorContainer.visible = false
-
-  const roomFrame = new Graphics()
-  roomFrame
-    .rect(zx * TILE_SIZE - 3, zy * TILE_SIZE - 3, zw * TILE_SIZE + 6, zh * TILE_SIZE + 6)
-    .fill({ color: 0x16121b, alpha: 0.96 })
-    .stroke({ width: 2, color: 0x475569, alpha: 0.8 })
-  interiorContainer.addChild(roomFrame)
-
-  for (let ty = zy + 1; ty < zy + zh; ty++) {
-    for (let tx = zx; tx < zx + zw; tx++) {
-      const plank = new Sprite((tx + ty) % 2 === 0 ? packs.interiors.woodPlank1 : packs.interiors.woodPlank2)
-      plank.position.set(tx * TILE_SIZE, ty * TILE_SIZE)
-      plank.scale.set(2)
-      plank.tint = shell.interiorTint ?? 0xffffff
-      interiorContainer.addChild(plank)
-    }
-  }
-
-  for (let tx = zx; tx < zx + zw; tx++) {
-    const wall = new Sprite(packs.interiors.wallCream)
-    wall.position.set(tx * TILE_SIZE, zy * TILE_SIZE)
-    wall.scale.set(2)
-    wall.tint = shell.wallTint ?? 0xffffff
-    interiorContainer.addChild(wall)
-
-    const trim = new Sprite(packs.interiors.wallTrimCream)
-    trim.position.set(tx * TILE_SIZE, zy * TILE_SIZE - 4)
-    trim.scale.set(2)
-    trim.tint = shell.wallTint ?? 0xffffff
-    interiorContainer.addChild(trim)
-  }
-
-  for (const col of shell.doorCols) {
-    const mat = new Graphics()
-    mat
-      .rect((zx + col) * TILE_SIZE + 2, (zy + zh - 1) * TILE_SIZE + 6, TILE_SIZE - 4, TILE_SIZE - 8)
-      .fill({ color: 0xf59e0b, alpha: 0.24 })
-    interiorContainer.addChild(mat)
-  }
-
-  const exteriorContainer = new Container()
-  const extTex = resolveExteriorTexture(furn.defId, packs)
-  const extSprite = new Sprite(extTex)
-  const drawW = zw * TILE_SIZE
-  const drawH = drawW * (extTex.height / Math.max(1, extTex.width))
-  extSprite.width = drawW
-  extSprite.height = drawH
-  extSprite.position.set(zx * TILE_SIZE, (zy + zh) * TILE_SIZE - drawH)
-  exteriorContainer.addChild(extSprite)
-
-  return {
-    furnId: furn.id,
-    defId: furn.defId,
-    x: zx,
-    y: zy,
-    zoneId: houseZoneIdForFurniture(furn.id),
-    interiorContainer,
-    exteriorContainer,
-    alpha: 1,
-  }
-}
 
 /**
  * 100% Native PixiJS v8 WebGL world renderer for Lira:
@@ -126,19 +34,15 @@ export class PixiWorldRenderer {
 
   private readonly textures = new PixiTextureCache()
   private readonly floorLayer = new PixiFloorLayer(this.textures)
-  private readonly houseInteriorLayer = new Container()
   private readonly wallLayer = new PixiWallLayer(this.textures)
   private readonly furnitureLayer = new PixiFurnitureLayer(this.textures)
   private readonly entityLayer = new PixiEntityLayer(this.textures)
   private readonly groundAuraLayer = new Container()
-  private readonly roofLayer = new Container()
   private readonly overlayAuraLayer = new Container()
   private readonly overlayLayer = new PixiOverlayLayer(this.textures)
   private readonly worldContainer = new Container()
 
-  private packAtlases: PackAtlases | null = null
-  private packLoadStarted = false
-  private readonly dynamicHouses = new Map<string, DynamicHouseNode>()
+  private lastLightMapId: string | null = null
   private lastLightFurnRef: unknown = null
   private lastLightZonesRef: unknown = null
   private lastLightAssetsRef: unknown = null
@@ -160,13 +64,11 @@ export class PixiWorldRenderer {
 
     this.worldContainer.addChild(
       this.floorLayer.container,
-      this.houseInteriorLayer,
       this.wallLayer.container,
       this.furnitureLayer.container,
       this.entityLayer.groundEffectsLayer,
       this.groundAuraLayer,
       this.entityLayer.entityLayer,
-      this.roofLayer,
       this.overlayAuraLayer
     )
   }
@@ -218,6 +120,13 @@ export class PixiWorldRenderer {
       this.host.appendChild(app.canvas)
 
       this.app = app
+      const liveW = Math.max(2, Math.floor(this.host.clientWidth || this.pendingWidth))
+      const liveH = Math.max(2, Math.floor(this.host.clientHeight || this.pendingHeight))
+      this.pendingWidth = liveW
+      this.pendingHeight = liveH
+      if (app.screen.width !== liveW || app.screen.height !== liveH) {
+        app.renderer.resize(liveW, liveH)
+      }
       this.lighting = new PixiLightingSystem(app)
       this.auraSystem = new PixiAuraSystem(this.groundAuraLayer, this.overlayAuraLayer)
 
@@ -246,98 +155,6 @@ export class PixiWorldRenderer {
     }
   }
 
-  private ensurePackAtlases(): PackAtlases | null {
-    if (this.packAtlases) return this.packAtlases
-    if (!this.packLoadStarted) {
-      this.packLoadStarted = true
-      loadPackAtlases()
-        .then((packs) => {
-          if (!this.disposed) this.packAtlases = packs
-        })
-        .catch((err) => {
-          console.warn('[PixiWorldRenderer] Failed to load pixel packs:', err)
-        })
-    }
-    return null
-  }
-
-  private removeHouseNode(node: DynamicHouseNode): void {
-    this.houseInteriorLayer.removeChild(node.interiorContainer)
-    this.roofLayer.removeChild(node.exteriorContainer)
-    node.interiorContainer.destroy({ children: true })
-    node.exteriorContainer.destroy({ children: true })
-  }
-
-  private syncDynamicHouses(dt: number, activeZoneId: string | null): Set<string> {
-    const mapStore = useMapStore.getState()
-    const assetsStore = useCustomAssetsStore.getState()
-    const placedHouses: { furn: PlacedFurniture; asset: CustomAsset }[] = []
-
-    for (const furn of mapStore.mapData.furniture || []) {
-      const asset = assetsStore.getAssetById(furn.defId)
-      if (asset?.houseShell) {
-        placedHouses.push({ furn, asset })
-      }
-    }
-
-    if (placedHouses.length === 0) {
-      for (const node of this.dynamicHouses.values()) this.removeHouseNode(node)
-      this.dynamicHouses.clear()
-      return new Set()
-    }
-
-    const packs = this.ensurePackAtlases()
-    if (!packs) return new Set()
-
-    const placingHouse =
-      mapStore.isEditorOpen &&
-      mapStore.activeTool === 'place_furniture' &&
-      Boolean(assetsStore.getAssetById(mapStore.selectedFurnitureDefId)?.houseShell)
-
-    const seenIds = new Set<string>()
-    const closedZoneIds = new Set<string>()
-
-    for (const { furn, asset } of placedHouses) {
-      seenIds.add(furn.id)
-      const rx = Math.round(furn.x)
-      const ry = Math.round(furn.y)
-      let node = this.dynamicHouses.get(furn.id)
-      if (!node || node.defId !== furn.defId || node.x !== rx || node.y !== ry) {
-        const prevAlpha = node?.alpha ?? 1
-        if (node) this.removeHouseNode(node)
-        node = createHouseNode(furn, asset, packs)
-        node.alpha = prevAlpha
-        this.houseInteriorLayer.addChild(node.interiorContainer)
-        this.roofLayer.addChild(node.exteriorContainer)
-        this.dynamicHouses.set(furn.id, node)
-      }
-
-      const openInterior =
-        node.zoneId === activeZoneId || (mapStore.isEditorOpen && !placingHouse)
-      const targetExteriorAlpha = openInterior ? 0.0 : 1.0
-      node.alpha += (targetExteriorAlpha - node.alpha) * Math.min(1, dt * 9)
-
-      node.exteriorContainer.alpha = node.alpha
-      node.exteriorContainer.visible = node.alpha > 0.02
-      const interiorAlpha = 1 - node.alpha
-      node.interiorContainer.alpha = interiorAlpha
-      node.interiorContainer.visible = interiorAlpha > 0.02
-
-      if (!openInterior && node.alpha > 0.5) {
-        closedZoneIds.add(node.zoneId)
-      }
-    }
-
-    for (const [id, node] of this.dynamicHouses) {
-      if (!seenIds.has(id)) {
-        this.removeHouseNode(node)
-        this.dynamicHouses.delete(id)
-      }
-    }
-
-    return closedZoneIds
-  }
-
   public renderFrame(camera: CameraManager, currentTime: number, overlayState: OverlayRenderState): boolean {
     if (!this.isReady() || !this.app || !this.lighting || !this.auraSystem) {
       return false
@@ -349,12 +166,13 @@ export class PixiWorldRenderer {
     const timeSec = nowMs / 1000
 
     const mapStore = useMapStore.getState()
-    const map = mapStore.mapData
+    const map = mapStore.getActiveMapData()
     const customAssets = useCustomAssetsStore.getState().customAssets
     const gameStore = useGameStore.getState()
     const settings = useSettingsStore.getState()
     const localPlayer = gameStore.localPlayer
     const activeZoneId = localPlayer.currentZoneId ?? null
+    const localHouseId = localPlayer.currentHouseId ?? null
 
     if (!Number.isFinite(camera.zoom) || camera.zoom <= 0) camera.zoom = 1.0
     if (!Number.isFinite(camera.x)) camera.x = 34 * TILE_SIZE
@@ -376,20 +194,18 @@ export class PixiWorldRenderer {
       enableCulling: settings.enableCulling,
     }
 
-    this.app.renderer.background.color = 0x0c0e14
+    this.app.renderer.background.color = mapStore.activeHouseId ? 0x090b10 : 0x0c0e14
     this.worldContainer.scale.set(zoom)
     this.worldContainer.position.set(worldOffsetX, worldOffsetY)
-
-    const closedZoneIds = this.syncDynamicHouses(dt, activeZoneId)
 
     this.floorLayer.update(this.app.renderer, map, customAssets, currentTime)
     this.wallLayer.update(map, customAssets, currentTime)
     this.furnitureLayer.update(map, customAssets, currentTime)
-    this.entityLayer.update(localPlayer, gameStore.remotePlayers, closedZoneIds, bounds, currentTime)
+    this.entityLayer.update(localPlayer, gameStore.remotePlayers, bounds, currentTime)
 
     const auraActors: AuraActorInput[] = []
     const pushAuraActor = (p: Player, isLocal: boolean) => {
-      if (!isLocal && p.currentZoneId && closedZoneIds.has(p.currentZoneId)) return
+      if (!isLocal && (p.currentHouseId ?? null) !== localHouseId) return
       auraActors.push({
         id: p.id,
         px: (p.x + 0.5) * TILE_SIZE,
@@ -404,15 +220,15 @@ export class PixiWorldRenderer {
       pushAuraActor(remote, false)
     }
 
-    const auraLights = this.auraSystem.update(dt, timeSec, auraActors)
-    const personalLights = buildPlayerPersonalLights(localPlayer, gameStore.remotePlayers, closedZoneIds)
-    const dynamicLights = [...personalLights, ...auraLights]
+    const auraLights = this.auraSystem.update(dt, timeSec, auraActors, currentTime)
 
     if (
+      this.lastLightMapId !== map.id ||
       this.lastLightFurnRef !== map.furniture ||
       this.lastLightZonesRef !== map.zones ||
       this.lastLightAssetsRef !== customAssets
     ) {
+      this.lastLightMapId = map.id
       this.lastLightFurnRef = map.furniture
       this.lastLightZonesRef = map.zones
       this.lastLightAssetsRef = customAssets
@@ -428,7 +244,7 @@ export class PixiWorldRenderer {
       worldOffsetX,
       worldOffsetY,
       this.cachedMapLights,
-      dynamicLights,
+      auraLights,
       activeZoneId
     )
 
@@ -449,8 +265,6 @@ export class PixiWorldRenderer {
 
   public dispose(): void {
     this.disposed = true
-    for (const node of this.dynamicHouses.values()) this.removeHouseNode(node)
-    this.dynamicHouses.clear()
     this.floorLayer.destroy()
     this.wallLayer.destroy()
     this.furnitureLayer.destroy()

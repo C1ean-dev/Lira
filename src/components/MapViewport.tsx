@@ -5,7 +5,7 @@ import { CanvasEngine } from '../engine/CanvasEngine'
 import { getNextAvailableZoneColor, FURNITURE_CATALOG } from '../engine/Constants'
 import { resolveFurnitureDimensions } from '../engine/rendering/furnitureRenderer'
 import { pickEditorFurniture } from '../engine/rendering/furnitureLayers'
-import { useMapStore } from '../store/useMapStore'
+import { selectActiveMapData, useMapStore } from '../store/useMapStore'
 import { useGameStore } from '../store/useGameStore'
 import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import { PeerManager } from '../p2p/PeerManager'
@@ -53,7 +53,9 @@ export const MapViewport: React.FC = () => {
   const addOrUpdateZone = useMapStore((s) => s.addOrUpdateZone)
   const paintFloorInZone = useMapStore((s) => s.paintFloorInZone)
   const findZoneAt = useMapStore((s) => s.findZoneAt)
-  const mapData = useMapStore((s) => s.mapData)
+  const mapData = useMapStore(selectActiveMapData)
+  const activeHouseId = useMapStore((s) => s.activeHouseId)
+  const houseTransition = useMapStore((s) => s.houseTransition)
   const placementDirection = useMapStore((s) => s.placementDirection)
   const rotatePlacementDirection = useMapStore((s) => s.rotatePlacementDirection)
   const eraserTarget = useMapStore((s) => s.eraserTarget)
@@ -201,7 +203,9 @@ export const MapViewport: React.FC = () => {
     applySize()
     restoreZoomOrFit(engine)
     window.addEventListener('resize', handleResize)
+    document.addEventListener('fullscreenchange', handleResize)
     const sizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(handleResize) : null
+    sizeObserver?.observe(host)
     if (host.parentElement) sizeObserver?.observe(host.parentElement)
 
     const handleFocusOrVisibility = () => {
@@ -215,6 +219,7 @@ export const MapViewport: React.FC = () => {
     return () => {
       sizeObserver?.disconnect()
       window.removeEventListener('resize', handleResize)
+      document.removeEventListener('fullscreenchange', handleResize)
       window.removeEventListener('focus', handleFocusOrVisibility)
       document.removeEventListener('visibilitychange', handleFocusOrVisibility)
       if (resizeRaf) cancelAnimationFrame(resizeRaf)
@@ -397,6 +402,10 @@ export const MapViewport: React.FC = () => {
         setWallTile(tile.x, tile.y, selectedWall)
         PeerManager.getInstance().sendMapEdit('set_wall', { x: tile.x, y: tile.y, wall: selectedWall })
       } else if (activeTool === 'place_furniture') {
+        const placedAsset = useCustomAssetsStore.getState().getAssetById(selectedFurnitureDefId)
+        if (activeHouseId && placedAsset?.houseShell) {
+          return
+        }
         const rotMap: Record<Direction, 0 | 90 | 180 | 270> = {
           down: 0,
           left: 90,
@@ -412,7 +421,6 @@ export const MapViewport: React.FC = () => {
           rotation: rotMap[placementDirection],
         }
         addFurniture(newFurn)
-        const placedAsset = useCustomAssetsStore.getState().getAssetById(selectedFurnitureDefId)
         if (placedAsset?.houseShell) {
           PeerManager.getInstance().broadcast({
             type: 'MAP_SYNC',
@@ -564,7 +572,7 @@ export const MapViewport: React.FC = () => {
       setIsDraggingFurniture(false)
 
       if (drag.isDragging) {
-        const currentFurn = useMapStore.getState().mapData.furniture.find((f) => f.id === drag.id)
+        const currentFurn = useMapStore.getState().getActiveMapData().furniture.find((f) => f.id === drag.id)
         if (currentFurn) {
           const movedAsset = useCustomAssetsStore.getState().getAssetById(currentFurn.defId)
           if (movedAsset?.houseShell) {
@@ -916,6 +924,21 @@ export const MapViewport: React.FC = () => {
       {mapViewMode === 'simplified' && <SimplifiedMapView />}
 
       <FurnitureContextMenu />
+
+      {houseTransition && (
+        <div
+          aria-hidden="true"
+          className={`pointer-events-none fixed inset-0 z-[120] bg-black flex items-center justify-center transition-opacity duration-200 ${
+            houseTransition.phase === 'fading-out' ? 'opacity-85' : 'opacity-0'
+          }`}
+        >
+          {houseTransition.label && (
+            <div className="px-4 py-2 rounded-full bg-lira-panel/95 border border-dashed border-lira-amber/70 text-lira-amber font-mono text-xs font-bold shadow-lg">
+              🏠 {houseTransition.label}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="absolute bottom-4 right-4 z-40">
         <MapControlsWidget

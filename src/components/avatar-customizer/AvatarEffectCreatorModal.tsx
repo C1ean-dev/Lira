@@ -1,19 +1,27 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Check, Eraser, Grid3X3, Paintbrush, Sparkles, Trash2, X } from 'lucide-react'
 import type {
+  AvatarConfig,
   AvatarEffectDensity,
   AvatarEffectMotion,
   AvatarEffectShape,
   CustomAvatarEffectSpec,
 } from '../../types/game'
+import { DEFAULT_AVATAR } from '../../engine/Constants'
 import {
   AVATAR_EFFECT_COLOR_PRESETS,
+  DEFAULT_AURA_GROUND_CIRCLE_SIZE,
   DEFAULT_AVATAR_EFFECT_COLOR,
   DENSITY_OPTIONS,
+  MAX_AURA_GROUND_CIRCLE_SIZE,
+  MIN_AURA_GROUND_CIRCLE_SIZE,
   MOTION_OPTIONS,
   SHAPE_MATRICES,
   SHAPE_OPTIONS,
+  clampAuraGroundCircleSize,
   deriveEffectPalette,
+  drawAuraGroundCircle,
+  drawAvatarAuraPreview,
   drawEffectPresetIcon,
   hasNonEmptyPixelMatrix,
 } from '../../engine/avatarEffects'
@@ -90,8 +98,11 @@ export const AvatarEffectCreatorModal: React.FC<Props> = ({
   const [color, setColor] = useState(defaultColor || DEFAULT_AVATAR_EFFECT_COLOR)
   const [motion, setMotion] = useState<AvatarEffectMotion>('float')
   const [density, setDensity] = useState<AvatarEffectDensity>('normal')
+  const [groundCircle, setGroundCircle] = useState(false)
+  const [groundCircleSize, setGroundCircleSize] = useState(DEFAULT_AURA_GROUND_CIRCLE_SIZE)
 
   const previewRef = useRef<HTMLCanvasElement | null>(null)
+  const livePreviewRef = useRef<HTMLCanvasElement | null>(null)
 
   useEffect(() => {
     if (!isOpen) return
@@ -99,11 +110,17 @@ export const AvatarEffectCreatorModal: React.FC<Props> = ({
       setName(initial.name)
       const hasCustomDrawing = hasNonEmptyPixelMatrix(initial.pixelMatrix)
       setMode(hasCustomDrawing ? 'draw' : 'shapes')
-      setShapes(initial.shapes.length > 0 ? [...initial.shapes] : ['sparkle'])
+      setShapes(
+        initial.shapes.length > 0
+          ? [...initial.shapes]
+          : (isAura && initial.groundCircle ? [] : ['sparkle'])
+      )
       setMatrix(hasCustomDrawing ? normalizeToGrid(initial.pixelMatrix) : emptyMatrix())
       setColor(initial.color || defaultColor || DEFAULT_AVATAR_EFFECT_COLOR)
       setMotion(initial.motion || 'float')
       setDensity(initial.density || 'normal')
+      setGroundCircle(Boolean(isAura && initial.groundCircle))
+      setGroundCircleSize(clampAuraGroundCircleSize(initial.groundCircleSize))
     } else {
       setName('')
       setMode('shapes')
@@ -112,6 +129,8 @@ export const AvatarEffectCreatorModal: React.FC<Props> = ({
       setColor(defaultColor || DEFAULT_AVATAR_EFFECT_COLOR)
       setMotion(isAura ? 'float' : 'rise')
       setDensity('normal')
+      setGroundCircle(false)
+      setGroundCircleSize(DEFAULT_AURA_GROUND_CIRCLE_SIZE)
     }
     setBrush('1')
   }, [isOpen, initial, defaultColor, isAura])
@@ -134,9 +153,97 @@ export const AvatarEffectCreatorModal: React.FC<Props> = ({
       color,
       canvas.width,
       canvas.height,
-      mode === 'draw' ? matrix : undefined
+      mode === 'draw' ? matrix : undefined,
+      isAura && groundCircle
     )
-  }, [shapes, color, mode, matrix, isOpen])
+  }, [shapes, color, mode, matrix, isOpen, isAura, groundCircle])
+
+  useEffect(() => {
+    if (!isOpen || !isAura) return
+    const canvas = livePreviewRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    let frameId = 0
+    const previewSpec: CustomAvatarEffectSpec = {
+      id: 'preview',
+      name: name || 'Preview',
+      kind: 'aura',
+      shapes: mode === 'shapes' ? shapes : (hasNonEmptyPixelMatrix(matrix) ? shapes : []),
+      pixelMatrix: mode === 'draw' && hasNonEmptyPixelMatrix(matrix) ? matrix : undefined,
+      color,
+      motion,
+      density,
+      groundCircle,
+      groundCircleSize,
+    }
+    const previewAvatar: AvatarConfig = {
+      ...DEFAULT_AVATAR,
+      aura: {
+        style: 'custom',
+        color,
+        custom: previewSpec,
+        groundCircle,
+        groundCircleSize,
+      },
+    }
+
+    const render = (tick: number) => {
+      const w = canvas.width
+      const h = canvas.height
+      ctx.clearRect(0, 0, w, h)
+      ctx.fillStyle = '#0f121a'
+      ctx.fillRect(0, 0, w, h)
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)'
+      ctx.lineWidth = 1
+      for (let gx = 0; gx < w; gx += 20) {
+        ctx.beginPath()
+        ctx.moveTo(gx, 0)
+        ctx.lineTo(gx, h)
+        ctx.stroke()
+      }
+      for (let gy = 0; gy < h; gy += 20) {
+        ctx.beginPath()
+        ctx.moveTo(0, gy)
+        ctx.lineTo(w, gy)
+        ctx.stroke()
+      }
+
+      const cx = w * 0.5
+      const feetY = h * 0.68
+      const circleRenderScale = 0.85
+      if (groundCircle) {
+        drawAuraGroundCircle(
+          ctx,
+          cx,
+          feetY,
+          clampAuraGroundCircleSize(groundCircleSize) * circleRenderScale,
+          color,
+          tick / 1000
+        )
+      }
+
+      // Simple avatar reference silhouette so circle diameter and object orbit read clearly
+      ctx.fillStyle = 'rgba(255,255,255,0.16)'
+      ctx.fillRect(cx - 6, feetY - 22, 12, 12)
+      ctx.fillStyle = 'rgba(255,255,255,0.24)'
+      ctx.fillRect(cx - 5, feetY - 10, 10, 10)
+
+      const scale = 1.4
+      ctx.save()
+      ctx.translate(cx - 16 * scale, h * 0.48 - 16 * scale)
+      ctx.scale(scale, scale)
+      drawAvatarAuraPreview(ctx, previewAvatar, tick, 32)
+      ctx.restore()
+
+      frameId = requestAnimationFrame(render)
+    }
+
+    frameId = requestAnimationFrame(render)
+    return () => cancelAnimationFrame(frameId)
+  }, [isOpen, isAura, shapes, matrix, mode, color, motion, density, groundCircle, groundCircleSize, name])
 
   if (!isOpen) return null
 
@@ -145,6 +252,7 @@ export const AvatarEffectCreatorModal: React.FC<Props> = ({
   const toggleShape = (shapeId: AvatarEffectShape) => {
     setShapes((prev) => {
       if (prev.includes(shapeId)) {
+        if (isAura && groundCircle) return prev.filter((s) => s !== shapeId)
         return prev.length > 1 ? prev.filter((s) => s !== shapeId) : prev
       }
       return [...prev, shapeId]
@@ -159,20 +267,28 @@ export const AvatarEffectCreatorModal: React.FC<Props> = ({
     )
   }
 
-  const canSave =
-    mode === 'draw' ? hasNonEmptyPixelMatrix(matrix) : shapes.length > 0
+  const canSave = isAura
+    ? (mode === 'draw' ? hasNonEmptyPixelMatrix(matrix) || groundCircle : shapes.length > 0 || groundCircle)
+    : (mode === 'draw' ? hasNonEmptyPixelMatrix(matrix) : shapes.length > 0)
 
   const handleConfirm = () => {
     if (!canSave) return
+    const hasCustomDrawing = mode === 'draw' && hasNonEmptyPixelMatrix(matrix)
     const spec: CustomAvatarEffectSpec = {
       id: initial?.id || `custom_${kind}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name: name.trim() || (isAura ? 'Minha Aura' : 'Meus Passos'),
       kind,
-      shapes: shapes.length > 0 ? shapes : ['sparkle'],
-      pixelMatrix: mode === 'draw' && hasNonEmptyPixelMatrix(matrix) ? matrix : undefined,
+      shapes: mode === 'shapes' ? shapes : (hasCustomDrawing ? shapes : []),
+      pixelMatrix: hasCustomDrawing ? matrix : undefined,
       color,
       motion,
       density,
+      ...(isAura
+        ? {
+            groundCircle,
+            groundCircleSize: clampAuraGroundCircleSize(groundCircleSize),
+          }
+        : {}),
     }
     onSave(spec)
   }
@@ -256,8 +372,19 @@ export const AvatarEffectCreatorModal: React.FC<Props> = ({
 
           {mode === 'shapes' ? (
             <div>
-              <div className="text-[11px] font-mono font-bold text-lira-ink mb-1.5">
-                Escolha 1 ou mais formas para combinar
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <div className="text-[11px] font-mono font-bold text-lira-ink">
+                  {isAura ? 'Objetos da aura (escolha 1 ou mais)' : 'Escolha 1 ou mais formas para combinar'}
+                </div>
+                {isAura && groundCircle && shapes.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShapes([])}
+                    className="px-2 py-0.5 rounded-[6px] bg-lira-ground border border-lira-quiet hover:border-lira-rule text-[10px] font-mono font-semibold text-lira-muted hover:text-lira-ink"
+                  >
+                    Sem objetos (só círculo)
+                  </button>
+                )}
               </div>
               <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                 {SHAPE_OPTIONS.map((opt) => {
@@ -382,6 +509,82 @@ export const AvatarEffectCreatorModal: React.FC<Props> = ({
                     </button>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {isAura && (
+            <div className="flex flex-col sm:flex-row gap-3 bg-lira-surface border border-lira-quiet rounded-[12px] p-3">
+              <canvas
+                ref={livePreviewRef}
+                width={160}
+                height={108}
+                className="w-40 h-[108px] rounded-[8px] border border-lira-quiet pixelated shrink-0 mx-auto sm:mx-0"
+              />
+              <div className="flex-1 flex flex-col justify-between gap-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-[11px] font-mono font-bold text-lira-ink">Círculo no chão</div>
+                    <div className="text-[10px] font-mono text-lira-muted">
+                      Anel luminoso embaixo dos pés do personagem
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={groundCircle}
+                    onClick={() => setGroundCircle((v) => !v)}
+                    className={`px-3 py-1 rounded-[8px] text-[11px] font-mono font-extrabold border transition-colors shrink-0 ${
+                      groundCircle
+                        ? 'bg-lira-accent border-lira-accent text-lira-ground'
+                        : 'bg-lira-ground border-lira-quiet text-lira-muted hover:text-lira-ink'
+                    }`}
+                  >
+                    {groundCircle ? 'Ativado' : 'Desativado'}
+                  </button>
+                </div>
+
+                {groundCircle && (
+                  <div className="flex flex-col gap-1.5 pt-1 border-t border-dashed border-lira-rule/50">
+                    <div className="flex items-center justify-between text-[11px] font-mono">
+                      <span className="font-bold text-lira-ink">Tamanho do círculo</span>
+                      <span className="font-extrabold text-lira-accent">{groundCircleSize}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={MIN_AURA_GROUND_CIRCLE_SIZE}
+                      max={MAX_AURA_GROUND_CIRCLE_SIZE}
+                      step={2}
+                      value={groundCircleSize}
+                      onChange={(e) => setGroundCircleSize(clampAuraGroundCircleSize(Number(e.target.value)))}
+                      aria-label="Tamanho do círculo no chão"
+                      className="w-full accent-lira-accent cursor-pointer"
+                    />
+                    <div className="flex flex-wrap gap-1.5">
+                      {(
+                        [
+                          { label: 'Pequeno', size: 36 },
+                          { label: 'Médio', size: 56 },
+                          { label: 'Grande', size: 84 },
+                          { label: 'Gigante', size: 112 },
+                        ] as const
+                      ).map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => setGroundCircleSize(preset.size)}
+                          className={`px-2 py-0.5 rounded-[6px] text-[10px] font-mono font-bold border transition-colors ${
+                            groundCircleSize === preset.size
+                              ? 'bg-lira-accent border-lira-accent text-lira-ground'
+                              : 'bg-lira-ground border-lira-quiet text-lira-muted hover:text-lira-ink'
+                          }`}
+                        >
+                          {preset.label} ({preset.size})
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

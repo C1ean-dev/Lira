@@ -2,9 +2,9 @@ import { Application, Container, Graphics, RenderTexture, Sprite, Texture } from
 import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 import type { LightingMode } from '../../store/useSettingsStore'
 import type { CustomAsset } from '../../types/customAsset'
-import type { Player } from '../../types/game'
 import type { MapData, PrivateZone } from '../../types/map'
 import { TILE_SIZE } from '../Constants'
+import { resolveHouseDoorCells } from '../houseInterior'
 import { resolveFurnitureDimensions } from '../rendering/furnitureRenderer'
 
 export interface LightDescriptor {
@@ -45,11 +45,13 @@ function lerpColor(c1: number, c2: number, t: number): number {
 }
 
 function createSoftLightTexture(): Texture {
+  if (typeof document === 'undefined') return Texture.WHITE
   const size = 256
   const canvas = document.createElement('canvas')
   canvas.width = size
   canvas.height = size
-  const ctx = canvas.getContext('2d')!
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return Texture.WHITE
   const cx = size / 2
   const grad = ctx.createRadialGradient(cx, cx, 4, cx, cx, cx)
   grad.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)')
@@ -70,43 +72,7 @@ function findContainingZone(zones: readonly PrivateZone[], tx: number, ty: numbe
   return ''
 }
 
-/** Builds automatic personal lantern lights for the local player and visible remote players. */
-export function buildPlayerPersonalLights(
-  localPlayer: Player,
-  remotePlayers: Record<string, Player>,
-  closedZoneIds: ReadonlySet<string>
-): LightDescriptor[] {
-  const lights: LightDescriptor[] = [
-    {
-      name: 'Luz do Jogador',
-      x: (localPlayer.x + 0.5) * TILE_SIZE,
-      y: (localPlayer.y + 0.55) * TILE_SIZE,
-      color: '#ffebd2',
-      radius: 135,
-      intensity: 0.72,
-      zoneId: localPlayer.currentZoneId || undefined,
-    },
-  ]
-
-  for (const remote of Object.values(remotePlayers)) {
-    if (remote.isDjBot || remote.id.startsWith('dj-')) continue
-    if (remote.id === localPlayer.id || (remote.gameId && remote.gameId === localPlayer.id)) continue
-    if (remote.currentZoneId && closedZoneIds.has(remote.currentZoneId)) continue
-    lights.push({
-      name: 'Luz de Jogador',
-      x: (remote.x + 0.5) * TILE_SIZE,
-      y: (remote.y + 0.55) * TILE_SIZE,
-      color: '#ffebd2',
-      radius: 110,
-      intensity: 0.55,
-      zoneId: remote.currentZoneId || undefined,
-    })
-  }
-
-  return lights
-}
-
-/** Derives automatic 2D point lights from zones, custom light configs, pack props, and illuminated furniture. */
+/** Derives automatic 2D point lights from custom light configs, pack props, houses, and illuminated furniture. */
 export function extractMapLights(map: MapData, customAssets?: readonly CustomAsset[]): LightDescriptor[] {
   const lights: LightDescriptor[] = []
   const zones = map.zones || []
@@ -114,18 +80,6 @@ export function extractMapLights(map: MapData, customAssets?: readonly CustomAss
   const assetById = new Map<string, CustomAsset>()
   for (const asset of assets) {
     assetById.set(asset.id, asset)
-  }
-
-  for (const z of zones) {
-    lights.push({
-      name: z.name,
-      x: (z.x + z.width * 0.5) * TILE_SIZE,
-      y: (z.y + z.height * 0.5) * TILE_SIZE,
-      color: '#ffeed6',
-      radius: Math.max(150, Math.max(z.width, z.height) * TILE_SIZE * 0.72),
-      intensity: 0.78,
-      zoneId: z.id,
-    })
   }
 
   for (const furn of map.furniture || []) {
@@ -177,14 +131,16 @@ export function extractMapLights(map: MapData, customAssets?: readonly CustomAss
       lights.push({ name: 'Abajur', x: tileCenterX, y: tileCenterY, color: '#fde047', radius: 125, intensity: 0.8, zoneId })
     } else if (id === 'lira_int_fireplace_v1') {
       lights.push({ name: 'Lareira', x: tileCenterX, y: tileCenterY, color: '#ff8f3a', radius: 185, intensity: 0.95, flicker: true, zoneId })
-    } else if (id.startsWith('lira_house_')) {
-      const w = id.includes('blue') ? 10 : id.includes('witch') ? 8 : 7
-      const h = id.includes('blue') ? 5 : 6
+    } else if (customAsset?.houseShell) {
+      const doorCells = resolveHouseDoorCells(tileW, tileH, customAsset.houseShell)
+      const primaryDoor = doorCells[Math.floor((doorCells.length - 1) / 2)]
+      const doorX = (furn.x + primaryDoor.col + 0.5) * TILE_SIZE
+      const doorY = (furn.y + primaryDoor.row + 0.5) * TILE_SIZE
       lights.push({
-        name: 'Janela da Casa',
-        x: (furn.x + w * 0.5) * TILE_SIZE,
-        y: (furn.y + h - 0.5) * TILE_SIZE,
-        color: id.includes('witch') ? '#c084fc' : '#fbbf24',
+        name: furn.houseName || customAsset.name || 'Casa',
+        x: doorX,
+        y: doorY,
+        color: furn.tintColor || customAsset.houseShell.defaultZoneColor || (id.includes('witch') ? '#c084fc' : '#fbbf24'),
         radius: 130,
         intensity: 0.68,
       })
@@ -220,9 +176,10 @@ export class PixiLightingSystem {
     this.lightScene.addChild(this.ambientRect, this.lightsContainer)
 
     this.renderTexture = RenderTexture.create({
-      width: Math.max(2, app.screen.width),
-      height: Math.max(2, app.screen.height),
+      width: Math.max(2, Math.floor(app.screen.width)),
+      height: Math.max(2, Math.floor(app.screen.height)),
       resolution: 1,
+      dynamic: true,
     })
 
     this.overlaySprite = new Sprite(this.renderTexture)
@@ -290,8 +247,8 @@ export class PixiLightingSystem {
     }
     this.overlaySprite.visible = true
 
-    const w = this.app.screen.width
-    const h = this.app.screen.height
+    const w = Math.max(2, Math.floor(this.app.screen.width))
+    const h = Math.max(2, Math.floor(this.app.screen.height))
     this.resize(w, h)
 
     this.ambientRect.clear()
@@ -365,7 +322,9 @@ export class PixiLightingSystem {
   public destroy(): void {
     this.overlaySprite.destroy()
     this.renderTexture.destroy(true)
-    this.lightTexture.destroy(true)
+    if (this.lightTexture !== Texture.WHITE) {
+      this.lightTexture.destroy(true)
+    }
     this.lightScene.destroy({ children: true })
   }
 }

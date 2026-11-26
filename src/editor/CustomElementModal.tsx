@@ -16,7 +16,9 @@ import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import { useMapStore } from '../store/useMapStore'
 import { useGameStore } from '../store/useGameStore'
 import { PeerManager } from '../p2p/PeerManager'
-import { CustomAsset, CustomAssetType, DEFAULT_FURNITURE_LIGHT, DirectionalDimension, FurnitureLightConfig } from '../types/customAsset'
+import { CustomAsset, CustomAssetType, DEFAULT_FURNITURE_LIGHT, DEFAULT_HOUSE_SHELL, DirectionalDimension, FurnitureLightConfig, HouseDoorCell, HouseShellConfig } from '../types/customAsset'
+import { buildHouseCollisionGrid, resolveHouseDoorCells } from '../engine/houseInterior'
+import { HouseConfigControls } from './custom-element/HouseConfigControls'
 import { Direction } from '../types/game'
 import {
   cropImage,
@@ -51,6 +53,7 @@ export const CustomElementModal: React.FC = () => {
     initialStudioMode,
     initialAssetType,
     initialCategory,
+    initialIsHouse,
     updateCustomAsset,
     getAssetById,
     addCustomAsset,
@@ -112,7 +115,13 @@ export const CustomElementModal: React.FC = () => {
 
   const [collisionFromSprite, setCollisionFromSprite] = useState(false)
   const [furnitureLight, setFurnitureLight] = useState<FurnitureLightConfig>({ ...DEFAULT_FURNITURE_LIGHT })
-  const [composeTool, setComposeTool] = useState<'move' | 'collision' | 'seat'>('move')
+  const [isHouse, setIsHouse] = useState(false)
+  const [houseShellConfig, setHouseShellConfig] = useState<HouseShellConfig>({ ...DEFAULT_HOUSE_SHELL })
+  const [doorGrid, setDoorGrid] = useState<boolean[][]>([
+    [false, false],
+    [false, false],
+  ])
+  const [composeTool, setComposeTool] = useState<'move' | 'collision' | 'seat' | 'door'>('move')
   const [composeZoom, setComposeZoom] = useState<number>(2)
   const [showCollisionOverlay, setShowCollisionOverlay] = useState<boolean>(true)
   const [isPaintingCollision, setIsPaintingCollision] = useState<boolean>(false)
@@ -427,6 +436,8 @@ export const CustomElementModal: React.FC = () => {
   useEffect(() => {
     setSeatGrid(prev => Array.from({ length: Math.ceil(tileHeight) }, (_, r) =>
       Array.from({ length: Math.ceil(tileWidth) }, (_, c) => prev[r]?.[c] ?? false)))
+    setDoorGrid(prev => Array.from({ length: Math.ceil(tileHeight) }, (_, r) =>
+      Array.from({ length: Math.ceil(tileWidth) }, (_, c) => prev[r]?.[c] ?? false)))
     setCollisionGrid((prev) => {
       const newGrid: boolean[][] = []
       for (let r = 0; r < tileHeight; r++) {
@@ -460,7 +471,8 @@ export const CustomElementModal: React.FC = () => {
     setElementType(newType)
     if (newType !== 'furniture') {
       setActiveDirection('down')
-      if (composeTool === 'seat') setComposeTool('move')
+      setIsHouse(false)
+      if (composeTool === 'seat' || composeTool === 'door') setComposeTool('move')
     }
     if (newType === 'avatar') {
       setTileWidth(1)
@@ -488,6 +500,22 @@ export const CustomElementModal: React.FC = () => {
         setElementType(asset.type)
         setCollisionFromSprite(!!asset.collisionFromSprite)
         setFurnitureLight(asset.light ? { ...DEFAULT_FURNITURE_LIGHT, ...asset.light } : { ...DEFAULT_FURNITURE_LIGHT })
+        if (asset.houseShell) {
+          setIsHouse(true)
+          setHouseShellConfig({ ...DEFAULT_HOUSE_SHELL, ...asset.houseShell })
+          const doors = resolveHouseDoorCells(Math.ceil(asset.width), Math.ceil(asset.height), asset.houseShell)
+          const dGrid = Array.from({ length: Math.ceil(asset.height) }, () =>
+            Array(Math.ceil(asset.width)).fill(false)
+          )
+          for (const cell of doors) {
+            if (dGrid[cell.row]?.[cell.col] !== undefined) dGrid[cell.row][cell.col] = true
+          }
+          setDoorGrid(dGrid)
+        } else {
+          setIsHouse(false)
+          setHouseShellConfig({ ...DEFAULT_HOUSE_SHELL })
+          setDoorGrid(Array.from({ length: Math.ceil(asset.height) }, () => Array(Math.ceil(asset.width)).fill(false)))
+        }
         setCategory(asset.category || 'Geral')
         setTileWidth(asset.width)
         setTileHeight(asset.height)
@@ -529,37 +557,59 @@ export const CustomElementModal: React.FC = () => {
         setStudioMode(initialStudioMode || 'compose')
       }
     } else {
-      setElementName(initialAssetType === 'floor' ? 'Novo Piso' : initialAssetType === 'wall' ? 'Nova Parede' : 'Nova Mobília')
+      const startAsHouse = Boolean(initialIsHouse && (initialAssetType || 'furniture') === 'furniture')
+      const initW = startAsHouse ? 4 : 2
+      const initH = startAsHouse ? 4 : 2
+      const initPxW = initW * 32
+      const initPxH = initH * 32
+      setIsHouse(startAsHouse)
+      setHouseShellConfig({ ...DEFAULT_HOUSE_SHELL })
+      setElementName(
+        startAsHouse
+          ? 'Nova Casa'
+          : initialAssetType === 'floor'
+          ? 'Novo Piso'
+          : initialAssetType === 'wall'
+          ? 'Nova Parede'
+          : 'Nova Mobília'
+      )
       setElementType(initialAssetType || 'furniture')
-      setBlankCanvasSize({ width: 64, height: 64 })
+      setBlankCanvasSize({ width: initPxW, height: initPxH })
       setCollisionFromSprite(false)
       setFurnitureLight({ ...DEFAULT_FURNITURE_LIGHT })
       setCompositeLayers([]); setFrameLayerStates([]); setFrames([]); setCroppedClips([])
       setSelectedLayerId(null); setSelectedFrameIdx(0)
-      setTileWidth(2); setTileHeight(2); setPixelWidth(64); setPixelHeight(64)
-      setCompositeBoardWidth(64); setCompositeBoardHeight(64)
+      setTileWidth(initW); setTileHeight(initH); setPixelWidth(initPxW); setPixelHeight(initPxH)
+      setCompositeBoardWidth(initPxW); setCompositeBoardHeight(initPxH)
       setSourceImage(null); setSourceImageSrc(''); setSaveError('')
       setActiveDirection('down')
       setDirectionalFrames({ down: [], left: [], up: [], right: [] })
       setDirectionalFrameLayers({ down: [], left: [], up: [], right: [] })
       setDirectionalDimensions({
-        down: { tileWidth: 2, tileHeight: 2, pixelWidth: 64, pixelHeight: 64 },
-        left: { tileWidth: 2, tileHeight: 2, pixelWidth: 64, pixelHeight: 64 },
-        up: { tileWidth: 2, tileHeight: 2, pixelWidth: 64, pixelHeight: 64 },
-        right: { tileWidth: 2, tileHeight: 2, pixelWidth: 64, pixelHeight: 64 },
+        down: { tileWidth: initW, tileHeight: initH, pixelWidth: initPxW, pixelHeight: initPxH },
+        left: { tileWidth: initW, tileHeight: initH, pixelWidth: initPxW, pixelHeight: initPxH },
+        up: { tileWidth: initW, tileHeight: initH, pixelWidth: initPxW, pixelHeight: initPxH },
+        right: { tileWidth: initW, tileHeight: initH, pixelWidth: initPxW, pixelHeight: initPxH },
       })
       setDirectionalCollisionGrids({})
       setDirectionalSeatGrids({})
-      setSeatGrid([[false, false], [false, false]])
-      const emptyGrid: boolean[][] = []
-      for (let r = 0; r < 2; r++) {
-        emptyGrid.push([false, false])
+      setSeatGrid(Array.from({ length: initH }, () => Array(initW).fill(false)))
+      if (startAsHouse) {
+        const defaultDoorCols = [1, 2]
+        const initShell: HouseShellConfig = { ...DEFAULT_HOUSE_SHELL, doorCols: defaultDoorCols }
+        setCollisionGrid(buildHouseCollisionGrid(initW, initH, initShell))
+        const dGrid = Array.from({ length: initH }, () => Array(initW).fill(false))
+        dGrid[initH - 1][1] = true
+        dGrid[initH - 1][2] = true
+        setDoorGrid(dGrid)
+      } else {
+        setCollisionGrid(Array.from({ length: initH }, () => Array(initW).fill(false)))
+        setDoorGrid(Array.from({ length: initH }, () => Array(initW).fill(false)))
       }
-      setCollisionGrid(emptyGrid)
       setCategory(initialCategory || 'Geral')
       setStudioMode(initialStudioMode || 'draw')
     }
-  }, [isCustomModalOpen, editingAssetId, initialStudioMode, initialCategory, initialAssetType])
+  }, [isCustomModalOpen, editingAssetId, initialStudioMode, initialCategory, initialAssetType, initialIsHouse])
 
   useEffect(() => {
     if (!isPlayingAnim || frames.length <= 1) return
@@ -799,7 +849,9 @@ export const CustomElementModal: React.FC = () => {
       const targetH = pixelHeight || tileHeight * 32
       for (let r = 0; r < tileHeight; r++) {
         for (let c = 0; c < tileWidth; c++) {
-          if (collisionGrid[r]?.[c] || (elementType === 'furniture' && seatGrid[r]?.[c])) {
+          const isSeat = elementType === 'furniture' && seatGrid[r]?.[c]
+          const isDoor = elementType === 'furniture' && isHouse && doorGrid[r]?.[c]
+          if (collisionGrid[r]?.[c] || isSeat || isDoor) {
             const cellLeft = c * 32
             const cellTop = r * 32
             const cellRight = Math.min((c + 1) * 32, targetW)
@@ -810,10 +862,13 @@ export const CustomElementModal: React.FC = () => {
             if (cellW > 0 && cellH > 0) {
               const bx = cellLeft * renderZoom
               const by = cellTop * renderZoom
-              const isSeat = elementType === 'furniture' && seatGrid[r]?.[c]
-              ctx.fillStyle = isSeat ? 'rgba(16, 185, 129, 0.35)' : 'rgba(239, 68, 68, 0.25)'
+              ctx.fillStyle = isDoor
+                ? 'rgba(245, 158, 11, 0.42)'
+                : isSeat
+                ? 'rgba(16, 185, 129, 0.35)'
+                : 'rgba(239, 68, 68, 0.25)'
               ctx.fillRect(bx, by, cellW, cellH)
-              ctx.strokeStyle = isSeat ? '#10b981' : '#ef4444'
+              ctx.strokeStyle = isDoor ? '#f59e0b' : isSeat ? '#10b981' : '#ef4444'
               ctx.lineWidth = 2
               ctx.strokeRect(bx + 1, by + 1, cellW - 2, cellH - 2)
             }
@@ -833,6 +888,8 @@ export const CustomElementModal: React.FC = () => {
     showCollisionOverlay,
     collisionGrid,
     seatGrid,
+    doorGrid,
+    isHouse,
     elementType,
     composeTool,
     composeZoom,
@@ -1280,7 +1337,7 @@ export const CustomElementModal: React.FC = () => {
     const clickX = Math.floor((e.clientX - rect.left) / composeZoom)
     const clickY = Math.floor((e.clientY - rect.top) / composeZoom)
 
-    if (composeTool === 'collision' || composeTool === 'seat') {
+    if (composeTool === 'collision' || composeTool === 'seat' || composeTool === 'door') {
       const targetW = pixelWidth || tileWidth * 32
       const targetH = pixelHeight || tileHeight * 32
       if (clickX < 0 || clickX >= targetW || clickY < 0 || clickY >= targetH) {
@@ -1292,16 +1349,22 @@ export const CustomElementModal: React.FC = () => {
 
       if (tileRow >= 0 && tileRow < tileHeight && tileCol >= 0 && tileCol < tileWidth) {
         if (composeTool === 'collision') setCollisionFromSprite(false)
-        const currentValue = (composeTool === 'seat' ? seatGrid : collisionGrid)[tileRow]?.[tileCol] ?? false
+        const activeGrid = composeTool === 'seat' ? seatGrid : composeTool === 'door' ? doorGrid : collisionGrid
+        const currentValue = activeGrid[tileRow]?.[tileCol] ?? false
         const nextValue = !currentValue
         setCollisionPaintValue(nextValue)
         setIsPaintingCollision(true)
-        const setGrid = composeTool === 'seat' ? setSeatGrid : setCollisionGrid
+        const setGrid = composeTool === 'seat' ? setSeatGrid : composeTool === 'door' ? setDoorGrid : setCollisionGrid
         setGrid((prev) =>
           prev.map((row, r) =>
             row.map((val, c) => (r === tileRow && c === tileCol ? nextValue : val))
           )
         )
+        if (composeTool === 'door' && nextValue) {
+          setCollisionGrid((prev) =>
+            prev.map((row, r) => row.map((val, c) => (r === tileRow && c === tileCol ? false : val)))
+          )
+        }
       }
       return
     }
@@ -1335,7 +1398,7 @@ export const CustomElementModal: React.FC = () => {
     const currentX = Math.floor((e.clientX - rect.left) / composeZoom)
     const currentY = Math.floor((e.clientY - rect.top) / composeZoom)
 
-    if (composeTool === 'collision' || composeTool === 'seat') {
+    if (composeTool === 'collision' || composeTool === 'seat' || composeTool === 'door') {
       if (!isPaintingCollision) return
       const targetW = pixelWidth || tileWidth * 32
       const targetH = pixelHeight || tileHeight * 32
@@ -1347,12 +1410,17 @@ export const CustomElementModal: React.FC = () => {
       const tileRow = Math.floor(currentY / 32)
 
       if (tileRow >= 0 && tileRow < tileHeight && tileCol >= 0 && tileCol < tileWidth) {
-        const setGrid = composeTool === 'seat' ? setSeatGrid : setCollisionGrid
+        const setGrid = composeTool === 'seat' ? setSeatGrid : composeTool === 'door' ? setDoorGrid : setCollisionGrid
         setGrid((prev) =>
           prev.map((row, r) =>
             row.map((val, c) => (r === tileRow && c === tileCol ? collisionPaintValue : val))
           )
         )
+        if (composeTool === 'door' && collisionPaintValue) {
+          setCollisionGrid((prev) =>
+            prev.map((row, r) => row.map((val, c) => (r === tileRow && c === tileCol ? false : val)))
+          )
+        }
       }
       return
     }
@@ -1864,6 +1932,37 @@ export const CustomElementModal: React.FC = () => {
     const basePixelWidth = elementType === 'furniture' && primaryDimensions ? (primaryDimensions.pixelWidth || primaryDimensions.width * 32) : (pixelWidth || tileWidth * 32)
     const basePixelHeight = elementType === 'furniture' && primaryDimensions ? (primaryDimensions.pixelHeight || primaryDimensions.height * 32) : (pixelHeight || tileHeight * 32)
 
+    let savedHouseShell: HouseShellConfig | undefined
+    if (elementType === 'furniture' && isHouse) {
+      const ceilW = Math.max(1, Math.ceil(baseWidth))
+      const ceilH = Math.max(1, Math.ceil(baseHeight))
+      const paintedDoorCells: HouseDoorCell[] = []
+      for (let r = 0; r < ceilH; r++) {
+        for (let c = 0; c < ceilW; c++) {
+          if (doorGrid[r]?.[c]) paintedDoorCells.push({ col: c, row: r })
+        }
+      }
+      const resolvedDoors =
+        paintedDoorCells.length > 0
+          ? paintedDoorCells
+          : resolveHouseDoorCells(ceilW, ceilH, houseShellConfig)
+      const bottomRowDoors = resolvedDoors.filter((d) => d.row === ceilH - 1).map((d) => d.col)
+      savedHouseShell = {
+        ...houseShellConfig,
+        doorCells: resolvedDoors,
+        doorCols: bottomRowDoors.length > 0 ? bottomRowDoors : [resolvedDoors[0].col],
+      }
+      const doorSet = new Set(resolvedDoors.map((d) => `${d.col},${d.row}`))
+      if (!finalCollisionGrid.some((row) => row.some(Boolean))) {
+        finalCollisionGrid = buildHouseCollisionGrid(ceilW, ceilH, savedHouseShell)
+      } else {
+        finalCollisionGrid = finalCollisionGrid.map((row, r) =>
+          row.map((cell, c) => (doorSet.has(`${c},${r}`) ? false : cell))
+        )
+      }
+      finalIsObstacle = true
+    }
+
     if (editingAssetId) {
       await updateCustomAsset(editingAssetId, {
         name: elementName.trim() || 'Elemento Customizado',
@@ -1876,6 +1975,7 @@ export const CustomElementModal: React.FC = () => {
         pixelHeight: basePixelHeight,
         isObstacle: finalIsObstacle,
         collisionGrid: finalCollisionGrid,
+        houseShell: savedHouseShell,
         seatGrid: finalSeatGrids?.down,
         directionalSeatGrids: finalSeatGrids,
         collisionFromSprite: collisionFromSprite || undefined,
@@ -1935,6 +2035,7 @@ export const CustomElementModal: React.FC = () => {
       pixelHeight: basePixelHeight,
       isObstacle: finalIsObstacle,
       collisionGrid: finalCollisionGrid,
+      houseShell: savedHouseShell,
       seatGrid: finalSeatGrids?.down,
       directionalSeatGrids: finalSeatGrids,
       frames: finalFrames,
@@ -2106,6 +2207,17 @@ export const CustomElementModal: React.FC = () => {
                 onSetAllCollision={handleSetAllCollision}
                 onSetBottomHalfCollision={handleSetBottomHalfCollision}
                 onClearSeats={() => setSeatGrid(prev => prev.map(row => row.map(() => false)))}
+                isHouse={isHouse}
+                onClearDoors={() => {
+                  const ceilW = Math.max(1, Math.ceil(tileWidth))
+                  const ceilH = Math.max(1, Math.ceil(tileHeight))
+                  const defaults = resolveHouseDoorCells(ceilW, ceilH, DEFAULT_HOUSE_SHELL)
+                  const next = Array.from({ length: ceilH }, () => Array(ceilW).fill(false))
+                  for (const d of defaults) {
+                    if (next[d.row]?.[d.col] !== undefined) next[d.row][d.col] = true
+                  }
+                  setDoorGrid(next)
+                }}
                 onFitLayersToBoard={handleFitLayersToBoard}
                 onComposeMouseDown={handleComposeCanvasMouseDown}
                 onComposeMouseMove={handleComposeCanvasMouseMove}
@@ -2165,6 +2277,36 @@ export const CustomElementModal: React.FC = () => {
               Obstáculo com colisão
               <span className="ml-auto text-[10px] font-mono text-lira-muted">Ajuste por tile em Montagem</span>
             </label>
+
+            {elementType === 'furniture' && (
+              <HouseConfigControls
+                isHouse={isHouse}
+                onToggleHouse={(enabled) => {
+                  setIsHouse(enabled)
+                  if (enabled) {
+                    const ceilW = Math.max(1, Math.ceil(tileWidth))
+                    const ceilH = Math.max(1, Math.ceil(tileHeight))
+                    const hasDoors = doorGrid.some((row) => row.some(Boolean))
+                    if (!hasDoors) {
+                      const defaults = resolveHouseDoorCells(ceilW, ceilH, houseShellConfig)
+                      const nextDoors = Array.from({ length: ceilH }, () => Array(ceilW).fill(false))
+                      for (const d of defaults) {
+                        if (nextDoors[d.row]?.[d.col] !== undefined) nextDoors[d.row][d.col] = true
+                      }
+                      setDoorGrid(nextDoors)
+                    }
+                    if (!collisionGrid.some((row) => row.some(Boolean))) {
+                      setCollisionGrid(buildHouseCollisionGrid(ceilW, ceilH, houseShellConfig))
+                    }
+                  } else if (composeTool === 'door') {
+                    setComposeTool('move')
+                  }
+                }}
+                houseShell={houseShellConfig}
+                onChange={setHouseShellConfig}
+                showDoorPaintingHint={studioMode === 'compose'}
+              />
+            )}
 
             {elementType === 'furniture' && (
               <FurnitureLightControls

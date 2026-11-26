@@ -1,4 +1,5 @@
 import { AvatarActivityAnimation, AvatarComponentSlot, Direction } from './game'
+import type { FloorType, WallType } from './map'
 
 export interface AssetSourceSheet {
   id: string
@@ -44,12 +45,42 @@ export interface DirectionalDimension {
   pixelHeight?: number
 }
 
+export interface HouseDoorCell {
+  col: number
+  row: number
+}
+
 export interface HouseShellConfig {
-  doorCols: number[]
+  /** Colunas de porta legadas na última linha da base (mantido por compatibilidade). */
+  doorCols?: number[]
+  /** Células exatas de porta/portal no grid do asset (coluna, linha). */
+  doorCells?: HouseDoorCell[]
+  /** Pixels que o telhado/sprite se estende acima das linhas de base. */
   overhangPx?: number
+  /** Largura padrão do espaço interior em tiles ao colocar a casa no mapa. */
+  defaultInteriorWidth?: number
+  /** Altura padrão do espaço interior em tiles ao colocar a casa no mapa. */
+  defaultInteriorHeight?: number
+  /** Piso padrão gerado para o interior da casa. */
+  defaultInteriorFloor?: FloorType
+  /** Parede padrão do perímetro do interior da casa (null = sem parede). */
+  defaultInteriorWall?: WallType | null
   interiorTint?: number
   wallTint?: number
   defaultZoneColor?: string
+}
+
+export const DEFAULT_HOUSE_SHELL: Required<
+  Pick<HouseShellConfig, 'defaultInteriorWidth' | 'defaultInteriorHeight' | 'defaultInteriorFloor' | 'defaultInteriorWall'>
+> & HouseShellConfig = {
+  doorCols: [0],
+  doorCells: [],
+  overhangPx: 0,
+  defaultInteriorWidth: 14,
+  defaultInteriorHeight: 11,
+  defaultInteriorFloor: 'wood_parquet',
+  defaultInteriorWall: 'wood_panel',
+  defaultZoneColor: '#f59e0b',
 }
 
 export interface FurnitureLightConfig {

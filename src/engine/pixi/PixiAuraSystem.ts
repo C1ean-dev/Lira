@@ -1,7 +1,12 @@
-import { Container, Filter, GlProgram, Sprite, Texture, UniformGroup } from 'pixi.js'
+import { Container, Filter, GlProgram, Graphics, Sprite, Texture, UniformGroup } from 'pixi.js'
 import type { AvatarAuraConfig, AvatarAuraStyle } from '../../types/game'
-import { resolveAuraSpec } from '../avatarEffects/presets'
+import { AvatarEffectsManager } from '../avatarEffects/AvatarEffectsManager'
+import { AuraEffect } from '../avatarEffects/effects/auraEffect'
+import { SHAPE_MATRICES } from '../avatarEffects/pixelSprites'
+import { clampAuraGroundCircleSize, resolveAuraSpec } from '../avatarEffects/presets'
+import type { ParticleShape } from '../avatarEffects/types'
 import type { LightDescriptor } from './PixiLightingSystem'
+import { parseHexColor } from './PixiTextureCache'
 
 export interface AuraShaderPreset {
   key: string
@@ -12,6 +17,10 @@ export interface AuraShaderPreset {
   speed: number
   rings: number
   densityScale: number
+  groundCircle: boolean
+  groundCircleSize: number
+  shapes: readonly ParticleShape[]
+  hasCustomMatrix: boolean
 }
 
 const FILTER_VERT = `
@@ -69,14 +78,14 @@ void main() {
     float swirl = sin(angle * 4.0 - uTime * uSpeed + dist * 6.0) * 0.5 + 0.5;
     float wave = sin(dist * 10.0 * uRings - uTime * uSpeed * 1.4) * 0.5 + 0.5;
 
-    float outerRing = smoothstep(0.95, 0.52, dist) * smoothstep(0.18, 0.62, dist);
-    float coreGlow = exp(-dist * dist * 3.8) * 0.62;
-    float edgePulse = smoothstep(0.88, 0.72, dist) * smoothstep(0.55, 0.72, dist) * (0.55 + 0.45 * swirl);
+    float rimBand = exp(-pow((dist - 0.82) / 0.075, 2.0)) * (0.72 + 0.28 * swirl);
+    float innerBand = exp(-pow((dist - 0.54) / 0.06, 2.0)) * (0.28 + 0.24 * wave);
+    float coreGlow = exp(-dist * dist * 3.2) * 0.24;
 
-    float intensity = clamp(outerRing * (0.35 + 0.65 * wave) + coreGlow + edgePulse * 0.75, 0.0, 1.0);
-    vec3 col = mix(uColorA, uColorB, clamp(swirl * 0.65 + (1.0 - dist) * 0.35, 0.0, 1.0));
+    float intensity = clamp(rimBand + innerBand + coreGlow, 0.0, 0.92);
+    vec3 col = mix(uColorA, uColorB, clamp(rimBand * 0.7 + swirl * 0.3, 0.0, 1.0));
 
-    float alpha = intensity * (1.0 - smoothstep(0.75, 1.0, dist));
+    float alpha = intensity * (1.0 - smoothstep(0.88, 1.0, dist)) * 0.78;
     finalColor = vec4(col * alpha + base.rgb * 0.0, alpha);
 }
 `
@@ -115,7 +124,7 @@ const STYLE_TUNING: Record<Exclude<AvatarAuraStyle, 'none'>, { speed: number; ri
   custom: { speed: 2.6, rings: 2.4, highlight: [1.0, 0.94, 0.85] },
 }
 
-/** Maps a Lira AvatarAuraConfig into GPU GLSL shader + particle + light parameters. */
+/** Maps a Lira AvatarAuraConfig into GPU GLSL shader + pixel-art object + ground-circle parameters. */
 export function mapAuraSpecToShaderPreset(aura?: AvatarAuraConfig | null): AuraShaderPreset | null {
   const spec = resolveAuraSpec(aura ?? undefined)
   if (!spec) return null
@@ -125,9 +134,11 @@ export function mapAuraSpecToShaderPreset(aura?: AvatarAuraConfig | null): AuraS
   const tuning = STYLE_TUNING[styleKey] || STYLE_TUNING.custom
   const secondary = mixRgb(primary, tuning.highlight, 0.48)
   const densityScale = spec.density === 'intense' ? 1.45 : spec.density === 'subtle' ? 0.65 : 1.0
+  const groundCircle = Boolean(spec.groundCircle)
+  const groundCircleSize = clampAuraGroundCircleSize(spec.groundCircleSize)
 
   return {
-    key: `${styleKey}:${spec.color.toLowerCase()}:${spec.density}`,
+    key: `${styleKey}:${spec.color.toLowerCase()}:${spec.density}:${groundCircle ? 1 : 0}:${groundCircleSize}`,
     colorA: primary,
     colorB: secondary,
     lightColor: spec.color,
@@ -135,24 +146,15 @@ export function mapAuraSpecToShaderPreset(aura?: AvatarAuraConfig | null): AuraS
     speed: tuning.speed,
     rings: tuning.rings,
     densityScale,
+    groundCircle,
+    groundCircleSize,
+    shapes: spec.shapes,
+    hasCustomMatrix: Boolean(spec.pixelMatrix && spec.pixelMatrix.length > 0),
   }
 }
 
-function createParticleDotTexture(): Texture {
-  const c = document.createElement('canvas')
-  c.width = 16
-  c.height = 16
-  const ctx = c.getContext('2d')!
-  const g = ctx.createRadialGradient(8, 8, 1, 8, 8, 8)
-  g.addColorStop(0, 'rgba(255,255,255,1)')
-  g.addColorStop(0.5, 'rgba(255,255,255,0.65)')
-  g.addColorStop(1, 'rgba(255,255,255,0)')
-  ctx.fillStyle = g
-  ctx.fillRect(0, 0, 16, 16)
-  return Texture.from(c)
-}
-
 function createQuadTexture(): Texture {
+  if (typeof document === 'undefined') return Texture.WHITE
   const c = document.createElement('canvas')
   c.width = 64
   c.height = 64
@@ -173,15 +175,6 @@ interface FilterSlot {
   }>
 }
 
-interface GpuParticle {
-  sprite: Sprite
-  vx: number
-  vy: number
-  age: number
-  life: number
-  baseScale: number
-}
-
 export interface AuraActorInput {
   id: string
   px: number
@@ -189,33 +182,33 @@ export interface AuraActorInput {
   aura?: AvatarAuraConfig | null
 }
 
-/** GPU GLSL aura rings + additive GPU particle emitter for Lira avatars. */
+/** Optional GLSL ground circle + crisp pixel-art aura object renderer for Lira avatars. */
 export class PixiAuraSystem {
   private readonly groundContainer: Container
-  private readonly particleContainer: Container
-  private readonly particleTex: Texture
+  private readonly particlesGfx: Graphics
   private readonly quadTex: Texture
-  private readonly glProgram: GlProgram
+  private readonly glProgram: GlProgram | null
   private readonly filterCache = new Map<string, FilterSlot>()
   private readonly actorSprites = new Map<string, Sprite>()
-  private readonly particles: GpuParticle[] = []
-  private spawnTimer = 0
 
   constructor(groundContainer: Container, overlayContainer: Container) {
     this.groundContainer = groundContainer
-    this.particleContainer = new Container()
-    overlayContainer.addChild(this.particleContainer)
+    this.particlesGfx = new Graphics()
+    overlayContainer.addChild(this.particlesGfx)
 
-    this.particleTex = createParticleDotTexture()
     this.quadTex = createQuadTexture()
-    this.glProgram = GlProgram.from({
-      vertex: FILTER_VERT,
-      fragment: AURA_FRAG,
-      name: 'lira-avatar-aura-shader',
-    })
+    this.glProgram =
+      typeof document !== 'undefined'
+        ? GlProgram.from({
+            vertex: FILTER_VERT,
+            fragment: AURA_FRAG,
+            name: 'lira-avatar-aura-shader',
+          })
+        : null
   }
 
-  private getFilterSlot(preset: AuraShaderPreset, timeSec: number): FilterSlot {
+  private getFilterSlot(preset: AuraShaderPreset, timeSec: number): FilterSlot | null {
+    if (!this.glProgram) return null
     let slot = this.filterCache.get(preset.key)
     if (!slot) {
       if (this.filterCache.size >= 24) {
@@ -257,96 +250,109 @@ export class PixiAuraSystem {
     return spr
   }
 
-  private spawnParticle(x: number, y: number, preset: AuraShaderPreset): void {
-    if (this.particles.length >= 180) return
-    const sprite = new Sprite(this.particleTex)
-    sprite.anchor.set(0.5)
-    sprite.blendMode = 'add'
-    sprite.tint = preset.particleTint
-    const angle = Math.random() * Math.PI * 2
-    const radius = 6 + Math.random() * 14
-    sprite.position.set(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius * 0.55)
-    const size = 0.3 + Math.random() * 0.42
-    sprite.scale.set(size)
-    this.particleContainer.addChild(sprite)
-    this.particles.push({
-      sprite,
-      vx: Math.cos(angle) * (5 + Math.random() * 10),
-      vy: -16 - Math.random() * 22,
-      age: 0,
-      life: 0.7 + Math.random() * 0.65,
-      baseScale: size,
-    })
+  private renderAuraParticles(nowMs: number): void {
+    this.particlesGfx.clear()
+    const effects = AvatarEffectsManager.getInstance()
+    if (!effects.isEnabled()) return
+    const auraEffect = effects.getEffect('avatar:aura') as AuraEffect | undefined
+    if (!auraEffect || !auraEffect.enabled) return
+
+    const particles = auraEffect.getParticles()
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i]
+      const progress = p.age / p.maxAge
+      if (progress < 0 || progress >= 1) continue
+
+      const fadeIn = Math.min(1, progress / 0.12)
+      const fadeOut = progress > 0.65 ? 1 - (progress - 0.65) / 0.35 : 1
+      let alpha = Math.max(0, Math.min(1, fadeIn * fadeOut))
+      if (p.twinkle) {
+        alpha *= 0.68 + 0.32 * Math.sin(nowMs / 95 + p.phase)
+      }
+      if (alpha <= 0.02) continue
+
+      const swayX = p.swayAmp !== 0 ? Math.sin(p.age * p.swayFreq + p.phase) * p.swayAmp : 0
+      const matrix = p.customMatrix && p.customMatrix.length > 0 ? p.customMatrix : SHAPE_MATRICES[p.shape]
+      if (!matrix || matrix.length === 0) continue
+
+      const pixelSize = Math.max(1, Math.round(p.scale))
+      const rows = matrix.length
+      const cols = matrix[0]?.length || 0
+      const ox = Math.round(p.x + swayX - (cols * pixelSize) / 2)
+      const oy = Math.round(p.y - (rows * pixelSize) / 2)
+
+      const primary = parseHexColor(p.color, 0xffffff)
+      const accent = parseHexColor(p.secondaryColor, 0xffffff)
+      const outline = parseHexColor(p.outlineColor, 0x581c87)
+
+      for (let r = 0; r < rows; r++) {
+        const line = matrix[r]
+        for (let c = 0; c < line.length; c++) {
+          const cell = line[c]
+          if (cell === '0' || cell === ' ') continue
+          const col = cell === '3' ? outline : cell === '2' ? accent : primary
+          this.particlesGfx
+            .rect(ox + c * pixelSize, oy + r * pixelSize, pixelSize, pixelSize)
+            .fill({ color: col, alpha })
+        }
+      }
+    }
   }
 
-  public update(dt: number, timeSec: number, actors: readonly AuraActorInput[]): LightDescriptor[] {
+  public update(
+    _dt: number,
+    timeSec: number,
+    actors: readonly AuraActorInput[],
+    nowMs: number = timeSec * 1000
+  ): LightDescriptor[] {
     const dynamicLights: LightDescriptor[] = []
-    const seen = new Set<string>()
-    this.spawnTimer += dt
-    const shouldEmit = this.spawnTimer >= 0.06
-    if (shouldEmit) this.spawnTimer = 0
+    const seenGround = new Set<string>()
 
     for (const actor of actors) {
       const preset = mapAuraSpecToShaderPreset(actor.aura)
       if (!preset) continue
-      seen.add(actor.id)
 
-      const spr = this.getAuraSprite(actor.id)
-      const slot = this.getFilterSlot(preset, timeSec)
-      spr.visible = true
-      spr.position.set(actor.px, actor.py)
-      if (spr.filters?.[0] !== slot.filter) {
-        spr.filters = [slot.filter]
+      if (preset.groundCircle) {
+        seenGround.add(actor.id)
+        const spr = this.getAuraSprite(actor.id)
+        const slot = this.getFilterSlot(preset, timeSec)
+        spr.visible = true
+        spr.width = preset.groundCircleSize
+        spr.height = Math.max(12, Math.round(preset.groundCircleSize * 0.64))
+        spr.position.set(actor.px, actor.py)
+        if (slot && spr.filters?.[0] !== slot.filter) {
+          spr.filters = [slot.filter]
+        }
+
+        dynamicLights.push({
+          name: `aura-${actor.id}`,
+          x: actor.px,
+          y: actor.py - 6,
+          color: preset.lightColor,
+          radius: Math.max(70, Math.round(preset.groundCircleSize * 1.85)),
+          intensity: 0.65,
+          flicker: true,
+        })
       }
-
-      if (shouldEmit && Math.random() < 0.72 * preset.densityScale) {
-        this.spawnParticle(actor.px, actor.py - 4, preset)
-      }
-
-      dynamicLights.push({
-        name: `aura-${actor.id}`,
-        x: actor.px,
-        y: actor.py - 6,
-        color: preset.lightColor,
-        radius: 130,
-        intensity: 0.8,
-        flicker: true,
-      })
     }
 
     for (const [id, spr] of this.actorSprites) {
-      if (!seen.has(id)) spr.visible = false
+      if (!seenGround.has(id)) spr.visible = false
     }
 
-    for (let i = this.particles.length - 1; i >= 0; i--) {
-      const pt = this.particles[i]
-      pt.age += dt
-      if (pt.age >= pt.life) {
-        this.particleContainer.removeChild(pt.sprite)
-        pt.sprite.destroy()
-        this.particles.splice(i, 1)
-        continue
-      }
-      const progress = pt.age / pt.life
-      pt.sprite.x += pt.vx * dt
-      pt.sprite.y += pt.vy * dt
-      pt.sprite.alpha = Math.sin(progress * Math.PI) * 0.88
-      pt.sprite.scale.set(pt.baseScale * (1 - progress * 0.45))
-    }
-
+    this.renderAuraParticles(nowMs)
     return dynamicLights
   }
 
   public destroy(): void {
-    for (const pt of this.particles) pt.sprite.destroy()
-    this.particles.length = 0
     for (const spr of this.actorSprites.values()) spr.destroy()
     this.actorSprites.clear()
     for (const slot of this.filterCache.values()) slot.filter.destroy()
     this.filterCache.clear()
-    this.glProgram.destroy()
-    this.particleTex.destroy(true)
-    this.quadTex.destroy(true)
-    this.particleContainer.destroy({ children: true })
+    this.glProgram?.destroy()
+    if (this.quadTex !== Texture.WHITE) {
+      this.quadTex.destroy(true)
+    }
+    this.particlesGfx.destroy()
   }
 }

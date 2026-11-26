@@ -3,8 +3,10 @@ import type { CustomAsset } from '../../types/customAsset'
 import type { Direction } from '../../types/game'
 import type { MapData, PrivateZone } from '../../types/map'
 import { TILE_SIZE } from '../Constants'
+import { findBorderWallType } from '../houseInterior'
 import { getZoneWallTheme, type ZoneWallTheme } from '../rendering/wallRenderer'
 import { getZoneGeometry } from '../zoneGeometry'
+import { useMapStore } from '../../store/useMapStore'
 import { parseHexColor, PixiTextureCache } from './PixiTextureCache'
 
 interface AnimatedWallPatch {
@@ -286,6 +288,8 @@ function getWallFrameUrls(asset: CustomAsset | undefined, dir: Direction): strin
 export class PixiWallLayer {
   public readonly container = new Container()
   private readonly animatedPatches: AnimatedWallPatch[] = []
+  private lastMapId: string | null = null
+  private lastWallsRef: unknown = null
   private lastZonesRef: unknown = null
   private lastAssetsRef: unknown = null
   private dirty = true
@@ -307,6 +311,71 @@ export class PixiWallLayer {
     const zones = map.zones || []
     const assetById = new Map<string, CustomAsset>()
     for (const a of customAssets) assetById.set(a.id, a)
+
+    const interior = useMapStore.getState().getActiveHouseInterior()
+    if (interior && interior.houseId === map.id) {
+      const wallType = findBorderWallType(map.walls)
+      if (wallType) {
+        const customWall = assetById.get(wallType)
+        const theme = getZoneWallTheme(wallType)
+        const wallBodyColor = parseHexColor(theme.wallBody, 0xd5dee5)
+        const wallBodyAlpha = theme.isGlass ? 0.55 : 1
+
+        const roomW = map.width * TILE_SIZE
+        const roomH = map.height * TILE_SIZE
+        const exitStartX = interior.exitDoor.x * TILE_SIZE
+        const exitEndX = (interior.exitDoor.x + interior.exitDoor.width) * TILE_SIZE
+        const bottomY = (map.height - 1) * TILE_SIZE
+
+        const segments: Array<{ x: number; y: number; w: number; h: number; dir: Direction }> = [
+          { x: 0, y: 0, w: roomW, h: TILE_SIZE, dir: 'up' },
+          { x: 0, y: TILE_SIZE, w: TILE_SIZE, h: Math.max(0, roomH - TILE_SIZE * 2), dir: 'left' },
+          { x: Math.max(TILE_SIZE, roomW - TILE_SIZE), y: TILE_SIZE, w: TILE_SIZE, h: Math.max(0, roomH - TILE_SIZE * 2), dir: 'right' },
+          { x: 0, y: bottomY, w: exitStartX, h: TILE_SIZE, dir: 'down' },
+          { x: exitEndX, y: bottomY, w: Math.max(0, roomW - exitEndX), h: TILE_SIZE, dir: 'down' },
+        ]
+
+        const houseContainer = new Container()
+        const perimGfx = new Graphics()
+        for (const seg of segments) {
+          if (seg.w <= 0 || seg.h <= 0) continue
+          const urls = getWallFrameUrls(customWall, seg.dir)
+          const tex = urls.length > 0 ? this.textures.getUrlTexture(urls[0], this.markDirty) : null
+          if (tex) {
+            const ts = new TilingSprite({ texture: tex, width: seg.w, height: seg.h })
+            ts.position.set(seg.x, seg.y)
+            houseContainer.addChild(ts)
+            if (customWall && urls.length > 1) {
+              this.animatedPatches.push({ sprite: ts, asset: customWall, dir: seg.dir })
+            }
+          } else {
+            perimGfx.rect(seg.x, seg.y, seg.w, seg.h).fill({ color: wallBodyColor, alpha: wallBodyAlpha })
+            if (theme.isWood) {
+              for (let bx = seg.x + 16; bx < seg.x + seg.w; bx += 16) {
+                perimGfx.rect(bx, seg.y, 1, seg.h).fill({ color: 0x000000, alpha: 0.18 })
+              }
+            } else if (theme.isBrick) {
+              for (let by = seg.y + 8; by < seg.y + seg.h; by += 8) {
+                perimGfx.rect(seg.x, by, seg.w, 1).fill({ color: 0x000000, alpha: 0.22 })
+              }
+            }
+            if (seg.dir === 'up') {
+              perimGfx.rect(seg.x, seg.y + seg.h - 6, seg.w, 6).fill(parseHexColor(theme.baseboard, 0x9ca3af))
+            }
+          }
+          perimGfx.rect(seg.x, seg.y, seg.w, seg.h).stroke({ width: 1, color: 0x000000, alpha: 0.25 })
+        }
+
+        // Draw doorway jambs at exit opening
+        const frameColor = parseHexColor(interior.accentColor, 0xf59e0b)
+        perimGfx.rect(exitStartX - 4, bottomY, 4, TILE_SIZE).fill(0x451a03)
+        perimGfx.rect(exitEndX, bottomY, 4, TILE_SIZE).fill(0x451a03)
+        perimGfx.rect(exitStartX, bottomY + 2, exitEndX - exitStartX, TILE_SIZE - 6).fill({ color: frameColor, alpha: 0.25 })
+
+        houseContainer.addChild(perimGfx)
+        this.container.addChild(houseContainer)
+      }
+    }
 
     for (const zone of zones) {
       if (zone.hasWalls === false) continue
@@ -411,13 +480,21 @@ export class PixiWallLayer {
       this.container.addChild(zoneContainer)
     }
 
+    this.lastMapId = map.id
+    this.lastWallsRef = map.walls
     this.lastZonesRef = map.zones
     this.lastAssetsRef = customAssets
     this.dirty = false
   }
 
   public update(map: MapData, customAssets: CustomAsset[], nowMs: number): void {
-    if (this.dirty || this.lastZonesRef !== map.zones || this.lastAssetsRef !== customAssets) {
+    if (
+      this.dirty ||
+      this.lastMapId !== map.id ||
+      this.lastWallsRef !== map.walls ||
+      this.lastZonesRef !== map.zones ||
+      this.lastAssetsRef !== customAssets
+    ) {
       this.rebuild(map, customAssets)
     }
 

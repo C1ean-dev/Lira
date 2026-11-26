@@ -17,6 +17,11 @@ import { CustomAsset } from '../types/customAsset'
 import { PublicRoomsService } from '../services/publicRoomsService'
 import { processNetworkMessage } from './messageHandlers'
 import { MediaCallHandler, ICE_CONNECT_TIMEOUT_MS, SHARED_RTC_CONFIG, resolveCallGlare } from './mediaCalls'
+import {
+  arePlayersCallEligible,
+  isPlayerInCorridor,
+  isWithinProximityCall,
+} from '../engine/proximityCall'
 import { VideoDegradation, setAlmViewer, findVideoSender, syncScreenCaps, setNativeLiveViewer } from './videoSendPolicy'
 import { prioritizeH264HardwareCodec, isHardwareAccelerationEnabled } from '../media/hardwareCodec'
 import { AlmLive } from './almLive'
@@ -215,6 +220,7 @@ export class PeerManager {
   private preparedHostTransfer: HostTransferPlan | null = null
   private pendingZoneCalls = new Map<string, Peer>()
   private zoneCallTimer: ReturnType<typeof setTimeout> | null = null
+  private proximitySyncTimer: ReturnType<typeof setTimeout> | null = null
   private heartbeatInterval: any = null
   private staleCheckInterval: any = null
   private roomCode: string | null = null
@@ -269,9 +275,11 @@ export class PeerManager {
   }
 
   private sameLiveZone(id: string): boolean {
-    const { localPlayer, remotePlayers } = useGameStore.getState()
+    const { localPlayer, remotePlayers, proximityPeerIds } = useGameStore.getState()
     const peer = remotePlayers[id]
-    return localPlayer.currentZoneId != null && peer?.currentZoneId === localPlayer.currentZoneId && !peer.isDjBot
+    if (!peer) return false
+    const connected = this.mediaCalls.has(id) || proximityPeerIds.includes(id)
+    return arePlayersCallEligible(localPlayer, peer, connected).eligible
   }
 
   private forwardGStreamer(msg: NetworkMessage<'LIVE_GSTREAMER'>): void {
@@ -297,9 +305,25 @@ export class PeerManager {
       const local = state.localPlayer
       const presenter = root === this.peer?.id ? local : state.remotePlayers[root]
       const participant = id === this.peer?.id ? local : state.remotePlayers[id]
-      return !!presenter && !!participant && presenter.isScreenSharing === true &&
-        local.currentZoneId != null && presenter.currentZoneId === local.currentZoneId &&
-        participant.currentZoneId === local.currentZoneId && !participant.isDjBot
+      if (!presenter || !participant || presenter.isScreenSharing !== true || participant.isDjBot) return false
+      if (local.currentZoneId != null) {
+        return presenter.currentZoneId === local.currentZoneId && participant.currentZoneId === local.currentZoneId
+      }
+      const presenterOk =
+        presenter === local ||
+        arePlayersCallEligible(
+          local,
+          presenter,
+          this.mediaCalls.has(presenter.id) || state.proximityPeerIds.includes(presenter.id)
+        ).eligible
+      const participantOk =
+        participant === local ||
+        arePlayersCallEligible(
+          local,
+          participant,
+          this.mediaCalls.has(participant.id) || state.proximityPeerIds.includes(participant.id)
+        ).eligible
+      return presenterOk && participantOk
     },
     watching: root => !!useLiveWatchStore.getState().watching[root],
     send: (to, payload) => {
@@ -2460,7 +2484,7 @@ export class PeerManager {
           const { remotePlayers } = useGameStore.getState()
           const from = remotePlayers[msg.senderId]
           const to = remotePlayers[msg.payload.to]
-          if (from?.currentZoneId != null && from.currentZoneId === to?.currentZoneId && !from.isDjBot && !to.isDjBot)
+          if (from && to && arePlayersCallEligible(from, to, true).eligible)
             this.forwardGStreamer(msg)
         }
         return
@@ -2610,7 +2634,7 @@ export class PeerManager {
     const { localPlayer, remotePlayers } = useGameStore.getState()
     const sharer = remotePlayers[sharerId]
     if (!this.peer?.open || !this.mediaCalls.has(sharerId) || !sharer?.isScreenSharing ||
-      localPlayer.currentZoneId == null || sharer.currentZoneId !== localPlayer.currentZoneId ||
+      !this.sameLiveZone(sharerId) ||
       !useLiveWatchStore.getState().watching[sharerId]) return
     const live = useMediaStore.getState().peerScreenStreams[sharerId]
     if (live && (isAlmStream(live) || this.getGStreamerConnection(live))) return
@@ -2844,6 +2868,70 @@ export class PeerManager {
     this.pendingZoneCalls.clear()
     if (this.zoneCallTimer !== null) clearTimeout(this.zoneCallTimer)
     this.zoneCallTimer = null
+    if (this.proximitySyncTimer !== null) clearTimeout(this.proximitySyncTimer)
+    this.proximitySyncTimer = null
+  }
+
+  public scheduleProximitySync() {
+    if (this.proximitySyncTimer !== null) return
+    this.proximitySyncTimer = setTimeout(() => {
+      this.proximitySyncTimer = null
+      this.syncProximityCalls()
+    }, 120)
+  }
+
+  public syncProximityCalls() {
+    const state = useGameStore.getState()
+    const local = state.localPlayer
+    const remotes = state.remotePlayers
+    const prevIds = state.proximityPeerIds
+    const prevSet = new Set(prevIds)
+
+    if (!isPlayerInCorridor(local)) {
+      if (prevIds.length > 0) {
+        state.setProximityState([])
+      }
+      return
+    }
+
+    const nextIds: string[] = []
+    for (const remote of Object.values(remotes)) {
+      const connected = prevSet.has(remote.id) || this.mediaCalls.has(remote.id)
+      if (isWithinProximityCall(local, remote, connected)) {
+        nextIds.push(remote.id)
+      }
+    }
+    nextIds.sort()
+
+    state.setProximityState(nextIds)
+
+    const nextSet = new Set(nextIds)
+    for (const id of nextIds) {
+      if (!prevSet.has(id) && remotes[id]) {
+        this.checkZoneCallEligibility(remotes[id])
+      }
+    }
+    for (const id of prevIds) {
+      if (!nextSet.has(id)) {
+        if (remotes[id]) {
+          this.checkZoneCallEligibility(remotes[id])
+        } else {
+          this.endMediaCallWithPeer(id)
+        }
+      }
+    }
+    for (const id of this.mediaCalls.keys()) {
+      if (!nextSet.has(id) && remotes[id] && !remotes[id].isDjBot && !id.startsWith('dj-')) {
+        this.checkZoneCallEligibility(remotes[id])
+      }
+    }
+
+    if (prevIds.length > 0 && nextIds.length === 0) {
+      if (useMediaStore.getState().isScreenSharing) {
+        MediaManager.getInstance().stopScreenShare()
+      }
+      useMediaStore.getState().setGridCallOpen(false)
+    }
   }
 
   private handlePeerUnavailable(err: any) {
@@ -2892,6 +2980,7 @@ export class PeerManager {
   }
 
   public recheckZoneCalls() {
+    this.syncProximityCalls()
     const remotePlayers = useGameStore.getState().remotePlayers
     Object.values(remotePlayers).forEach((p) => {
       this.checkZoneCallEligibility(p)
@@ -3273,11 +3362,11 @@ export class PeerManager {
   }
 
   public redialZoneCalls() {
-    const localZoneId = useGameStore.getState().localPlayer?.currentZoneId
-    if (localZoneId === null || localZoneId === undefined) return
+    const localPlayer = useGameStore.getState().localPlayer
+    if (!localPlayer) return
     const remotePlayers = useGameStore.getState().remotePlayers
     Object.values(remotePlayers).forEach((p) => {
-      if (p.currentZoneId === localZoneId && this.mediaCalls.has(p.id)) {
+      if (this.mediaCalls.has(p.id) && arePlayersCallEligible(localPlayer, p, true).eligible) {
         this.retryZoneCall(p.id)
       }
     })
@@ -3298,6 +3387,7 @@ export class PeerManager {
     this.incomingLiveVoiceCalls?.clear()
     useMediaStore.getState().clearAllPeerStreams()
     MediaCallHandler.endAllMediaCalls(this.mediaCalls)
+    useGameStore.getState().setProximityState([])
   }
 
   public replaceVideoTrack(
@@ -3398,6 +3488,7 @@ export class PeerManager {
     }
     this.broadcast(msg)
 
+    this.syncProximityCalls()
     const remotePlayers = useGameStore.getState().remotePlayers
     Object.values(remotePlayers).forEach((p) => {
       this.checkZoneCallEligibility(p)
@@ -3494,10 +3585,15 @@ export class PeerManager {
 
   public sendMapEdit(action: string, data: unknown) {
     if (!this.peer) return
+    const activeHouseId = useMapStore.getState().activeHouseId
+    const enrichedData =
+      data && typeof data === 'object' && !Array.isArray(data) && !('houseId' in data) && activeHouseId
+        ? { ...(data as Record<string, unknown>), houseId: activeHouseId }
+        : data
     const msg = parseNetworkMessage({
       type: 'MAP_EDIT',
       senderId: this.peer.id,
-      payload: { action, data },
+      payload: { action, data: enrichedData },
       timestamp: Date.now(),
     })
     if (msg) this.broadcast(msg)

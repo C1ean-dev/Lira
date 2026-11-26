@@ -1,7 +1,7 @@
 import type { AvatarConfig } from '../../types/game'
 import { deriveEffectPalette, hexToRgba } from './palette'
 import { drawPixelMatrix, drawPixelShape } from './pixelSprites'
-import { resolveAuraSpec, resolveStepsSpec } from './presets'
+import { DEFAULT_AURA_GROUND_CIRCLE_SIZE, resolveAuraSpec, resolveStepsSpec } from './presets'
 import type { AvatarEffectPalette, ParticleShape } from './types'
 
 function shapePreviewColors(
@@ -55,7 +55,51 @@ function shapePreviewColors(
 }
 
 /**
- * Draws animated walking-steps preview (plus aura ground halo when enabled)
+ * Draws the isometric elliptical magic circle on the ground beneath the avatar
+ * matching the live PixiJS ground aura ring.
+ */
+export function drawAuraGroundCircle(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  circleWidthPx: number,
+  color: string,
+  timeSec: number
+): void {
+  if (typeof ctx.createRadialGradient !== 'function' || typeof ctx.arc !== 'function') return
+  const rx = Math.max(6, circleWidthPx * 0.5)
+  const pulse = 0.86 + 0.14 * Math.sin(timeSec * 2.8)
+
+  ctx.save()
+  ctx.translate(cx, cy)
+  ctx.scale(1, 0.64)
+
+  const grad = ctx.createRadialGradient(0, 0, rx * 0.1, 0, 0, rx)
+  grad.addColorStop(0, hexToRgba(color, 0.22 * pulse))
+  grad.addColorStop(0.58, hexToRgba(color, 0.08 * pulse))
+  grad.addColorStop(1, hexToRgba(color, 0))
+  ctx.fillStyle = grad
+  ctx.beginPath()
+  ctx.arc(0, 0, rx, 0, Math.PI * 2)
+  ctx.fill()
+
+  ctx.strokeStyle = hexToRgba(color, 0.35 * pulse)
+  ctx.lineWidth = Math.max(1, rx * 0.05)
+  ctx.beginPath()
+  ctx.arc(0, 0, rx * 0.54, 0, Math.PI * 2)
+  ctx.stroke()
+
+  ctx.strokeStyle = hexToRgba(color, 0.78 * pulse)
+  ctx.lineWidth = Math.max(1.2, rx * 0.085)
+  ctx.beginPath()
+  ctx.arc(0, 0, rx * 0.82, 0, Math.PI * 2)
+  ctx.stroke()
+
+  ctx.restore()
+}
+
+/**
+ * Draws animated walking-steps preview (plus aura ground circle when enabled)
  * behind the avatar in AvatarPreviewCanvas (in 32x32 avatar-local coordinates).
  */
 export function drawAvatarStepsPreview(
@@ -66,21 +110,9 @@ export function drawAvatarStepsPreview(
 ): void {
   const t = tick / 1000
   const auraSpec = resolveAuraSpec(avatar.aura)
-  if (auraSpec?.glowHalo && typeof ctx.createRadialGradient === 'function') {
-    ctx.save()
-    const pulse = 0.8 + 0.2 * Math.sin(t * 2.5)
-    const cx = size * 0.5
-    const cy = size * 0.56
-    const radius = 19 + pulse * 4
-    const grad = ctx.createRadialGradient(cx, cy, 2, cx, cy, radius)
-    grad.addColorStop(0, hexToRgba(auraSpec.color, 0.28 * pulse))
-    grad.addColorStop(0.6, hexToRgba(auraSpec.color, 0.12 * pulse))
-    grad.addColorStop(1, hexToRgba(auraSpec.color, 0))
-    ctx.fillStyle = grad
-    ctx.beginPath()
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.restore()
+  if (auraSpec?.groundCircle) {
+    const scaledWidth = (auraSpec.groundCircleSize ?? DEFAULT_AURA_GROUND_CIRCLE_SIZE) * (size / 32)
+    drawAuraGroundCircle(ctx, size * 0.5, size * 0.8, scaledWidth, auraSpec.color, t)
   }
 
   const spec = resolveStepsSpec(avatar.steps)
@@ -124,7 +156,7 @@ export function drawAvatarAuraPreview(
   size: number = 32
 ): void {
   const spec = resolveAuraSpec(avatar.aura)
-  if (!spec) return
+  if (!spec || (!spec.pixelMatrix && spec.shapes.length === 0)) return
 
   const palette = deriveEffectPalette(spec.color)
   const count = spec.density === 'intense' ? 8 : spec.density === 'subtle' ? 4 : 6
@@ -188,15 +220,28 @@ export function drawEffectPresetIcon(
   colorHex: string | undefined,
   width: number,
   height: number,
-  customMatrix?: readonly string[]
+  customMatrix?: readonly string[],
+  groundCircle?: boolean
 ): void {
   ctx.clearRect(0, 0, width, height)
   const palette = deriveEffectPalette(colorHex)
 
+  const hasCustom = Boolean(customMatrix && customMatrix.some((row) => /[123]/.test(row)))
+  if (groundCircle) {
+    drawAuraGroundCircle(
+      ctx,
+      width * 0.5,
+      shapes.length === 0 && !hasCustom ? height * 0.56 : height * 0.76,
+      shapes.length === 0 && !hasCustom ? Math.min(width, height) * 0.78 : Math.min(width, height) * 0.7,
+      colorHex || '#a855f7',
+      0.5
+    )
+  }
+
   ctx.save()
   ctx.imageSmoothingEnabled = false
 
-  if (customMatrix && customMatrix.some((row) => /[123]/.test(row))) {
+  if (customMatrix && hasCustom) {
     const maxDim = Math.max(customMatrix.length, customMatrix[0]?.length || 1)
     const pixelSize = Math.max(2, Math.floor((Math.min(width, height) - 10) / maxDim))
     drawPixelMatrix(

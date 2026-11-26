@@ -1,6 +1,7 @@
 import { useBedStore, type BedSession } from '../store/useBedStore'
 import { useGameStore } from '../store/useGameStore'
 import { useMapStore } from '../store/useMapStore'
+import { houseInteriorToMapData } from '../engine/houseInterior'
 import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import { findFurnitureSeatAt, findFurnitureSeatById } from '../engine/physics/seating'
 import { PeerManager } from '../p2p/PeerManager'
@@ -13,7 +14,9 @@ export const BED_SCENE_MS = 12000
 function occupiedBed(player: Player) {
   if (!player.seatedOn || player.isMoving || player.isDjBot ||
     (player.id === useGameStore.getState().localPlayer.id && useMapStore.getState().isEditorOpen)) return null
-  const map = useMapStore.getState().mapData
+  const rootMap = useMapStore.getState().mapData
+  const interior = player.currentHouseId ? rootMap.houseInteriors?.[player.currentHouseId] : undefined
+  const map = interior ? houseInteriorToMapData(interior) : rootMap
   const seat = findFurnitureSeatAt(player.x + .5, player.y + .5, map) || findFurnitureSeatById(player.seatedOn, map)
   if (!seat || seat.id !== player.seatedOn) return null
   if (Math.abs(player.x - seat.x) > 1.0 || Math.abs(player.y - seat.y) > 1.0) return null
@@ -41,6 +44,7 @@ function validPair(session: Pick<BedSession, 'roomId' | 'furnitureId' | 'initiat
   const aZone = a.currentZoneId ?? null
   const bZone = b.currentZoneId ?? null
   if (aZone !== bZone) return false
+  if ((a.currentHouseId ?? null) !== (b.currentHouseId ?? null)) return false
   const aBed = occupiedBed(a), bBed = occupiedBed(b)
   return !!aBed && !!bBed && aBed.furniture.id === session.furnitureId && bBed.furniture.id === session.furnitureId && aBed.seat.id !== bBed.seat.id
 }

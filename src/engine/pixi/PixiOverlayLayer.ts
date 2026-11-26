@@ -1,12 +1,14 @@
 import { Container, Graphics, Sprite, Text, Texture } from 'pixi.js'
 import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 import { useGameStore } from '../../store/useGameStore'
-import { houseZoneIdForFurniture, useMapStore } from '../../store/useMapStore'
+import { useMapStore } from '../../store/useMapStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { STATUS_META, type Direction, type Player } from '../../types/game'
 import type { PlacedFurniture, PrivateZone } from '../../types/map'
 import { FURNITURE_CATALOG, TILE_SIZE } from '../Constants'
 import { getStatusIconImage } from '../avatar/statusIcons'
+import { formatHouseOccupantsInline } from '../houseInterior'
+import { isPlayerInCorridor, PROXIMITY_EXIT_RADIUS } from '../proximityCall'
 import { PetManager } from '../pet/PetManager'
 import { resolveFurnitureDimensions, resolveFurnitureFrames } from '../rendering/furnitureRenderer'
 import { resolveSpritePlacement } from '../rendering/spritePlacement'
@@ -34,6 +36,13 @@ interface PillBadgeNode {
   container: Container
   gfx: Graphics
   text: Text
+}
+
+interface HouseOccupantListNode {
+  container: Container
+  gfx: Graphics
+  text: Text
+  lastLabel: string
 }
 
 const ROT_MAP: Record<Direction, 0 | 90 | 180 | 270> = { down: 0, left: 90, up: 180, right: 270 }
@@ -65,6 +74,7 @@ export class PixiOverlayLayer {
   private readonly zoneLabels = new Map<string, Text>()
   private readonly nameTagNodes = new Map<string, NameTagNode>()
   private readonly closedBadgeNodes = new Map<string, PillBadgeNode>()
+  private readonly houseOccupantNodes = new Map<string, HouseOccupantListNode>()
   private readonly reactionTexts = new Map<string, Text>()
   private readonly draftBadgeGfx = new Graphics()
   private readonly draftBadgeText = new Text({
@@ -104,31 +114,26 @@ export class PixiOverlayLayer {
     this.worldOverlay.position.set(worldOffsetX, worldOffsetY)
 
     const mapStore = useMapStore.getState()
-    const map = mapStore.mapData
+    const rootMap = mapStore.mapData
+    const map = mapStore.getActiveMapData()
+    const activeHouseId = mapStore.activeHouseId
     const isEditorOpen = mapStore.isEditorOpen
     const activeTool = mapStore.activeTool
     const zoneDraft = mapStore.zoneDraft
-    const { localPlayer, remotePlayers, reactions, callStates } = useGameStore.getState()
+    const { localPlayer, remotePlayers, reactions, callStates, proximityPeerIds } = useGameStore.getState()
     const settings = useSettingsStore.getState()
     const showNameTags = settings.showNameTags ?? true
     const customAssets = useCustomAssetsStore.getState().customAssets
     const customById = new Map(customAssets.map((a) => [a.id, a]))
-    const activeZoneId = localPlayer.currentZoneId ?? null
+    const localHouseId = localPlayer.currentHouseId ?? null
 
-    // Closed house zones when editor is closed
-    const closedZoneIds = new Set<string>()
-    const closedHouseZones: PrivateZone[] = []
-    if (!isEditorOpen) {
-      for (const furn of map.furniture || []) {
-        if (!customById.get(furn.defId)?.houseShell) continue
-        const linkedZoneId = houseZoneIdForFurniture(furn.id)
-        if (linkedZoneId !== activeZoneId) {
-          closedZoneIds.add(linkedZoneId)
-          const z = (map.zones || []).find((item) => item.id === linkedZoneId)
-          if (z) closedHouseZones.push(z)
-        }
-      }
-    }
+    const placedHouses = !activeHouseId
+      ? (rootMap.furniture || [])
+          .map((furn) => ({ furn, asset: customById.get(furn.defId) }))
+          .filter((entry): entry is { furn: PlacedFurniture; asset: NonNullable<typeof entry.asset> } =>
+            Boolean(entry.asset?.houseShell)
+          )
+      : []
 
     // 1. Editor Private Zones
     this.zonesGfx.clear()
@@ -188,6 +193,42 @@ export class PixiOverlayLayer {
       this.gizmosGfx.circle(destX, destY, 3).fill(0x6366f1)
     }
 
+    // Proximity voice ring & peer link lines in Corredor Geral
+    if (!isEditorOpen && !activeHouseId && isPlayerInCorridor(localPlayer) && proximityPeerIds.length > 0) {
+      const lx = (localPlayer.x + 0.5) * TILE_SIZE
+      const ly = (localPlayer.y + 0.5) * TILE_SIZE
+      const pulse = (Math.sin(nowMs / 320) + 1) / 2
+      this.gizmosGfx
+        .circle(lx, ly, PROXIMITY_EXIT_RADIUS * TILE_SIZE)
+        .fill({ color: 0x34d399, alpha: 0.045 })
+        .stroke({ width: 1.5, color: 0x34d399, alpha: 0.25 + pulse * 0.12 })
+      for (const peerId of proximityPeerIds) {
+        const peer = remotePlayers[peerId]
+        if (!peer) continue
+        this.gizmosGfx
+          .moveTo(lx, ly)
+          .lineTo((peer.x + 0.5) * TILE_SIZE, (peer.y + 0.5) * TILE_SIZE)
+          .stroke({ width: 1.5, color: 0x34d399, alpha: 0.28 })
+      }
+    }
+
+    // Interior exit threshold mat when inside a house
+    if (activeHouseId) {
+      const portalPulse = 0.25 + ((Math.sin(nowMs / 350) + 1) / 2) * 0.28
+      const activeInterior = mapStore.getActiveHouseInterior()
+      if (activeInterior) {
+        const ex = activeInterior.exitDoor.x * TILE_SIZE + 2
+        const ey = activeInterior.exitDoor.y * TILE_SIZE + 4
+        const ew = activeInterior.exitDoor.width * TILE_SIZE - 4
+        const eh = TILE_SIZE - 6
+        const accent = parseHexColor(activeInterior.accentColor, 0xf59e0b)
+        this.gizmosGfx
+          .roundRect(ex, ey, ew, eh, 5)
+          .fill({ color: accent, alpha: portalPulse * 0.65 })
+          .stroke({ width: 1.5, color: accent, alpha: 0.9 })
+      }
+    }
+
     if (isEditorOpen && mapStore.selectedPlacedFurnitureId) {
       const selFurn = (map.furniture || []).find((f) => f.id === mapStore.selectedPlacedFurnitureId)
       if (selFurn) {
@@ -212,14 +253,15 @@ export class PixiOverlayLayer {
       this.drawHoverOverlay(mapStore, customById, state.hoverTile, state.isShiftPressed)
     }
 
-    // 3. Name Tags (players + pets)
+    // 3. Name Tags (players + pets in the same subspace)
     const seenTags = new Set<string>()
     const remoteList = Object.values(remotePlayers).filter((p) => !p.isDjBot && !p.id.startsWith('dj-'))
+    const isInSameSubspace = (p: Player) => (p.currentHouseId ?? null) === localHouseId
     if (showNameTags) {
       const playersToShow: { player: Player; isLocal: boolean }[] = [{ player: localPlayer, isLocal: true }]
       for (const p of remoteList) {
         if (p.id === localPlayer.id || (p.gameId && p.gameId === localPlayer.id)) continue
-        if (p.currentZoneId && closedZoneIds.has(p.currentZoneId)) continue
+        if (!isInSameSubspace(p)) continue
         playersToShow.push({ player: p, isLocal: false })
       }
       for (const entry of playersToShow) {
@@ -232,7 +274,7 @@ export class PixiOverlayLayer {
       for (let i = -1; i < remoteList.length; i++) {
         const owner = i === -1 ? localPlayer : remoteList[i]
         if (i !== -1 && (owner.id === localPlayer.id || (owner.gameId && owner.gameId === localPlayer.id))) continue
-        if (i !== -1 && owner.currentZoneId && closedZoneIds.has(owner.currentZoneId)) continue
+        if (i !== -1 && !isInSameSubspace(owner)) continue
         if (owner.avatar?.pet && owner.avatar.pet.type !== 'none') {
           const pet = petManager.getPet(owner.id)
           if (pet) {
@@ -249,47 +291,133 @@ export class PixiOverlayLayer {
       }
     }
 
-    // 4. Closed House Zone Badges
+    // 4. House Badges, Exterior Occupant Lists & Interior Exit Badge
     const allPlayers = [localPlayer, ...remoteList]
-    const seenClosed = new Set<string>()
-    for (const zone of closedHouseZones) {
-      seenClosed.add(zone.id)
-      const count = allPlayers.filter((p) => p.currentZoneId === zone.id).length
-      const tag = count > 0 ? `${zone.name} (${count})` : zone.name
-      const cx = (zone.x + zone.width * 0.5) * TILE_SIZE
-      const ty = zone.y * TILE_SIZE - 10
-      let badge = this.closedBadgeNodes.get(zone.id)
-      if (!badge) {
-        const c = new Container()
-        const g = new Graphics()
-        const t = new Text({
-          text: tag,
-          style: { fontFamily: 'Inter, sans-serif', fontWeight: 'bold', fontSize: 9, fill: 0xf8fafc },
-          resolution: 3,
-        })
-        t.anchor.set(0.5, 0.5)
-        c.addChild(g, t)
-        badge = { container: c, gfx: g, text: t }
-        this.closedBadgeNodes.set(zone.id, badge)
-        this.closedBadgesLayer.addChild(c)
+    const seenBadges = new Set<string>()
+    const seenOccupantLists = new Set<string>()
+    if (!activeHouseId) {
+      for (const { furn, asset } of placedHouses) {
+        const interior = rootMap.houseInteriors?.[furn.id]
+        const houseName = furn.houseName || interior?.name || asset.name || 'Casa'
+        const badgeKey = `house:${furn.id}`
+        seenBadges.add(badgeKey)
+        const occupants = allPlayers.filter((p) => p.currentHouseId === furn.id)
+        const count = occupants.length
+        const tag = count > 0 ? `🏠 ${houseName} (${count})` : `🏠 ${houseName}`
+        const cx = (furn.x + asset.width * 0.5) * TILE_SIZE
+        const ty = furn.y * TILE_SIZE - 10
+        const accentHex = interior?.accentColor || furn.tintColor || asset.houseShell?.defaultZoneColor
+        let badge = this.closedBadgeNodes.get(badgeKey)
+        if (!badge) {
+          const c = new Container()
+          const g = new Graphics()
+          const t = new Text({
+            text: tag,
+            style: { fontFamily: 'Inter, sans-serif', fontWeight: 'bold', fontSize: 9, fill: 0xf8fafc },
+            resolution: 3,
+          })
+          t.anchor.set(0.5, 0.5)
+          c.addChild(g, t)
+          badge = { container: c, gfx: g, text: t }
+          this.closedBadgeNodes.set(badgeKey, badge)
+          this.closedBadgesLayer.addChild(c)
+        }
+        if (badge.text.text !== tag) badge.text.text = tag
+        badge.container.visible = true
+        badge.container.position.set(cx, occupants.length > 0 ? ty - 22.5 : ty - 6.5)
+        const tw = badge.text.width + 14
+        badge.gfx.clear()
+        badge.gfx
+          .roundRect(-tw / 2, -7.5, tw, 15, 7)
+          .fill({ color: 0x0f172a, alpha: 0.86 })
+          .stroke({ width: 1, color: parseHexColor(accentHex, 0xf59e0b) })
+
+        if (occupants.length > 0) {
+          seenOccupantLists.add(furn.id)
+          const label = formatHouseOccupantsInline(occupants)
+          let occPill = this.houseOccupantNodes.get(furn.id)
+          if (!occPill) {
+            const container = new Container()
+            const gfx = new Graphics()
+            const text = new Text({
+              text: label,
+              style: { fontFamily: 'Inter, sans-serif', fontWeight: '600', fontSize: 8, fill: 0xe2e8f0 },
+              resolution: 3,
+            })
+            text.anchor.set(0.5, 0.5)
+            container.addChild(gfx, text)
+            occPill = { container, gfx, text, lastLabel: '' }
+            this.houseOccupantNodes.set(furn.id, occPill)
+            this.closedBadgesLayer.addChild(container)
+          }
+
+          if (occPill.lastLabel !== label) {
+            occPill.lastLabel = label
+            occPill.text.text = label
+            const pw = occPill.text.width + 12
+            occPill.gfx.clear()
+            occPill.gfx
+              .roundRect(-pw / 2, -6.5, pw, 13, 6)
+              .fill({ color: 0x0f172a, alpha: 0.86 })
+              .stroke({ width: 1, color: 0x334155 })
+          }
+
+          occPill.container.visible = true
+          occPill.container.position.set(cx, ty - 6.5)
+        }
       }
-      if (badge.text.text !== tag) badge.text.text = tag
-      badge.container.visible = true
-      badge.container.position.set(cx, ty - 6.5)
-      const tw = badge.text.width + 14
-      badge.gfx.clear()
-      badge.gfx
-        .roundRect(-tw / 2, -7.5, tw, 15, 7)
-        .fill({ color: 0x0f172a, alpha: 0.86 })
-        .stroke({ width: 1, color: parseHexColor(zone.color, 0x38bdf8) })
+    } else {
+      const activeInterior = mapStore.getActiveHouseInterior()
+      if (activeInterior) {
+        const badgeKey = `exit:${activeInterior.houseId}`
+        seenBadges.add(badgeKey)
+        const tag = '🚪 Saída'
+        const cx = (activeInterior.exitDoor.x + activeInterior.exitDoor.width * 0.5) * TILE_SIZE
+        const ty = activeInterior.exitDoor.y * TILE_SIZE - 8
+        let badge = this.closedBadgeNodes.get(badgeKey)
+        if (!badge) {
+          const c = new Container()
+          const g = new Graphics()
+          const t = new Text({
+            text: tag,
+            style: { fontFamily: 'Inter, sans-serif', fontWeight: 'bold', fontSize: 9, fill: 0xfef3c7 },
+            resolution: 3,
+          })
+          t.anchor.set(0.5, 0.5)
+          c.addChild(g, t)
+          badge = { container: c, gfx: g, text: t }
+          this.closedBadgeNodes.set(badgeKey, badge)
+          this.closedBadgesLayer.addChild(c)
+        }
+        if (badge.text.text !== tag) badge.text.text = tag
+        badge.container.visible = true
+        badge.container.position.set(cx, ty - 6.5)
+        const tw = badge.text.width + 14
+        badge.gfx.clear()
+        badge.gfx
+          .roundRect(-tw / 2, -7.5, tw, 15, 7)
+          .fill({ color: 0x1c1917, alpha: 0.9 })
+          .stroke({ width: 1, color: parseHexColor(activeInterior.accentColor, 0xf59e0b) })
+      }
     }
     for (const [id, badge] of this.closedBadgeNodes) {
-      if (!seenClosed.has(id)) badge.container.visible = false
+      if (!seenBadges.has(id)) badge.container.visible = false
+    }
+    for (const [id, card] of this.houseOccupantNodes) {
+      if (!seenOccupantLists.has(id)) card.container.visible = false
     }
 
-    // 5. Emoji Reactions
+    // 5. Emoji Reactions (filtered by current subspace)
+    const playerById = new Map<string, Player>()
+    playerById.set(localPlayer.id, localPlayer)
+    for (const p of remoteList) {
+      playerById.set(p.id, p)
+      if (p.gameId) playerById.set(p.gameId, p)
+    }
     const seenReactions = new Set<string>()
     for (const r of reactions) {
+      const reactor = playerById.get(r.playerId)
+      if (reactor && (reactor.currentHouseId ?? null) !== localHouseId) continue
       const age = nowMs - r.createdAt
       if (age < 3000) {
         const key = `${r.id}:${r.createdAt}`
@@ -383,7 +511,8 @@ export class PixiOverlayLayer {
     hoverTile: { x: number; y: number },
     isShiftPressed?: boolean
   ): void {
-    const { activeTool, mapData: map } = mapStore
+    const activeTool = mapStore.activeTool
+    const map = mapStore.getActiveMapData()
     const tx = hoverTile.x
     const ty = hoverTile.y
 
@@ -399,10 +528,12 @@ export class PixiOverlayLayer {
       const px = Math.round(tx * TILE_SIZE)
       const py = Math.round(ty * TILE_SIZE)
       const col = parseHexColor(furnDef?.iconColor, 0x4c6ef5)
-      this.gizmosGfx
-        .rect(px, py, targetW, targetH)
-        .fill({ color: col, alpha: 0.2 })
-        .stroke({ width: 1.5, color: col })
+      if (!customAsset?.houseShell) {
+        this.gizmosGfx
+          .rect(px, py, targetW, targetH)
+          .fill({ color: col, alpha: 0.2 })
+          .stroke({ width: 1.5, color: col })
+      }
 
       if (customAsset) {
         const dummy: PlacedFurniture = {
@@ -419,12 +550,18 @@ export class PixiOverlayLayer {
           this.ghostSprite.texture = tex
           this.ghostSprite.visible = true
           this.ghostSprite.alpha = 0.65
-          const { offsetX, offsetY, drawWidth, drawHeight } = resolveSpritePlacement(
-            tex.width,
-            tex.height,
-            targetW,
-            targetH
-          )
+          const aspectH = targetW * (tex.height / Math.max(1, tex.width))
+          const useHouseBottomAnchor =
+            Boolean(customAsset.houseShell) &&
+            ((customAsset.houseShell?.overhangPx ?? 0) > 0 || aspectH > targetH + 1)
+          const { offsetX, offsetY, drawWidth, drawHeight } = useHouseBottomAnchor
+            ? {
+                offsetX: 0,
+                offsetY: targetH - aspectH,
+                drawWidth: targetW,
+                drawHeight: aspectH,
+              }
+            : resolveSpritePlacement(tex.width, tex.height, targetW, targetH)
           const sx = drawWidth / Math.max(1, tex.width)
           const sy = drawHeight / Math.max(1, tex.height)
           if (mirrorH) {
@@ -640,6 +777,7 @@ export class PixiOverlayLayer {
     this.hudLayer.destroy({ children: true })
     this.nameTagNodes.clear()
     this.closedBadgeNodes.clear()
+    this.houseOccupantNodes.clear()
     this.zoneLabels.clear()
     this.reactionTexts.clear()
   }
