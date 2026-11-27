@@ -996,6 +996,7 @@ ipcMain.handle('check-update', async () => {
 let latestAssetExpectedSize = 0
 let downloadedInstallerPath: string | null = null
 let downloadedInstallerVersion: string | null = null
+let incrementalApplyFailedThisSession = false
 
 function getInstallerPath(version?: string): string {
   const tempDir = app.getPath('temp')
@@ -1007,6 +1008,7 @@ function isInstallerFileValid(filePath: string): boolean {
   if (!filePath || !fs.existsSync(filePath)) return false
   try {
     const stats = fs.statSync(filePath)
+    if (!stats.isFile()) return false
     if (latestAssetExpectedSize > 0) {
       return stats.size === latestAssetExpectedSize
     }
@@ -1077,7 +1079,12 @@ function cleanupOldInstallers(currentInstallerPath?: string): void {
 }
 
 function canUseIncrementalUpdater(): boolean {
-  return process.platform === 'win32' && app.isPackaged && hasUpdaterScripts(process.resourcesPath)
+  return (
+    process.platform === 'win32' &&
+    app.isPackaged &&
+    !incrementalApplyFailedThisSession &&
+    hasUpdaterScripts(process.resourcesPath)
+  )
 }
 
 function getCurrentInstallDir(): string {
@@ -1137,10 +1144,11 @@ const performDownloadUpdate = singleFlightDownload(async (downloadUrl: string, t
   cleanupOldInstallers(installerPath)
 
   if (checkIsUpdateDownloaded(ver)) {
-    const existing = isIncrementalUpdateStagedSync(ver)
+    const stagedIncremental = isIncrementalUpdateStagedSync(ver)
+    const existing = stagedIncremental
       ? getIncrementalStageDir(getCurrentInstallDir())
       : (findExistingInstaller(ver) || installerPath)
-    downloadedInstallerPath = existing
+    downloadedInstallerPath = stagedIncremental ? null : existing
     downloadedInstallerVersion = ver
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('update-download-progress', { percent: 100, downloaded: 1, total: 1 })
@@ -1168,7 +1176,7 @@ const performDownloadUpdate = singleFlightDownload(async (downloadUrl: string, t
           `(${(incremental.plan.Stats.DownloadBytes / 1048576).toFixed(2)} MB downloaded; ` +
           `reused ${incremental.plan.Stats.AsarBlocksReused} ASAR blocks, ${incremental.plan.Stats.ExternalFilesKept} external files).`,
         )
-        downloadedInstallerPath = incremental.stageDir
+        downloadedInstallerPath = null
         downloadedInstallerVersion = ver
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('update-download-progress', { percent: 100, downloaded: 1, total: 1 })
@@ -1236,12 +1244,21 @@ async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
         if (launched) {
           console.log('[Updater] Incremental applier launched; exiting cleanly so files can be swapped atomically.')
           setTimeout(() => {
-            if (trayManager) trayManager.setQuitting(true)
+            stopGStreamerWarmup()
+            stopAllNativeLives()
+            stopProcessAudioCapture()
+            if (trayManager) {
+              trayManager.setQuitting(true)
+              trayManager.destroy()
+              trayManager = null
+            }
             appLog.flushReports()
             app.exit(0)
           }, 150)
           return true
         }
+        incrementalApplyFailedThisSession = true
+        fs.promises.rm(stageDir, { recursive: true, force: true }).catch(() => {})
         console.warn('[Updater] Could not launch incremental applier; falling back to full installer if present.')
       }
     }
@@ -1254,7 +1271,7 @@ async function performApplyUpdate(targetVersion?: string): Promise<boolean> {
 
     try {
       const stats = fs.statSync(installerPath)
-      if (stats.size < 5 * 1024 * 1024) {
+      if (!stats.isFile() || stats.size < 5 * 1024 * 1024) {
         console.warn('[Updater] Installer file is incomplete or too small:', stats.size)
         return false
       }

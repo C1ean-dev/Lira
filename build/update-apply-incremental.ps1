@@ -65,7 +65,12 @@ function Stop-InstalledAppProcesses([string]$InstallRoot) {
       try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
     }
   }
-  Start-Sleep -Milliseconds 350
+  $stopDeadline = [DateTime]::UtcNow.AddSeconds(3)
+  while ([DateTime]::UtcNow -lt $stopDeadline) {
+    if (@(Get-RunningLiraProcesses $InstallRoot).Count -eq 0) { break }
+    Start-Sleep -Milliseconds 100
+  }
+  Start-Sleep -Milliseconds 150
 }
 
 function Update-UninstallDisplayVersion([string]$InstallRoot, [string]$Version) {
@@ -143,6 +148,15 @@ try {
   }
 
   $running = @(Get-RunningLiraProcesses $installPath)
+  if ($running.Count -gt 0 -and $SilentBoot -and -not $ForceKill -and $WaitPid -gt 0) {
+    # Allow Chromium subprocesses of the exiting --startup-update tree a short grace window to finish exiting.
+    $graceDeadline = [DateTime]::UtcNow.AddMilliseconds(2500)
+    while ([DateTime]::UtcNow -lt $graceDeadline) {
+      Start-Sleep -Milliseconds 100
+      $running = @(Get-RunningLiraProcesses $installPath)
+      if ($running.Count -eq 0) { break }
+    }
+  }
   if ($running.Count -gt 0) {
     if ($SilentBoot -and -not $ForceKill) {
       # The user opened Lira before silent boot finished staging. Never kill an active user session;
