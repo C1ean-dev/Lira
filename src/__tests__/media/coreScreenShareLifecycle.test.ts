@@ -85,6 +85,88 @@ describe('core screen capture lifetime', () => {
     })
   })
 
+  it('falls back to desktop getUserMedia when Electron getDisplayMedia fails with NotReadableError', async () => {
+    const api = {
+      setScreenSource: vi.fn(async () => true),
+      startGStreamerCapture: vi.fn(),
+      stopGStreamerCapture: vi.fn(async () => {}),
+      sendGStreamerSignal: vi.fn(),
+      onGStreamerSignal: vi.fn(() => vi.fn()),
+    }
+    vi.stubGlobal('window', { electronAPI: api })
+    useMediaStore.setState({ isHardwareAccelerationEnabled: false })
+    const fallback = new Stream([new Track('video', 'desktop-fallback')])
+    const getUserMedia = vi.fn(async () => fallback)
+    vi.stubGlobal('navigator', { mediaDevices: { getDisplayMedia: capture, getUserMedia } })
+    capture.mockRejectedValue(new DOMException('Could not start video source', 'NotReadableError'))
+
+    expect(await manager.startScreenShare({ sourceId: 'screen:0:0', fps: 60, resolution: '1080p', optimizationMode: 'quality' })).toBe(fallback)
+    expect(capture).toHaveBeenCalledOnce()
+    expect(getUserMedia).toHaveBeenCalledExactlyOnceWith({
+      audio: false,
+      video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: 'screen:0:0', maxWidth: 1920, maxHeight: 1080, maxFrameRate: 60 } },
+    })
+  })
+
+  it('does not repeat identical audio-less getDisplayMedia in Electron after NotReadableError without getUserMedia', async () => {
+    vi.stubGlobal('window', { electronAPI: { setScreenSource: vi.fn(async () => true) } })
+    useMediaStore.setState({ isHardwareAccelerationEnabled: false })
+    capture.mockRejectedValue(new DOMException('Could not start video source', 'NotReadableError'))
+
+    expect(await manager.startScreenShare({ sourceId: 'screen:0:0', fps: 60, resolution: '1080p' })).toBeNull()
+    expect(capture).toHaveBeenCalledOnce()
+  })
+
+  it('aborts a pending startScreenShare when cancelPendingScreenShare is called without stopping an active live', async () => {
+    const api = {
+      setScreenSource: vi.fn(async () => true),
+      startGStreamerCapture: vi.fn(),
+      stopGStreamerCapture: vi.fn(async () => {}),
+      sendGStreamerSignal: vi.fn(),
+      onGStreamerSignal: vi.fn(() => vi.fn()),
+    }
+    vi.stubGlobal('window', { electronAPI: api })
+    useMediaStore.setState({ isHardwareAccelerationEnabled: true })
+    peer.setGStreamerCapture = vi.fn()
+
+    const firstStart = deferred<MediaStream | null>()
+    vi.spyOn(NativeGStreamerCapture.prototype, 'start').mockReturnValueOnce(firstStart.promise)
+    const pendingShare = manager.startScreenShare({ sourceId: 'screen:0:0', sourceName: 'Tela 1', fps: 60, resolution: '1080p', optimizationMode: 'quality' })
+    await vi.advanceTimersByTimeAsync(0)
+
+    manager.cancelPendingScreenShare()
+    expect(api.stopGStreamerCapture).toHaveBeenCalledOnce()
+    expect(peer.cancelScreenSharePrime).toHaveBeenCalled()
+
+    const lateTrack = new Track('video', 'late-native')
+    firstStart.resolve(new Stream([lateTrack]) as unknown as MediaStream)
+    expect(await pendingShare).toBeNull()
+    expect(lateTrack.readyState).toBe('ended')
+    expect(useMediaStore.getState().isScreenSharing).toBe(false)
+
+    // Now test cancelling a pending switch while another live is already active
+    useMediaStore.setState({ isHardwareAccelerationEnabled: false })
+    const activeStream = new Stream([new Track('video', 'active-live')])
+    capture.mockResolvedValueOnce(activeStream)
+    await manager.startScreenShare({ sourceId: 'screen:0:0', sourceName: 'Tela 1' })
+    expect(useMediaStore.getState().isScreenSharing).toBe(true)
+
+    const switchingCapture = deferred<Stream>()
+    capture.mockReturnValueOnce(switchingCapture.promise)
+    const switching = manager.startScreenShare({ sourceId: 'screen:1:0', sourceName: 'Tela 2' })
+    await vi.advanceTimersByTimeAsync(0)
+    peer.cancelScreenSharePrime.mockClear()
+
+    manager.cancelPendingScreenShare()
+    const obsoleteSwitchTrack = new Track('video', 'obsolete-switch')
+    switchingCapture.resolve(new Stream([obsoleteSwitchTrack]))
+    expect(await switching).toBeNull()
+    expect(obsoleteSwitchTrack.readyState).toBe('ended')
+    expect(useMediaStore.getState().isScreenSharing).toBe(true)
+    expect(useMediaStore.getState().localScreenStream).toBe(activeStream)
+    expect(peer.cancelScreenSharePrime).not.toHaveBeenCalled()
+  })
+
   it.each([true, false])('keeps the native window until the selected monitor is ready (%s)', async ready => {
     const api = {
       setScreenSource: vi.fn(async () => true), startGStreamerCapture: vi.fn(), stopGStreamerCapture: vi.fn(async () => {}),

@@ -1032,6 +1032,20 @@ export class MediaManager {
     return { resolution: chosenRes, fps: chosenFps, targetBitrate }
   }
 
+  public cancelPendingScreenShare(): void {
+    if (this.screenShareSelection === undefined) return
+    this.screenShareGeneration = (this.screenShareGeneration || 0) + 1
+    this.screenShareSelection = undefined
+    this.pendingNativeCapture?.close()
+    this.pendingNativeCapture = undefined
+    if (!useMediaStore.getState().isScreenSharing) {
+      try {
+        PeerManager.getInstance().cancelScreenSharePrime()
+      } catch {}
+      useMediaStore.getState().setScreenShareTargetTitle(null)
+    }
+  }
+
   public async startScreenShare(config: ScreenShareConfig = {}, useChromium = false): Promise<MediaStream | null> {
     const generation = this.screenShareGeneration = (this.screenShareGeneration || 0) + 1
     this.screenShareSelection = generation
@@ -1147,9 +1161,14 @@ export class MediaManager {
         } catch (error) {
           const name = (error as Error)?.name
           if (!isCurrent() || ['NotAllowedError', 'AbortError', 'SecurityError'].includes(name)) throw error
-          if (name === 'InvalidStateError' && isElectronCapture && sourceId && (triedNative || useChromium)) {
-            // The GStreamer probe or recovery can outlast getDisplayMedia's user gesture.
-            // Reuse only the source explicitly chosen in Lira's desktop picker.
+          const canUseDesktopUserMedia =
+            isElectronCapture &&
+            Boolean(sourceId) &&
+            typeof navigator.mediaDevices.getUserMedia === 'function' &&
+            ((name === 'InvalidStateError' && (triedNative || useChromium)) || name === 'NotReadableError')
+          if (canUseDesktopUserMedia && sourceId) {
+            // The GStreamer probe, user gesture expiry, or DXGI display-media failure
+            // can still be captured directly via desktop media source constraints.
             screenStream = await navigator.mediaDevices.getUserMedia({
               audio: false,
               video: { mandatory: {
@@ -1157,8 +1176,10 @@ export class MediaManager {
                 maxWidth: width, maxHeight: height, maxFrameRate: effectiveFps,
               } } as MediaTrackConstraints,
             })
-          } else {
+          } else if (displayMediaOptions.audio) {
             screenStream = await navigator.mediaDevices.getDisplayMedia({ ...displayMediaOptions, audio: false })
+          } else {
+            throw error
           }
         }
       }
