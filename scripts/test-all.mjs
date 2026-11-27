@@ -1,10 +1,15 @@
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
+import { availableParallelism } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
 
 const require = createRequire(import.meta.url)
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+
+export function unitMaxWorkers(parallelism = availableParallelism()) {
+  return Math.max(1, Math.min(4, Math.floor(parallelism / 2)))
+}
 
 export function testSuites() {
   const nodeReporter = pathToFileURL(path.join(root, 'scripts/quiet-node-reporter.mjs')).href
@@ -14,10 +19,10 @@ export function testSuites() {
     env: { [flag]: '1' },
   })
   return [
-    { name: 'unit', command: process.execPath, args: [path.join(path.dirname(require.resolve('vitest/package.json')), 'vitest.mjs'), 'run', 'src/__tests__', '--reporter', path.join(root, 'scripts/quiet-vitest-reporter.mjs')] },
+    { name: 'unit', command: process.execPath, args: [path.join(path.dirname(require.resolve('vitest/package.json')), 'vitest.mjs'), 'run', 'src/__tests__', `--maxWorkers=${unitMaxWorkers()}`, '--reporter', path.join(root, 'scripts/quiet-vitest-reporter.mjs')] },
     { name: 'migration', command: process.env.LIRA_PYTHON || 'python', args: [path.join(root, 'scripts/quiet-unittest.py'), path.join(root, 'scripts/test_migrate_individual_library.py')] },
     { name: 'noise:guards', command: process.env.LIRA_PYTHON || 'python', args: ['-B', path.join(root, 'scripts/quiet-unittest.py'), path.join(root, 'scripts/noise-benchmark/test_report.py')] },
-    nodeTest('core:browser', 'LIRA_RUN_BROWSER_TESTS', ['scripts/core-realtime.browser.test.mjs', 'scripts/chat-scroll.browser.test.mjs'], ['--test-force-exit']),
+    nodeTest('core:browser', 'LIRA_RUN_BROWSER_TESTS', ['scripts/core-realtime.browser.test.mjs', 'scripts/chat-scroll.browser.test.mjs'], ['--test-force-exit', '--test-concurrency=1']),
     nodeTest('system:e2e', 'LIRA_RUN_SYSTEM_E2E', 'scripts/system.e2e.test.mjs', ['--test-force-exit']),
     nodeTest('whiteboard:browser', 'LIRA_RUN_WHITEBOARD_TESTS', 'scripts/whiteboard-editor.browser.test.mjs'),
     nodeTest('transcription:map', 'LIRA_RUN_SPACE_TRANSCRIPTION_TESTS', 'scripts/space-transcription.browser.test.mjs'),
