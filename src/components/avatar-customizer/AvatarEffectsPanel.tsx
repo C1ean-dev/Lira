@@ -9,13 +9,18 @@ import type {
 import {
   AURA_OPTIONS,
   AVATAR_EFFECT_COLOR_PRESETS,
+  DEFAULT_AURA_GROUND_CIRCLE_SIZE,
   DEFAULT_AVATAR_EFFECT_COLOR,
+  MAX_AURA_GROUND_CIRCLE_SIZE,
+  MIN_AURA_GROUND_CIRCLE_SIZE,
   MOTION_OPTIONS,
   STEPS_OPTIONS,
+  clampAuraGroundCircleSize,
   deleteCustomAvatarEffect,
   drawEffectPresetIcon,
   loadCustomAvatarEffects,
   saveCustomAvatarEffect,
+  type AuraOptionMeta,
   type ParticleShape,
 } from '../../engine/avatarEffects'
 import { AvatarEffectCreatorModal } from './AvatarEffectCreatorModal'
@@ -30,7 +35,8 @@ const EffectPresetThumbnail: React.FC<{
   shapes: readonly ParticleShape[]
   color?: string
   customMatrix?: readonly string[]
-}> = ({ shapes, color, customMatrix }) => {
+  groundCircle?: boolean
+}> = ({ shapes, color, customMatrix, groundCircle }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
   useEffect(() => {
@@ -38,10 +44,10 @@ const EffectPresetThumbnail: React.FC<{
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    drawEffectPresetIcon(ctx, shapes, color, canvas.width, canvas.height, customMatrix)
-  }, [shapes, color, customMatrix])
+    drawEffectPresetIcon(ctx, shapes, color, canvas.width, canvas.height, customMatrix, groundCircle)
+  }, [shapes, color, customMatrix, groundCircle])
 
-  if (shapes.length === 0 && (!customMatrix || customMatrix.length === 0)) {
+  if (shapes.length === 0 && (!customMatrix || customMatrix.length === 0) && !groundCircle) {
     return (
       <div className="w-11 h-11 rounded-[8px] bg-lira-ground border border-lira-quiet flex items-center justify-center text-lira-muted shrink-0">
         <Ban className="w-4 h-4" />
@@ -62,6 +68,17 @@ export const AvatarEffectsPanel: React.FC<Props> = ({ kind, avatar, onChangeAvat
   const currentStyle = currentConfig?.style ?? 'none'
   const currentCustomId = currentStyle === 'custom' ? currentConfig?.custom?.id : undefined
   const currentColor = currentConfig?.color || currentConfig?.custom?.color || DEFAULT_AVATAR_EFFECT_COLOR
+  const selectedAuraMeta = isAura ? AURA_OPTIONS.find((o) => o.id === currentStyle) : undefined
+  const currentGroundCircle = isAura
+    ? (avatar.aura?.groundCircle ??
+      (currentStyle === 'custom' ? Boolean(currentConfig?.custom?.groundCircle) : Boolean(selectedAuraMeta?.glowHalo)))
+    : false
+  const currentGroundCircleSize = isAura
+    ? clampAuraGroundCircleSize(
+        avatar.aura?.groundCircleSize ??
+          (currentStyle === 'custom' ? currentConfig?.custom?.groundCircleSize : selectedAuraMeta?.groundCircleSize)
+      )
+    : DEFAULT_AURA_GROUND_CIRCLE_SIZE
   const options = isAura ? AURA_OPTIONS : STEPS_OPTIONS
   const Icon = isAura ? Sparkles : Footprints
 
@@ -79,6 +96,8 @@ export const AvatarEffectsPanel: React.FC<Props> = ({ kind, avatar, onChangeAvat
     style: AvatarAuraStyle | AvatarStepsStyle
     color: string
     custom?: CustomAvatarEffectSpec
+    groundCircle?: boolean
+    groundCircleSize?: number
   }) => {
     if (isAura) {
       onChangeAvatar({
@@ -87,6 +106,8 @@ export const AvatarEffectsPanel: React.FC<Props> = ({ kind, avatar, onChangeAvat
           style: next.style as AvatarAuraStyle,
           color: next.color,
           custom: next.custom,
+          ...(next.groundCircle !== undefined ? { groundCircle: next.groundCircle } : {}),
+          ...(next.groundCircleSize !== undefined ? { groundCircleSize: next.groundCircleSize } : {}),
         },
       })
     } else {
@@ -101,11 +122,13 @@ export const AvatarEffectsPanel: React.FC<Props> = ({ kind, avatar, onChangeAvat
     }
   }
 
-  const handleSelectPreset = (styleId: string, defaultColor: string) => {
+  const handleSelectPreset = (styleId: string, defaultColor: string, presetGroundCircle?: boolean) => {
     applyEffect({
       style: styleId as AvatarAuraStyle | AvatarStepsStyle,
       color: styleId === 'none' ? currentColor : defaultColor,
       custom: undefined,
+      groundCircle: isAura && styleId !== 'none' ? Boolean(presetGroundCircle) : undefined,
+      groundCircleSize: isAura && styleId !== 'none' ? DEFAULT_AURA_GROUND_CIRCLE_SIZE : undefined,
     })
   }
 
@@ -114,6 +137,8 @@ export const AvatarEffectsPanel: React.FC<Props> = ({ kind, avatar, onChangeAvat
       style: 'custom',
       color: spec.color,
       custom: spec,
+      groundCircle: isAura ? Boolean(spec.groundCircle) : undefined,
+      groundCircleSize: isAura ? clampAuraGroundCircleSize(spec.groundCircleSize) : undefined,
     })
   }
 
@@ -121,19 +146,61 @@ export const AvatarEffectsPanel: React.FC<Props> = ({ kind, avatar, onChangeAvat
     if (currentStyle === 'custom' && currentConfig?.custom) {
       const updatedSpec: CustomAvatarEffectSpec = { ...currentConfig.custom, color: hex }
       setCustomEffects(saveCustomAvatarEffect(updatedSpec))
-      applyEffect({ style: 'custom', color: hex, custom: updatedSpec })
+      applyEffect({
+        style: 'custom',
+        color: hex,
+        custom: updatedSpec,
+        groundCircle: isAura ? currentGroundCircle : undefined,
+        groundCircleSize: isAura ? currentGroundCircleSize : undefined,
+      })
       return
     }
     applyEffect({
       style: currentStyle,
       color: hex,
       custom: currentConfig?.custom,
+      groundCircle: isAura && currentStyle !== 'none' ? currentGroundCircle : undefined,
+      groundCircleSize: isAura && currentStyle !== 'none' ? currentGroundCircleSize : undefined,
+    })
+  }
+
+  const handleUpdateGroundCircle = (nextEnabled: boolean, nextSize: number = currentGroundCircleSize) => {
+    if (!isAura || currentStyle === 'none') return
+    const clamped = clampAuraGroundCircleSize(nextSize)
+    if (currentStyle === 'custom' && currentConfig?.custom) {
+      const updatedSpec: CustomAvatarEffectSpec = {
+        ...currentConfig.custom,
+        groundCircle: nextEnabled,
+        groundCircleSize: clamped,
+      }
+      setCustomEffects(saveCustomAvatarEffect(updatedSpec))
+      applyEffect({
+        style: 'custom',
+        color: currentColor,
+        custom: updatedSpec,
+        groundCircle: nextEnabled,
+        groundCircleSize: clamped,
+      })
+      return
+    }
+    applyEffect({
+      style: currentStyle,
+      color: currentColor,
+      custom: currentConfig?.custom,
+      groundCircle: nextEnabled,
+      groundCircleSize: clamped,
     })
   }
 
   const handleSaveCustom = (spec: CustomAvatarEffectSpec) => {
     setCustomEffects(saveCustomAvatarEffect(spec))
-    applyEffect({ style: 'custom', color: spec.color, custom: spec })
+    applyEffect({
+      style: 'custom',
+      color: spec.color,
+      custom: spec,
+      groundCircle: isAura ? Boolean(spec.groundCircle) : undefined,
+      groundCircleSize: isAura ? clampAuraGroundCircleSize(spec.groundCircleSize) : undefined,
+    })
     setCreatorOpen(false)
     setEditingSpec(null)
   }
@@ -204,11 +271,18 @@ export const AvatarEffectsPanel: React.FC<Props> = ({ kind, avatar, onChangeAvat
                     shapes={spec.shapes}
                     color={spec.color}
                     customMatrix={spec.pixelMatrix}
+                    groundCircle={isAura && Boolean(spec.groundCircle)}
                   />
                   <div className="min-w-0 flex-1 pr-6">
                     <div className="text-xs font-mono font-extrabold text-lira-ink truncate">{spec.name}</div>
                     <div className="text-[11px] font-mono text-lira-muted truncate mt-0.5">
-                      {spec.pixelMatrix ? 'Pixel art próprio' : `${spec.shapes.length} forma(s)`} • {motionLabel}
+                      {spec.pixelMatrix
+                        ? 'Pixel art próprio'
+                        : spec.shapes.length === 0 && spec.groundCircle
+                          ? 'Só círculo no chão'
+                          : `${spec.shapes.length} objeto(s)`}{' '}
+                      • {motionLabel}
+                      {isAura && spec.groundCircle ? ` • Círculo ${clampAuraGroundCircleSize(spec.groundCircleSize)}px` : ''}
                     </div>
                   </div>
 
@@ -254,11 +328,12 @@ export const AvatarEffectsPanel: React.FC<Props> = ({ kind, avatar, onChangeAvat
           {options.map((opt) => {
             const isSelected = currentStyle === opt.id
             const iconColor = isSelected ? currentColor : opt.defaultColor
+            const presetHasCircle = isAura ? Boolean((opt as AuraOptionMeta).glowHalo) : false
             return (
               <button
                 key={opt.id}
                 type="button"
-                onClick={() => handleSelectPreset(opt.id, opt.defaultColor)}
+                onClick={() => handleSelectPreset(opt.id, opt.defaultColor, presetHasCircle)}
                 aria-pressed={isSelected}
                 className={`relative flex items-center gap-2.5 p-2.5 rounded-[8px] border text-left transition-colors ${
                   isSelected
@@ -266,7 +341,11 @@ export const AvatarEffectsPanel: React.FC<Props> = ({ kind, avatar, onChangeAvat
                     : 'bg-lira-sidebar border-lira-quiet hover:bg-lira-surface hover:border-lira-rule'
                 }`}
               >
-                <EffectPresetThumbnail shapes={opt.previewShapes} color={iconColor} />
+                <EffectPresetThumbnail
+                  shapes={opt.previewShapes}
+                  color={iconColor}
+                  groundCircle={presetHasCircle}
+                />
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-mono font-extrabold text-lira-ink truncate">{opt.label}</div>
                   <div className="text-[11px] font-mono text-lira-muted leading-snug mt-0.5 line-clamp-2">
@@ -329,10 +408,49 @@ export const AvatarEffectsPanel: React.FC<Props> = ({ kind, avatar, onChangeAvat
           </label>
         </div>
 
-        {currentStyle === 'none' && (
+        {currentStyle === 'none' ? (
           <p className="text-[11px] font-mono text-lira-muted mt-2">
             Escolha um modelo acima ou clique em &ldquo;{isAura ? 'Criar Aura' : 'Criar Passo'}&rdquo; para ativar no mapa.
           </p>
+        ) : (
+          isAura && (
+            <div className="mt-3 pt-3 border-t border-dashed border-lira-rule/60 flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-mono font-bold text-lira-ink">Círculo no chão</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={currentGroundCircle}
+                  onClick={() => handleUpdateGroundCircle(!currentGroundCircle)}
+                  className={`px-2.5 py-1 rounded-[8px] text-[11px] font-mono font-extrabold border transition-colors ${
+                    currentGroundCircle
+                      ? 'bg-lira-accent border-lira-accent text-lira-ground'
+                      : 'bg-lira-ground border-lira-quiet text-lira-muted hover:text-lira-ink'
+                  }`}
+                >
+                  {currentGroundCircle ? 'Ativado' : 'Desativado'}
+                </button>
+              </div>
+              {currentGroundCircle && (
+                <div className="flex items-center gap-3">
+                  <span className="text-[11px] font-mono text-lira-muted shrink-0">Tamanho</span>
+                  <input
+                    type="range"
+                    min={MIN_AURA_GROUND_CIRCLE_SIZE}
+                    max={MAX_AURA_GROUND_CIRCLE_SIZE}
+                    step={2}
+                    value={currentGroundCircleSize}
+                    onChange={(e) => handleUpdateGroundCircle(true, Number(e.target.value))}
+                    aria-label="Tamanho do círculo no chão"
+                    className="flex-1 accent-lira-accent cursor-pointer"
+                  />
+                  <span className="text-[11px] font-mono font-bold text-lira-accent w-11 text-right">
+                    {currentGroundCircleSize}px
+                  </span>
+                </div>
+              )}
+            </div>
+          )
         )}
       </div>
 

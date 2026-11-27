@@ -11,8 +11,6 @@ import type { CustomAsset } from '../../types/customAsset'
 import type { MapData } from '../../types/map'
 import { parseAtlasDocument, serializeAtlas } from '../../assets/atlasFormat'
 
-vi.mock('../../engine/rendering/worldRenderer', () => ({ WorldRenderer: { render: vi.fn() } }))
-
 const originalGame = useGameStore.getState()
 const originalMap = useMapStore.getState()
 const originalAssets = useCustomAssetsStore.getState()
@@ -44,7 +42,7 @@ beforeEach(() => {
   sendPlayerUpdate = vi.fn()
   sendMovement = vi.fn()
   vi.spyOn(PeerManager, 'getInstance').mockReturnValue({ sendPlayerUpdate, sendMovement, sendCustomAssetAddOrUpdate: vi.fn() } as unknown as PeerManager)
-  engine = new CanvasEngine({ getContext: () => ({}) } as unknown as HTMLCanvasElement)
+  engine = new CanvasEngine({ clientWidth: 800, clientHeight: 600 } as unknown as HTMLElement)
 })
 
 afterEach(() => {

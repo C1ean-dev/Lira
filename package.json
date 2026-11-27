@@ -44,7 +44,7 @@
     "protobufjs@7.6.6": true
   },
   "scripts": {
-    "test": "vitest run src/__tests__ --maxWorkers=8",
+    "test": "vitest run src/__tests__",
     "test:all": "node scripts/test-all.mjs",
     "teste:all": "npm run test:all",
     "test:migration": "python scripts/test_migrate_individual_library.py",
@@ -54,7 +54,7 @@
     "test:dependencies:browser": "cross-env LIRA_RUN_DEPENDENCY_TESTS=1 node --test scripts/dependency-compatibility.browser.test.mjs",
     "test:whiteboard:browser": "cross-env LIRA_RUN_WHITEBOARD_TESTS=1 node --test scripts/whiteboard-editor.browser.test.mjs",
     "test:transcription:map": "cross-env LIRA_RUN_SPACE_TRANSCRIPTION_TESTS=1 node --test scripts/space-transcription.browser.test.mjs",
-    "test:core:browser": "cross-env LIRA_RUN_BROWSER_TESTS=1 node --test --test-force-exit scripts/core-realtime.browser.test.mjs scripts/chat-scroll.browser.test.mjs",
+    "test:core:browser": "cross-env LIRA_RUN_BROWSER_TESTS=1 node --test --test-force-exit --test-concurrency=1 scripts/core-realtime.browser.test.mjs scripts/chat-scroll.browser.test.mjs",
     "test:navigation:browser": "cross-env LIRA_RUN_NAVIGATION_TESTS=1 node --test scripts/navigation-responsive.browser.test.mjs",
     "test:invites:electron": "cross-env LIRA_RUN_INVITE_TESTS=1 node --test scripts/space-invite.electron.test.mjs",
     "test:sprites:electron": "cross-env LIRA_RUN_SPRITE_TESTS=1 node --test scripts/individual-library.electron.test.mjs",
@@ -114,6 +114,7 @@
     "mqtt": "5.16.1",
     "peer": "^1.0.2",
     "peerjs": "^1.5.4",
+    "pixi.js": "8.23.0",
     "playwright": "^1.64.1",
     "postcss": "^8.5.2",
     "react": "^18.3.1",

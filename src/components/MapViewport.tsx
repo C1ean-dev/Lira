@@ -5,7 +5,7 @@ import { CanvasEngine } from '../engine/CanvasEngine'
 import { getNextAvailableZoneColor, FURNITURE_CATALOG } from '../engine/Constants'
 import { resolveFurnitureDimensions } from '../engine/rendering/furnitureRenderer'
 import { pickEditorFurniture } from '../engine/rendering/furnitureLayers'
-import { useMapStore } from '../store/useMapStore'
+import { selectActiveMapData, useMapStore } from '../store/useMapStore'
 import { useGameStore } from '../store/useGameStore'
 import { useCustomAssetsStore } from '../store/useCustomAssetsStore'
 import { PeerManager } from '../p2p/PeerManager'
@@ -27,8 +27,9 @@ function restoreZoomOrFit(engine: CanvasEngine) {
 }
 
 export const MapViewport: React.FC = () => {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const pixiHostRef = useRef<HTMLDivElement | null>(null)
   const engineRef = useRef<CanvasEngine | null>(null)
+  const [renderError, setRenderError] = useState<string | null>(null)
 
   const mapViewMode = useGameStore((s) => s.mapViewMode)
   const setMapViewMode = useGameStore((s) => s.setMapViewMode)
@@ -52,7 +53,9 @@ export const MapViewport: React.FC = () => {
   const addOrUpdateZone = useMapStore((s) => s.addOrUpdateZone)
   const paintFloorInZone = useMapStore((s) => s.paintFloorInZone)
   const findZoneAt = useMapStore((s) => s.findZoneAt)
-  const mapData = useMapStore((s) => s.mapData)
+  const mapData = useMapStore(selectActiveMapData)
+  const activeHouseId = useMapStore((s) => s.activeHouseId)
+  const houseTransition = useMapStore((s) => s.houseTransition)
   const placementDirection = useMapStore((s) => s.placementDirection)
   const rotatePlacementDirection = useMapStore((s) => s.rotatePlacementDirection)
   const eraserTarget = useMapStore((s) => s.eraserTarget)
@@ -63,7 +66,10 @@ export const MapViewport: React.FC = () => {
   useEffect(() => {
     if (!isEditorOpen) return
     const begin = (event: Event) => {
-      if (event.target === canvasRef.current) useMapStore.getState().beginHistoryGroup()
+      const target = event.target as Node | null
+      if (pixiHostRef.current && target && (target === pixiHostRef.current || pixiHostRef.current.contains(target))) {
+        useMapStore.getState().beginHistoryGroup()
+      }
     }
     const end = () => queueMicrotask(() => useMapStore.getState().endHistoryGroup())
     window.addEventListener('mousedown', begin, true)
@@ -173,26 +179,16 @@ export const MapViewport: React.FC = () => {
   }, [])
 
   useEffect(() => {
-    if (!canvasRef.current) return
+    if (!pixiHostRef.current) return
 
-    const canvas = canvasRef.current
-    const engine = new CanvasEngine(canvas)
+    const host = pixiHostRef.current
+    const engine = new CanvasEngine(host, setRenderError)
     engineRef.current = engine
 
-    const MAX_CANVAS_PIXELS = 1920 * 1080
     const applySize = () => {
-      let w = canvas.parentElement?.clientWidth || window.innerWidth
-      let h = canvas.parentElement?.clientHeight || window.innerHeight
-      const area = w * h
-      if (area > MAX_CANVAS_PIXELS) {
-        const scale = Math.sqrt(MAX_CANVAS_PIXELS / area)
-        w = Math.floor(w * scale)
-        h = Math.floor(h * scale)
-      }
-      if (canvas.width !== w || canvas.height !== h) {
-        canvas.width = w
-        canvas.height = h
-      }
+      const w = host.clientWidth || host.parentElement?.clientWidth || window.innerWidth
+      const h = host.clientHeight || host.parentElement?.clientHeight || window.innerHeight
+      engine.syncViewportSize(w, h)
     }
 
     let resizeRaf = 0
@@ -207,8 +203,10 @@ export const MapViewport: React.FC = () => {
     applySize()
     restoreZoomOrFit(engine)
     window.addEventListener('resize', handleResize)
+    document.addEventListener('fullscreenchange', handleResize)
     const sizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(handleResize) : null
-    if (canvas.parentElement) sizeObserver?.observe(canvas.parentElement)
+    sizeObserver?.observe(host)
+    if (host.parentElement) sizeObserver?.observe(host.parentElement)
 
     const handleFocusOrVisibility = () => {
       applySize()
@@ -221,6 +219,7 @@ export const MapViewport: React.FC = () => {
     return () => {
       sizeObserver?.disconnect()
       window.removeEventListener('resize', handleResize)
+      document.removeEventListener('fullscreenchange', handleResize)
       window.removeEventListener('focus', handleFocusOrVisibility)
       document.removeEventListener('visibilitychange', handleFocusOrVisibility)
       if (resizeRaf) cancelAnimationFrame(resizeRaf)
@@ -249,18 +248,11 @@ export const MapViewport: React.FC = () => {
   }, [mapData.width, mapData.height])
 
   useEffect(() => {
-    if (mapViewMode === 'immersive' && engineRef.current && canvasRef.current) {
-      const canvas = canvasRef.current
-      const MAX_CANVAS_PIXELS = 1920 * 1080
-      let w = canvas.parentElement?.clientWidth || window.innerWidth
-      let h = canvas.parentElement?.clientHeight || window.innerHeight
-      if (w * h > MAX_CANVAS_PIXELS) {
-        const scale = Math.sqrt(MAX_CANVAS_PIXELS / (w * h))
-        w = Math.floor(w * scale)
-        h = Math.floor(h * scale)
-      }
-      canvas.width = w
-      canvas.height = h
+    if (mapViewMode === 'immersive' && engineRef.current && pixiHostRef.current) {
+      const host = pixiHostRef.current
+      const w = host.clientWidth || host.parentElement?.clientWidth || window.innerWidth
+      const h = host.clientHeight || host.parentElement?.clientHeight || window.innerHeight
+      engineRef.current.syncViewportSize(w, h)
       const local = useGameStore.getState().localPlayer
       engineRef.current.camera.x = (local?.x ?? 34) * 32
       engineRef.current.camera.y = (local?.y ?? 20) * 32
@@ -296,12 +288,13 @@ export const MapViewport: React.FC = () => {
     return 1
   }
 
-  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!engineRef.current || !canvasRef.current) return
+  const handleCanvasMouseDown = (e: React.MouseEvent<HTMLElement>) => {
+    if (!engineRef.current || !pixiHostRef.current) return
     if (e.button !== undefined && e.button !== 0) return
-    const rect = canvasRef.current.getBoundingClientRect()
-    const scaleX = canvasRef.current.width / (rect.width || 1)
-    const scaleY = canvasRef.current.height / (rect.height || 1)
+    const rect = pixiHostRef.current.getBoundingClientRect()
+    const viewport = engineRef.current.getViewportSize()
+    const scaleX = viewport.width / (rect.width || 1)
+    const scaleY = viewport.height / (rect.height || 1)
     const mouseX = (e.clientX - rect.left) * scaleX
     const mouseY = (e.clientY - rect.top) * scaleY
 
@@ -324,7 +317,16 @@ export const MapViewport: React.FC = () => {
       if (clickedFurn && activeTool !== 'paint_floor' && activeTool !== 'paint_wall' && activeTool !== 'draw_zone') {
         if (activeTool === 'eraser') {
           if (eraserTarget === 'furniture') {
-            if (customAssets.find(asset => asset.id === clickedFurn.defId)?.isTabletopDecoration) {
+            const clickedAsset = customAssets.find(asset => asset.id === clickedFurn.defId)
+            if (clickedAsset?.houseShell) {
+              useMapStore.getState().removeFurnitureById(clickedFurn.id)
+              PeerManager.getInstance().broadcast({
+                type: 'MAP_SYNC',
+                senderId: 'host',
+                payload: { mapData: useMapStore.getState().mapData },
+                timestamp: Date.now(),
+              })
+            } else if (clickedAsset?.isTabletopDecoration) {
               useMapStore.getState().removeFurnitureById(clickedFurn.id)
               PeerManager.getInstance().sendMapEdit('remove_furniture', { id: clickedFurn.id, x: tile.x, y: tile.y })
             } else {
@@ -400,6 +402,10 @@ export const MapViewport: React.FC = () => {
         setWallTile(tile.x, tile.y, selectedWall)
         PeerManager.getInstance().sendMapEdit('set_wall', { x: tile.x, y: tile.y, wall: selectedWall })
       } else if (activeTool === 'place_furniture') {
+        const placedAsset = useCustomAssetsStore.getState().getAssetById(selectedFurnitureDefId)
+        if (activeHouseId && placedAsset?.houseShell) {
+          return
+        }
         const rotMap: Record<Direction, 0 | 90 | 180 | 270> = {
           down: 0,
           left: 90,
@@ -415,7 +421,16 @@ export const MapViewport: React.FC = () => {
           rotation: rotMap[placementDirection],
         }
         addFurniture(newFurn)
-        PeerManager.getInstance().sendMapEdit('add_furniture', { furniture: newFurn })
+        if (placedAsset?.houseShell) {
+          PeerManager.getInstance().broadcast({
+            type: 'MAP_SYNC',
+            senderId: 'host',
+            payload: { mapData: useMapStore.getState().mapData },
+            timestamp: Date.now(),
+          })
+        } else {
+          PeerManager.getInstance().sendMapEdit('add_furniture', { furniture: newFurn })
+        }
       } else if (activeTool === 'eraser') {
         if (eraserTarget === 'furniture') {
           const hadFurniture = removeFurnitureAt(tile.x, tile.y)
@@ -439,10 +454,11 @@ export const MapViewport: React.FC = () => {
   }
 
   const handleCanvasMouseMove = (e: React.MouseEvent) => {
-    if (!engineRef.current || !canvasRef.current) return
-    const rect = canvasRef.current.getBoundingClientRect()
-    const scaleX = canvasRef.current.width / (rect.width || 1)
-    const scaleY = canvasRef.current.height / (rect.height || 1)
+    if (!engineRef.current || !pixiHostRef.current) return
+    const rect = pixiHostRef.current.getBoundingClientRect()
+    const viewport = engineRef.current.getViewportSize()
+    const scaleX = viewport.width / (rect.width || 1)
+    const scaleY = viewport.height / (rect.height || 1)
     const mouseX = (e.clientX - rect.left) * scaleX
     const mouseY = (e.clientY - rect.top) * scaleY
 
@@ -456,8 +472,8 @@ export const MapViewport: React.FC = () => {
     engineRef.current.hoverTile = tile
     engineRef.current.isShiftPressed = e.shiftKey
     const consumable = !isEditorOpen ? consumableAt(exactTile.x, exactTile.y) : undefined
-    canvasRef.current.title = consumable?.title || ''
-    canvasRef.current.style.cursor = consumable?.nearby ? 'pointer' : ''
+    pixiHostRef.current.title = consumable?.title || ''
+    pixiHostRef.current.style.cursor = consumable?.nearby ? 'pointer' : ''
 
     if (isEditorOpen) {
       const customAssets = useCustomAssetsStore.getState().customAssets
@@ -556,11 +572,21 @@ export const MapViewport: React.FC = () => {
       setIsDraggingFurniture(false)
 
       if (drag.isDragging) {
-        const currentFurn = useMapStore.getState().mapData.furniture.find((f) => f.id === drag.id)
+        const currentFurn = useMapStore.getState().getActiveMapData().furniture.find((f) => f.id === drag.id)
         if (currentFurn) {
-          PeerManager.getInstance().sendMapEdit('add_furniture', {
-            furniture: currentFurn,
-          })
+          const movedAsset = useCustomAssetsStore.getState().getAssetById(currentFurn.defId)
+          if (movedAsset?.houseShell) {
+            PeerManager.getInstance().broadcast({
+              type: 'MAP_SYNC',
+              senderId: 'host',
+              payload: { mapData: useMapStore.getState().mapData },
+              timestamp: Date.now(),
+            })
+          } else {
+            PeerManager.getInstance().sendMapEdit('add_furniture', {
+              furniture: currentFurn,
+            })
+          }
         }
         return
       } else {
@@ -679,8 +705,8 @@ export const MapViewport: React.FC = () => {
     setIsCameraPanned(false)
   }
 
-  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
-    if (!engineRef.current || !canvasRef.current) return
+  const handleTouchStart = (e: React.TouchEvent<HTMLElement>) => {
+    if (!engineRef.current || !pixiHostRef.current) return
 
     if (e.touches.length === 2) {
       const t1 = e.touches[0]
@@ -710,14 +736,14 @@ export const MapViewport: React.FC = () => {
           clientX: touch.clientX,
           clientY: touch.clientY,
           shiftKey: false,
-        } as React.MouseEvent<HTMLCanvasElement>
+        } as React.MouseEvent<HTMLElement>
         handleCanvasMouseDown(mouseEv)
       }
     }
   }
 
-  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
-    if (!engineRef.current || !canvasRef.current) return
+  const handleTouchMove = (e: React.TouchEvent<HTMLElement>) => {
+    if (!engineRef.current || !pixiHostRef.current) return
 
     if (e.touches.length === 2 && touchPinchDistRef.current !== null) {
       e.preventDefault()
@@ -749,7 +775,7 @@ export const MapViewport: React.FC = () => {
           clientX: touch.clientX,
           clientY: touch.clientY,
           shiftKey: false,
-        } as React.MouseEvent<HTMLCanvasElement>
+        } as React.MouseEvent<HTMLElement>
         handleCanvasMouseMove(mouseEv)
         lastTouchPosRef.current = { x: touch.clientX, y: touch.clientY }
         return
@@ -765,17 +791,18 @@ export const MapViewport: React.FC = () => {
     }
   }
 
-  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
-    if (!engineRef.current || !canvasRef.current) return
+  const handleTouchEnd = (e: React.TouchEvent<HTMLElement>) => {
+    if (!engineRef.current || !pixiHostRef.current) return
 
     touchPinchDistRef.current = null
 
     if (!touchMovedRef.current && touchStartPosRef.current && e.type !== 'touchcancel') {
       e.preventDefault() // One tap must not also synthesize a second mouse consumption.
       const touch = touchStartPosRef.current
-      const rect = canvasRef.current.getBoundingClientRect()
-      const scaleX = canvasRef.current.width / (rect.width || 1)
-      const scaleY = canvasRef.current.height / (rect.height || 1)
+      const rect = pixiHostRef.current.getBoundingClientRect()
+      const viewport = engineRef.current.getViewportSize()
+      const scaleX = viewport.width / (rect.width || 1)
+      const scaleY = viewport.height / (rect.height || 1)
       const mouseX = (touch.x - rect.left) * scaleX
       const mouseY = (touch.y - rect.top) * scaleY
 
@@ -784,7 +811,7 @@ export const MapViewport: React.FC = () => {
           clientX: touch.x,
           clientY: touch.y,
           shiftKey: false,
-        } as React.MouseEvent<HTMLCanvasElement>
+        } as React.MouseEvent<HTMLElement>
         handleCanvasMouseDown(mouseEv)
       } else {
         const point = engineRef.current.screenToTile(mouseX, mouseY, 0)
@@ -805,8 +832,9 @@ export const MapViewport: React.FC = () => {
       onWheel={handleWheel}
       className="relative flex-1 w-full h-full overflow-hidden bg-lira-ground"
     >
-      <canvas
-        ref={canvasRef}
+      <div
+        ref={pixiHostRef}
+        data-map-viewport="pixi"
         onMouseDown={handleCanvasMouseDown}
         onMouseMove={handleCanvasMouseMove}
         onMouseUp={handleCanvasMouseUp}
@@ -815,7 +843,7 @@ export const MapViewport: React.FC = () => {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchEnd}
-        className={`w-full h-full pixelated touch-none select-none ${
+        className={`relative z-10 w-full h-full pixelated touch-none select-none ${
           isDraggingFurniture
             ? 'cursor-grabbing'
             : isEditorOpen && (hoveredFurnitureId || (isMovingFurniture && selectedPlacedFurnitureId))
@@ -827,6 +855,15 @@ export const MapViewport: React.FC = () => {
           mapViewMode === 'simplified' ? 'hidden' : 'block'
         }`}
       />
+
+      {renderError && mapViewMode !== 'simplified' && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-lira-ground/95 p-6 text-center">
+          <div className="max-w-md rounded-xl border border-red-500/40 bg-lira-panel p-5 font-mono text-xs text-lira-ink shadow-xl">
+            <p className="mb-2 font-bold text-red-400">Erro no motor gráfico PixiJS v8 (WebGL)</p>
+            <p className="text-lira-muted">{renderError}</p>
+          </div>
+        </div>
+      )}
 
       {isCameraPanned && mapViewMode !== 'simplified' && (
         <Button
@@ -887,6 +924,21 @@ export const MapViewport: React.FC = () => {
       {mapViewMode === 'simplified' && <SimplifiedMapView />}
 
       <FurnitureContextMenu />
+
+      {houseTransition && (
+        <div
+          aria-hidden="true"
+          className={`pointer-events-none fixed inset-0 z-[120] bg-black flex items-center justify-center transition-opacity duration-200 ${
+            houseTransition.phase === 'fading-out' ? 'opacity-85' : 'opacity-0'
+          }`}
+        >
+          {houseTransition.label && (
+            <div className="px-4 py-2 rounded-full bg-lira-panel/95 border border-dashed border-lira-amber/70 text-lira-amber font-mono text-xs font-bold shadow-lg">
+              🏠 {houseTransition.label}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="absolute bottom-4 right-4 z-40">
         <MapControlsWidget

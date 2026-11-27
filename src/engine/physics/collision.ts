@@ -3,7 +3,7 @@ import { FURNITURE_CATALOG } from '../Constants'
 import { resolveFurnitureDirection, resolveFurnitureDimensions } from '../rendering/furnitureRenderer'
 import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 import { useGameStore } from '../../store/useGameStore'
-import { useMapStore } from '../../store/useMapStore'
+import { useMapStore, houseZoneIdForFurniture } from '../../store/useMapStore'
 import { useChatStore } from '../../store/useChatStore'
 import { useMediaStore } from '../../store/useMediaStore'
 import { MediaManager } from '../../media/MediaManager'
@@ -11,6 +11,7 @@ import { PeerManager } from '../../p2p/PeerManager'
 import { resolveSeatGrid, seatCellBounds } from './seating'
 import type { CustomAsset } from '../../types/customAsset'
 import { getZoneGeometry, ZONE_SIDE_WALL_THICKNESS } from '../zoneGeometry'
+import { buildHouseCollisionGrid, resolveHouseDoorCells } from '../houseInterior'
 
 interface Bounds { minX: number; maxX: number; minY: number; maxY: number }
 interface FurnitureObstacle { bounds: Bounds; seats: Bounds[] }
@@ -46,9 +47,17 @@ function getFurnitureIndex(map: MapData): Map<string, FurnitureObstacle[]> {
     const def = custom || FURNITURE_CATALOG.find(item => item.id === furn.defId)
     const dir = resolveFurnitureDirection(furn)
     const { tileW, tileH } = resolveFurnitureDimensions(furn, custom, def)
-    const grid = custom ? (custom.directionalCollisionGrids?.[dir] ||
+    const rawGrid = custom ? (custom.directionalCollisionGrids?.[dir] ||
       (dir === 'right' ? custom.directionalCollisionGrids?.left : undefined) ||
       (dir === 'left' ? custom.directionalCollisionGrids?.right : undefined) || custom.collisionGrid) : undefined
+    const doorKeys = custom?.houseShell
+      ? new Set(resolveHouseDoorCells(Math.ceil(tileW), Math.ceil(tileH), custom.houseShell).map(cell => `${cell.col},${cell.row}`))
+      : null
+    const grid = doorKeys
+      ? (rawGrid && rawGrid.some(row => row?.some(cell => cell === true))
+          ? rawGrid.map((row, r) => row.map((cell, c) => (doorKeys.has(`${c},${r}`) ? false : cell)))
+          : buildHouseCollisionGrid(Math.ceil(tileW), Math.ceil(tileH), custom?.houseShell))
+      : rawGrid
     const seats = custom ? resolveSeatGrid(furn, custom) : undefined
     const seatBounds: Bounds[] = []
     seats?.grid.forEach((row, r) => row?.forEach((isSeat, c) => {
@@ -220,6 +229,7 @@ export function isPlayerInZone(playerX: number, playerY: number, zone: PrivateZo
 
 export function checkZonePresence(playerX: number, playerY: number, map: MapData) {
   const local = useGameStore.getState().localPlayer
+  const activeHouseId = useMapStore.getState().activeHouseId
   let detectedZone: string | null = null
   let detectedZoneName: string = ''
 
@@ -231,10 +241,16 @@ export function checkZonePresence(playerX: number, playerY: number, map: MapData
     }
   }
 
+  if (!detectedZone && activeHouseId) {
+    detectedZone = houseZoneIdForFurniture(activeHouseId)
+    detectedZoneName = useMapStore.getState().getActiveHouseInterior()?.name || 'Casa'
+  }
+
   if (local.currentZoneId !== detectedZone) {
     const prevZoneId = local.currentZoneId
+    const hadActiveCall = Boolean(prevZoneId) || useGameStore.getState().proximityPeerIds.length > 0
 
-    if (prevZoneId && prevZoneId !== detectedZone) {
+    if (hadActiveCall && prevZoneId !== detectedZone) {
       console.log(`[Zone Exit] Player exited zone ${prevZoneId}. Closing screen share and resetting media.`)
       if (useMediaStore.getState().isScreenSharing) {
         MediaManager.getInstance().stopScreenShare()
@@ -246,6 +262,9 @@ export function checkZonePresence(playerX: number, playerY: number, map: MapData
     useGameStore.getState().setCurrentZoneId(detectedZone)
     useChatStore.getState().updateZoneChannel(detectedZoneName)
     PeerManager.getInstance().sendPlayerUpdate({ currentZoneId: detectedZone })
+    if (detectedZone === null) {
+      PeerManager.getInstance().syncProximityCalls?.()
+    }
     useMapStore.getState().checkAndUnlockEmptyZones()
   }
 }

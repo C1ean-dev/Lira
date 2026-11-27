@@ -122,7 +122,12 @@ const OnlineUsersMenuInner: React.FC = () => {
     setTimeout(() => setCopiedLink(false), 2200)
   }
 
-  const getZoneName = (zoneId?: string | null) => {
+  const getZoneName = (zoneId?: string | null, houseId?: string | null) => {
+    const interior = houseId ? mapData.houseInteriors?.[houseId] : undefined
+    if (interior) {
+      const subZone = zoneId ? interior.zones.find((item) => item.id === zoneId) : undefined
+      return subZone ? `🏠 ${interior.name} · ${subZone.name}` : `🏠 ${interior.name}`
+    }
     if (!zoneId) return 'Corredor Geral'
     const z = mapData.zones.find((item) => item.id === zoneId)
     return z ? z.name : 'Zona Privada'
@@ -350,7 +355,7 @@ const OnlineUsersMenuInner: React.FC = () => {
                       <div className="flex items-center gap-2 text-[10px] text-lira-muted mt-0.5">
                         <span className="flex items-center gap-0.5 text-lira-accent">
                           <MapPin className="w-2.5 h-2.5" />
-                          <span>{getZoneName(player.currentZoneId)}</span>
+                          <span>{getZoneName(player.currentZoneId, player.currentHouseId)}</span>
                         </span>
                         {(() => {
                           const q = (isLocal ? localQuality : networkQualities[player.id]) || DEFAULT_NETWORK_QUALITY

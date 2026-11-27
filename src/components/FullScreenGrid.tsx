@@ -39,7 +39,7 @@ const FullScreenGridInner: React.FC = () => {
   const isScreenSharing = useMediaStore((s) => s.isScreenSharing)
   const localAudioLevel = useMediaStore((s) => s.localAudioLevel)
 
-  const { localPlayer, remotePlayers, callStates, friendProfiles, roomId, isOwner } = useGameStore()
+  const { localPlayer, remotePlayers, callStates, friendProfiles, roomId, isOwner, proximityPeerIds } = useGameStore()
   const { mapData } = useMapStore()
   const watchingLives = useLiveWatchStore((s) => s.watching)
   const jamsByZone = useSpotifyJamStore((s) => s.jamsByZone)
@@ -76,13 +76,19 @@ const FullScreenGridInner: React.FC = () => {
     setContextMenuState({ user, x: e.clientX, y: e.clientY })
   }
 
-  const currentZone = mapData.zones.find((z) => z.id === localPlayer.currentZoneId)
-  const zoneTitle = currentZone?.name || 'Revisão & Call de Time'
+  const isProximityCall = !localPlayer.currentZoneId && proximityPeerIds.length > 0
+  const currentZone = localPlayer.currentZoneId ? mapData.zones.find((z) => z.id === localPlayer.currentZoneId) : undefined
+  const activeHouseName = localPlayer.currentHouseId ? mapData.houseInteriors?.[localPlayer.currentHouseId]?.name : undefined
+  const zoneTitle = isProximityCall ? 'Proximidade · Corredor Geral' : currentZone?.name || activeHouseName || 'Revisão & Call de Time'
 
   const isLocalSpeaking = localAudioLevel > 0.15 && !isMuted
   const allInMeeting: ParticipantData[] = React.useMemo(() => {
+    const proximitySet = new Set(proximityPeerIds)
     const peersInSameZone = Object.values(remotePlayers).filter(
-      (p) => !p.isDjBot && !p.id.startsWith('dj-') && p.currentZoneId === localPlayer.currentZoneId
+      (p) =>
+        !p.isDjBot &&
+        !p.id.startsWith('dj-') &&
+        (localPlayer.currentZoneId ? p.currentZoneId === localPlayer.currentZoneId : proximitySet.has(p.id))
     )
     return [
       {

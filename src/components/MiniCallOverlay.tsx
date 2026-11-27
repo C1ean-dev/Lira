@@ -668,8 +668,9 @@ export const FloatingScreenPreview: React.FC<FloatingScreenPreviewProps> = ({
 
 export const MiniCallOverlay: React.FC = () => {
   const currentZoneId = useGameStore((s) => s.localPlayer.currentZoneId)
+  const hasProximityCall = useGameStore((s) => s.proximityPeerIds.length > 0)
   const isGridCallOpen = useMediaStore((s) => s.isGridCallOpen)
-  if (!currentZoneId) return null
+  if (!currentZoneId && !hasProximityCall) return null
   return (
     <div
       className={isGridCallOpen ? 'invisible pointer-events-none' : ''}
@@ -854,10 +855,12 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
     }
   }, [isActiveStreamMenuOpen, isNoiseMenuOpen])
 
-  if (!localPlayer.currentZoneId) return null
+  const isProximityCall = !localPlayer.currentZoneId && peersInSameZone.length > 0
+  if (!localPlayer.currentZoneId && !isProximityCall) return null
 
-  const currentZone = mapData.zones.find((z) => z.id === localPlayer.currentZoneId)
-  const zoneName = currentZone?.name || 'Mesa Privada'
+  const currentZone = localPlayer.currentZoneId ? mapData.zones.find((z) => z.id === localPlayer.currentZoneId) : undefined
+  const activeHouseName = localPlayer.currentHouseId ? mapData.houseInteriors?.[localPlayer.currentHouseId]?.name : undefined
+  const zoneName = isProximityCall ? 'Proximidade' : currentZone?.name || activeHouseName || 'Mesa Privada'
   const isRoomLocked = !!currentZone?.isLocked
 
   const isAnyReconnecting = peersInSameZone.some(
@@ -932,11 +935,12 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
   }
 
   const handleOpenRoomChat = () => {
+    const targetChannelId = isProximityCall ? 'general' : 'current-zone'
     const chatStore = useChatStore.getState()
-    if (chatStore.isChatOpen && chatStore.activeChannelId === 'current-zone') {
+    if (chatStore.isChatOpen && chatStore.activeChannelId === targetChannelId) {
       chatStore.setChatOpen(false)
     } else {
-      chatStore.setActiveChannel('current-zone')
+      chatStore.setActiveChannel(targetChannelId)
       chatStore.setChatOpen(true)
     }
   }
@@ -1074,21 +1078,23 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                 </button>
               )}
 
-              <button
-                onClick={() => setSpotifyJamModalOpen(true, localPlayer.currentZoneId)}
-                className={`px-2 py-0.5 rounded-[6px] border text-[10px] font-mono font-bold flex items-center gap-1 transition-colors ${
-                  isJamActive
-                    ? 'bg-lira-online/15 text-lira-online border-lira-online/40 hover:bg-lira-online/25'
-                    : 'bg-lira-surface text-lira-muted hover:text-lira-online hover:border-lira-online border-lira-quiet'
-                }`}
-                title={isJamActive ? `Spotify Jam ativo: ${activeZoneJam?.zoneName || zoneName}` : 'Iniciar Spotify Jam nesta sala'}
-              >
-                <SpotifyIcon size={12} className={`w-3 h-3 ${isJamActive ? 'text-lira-online animate-pulse' : ''}`} />
-                <span>Jam</span>
-                {isJamActive && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-lira-online animate-ping" />
-                )}
-              </button>
+              {localPlayer.currentZoneId && (
+                <button
+                  onClick={() => setSpotifyJamModalOpen(true, localPlayer.currentZoneId)}
+                  className={`px-2 py-0.5 rounded-[6px] border text-[10px] font-mono font-bold flex items-center gap-1 transition-colors ${
+                    isJamActive
+                      ? 'bg-lira-online/15 text-lira-online border-lira-online/40 hover:bg-lira-online/25'
+                      : 'bg-lira-surface text-lira-muted hover:text-lira-online hover:border-lira-online border-lira-quiet'
+                  }`}
+                  title={isJamActive ? `Spotify Jam ativo: ${activeZoneJam?.zoneName || zoneName}` : 'Iniciar Spotify Jam nesta sala'}
+                >
+                  <SpotifyIcon size={12} className={`w-3 h-3 ${isJamActive ? 'text-lira-online animate-pulse' : ''}`} />
+                  <span>Jam</span>
+                  {isJamActive && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-lira-online animate-ping" />
+                  )}
+                </button>
+              )}
 
               <AvatarAnimationsButton />
               {roomId && isRoomOwner && <PetApiSettings roomId={roomId} />}
@@ -1315,14 +1321,14 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
             <button
               onClick={handleOpenRoomChat}
               className={`p-2 rounded-[8px] border text-xs font-medium transition-colors relative ${
-                isChatOpen && activeChannelId === 'current-zone'
+                isChatOpen && activeChannelId === (isProximityCall ? 'general' : 'current-zone')
                   ? 'bg-lira-accent text-lira-ground border-lira-accent'
                   : 'bg-lira-surface text-lira-ink border-lira-rule hover:border-lira-accent hover:text-lira-accent'
               }`}
-              title={`Ir para o Chat da Sala (${zoneName})`}
+              title={isProximityCall ? 'Ir para o Chat Geral' : `Ir para o Chat da Sala (${zoneName})`}
             >
               <MessageSquare className="w-4 h-4" />
-              {unreadZoneCount > 0 && (
+              {!isProximityCall && unreadZoneCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-lira-amber border border-lira-ground flex items-center justify-center text-[8px] font-mono tabular-nums font-bold text-lira-ground">
                   {unreadZoneCount > 9 ? '9+' : unreadZoneCount}
                 </span>
@@ -1461,13 +1467,15 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               )}
             </div>
 
-            <button
-              onClick={() => setIsRoomSettingsOpen(true)}
-              className="p-2 rounded-[8px] text-xs font-medium bg-lira-surface border border-lira-rule text-lira-muted hover:border-lira-accent hover:text-lira-accent transition-colors"
-              title="Gerenciar Usuários com Permissão de Entrada"
-            >
-              <Shield className="w-4 h-4" />
-            </button>
+            {currentZone && (
+              <button
+                onClick={() => setIsRoomSettingsOpen(true)}
+                className="p-2 rounded-[8px] text-xs font-medium bg-lira-surface border border-lira-rule text-lira-muted hover:border-lira-accent hover:text-lira-accent transition-colors"
+                title="Gerenciar Usuários com Permissão de Entrada"
+              >
+                <Shield className="w-4 h-4" />
+              </button>
+            )}
 
             <button
               onClick={() => useMediaStore.getState().setSettingsModalOpen(true)}

@@ -69,16 +69,18 @@ export class AvatarEffectsManager {
     }
   }
 
-  public renderGround(ctx: CanvasRenderingContext2D, currentTime: number): void {
+  public renderGround(ctx: CanvasRenderingContext2D, currentTime: number, excludeEffectId?: string): void {
     if (!this.enabled) return
     for (const effect of this.effects.values()) {
+      if (excludeEffectId && effect.id === excludeEffectId) continue
       effect.renderGround?.(ctx, currentTime)
     }
   }
 
-  public renderOverlay(ctx: CanvasRenderingContext2D, currentTime: number): void {
+  public renderOverlay(ctx: CanvasRenderingContext2D, currentTime: number, excludeEffectId?: string): void {
     if (!this.enabled) return
     for (const effect of this.effects.values()) {
+      if (excludeEffectId && effect.id === excludeEffectId) continue
       effect.renderOverlay?.(ctx, currentTime)
     }
   }

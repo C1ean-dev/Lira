@@ -33,6 +33,18 @@ export class PetManager {
     return Array.from(this.pets.values())
   }
 
+  public teleportPetToPlayer(playerId: string, x: number, y: number, direction: Direction) {
+    const pet = this.pets.get(playerId)
+    if (!pet) return
+    const offsetX = direction === 'right' ? -0.8 : direction === 'left' ? 0.8 : 0.6
+    const offsetY = direction === 'down' ? -0.6 : direction === 'up' ? 0.6 : 0.2
+    pet.x = x + offsetX
+    pet.y = y + offsetY
+    pet.direction = direction
+    pet.isMoving = false
+    pet.history = []
+  }
+
   public update(deltaTime: number, players: Player[]) {
     const activePlayerIds = new Set<string>()
 

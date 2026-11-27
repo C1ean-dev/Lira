@@ -29,6 +29,7 @@ test('the real whiteboard editor opens and draws without the loading error', {
           const html = await server.transformIndexHtml(request.url,
             '<!doctype html><html><head><link rel="icon" href="data:,"></head><body><div id="root"></div><script type="module" src="/scripts/fixtures/whiteboard-editor-browser.tsx"></script></body></html>')
           response.setHeader('Content-Type', 'text/html')
+          response.setHeader('Permissions-Policy', 'unload=*')
           response.end(html)
         } catch (error) { next(error) }
       })

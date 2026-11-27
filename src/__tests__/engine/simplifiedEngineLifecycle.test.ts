@@ -8,8 +8,6 @@ import { useCustomAssetsStore } from '../../store/useCustomAssetsStore'
 import { checkCollision } from '../../engine/physics/collision'
 import type { CustomAsset } from '../../types/customAsset'
 
-vi.mock('../../engine/rendering/worldRenderer', () => ({ WorldRenderer: { render: vi.fn() } }))
-
 const originalGame = useGameStore.getState()
 const originalSettings = useSettingsStore.getState()
 const originalMap = useMapStore.getState()
@@ -47,7 +45,7 @@ beforeEach(() => {
   sendPlayerUpdate = vi.fn()
   vi.spyOn(PeerManager, 'getInstance').mockReturnValue({ sendMovement, sendPlayerUpdate, endAllZoneMediaCalls: vi.fn() } as unknown as PeerManager)
   useMapStore.setState({ mapData: { ...originalMap.mapData, width: 40, height: 30, furniture: [], walls: [], zones: [] } })
-  engine = new CanvasEngine({ getContext: () => ({ imageSmoothingEnabled: false }) } as unknown as HTMLCanvasElement)
+  engine = new CanvasEngine({ clientWidth: 800, clientHeight: 600 } as unknown as HTMLElement)
   update = vi.spyOn(engine as any, 'update').mockImplementation(() => {})
   render = vi.spyOn(engine as any, 'render').mockImplementation(() => {})
 })

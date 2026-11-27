@@ -103,6 +103,7 @@ interface GameStore {
     (presence: Partial<PresenceInfo>, persist?: boolean): void
   }
   setCurrentZoneId: (zoneId: string | null) => void
+  setCurrentHouseId: (houseId: string | null) => void
 
   remotePlayers: Record<string, Player>
   setRemotePlayer: (player: Player) => void
@@ -113,6 +114,8 @@ interface GameStore {
   callStates: Record<string, 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed'>
   setCallState: (peerId: string, state: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed') => void
   clearCallStates: () => void
+  proximityPeerIds: string[]
+  setProximityState: (peerIds: string[]) => void
 
   roomId: string | null
   isOwner: boolean
@@ -438,6 +441,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       state.setLocalPlayer({
         x: target.x + (target.direction === 'left' ? 1 : target.direction === 'right' ? -1 : 0),
         y: target.y + (target.direction === 'up' ? 1 : target.direction === 'down' ? -1 : 0),
+        currentHouseId: target.currentHouseId ?? null,
       })
     }
   },
@@ -468,6 +472,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     profile: initialProfile,
     ...sanitizePresence(saved, { allowManualAway: true }),
     currentZoneId: null,
+    currentHouseId: null,
     lastUpdated: Date.now(),
     isMuted: true,
     isCameraOff: true,
@@ -599,10 +604,24 @@ export const useGameStore = create<GameStore>((set, get) => ({
       } else if (prevZoneId !== null && zoneId === null) {
         playSoundEffect('user_leave')
       }
+      const clearProximity = zoneId !== null && state.proximityPeerIds.length > 0
       return {
         localPlayer: {
           ...state.localPlayer,
           currentZoneId: zoneId,
+          lastUpdated: Date.now(),
+        },
+        ...(clearProximity ? { proximityPeerIds: [] } : {}),
+      }
+    }),
+
+  setCurrentHouseId: (houseId) =>
+    set((state) => {
+      if ((state.localPlayer.currentHouseId ?? null) === houseId) return state
+      return {
+        localPlayer: {
+          ...state.localPlayer,
+          currentHouseId: houseId,
           lastUpdated: Date.now(),
         },
       }
@@ -677,7 +696,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
           playerCount: Object.keys(next).length + 1,
         })
       }
-      return { remotePlayers: next }
+      const pruneProximity = state.proximityPeerIds.includes(id)
+      const proximityPatch = pruneProximity
+        ? { proximityPeerIds: state.proximityPeerIds.filter((pid) => pid !== id) }
+        : {}
+      return { remotePlayers: next, ...proximityPatch }
     }),
 
   clearRemotePlayers: () => {
@@ -687,7 +710,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         playerCount: 1,
       })
     }
-    set({ remotePlayers: {}, callStates: {} })
+    set({ remotePlayers: {}, callStates: {}, proximityPeerIds: [] })
   },
 
   callStates: {},
@@ -713,6 +736,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
       return { callStates: { ...store.callStates, [peerId]: state } }
     }),
   clearCallStates: () => set({ callStates: {} }),
+
+  proximityPeerIds: [],
+  setProximityState: (peerIds) =>
+    set((state) => {
+      const idsChanged =
+        peerIds.length !== state.proximityPeerIds.length ||
+        peerIds.some((id, idx) => state.proximityPeerIds[idx] !== id)
+      if (!idsChanged) return state
+      return { proximityPeerIds: peerIds }
+    }),
 
   roomId: null,
   isOwner: false,

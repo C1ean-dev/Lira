@@ -1,4 +1,4 @@
-import { MapData, StoredMapData, FloorType, WallType, FloorRectangle } from '../types/map'
+import { MapData, StoredMapData, FloorType, WallType, FloorRectangle, HouseInteriorSpace, StoredHouseInteriorSpace } from '../types/map'
 import { createEmptyWorkspace } from '../editor/templates'
 import { generateWallsAndDoorsForZones } from '../editor/zoneWallGenerator'
 
@@ -183,6 +183,25 @@ export function compressMapDataForStorage(mapData: MapData): StoredMapData {
     stored.wallOverrides = mapData.wallOverrides
   }
 
+  if (mapData.houseInteriors && Object.keys(mapData.houseInteriors).length > 0) {
+    const compressedInteriors: Record<string, StoredHouseInteriorSpace> = {}
+    for (const [houseId, interior] of Object.entries(mapData.houseInteriors)) {
+      const compressed = compressMapDataForStorage({
+        ...interior,
+        id: interior.houseId || houseId,
+      })
+      const { id: _ignoredId, houseInteriors: _ignoredNested, ...rest } = compressed
+      compressedInteriors[houseId] = {
+        ...rest,
+        houseId: interior.houseId || houseId,
+        defId: interior.defId,
+        exitDoor: interior.exitDoor,
+        ...(interior.accentColor ? { accentColor: interior.accentColor } : {}),
+      }
+    }
+    stored.houseInteriors = compressedInteriors
+  }
+
   return stored
 }
 
@@ -257,6 +276,53 @@ export function hydrateMapData(raw: any): MapData {
     }
   }
 
+  let houseInteriors: Record<string, HouseInteriorSpace> | undefined
+  if (raw.houseInteriors && typeof raw.houseInteriors === 'object') {
+    const hydrated: Record<string, HouseInteriorSpace> = {}
+    for (const [houseId, rawInterior] of Object.entries(raw.houseInteriors as Record<string, any>)) {
+      if (!rawInterior || typeof rawInterior !== 'object') continue
+      const base = hydrateMapData({
+        ...rawInterior,
+        id: rawInterior.houseId || houseId,
+        houseInteriors: undefined,
+      })
+      const fallbackExitX = Math.max(1, Math.min(base.width - 2, Math.floor(base.width / 2)))
+      const fallbackExitY = Math.max(1, base.height - 2)
+      hydrated[houseId] = {
+        houseId: typeof rawInterior.houseId === 'string' && rawInterior.houseId ? rawInterior.houseId : houseId,
+        defId: typeof rawInterior.defId === 'string' ? rawInterior.defId : '',
+        name: base.name || 'Casa',
+        width: base.width,
+        height: base.height,
+        tileSize: base.tileSize,
+        spawnPoint: base.spawnPoint,
+        exitDoor:
+          rawInterior.exitDoor && typeof rawInterior.exitDoor === 'object'
+            ? {
+                x: typeof rawInterior.exitDoor.x === 'number' ? rawInterior.exitDoor.x : fallbackExitX,
+                y: typeof rawInterior.exitDoor.y === 'number' ? rawInterior.exitDoor.y : fallbackExitY,
+                width:
+                  typeof rawInterior.exitDoor.width === 'number' && rawInterior.exitDoor.width > 0
+                    ? rawInterior.exitDoor.width
+                    : 2,
+              }
+            : { x: fallbackExitX, y: fallbackExitY, width: 2 },
+        floors: base.floors,
+        walls: base.walls,
+        furniture: base.furniture,
+        zones: base.zones,
+        defaultFloor: base.defaultFloor,
+        floorRectangles: base.floorRectangles,
+        floorOverrides: base.floorOverrides,
+        wallOverrides: base.wallOverrides,
+        ...(typeof rawInterior.accentColor === 'string' ? { accentColor: rawInterior.accentColor } : {}),
+      }
+    }
+    if (Object.keys(hydrated).length > 0) {
+      houseInteriors = hydrated
+    }
+  }
+
   return {
     id: raw.id || 'custom_map',
     name: raw.name || 'Espaço',
@@ -272,5 +338,6 @@ export function hydrateMapData(raw: any): MapData {
     floorRectangles: raw.floorRectangles,
     floorOverrides: raw.floorOverrides,
     wallOverrides: raw.wallOverrides,
+    ...(houseInteriors ? { houseInteriors } : {}),
   }
 }

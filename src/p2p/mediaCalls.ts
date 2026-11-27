@@ -15,6 +15,7 @@ import { opusVoiceSdp } from './opusVoiceSdp'
 import { buildIceServers } from './rtcIceServers'
 import { DynamicBufferManager } from '../services/DynamicBufferManager'
 import { SuperPeerVoiceRelay } from './SuperPeerVoiceRelay'
+import { arePlayersCallEligible } from '../engine/proximityCall'
 import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
 import { logVideoCodecsOnce, watchLiveQuality } from './liveQualityLog'
 import { DIRECT_ATTEMPT_MS, RELAY_ATTEMPT_MS, VOICE_QUALITY_SAMPLE_MS, observeVoiceRoute, type VoiceRouteSample } from './rtcTransportPriority'
@@ -757,10 +758,9 @@ export class MediaCallHandler {
 
       const localPlayer = useGameStore.getState().localPlayer
       const remotePlayer = useGameStore.getState().remotePlayers[peerId]
-      const stillInSameZone =
-        localPlayer.currentZoneId !== null &&
-        localPlayer.currentZoneId !== undefined &&
-        remotePlayer?.currentZoneId === localPlayer.currentZoneId
+      const stillInSameZone = Boolean(
+        remotePlayer && arePlayersCallEligible(localPlayer, remotePlayer, true).eligible
+      )
 
       if (stillInSameZone) {
         const retries = (MediaCallHandler.callRetryCounts.get(peerId) || 0) + 1
@@ -887,16 +887,22 @@ export class MediaCallHandler {
     }, 250)
   }
 
-  static isIncomingCallAuthorized(peerId: string, _mediaCalls?: Map<string, MediaConnection>): boolean {
+  static isIncomingCallAuthorized(peerId: string, mediaCalls?: Map<string, MediaConnection>): boolean {
     const state = useGameStore.getState()
     const local = state.localPlayer
     const remote = state.remotePlayers[peerId]
     if (!remote || remote.isOutdated) return false
-    return (
-      local.currentZoneId !== null &&
-      local.currentZoneId !== undefined &&
-      remote.currentZoneId === local.currentZoneId
-    )
+    const isDj = remote.isDjBot || peerId.startsWith('dj-')
+    if (isDj) {
+      return (
+        local.currentZoneId !== null &&
+        local.currentZoneId !== undefined &&
+        remote.currentZoneId === local.currentZoneId
+      )
+    }
+    const currentlyConnected =
+      Boolean(mediaCalls?.has(peerId)) || state.proximityPeerIds.includes(peerId)
+    return arePlayersCallEligible(local, remote, currentlyConnected).eligible
   }
 
   static handleIncomingCall({
@@ -1064,12 +1070,15 @@ export class MediaCallHandler {
     const localPlayer = useGameStore.getState().localPlayer
     const localStream = useMediaStore.getState().localStream
 
-    const inSameZone =
-      localPlayer.currentZoneId !== null &&
-      localPlayer.currentZoneId !== undefined &&
-      localPlayer.currentZoneId === remotePlayer.currentZoneId
-
     const existingCall = mediaCalls.get(remotePlayer.id)
+    const currentlyConnected =
+      Boolean(existingCall) || useGameStore.getState().proximityPeerIds.includes(remotePlayer.id)
+    const { eligible: shouldBeInCall, mode: callMode } = arePlayersCallEligible(
+      localPlayer,
+      remotePlayer,
+      currentlyConnected
+    )
+
     const isSharing = useMediaStore.getState().isScreenSharing
     const screenStream = useMediaStore.getState().localScreenStream
     const hasUsableAudio = (track: MediaStreamTrack | undefined) =>
@@ -1079,14 +1088,18 @@ export class MediaCallHandler {
     )
     const hasAudioTrack = Boolean(localStream?.getAudioTracks?.().some((track) => hasUsableAudio(track)) || hasScreenAudio)
 
-    if (inSameZone) {
+    if (shouldBeInCall) {
       if (remotePlayer.isOutdated) {
         // Do not auto-dial outdated peers that cannot negotiate modern voice features
         return
       }
       if (!existingCall && (MediaCallHandler.callRetryTimers.has(remotePlayer.id) || useGameStore.getState().callStates[remotePlayer.id] === 'failed')) return
       if (!existingCall && peer && localStream && hasAudioTrack) {
-        console.log(`[Zone Call] Dialing ${remotePlayer.name} in zone ${localPlayer.currentZoneId}`)
+        if (callMode === 'proximity') {
+          console.log(`[Proximity Call] Dialing ${remotePlayer.name} in Corredor Geral`)
+        } else {
+          console.log(`[Zone Call] Dialing ${remotePlayer.name} in zone ${localPlayer.currentZoneId}`)
+        }
 
         useGameStore.getState().setCallState(remotePlayer.id, 'connecting')
 
@@ -1094,7 +1107,7 @@ export class MediaCallHandler {
         diagLog('p2p', 'call.dial', {
           toPeer: remotePlayer.id,
           toName: remotePlayer.name,
-          zone: localPlayer.currentZoneId,
+          zone: localPlayer.currentZoneId ?? 'corridor-proximity',
           tracks: summarizeStream(streamToSend),
         })
 

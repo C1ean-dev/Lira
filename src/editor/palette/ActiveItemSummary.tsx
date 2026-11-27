@@ -111,10 +111,15 @@ export const ActiveItemSummary: React.FC<Props> = ({
       }
     }
     if (currentFurniture) {
+      const shell = currentFurniture.houseShell
+      const isHouse = Boolean(shell)
+      const subtitle = isHouse
+        ? `Base ${currentFurniture.width}×${currentFurniture.height} · Interior ${shell.defaultInteriorWidth ?? 14}×${shell.defaultInteriorHeight ?? 11}`
+        : `${currentFurniture.width}x${currentFurniture.height} tiles • Clique para posicionar`
       return {
         title: currentFurniture.name,
-        subtitle: `${currentFurniture.width}x${currentFurniture.height} tiles • Clique para posicionar`,
-        badge: 'Objeto Selecionado',
+        subtitle,
+        badge: isHouse ? 'Casa Selecionada' : 'Objeto Selecionado',
         thumbnail: (
           <div className="p-1 rounded-[8px] bg-lira-ground border border-lira-quiet flex items-center justify-center">
             <PixelArtThumbnail type="furniture" id={selectedFurnitureDefId} size={40} />

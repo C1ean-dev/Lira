@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url'
 import { DefaultReporter } from 'vitest/node'
 import QuietVitestReporter from '../../../scripts/quiet-vitest-reporter.mjs'
 import quietNodeReporter from '../../../scripts/quiet-node-reporter.mjs'
-import { runSuites, testSuites } from '../../../scripts/test-all.mjs'
+import { runSuites, testSuites, unitMaxWorkers } from '../../../scripts/test-all.mjs'
 
 const temporary: string[] = []
 afterEach(() => { vi.restoreAllMocks(); temporary.splice(0).forEach(dir => rmSync(dir, { recursive: true, force: true })) })
@@ -208,5 +208,23 @@ if __name__ == '__main__':
       expect(suite.env[flag]).toBe('1')
       expect(suite.args).toContain('--test-reporter')
     }
+  })
+
+  it('caps Vitest workers and browser test file concurrency in test:all and package scripts', () => {
+    expect(unitMaxWorkers(12)).toBe(4)
+    expect(unitMaxWorkers(8)).toBe(4)
+    expect(unitMaxWorkers(6)).toBe(3)
+    expect(unitMaxWorkers(4)).toBe(2)
+    expect(unitMaxWorkers(1)).toBe(1)
+
+    const suites = testSuites()
+    const unitSuite = suites.find(suite => suite.name === 'unit')!
+    const coreBrowserSuite = suites.find(suite => suite.name === 'core:browser')!
+    expect(unitSuite.args).toContain(`--maxWorkers=${unitMaxWorkers()}`)
+    expect(coreBrowserSuite.args).toContain('--test-concurrency=1')
+
+    const { scripts } = JSON.parse(readFileSync('package.json', 'utf8'))
+    expect(scripts.test).not.toContain('--maxWorkers=8')
+    expect(scripts['test:core:browser']).toContain('--test-concurrency=1')
   })
 })

@@ -30,6 +30,7 @@ import { DEFAULT_AVATAR } from '../engine/Constants'
 import { receiveBedInteraction } from '../services/bedInteraction'
 import { receivePetNetworkMessage } from '../services/petNetwork'
 import { receiveCallTts } from '../services/callTts'
+import { isPlayerInCorridor } from '../engine/proximityCall'
 
 const receivedAtlases = new Map<string, AtlasDocument>()
 const atlasChunks = new AtlasChunkReceiver()
@@ -372,6 +373,9 @@ export function processNetworkMessage(
         PublicRoomsService.getInstance().updateHosting({ playerCount: totalPlayers })
       }
       checkZoneCallEligibility(player)
+      if (isPlayerInCorridor(useGameStore.getState().localPlayer) || useGameStore.getState().proximityPeerIds.length > 0) {
+        PeerManager.getInstance().syncProximityCalls?.()
+      }
       break
     }
 
@@ -390,6 +394,9 @@ export function processNetworkMessage(
       }
       if (targetKey) {
         state.updateRemotePlayerPosition(targetKey, payload.x, payload.y, payload.direction, payload.isMoving)
+        if (isPlayerInCorridor(state.localPlayer)) {
+          PeerManager.getInstance().scheduleProximitySync?.()
+        }
       }
       break
     }
@@ -449,6 +456,9 @@ export function processNetworkMessage(
         if (!isHost) {
           PeerManager.getInstance().ensurePeerE2EESession(existingKey)
         }
+        if (isPlayerInCorridor(useGameStore.getState().localPlayer) || useGameStore.getState().proximityPeerIds.length > 0) {
+          PeerManager.getInstance().syncProximityCalls?.()
+        }
         if (updated?.currentZoneId !== undefined) {
           useMapStore.getState().checkAndUnlockEmptyZones()
         }
@@ -482,6 +492,9 @@ export function processNetworkMessage(
           if (!isHost) {
             PeerManager.getInstance().ensurePeerE2EESession(fallbackKey)
           }
+          if (isPlayerInCorridor(useGameStore.getState().localPlayer) || useGameStore.getState().proximityPeerIds.length > 0) {
+            PeerManager.getInstance().syncProximityCalls?.()
+          }
           if (updated.currentZoneId !== undefined) {
             useMapStore.getState().checkAndUnlockEmptyZones()
           }
@@ -501,7 +514,41 @@ export function processNetworkMessage(
         useMapStore.getState().setMapData(msg.payload.mapData)
 
         const local = useGameStore.getState().localPlayer
-        for (const zone of msg.payload.mapData.zones || []) {
+        if (
+          local.currentHouseId &&
+          !msg.payload.mapData.furniture.some((f) => f.id === local.currentHouseId)
+        ) {
+          const spawnX = msg.payload.mapData.spawnPoint?.x ?? Math.floor(msg.payload.mapData.width / 2)
+          const spawnY = msg.payload.mapData.spawnPoint?.y ?? Math.floor(msg.payload.mapData.height / 2)
+          useMediaStore.getState().setGridCallOpen(false)
+          useMapStore.getState().setActiveHouseId(null)
+          useGameStore.getState().setLocalPlayer({
+            x: spawnX,
+            y: spawnY,
+            currentHouseId: null,
+            currentZoneId: null,
+          })
+          broadcast({
+            type: 'PLAYER_UPDATE',
+            senderId: local.id,
+            payload: {
+              player: {
+                ...useGameStore.getState().localPlayer,
+                x: spawnX,
+                y: spawnY,
+                currentHouseId: null,
+                currentZoneId: null,
+              },
+            },
+            timestamp: Date.now(),
+          })
+        }
+
+        const activeHouseId = useMapStore.getState().activeHouseId
+        const activeZones = activeHouseId
+          ? (msg.payload.mapData.houseInteriors?.[activeHouseId]?.zones || [])
+          : (msg.payload.mapData.zones || [])
+        for (const zone of activeZones) {
           if (zone.isLocked) {
             const isAuth = useMapStore.getState().isPeerAuthorizedForZone(zone.id, local.id, local.name)
             if (!isAuth) {
@@ -586,27 +633,28 @@ export function processNetworkMessage(
 
     case 'MAP_EDIT': {
       const { action, data } = msg.payload
+      const targetHouseId = data && typeof data === 'object' && 'houseId' in data ? (data.houseId ?? null) : null
       if (action === 'consume_furniture') {
-        if (!data || !applyConsumptionChange(data.mapId, data.id, data.expected)) return
+        if (!data || !applyConsumptionChange(data.mapId, data.id, data.expected, targetHouseId)) return
       } else {
         useMapStore.getState().applyRemoteChange(() => {
           if (action === 'set_floor') {
-            useMapStore.getState().setFloorTile(data.x, data.y, data.floor)
+            useMapStore.getState().setFloorTile(data.x, data.y, data.floor, targetHouseId)
           } else if (action === 'paint_floor_in_zone') {
-            useMapStore.getState().paintFloorInZone(data.zoneId, data.floor)
+            useMapStore.getState().paintFloorInZone(data.zoneId, data.floor, targetHouseId)
           } else if (action === 'set_wall') {
-            useMapStore.getState().setWallTile(data.x, data.y, data.wall)
+            useMapStore.getState().setWallTile(data.x, data.y, data.wall, targetHouseId)
           } else if (action === 'add_furniture') {
-            useMapStore.getState().addFurniture(data.furniture)
+            useMapStore.getState().addFurniture(data.furniture, targetHouseId)
           } else if (action === 'remove_furniture') {
-            if (typeof data.id === 'string') useMapStore.getState().removeFurnitureById(data.id)
-            else if (data.x !== undefined && data.y !== undefined) useMapStore.getState().removeFurnitureAt(data.x, data.y)
+            if (typeof data.id === 'string') useMapStore.getState().removeFurnitureById(data.id, targetHouseId)
+            else if (data.x !== undefined && data.y !== undefined) useMapStore.getState().removeFurnitureAt(data.x, data.y, targetHouseId)
           } else if (action === 'add_zone') {
-            useMapStore.getState().addOrUpdateZone(data.zone)
+            useMapStore.getState().addOrUpdateZone(data.zone, targetHouseId)
           } else if (action === 'remove_zone') {
-            useMapStore.getState().removeZone(data.id)
+            useMapStore.getState().removeZone(data.id, targetHouseId)
           } else if (action === 'update_zone') {
-            useMapStore.getState().updateZone(data.id, data.partial || data.zone || {})
+            useMapStore.getState().updateZone(data.id, data.partial || data.zone || {}, targetHouseId)
           }
         })
       }
