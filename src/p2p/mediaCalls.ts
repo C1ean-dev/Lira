@@ -531,11 +531,18 @@ export class MediaCallHandler {
     endMediaCallWithPeer: (peerId: string) => void
     onCallConnected?: (peerId: string) => void
     attemptRedialIfEligible?: () => void
-    onPeerConnectionReady?: (peerId: string, pc: RTCPeerConnection, call: MediaConnection) => void
+    onPeerConnectionReady?: (peerId: string, pc: RTCPeerConnection, call: MediaConnection) => boolean | void
   }) {
     const pc = (call as any).peerConnection as RTCPeerConnection | undefined
+    // PeerJS installs tracks synchronously and negotiates asynchronously.
+    // Attach the transforms in this task before the first SDP is sent.
+    if (onPeerConnectionReady && (!pc || onPeerConnectionReady(peerId, pc, call) === false)) {
+      if (mediaCalls.get(peerId) === call) mediaCalls.delete(peerId)
+      try { call.close() } catch {}
+      useGameStore.getState().setCallState(peerId, 'failed')
+      return
+    }
     if (pc) {
-      onPeerConnectionReady?.(peerId, pc, call)
       try {
         prioritizeH264HardwareCodec(pc)
         if (pc.addEventListener) {
@@ -922,7 +929,7 @@ export class MediaCallHandler {
     onCallConnected?: (peerId: string) => void
     attemptRedialIfEligible?: () => void
     enforceAuthorization?: boolean
-    onPeerConnectionReady?: (peerId: string, pc: RTCPeerConnection, call: MediaConnection) => void
+    onPeerConnectionReady?: (peerId: string, pc: RTCPeerConnection, call: MediaConnection) => boolean | void
   }) {
     console.log('[P2P Media] Incoming call from:', call.peer)
     const remotePlayer = useGameStore.getState().remotePlayers[call.peer]
@@ -1061,7 +1068,7 @@ export class MediaCallHandler {
     mediaCalls: Map<string, MediaConnection>,
     endMediaCallWithPeer: (peerId: string) => void,
     onCallConnected?: (peerId: string) => void,
-    onPeerConnectionReady?: (peerId: string, pc: RTCPeerConnection, call: MediaConnection) => void
+    onPeerConnectionReady?: (peerId: string, pc: RTCPeerConnection, call: MediaConnection) => boolean | void
   ) {
     if (remotePlayer.isDjBot || remotePlayer.id.startsWith('dj-')) {
       return
@@ -1208,7 +1215,7 @@ export class MediaCallHandler {
     mediaCalls: Map<string, MediaConnection>,
     endMediaCallWithPeer: (peerId: string) => void,
     onCallConnected?: (peerId: string) => void,
-    onPeerConnectionReady?: (peerId: string, pc: RTCPeerConnection, call: MediaConnection) => void
+    onPeerConnectionReady?: (peerId: string, pc: RTCPeerConnection, call: MediaConnection) => boolean | void
   ) {
     MediaCallHandler.callRetryCounts.delete(remotePlayer.id)
     MediaCallHandler.clearCallRetryTimer(remotePlayer.id)

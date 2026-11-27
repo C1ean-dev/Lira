@@ -123,6 +123,7 @@ beforeEach(() => {
   pm().connections.clear()
   pm().mediaCalls.clear()
   vi.spyOn(pm(), 'startHeartbeat').mockImplementation(() => {})
+  vi.spyOn(pm(), 'canStartProtectedCall').mockReturnValue(true)
   vi.spyOn(pm(), 'setupPeerListeners').mockImplementation(() => {})
   useLiveWatchStore.setState({ watching: {} })
   useGameStore.setState({

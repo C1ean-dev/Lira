@@ -103,6 +103,8 @@ describe('live audio and participant voice in the mini call', () => {
     const mic = track('mic', 'audio')
     const peer = { call: vi.fn(() => ({ on: vi.fn(), close: vi.fn() })) }
     const manager = PeerManager.getInstance() as any
+    vi.spyOn(manager, 'canStartProtectedCall').mockReturnValue(true)
+    vi.spyOn(manager, 'attachCallSecurity').mockReturnValue(true)
     manager.peer = peer
     manager.mediaCalls = new Map([['viewer', {}]])
     useMediaStore.setState({ localStream: stream(mic), isScreenSharing: true })
@@ -121,6 +123,8 @@ describe('live audio and participant voice in the mini call', () => {
     const sender = { track: mic, replaceTrack: vi.fn(async () => {}) }
     const mainCall = { peerConnection: { getSenders: () => [sender] } }
     const manager = PeerManager.getInstance() as any
+    vi.spyOn(manager, 'canStartProtectedCall').mockReturnValue(true)
+    vi.spyOn(manager, 'attachCallSecurity').mockReturnValue(true)
     manager.peer = { call: vi.fn(() => ({ on: vi.fn(), close: vi.fn() })) }
     manager.mediaCalls = new Map([['viewer', mainCall]])
     useMediaStore.setState({ localStream: stream(mic), localScreenStream: stream(track('screen', 'video')), isScreenSharing: true })
@@ -164,6 +168,8 @@ describe('live audio and participant voice in the mini call', () => {
     const callbacks: Record<string, (value?: any) => void> = {}
     const call = { peer: 'presenter', metadata: { kind: 'live-voice' }, answer: vi.fn(), on: vi.fn((event: string, callback: (value?: any) => void) => { callbacks[event] = callback }), close: vi.fn() }
     const manager = PeerManager.getInstance() as any
+    vi.spyOn(manager, 'canStartProtectedCall').mockReturnValue(true)
+    vi.spyOn(manager, 'attachCallSecurity').mockReturnValue(true)
     manager.handleIncomingLiveVoiceCall(call)
     const voice = stream(track('remote-mic', 'audio'))
     callbacks.stream(voice)

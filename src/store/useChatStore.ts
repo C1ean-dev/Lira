@@ -56,6 +56,9 @@ interface ChatStore {
   messages: ChatMessage[]
   isChatOpen: boolean
   lastReadByPeer: Record<string, number>
+  roomSendNotices: Record<string, { text: string; retry: boolean }>
+  dmHistoryNotice: string | null
+  setRoomSendNotice: (id: string, notice?: { text: string; retry: boolean }) => void
 
   setActiveChannel: (channelId: string) => void
   toggleChat: () => void
@@ -138,9 +141,14 @@ function readInitialSavedDmState(): {
   messages: ChatMessage[]
   pendingEnvelope: EncryptedDmStorageEnvelope | null
   needsMigration: boolean
+  readFailed?: boolean
+  raw?: string | null
 } {
+  let raw: string | null | undefined
   try {
-    const raw = getLocalStorage()?.getItem(SAVED_DMS_STORAGE_KEY)
+    const storage = getLocalStorage()
+    if (!storage) return { messages: [], pendingEnvelope: null, needsMigration: false }
+    raw = storage.getItem(SAVED_DMS_STORAGE_KEY)
     if (!raw) return { messages: [], pendingEnvelope: null, needsMigration: false }
     const data: unknown = JSON.parse(raw)
     const value =
@@ -148,7 +156,7 @@ function readInitialSavedDmState(): {
         ? (data as { state: unknown }).state
         : data
     if (isEncryptedDmEnvelope(value)) {
-      return { messages: [], pendingEnvelope: value, needsMigration: false }
+      return { messages: [], pendingEnvelope: value, needsMigration: false, raw }
     }
     const result = z.array(chatMessageSchema).safeParse(value)
     if (!result.success) throw result.error
@@ -156,26 +164,44 @@ function readInitialSavedDmState(): {
     return { messages: normalized, pendingEnvelope: null, needsMigration: normalized.length > 0 }
   } catch (error) {
     reportStorageFailure('read', SAVED_DMS_STORAGE_KEY, error)
-    return { messages: [], pendingEnvelope: null, needsMigration: false }
+    return { messages: [], pendingEnvelope: null, needsMigration: false, readFailed: true, raw }
   }
 }
 
 let dmPersistSeq = 0
 let dmPersistQueue: Promise<void> = Promise.resolve()
+let dmStartupReady: Promise<boolean>
+let dmHistoryRecovered = false
+let dmRecoveryKey: string | undefined
 
-async function persistEncryptedDmMessages(dms: ChatMessage[]): Promise<void> {
-  const snapshot = dms.slice(-300)
+async function persistEncryptedDmMessages(): Promise<void> {
   const seq = ++dmPersistSeq
   const task = dmPersistQueue.then(async () => {
+    const needsRecovery = !(await dmStartupReady) && !dmHistoryRecovered
     if (seq !== dmPersistSeq) return
     try {
+      const snapshot = useChatStore.getState().messages
+        .filter(m => m.channelId?.startsWith('dm-') || !!m.recipientId)
+        .slice(-300)
       const envelope = await encryptDmPayload(JSON.stringify(snapshot))
       if (seq !== dmPersistSeq) return
       const target = getLocalStorage()
       if (!target) throw new Error('Armazenamento local indisponível')
+      if (needsRecovery) {
+        const latest = target.getItem(SAVED_DMS_STORAGE_KEY)
+        if (latest !== null) {
+          if (initialDmState.raw !== latest) throw new Error('O histórico foi alterado em outra instância')
+          dmRecoveryKey ??= `${SAVED_DMS_STORAGE_KEY}_recovery_${crypto.randomUUID()}`
+          target.setItem(dmRecoveryKey, latest)
+        }
+      }
       target.setItem(SAVED_DMS_STORAGE_KEY, JSON.stringify(envelope))
+      if (needsRecovery) dmHistoryRecovered = true
+      useChatStore.setState({ dmHistoryNotice: dmRecoveryKey
+        ? 'O histórico anterior ficou guardado para recuperação. As novas DMs estão sendo salvas.' : null })
     } catch (error) {
       reportStorageFailure('write', SAVED_DMS_STORAGE_KEY, error)
+      useChatStore.setState({ dmHistoryNotice: 'Não foi possível salvar as DMs neste dispositivo.' })
     }
   })
   dmPersistQueue = task.catch(() => {})
@@ -188,9 +214,8 @@ export async function flushDmPersistence(): Promise<void> {
 
 const loadSavedLastRead = () => lastReadPreferences.getState()
 const saveLastRead = (data: Record<string, number>) => lastReadPreferences.setState(data, true)
-const persistDmsAndChannels = (messages: ChatMessage[], channels: Channel[]) => {
-  const dmSlice = messages.filter(m => m.channelId?.startsWith('dm-') || !!m.recipientId).slice(-300)
-  void persistEncryptedDmMessages(dmSlice)
+const persistDmsAndChannels = (channels: Channel[]) => {
+  void persistEncryptedDmMessages()
   savedDmChannels.setState(channels.filter(c => c.type === 'dm'), true)
 }
 
@@ -200,6 +225,15 @@ const savedMessages = initialDmState.messages
 const savedLastRead = loadSavedLastRead()
 
 export const useChatStore = create<ChatStore>((set, get) => ({
+  roomSendNotices: {},
+  dmHistoryNotice: initialDmState.readFailed ? 'Não foi possível abrir o histórico de DMs.' : null,
+  setRoomSendNotice: (id, notice) => set(state => {
+    const { [id]: previous, ...remaining } = state.roomSendNotices
+    if (!notice && !previous) return state
+    return { roomSendNotices: notice
+      ? Object.fromEntries([...Object.entries(remaining), [id, notice]].slice(-300))
+      : remaining }
+  }),
   channels: [...DEFAULT_CHANNELS, ...savedChannels],
   activeChannelId: 'general',
   messages: [
@@ -259,7 +293,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         )
       }
 
-      persistDmsAndChannels(state.messages, channels)
+      persistDmsAndChannels(channels)
 
       return {
         channels,
@@ -412,7 +446,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
 
       if (isDm) {
-        persistDmsAndChannels(nextMessages, updatedChannels)
+        persistDmsAndChannels(updatedChannels)
         if (!isFromMe && !alreadyHasMessage) {
           playMessageNotificationChime()
         }
@@ -486,7 +520,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       if (!changed) return state
 
-      persistDmsAndChannels(updatedMessages, state.channels)
+      persistDmsAndChannels(state.channels)
       return { messages: updatedMessages }
     })
   },
@@ -529,7 +563,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
       if (!changed) return state
 
-      persistDmsAndChannels(updatedMessages, state.channels)
+      persistDmsAndChannels(state.channels)
       return { messages: updatedMessages }
     })
   },
@@ -596,7 +630,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         return c
       })
 
-      persistDmsAndChannels(state.messages, updatedChannels)
+      persistDmsAndChannels(updatedChannels)
       return {
         lastReadByPeer: nextLastRead,
         channels: updatedChannels,
@@ -839,7 +873,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         : m
     )
 
-    persistDmsAndChannels(updatedMessages, state.channels)
+    persistDmsAndChannels(state.channels)
     set({ messages: updatedMessages })
 
     FriendsPresenceService.getInstance().sendDirectMessage(updatedOriginalMsg)
@@ -928,7 +962,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const target = state.channels.find((c) => c.id === channelId)
       if (!target || target.type !== 'dm') return state
       const channels = state.channels.filter((c) => c.id !== channelId)
-      persistDmsAndChannels(state.messages, channels)
+      persistDmsAndChannels(channels)
       return {
         channels,
         activeChannelId: state.activeChannelId === channelId ? GENERAL_CHANNEL_ID : state.activeChannelId,
@@ -959,47 +993,52 @@ export async function hydrateEncryptedDmsFromStorage(
   envelopeOverride?: EncryptedDmStorageEnvelope
 ): Promise<ChatMessage[]> {
   try {
-    let envelope = envelopeOverride
-    if (!envelope) {
-      const raw = getLocalStorage()?.getItem(SAVED_DMS_STORAGE_KEY)
-      if (!raw) return []
-      const parsed: unknown = JSON.parse(raw)
-      const value =
-        parsed && typeof parsed === 'object' && 'state' in parsed && 'version' in parsed
-          ? (parsed as { state: unknown }).state
-          : parsed
-      if (!isEncryptedDmEnvelope(value)) return []
-      envelope = value
-    }
-
-    const decryptedJson = await decryptDmPayload(envelope)
-    const decoded: unknown = JSON.parse(decryptedJson)
-    const validated = z.array(chatMessageSchema).safeParse(decoded)
-    if (!validated.success) throw validated.error
-    const hydrated = dedupeFriendRequestMessages(validated.data)
-    if (hydrated.length > 0) {
-      useChatStore.setState((state) => {
-        const existingIds = new Set(state.messages.map((m) => m.id))
-        const toInsert = hydrated.filter((m) => !existingIds.has(m.id))
-        if (toInsert.length === 0) return state
-        const welcome = state.messages.filter((m) => m.id === 'welcome-msg')
-        const rest = state.messages.filter((m) => m.id !== 'welcome-msg')
-        return {
-          messages: [...welcome, ...toInsert, ...rest],
-        }
-      })
-    }
-    return hydrated
+    return await readAndHydrateDms(envelopeOverride)
   } catch (error) {
     reportStorageFailure('read', SAVED_DMS_STORAGE_KEY, error)
     return []
   }
 }
 
-if (initialDmState.pendingEnvelope) {
-  void hydrateEncryptedDmsFromStorage(initialDmState.pendingEnvelope)
-} else if (initialDmState.needsMigration) {
-  void persistEncryptedDmMessages(initialDmState.messages)
+async function readAndHydrateDms(envelope?: EncryptedDmStorageEnvelope): Promise<ChatMessage[]> {
+  if (!envelope) {
+    const raw = getLocalStorage()?.getItem(SAVED_DMS_STORAGE_KEY)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    const value =
+      parsed && typeof parsed === 'object' && 'state' in parsed && 'version' in parsed
+        ? parsed.state
+        : parsed
+    if (!isEncryptedDmEnvelope(value)) return []
+    envelope = value
+  }
+
+  const decryptedJson = await decryptDmPayload(envelope)
+  const validated = z.array(chatMessageSchema).safeParse(JSON.parse(decryptedJson))
+  if (!validated.success) throw validated.error
+  const hydrated = dedupeFriendRequestMessages(validated.data)
+  if (hydrated.length > 0) {
+    useChatStore.setState((state) => {
+      const existingIds = new Set(state.messages.map((m) => m.id))
+      const toInsert = hydrated.filter((m) => !existingIds.has(m.id))
+      if (toInsert.length === 0) return state
+      const welcome = state.messages.filter((m) => m.id === 'welcome-msg')
+      const rest = state.messages.filter((m) => m.id !== 'welcome-msg')
+      return { messages: [...welcome, ...toInsert, ...rest] }
+    })
+  }
+  return hydrated
+}
+
+dmStartupReady = initialDmState.pendingEnvelope
+  ? readAndHydrateDms(initialDmState.pendingEnvelope).then(() => true, error => {
+      reportStorageFailure('read', SAVED_DMS_STORAGE_KEY, error)
+      useChatStore.setState({ dmHistoryNotice: 'Não foi possível abrir o histórico de DMs.' })
+      return false
+    })
+  : Promise.resolve(!initialDmState.readFailed)
+if (initialDmState.needsMigration) {
+  void persistEncryptedDmMessages()
 }
 
 registerReportContext('chat', () => {

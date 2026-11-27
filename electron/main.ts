@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, desktopCapturer, session, shell, screen, Notification, powerMonitor, Tray, Menu, nativeImage, clipboard, protocol, safeStorage } from 'electron'
 import { createBoardFontHandler } from './boardFontProtocol'
 import path from 'path'
+import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
 import dgram from 'dgram'
@@ -8,7 +9,7 @@ import { spawn, exec, execSync, execFile } from 'child_process'
 import { release as getOsRelease } from 'os'
 import { guardIpcMain } from './ipcGuard'
 import { findCaptureDisplay, getCaptureDisplayPoint } from './captureDisplay'
-import { findGStreamerRuntime, getGStreamerMonitorHandle, launchGStreamer, resolveGStreamerSource } from './gstreamerLive'
+import { findGStreamerRuntime, getGStreamerMonitorHandle, launchGStreamer, resolveGStreamerSource, warmupGStreamerRegistry } from './gstreamerLive'
 import { gstreamerSignalSchema } from '../src/media/gstreamerProtocol'
 import { createLogBundle } from './logBundle'
 import { createGithubIssue } from './githubIssue'
@@ -132,6 +133,35 @@ function stopNativeLive(id: string) {
 
 function stopAllNativeLives() {
   for (const id of nativeLives.keys()) stopNativeLive(id)
+}
+
+let gstreamerWarmupTimer: ReturnType<typeof setTimeout> | null = null
+let gstreamerWarmup: ReturnType<typeof warmupGStreamerRegistry> | null = null
+
+function scheduleGStreamerWarmup() {
+  if (process.platform !== 'win32' || process.env.LIRA_DISABLE_GSTREAMER_WARMUP === '1') return
+  const root = findGStreamerRuntime(app.isPackaged, process.resourcesPath, app.getAppPath?.())
+  if (!root) return
+  if (gstreamerWarmupTimer) clearTimeout(gstreamerWarmupTimer)
+  gstreamerWarmupTimer = setTimeout(() => {
+    gstreamerWarmupTimer = null
+    const registry = path.join(app.getPath('userData'), 'gstreamer-registry.bin')
+    const handle = warmupGStreamerRegistry(root, registry)
+    gstreamerWarmup = handle
+    void handle.promise.finally(() => {
+      if (gstreamerWarmup === handle) gstreamerWarmup = null
+    })
+  }, 2_500)
+  gstreamerWarmupTimer.unref?.()
+}
+
+function stopGStreamerWarmup() {
+  if (gstreamerWarmupTimer) {
+    clearTimeout(gstreamerWarmupTimer)
+    gstreamerWarmupTimer = null
+  }
+  gstreamerWarmup?.stop()
+  gstreamerWarmup = null
 }
 const isStartupUpdateMode = isStartupUpdateArgv(process.argv) && !isMultiInstance && !isPostUpdateArgv(process.argv)
 let startupUpdateActive = isStartupUpdateMode
@@ -601,7 +631,7 @@ function isNativeLiveOwner(event: Electron.IpcMainInvokeEvent) {
 
 ipcMain.handle('gstreamer-start', async (event, id: unknown, request: unknown) => {
   if (!isNativeLiveOwner(event) || typeof id !== 'string' || !/^[\da-f-]{36}$/i.test(id)) return false
-  const root = findGStreamerRuntime(app.isPackaged, process.resourcesPath)
+  const root = findGStreamerRuntime(app.isPackaged, process.resourcesPath, app.getAppPath?.())
   const capture = request as Partial<import('../src/media/gstreamerProtocol').GStreamerCapture> | null
   if (!root || typeof capture?.sourceId !== 'string' || !/^(screen|window):[\d-]{1,20}:\d+$/.test(capture.sourceId) ||
       (capture.fps !== 30 && capture.fps !== 60)) return false
@@ -1879,6 +1909,41 @@ function getMessagesDirectory(): string {
   return dir
 }
 
+function canEncryptCrossMessages(): boolean {
+  return safeStorage.isEncryptionAvailable() &&
+    (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text')
+}
+
+const CROSS_MESSAGE_TTL_MS = 10 * 60 * 1000
+
+ipcMain.handle('cross-message-storage:available', () => canEncryptCrossMessages())
+
+function writeCrossMessage(file: string, message: Record<string, unknown>): void {
+  const ciphertext = safeStorage.encryptString(JSON.stringify(message)).toString('base64')
+  const temporary = `${file}.${randomUUID()}.tmp`
+  try {
+    fs.writeFileSync(temporary, JSON.stringify({ version: 1, ciphertext }), 'utf-8')
+    fs.renameSync(temporary, file)
+  } finally {
+    fs.rmSync(temporary, { force: true })
+  }
+}
+
+function readCrossMessage(file: string, migrateLegacy = false) {
+  const stored = JSON.parse(fs.readFileSync(file, 'utf-8'))
+  if (stored.version === 1 && typeof stored.ciphertext === 'string') {
+    return JSON.parse(safeStorage.decryptString(Buffer.from(stored.ciphertext, 'base64')))
+  }
+  if (migrateLegacy && Number.isFinite(stored.savedAt) && Date.now() - stored.savedAt <= CROSS_MESSAGE_TTL_MS) {
+    writeCrossMessage(file, stored)
+  }
+  return stored
+}
+
+function isCrossMessageId(id: unknown): id is string {
+  return typeof id === 'string' && /^[a-z0-9_-]{1,200}$/i.test(id)
+}
+
 ipcMain.handle('broadcast-presence', async (_event, presence: any) => {
   try {
     if (!presence || !presence.userId) return []
@@ -1922,10 +1987,10 @@ ipcMain.handle('remove-presence', async (_event, userId: string) => {
 
 ipcMain.handle('send-cross-message', async (_event, message: any) => {
   try {
-    if (!message || !message.id) return false
+    if (!isCrossMessageId(message?.id) || !canEncryptCrossMessages()) return false
     const dir = getMessagesDirectory()
     const file = path.join(dir, `msg_${message.id}.json`)
-    fs.writeFileSync(file, JSON.stringify({ ...message, savedAt: Date.now() }), 'utf-8')
+    writeCrossMessage(file, { ...message, savedAt: Date.now() })
 
     if (message.friendRequest?.requestId) {
       try {
@@ -1934,25 +1999,23 @@ ipcMain.handle('send-cross-message', async (_event, message: any) => {
           if (!f.startsWith('msg_') || !f.endsWith('.json') || f === `msg_${message.id}.json`) continue
           const otherPath = path.join(dir, f)
           try {
-            const raw = fs.readFileSync(otherPath, 'utf-8')
-            const data = JSON.parse(raw)
+            const data = readCrossMessage(otherPath)
             if (data.friendRequest?.requestId === message.friendRequest.requestId) {
               data.friendRequest.status = message.friendRequest.status
-              fs.writeFileSync(otherPath, JSON.stringify(data), 'utf-8')
+              writeCrossMessage(otherPath, data)
             }
           } catch (e) {}
         }
       } catch (e) {}
     }
 
-    if (message.targetMessageId && message.status) {
+    if (isCrossMessageId(message.targetMessageId) && message.status) {
       try {
         const targetPath = path.join(dir, `msg_${message.targetMessageId}.json`)
         if (fs.existsSync(targetPath)) {
-          const raw = fs.readFileSync(targetPath, 'utf-8')
-          const data = JSON.parse(raw)
+          const data = readCrossMessage(targetPath)
           data.status = message.status
-          fs.writeFileSync(targetPath, JSON.stringify(data), 'utf-8')
+          writeCrossMessage(targetPath, data)
         }
       } catch (e) {}
     }
@@ -1967,7 +2030,7 @@ ipcMain.handle('send-cross-message', async (_event, message: any) => {
 ipcMain.handle('fetch-cross-messages', async (_event, payload: { forUserId: string; forUserName?: string }) => {
   try {
     const { forUserId, forUserName } = payload || {}
-    if (!forUserId && !forUserName) return []
+    if ((!forUserId && !forUserName) || !canEncryptCrossMessages()) return []
     const dir = getMessagesDirectory()
     const files = fs.readdirSync(dir)
     const now = Date.now()
@@ -1976,9 +2039,8 @@ ipcMain.handle('fetch-cross-messages', async (_event, payload: { forUserId: stri
       if (!f.startsWith('msg_') || !f.endsWith('.json')) continue
       const filePath = path.join(dir, f)
       try {
-        const raw = fs.readFileSync(filePath, 'utf-8')
-        const data = JSON.parse(raw)
-        if (now - data.savedAt > 600000) {
+        const data = readCrossMessage(filePath, true)
+        if (now - data.savedAt > CROSS_MESSAGE_TTL_MS) {
           try { fs.unlinkSync(filePath) } catch (e) {}
           continue
         }
@@ -2285,6 +2347,7 @@ ipcMain.handle('get-system-idle-time', () => {
 let spotifyQuitCleanup: Promise<void> | null = null
 let spotifyQuitReady = false
 app.on('before-quit', event => {
+  stopGStreamerWarmup()
   stopAllNativeLives()
   spotifyLogin.cancel()
   if (!spotifyQuitReady && (spotifyWindowHost.browser || spotifyPlayer.isOpen || spotifyPlayer.isOpening)) {
@@ -2406,6 +2469,7 @@ app.whenReady().then(async () => {
   initNetworkTriggerAndLanDiscovery()
   initLocalPeerServer()
   startSpotifyPoll()
+  scheduleGStreamerWarmup()
   if (process.platform === 'win32' && app.isPackaged) {
     void parsecEchoHandler.run().catch((err) => {
       console.warn('[ParsecEcho] Falha ao configurar proteção automática do Parsec:', err)

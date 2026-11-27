@@ -97,6 +97,7 @@ export function canonicalHandshakeString(p: Omit<E2EEHandshakePayload, 'signatur
 
 export class E2EESessionManager {
   private pending = new Map<string, PendingHandshake>()
+  private creating = new Map<string, Promise<PendingHandshake>>()
   private sessions = new Map<string, EstablishedE2EESession>()
 
   constructor(private readonly identityProvider: () => Promise<LocalIdentity> = getLocalIdentity) {}
@@ -104,15 +105,21 @@ export class E2EESessionManager {
   private async ensurePending(remotePeerId: string): Promise<PendingHandshake> {
     const existing = this.pending.get(remotePeerId)
     if (existing) return existing
-    const localEphKeyPair = await generateEphemeralKeyPair()
-    const localEphPubB64 = await exportPublicKeyB64(localEphKeyPair.publicKey)
-    const entry: PendingHandshake = {
-      localNonce: toBase64Url(randomBytes(16)),
-      localEphKeyPair,
-      localEphPubB64,
+    const creating = this.creating.get(remotePeerId)
+    if (creating) return creating
+    const creation = (async () => {
+      const localEphKeyPair = await generateEphemeralKeyPair()
+      const localEphPubB64 = await exportPublicKeyB64(localEphKeyPair.publicKey)
+      return { localNonce: toBase64Url(randomBytes(16)), localEphKeyPair, localEphPubB64 }
+    })()
+    this.creating.set(remotePeerId, creation)
+    try {
+      const entry = await creation
+      if (this.creating.get(remotePeerId) === creation) this.pending.set(remotePeerId, entry)
+      return entry
+    } finally {
+      if (this.creating.get(remotePeerId) === creation) this.creating.delete(remotePeerId)
     }
-    this.pending.set(remotePeerId, entry)
-    return entry
   }
 
   private async buildSignedPayload(
@@ -265,14 +272,15 @@ export class E2EESessionManager {
           remoteIdentityPub: payload.identityPub,
         }
       }
-      const existing = this.sessions.get(ctx.remotePeerId)
-      if (
-        existing &&
-        pending.establishedRemoteNonce === payload.sessionNonce &&
-        pending.establishedRemoteEphPub === payload.ephemeralPub
-      ) {
-        return { ok: true, session: existing }
-      }
+    }
+
+    const existing = this.sessions.get(ctx.remotePeerId)
+    if (
+      existing && existing.remoteIdentityPub === payload.identityPub &&
+      pending.establishedRemoteNonce === payload.sessionNonce &&
+      pending.establishedRemoteEphPub === payload.ephemeralPub
+    ) {
+      return this.confirmHandshake(existing, payload, ctx, identity, pending)
     }
 
     let remoteEphKey: CryptoKey
@@ -353,6 +361,16 @@ export class E2EESessionManager {
     pending.establishedRemoteNonce = payload.sessionNonce
     pending.establishedRemoteEphPub = payload.ephemeralPub
 
+    return this.confirmHandshake(session, payload, ctx, identity, pending)
+  }
+
+  private async confirmHandshake(
+    session: EstablishedE2EESession,
+    payload: E2EEHandshakePayload,
+    ctx: Parameters<E2EESessionManager['handleHandshake']>[1],
+    identity: LocalIdentity,
+    pending: PendingHandshake,
+  ): Promise<E2EEHandshakeResult> {
     if (payload.phase === 'init') {
       const reply = await this.buildSignedPayload(identity, {
         v: 1,
@@ -379,11 +397,13 @@ export class E2EESessionManager {
 
   public removePeer(peerId: string): void {
     this.pending.delete(peerId)
+    this.creating.delete(peerId)
     this.sessions.delete(peerId)
   }
 
   public clear(): void {
     this.pending.clear()
+    this.creating.clear()
     this.sessions.clear()
   }
 }

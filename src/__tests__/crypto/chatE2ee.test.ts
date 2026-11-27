@@ -232,6 +232,39 @@ describe('Phase 2: Chat E2EE (Ratchet, Attachments, SenderKeys, PeerManager, Fri
       useChatStore.setState({ messages: [] })
     })
 
+    it('queues a DM until its recipient negotiates E2EE and reports partial group delivery', async () => {
+      const pm = new (PeerManager as any)()
+      pm.peer = { id: 'lira-ROOM1-host', destroyed: false }
+      pm.isHost = true
+      const sendBob = vi.fn()
+      const sendCarol = vi.fn()
+      pm.connections.set('peer-bob', { open: true, peer: 'peer-bob', send: sendBob })
+      pm.connections.set('peer-carol', { open: true, peer: 'peer-carol', send: sendCarol })
+      const bob = useGameStore.getState().remotePlayers['peer-bob']
+      useGameStore.getState().setRemotePlayer({ ...bob, e2eeVersion: 1 })
+      pm.pairwiseRatchets.initSession('peer-carol', randomBytes(32), randomBytes(32))
+      vi.spyOn(pm, 'initiateE2EEHandshake').mockResolvedValue(undefined)
+
+      const dm = { id: 'queued-dm', senderId: pm.peer.id, senderName: 'Host', recipientId: bob.id,
+        channelId: 'dm-peer-bob', content: 'Mensagem privada', timestamp: Date.now() }
+      try {
+        await pm.sendChatMessageEncrypted(dm)
+        expect(sendBob).not.toHaveBeenCalled()
+        expect(useChatStore.getState().roomSendNotices[dm.id]?.text).toContain('Aguardando')
+
+        await pm.sendChatMessageEncrypted({ ...dm, id: 'partial-room', recipientId: undefined, channelId: 'general' })
+        expect(sendCarol).toHaveBeenCalledWith(expect.objectContaining({ type: 'E2EE_GROUP_ENVELOPE' }))
+        expect(useChatStore.getState().roomSendNotices['partial-room']?.text).toContain('1 de 2')
+
+        pm.pairwiseRatchets.initSession('peer-bob', randomBytes(32), randomBytes(32))
+        pm.flushPendingRoomDms('peer-bob')
+        await vi.waitFor(() => expect(sendBob).toHaveBeenCalledWith(expect.objectContaining({ type: 'E2EE_DIRECT_ENVELOPE' })))
+        expect(useChatStore.getState().roomSendNotices[dm.id]).toBeUndefined()
+      } finally {
+        pm.cancelPendingRoomDms()
+      }
+    })
+
     it('encrypts DMs (unicast only, with encrypted attachment), room chat, and zone-isolated #zona-atual', async () => {
       const hostPm = PeerManager.getInstance() as any
       hostPm.disconnect()

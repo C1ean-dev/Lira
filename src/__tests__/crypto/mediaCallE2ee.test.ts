@@ -104,6 +104,30 @@ describe('Phase 3: Media Calls & Lives E2EE', () => {
   })
 
   describe('MediaE2EEManager & PeerManager E2EE_CALL_SIGNAL', () => {
+    it('protects a receive-only connection when the first track appears after attachment', async () => {
+      class FakeScriptTransform {}
+      vi.stubGlobal('RTCRtpScriptTransform', FakeScriptTransform)
+      const worker = { postMessage: vi.fn(), terminate: vi.fn(), onmessage: null, onerror: null as ((e: ErrorEvent) => void) | null }
+      const workerFailure = vi.fn()
+      const mgr = new MediaE2EEManager(() => worker, undefined, workerFailure)
+      await mgr.configurePeerKeys('bob', 'alice', new Uint8Array(32).fill(5))
+      const protectedMedia = vi.fn()
+      const pc = { getSenders: () => [], getReceivers: () => [], addEventListener: vi.fn(), close: vi.fn() }
+      expect(mgr.attachPeerConnection(pc as any, 'bob', undefined, protectedMedia)).toBe(true)
+      expect(protectedMedia).not.toHaveBeenCalled()
+      const trackListener = pc.addEventListener.mock.calls.find(([event]) => event === 'track')?.[1]
+      const receiver = { transform: null }
+      trackListener({ receiver, track: { kind: 'audio' } })
+      expect(receiver.transform).toBeInstanceOf(FakeScriptTransform)
+      expect(protectedMedia).toHaveBeenCalledOnce()
+      expect(pc.close).not.toHaveBeenCalled()
+
+      worker.onerror?.({} as ErrorEvent)
+      expect(workerFailure).toHaveBeenCalledWith(['bob'])
+      expect(mgr.hasPeerKeys('bob')).toBe(false)
+      expect(mgr.isAvailable()).toBe(false)
+    })
+
     it('attaches RTCRtpScriptTransform without duplicating and verifies/blocks call DTLS signals', async () => {
       const workerMessages: any[] = []
       const fakeWorker = {
@@ -143,6 +167,10 @@ describe('Phase 3: Media Calls & Lives E2EE', () => {
       const firstSenderTransform = sender.transform
       mgr.attachPeerConnection(pc, 'peer-bob')
       expect(sender.transform).toBe(firstSenderTransform)
+      expect(mgr.attachPeerConnection({
+        ...pc,
+        getSenders: () => [sender, { track: { kind: 'video' } }],
+      }, 'peer-bob')).toBe(false)
 
       // Wire into PeerManager call verification
       const hostId = await createEphemeralIdentityForTests()
@@ -180,6 +208,7 @@ describe('Phase 3: Media Calls & Lives E2EE', () => {
         peer: 'peer-bob',
         connectionId: 'mc_call_1',
         close: vi.fn(),
+        on: vi.fn(),
         peerConnection: {
           localDescription: { sdp: 'v=0\r\na=fingerprint:sha-256 AA:BB:CC:11\r\n' },
           remoteDescription: { sdp: 'v=0\r\na=fingerprint:sha-256 DD:EE:FF:22\r\n' },
@@ -337,7 +366,8 @@ describe('Phase 3: Media Calls & Lives E2EE', () => {
       vSession.localLayer = 0
       const pushVideo = vi.fn()
       vSession.queue = { push: pushVideo, reset: vi.fn() }
-      vSession.audioQueue = { push: vi.fn(), reset: vi.fn() }
+      const pushAudio = vi.fn()
+      vSession.audioQueue = { push: pushAudio, reset: vi.fn() }
       viewerLive.sessions.set('presenter', vSession)
       vSession.edges.push(rSession.edges[1])
       const vIn = await viewerLive.createLink(vSession, rSession.edges[1], false)
@@ -352,8 +382,14 @@ describe('Phase 3: Media Calls & Lives E2EE', () => {
         layerSequences: [1, 5],
         data: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
       }
+      const plainAudio: AlmFrame = { ...plainVideo, media: 'audio', layerSequences: undefined, duration: 20_000 }
+      const encrypt = vi.spyOn(crypto.subtle, 'encrypt')
       presenterLive.forwardSourceFrame(pSession, plainVideo)
-      await vi.waitFor(() => expect(relayedPackets.length).toBeGreaterThan(0))
+      presenterLive.forwardSourceFrame(pSession, plainAudio)
+      await vi.waitFor(() => expect(relayedPackets).toHaveLength(2))
+      const ivs = encrypt.mock.calls.map(([algorithm]) => Array.from((algorithm as AesGcmParams).iv as Uint8Array))
+      expect(ivs).toHaveLength(2)
+      expect(ivs[0]).not.toEqual(ivs[1])
 
       // Blind relay receives packets and forwards exact identical packet buffers without decrypting
       for (const pkt of relayedPackets) {
@@ -367,6 +403,8 @@ describe('Phase 3: Media Calls & Lives E2EE', () => {
         vInChan.onmessage({ data: pkt })
       }
       await vi.waitFor(() => expect(pushVideo).toHaveBeenCalledTimes(1))
+      await vi.waitFor(() => expect(pushAudio).toHaveBeenCalledTimes(1))
+      expect(pushAudio.mock.calls[0][0].data).toEqual(plainAudio.data)
       expect(pushVideo.mock.calls[0][0].data).toEqual(plainVideo.data)
       expect(pushVideo.mock.calls[0][0].sequence).toBe(1)
 
