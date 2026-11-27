@@ -7,9 +7,13 @@ import {
 } from '../../crypto/mediaE2ee'
 import {
   deriveMediaKeyMaterial,
+  escapeH264EmulationBytes,
   ratchetMediaKeyMaterial,
   SFrameCryptoContext,
+  SFRAME_MAGIC_0,
+  SFRAME_MAGIC_H264_1,
   SFRAME_TRAILER_BYTES,
+  unescapeH264EmulationBytes,
 } from '../../crypto/sframe'
 import { E2EESessionManager } from '../../crypto/sessionManager'
 import { AlmLive, type AlmLiveDeps } from '../../p2p/almLive'
@@ -100,6 +104,78 @@ describe('Phase 3: Media Calls & Lives E2EE', () => {
       await expect(receiver.decryptFrame(rotated)).rejects.toThrow(/Unknown SFrame key id/i)
       const afterRotate = await sender.encryptFrame(new Uint8Array([10, 11]), 'audio', true)
       expect(await receiver.decryptFrame(afterRotate)).toEqual(new Uint8Array([10, 11]))
+    })
+
+    it('escapes and unescapes H.264 RBSP emulation bytes accurately', () => {
+      const vectors = [
+        new Uint8Array([0, 0, 0, 1]),
+        new Uint8Array([0, 0, 1, 0x65]),
+        new Uint8Array([0, 0, 2, 0x41]),
+        new Uint8Array([0, 0, 3, 0]),
+        new Uint8Array([0, 0, 3, 0x55]),
+        new Uint8Array([0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 3, 2, 0xaa]),
+      ]
+      for (const raw of vectors) {
+        const escaped = escapeH264EmulationBytes(raw)
+        for (let i = 0; i + 2 < escaped.byteLength; i++) {
+          const isStartCode =
+            escaped[i] === 0 &&
+            escaped[i + 1] === 0 &&
+            (escaped[i + 2] === 0 || escaped[i + 2] === 1 || escaped[i + 2] === 2)
+          expect(isStartCode).toBe(false)
+        }
+        expect(unescapeH264EmulationBytes(escaped)).toEqual(raw)
+      }
+    })
+
+    it('preserves multi-NALU SPS/PPS headers and prevents false start codes in H.264 Annex-B frames', async () => {
+      const rootKey = new Uint8Array(32).fill(0xcd)
+      const mat = await deriveMediaKeyMaterial(rootKey, 'alice', 'bob', 0)
+      const sender = new SFrameCryptoContext()
+      const receiver = new SFrameCryptoContext()
+      await sender.setSendKey(mat)
+      await receiver.setRecvKey(mat)
+
+      // Multi-NALU keyframe: SPS (0x67) + PPS (0x68) + IDR slice (0x65)
+      const keyFrame = new Uint8Array([
+        0, 0, 0, 1, 0x67, 0x42, 0xc0, 0x1e, 0xd9, 0x00, 0xa0, 0x47, 0xfe, 0x88,
+        0, 0, 0, 1, 0x68, 0xce, 0x3c, 0x80,
+        0, 0, 0, 1, 0x65, 0x88, 0x84, 0x21, 0xa0, 0x11, 0x22, 0x33, 0x44, 0x55,
+      ])
+      const expectedPrefixLen = 27 // SPS + PPS + IDR start code + 0x65
+
+      // Frame 0 (counter=0) and Frame 1 (counter=1 => 00 00 00 01 in trailer)
+      const enc0 = await sender.encryptFrame(keyFrame, 'video', true)
+      expect(enc0[enc0.byteLength - 2]).toBe(SFRAME_MAGIC_0)
+      expect(enc0[enc0.byteLength - 1]).toBe(SFRAME_MAGIC_H264_1)
+      expect(enc0[enc0.byteLength - 3]).toBe(expectedPrefixLen)
+      expect(enc0.subarray(0, expectedPrefixLen)).toEqual(keyFrame.subarray(0, expectedPrefixLen))
+      expect(await receiver.decryptFrame(enc0)).toEqual(keyFrame)
+
+      const enc1 = await sender.encryptFrame(keyFrame, 'video', true)
+      expect(await receiver.decryptFrame(enc1)).toEqual(keyFrame)
+
+      // Advance to counter=256 (00 00 01 00 in trailer)
+      for (let c = 2; c < 256; c++) {
+        await sender.encryptFrame(new Uint8Array([0, 0, 0, 1, 0x41, 0x9a, c & 0xff]), 'video', false)
+      }
+      const enc256 = await sender.encryptFrame(keyFrame, 'video', true)
+      for (const enc of [enc0, enc1, enc256]) {
+        for (let i = expectedPrefixLen; i + 2 < enc.byteLength; i++) {
+          const falseStartCode = enc[i] === 0 && enc[i + 1] === 0 && (enc[i + 2] === 0 || enc[i + 2] === 1)
+          expect(falseStartCode).toBe(false)
+        }
+      }
+      expect(await receiver.decryptFrame(enc256)).toEqual(keyFrame)
+
+      // Tampering SPS header (AAD) or escaped tail fails authentication
+      const tamperedSps = new Uint8Array(enc0)
+      tamperedSps[6] ^= 0xff
+      await expect(receiver.decryptFrame(tamperedSps)).rejects.toThrow()
+
+      const tamperedTail = new Uint8Array(enc1)
+      tamperedTail[expectedPrefixLen + 2] ^= 0x01
+      await expect(receiver.decryptFrame(tamperedTail)).rejects.toThrow()
     })
   })
 

@@ -2,11 +2,12 @@ import { hkdfDeriveBytes, importAesGcmKey, utf8Bytes } from './primitives'
 
 export const SFRAME_MAGIC_0 = 0x53 // 'S'
 export const SFRAME_MAGIC_1 = 0x46 // 'F'
+export const SFRAME_MAGIC_H264_1 = 0x48 // 'H'
 export const SFRAME_MAGIC = (SFRAME_MAGIC_0 << 8) | SFRAME_MAGIC_1
 export const SFRAME_TRAILER_BYTES = 8 // counter(4) + kid(1) + prefixLen(1) + magic(2)
 export const SFRAME_TAG_BYTES = 16
 export const SFRAME_MIN_FRAME_BYTES = SFRAME_TAG_BYTES + SFRAME_TRAILER_BYTES
-export const SFRAME_REPLAY_WINDOW = 256
+export const SFRAME_REPLAY_WINDOW = 1024
 export const MAX_SFRAME_COUNTER = 0xffffffff
 
 export type SFrameMediaKind = 'audio' | 'video'
@@ -80,23 +81,121 @@ export async function ratchetMediaKeyMaterial(
   }
 }
 
+function trailingZeroCount(bytes: Uint8Array): number {
+  let zeros = 0
+  for (let i = bytes.byteLength - 1; i >= 0 && zeros < 2; i--) {
+    if (bytes[i] !== 0) break
+    zeros++
+  }
+  return zeros
+}
+
+function annexBStartCodeLen(data: Uint8Array, offset: number): number {
+  if (
+    offset + 4 <= data.byteLength &&
+    data[offset] === 0 &&
+    data[offset + 1] === 0 &&
+    data[offset + 2] === 0 &&
+    data[offset + 3] === 1
+  ) {
+    return 4
+  }
+  if (
+    offset + 3 <= data.byteLength &&
+    data[offset] === 0 &&
+    data[offset + 1] === 0 &&
+    data[offset + 2] === 1
+  ) {
+    return 3
+  }
+  return 0
+}
+
+/**
+ * Returns true if the encoded video frame begins with an H.264 Annex-B start code.
+ */
+export function isH264AnnexB(data: Uint8Array, mediaKind: SFrameMediaKind): boolean {
+  if (mediaKind !== 'video') return false
+  const scLen = annexBStartCodeLen(data, 0)
+  return scLen > 0 && data.byteLength > scLen
+}
+
+/**
+ * Inserts H.264 RBSP emulation-prevention bytes (0x03) so encrypted payloads
+ * and trailers never contain false Annex-B start codes (00 00 00/01/02/03).
+ */
+export function escapeH264EmulationBytes(input: Uint8Array, initialZeros = 0): Uint8Array {
+  const out: number[] = []
+  let zeros = Math.min(2, Math.max(0, initialZeros))
+  for (let i = 0; i < input.byteLength; i++) {
+    const b = input[i]
+    if (zeros >= 2 && b <= 0x03) {
+      out.push(0x03)
+      zeros = 0
+    }
+    out.push(b)
+    zeros = b === 0 ? Math.min(2, zeros + 1) : 0
+  }
+  return new Uint8Array(out)
+}
+
+/**
+ * Reverses `escapeH264EmulationBytes`, removing RBSP 0x03 emulation-prevention bytes.
+ */
+export function unescapeH264EmulationBytes(input: Uint8Array, initialZeros = 0): Uint8Array {
+  const out: number[] = []
+  let zeros = Math.min(2, Math.max(0, initialZeros))
+  for (let i = 0; i < input.byteLength; i++) {
+    const b = input[i]
+    if (zeros >= 2 && b === 0x03 && i + 1 < input.byteLength && input[i + 1] <= 0x03) {
+      zeros = 0
+      continue
+    }
+    out.push(b)
+    zeros = b === 0 ? Math.min(2, zeros + 1) : 0
+  }
+  return new Uint8Array(out)
+}
+
 export function computeUnencryptedPrefixLength(
   data: Uint8Array,
   mediaKind: SFrameMediaKind,
   isKeyFrame: boolean
 ): number {
   if (mediaKind === 'audio') return 0
-  if (
-    data.byteLength >= 5 &&
-    data[0] === 0 &&
-    data[1] === 0 &&
-    data[2] === 0 &&
-    data[3] === 1
-  ) {
-    return Math.min(5, data.byteLength, 255)
-  }
-  if (data.byteLength >= 4 && data[0] === 0 && data[1] === 0 && data[2] === 1) {
-    return Math.min(4, data.byteLength, 255)
+  if (isH264AnnexB(data, mediaKind)) {
+    const firstScLen = annexBStartCodeLen(data, 0)
+    const fallback = Math.min(firstScLen + 1, data.byteLength, 255)
+    let pos = 0
+    let scLen = firstScLen
+    while (scLen > 0) {
+      const nalHeaderPos = pos + scLen
+      if (nalHeaderPos >= data.byteLength) break
+      const nalType = data[nalHeaderPos] & 0x1f
+      if (nalType >= 1 && nalType <= 5) {
+        const prefixEnd = nalHeaderPos + 1
+        return prefixEnd <= 255 ? prefixEnd : fallback
+      }
+      // Scan for the next Annex-B start code after the current non-VCL NALU (AUD/SEI/SPS/PPS).
+      let nextPos = -1
+      let nextScLen = 0
+      for (let i = nalHeaderPos + 1; i + 2 < data.byteLength; i++) {
+        if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 1) {
+          if (i > nalHeaderPos + 1 && data[i - 1] === 0) {
+            nextPos = i - 1
+            nextScLen = 4
+          } else {
+            nextPos = i
+            nextScLen = 3
+          }
+          break
+        }
+      }
+      if (nextPos < 0) break
+      pos = nextPos
+      scLen = nextScLen
+    }
+    return fallback
   }
   return Math.min(isKeyFrame ? 10 : 3, data.byteLength, 255)
 }
@@ -256,6 +355,7 @@ export class SFrameCryptoContext {
 
     const counter = this.sendCounter++
     const { kid, cryptoKey, salt } = this.sendState
+    const h264AnnexB = isH264AnnexB(frameData, mediaKind)
     const prefixLen = computeUnencryptedPrefixLength(frameData, mediaKind, isKeyFrame)
     const prefix = frameData.subarray(0, prefixLen)
     const body = frameData.subarray(prefixLen)
@@ -274,21 +374,38 @@ export class SFrameCryptoContext {
     )
 
     const cipherBytes = new Uint8Array(encrypted)
-    const out = new Uint8Array(
-      new ArrayBuffer(prefixLen + cipherBytes.byteLength + SFRAME_TRAILER_BYTES)
-    )
-    if (prefixLen > 0) {
-      out.set(prefix, 0)
-    }
-    out.set(cipherBytes, prefixLen)
+    if (!h264AnnexB) {
+      const out = new Uint8Array(
+        new ArrayBuffer(prefixLen + cipherBytes.byteLength + SFRAME_TRAILER_BYTES)
+      )
+      if (prefixLen > 0) {
+        out.set(prefix, 0)
+      }
+      out.set(cipherBytes, prefixLen)
 
-    const trailerOffset = prefixLen + cipherBytes.byteLength
-    const view = new DataView(out.buffer, trailerOffset, SFRAME_TRAILER_BYTES)
-    view.setUint32(0, counter, false)
-    view.setUint8(4, kid)
-    view.setUint8(5, prefixLen)
-    view.setUint8(6, SFRAME_MAGIC_0)
-    view.setUint8(7, SFRAME_MAGIC_1)
+      const trailerOffset = prefixLen + cipherBytes.byteLength
+      const view = new DataView(out.buffer, trailerOffset, SFRAME_TRAILER_BYTES)
+      view.setUint32(0, counter, false)
+      view.setUint8(4, kid)
+      view.setUint8(5, prefixLen)
+      view.setUint8(6, SFRAME_MAGIC_0)
+      view.setUint8(7, SFRAME_MAGIC_1)
+      return out
+    }
+
+    const rawTail = new Uint8Array(cipherBytes.byteLength + 6)
+    rawTail.set(cipherBytes, 0)
+    const tailView = new DataView(rawTail.buffer, cipherBytes.byteLength, 6)
+    tailView.setUint32(0, counter, false)
+    tailView.setUint8(4, kid)
+    tailView.setUint8(5, prefixLen)
+
+    const escapedTail = escapeH264EmulationBytes(rawTail, trailingZeroCount(prefix))
+    const out = new Uint8Array(new ArrayBuffer(prefixLen + escapedTail.byteLength + 2))
+    out.set(prefix, 0)
+    out.set(escapedTail, prefixLen)
+    out[out.byteLength - 2] = SFRAME_MAGIC_0
+    out[out.byteLength - 1] = SFRAME_MAGIC_H264_1
     return out
   }
 
@@ -297,22 +414,60 @@ export class SFrameCryptoContext {
       throw new Error('Truncated SFrame payload')
     }
 
-    const trailerOffset = encryptedData.byteLength - SFRAME_TRAILER_BYTES
-    const view = new DataView(
-      encryptedData.buffer,
-      encryptedData.byteOffset + trailerOffset,
-      SFRAME_TRAILER_BYTES
-    )
-    if (view.getUint8(6) !== SFRAME_MAGIC_0 || view.getUint8(7) !== SFRAME_MAGIC_1) {
+    const magic0 = encryptedData[encryptedData.byteLength - 2]
+    const magic1 = encryptedData[encryptedData.byteLength - 1]
+    if (magic0 !== SFRAME_MAGIC_0 || (magic1 !== SFRAME_MAGIC_1 && magic1 !== SFRAME_MAGIC_H264_1)) {
       throw new Error('Invalid SFrame magic bytes')
     }
 
-    const counter = view.getUint32(0, false)
-    const kid = view.getUint8(4)
-    const prefixLen = view.getUint8(5)
+    let counter: number
+    let kid: number
+    let prefixLen: number
+    let prefix: Uint8Array
+    let cipherAndTag: Uint8Array
 
-    if (prefixLen > encryptedData.byteLength - SFRAME_MIN_FRAME_BYTES) {
-      throw new Error(`Invalid SFrame prefixLen ${prefixLen}`)
+    if (magic1 === SFRAME_MAGIC_H264_1) {
+      prefixLen = encryptedData[encryptedData.byteLength - 3]
+      if (prefixLen < 4 || prefixLen > encryptedData.byteLength - SFRAME_MIN_FRAME_BYTES) {
+        throw new Error(`Invalid SFrame prefixLen ${prefixLen}`)
+      }
+      prefix = encryptedData.subarray(0, prefixLen)
+      const unescapedTail = unescapeH264EmulationBytes(
+        encryptedData.subarray(prefixLen, encryptedData.byteLength - 2),
+        trailingZeroCount(prefix)
+      )
+      if (unescapedTail.byteLength < SFRAME_TAG_BYTES + 6) {
+        throw new Error('Truncated SFrame H.264 payload')
+      }
+      const tailView = new DataView(
+        unescapedTail.buffer,
+        unescapedTail.byteOffset + unescapedTail.byteLength - 6,
+        6
+      )
+      counter = tailView.getUint32(0, false)
+      kid = tailView.getUint8(4)
+      const innerPrefixLen = tailView.getUint8(5)
+      if (innerPrefixLen !== prefixLen) {
+        throw new Error(`Mismatched SFrame prefixLen ${innerPrefixLen} !== ${prefixLen}`)
+      }
+      cipherAndTag = unescapedTail.subarray(0, unescapedTail.byteLength - 6)
+    } else {
+      const trailerOffset = encryptedData.byteLength - SFRAME_TRAILER_BYTES
+      const view = new DataView(
+        encryptedData.buffer,
+        encryptedData.byteOffset + trailerOffset,
+        SFRAME_TRAILER_BYTES
+      )
+      counter = view.getUint32(0, false)
+      kid = view.getUint8(4)
+      prefixLen = view.getUint8(5)
+
+      if (prefixLen > encryptedData.byteLength - SFRAME_MIN_FRAME_BYTES) {
+        throw new Error(`Invalid SFrame prefixLen ${prefixLen}`)
+      }
+
+      prefix = encryptedData.subarray(0, prefixLen)
+      cipherAndTag = encryptedData.subarray(prefixLen, trailerOffset)
     }
 
     const recvState = this.recvKeys.get(kid)
@@ -329,9 +484,6 @@ export class SFrameCryptoContext {
     ) {
       throw new Error(`SFrame counter ${counter} outside replay window (max=${recvState.maxCounter})`)
     }
-
-    const prefix = encryptedData.subarray(0, prefixLen)
-    const cipherAndTag = encryptedData.subarray(prefixLen, trailerOffset)
     const aad = buildSFrameAad(prefix, kid, counter, prefixLen)
     const iv = buildSFrameIv(recvState.salt, counter)
 
