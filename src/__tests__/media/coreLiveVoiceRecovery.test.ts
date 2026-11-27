@@ -12,6 +12,8 @@ beforeEach(() => {
   vi.useFakeTimers()
   vi.stubGlobal('MediaStream', class { constructor(public tracks: any[]) {} getAudioTracks() { return this.tracks } })
   manager = new (PeerManager as any)()
+  vi.spyOn(manager, 'canStartProtectedCall').mockReturnValue(true)
+  vi.spyOn(manager, 'attachCallSecurity').mockReturnValue(true)
   manager.peer = { id: 'presenter', call: vi.fn(() => voiceCall()) }
   manager.mediaCalls.set('viewer', { peerConnection: { getSenders: () => [] } })
   useMediaStore.setState({ isScreenSharing: true, localStream: { getAudioTracks: () => [{ kind: 'audio', id: 'mic', readyState: 'live', enabled: false }] } as any, localScreenStream: { getAudioTracks: () => [] } as any })

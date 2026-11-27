@@ -16,6 +16,7 @@ beforeEach(() => {
   pm = new (PeerManager as any)()
   pm.peer = { id: 'local', destroyed: false }
   pm.roomCode = 'ROOM'
+  vi.spyOn(pm, 'canStartProtectedCall').mockReturnValue(true)
   const local = { ...original.localPlayer, id: 'local', currentZoneId: 'zone' }
   useGameStore.setState({
     localPlayer: local,
@@ -33,6 +34,21 @@ afterEach(() => {
 })
 
 describe('non-blocking zone call negotiation', () => {
+  it('waits for protected media before negotiating a call', () => {
+    vi.mocked(pm.canStartProtectedCall).mockRestore()
+    vi.spyOn(pm.e2eeSessions, 'getSession').mockReturnValue({})
+    const keys = vi.spyOn(pm.mediaE2EE, 'hasPeerKeys').mockReturnValue(false)
+    const remote = useGameStore.getState().remotePlayers.a
+    pm.checkZoneCallEligibility(remote)
+    vi.advanceTimersByTime(16)
+    expect(dial).not.toHaveBeenCalled()
+
+    keys.mockReturnValue(true)
+    pm.checkZoneCallEligibility(remote)
+    vi.advanceTimersByTime(16)
+    expect(dial).toHaveBeenCalledOnce()
+  })
+
   it('returns to the map and sends movement before starting negotiation', () => {
     const remote = useGameStore.getState().remotePlayers.a
     const send = vi.fn()

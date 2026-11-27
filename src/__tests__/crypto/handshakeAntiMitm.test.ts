@@ -124,7 +124,13 @@ describe('Phase 1 E2EE Identity & Anti-MITM Handshake', () => {
     const ackRes = await aliceMgr.handleHandshake(bobHandle.reply!, { localId: 'alice', remotePeerId: 'bob' })
     expect(ackRes.ok).toBe(true)
     if (ackRes.ok) {
-      expect(toHex(ackRes.session.rootKey)).toBe(toHex(aliceHandle.session.rootKey))
+      expect(ackRes.session).toBe(aliceHandle.session)
+    }
+    const repeatedInit = await aliceMgr.handleHandshake(bobInit, { localId: 'alice', remotePeerId: 'bob' })
+    expect(repeatedInit.ok).toBe(true)
+    if (repeatedInit.ok) {
+      expect(repeatedInit.session).toBe(aliceHandle.session)
+      expect(repeatedInit.reply?.phase).toBe('ack')
     }
   })
 

@@ -300,6 +300,7 @@ export class FriendsPresenceService {
       const existingProfile = friendKey ? friendProfiles[friendKey] : undefined
       const pinnedIdentityPub = existingProfile?.identityKey
 
+      const previousSession = this.e2eeSessions.getSession(userId)
       const res = await this.e2eeSessions.handleHandshake(payload, {
         localId: localUserId,
         remotePeerId: userId,
@@ -348,11 +349,9 @@ export class FriendsPresenceService {
         sas: res.session.sas,
         dtlsBound: res.session.dtlsBound,
       })
-      this.pairwiseRatchets.initSession(
-        userId,
-        res.session.sendChainKey,
-        res.session.recvChainKey
-      )
+      if (previousSession !== res.session) {
+        this.pairwiseRatchets.initSession(userId, res.session.sendChainKey, res.session.recvChainKey)
+      }
 
       if (!wasAuthenticated && this.network?.isLinked(userId)) {
         if (

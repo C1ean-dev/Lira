@@ -105,6 +105,15 @@ export interface AlmLiveDeps {
 
 const ALM_E2EE_FRAME_MAGIC = 0x41
 
+function almFrameSalt(salt: Uint8Array, media?: AlmFrame['media']): Uint8Array {
+  if (media !== 'audio') return salt
+  // The counter occupies the last four bytes of the IV. Give audio its own
+  // nonce space because its sequence is independent of the video encoder.
+  const audioSalt = new Uint8Array(salt)
+  audioSalt[0] ^= 0x80
+  return audioSalt
+}
+
 function buildAlmFrameAad(
   root: string,
   epoch: string,
@@ -529,7 +538,7 @@ export class AlmLive {
         })
         const plain = await decryptRawMediaPayload(
           key.keyRaw,
-          key.salt,
+          almFrameSalt(key.salt, frame.media),
           wireSeq,
           aad,
           payload.subarray(2)
@@ -708,10 +717,11 @@ export class AlmLive {
     session.encryptChain = (session.encryptChain ?? Promise.resolve())
       .then(async () => {
         if (this.sessions.get(session.root) !== session || session.liveKey !== liveKey) return
+        if (!Number.isInteger(frame.sequence) || frame.sequence < 0 || frame.sequence > 0xffffffff) return
         const aad = buildAlmFrameAad(session.root, session.epoch, liveKey.generation, frame)
         const cipher = await encryptRawMediaPayload(
           liveKey.keyRaw,
-          liveKey.salt,
+          almFrameSalt(liveKey.salt, frame.media),
           frame.sequence,
           aad,
           frame.data

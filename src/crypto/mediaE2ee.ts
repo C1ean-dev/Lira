@@ -122,6 +122,7 @@ function hasEncodedStreamsApi(): boolean {
 export class MediaE2EEManager {
   private worker: WorkerLike | null = null
   private configuredPeers = new Set<string>()
+  private configuring = new Map<string, symbol>()
   private transformedSenders = new WeakSet<object>()
   private transformedReceivers = new WeakSet<object>()
   private attachedPcs = new WeakSet<RTCPeerConnection>()
@@ -171,9 +172,12 @@ export class MediaE2EEManager {
     kid = 0,
     keepPrevious = false
   ): Promise<DerivedPeerMediaKeys> {
+    const operation = Symbol()
+    this.configuring.set(peerId, operation)
     const send = await deriveMediaKeyMaterial(rootKey, localPeerId, peerId, kid)
     const recv = await deriveMediaKeyMaterial(rootKey, peerId, localPeerId, kid)
-    this.configuredPeers.add(peerId)
+    if (this.configuring.get(peerId) !== operation) return { send, recv }
+    this.configuring.delete(peerId)
 
     const worker = this.ensureWorker()
     if (worker) {
@@ -194,6 +198,7 @@ export class MediaE2EEManager {
         salt: recv.salt,
         keepPrevious,
       })
+      this.configuredPeers.add(peerId)
     }
 
     return { send, recv }
@@ -203,22 +208,21 @@ export class MediaE2EEManager {
     return this.configuredPeers.has(peerId)
   }
 
-  private attachSender(sender: RTCRtpSender, peerId: string, worker: WorkerLike): boolean {
-    if (!sender || this.transformedSenders.has(sender)) return false
-    const mediaType: SFrameMediaKind = sender.track?.kind === 'video' ? 'video' : 'audio'
+  private attachSender(sender: RTCRtpSender, peerId: string, worker: WorkerLike, kind = sender.track?.kind): boolean {
+    if (this.transformedSenders.has(sender)) return true
+    const mediaType: SFrameMediaKind = kind === 'video' ? 'video' : 'audio'
     const ScriptTransform = (globalThis as any).RTCRtpScriptTransform
     if (typeof ScriptTransform === 'function' && 'transform' in sender) {
-      this.transformedSenders.add(sender)
       ;(sender as any).transform = new ScriptTransform(worker, {
         peerId,
         direction: 'encrypt',
         mediaType,
       })
+      this.transformedSenders.add(sender)
       return true
     }
     const createStreams = (sender as any).createEncodedStreams
     if (typeof createStreams === 'function') {
-      this.transformedSenders.add(sender)
       const { readable, writable } = createStreams.call(sender)
       worker.postMessage(
         {
@@ -231,6 +235,7 @@ export class MediaE2EEManager {
         },
         [readable, writable]
       )
+      this.transformedSenders.add(sender)
       return true
     }
     return false
@@ -242,22 +247,21 @@ export class MediaE2EEManager {
     worker: WorkerLike,
     hintKind?: SFrameMediaKind
   ): boolean {
-    if (!receiver || this.transformedReceivers.has(receiver)) return false
+    if (this.transformedReceivers.has(receiver)) return true
     const mediaType: SFrameMediaKind =
       hintKind || (receiver.track?.kind === 'video' ? 'video' : 'audio')
     const ScriptTransform = (globalThis as any).RTCRtpScriptTransform
     if (typeof ScriptTransform === 'function' && 'transform' in receiver) {
-      this.transformedReceivers.add(receiver)
       ;(receiver as any).transform = new ScriptTransform(worker, {
         peerId,
         direction: 'decrypt',
         mediaType,
       })
+      this.transformedReceivers.add(receiver)
       return true
     }
     const createStreams = (receiver as any).createEncodedStreams
     if (typeof createStreams === 'function') {
-      this.transformedReceivers.add(receiver)
       const { readable, writable } = createStreams.call(receiver)
       worker.postMessage(
         {
@@ -270,66 +274,75 @@ export class MediaE2EEManager {
         },
         [readable, writable]
       )
+      this.transformedReceivers.add(receiver)
       return true
     }
     return false
   }
 
-  public attachPeerConnection(pc: RTCPeerConnection | null | undefined, peerId: string): boolean {
+  public attachPeerConnection(
+    pc: RTCPeerConnection | null | undefined,
+    peerId: string,
+    onFailure?: () => void,
+  ): boolean {
     if (!pc || !peerId || !this.configuredPeers.has(peerId)) return false
     const worker = this.ensureWorker()
     if (!worker) return false
 
-    let attachedAny = false
     try {
-      for (const sender of pc.getSenders?.() || []) {
-        if (this.attachSender(sender, peerId, worker)) {
-          attachedAny = true
+      const senders = pc.getSenders?.() ?? []
+      const receivers = pc.getReceivers?.() ?? []
+      const transceivers = pc.getTransceivers?.() ?? []
+      if (senders.length + receivers.length === 0 ||
+          !senders.every(sender => this.attachSender(sender, peerId, worker,
+            sender.track?.kind ?? transceivers.find(t => t.sender === sender)?.receiver.track?.kind)) ||
+          !receivers.every(receiver => this.attachReceiver(receiver, peerId, worker))) return false
+
+      if (!this.attachedPcs.has(pc)) {
+        if (pc.addTrack) {
+          const addTrack = pc.addTrack.bind(pc)
+          pc.addTrack = (track, ...streams) => {
+            const sender = addTrack(track, ...streams)
+            try {
+              if (this.attachSender(sender, peerId, worker)) return sender
+            } catch {}
+            pc.close()
+            onFailure?.()
+            throw new Error('Não foi possível proteger a nova faixa da chamada')
+          }
         }
+        pc.addEventListener?.('track', (evt) => {
+          const trackEvent = evt as RTCTrackEvent
+          try {
+            const kind = trackEvent.track?.kind === 'video' ? 'video' : 'audio'
+            if (trackEvent.receiver && this.attachReceiver(trackEvent.receiver, peerId, worker, kind)) return
+          } catch {}
+          pc.close()
+          onFailure?.()
+        }, true)
+        this.attachedPcs.add(pc)
       }
-      for (const receiver of pc.getReceivers?.() || []) {
-        if (this.attachReceiver(receiver, peerId, worker)) {
-          attachedAny = true
-        }
-      }
+      return true
     } catch {
       return false
     }
-
-    if (!this.attachedPcs.has(pc)) {
-      this.attachedPcs.add(pc)
-      try {
-        pc.addEventListener?.('track', (evt) => {
-          const trackEvent = evt as RTCTrackEvent
-          if (trackEvent.receiver) {
-            const kind: SFrameMediaKind =
-              trackEvent.track?.kind === 'video' ? 'video' : 'audio'
-            this.attachReceiver(trackEvent.receiver, peerId, worker, kind)
-          }
-          try {
-            for (const sender of pc.getSenders?.() || []) {
-              this.attachSender(sender, peerId, worker)
-            }
-          } catch {}
-        })
-      } catch {}
-    }
-
-    return attachedAny
   }
 
   public clearPeer(peerId: string): void {
     this.configuredPeers.delete(peerId)
+    this.configuring.delete(peerId)
     this.worker?.postMessage({ type: 'clear-peer', peerId })
   }
 
   public clearAll(): void {
     this.configuredPeers.clear()
+    this.configuring.clear()
     this.worker?.postMessage({ type: 'clear-all' })
   }
 
   public dispose(): void {
     this.configuredPeers.clear()
+    this.configuring.clear()
     try {
       this.worker?.terminate()
     } catch {}

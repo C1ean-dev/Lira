@@ -184,7 +184,8 @@ const FullScreenGridInner: React.FC = () => {
     securityPeers,
     allInMeeting
       .filter((p) => !p.isLocal && !p.isDjBot)
-      .map((p) => ({ id: p.id, gameId: p.gameId, name: p.name }))
+      .map((p) => ({ id: p.id, gameId: p.gameId, name: p.name })),
+    true,
   )
 
   React.useEffect(() => {
@@ -202,14 +203,12 @@ const FullScreenGridInner: React.FC = () => {
             </div>
             <SecurityBadge
               status={callSecurity.status}
-              mediaEncrypted={callSecurity.mediaEncryptedCount > 0}
+              mediaEncrypted={callSecurity.status === 'encrypted' || callSecurity.status === 'verified'}
               labelOverride={
                 callSecurity.status === 'verified'
                   ? 'E2EE Verificado'
                   : callSecurity.status === 'encrypted'
-                  ? callSecurity.mediaEncryptedCount > 0
-                    ? 'E2EE Mídia Ativa'
-                    : 'E2EE Ativo'
+                  ? 'E2EE Mídia Ativa'
                   : callSecurity.status === 'idle'
                   ? 'E2EE Pronto'
                   : undefined

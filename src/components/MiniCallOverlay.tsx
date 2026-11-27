@@ -719,7 +719,8 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
     securityPeers,
     peersInSameZone
       .filter((p) => !p.isDjBot && !p.id.startsWith('dj-'))
-      .map((p) => ({ id: p.id, gameId: p.gameId, name: p.name }))
+      .map((p) => ({ id: p.id, gameId: p.gameId, name: p.name })),
+    true,
   )
 
   const isChatOpen = useChatStore((state) => state.isChatOpen)
@@ -1021,7 +1022,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
               <SecurityBadge
                 compact
                 status={miniCallSecurity.status}
-                mediaEncrypted={miniCallSecurity.mediaEncryptedCount > 0}
+                mediaEncrypted={miniCallSecurity.status === 'encrypted' || miniCallSecurity.status === 'verified'}
                 onClick={(e) => {
                   e.stopPropagation()
                   openSecurityInspection(

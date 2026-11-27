@@ -287,6 +287,7 @@ export class PeerManager {
   private senderKeys = new SenderKeyManager()
   private e2eeInboundQueues = new Map<string, Promise<unknown>>()
   private outboundScopeQueues = new Map<string, Promise<unknown>>()
+  private pendingRoomDms = new Map<string, { peerId: string; send: () => void; timer: ReturnType<typeof setTimeout> }>()
   private lastBroadcastZoneId: string | null | undefined = undefined
   private lastPeerZones = new Map<string, string | null | undefined>()
   private mediaE2EE = new MediaE2EEManager()
@@ -789,9 +790,13 @@ export class PeerManager {
         if (k.startsWith(prefix)) this.sentCallDtlsSigs.delete(k)
       }
     }
+    if (useSecurityStore.getState().peers[peerId]) {
+      useSecurityStore.getState().updatePeerMediaSecurity(peerId, { mediaEncrypted: false, callDtlsVerified: false })
+    }
   }
 
   private clearE2EEState() {
+    this.cancelPendingRoomDms()
     this.e2eeSessions?.clear()
     this.pairwiseRatchets?.clear()
     this.senderKeys?.clear()
@@ -1931,6 +1936,11 @@ export class PeerManager {
         try { call.close() } catch {}
         return
       }
+      if (!this.canStartProtectedCall(call.peer)) {
+        this.ensurePeerE2EESession(call.peer, true)
+        call.close()
+        return
+      }
       if ((call.metadata as { kind?: string } | undefined)?.kind === 'live-voice') {
         this.handleIncomingLiveVoiceCall(call)
         return
@@ -1943,7 +1953,7 @@ export class PeerManager {
         onCallConnected: (pid) => this.onMediaCallConnected(pid),
         enforceAuthorization: true,
         onPeerConnectionReady: (pid, pc, activeCall) => {
-          this.attachCallSecurity(pid, activeCall, 'main', pc)
+          return this.attachCallSecurity(pid, activeCall, 'main', pc)
         },
         attemptRedialIfEligible: () => {
           const remotePlayer = useGameStore.getState().remotePlayers[call.peer]
@@ -2187,6 +2197,7 @@ export class PeerManager {
   }
 
   private removePeer(peerId: string) {
+    this.cancelPendingRoomDms(peerId)
     this.e2eeSessions?.removePeer(peerId)
     this.pairwiseRatchets?.removeSession(peerId)
     this.senderKeys?.unmarkPeer(peerId)
@@ -3054,12 +3065,20 @@ export class PeerManager {
   }
 
   private handleIncomingLiveVoiceCall(call: MediaConnection): void {
+    if (!this.canStartProtectedCall(call.peer)) {
+      call.close()
+      return
+    }
     const previous = this.incomingLiveVoiceCalls.get(call.peer)
     if (previous && previous !== call) previous.close()
     this.incomingLiveVoiceCalls.set(call.peer, call)
     const silent = silentAudioTrack()
     call.answer(silent ? new MediaStream([silent]) : new MediaStream())
-    this.attachCallSecurity(call.peer, call, 'live-voice')
+    if (!this.attachCallSecurity(call.peer, call, 'live-voice')) {
+      this.incomingLiveVoiceCalls.delete(call.peer)
+      call.close()
+      return
+    }
     call.on('stream', (stream) => {
       if (this.incomingLiveVoiceCalls.get(call.peer) === call) {
         useMediaStore.getState().setPeerVoiceStream(call.peer, stream)
@@ -3080,7 +3099,7 @@ export class PeerManager {
     const owner = this.peer
     if (!owner || owner.destroyed || this.isIntentionalDisconnect || !useMediaStore.getState().isScreenSharing ||
         this.liveVoiceCalls.has(peerId) || !mainCall || this.liveVoiceRetryTimers.has(peerId) ||
-        (this.liveVoiceRetryCounts.get(peerId) || 0) > 3) return
+        (this.liveVoiceRetryCounts.get(peerId) || 0) > 3 || !this.canStartProtectedCall(peerId)) return
     const liveAudio = useMediaStore.getState().localScreenStream?.getAudioTracks().find((track) => (track as any).__screenShareLiveAudio)
     MediaCallHandler.replaceAudioTrack(new Map([[peerId, mainCall]]), liveAudio || silentAudioTrack())
     const microphone = useMediaStore.getState().localStream?.getAudioTracks()[0]
@@ -3103,7 +3122,12 @@ export class PeerManager {
     if (!call) { retry(); return }
     const voiceCall = call
     this.liveVoiceCalls.set(peerId, call)
-    this.attachCallSecurity(peerId, voiceCall, 'live-voice')
+    if (!this.attachCallSecurity(peerId, voiceCall, 'live-voice')) {
+      this.liveVoiceCalls.delete(peerId)
+      voiceCall.close()
+      retry()
+      return
+    }
     const clearReadyTimer = () => {
       clearTimeout(this.liveVoiceReadyTimers.get(peerId))
       this.liveVoiceReadyTimers.delete(peerId)
@@ -3235,10 +3259,12 @@ export class PeerManager {
     if (conn.open) {
       try {
         conn.send(omitUndefinedFields(msg))
+        return true
       } catch (err) {
         console.warn(`[P2P Data] Failed to send ${msg.type} to ${conn.peer}:`, err)
       }
     }
+    return false
   }
 
   public checkZoneCallEligibility(remotePlayer: Player) {
@@ -3261,6 +3287,7 @@ export class PeerManager {
       const remotePlayer = useGameStore.getState().remotePlayers[peerId]
       try {
         if (remotePlayer && this.peer === ownerPeer && !ownerPeer.destroyed && !this.isIntentionalDisconnect) {
+          if (!this.mediaCalls.has(peerId) && !this.canStartProtectedCall(peerId)) return
           MediaCallHandler.checkZoneCallEligibility(
             remotePlayer, ownerPeer, this.mediaCalls,
             (pid) => this.endMediaCallWithPeer(pid),
@@ -3765,6 +3792,7 @@ export class PeerManager {
         return
       }
 
+      if (!this.canStartProtectedCall(peerId)) return
       MediaCallHandler.retryCall(
         remotePlayer,
         this.peer,
@@ -3797,7 +3825,10 @@ export class PeerManager {
     if (this.nativeCapture) this.nativeLive?.setCapture(this.nativeCapture)
     this.clearPendingZoneCalls()
     this.stopLiveVoiceCalls()
-    this.mediaCalls.forEach((_, peerId) => clearPeerManualTransport(this.peer, peerId))
+    this.mediaCalls.forEach((_, peerId) => {
+      clearPeerManualTransport(this.peer, peerId)
+      this.clearCallDtlsForPeer(peerId)
+    })
     this.incomingLiveVoiceCalls?.forEach((call) => call.close())
     this.incomingLiveVoiceCalls?.clear()
     useMediaStore.getState().clearAllPeerStreams()
@@ -4084,6 +4115,7 @@ export class PeerManager {
     const pinnedIdentityPub = friendProfile?.identityKey
 
     try {
+      const previousSession = this.e2eeSessions.getSession(payload.from)
       const res = await this.e2eeSessions.handleHandshake(payload, {
         localId: owner.id,
         remotePeerId: payload.from,
@@ -4092,7 +4124,7 @@ export class PeerManager {
         pinnedIdentityPub,
       })
 
-      if (this.peer !== owner) return
+      if (this.peer !== owner || (isDirect && this.connections.get(transportPeerId) !== directConn)) return
 
       if (!res.ok) {
         const status =
@@ -4130,24 +4162,13 @@ export class PeerManager {
         sas: res.session.sas,
         dtlsBound: res.session.dtlsBound,
       })
-      this.pairwiseRatchets.initSession(
-        payload.from,
-        res.session.sendChainKey,
-        res.session.recvChainKey
-      )
-      if (this.mediaE2EE) {
-        void this.mediaE2EE
-          .configurePeerKeys(payload.from, owner.id, res.session.rootKey, 0)
-          .then(() => {
-            if (this.peer !== owner) return
-            const mainCall = this.mediaCalls?.get(payload.from)
-            if (mainCall) this.attachCallSecurity(payload.from, mainCall, 'main')
-            const outVoice = this.liveVoiceCalls?.get(payload.from)
-            if (outVoice) this.attachCallSecurity(payload.from, outVoice, 'live-voice')
-            const inVoice = this.incomingLiveVoiceCalls?.get(payload.from)
-            if (inVoice) this.attachCallSecurity(payload.from, inVoice, 'live-voice')
-          })
-          .catch(() => {})
+      const newSession = previousSession !== res.session
+      if (newSession) {
+        this.pairwiseRatchets.initSession(payload.from, res.session.sendChainKey, res.session.recvChainKey)
+        if (this.mediaE2EE && previousSession) {
+          this.mediaE2EE.clearPeer(payload.from)
+          this.endMediaCallWithPeer(payload.from)
+        }
       }
 
       if (res.reply) {
@@ -4164,6 +4185,16 @@ export class PeerManager {
             timestamp: Date.now(),
           })
         }
+      }
+      if (newSession) this.flushPendingRoomDms(payload.from)
+      if (newSession && this.mediaE2EE) {
+        void this.mediaE2EE.configurePeerKeys(payload.from, owner.id, res.session.rootKey, 0)
+          .then(() => {
+            if (this.peer !== owner || this.e2eeSessions.getSession(payload.from) !== res.session) return
+            const remote = useGameStore.getState().remotePlayers[payload.from]
+            if (remote && this.canStartProtectedCall(remote.id)) this.checkZoneCallEligibility(remote)
+          })
+          .catch(() => {})
       }
     } catch {}
   }
@@ -4241,7 +4272,7 @@ export class PeerManager {
   }
 
   private sendUnicastViaTopology(targetPeerId: string, msg: NetworkMessage): boolean {
-    if (this.isHost) {
+    if (this.isHost || this.connections.get(targetPeerId)?.open) {
       return this.sendToTargetPeer(targetPeerId, msg)
     }
     const hostPeerId = this.getHostPeerId()
@@ -4366,25 +4397,32 @@ export class PeerManager {
     }
   }
 
+  private canStartProtectedCall(peerId: string): boolean {
+    if (peerId.startsWith('dj-') || useGameStore.getState().remotePlayers[peerId]?.isDjBot) return true
+    return Boolean(this.mediaE2EE?.hasPeerKeys(peerId) && this.e2eeSessions?.getSession(peerId))
+  }
+
   public attachCallSecurity(
     peerId: string,
     call: MediaConnection,
     kind: 'main' | 'live-voice' = 'main',
     explicitPc?: RTCPeerConnection
-  ): void {
+  ): boolean {
     const owner = this.peer
-    if (!owner || !peerId || !call) return
-    if (peerId.startsWith('dj-') || useGameStore.getState().remotePlayers[peerId]?.isDjBot) return
+    if (!owner || !peerId || !call) return false
+    if (peerId.startsWith('dj-') || useGameStore.getState().remotePlayers[peerId]?.isDjBot) return true
     const pc = explicitPc || ((call as any).peerConnection as RTCPeerConnection | undefined)
-    if (!pc) return
-
-    if (this.mediaE2EE?.hasPeerKeys(peerId)) {
-      const mediaEncrypted = this.mediaE2EE.attachPeerConnection(pc, peerId)
-      if (mediaEncrypted) {
-        useSecurityStore.getState().updatePeerMediaSecurity(peerId, { mediaEncrypted: true })
+    if (!pc || !this.canStartProtectedCall(peerId) ||
+        !this.mediaE2EE.attachPeerConnection(pc, peerId, () => call.close())) return false
+    if (kind === 'main') {
+      useSecurityStore.getState().updatePeerMediaSecurity(peerId, { mediaEncrypted: true })
+      const clearMediaStatus = () => {
+        if (this.mediaCalls.get(peerId) === call) {
+          useSecurityStore.getState().updatePeerMediaSecurity(peerId, { mediaEncrypted: false, callDtlsVerified: false })
+        }
       }
-    } else if (!this.isHost) {
-      this.ensurePeerE2EESession(peerId, true)
+      call.on('close', clearMediaStatus)
+      call.on('error', clearMediaStatus)
     }
 
     const syncDtls = async () => {
@@ -4434,6 +4472,7 @@ export class PeerManager {
     }
 
     void syncDtls()
+    return true
   }
 
   private verifyMatchedDtls(peerId: string, remoteDtls: string, expectedDtls: string): boolean {
@@ -4662,8 +4701,15 @@ export class PeerManager {
       return false
     }
     const authorId = msg.senderId || peerId
-    const activeE2EE =
-      this.pairwiseRatchets.hasSession(authorId) || this.pairwiseRatchets.hasSession(peerId)
+    const recipientId = msg.type === 'CHAT_MESSAGE' ? msg.payload.message.recipientId : msg.payload.recipientId
+    if (this.isHost && authorId === peerId && recipientId) {
+      const target = this.resolveTargetPeerId(recipientId)
+      if (target && target !== peerId && this.isKnownLegacyPeer(target)) return false
+    }
+    const relayedFromLegacy = isHostSource && authorId !== peerId && this.isKnownLegacyPeer(authorId)
+    const activeE2EE = this.pairwiseRatchets.hasSession(authorId) ||
+      (!relayedFromLegacy && this.pairwiseRatchets.hasSession(peerId)) ||
+      (useGameStore.getState().remotePlayers[authorId]?.e2eeVersion ?? 0) >= 1
     if (!activeE2EE) return false
     useSecurityStore.getState().recordAlert({
       peerId: authorId,
@@ -4718,12 +4764,66 @@ export class PeerManager {
   private sendToTargetPeer(targetPeerId: string, msg: NetworkMessage): boolean {
     const conn = this.connections.get(targetPeerId)
     if (!conn?.open) return false
-    this.sendToPeer(conn, msg)
-    return true
+    return this.sendToPeer(conn, msg)
+  }
+
+  private isKnownLegacyPeer(peerId: string): boolean {
+    const { remotePlayers, friends, friendProfiles } = useGameStore.getState()
+    const player = remotePlayers[peerId]
+    if (!player || (player.e2eeVersion ?? 0) >= 1 || this.e2eeSessions?.getSession(peerId) ||
+        this.pairwiseRatchets?.hasSession(peerId) || useSecurityStore.getState().peers[peerId]) return false
+    const friendKey = findFriendKey(friends, friendProfiles, [peerId, player.gameId])
+    return !friendKey || !friendProfiles[friendKey]?.identityKey
+  }
+
+  private sendLegacyRoomDm(peerId: string, message: NetworkMessage): boolean {
+    if (this.isHost || this.connections.get(peerId)?.open) return this.sendToTargetPeer(peerId, message)
+    const host = this.getHostPeerId()
+    // Older hosts may broadcast DMs to the entire room. Use the relay only when
+    // it supports authenticated E2EE room routing.
+    return Boolean(host && this.pairwiseRatchets?.hasSession(host) && this.sendToTargetPeer(host, message))
+  }
+
+  private queueRoomDm(peerId: string, message: Parameters<PeerManager['sendChatMessage']>[0]) {
+    if (this.pendingRoomDms.has(message.id)) return
+    const notify = useChatStore.getState().setRoomSendNotice
+    if (this.pendingRoomDms.size >= 100) {
+      notify(message.id, { text: 'Fila de mensagens privadas da sala cheia.', retry: true })
+      return
+    }
+    notify(message.id, { text: 'Aguardando conexão segura com o destinatário na sala…', retry: false })
+    const timer = setTimeout(() => {
+      this.pendingRoomDms.delete(message.id)
+      notify(message.id, { text: 'A conexão segura com o destinatário na sala não ficou pronta.', retry: true })
+    }, 10_000)
+    this.pendingRoomDms.set(message.id, { peerId, timer, send: () => this.sendChatMessage(message) })
+    const conn = this.connections.get(peerId)
+    if (conn?.open) void this.initiateE2EEHandshake(peerId, conn)
+    else this.ensurePeerE2EESession(peerId, true)
+  }
+
+  private flushPendingRoomDms(peerId: string) {
+    for (const [id, pending] of this.pendingRoomDms ?? []) {
+      if (pending.peerId !== peerId) continue
+      clearTimeout(pending.timer)
+      this.pendingRoomDms.delete(id)
+      pending.send()
+    }
+  }
+
+  private cancelPendingRoomDms(peerId?: string) {
+    for (const [id, pending] of this.pendingRoomDms ?? []) {
+      if (peerId && pending.peerId !== peerId) continue
+      clearTimeout(pending.timer)
+      this.pendingRoomDms.delete(id)
+      useChatStore.getState().setRoomSendNotice(id, { text: 'Conexão da sala encerrada antes do envio.', retry: true })
+    }
   }
 
   public sendChatMessage(message: any) {
-    void this.sendChatMessageEncrypted(message)
+    void this.sendChatMessageEncrypted(message).catch(() => {
+      if (message?.id) useChatStore.getState().setRoomSendNotice(message.id, { text: 'Falha ao enviar pela sala.', retry: true })
+    })
   }
 
   private async sendChatMessageEncrypted(message: any) {
@@ -4741,6 +4841,7 @@ export class PeerManager {
     }
 
     const isDm = Boolean(message?.recipientId) || Boolean(message?.channelId?.startsWith('dm-'))
+    const notify = useChatStore.getState().setRoomSendNotice
     if (isDm) {
       const targetPeerId = this.resolveTargetPeerId(message.recipientId, message.channelId)
       if (targetPeerId && this.pairwiseRatchets?.hasSession(targetPeerId)) {
@@ -4762,19 +4863,13 @@ export class PeerManager {
           payload: { ...envelope, kind: 'dm' },
           timestamp: Date.now(),
         }
-        this.sendUnicastViaTopology(targetPeerId, netMsg)
+        if (this.peer === owner && this.sendUnicastViaTopology(targetPeerId, netMsg)) notify(message.id)
+        else notify(message.id, { text: 'A rota da mensagem privada na sala foi interrompida.', retry: true })
         return
       }
-      if (targetPeerId) {
-        this.ensurePeerE2EESession(targetPeerId, true)
-      }
-      const hasE2EEContext =
-        Boolean(
-          targetPeerId &&
-            (this.e2eeSessions?.getSession(targetPeerId) ||
-              useSecurityStore.getState().peers[targetPeerId])
-        ) || this.hasAnyActiveRatchets()
-      if (hasE2EEContext) {
+      if (!targetPeerId) return
+      if (!this.isKnownLegacyPeer(targetPeerId)) {
+        this.queueRoomDm(targetPeerId, message)
         return
       }
       const fallbackMsg: NetworkMessage = {
@@ -4783,12 +4878,11 @@ export class PeerManager {
         payload: { message },
         timestamp: Date.now(),
       }
-      if (this.isHost) {
-        const targetConn = this.resolveTargetConnection(message.recipientId, message.channelId)
-        if (targetConn) this.sendToPeer(targetConn, fallbackMsg)
-        return
-      }
-      this.broadcast(fallbackMsg)
+      // Only an explicit recipient may use the compatibility route through the host.
+      const sent = Boolean(message.recipientId && this.sendLegacyRoomDm(targetPeerId, fallbackMsg))
+      notify(message.id, sent
+        ? { text: 'Enviada pela sala em modo compatível, sem E2EE.', retry: false }
+        : { text: 'A mensagem privada não pôde ser encaminhada pela sala.', retry: true })
       return
     }
 
@@ -4810,7 +4904,12 @@ export class PeerManager {
       }
 
       if (encryptedPeers.length === 0) {
-        if (this.hasAnyActiveRatchets()) {
+        if (eligiblePeers.length === 0) {
+          notify(message.id)
+          return
+        }
+        if (scope !== 'room' || !eligiblePeers.every(pid => this.isKnownLegacyPeer(pid))) {
+          notify(message.id, { text: 'Nenhum destinatário da sala tem uma sessão segura pronta.', retry: true })
           return
         }
         this.broadcast({
@@ -4819,13 +4918,17 @@ export class PeerManager {
           payload: { message },
           timestamp: Date.now(),
         })
+        notify(message.id, { text: 'Enviada em modo compatível, sem E2EE.', retry: false })
         return
       }
 
       const localIdentity = await this.ensureLocalIdentity()
       if (this.peer !== owner) return
+      const epoch = this.senderKeys.getOrCreateOutbound(scope).epoch
+      const recipients: string[] = []
 
       for (const pid of encryptedPeers) {
+        if (!this.isPeerEligibleForScope(pid, scope)) continue
         if (this.senderKeys.needsDistribution(scope, pid)) {
           const dist = await this.senderKeys.exportDistribution(scope, owner.id, localIdentity)
           const distEnv = await this.pairwiseRatchets.encryptJson(pid, owner.id, pid, dist)
@@ -4840,13 +4943,19 @@ export class PeerManager {
             },
             timestamp: Date.now(),
           }
-          if (this.sendUnicastViaTopology(pid, distMsg)) {
-            this.senderKeys.markDistributed(scope, pid)
-            if (zoneId) {
-              this.lastPeerZones.set(pid, zoneId)
-            }
+          if (this.peer !== owner) return
+          if (dist.epoch !== epoch || this.senderKeys.getOrCreateOutbound(scope).epoch !== epoch) break
+          if (!this.isPeerEligibleForScope(pid, scope) || !this.sendUnicastViaTopology(pid, distMsg)) continue
+          this.senderKeys.markDistributed(scope, pid)
+          if (zoneId) {
+            this.lastPeerZones.set(pid, zoneId)
           }
         }
+        recipients.push(pid)
+      }
+      if (recipients.length === 0 || this.senderKeys.getOrCreateOutbound(scope).epoch !== epoch) {
+        notify(message.id, { text: 'Não foi possível distribuir a chave da mensagem.', retry: true })
+        return
       }
 
       let wireMessage: any = zoneId ? { ...message, channelId: 'current-zone', zoneId } : message
@@ -4865,21 +4974,31 @@ export class PeerManager {
         { message: wireMessage },
         attachmentDigest
       )
+      if (this.peer !== owner) return
+      if (groupEnv.epoch !== epoch || this.senderKeys.getOrCreateOutbound(scope).epoch !== epoch) {
+        notify(message.id, { text: 'A chave do grupo mudou durante o envio.', retry: true })
+        return
+      }
       const netMsg: NetworkMessage = {
         type: 'E2EE_GROUP_ENVELOPE',
         senderId: owner.id,
         payload: groupEnv,
         timestamp: Date.now(),
       }
+      if (this.peer !== owner) return
+      let submitted = 0
       if (this.isHost) {
-        for (const pid of encryptedPeers) {
-          this.sendToTargetPeer(pid, netMsg)
+        for (const pid of recipients) {
+          if (this.isPeerEligibleForScope(pid, scope) && this.sendToTargetPeer(pid, netMsg)) submitted++
         }
       } else {
         const hostPeerId = this.getHostPeerId()
-        if (hostPeerId) {
-          this.sendToTargetPeer(hostPeerId, netMsg)
-        }
+        if (hostPeerId && this.sendToTargetPeer(hostPeerId, netMsg)) submitted = recipients.length
+      }
+      if (submitted < eligiblePeers.length) {
+        notify(message.id, { text: `Envio seguro encaminhado para ${submitted} de ${eligiblePeers.length} participantes.`, retry: true })
+      } else {
+        notify(message.id)
       }
     }
     if (this.outboundScopeQueues) {
@@ -4948,21 +5067,14 @@ export class PeerManager {
         })
         return
       }
-      if (this.hasAnyActiveRatchets()) return
+      if (!targetPeerId || !recipientId || !this.isKnownLegacyPeer(targetPeerId)) return
       const msg: NetworkMessage = {
         type: 'CHAT_MESSAGE_STATUS',
         senderId: owner.id,
         payload: receipt,
         timestamp: Date.now(),
       }
-      if (this.isHost) {
-        const targetConn = this.resolveTargetConnection(recipientId, channelId)
-        if (targetConn) {
-          this.sendToPeer(targetConn, msg)
-        }
-        return
-      }
-      this.broadcast(msg)
+      this.sendLegacyRoomDm(targetPeerId, msg)
       return
     }
     if (this.hasAnyActiveRatchets()) return

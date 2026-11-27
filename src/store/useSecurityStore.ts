@@ -77,7 +77,8 @@ export interface AggregatedCallSecurity {
  */
 export function aggregatePeersSecurity(
   peers: Record<string, PeerSecurityState>,
-  targets: Array<{ id: string; gameId?: string; name?: string }>
+  targets: Array<{ id: string; gameId?: string; name?: string }>,
+  requireEncryptedMedia = false,
 ): AggregatedCallSecurity {
   if (targets.length === 0) {
     return {
@@ -104,7 +105,7 @@ export function aggregatePeersSecurity(
     const candidateIds = target.gameId ? [target.id, target.gameId] : [target.id]
     const resolved = resolvePeerSecurity(peers, candidateIds)
     const status = resolved?.status ?? 'pending'
-    if (resolved?.mediaEncrypted) {
+    if (peers[target.id]?.mediaEncrypted) {
       mediaEncryptedCount++
     }
     if (status === 'mitm_blocked') {
@@ -121,6 +122,7 @@ export function aggregatePeersSecurity(
   let status: PeerSecurityStatus | 'idle'
   if (hasMitmBlocked) status = 'mitm_blocked'
   else if (hasKeyChanged) status = 'key_changed'
+  else if (requireEncryptedMedia && mediaEncryptedCount !== targets.length) status = 'pending'
   else if (allVerified) status = 'verified'
   else if (allEncryptedOrVerified) status = 'encrypted'
   else status = 'pending'

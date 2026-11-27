@@ -213,6 +213,7 @@ const ChatDrawerInner: React.FC = () => {
     getFriendRequestStatus,
     closeDirectMessage,
     sendRoomInvite,
+    roomSendNotices,
   } = useChatStore()
 
   const localPlayer = useLocalPlayerDetails()
@@ -981,6 +982,18 @@ const ChatDrawerInner: React.FC = () => {
                   (localPlayer.gameId && msg.senderId === localPlayer.gameId)
                 const hasAttachment = !!msg.attachment
                 const isImage = hasAttachment && isImageAttachment(msg.attachment!)
+                const notice = isMine && (!msg.recipientId || !msg.status || msg.status === 'sent')
+                  ? roomSendNotices[msg.id] : undefined
+                const deliveryNotice = notice && (
+                  <span className="text-xs text-lira-amber" role="status">
+                    {notice.text}{' '}
+                    {notice.retry && (
+                      <button type="button" className="underline" onClick={() => PeerManager.getInstance().sendChatMessage(msg)}>
+                        Tentar de novo
+                      </button>
+                    )}
+                  </span>
+                )
 
                  if (msg.friendRequest) {
                   const rId = msg.friendRequest.requestId
@@ -1007,7 +1020,7 @@ const ChatDrawerInner: React.FC = () => {
                             <span className="text-[10px] font-mono text-lira-muted">
                               {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
-                            {isMine && <MessageStatusIcon status={msg.status} />}
+                            {deliveryNotice || (isMine && <MessageStatusIcon status={msg.status} />)}
                           </div>
                         </div>
                         <div className="text-xs text-lira-ink bg-lira-surface/60 p-2.5 rounded-lg border border-lira-quiet break-words">
@@ -1031,7 +1044,7 @@ const ChatDrawerInner: React.FC = () => {
                           <span className="text-[10px] font-mono text-lira-muted">
                             {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
-                          {isMine && <MessageStatusIcon status={msg.status} />}
+                          {deliveryNotice || (isMine && <MessageStatusIcon status={msg.status} />)}
                         </div>
                       </div>
                       <FriendRequestCard
@@ -1061,7 +1074,7 @@ const ChatDrawerInner: React.FC = () => {
                           <span className="text-[10px] font-mono text-lira-muted">
                             {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
-                          {isMine && <MessageStatusIcon status={msg.status} />}
+                          {deliveryNotice || (isMine && <MessageStatusIcon status={msg.status} />)}
                         </div>
                       </div>
                       <RoomInviteCard
@@ -1131,7 +1144,7 @@ const ChatDrawerInner: React.FC = () => {
                         <span className="text-[10px] font-mono text-lira-muted">
                           {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
-                        {isMine && <MessageStatusIcon status={msg.status} />}
+                        {deliveryNotice || (isMine && <MessageStatusIcon status={msg.status} />)}
                       </div>
                     </div>
 
