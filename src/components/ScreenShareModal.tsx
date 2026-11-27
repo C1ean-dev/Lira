@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   Monitor,
   AppWindow,
@@ -33,8 +33,11 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const [selectedAudioSourceId, setSelectedAudioSourceId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'screen' | 'window'>('screen')
   const [loading, setLoading] = useState(false)
+  const [starting, setStarting] = useState(false)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [audioCapabilityError, setAudioCapabilityError] = useState<string | null>(null)
+  const startingRef = useRef(false)
+  const closedByUserRef = useRef(false)
 
   const isElectron = typeof window !== 'undefined' && !!(window as any).electronAPI?.getSources
 
@@ -81,7 +84,12 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
   }
 
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen) {
+      startingRef.current = false
+      setStarting(false)
+      return
+    }
+    closedByUserRef.current = false
     fetchSources()
     const getAudioInfo = (window as any).electronAPI?.getProcessAudioCaptureInfo
     if (isElectron && getAudioInfo) {
@@ -108,8 +116,22 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const isSharingWholeScreen = selectedSource?.id.startsWith('screen:')
   const effectiveAudioSourceId = isSharingWholeScreen ? selectedSourceId : (selectedAudioSourceId || selectedSourceId)
 
+  const handleClose = () => {
+    closedByUserRef.current = true
+    if (startingRef.current) {
+      MediaManager.getInstance().cancelPendingScreenShare?.()
+      startingRef.current = false
+      setStarting(false)
+    }
+    onClose()
+  }
+
   const handleConfirm = async () => {
+    if (startingRef.current) return
     if (isElectron && (!effectiveAudioSourceId || audioCapabilityError)) return
+    startingRef.current = true
+    closedByUserRef.current = false
+    setStarting(true)
     const config: ScreenShareConfig = {
       sourceId: selectedSourceId || undefined,
       sourceName: selectedSource?.name,
@@ -125,11 +147,17 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
     } catch (err) {
       console.error('Falha ao iniciar compartilhamento de tela:', err)
     } finally {
-      onClose()
+      startingRef.current = false
+      setStarting(false)
+      if (!closedByUserRef.current) onClose()
     }
   }
 
   const handleNativePicker = async () => {
+    if (startingRef.current) return
+    startingRef.current = true
+    closedByUserRef.current = false
+    setStarting(true)
     const config: ScreenShareConfig = {
       sourceId: undefined,
       sourceName: undefined,
@@ -143,7 +171,9 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
     } catch (err) {
       console.error('Falha ao iniciar compartilhamento nativo de tela:', err)
     } finally {
-      onClose()
+      startingRef.current = false
+      setStarting(false)
+      if (!closedByUserRef.current) onClose()
     }
   }
 
@@ -177,13 +207,15 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
           <div className="flex items-center gap-2">
             <button
               onClick={fetchSources}
-              className="p-2 rounded-[8px] border border-lira-rule bg-lira-surface text-lira-muted hover:text-lira-ink hover:border-lira-accent transition-colors"
+              disabled={starting}
+              className="p-2 rounded-[8px] border border-lira-rule bg-lira-surface text-lira-muted hover:text-lira-ink hover:border-lira-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               title="Recarregar Janelas"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-lira-accent' : ''}`} />
             </button>
             <button
-              onClick={onClose}
+              onClick={handleClose}
+              aria-label="Fechar"
               className="p-2 rounded-[8px] border border-lira-rule bg-lira-surface text-lira-muted hover:text-lira-ink hover:border-lira-accent transition-colors"
             >
               <X className="w-5 h-5" />
@@ -237,7 +269,8 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 <button
                   type="button"
                   onClick={handleNativePicker}
-                  className="text-[11px] font-semibold text-lira-accent hover:text-lira-ink flex items-center gap-1 underline"
+                  disabled={starting}
+                  className="text-[11px] font-semibold text-lira-accent hover:text-lira-ink disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 underline"
                 >
                   <span>Usar Seletor do Sistema / Navegador</span>
                 </button>
@@ -624,11 +657,12 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
             {isScreenSharing && (
               <button
                 type="button"
+                disabled={starting}
                 onClick={() => {
                   MediaManager.getInstance().stopScreenShare()
                   onClose()
                 }}
-                className="px-3.5 py-2 rounded-[8px] text-xs font-mono font-bold bg-lira-error/15 hover:bg-lira-error text-lira-error hover:text-lira-ground border border-lira-error/40 transition-colors flex items-center gap-1.5"
+                className="px-3.5 py-2 rounded-[8px] text-xs font-mono font-bold bg-lira-error/15 hover:bg-lira-error text-lira-error hover:text-lira-ground border border-lira-error/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
                 title="Parar de transmitir agora"
               >
                 <StopCircle className="w-4 h-4" />
@@ -636,18 +670,21 @@ export const ScreenShareModal: React.FC<Props> = ({ isOpen, onClose }) => {
               </button>
             )}
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="px-4 py-2 rounded-[8px] text-xs font-mono font-semibold text-lira-muted hover:text-lira-ink bg-lira-surface border border-lira-rule hover:border-lira-accent transition-colors"
             >
               Cancelar
             </button>
             <button
               onClick={handleConfirm}
-              disabled={!selectedSourceId || !!audioCapabilityError}
+              disabled={starting || !selectedSourceId || !!audioCapabilityError}
+              aria-busy={starting}
               className="px-5 py-2 rounded-[8px] text-xs font-mono font-bold bg-lira-accent hover:bg-lira-ink border border-lira-accent hover:border-lira-ink disabled:cursor-not-allowed disabled:bg-lira-surface disabled:border-lira-quiet disabled:text-lira-muted text-lira-ground flex items-center gap-2 transition-colors"
             >
-              <ScreenShare className="w-4 h-4" />
-              {isScreenSharing ? 'Atualizar Transmissão' : 'Iniciar Apresentação'}
+              {starting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <ScreenShare className="w-4 h-4" />}
+              {starting
+                ? (isScreenSharing ? 'Atualizando...' : 'Iniciando...')
+                : (isScreenSharing ? 'Atualizar Transmissão' : 'Iniciar Apresentação')}
             </button>
           </div>
         </div>

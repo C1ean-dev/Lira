@@ -57,14 +57,92 @@ export function buildGStreamerPipeline(source: Source | 'test', quality: Quality
   ]
 }
 
-export function findGStreamerRuntime(packaged: boolean, resources: string): string | undefined {
+export const GSTREAMER_WARM_START_TIMEOUT_MS = 8_000
+export const GSTREAMER_COLD_START_TIMEOUT_MS = 20_000
+export const GSTREAMER_WARMUP_TIMEOUT_MS = 20_000
+
+export function gstreamerStartupTimeoutMs(registry: string, registryExists = existsSync(registry)): number {
+  return registryExists ? GSTREAMER_WARM_START_TIMEOUT_MS : GSTREAMER_COLD_START_TIMEOUT_MS
+}
+
+export function buildGStreamerEnv(root: string, registry: string): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    PATH: [join(root, 'bin'), process.env.PATH].filter(Boolean).join(delimiter),
+    GST_PLUGIN_PATH: '',
+    GST_PLUGIN_PATH_1_0: '',
+    GST_PLUGIN_SYSTEM_PATH: '',
+    GST_PLUGIN_SYSTEM_PATH_1_0: join(root, 'lib', 'gstreamer-1.0'),
+    GST_PLUGIN_SCANNER: join(root, 'libexec', 'gstreamer-1.0', 'gst-plugin-scanner.exe'),
+    GST_REGISTRY: registry,
+    GST_DEBUG: '2',
+    GST_DEBUG_NO_COLOR: '1',
+  }
+}
+
+export function findGStreamerRuntime(packaged: boolean, resources: string, devAppRoot?: string): string | undefined {
   if (process.platform !== 'win32' || process.arch !== 'x64') return
   const inProgramFiles = (base?: string) => base && join(base, 'gstreamer', '1.0', 'msvc_x86_64')
   const roots = packaged ? [join(resources, 'gstreamer')] : [
-    process.env.LIRA_GSTREAMER_ROOT, process.env.GSTREAMER_1_0_ROOT_MSVC_X86_64,
+    process.env.LIRA_GSTREAMER_ROOT,
+    devAppRoot && join(devAppRoot, '.scratch', 'gstreamer-runtime'),
+    process.env.GSTREAMER_1_0_ROOT_MSVC_X86_64,
     inProgramFiles(process.env.ProgramFiles), inProgramFiles(process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, 'Programs')),
   ]
   return roots.find((root): root is string => !!root && existsSync(join(root, 'bin', 'gst-launch-1.0.exe')))
+}
+
+type WarmupHandle = { promise: Promise<boolean>; stop: () => void }
+const activeWarmups = new Map<string, WarmupHandle>()
+
+/** Pre-builds the GStreamer plugin registry cache so first screen share starts without scanning DLLs. */
+export function warmupGStreamerRegistry(
+  root: string,
+  registry: string,
+  timeoutMs = GSTREAMER_WARMUP_TIMEOUT_MS,
+): WarmupHandle {
+  const existing = activeWarmups.get(registry)
+  if (existing) return existing
+
+  let settled = false
+  let child: ReturnType<typeof spawn> | undefined
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let resolvePromise!: (ok: boolean) => void
+  const promise = new Promise<boolean>(resolve => { resolvePromise = resolve })
+
+  const finish = (ok: boolean) => {
+    if (settled) return
+    settled = true
+    if (timer) clearTimeout(timer)
+    if (activeWarmups.get(registry) === handle) activeWarmups.delete(registry)
+    resolvePromise(ok)
+  }
+
+  const stop = () => {
+    try { child?.kill() } catch {}
+    finish(false)
+  }
+
+  const handle: WarmupHandle = { promise, stop }
+  activeWarmups.set(registry, handle)
+
+  try {
+    const bin = join(root, 'bin')
+    child = spawn(join(bin, 'gst-launch-1.0.exe'), ['--version'], {
+      cwd: bin, windowsHide: true, stdio: 'ignore', env: buildGStreamerEnv(root, registry),
+    })
+    timer = setTimeout(() => {
+      try { child?.kill() } catch {}
+      finish(false)
+    }, timeoutMs)
+    timer.unref?.()
+    child.once('error', () => finish(false))
+    child.once('exit', code => finish(code === 0 && existsSync(registry)))
+  } catch {
+    finish(false)
+  }
+
+  return handle
 }
 
 type ProducerSocket = {
@@ -98,7 +176,9 @@ export function launchGStreamer(
   let resolveStopped!: () => void
   const ready = new Promise<boolean>(resolve => { resolveReady = resolve })
   const stopped = new Promise<void>(resolve => { resolveStopped = resolve })
-  const timeout = setTimeout(() => finish('Tempo esgotado ao iniciar o GStreamer.'), 8_000)
+  const pendingWarmup = activeWarmups.get(registry)
+  const startupTimeoutMs = gstreamerStartupTimeoutMs(registry, !pendingWarmup && existsSync(registry))
+  const timeout = setTimeout(() => finish('Tempo esgotado ao iniciar o GStreamer.'), startupTimeoutMs)
   const send = (data: object) => producer?.send(JSON.stringify(data))
   const stop = () => {
     if (closed) return
@@ -156,21 +236,21 @@ export function launchGStreamer(
     const address = server.address()
     if (closed || !address || typeof address === 'string') return
     const bin = join(root, 'bin')
-    child = spawn(join(bin, 'gst-launch-1.0.exe'),
-      buildGStreamerPipeline(source, quality, `ws://127.0.0.1:${address.port}/native`, token, stun), {
-        cwd: bin, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'],
-        env: {
-          ...process.env, PATH: [bin, process.env.PATH].filter(Boolean).join(delimiter),
-          GST_PLUGIN_PATH: '', GST_PLUGIN_PATH_1_0: '', GST_PLUGIN_SYSTEM_PATH: '', GST_PLUGIN_SYSTEM_PATH_1_0: join(root, 'lib', 'gstreamer-1.0'),
-          GST_PLUGIN_SCANNER: join(root, 'libexec', 'gstreamer-1.0', 'gst-plugin-scanner.exe'),
-          GST_REGISTRY: registry, GST_DEBUG: '2', GST_DEBUG_NO_COLOR: '1',
-        },
-      })
-    let stderr = ''
-    child.stderr?.on('data', chunk => { stderr = (stderr + String(chunk)).slice(-2400) })
-    child.once('error', error => finish(error.message))
-    child.once('exit', code => finish(`GStreamer encerrou (${code ?? 'sinal'}). ${stderr.split(token).join('[token]').trim()}`))
-    child.once('close', resolveStopped)
+    const spawnProducer = () => {
+      if (closed) return
+      child = spawn(join(bin, 'gst-launch-1.0.exe'),
+        buildGStreamerPipeline(source, quality, `ws://127.0.0.1:${address.port}/native`, token, stun), {
+          cwd: bin, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'],
+          env: buildGStreamerEnv(root, registry),
+        })
+      let stderr = ''
+      child.stderr?.on('data', chunk => { stderr = (stderr + String(chunk)).slice(-2400) })
+      child.once('error', error => finish(error.message))
+      child.once('exit', code => finish(`GStreamer encerrou (${code ?? 'sinal'}). ${stderr.split(token).join('[token]').trim()}`))
+      child.once('close', resolveStopped)
+    }
+    if (pendingWarmup) void pendingWarmup.promise.finally(spawnProducer)
+    else spawnProducer()
   })
   return {
     ready,

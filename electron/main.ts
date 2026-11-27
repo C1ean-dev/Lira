@@ -8,7 +8,7 @@ import { spawn, exec, execSync, execFile } from 'child_process'
 import { release as getOsRelease } from 'os'
 import { guardIpcMain } from './ipcGuard'
 import { findCaptureDisplay, getCaptureDisplayPoint } from './captureDisplay'
-import { findGStreamerRuntime, getGStreamerMonitorHandle, launchGStreamer, resolveGStreamerSource } from './gstreamerLive'
+import { findGStreamerRuntime, getGStreamerMonitorHandle, launchGStreamer, resolveGStreamerSource, warmupGStreamerRegistry } from './gstreamerLive'
 import { gstreamerSignalSchema } from '../src/media/gstreamerProtocol'
 import { createLogBundle } from './logBundle'
 import { createGithubIssue } from './githubIssue'
@@ -132,6 +132,35 @@ function stopNativeLive(id: string) {
 
 function stopAllNativeLives() {
   for (const id of nativeLives.keys()) stopNativeLive(id)
+}
+
+let gstreamerWarmupTimer: ReturnType<typeof setTimeout> | null = null
+let gstreamerWarmup: ReturnType<typeof warmupGStreamerRegistry> | null = null
+
+function scheduleGStreamerWarmup() {
+  if (process.platform !== 'win32' || process.env.LIRA_DISABLE_GSTREAMER_WARMUP === '1') return
+  const root = findGStreamerRuntime(app.isPackaged, process.resourcesPath, app.getAppPath?.())
+  if (!root) return
+  if (gstreamerWarmupTimer) clearTimeout(gstreamerWarmupTimer)
+  gstreamerWarmupTimer = setTimeout(() => {
+    gstreamerWarmupTimer = null
+    const registry = path.join(app.getPath('userData'), 'gstreamer-registry.bin')
+    const handle = warmupGStreamerRegistry(root, registry)
+    gstreamerWarmup = handle
+    void handle.promise.finally(() => {
+      if (gstreamerWarmup === handle) gstreamerWarmup = null
+    })
+  }, 2_500)
+  gstreamerWarmupTimer.unref?.()
+}
+
+function stopGStreamerWarmup() {
+  if (gstreamerWarmupTimer) {
+    clearTimeout(gstreamerWarmupTimer)
+    gstreamerWarmupTimer = null
+  }
+  gstreamerWarmup?.stop()
+  gstreamerWarmup = null
 }
 const isStartupUpdateMode = isStartupUpdateArgv(process.argv) && !isMultiInstance && !isPostUpdateArgv(process.argv)
 let startupUpdateActive = isStartupUpdateMode
@@ -601,7 +630,7 @@ function isNativeLiveOwner(event: Electron.IpcMainInvokeEvent) {
 
 ipcMain.handle('gstreamer-start', async (event, id: unknown, request: unknown) => {
   if (!isNativeLiveOwner(event) || typeof id !== 'string' || !/^[\da-f-]{36}$/i.test(id)) return false
-  const root = findGStreamerRuntime(app.isPackaged, process.resourcesPath)
+  const root = findGStreamerRuntime(app.isPackaged, process.resourcesPath, app.getAppPath?.())
   const capture = request as Partial<import('../src/media/gstreamerProtocol').GStreamerCapture> | null
   if (!root || typeof capture?.sourceId !== 'string' || !/^(screen|window):[\d-]{1,20}:\d+$/.test(capture.sourceId) ||
       (capture.fps !== 30 && capture.fps !== 60)) return false
@@ -2285,6 +2314,7 @@ ipcMain.handle('get-system-idle-time', () => {
 let spotifyQuitCleanup: Promise<void> | null = null
 let spotifyQuitReady = false
 app.on('before-quit', event => {
+  stopGStreamerWarmup()
   stopAllNativeLives()
   spotifyLogin.cancel()
   if (!spotifyQuitReady && (spotifyWindowHost.browser || spotifyPlayer.isOpen || spotifyPlayer.isOpening)) {
@@ -2406,6 +2436,7 @@ app.whenReady().then(async () => {
   initNetworkTriggerAndLanDiscovery()
   initLocalPeerServer()
   startSpotifyPoll()
+  scheduleGStreamerWarmup()
   if (process.platform === 'win32' && app.isPackaged) {
     void parsecEchoHandler.run().catch((err) => {
       console.warn('[ParsecEcho] Falha ao configurar proteção automática do Parsec:', err)
