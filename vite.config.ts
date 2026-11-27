@@ -5,6 +5,7 @@ import electron from 'vite-plugin-electron'
 import renderer from 'vite-plugin-electron-renderer'
 import path from 'path'
 import fs from 'fs'
+import os from 'node:os'
 import { createRequire } from 'node:module'
 import { readAssetAtlas, writeAssetAtlasLatest } from './electron/assetAtlasFile'
 import { readIndividualLibrary, writeIndividualLibraryLatest } from './electron/individualLibraryFile'
@@ -24,6 +25,7 @@ ensureNativeSpacesFile(path.resolve(__dirname, 'src/data/nativeSpaces.json'))
 const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, './package.json'), 'utf-8'))
 const appVersion = process.env.VITE_APP_VERSION || process.env.LIRA_VERSION_NAME || pkg.version || '1.0.0'
 const enableElectron = !process.env.VITEST && process.env.LIRA_TARGET !== 'web'
+const defaultVitestWorkers = Math.max(1, Math.min(4, Math.floor(os.availableParallelism() / 2)))
 const require = createRequire(import.meta.url)
 
 export default defineConfig({
@@ -327,7 +329,7 @@ export default defineConfig({
   test: {
     // Node 25+ Web Storage shadows jsdom's storage in Vitest 4 (vitest#10867).
     execArgv: Number(process.versions.node.split('.')[0]) >= 25 ? ['--no-experimental-webstorage'] : [],
-    setupFiles: ['./src/__tests__/helpers/jsdomCanvasSetup.ts'],
+    maxWorkers: defaultVitestWorkers,
     testTimeout: 60000,
     hookTimeout: 60000,
     server: { deps: { inline: [/@excalidraw\/excalidraw/, /open-color/] } },
