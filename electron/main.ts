@@ -534,10 +534,23 @@ function logSessionStart() {
     ...(mainReportContext().app as Record<string, unknown>),
     logs: getLogsDirectory(),
   })
-  app
-    .getGPUInfo('complete')
-    .then((info) => console.info('[Session] gpu', summarizeGpu(info, app.getGPUFeatureStatus())))
-    .catch((error) => console.warn('[Session] could not read the GPU info:', error))
+  // Avoid complete GPU info collection: on Chromium 148 + Windows ANGLE D3D11 it triggers
+  // Dawn's OpenGLES (ES 3.1) probe and emits eglCreateContext EGL_BAD_ATTRIBUTE errors.
+  // Waiting for gpu-info-update ensures getGPUFeatureStatus() reflects initialized GPU state.
+  let loggedGpu = false
+  const logGpuSummary = () => {
+    if (loggedGpu) return
+    loggedGpu = true
+    clearTimeout(fallbackTimer)
+    app.removeListener('gpu-info-update', logGpuSummary)
+    app
+      .getGPUInfo('basic')
+      .then((info) => console.info('[Session] gpu', summarizeGpu(info, app.getGPUFeatureStatus())))
+      .catch((error) => console.warn('[Session] could not read the GPU info:', error))
+  }
+  const fallbackTimer = setTimeout(logGpuSummary, 2000)
+  fallbackTimer.unref()
+  app.once('gpu-info-update', logGpuSummary)
 }
 
 function logProcessGone(

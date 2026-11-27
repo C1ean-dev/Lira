@@ -59,6 +59,7 @@ export function summarizeGpu(info: unknown, features: unknown): Record<string, u
     .map((device) => ({
       vendorId: hex(device.vendorId),
       deviceId: hex(device.deviceId),
+      ...(typeof device.deviceString === 'string' && device.deviceString ? { deviceString: device.deviceString } : {}),
       ...(typeof device.driverVendor === 'string' && device.driverVendor ? { driverVendor: device.driverVendor } : {}),
       ...(typeof device.driverVersion === 'string' && device.driverVersion ? { driverVersion: device.driverVersion } : {}),
       active: device.active === true,

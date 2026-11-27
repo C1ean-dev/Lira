@@ -76,6 +76,25 @@ describe('summarizeGpu', () => {
     })
   })
 
+  it('preserves deviceString from basic GPU info when driverVendor and glRenderer are absent', () => {
+    expect(
+      summarizeGpu(
+        {
+          gpuDevice: [
+            { vendorId: 4098, deviceId: 5607, deviceString: 'AMD Radeon (TM) Graphics', driverVersion: '31.0.21925.1001', active: false },
+          ],
+          auxAttributes: {},
+        },
+        { gpu_compositing: 'enabled', video_decode: 'enabled' }
+      )
+    ).toEqual({
+      adapters: [
+        { vendorId: '0x1002', deviceId: '0x15e7', deviceString: 'AMD Radeon (TM) Graphics', driverVersion: '31.0.21925.1001', active: false },
+      ],
+      notEnabled: {},
+    })
+  })
+
   it('survives missing information', () => {
     expect(summarizeGpu(undefined, undefined)).toEqual({ adapters: [], notEnabled: {} })
     expect(summarizeGpu({ gpuDevice: 'nope' }, 'nope')).toEqual({ adapters: [], notEnabled: {} })
