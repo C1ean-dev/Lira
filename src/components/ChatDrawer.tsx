@@ -68,11 +68,10 @@ import { useRoomJoinStore } from '../store/useRoomJoinStore'
 import { useChatPagination } from '../hooks/useChatPagination'
 import {
   aggregatePeersSecurity,
-  resolvePeerSecurity,
   useSecurityStore,
-  type PeerSecurityStatus,
 } from '../store/useSecurityStore'
 import { SecurityBadge } from './security/SecurityBadge'
+import { PeerSecurityIconButton } from './security/PeerSecurityIconButton'
 
 const MENU_ICON = 'w-4 h-4 shrink-0'
 
@@ -895,37 +894,20 @@ const ChatDrawerInner: React.FC = () => {
                 activeDmPerson?.playerId,
                 activeDmPerson?.friendKey,
               ].filter((id): id is string => Boolean(id))
-              const dmPeerSec = resolvePeerSecurity(securityPeers, dmCandidateIds)
-              const matchedFriendKey = findFriendKey(friends, friendProfiles, dmCandidateIds)
-              const matchedFriend = matchedFriendKey ? friendProfiles[matchedFriendKey] : undefined
-              const dmSecStatus: PeerSecurityStatus = dmPeerSec
-                ? dmPeerSec.status === 'encrypted' && matchedFriend?.identityKeyVerified
-                  ? 'verified'
-                  : dmPeerSec.status
-                : matchedFriend?.identityKeyVerified
-                ? 'verified'
-                : matchedFriend?.identityKey
-                ? 'encrypted'
-                : 'pending'
               const inspectPeerId =
-                dmPeerSec?.peerId ||
                 activeChannel.recipientId ||
                 activeDmPerson?.contactId ||
                 activeDmPerson?.playerId ||
+                activeDmPerson?.friendKey ||
                 activeChannel.name
 
               return (
                 <div className="flex items-center gap-1.5 shrink-0 min-w-0">
-                  <SecurityBadge
-                    compact
-                    status={dmSecStatus}
-                    onClick={() =>
-                      openSecurityInspection({
-                        peerId: inspectPeerId,
-                        displayName: activeChannel.name,
-                        candidateIds: dmCandidateIds,
-                      })
-                    }
+                  <PeerSecurityIconButton
+                    size="sm"
+                    peerId={inspectPeerId}
+                    displayName={activeChannel.name}
+                    candidateIds={dmCandidateIds}
                   />
                   <DmHeaderStatus person={activeDmPerson} fallbackName={activeChannel.name} />
                 </div>

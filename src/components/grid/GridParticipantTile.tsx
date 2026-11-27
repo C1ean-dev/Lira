@@ -14,6 +14,7 @@ import { useLiveGate } from '../../hooks/useLiveGate'
 import { useLiveViewBox } from '../../hooks/useLiveViewBox'
 import { LiveTransmissionInfo } from './LiveTransmissionInfo'
 import { useLiveFrameFit } from '../../hooks/useLiveFrameFit'
+import { PeerSecurityIconButton } from '../security/PeerSecurityIconButton'
 
 export interface ParticipantData {
   id: string
@@ -216,17 +217,33 @@ export const GridParticipantTile: React.FC<Props> = ({
 
         {remoteAudio}
 
-        {isLive && (
-          <div className="absolute top-1.5 left-1.5 flex items-center gap-1 px-1.5 py-0.5 bg-lira-error text-lira-ground rounded-[4px] text-[8px] font-mono font-bold">
-            <Radio className="w-2.5 h-2.5" />
-            <span>AO VIVO</span>
-          </div>
-        )}
+        {(isLive ||
+          (!user.isLocal && !isLive && user.callState === 'reconnecting') ||
+          (!user.isLocal && !isLive && !(user.isDjBot || user.id.startsWith('dj-') || user.name.includes('DJ')))) && (
+          <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1">
+            {!user.isLocal && !isLive && !(user.isDjBot || user.id.startsWith('dj-') || user.name.includes('DJ')) && (
+              <PeerSecurityIconButton
+                size="xs"
+                peerId={user.id}
+                displayName={user.name}
+                candidateIds={[user.id, user.gameId]}
+                className="bg-lira-panel/95 border border-lira-rule hover:border-lira-accent p-1"
+              />
+            )}
 
-        {!user.isLocal && !isLive && user.callState === 'reconnecting' && (
-          <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1 px-1.5 py-0.5 bg-lira-amber text-lira-ground rounded-[4px] text-[8px] font-mono font-bold">
-            <span className="w-1.5 h-1.5 rounded-full bg-lira-ground animate-ping" />
-            <span>RECONECTANDO</span>
+            {isLive && (
+              <div className="flex items-center gap-1 px-1.5 py-0.5 bg-lira-error text-lira-ground rounded-[4px] text-[8px] font-mono font-bold">
+                <Radio className="w-2.5 h-2.5" />
+                <span>AO VIVO</span>
+              </div>
+            )}
+
+            {!user.isLocal && !isLive && user.callState === 'reconnecting' && (
+              <div className="flex items-center gap-1 px-1.5 py-0.5 bg-lira-amber text-lira-ground rounded-[4px] text-[8px] font-mono font-bold">
+                <span className="w-1.5 h-1.5 rounded-full bg-lira-ground animate-ping" />
+                <span>RECONECTANDO</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -366,22 +383,31 @@ export const GridParticipantTile: React.FC<Props> = ({
       {remoteAudio}
 
       <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
-        {isLive ? (
-          <LiveTransmissionInfo stream={activeStream} local={!!user.isLocal} peerName={user.name}
-            onOpenSettings={user.isLocal ? onOpenScreenShareSettings : undefined} />
-        ) : !user.isLocal && user.callState === 'reconnecting' ? (
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-lira-amber text-lira-ground rounded-[8px] text-xs font-mono font-bold flex-shrink-0 pointer-events-auto">
-            <span className="w-2 h-2 rounded-full bg-lira-ground animate-ping" />
-            <span>RECONECTANDO ÁUDIO/VÍDEO...</span>
-          </div>
-        ) : !user.isLocal && user.callState === 'connecting' ? (
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-lira-surface border border-lira-accent text-lira-accent rounded-[8px] text-xs font-mono font-bold flex-shrink-0 pointer-events-auto">
-            <span className="w-2 h-2 rounded-full bg-lira-accent animate-ping" />
-            <span>CONECTANDO ÁUDIO/VÍDEO...</span>
-          </div>
-        ) : (
-          <div />
-        )}
+        <div className="flex items-center gap-1.5 pointer-events-auto">
+          {!user.isLocal && !isLive && !(user.isDjBot || user.id.startsWith('dj-') || user.name.includes('DJ')) && (
+            <PeerSecurityIconButton
+              size="sm"
+              peerId={user.id}
+              displayName={user.name}
+              candidateIds={[user.id, user.gameId]}
+              className="bg-lira-panel/95 border border-lira-rule hover:border-lira-accent p-1.5"
+            />
+          )}
+          {isLive ? (
+            <LiveTransmissionInfo stream={activeStream} local={!!user.isLocal} peerName={user.name}
+              onOpenSettings={user.isLocal ? onOpenScreenShareSettings : undefined} />
+          ) : !user.isLocal && user.callState === 'reconnecting' ? (
+            <div className="flex items-center gap-1.5 px-3 py-1 bg-lira-amber text-lira-ground rounded-[8px] text-xs font-mono font-bold flex-shrink-0">
+              <span className="w-2 h-2 rounded-full bg-lira-ground animate-ping" />
+              <span>RECONECTANDO ÁUDIO/VÍDEO...</span>
+            </div>
+          ) : !user.isLocal && user.callState === 'connecting' ? (
+            <div className="flex items-center gap-1.5 px-3 py-1 bg-lira-surface border border-lira-accent text-lira-accent rounded-[8px] text-xs font-mono font-bold flex-shrink-0">
+              <span className="w-2 h-2 rounded-full bg-lira-accent animate-ping" />
+              <span>CONECTANDO ÁUDIO/VÍDEO...</span>
+            </div>
+          ) : null}
+        </div>
 
         {!user.isLocal && !isLive && user.callState === 'failed' && (
           <div className="absolute inset-0 bg-lira-ground/90 z-30 flex flex-col items-center justify-center p-4 text-center pointer-events-auto">
