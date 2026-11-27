@@ -327,6 +327,7 @@ export default defineConfig({
   test: {
     // Node 25+ Web Storage shadows jsdom's storage in Vitest 4 (vitest#10867).
     execArgv: Number(process.versions.node.split('.')[0]) >= 25 ? ['--no-experimental-webstorage'] : [],
+    setupFiles: ['./src/__tests__/helpers/jsdomCanvasSetup.ts'],
     testTimeout: 60000,
     hookTimeout: 60000,
     server: { deps: { inline: [/@excalidraw\/excalidraw/, /open-color/] } },
