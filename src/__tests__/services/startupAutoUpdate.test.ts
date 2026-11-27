@@ -1,22 +1,46 @@
+import crypto from 'node:crypto'
+import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
+import { createPackage } from '@electron/asar'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  ASAR_RELATIVE_NAME,
+  INCREMENTAL_PLAN_FILE_NAME,
+  INCREMENTAL_READY_FILE_NAME,
+  UPDATE_MANIFEST_RELATIVE_NAME,
+} from '../../../electron/incrementalUpdater'
+import {
   APPLYING_LOCK_FILE_NAME,
+  buildDetachedPowerShellLauncherScript,
   checkAndSignalActiveApplier,
   LAUNCH_AFTER_UPDATE_FLAG_NAME,
+  launchIncrementalApplier,
+  quoteWindowsCommandLineArg,
   runStartupUpdateRoutine,
   type StartupUpdateDeps,
 } from '../../../electron/startupAutoUpdate'
 import { DEFAULT_APP_SETTINGS } from '../../../electron/traySettings'
 import type { UpdateInfo } from '../../services/updateCheck'
 
+const require = createRequire(import.meta.url)
+const { writeUpdateManifest } = require('../../../scripts/windows-update-package.cjs')
+
 const tempDirs: string[] = []
+const spawnedChildren: ChildProcess[] = []
 afterEach(async () => {
-  await Promise.all(tempDirs.splice(0).map(dir => fsp.rm(dir, { recursive: true, force: true })))
+  for (const child of spawnedChildren.splice(0)) {
+    try { child.kill() } catch {}
+  }
+  await Promise.all(tempDirs.splice(0).map(dir => fsp.rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })))
 })
+
+function sha256Hex(buffer: Buffer): string {
+  return crypto.createHash('sha256').update(buffer).digest('hex').toUpperCase()
+}
 
 function makeTempInstall(): { parent: string; installDir: string } {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'lira-boot-update-'))
@@ -243,4 +267,190 @@ describe('checkAndSignalActiveApplier', () => {
     expect(fs.existsSync(lockPath)).toBe(false)
     expect(fs.existsSync(path.join(parent, LAUNCH_AFTER_UPDATE_FLAG_NAME))).toBe(false)
   })
+})
+
+describe('launchIncrementalApplier detached launch & handshake', () => {
+  it('quotes Windows CommandLineToArgvW arguments and escapes PowerShell launcher paths safely', () => {
+    expect(quoteWindowsCommandLineArg('simple')).toBe('simple')
+    expect(quoteWindowsCommandLineArg('')).toBe('""')
+    expect(quoteWindowsCommandLineArg('C:\\Program Files\\Lira\\')).toBe('"C:\\Program Files\\Lira\\\\"')
+    expect(quoteWindowsCommandLineArg('say "hi"\\')).toBe('"say \\"hi\\"\\\\"')
+
+    const script = buildDetachedPowerShellLauncherScript({
+      executable: "C:\\Windows\\System32\\powershell.exe",
+      args: ['-File', "C:\\Users\\O'Connor\\AppData\\Local\\Programs\\lira.update-stage\\scripts\\update-apply-incremental.ps1", '-InstallDir', 'C:\\Program Files\\Lira Ação'],
+      cwd: "C:\\Users\\O'Connor\\Programs",
+    })
+
+    expect(script).toContain('$psi.UseShellExecute = $false')
+    expect(script).toContain('$psi.CreateNoWindow = $true')
+    expect(script).toContain("O''Connor")
+    expect(script).toContain('"C:\\Program Files\\Lira Ação"')
+    expect(script).toContain('Write-Output $p.Id')
+  })
+
+  it('returns true and writes launch-after flag when an active applier lock already exists', async () => {
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'lira-applier-lock-'))
+    tempDirs.push(parent)
+    const installDir = path.join(parent, 'Lira')
+    fs.mkdirSync(installDir, { recursive: true })
+    const lockPath = path.join(parent, APPLYING_LOCK_FILE_NAME)
+    fs.writeFileSync(lockPath, JSON.stringify({ Pid: process.pid, StartedAt: new Date().toISOString() }), 'utf8')
+
+    const ok = await launchIncrementalApplier({
+      installDir,
+      userDataDir: path.join(parent, 'profile'),
+      resourcesPath: path.join(installDir, 'resources'),
+      launchAfter: true,
+    })
+
+    if (process.platform === 'win32') {
+      expect(ok).toBe(true)
+      expect(fs.existsSync(path.join(parent, LAUNCH_AFTER_UPDATE_FLAG_NAME))).toBe(true)
+    } else {
+      expect(ok).toBe(false)
+    }
+  })
+
+  it.skipIf(process.platform !== 'win32')('launches real PowerShell applier without DETACHED_PROCESS, verifies lock handshake, and applies update after waitPid exits', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lira-real-applier-'))
+    tempDirs.push(root)
+    const parent = path.join(root, 'Programs Ação')
+    const installDir = path.join(parent, 'Lira')
+    const stageDir = path.join(parent, 'lira.update-stage')
+    const payloadDir = path.join(stageDir, 'payload')
+    const userDataDir = path.join(root, 'profile', 'lira')
+    const resourcesPath = path.join(installDir, 'resources')
+    const updaterDir = path.join(resourcesPath, 'updater')
+
+    await fsp.mkdir(updaterDir, { recursive: true })
+    await fsp.mkdir(path.join(userDataDir, 'data'), { recursive: true })
+    await fsp.mkdir(path.join(payloadDir, 'resources'), { recursive: true })
+
+    for (const file of ['update-recovery.ps1', 'update-io.ps1', 'update-delta.ps1', 'update-apply-incremental.ps1']) {
+      await fsp.copyFile(path.resolve('build', file), path.join(updaterDir, file))
+    }
+
+    const srcV1 = path.join(root, 'src-v1')
+    const srcV2 = path.join(root, 'src-v2')
+    await fsp.mkdir(path.join(srcV1, 'out'), { recursive: true })
+    await fsp.mkdir(path.join(srcV2, 'out'), { recursive: true })
+    await fsp.writeFile(path.join(srcV1, 'package.json'), JSON.stringify({ name: 'lira', version: '1.0.0' }))
+    await fsp.writeFile(path.join(srcV1, 'out/main.js'), 'console.log("v1");\n')
+    await fsp.writeFile(path.join(srcV2, 'package.json'), JSON.stringify({ name: 'lira', version: '1.0.1' }))
+    await fsp.writeFile(path.join(srcV2, 'out/main.js'), 'console.log("v2");\n')
+
+    await createPackage(srcV1, path.join(installDir, ASAR_RELATIVE_NAME))
+    await fsp.writeFile(path.join(installDir, 'Lira.exe'), 'dummy-lira-exe')
+    await writeUpdateManifest(installDir, '1.0.0')
+
+    // Build staged v1.0.1 payload containing updated app.asar and update-manifest.json
+    const tempV2App = path.join(root, 'v2-app')
+    await fsp.mkdir(path.join(tempV2App, 'resources', 'updater'), { recursive: true })
+    for (const file of ['update-recovery.ps1', 'update-io.ps1', 'update-delta.ps1', 'update-apply-incremental.ps1']) {
+      await fsp.copyFile(path.resolve('build', file), path.join(tempV2App, 'resources', 'updater', file))
+    }
+    await createPackage(srcV2, path.join(tempV2App, ASAR_RELATIVE_NAME))
+    await fsp.writeFile(path.join(tempV2App, 'Lira.exe'), 'dummy-lira-exe')
+    const v2Manifest = await writeUpdateManifest(tempV2App, '1.0.1')
+
+    const v2AsarBuf = await fsp.readFile(path.join(tempV2App, ASAR_RELATIVE_NAME))
+    const v2ManifestBuf = await fsp.readFile(path.join(tempV2App, UPDATE_MANIFEST_RELATIVE_NAME))
+    await fsp.writeFile(path.join(payloadDir, ASAR_RELATIVE_NAME), v2AsarBuf)
+    await fsp.writeFile(path.join(payloadDir, UPDATE_MANIFEST_RELATIVE_NAME), v2ManifestBuf)
+
+    const plan = {
+      FormatVersion: 1,
+      TargetVersion: v2Manifest.Version,
+      InstallDir: installDir,
+      StagedFiles: [
+        { Name: ASAR_RELATIVE_NAME, Length: v2AsarBuf.length, Hash: sha256Hex(v2AsarBuf) },
+        { Name: UPDATE_MANIFEST_RELATIVE_NAME, Length: v2ManifestBuf.length, Hash: sha256Hex(v2ManifestBuf) },
+      ],
+      RemovedFiles: [],
+      Stats: { DownloadBytes: v2AsarBuf.length, AsarBlocksReused: 0, AsarBlocksDownloaded: 1, ExternalFilesKept: 5, ExternalFilesDownloaded: 0 },
+    }
+    await fsp.writeFile(path.join(stageDir, INCREMENTAL_PLAN_FILE_NAME), JSON.stringify(plan, null, 2))
+    await fsp.writeFile(path.join(stageDir, INCREMENTAL_READY_FILE_NAME), JSON.stringify({ FormatVersion: 1, TargetVersion: '1.0.1', StagedAt: new Date().toISOString() }))
+
+    // Keep a dummy waitPid alive so we can verify the lock handshake before releasing the applier
+    const dummy = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', windowsHide: true })
+    spawnedChildren.push(dummy)
+    expect(dummy.pid).toBeGreaterThan(0)
+
+    const launched = await launchIncrementalApplier({
+      installDir,
+      userDataDir,
+      resourcesPath,
+      stageDir,
+      targetVersion: '1.0.1',
+      waitPid: dummy.pid,
+      launchAfter: false,
+      silentBoot: false,
+      forceKill: false,
+      startupTimeoutMs: 15_000,
+    })
+
+    expect(launched).toBe(true)
+    const lockPath = path.join(parent, APPLYING_LOCK_FILE_NAME)
+    expect(fs.existsSync(lockPath)).toBe(true)
+    const lockData = JSON.parse(fs.readFileSync(lockPath, 'utf8'))
+    expect(lockData.Pid).toBeGreaterThan(0)
+
+    // Release waitPid and verify the detached applier completes the update cleanly
+    dummy.kill()
+    await vi.waitFor(() => {
+      const updatedManifest = JSON.parse(fs.readFileSync(path.join(installDir, UPDATE_MANIFEST_RELATIVE_NAME), 'utf8'))
+      expect(updatedManifest.Version).toBe('1.0.1')
+      expect(fs.existsSync(lockPath)).toBe(false)
+      expect(fs.existsSync(stageDir)).toBe(false)
+    }, { timeout: 30_000, interval: 150 })
+  }, 45_000)
+
+  it.skipIf(process.platform !== 'win32')('returns false when the applier script exits early without creating the lock', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lira-applier-fail-'))
+    tempDirs.push(root)
+    const parent = path.join(root, 'Programs')
+    const installDir = path.join(parent, 'Lira')
+    const stageDir = path.join(parent, 'lira.update-stage')
+    const payloadDir = path.join(stageDir, 'payload')
+    const updaterDir = path.join(installDir, 'resources', 'updater')
+
+    await fsp.mkdir(updaterDir, { recursive: true })
+    await fsp.mkdir(path.join(payloadDir, 'resources'), { recursive: true })
+    for (const file of ['update-recovery.ps1', 'update-io.ps1', 'update-delta.ps1']) {
+      await fsp.writeFile(path.join(updaterDir, file), '# stub')
+    }
+    await fsp.writeFile(path.join(updaterDir, 'update-apply-incremental.ps1'), 'exit 1\n')
+
+    const asarBytes = Buffer.from('staged-asar')
+    await fsp.writeFile(path.join(payloadDir, ASAR_RELATIVE_NAME), asarBytes)
+    await fsp.writeFile(
+      path.join(stageDir, INCREMENTAL_PLAN_FILE_NAME),
+      JSON.stringify({
+        FormatVersion: 1,
+        TargetVersion: '1.0.1',
+        InstallDir: installDir,
+        StagedFiles: [{ Name: ASAR_RELATIVE_NAME, Length: asarBytes.length, Hash: sha256Hex(asarBytes) }],
+        RemovedFiles: [],
+        Stats: { DownloadBytes: 11, AsarBlocksReused: 0, AsarBlocksDownloaded: 1, ExternalFilesKept: 0, ExternalFilesDownloaded: 0 },
+      }),
+    )
+    await fsp.writeFile(path.join(stageDir, INCREMENTAL_READY_FILE_NAME), JSON.stringify({ FormatVersion: 1, TargetVersion: '1.0.1' }))
+
+    const ok = await launchIncrementalApplier({
+      installDir,
+      userDataDir: path.join(root, 'profile'),
+      resourcesPath: path.join(installDir, 'resources'),
+      stageDir,
+      targetVersion: '1.0.1',
+      waitPid: process.pid,
+      launchAfter: true,
+      silentBoot: false,
+      forceKill: true,
+      startupTimeoutMs: 5_000,
+    })
+
+    expect(ok).toBe(false)
+  }, 20_000)
 })

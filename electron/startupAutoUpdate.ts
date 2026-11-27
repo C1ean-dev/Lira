@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
-import { spawn } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import {
   getIncrementalStageDir,
   prepareIncrementalUpdate,
@@ -104,12 +104,111 @@ export interface LaunchIncrementalApplierOptions {
   launchAfter: boolean
   silentBoot?: boolean
   forceKill?: boolean
+  startupTimeoutMs?: number
+}
+
+/** Quotes an argument for Win32 `CommandLineToArgvW` parsing. */
+export function quoteWindowsCommandLineArg(arg: string): string {
+  if (arg.length > 0 && !/[\s"]/.test(arg)) return arg
+  return `"${arg.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1')}"`
+}
+
+/**
+ * Builds a PowerShell launcher snippet that starts the applier with `CreateNoWindow = $true`
+ * instead of Node's `detached: true` (`DETACHED_PROCESS`), which silently kills PowerShell 5.1.
+ */
+export function buildDetachedPowerShellLauncherScript(options: {
+  executable: string
+  args: string[]
+  cwd: string
+}): string {
+  const escapePsSingleQuoted = (value: string) => value.replace(/'/g, "''")
+  const argLine = options.args.map(quoteWindowsCommandLineArg).join(' ')
+  return [
+    '$psi = New-Object System.Diagnostics.ProcessStartInfo',
+    `$psi.FileName = '${escapePsSingleQuoted(options.executable)}'`,
+    `$psi.Arguments = '${escapePsSingleQuoted(argLine)}'`,
+    `$psi.WorkingDirectory = '${escapePsSingleQuoted(options.cwd)}'`,
+    '$psi.UseShellExecute = $false',
+    '$psi.CreateNoWindow = $true',
+    '$p = [System.Diagnostics.Process]::Start($psi)',
+    'if ($null -eq $p) { exit 1 }',
+    'Write-Output $p.Id',
+  ].join('\n')
+}
+
+async function execPowerShellLauncher(
+  executable: string,
+  encodedCommand: string,
+  cwd: string,
+): Promise<number | null> {
+  return await new Promise<number | null>(resolve => {
+    execFile(
+      executable,
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodedCommand],
+      { windowsHide: true, cwd, timeout: 15_000 },
+      (error, stdout) => {
+        if (error) {
+          console.warn('[StartupUpdate] Failed to spawn incremental applier launcher:', error.message)
+          resolve(null)
+          return
+        }
+        const pid = Number.parseInt(String(stdout || '').trim(), 10)
+        resolve(Number.isInteger(pid) && pid > 0 ? pid : null)
+      },
+    )
+  })
+}
+
+async function waitForApplierStartupConfirmation(options: {
+  installDir: string
+  stageDir: string
+  applierPid: number
+  waitPid?: number
+  timeoutMs: number
+}): Promise<boolean> {
+  const parentDir = path.dirname(path.resolve(options.installDir))
+  const lockPath = path.join(parentDir, APPLYING_LOCK_FILE_NAME)
+  const deadline = Date.now() + options.timeoutMs
+
+  while (Date.now() < deadline) {
+    try {
+      if (fs.existsSync(lockPath)) {
+        const raw = fs.readFileSync(lockPath, 'utf8')
+        const parsed = JSON.parse(raw) as { Pid?: number }
+        if (Number(parsed?.Pid) === options.applierPid) {
+          return true
+        }
+      }
+    } catch {}
+
+    if (!isProcessAlive(options.applierPid)) {
+      if (options.waitPid && options.waitPid === process.pid) {
+        console.warn(`[StartupUpdate] Incremental applier (PID ${options.applierPid}) exited before acquiring lock.`)
+        return false
+      }
+      if (!fs.existsSync(options.stageDir)) {
+        return true
+      }
+      console.warn(`[StartupUpdate] Incremental applier (PID ${options.applierPid}) exited without applying staged update.`)
+      return false
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+
+  console.warn(`[StartupUpdate] Timed out waiting for incremental applier (PID ${options.applierPid}) to acquire lock.`)
+  return false
 }
 
 export async function launchIncrementalApplier(options: LaunchIncrementalApplierOptions): Promise<boolean> {
   if (process.platform !== 'win32') return false
   const installDir = path.resolve(options.installDir)
   const stageDir = path.resolve(options.stageDir || getIncrementalStageDir(installDir))
+  if (checkAndSignalActiveApplier(installDir, { requestLaunchAfter: options.launchAfter })) {
+    return true
+  }
+
   const plan = await readStagedIncrementalPlan(stageDir, options.targetVersion)
   if (!plan) return false
   if (path.resolve(plan.InstallDir).toLowerCase() !== installDir.toLowerCase()) return false
@@ -129,8 +228,6 @@ export async function launchIncrementalApplier(options: LaunchIncrementalApplier
     '-NonInteractive',
     '-ExecutionPolicy',
     'Bypass',
-    '-WindowStyle',
-    'Hidden',
     '-File',
     applierScript,
     '-InstallDir',
@@ -152,15 +249,20 @@ export async function launchIncrementalApplier(options: LaunchIncrementalApplier
   const systemRoot = process.env.SystemRoot || 'C:\\Windows'
   const powershellExe = path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
   const executable = fs.existsSync(powershellExe) ? powershellExe : 'powershell.exe'
+  const cwd = path.dirname(installDir)
 
-  const child = spawn(executable, psArgs, {
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: true,
-    cwd: path.dirname(installDir),
+  const launcherScript = buildDetachedPowerShellLauncherScript({ executable, args: psArgs, cwd })
+  const encodedCommand = Buffer.from(launcherScript, 'utf16le').toString('base64')
+  const applierPid = await execPowerShellLauncher(executable, encodedCommand, cwd)
+  if (!applierPid) return false
+
+  return await waitForApplierStartupConfirmation({
+    installDir,
+    stageDir,
+    applierPid,
+    waitPid: options.waitPid,
+    timeoutMs: options.startupTimeoutMs ?? 15_000,
   })
-  child.unref()
-  return true
 }
 
 export type StartupUpdateOutcome =
