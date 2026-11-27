@@ -104,6 +104,8 @@ export interface AlmLiveDeps {
 }
 
 const ALM_E2EE_FRAME_MAGIC = 0x41
+// Version 3 separates the audio and video nonce spaces. Mixed versions keep RTP.
+export const ALM_CONTROL_VERSION = 3
 
 function almFrameSalt(salt: Uint8Array, media?: AlmFrame['media']): Uint8Array {
   if (media !== 'audio') return salt
@@ -137,7 +139,7 @@ export class AlmLive {
   constructor(private deps: AlmLiveDeps) {}
 
   private send(to: string, session: Session, message: Record<string, unknown>): void {
-    this.deps.send(to, { ...message, root: session.root, epoch: session.epoch, v: 2 })
+    this.deps.send(to, { ...message, root: session.root, epoch: session.epoch, v: ALM_CONTROL_VERSION })
   }
 
   private arm(): void {
@@ -208,13 +210,13 @@ export class AlmLive {
       if (level !== session.localLayer) { session.localLayer = level; session.queue?.reset(); this.requestKey(session) }
     }
     if (!supportsAlmVideo()) return
-    this.deps.send(root, { kind: 'join', root, h: height, v: 2 })
+    this.deps.send(root, { kind: 'join', root, h: height, v: ALM_CONTROL_VERSION })
     this.arm()
   }
 
   async receive(from: string, message: any): Promise<void> {
     const me = this.deps.id()
-    if (!me || !message || message.v !== 2 || typeof message.root !== 'string' ||
+    if (!me || !message || message.v !== ALM_CONTROL_VERSION || typeof message.root !== 'string' ||
       !this.deps.eligible(from, message.root)) return
     const root = message.root
     let session = this.sessions.get(root)

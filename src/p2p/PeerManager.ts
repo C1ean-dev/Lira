@@ -104,6 +104,7 @@ export type { SignalingTier }
 export const SIGNALING_TIERS: SignalingTier[] = ['render', 'public', 'local', 'direct']
 export const RENDER_SIGNALING_HOST = 'p01--lira--tj9yvq5j5cgs.code.run'
 const HOST_TRANSPORT_TIMEOUT_MS = 30_000
+const ROOM_E2EE_VERSION = 2
 const HOST_RECONNECT_DELAY_MS = 2500
 // Keep one attempt alive through the direct and both relay windows (8.5s).
 const HOST_RECONNECT_ATTEMPT_MS = 10_000
@@ -2012,7 +2013,7 @@ export class PeerManager {
             appVersion: CURRENT_LIRA_VERSION,
             minCompatibleVersion: MIN_COMPATIBLE_VERSION,
             ...(this.localIdentity ? { identityKey: this.localIdentity.publicKeyB64 } : {}),
-            e2eeVersion: 1,
+            e2eeVersion: ROOM_E2EE_VERSION,
           },
         },
         timestamp: Date.now(),
@@ -4779,9 +4780,9 @@ export class PeerManager {
   private sendLegacyRoomDm(peerId: string, message: NetworkMessage): boolean {
     if (this.isHost || this.connections.get(peerId)?.open) return this.sendToTargetPeer(peerId, message)
     const host = this.getHostPeerId()
-    // Older hosts may broadcast DMs to the entire room. Use the relay only when
-    // it supports authenticated E2EE room routing.
-    return Boolean(host && this.pairwiseRatchets?.hasSession(host) && this.sendToTargetPeer(host, message))
+    if (!host || !this.pairwiseRatchets?.hasSession(host)) return false
+    const version = useGameStore.getState().remotePlayers[host]?.e2eeVersion ?? 0
+    return version >= ROOM_E2EE_VERSION && this.sendToTargetPeer(host, message)
   }
 
   private queueRoomDm(peerId: string, message: Parameters<PeerManager['sendChatMessage']>[0]) {
