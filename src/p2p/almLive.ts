@@ -7,6 +7,22 @@ import { markAlmStream } from '../media/almStreams'
 import { AlmCapacity } from './almCapacity'
 import { AlmSendQueue } from './almSendQueue'
 import type { AlmTransmissionCounters } from '../media/liveTransmissionStats'
+import { randomBytes, utf8Bytes } from '../crypto/primitives'
+import { decryptRawMediaPayload, encryptRawMediaPayload } from '../crypto/sframe'
+
+export interface AlmLiveE2EE {
+  signSignal?: (to: string, root: string, epoch: string, edgeId: string, sdp: string) => Promise<string | null>
+  verifySignal?: (from: string, root: string, epoch: string, edgeId: string, sdp: string, sig?: string) => Promise<boolean>
+  distributeLiveKey?: (
+    viewerId: string,
+    root: string,
+    epoch: string,
+    keyRaw: Uint8Array,
+    salt: Uint8Array,
+    generation: number
+  ) => Promise<boolean>
+  getLiveKey?: (root: string, epoch: string, generation: number) => { keyRaw: Uint8Array; salt: Uint8Array } | null
+}
 
 export interface AlmEdge { id: string; parent: string; child: string; maxLayer?: number }
 interface Link {
@@ -67,6 +83,11 @@ interface Session {
   lastShed: number
   confirmedInput?: string
   inputTimestamp?: number
+  liveKey?: { keyRaw: Uint8Array; salt: Uint8Array; generation: number }
+  distributedViewers?: Set<string>
+  encryptChain?: Promise<void>
+  decryptAudioChain?: Promise<void>
+  decryptVideoChain?: Promise<void>
 }
 
 export interface AlmLiveDeps {
@@ -79,6 +100,20 @@ export interface AlmLiveDeps {
   stream: (root: string, stream: MediaStream | null) => void
   rtp: (viewer: string, almPlaying: boolean) => void
   log: (event: string, data: Record<string, unknown>) => void
+  e2ee?: AlmLiveE2EE
+}
+
+const ALM_E2EE_FRAME_MAGIC = 0x41
+
+function buildAlmFrameAad(
+  root: string,
+  epoch: string,
+  generation: number,
+  frame: Pick<AlmFrame, 'media' | 'sequence' | 'timestamp' | 'key' | 'temporalLayer'>
+): Uint8Array {
+  return utf8Bytes(
+    `lira-alm-v2|${root}|${epoch}|${generation}|${frame.media ?? 'video'}|${frame.sequence}|${frame.timestamp}|${frame.key ? 1 : 0}|${frame.temporalLayer ?? 0}`
+  )
 }
 
 /** One presenter coordinates each live; all media edges are native DataChannels. */
@@ -113,11 +148,11 @@ export class AlmLive {
     }
     const source = new AlmVideoSource(frame => {
       const session = this.sessions.get(root)
-      if (session?.source === source) this.forward(session, frame)
+      if (session?.source === source) this.forwardSourceFrame(session, frame)
     }, onFailure, captureClock)
     const audioSource = audio ? new AlmAudioSource(captureClock, frame => {
       const session = this.sessions.get(root)
-      if (session && session.audioSource === audioSource) this.forward(session, frame)
+      if (session && session.audioSource === audioSource) this.forwardSourceFrame(session, frame)
     }, onFailure) : undefined
     try {
       const effectiveFps = Math.min(fps, track.getSettings().frameRate || fps)
@@ -130,6 +165,14 @@ export class AlmLive {
       session.audioConfig = audioConfig
       session.capture = { track, fps: effectiveFps, hardware, audio }
       session.tree = new AlmTree(root)
+      if (this.deps.e2ee?.distributeLiveKey) {
+        session.liveKey = {
+          keyRaw: randomBytes(32),
+          salt: randomBytes(12),
+          generation: 1,
+        }
+        session.distributedViewers = new Set()
+      }
       this.sessions.set(root, session)
       this.arm()
       for (const peer of this.deps.peers()) if (this.deps.eligible(peer, root)) this.send(peer, session, { kind: 'available' })
@@ -176,6 +219,9 @@ export class AlmLive {
         if (session.tree.parents.has(from) && session.viewHeights.get(from) !== height) {
           session.viewHeights.set(from, height); this.publish(session)
         } else session.viewHeights.set(from, height)
+        if (session.liveKey && !session.distributedViewers?.has(from)) {
+          void this.distributeLiveKeyToViewer(session, from)
+        }
         this.send(from, session, { kind: 'config', config: session.config, audio: session.audioConfig })
       }
       return
@@ -218,6 +264,9 @@ export class AlmLive {
       if (message.kind === 'ready') {
         if (session.rtpOnly.has(from)) return
         session.viewers.set(from, Date.now())
+        if (session.liveKey && !session.distributedViewers?.has(from)) {
+          void this.distributeLiveKeyToViewer(session, from)
+        }
         // Do not fill a slot still occupied by a retiring edge during handoff.
         if (!session.retired.size && session.tree.add(from)) this.publish(session)
         else if (session.tree.parents.has(from)) this.send(from, session, this.topology(session))
@@ -421,7 +470,7 @@ export class AlmLive {
     if (offer) {
       this.attachChannel(session, link, pc.createDataChannel('lira-alm-v2', { ordered: false, maxRetransmits: 0 }))
       await pc.setLocalDescription(await pc.createOffer())
-      this.send(other, session, { kind: 'signal', edge: edge.id, description: pc.localDescription?.toJSON() })
+      await this.sendSignedSignal(other, session, edge.id, pc.localDescription?.toJSON())
     }
     return link
   }
@@ -455,12 +504,60 @@ export class AlmLive {
         session.queue?.reset()
       }
       this.forward(session, frame, assembly)
-      if (frame.media === 'audio') { session.audioFrames++; session.audioQueue?.push(frame) }
-      else if ((frame.temporalLayer ?? 0) <= session.localLayer) {
-        // Forwarding is finished. Remap only this local frame, keeping its data
-        // getter lazy through reordering and drops until the decoder reads it.
-        frame.sequence = frame.layerSequences?.[session.localLayer] ?? frame.sequence
-        session.queue?.push(frame)
+      if (!this.deps.e2ee?.getLiveKey) {
+        if (frame.media === 'audio') { session.audioFrames++; session.audioQueue?.push(frame) }
+        else if ((frame.temporalLayer ?? 0) <= session.localLayer) {
+          // Forwarding is finished. Remap only this local frame, keeping its data
+          // getter lazy through reordering and drops until the decoder reads it.
+          frame.sequence = frame.layerSequences?.[session.localLayer] ?? frame.sequence
+          session.queue?.push(frame)
+        }
+        return
+      }
+      const getLiveKey = this.deps.e2ee.getLiveKey
+      const wireSeq = frame.sequence
+      const decryptAndPush = async () => {
+        if (this.sessions.get(session.root) !== session) return
+        const payload = frame.data
+        if (payload.byteLength < 18 || payload[0] !== ALM_E2EE_FRAME_MAGIC) return
+        const keyGen = payload[1]
+        const key = getLiveKey(session.root, session.epoch, keyGen)
+        if (!key) return
+        const aad = buildAlmFrameAad(session.root, session.epoch, keyGen, {
+          ...frame,
+          sequence: wireSeq,
+        })
+        const plain = await decryptRawMediaPayload(
+          key.keyRaw,
+          key.salt,
+          wireSeq,
+          aad,
+          payload.subarray(2)
+        )
+        if (this.sessions.get(session.root) !== session) return
+        const decryptedFrame: AlmFrame = {
+          ...frame,
+          sequence:
+            frame.media === 'audio'
+              ? wireSeq
+              : (frame.layerSequences?.[session.localLayer] ?? wireSeq),
+          data: plain,
+        }
+        if (frame.media === 'audio') {
+          session.audioFrames++
+          session.audioQueue?.push(decryptedFrame)
+        } else {
+          session.queue?.push(decryptedFrame)
+        }
+      }
+      if (frame.media === 'audio') {
+        session.decryptAudioChain = (session.decryptAudioChain ?? Promise.resolve())
+          .then(decryptAndPush)
+          .catch(() => {})
+      } else if ((frame.temporalLayer ?? 0) <= session.localLayer) {
+        session.decryptVideoChain = (session.decryptVideoChain ?? Promise.resolve())
+          .then(decryptAndPush)
+          .catch(() => {})
       }
     }
   }
@@ -529,11 +626,26 @@ export class AlmLive {
         const description = message.description
         if (typeof description.sdp !== 'string' || description.sdp.length > 100_000 ||
           !['offer', 'answer'].includes(description.type) || (isOffer !== (edge.parent === from))) return
+        if (this.deps.e2ee?.verifySignal) {
+          const validSig = await this.deps.e2ee.verifySignal(
+            from,
+            session.root,
+            session.epoch,
+            edge.id,
+            description.sdp,
+            typeof message.sig === 'string' ? message.sig : undefined
+          )
+          if (!validSig) {
+            this.linkFailed(session, edge, new Error('Invalid ALM signal signature'))
+            return
+          }
+          if (this.sessions.get(session.root) !== session || session.links.get(edge.id) !== link) return
+        }
         await link.pc.setRemoteDescription(description)
         for (const candidate of link.candidates.splice(0)) await link.pc.addIceCandidate(candidate)
         if (isOffer) {
           await link.pc.setLocalDescription(await link.pc.createAnswer())
-          this.send(from, session, { kind: 'signal', edge: edge.id, description: link.pc.localDescription?.toJSON() })
+          await this.sendSignedSignal(from, session, edge.id, link.pc.localDescription?.toJSON())
         }
         this.flushSignals(session)
       } else if (message.candidate && typeof message.candidate.candidate === 'string' && message.candidate.candidate.length <= 4096) {
@@ -569,6 +681,72 @@ export class AlmLive {
     // The child's watchdog reports failure to the coordinator. Other edges stay up.
   }
 
+  private async distributeLiveKeyToViewer(session: Session, viewerId: string): Promise<void> {
+    const lk = session.liveKey
+    if (!lk || !this.deps.e2ee?.distributeLiveKey) return
+    try {
+      const ok = await this.deps.e2ee.distributeLiveKey(
+        viewerId,
+        session.root,
+        session.epoch,
+        lk.keyRaw,
+        lk.salt,
+        lk.generation
+      )
+      if (ok && session.liveKey === lk) {
+        session.distributedViewers?.add(viewerId)
+      }
+    } catch {}
+  }
+
+  private forwardSourceFrame(session: Session, frame: AlmFrame): void {
+    const liveKey = session.liveKey
+    if (!liveKey) {
+      this.forward(session, frame)
+      return
+    }
+    session.encryptChain = (session.encryptChain ?? Promise.resolve())
+      .then(async () => {
+        if (this.sessions.get(session.root) !== session || session.liveKey !== liveKey) return
+        const aad = buildAlmFrameAad(session.root, session.epoch, liveKey.generation, frame)
+        const cipher = await encryptRawMediaPayload(
+          liveKey.keyRaw,
+          liveKey.salt,
+          frame.sequence,
+          aad,
+          frame.data
+        )
+        if (this.sessions.get(session.root) !== session || session.liveKey !== liveKey) return
+        const wrapped = new Uint8Array(2 + cipher.byteLength)
+        wrapped[0] = ALM_E2EE_FRAME_MAGIC
+        wrapped[1] = liveKey.generation & 0xff
+        wrapped.set(cipher, 2)
+        this.forward(session, { ...frame, data: wrapped })
+      })
+      .catch(() => {})
+  }
+
+  private async sendSignedSignal(
+    other: string,
+    session: Session,
+    edgeId: string,
+    description: RTCSessionDescriptionInit | undefined
+  ): Promise<void> {
+    if (!description) return
+    if (this.deps.e2ee?.signSignal && typeof description.sdp === 'string') {
+      const sig = await this.deps.e2ee.signSignal(other, session.root, session.epoch, edgeId, description.sdp)
+      if (this.sessions.get(session.root) !== session) return
+      this.send(other, session, {
+        kind: 'signal',
+        edge: edgeId,
+        description,
+        ...(sig ? { sig } : {}),
+      })
+      return
+    }
+    this.send(other, session, { kind: 'signal', edge: edgeId, description })
+  }
+
   private removeViewer(session: Session, id: string): void {
     if (!session.tree) return
     session.viewers.delete(id)
@@ -581,6 +759,17 @@ export class AlmLive {
       this.send(child, session, { kind: 'stop' })
     }
     for (const [key, old] of session.retired) if (old.edge.child === id || old.edge.parent === id) session.retired.delete(key)
+    if (session.liveKey) {
+      session.liveKey = {
+        keyRaw: randomBytes(32),
+        salt: randomBytes(12),
+        generation: session.liveKey.generation + 1,
+      }
+      session.distributedViewers?.clear()
+      for (const viewerId of session.viewers.keys()) {
+        void this.distributeLiveKeyToViewer(session, viewerId)
+      }
+    }
     this.publish(session, id)
   }
 

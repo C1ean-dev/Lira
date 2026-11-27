@@ -40,6 +40,7 @@ export interface FriendsNetworkHandlers {
 export interface LinkConnection {
   readonly peer: string
   readonly open: boolean
+  readonly peerConnection?: RTCPeerConnection | null
   readonly dataChannel?: { addEventListener?: (type: string, listener: () => void) => void } | null
   send(data: unknown): unknown
   close(): void
@@ -177,6 +178,19 @@ export class FriendsNetwork {
 
   public getLinkedUserIds(): string[] {
     return Array.from(this.links.keys())
+  }
+
+  public getPeerConnection(userId: string): RTCPeerConnection | null {
+    const set = this.links.get(userId)
+    if (!set) return null
+    for (const conn of set) {
+      if (conn.open && conn.peerConnection) return conn.peerConnection
+    }
+    return null
+  }
+
+  public disconnectUser(userId: string): void {
+    this.closeLinks(userId)
   }
 
   public send(userId: string, packet: FriendPacket): boolean {

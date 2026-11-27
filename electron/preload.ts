@@ -127,6 +127,9 @@ export interface IElectronAPI extends GStreamerCaptureAPI {
   fetchCrossProcessMessages?: (payload: { forUserId: string; forUserName?: string }) => Promise<any[]>
   getAppSettings: () => Promise<AppSettings>
   setAppSettings: (settings: Partial<AppSettings>) => Promise<AppSettings>
+  secureStorageAvailable?: () => Promise<boolean>
+  secureStorageEncrypt?: (plaintext: string) => Promise<string | null>
+  secureStorageDecrypt?: (ciphertextB64: string) => Promise<string | null>
   minimizeToTray: () => Promise<boolean>
   quitApp: () => Promise<boolean>
   showNativeNotification: (options: {
@@ -283,6 +286,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('fetch-cross-messages', payload),
   getAppSettings: () => ipcRenderer.invoke('get-app-settings'),
   setAppSettings: (settings: Partial<AppSettings>) => ipcRenderer.invoke('set-app-settings', settings),
+  secureStorageAvailable: () => ipcRenderer.invoke('secure-storage:available'),
+  secureStorageEncrypt: (plaintext: string) => ipcRenderer.invoke('secure-storage:encrypt', plaintext),
+  secureStorageDecrypt: (ciphertextB64: string) => ipcRenderer.invoke('secure-storage:decrypt', ciphertextB64),
   minimizeToTray: () => ipcRenderer.invoke('minimize-to-tray'),
   quitApp: () => ipcRenderer.invoke('quit-app'),
   showNativeNotification: (options: {

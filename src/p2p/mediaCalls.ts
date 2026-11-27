@@ -520,6 +520,7 @@ export class MediaCallHandler {
     endMediaCallWithPeer,
     onCallConnected,
     attemptRedialIfEligible,
+    onPeerConnectionReady,
   }: {
     call: MediaConnection
     peerId: string
@@ -529,9 +530,11 @@ export class MediaCallHandler {
     endMediaCallWithPeer: (peerId: string) => void
     onCallConnected?: (peerId: string) => void
     attemptRedialIfEligible?: () => void
+    onPeerConnectionReady?: (peerId: string, pc: RTCPeerConnection, call: MediaConnection) => void
   }) {
     const pc = (call as any).peerConnection as RTCPeerConnection | undefined
     if (pc) {
+      onPeerConnectionReady?.(peerId, pc, call)
       try {
         prioritizeH264HardwareCodec(pc)
         if (pc.addEventListener) {
@@ -884,6 +887,18 @@ export class MediaCallHandler {
     }, 250)
   }
 
+  static isIncomingCallAuthorized(peerId: string, _mediaCalls?: Map<string, MediaConnection>): boolean {
+    const state = useGameStore.getState()
+    const local = state.localPlayer
+    const remote = state.remotePlayers[peerId]
+    if (!remote || remote.isOutdated) return false
+    return (
+      local.currentZoneId !== null &&
+      local.currentZoneId !== undefined &&
+      remote.currentZoneId === local.currentZoneId
+    )
+  }
+
   static handleIncomingCall({
     call,
     myId,
@@ -891,6 +906,8 @@ export class MediaCallHandler {
     endMediaCallWithPeer,
     onCallConnected,
     attemptRedialIfEligible,
+    enforceAuthorization = false,
+    onPeerConnectionReady,
   }: {
     call: MediaConnection
     myId: string
@@ -898,12 +915,22 @@ export class MediaCallHandler {
     endMediaCallWithPeer: (peerId: string) => void
     onCallConnected?: (peerId: string) => void
     attemptRedialIfEligible?: () => void
+    enforceAuthorization?: boolean
+    onPeerConnectionReady?: (peerId: string, pc: RTCPeerConnection, call: MediaConnection) => void
   }) {
     console.log('[P2P Media] Incoming call from:', call.peer)
     const remotePlayer = useGameStore.getState().remotePlayers[call.peer]
     if (remotePlayer?.isOutdated) {
       console.warn(`[P2P Media] Recusando chamada recebida de par desatualizado: ${call.peer}`)
       diagLog('p2p', 'call.incoming-rejected-outdated', { fromPeer: call.peer })
+      try {
+        call.close()
+      } catch {}
+      return
+    }
+    if (enforceAuthorization && !MediaCallHandler.isIncomingCallAuthorized(call.peer, mediaCalls)) {
+      console.warn(`[P2P Media] Recusando chamada não autorizada de ${call.peer}`)
+      diagLog('p2p', 'call.incoming-rejected-unauthorized', { fromPeer: call.peer })
       try {
         call.close()
       } catch {}
@@ -1018,6 +1045,7 @@ export class MediaCallHandler {
       endMediaCallWithPeer,
       onCallConnected,
       attemptRedialIfEligible,
+      onPeerConnectionReady,
     })
   }
 
@@ -1026,7 +1054,8 @@ export class MediaCallHandler {
     peer: Peer | null,
     mediaCalls: Map<string, MediaConnection>,
     endMediaCallWithPeer: (peerId: string) => void,
-    onCallConnected?: (peerId: string) => void
+    onCallConnected?: (peerId: string) => void,
+    onPeerConnectionReady?: (peerId: string, pc: RTCPeerConnection, call: MediaConnection) => void
   ) {
     if (remotePlayer.isDjBot || remotePlayer.id.startsWith('dj-')) {
       return
@@ -1096,10 +1125,28 @@ export class MediaCallHandler {
           mediaCalls,
           endMediaCallWithPeer,
           onCallConnected,
+          onPeerConnectionReady,
           attemptRedialIfEligible: () => {
             const curRemote = useGameStore.getState().remotePlayers[remotePlayer.id]
             if (curRemote) {
-              MediaCallHandler.checkZoneCallEligibility(curRemote, peer, mediaCalls, endMediaCallWithPeer, onCallConnected)
+              if (onPeerConnectionReady) {
+                MediaCallHandler.checkZoneCallEligibility(
+                  curRemote,
+                  peer,
+                  mediaCalls,
+                  endMediaCallWithPeer,
+                  onCallConnected,
+                  onPeerConnectionReady
+                )
+              } else {
+                MediaCallHandler.checkZoneCallEligibility(
+                  curRemote,
+                  peer,
+                  mediaCalls,
+                  endMediaCallWithPeer,
+                  onCallConnected
+                )
+              }
             }
           },
         })
@@ -1147,14 +1194,32 @@ export class MediaCallHandler {
     peer: Peer | null,
     mediaCalls: Map<string, MediaConnection>,
     endMediaCallWithPeer: (peerId: string) => void,
-    onCallConnected?: (peerId: string) => void
+    onCallConnected?: (peerId: string) => void,
+    onPeerConnectionReady?: (peerId: string, pc: RTCPeerConnection, call: MediaConnection) => void
   ) {
     MediaCallHandler.callRetryCounts.delete(remotePlayer.id)
     MediaCallHandler.clearCallRetryTimer(remotePlayer.id)
     MediaCallHandler.clearIceDisconnectTimer(remotePlayer.id)
     endMediaCallWithPeer(remotePlayer.id)
     useGameStore.getState().setCallState(remotePlayer.id, 'idle')
-    MediaCallHandler.checkZoneCallEligibility(remotePlayer, peer, mediaCalls, endMediaCallWithPeer, onCallConnected)
+    if (onPeerConnectionReady) {
+      MediaCallHandler.checkZoneCallEligibility(
+        remotePlayer,
+        peer,
+        mediaCalls,
+        endMediaCallWithPeer,
+        onCallConnected,
+        onPeerConnectionReady
+      )
+    } else {
+      MediaCallHandler.checkZoneCallEligibility(
+        remotePlayer,
+        peer,
+        mediaCalls,
+        endMediaCallWithPeer,
+        onCallConnected
+      )
+    }
   }
 
   static applyJitterBuffer(

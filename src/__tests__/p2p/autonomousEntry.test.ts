@@ -41,8 +41,9 @@ describe('rooms independent of signaling servers', () => {
     expect(await manager.getLanInvites()).toEqual([])
     ;(manager as any).currentSignalingTier = 'local'
     expect((await manager.getLanInvites()).map(decodeLanInvite)).toEqual([
-      { room: 'ROOM', host: '192.168.1.20', port: 9002 }, { room: 'ROOM', host: '10.0.0.4', port: 9002 },
-      { room: 'ROOM', host: '[2001:db8::20]', port: 9002 },
+      { room: 'ROOM', host: '192.168.1.20', port: 9002, hostKeyFp: expect.any(String) },
+      { room: 'ROOM', host: '10.0.0.4', port: 9002, hostKeyFp: expect.any(String) },
+      { room: 'ROOM', host: '[2001:db8::20]', port: 9002, hostKeyFp: expect.any(String) },
     ])
   })
 })

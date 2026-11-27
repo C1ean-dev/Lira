@@ -1,6 +1,8 @@
 import { CollaborationButtons } from './collaboration/CollaborationButtons'
 import React, { useState } from 'react'
-import { Shield, Users, Minimize2, X, Radio, FileText } from 'lucide-react'
+import { Users, Minimize2, X, Radio, FileText } from 'lucide-react'
+import { useSecurityStore, aggregatePeersSecurity } from '../store/useSecurityStore'
+import { SecurityBadge } from './security/SecurityBadge'
 import { useSpaceTranscription } from '../hooks/useSpaceTranscription'
 import { CallTranscriptPanel } from './grid/CallTranscriptPanel'
 import { useMediaStore } from '../store/useMediaStore'
@@ -58,6 +60,8 @@ const FullScreenGridInner: React.FC = () => {
 
   const adminNotice = useMediaStore((s) => s.adminNotice)
   const setAdminNotice = useMediaStore((s) => s.setAdminNotice)
+  const securityPeers = useSecurityStore((s) => s.peers)
+  const openSecurityInspection = useSecurityStore((s) => s.openInspection)
 
   React.useEffect(() => {
     if (adminNotice) {
@@ -170,6 +174,13 @@ const FullScreenGridInner: React.FC = () => {
     ? allInMeeting.find((u) => u.id === liveTheaterUser.id && u.isScreenSharing)
     : null
 
+  const callSecurity = aggregatePeersSecurity(
+    securityPeers,
+    allInMeeting
+      .filter((p) => !p.isLocal && !p.isDjBot)
+      .map((p) => ({ id: p.id, gameId: p.gameId, name: p.name }))
+  )
+
   React.useEffect(() => {
     if (liveTheaterUser && !theaterUser) setLiveTheaterUser(null)
   }, [liveTheaterUser, theaterUser])
@@ -183,10 +194,29 @@ const FullScreenGridInner: React.FC = () => {
               <span className="w-2.5 h-2.5 rounded-full bg-lira-online animate-pulse" />
               <h1 className="font-display text-base font-bold text-lira-accent">{zoneTitle}</h1>
             </div>
-            <span className="text-[11px] font-mono bg-lira-surface border border-lira-quiet text-lira-muted px-2.5 py-0.5 rounded-[6px] flex items-center gap-1.5">
-              <Shield className="w-3 h-3 text-lira-online" />
-              Espaço Criptografado & Isolado
-            </span>
+            <SecurityBadge
+              status={callSecurity.status}
+              mediaEncrypted={callSecurity.mediaEncryptedCount > 0}
+              labelOverride={
+                callSecurity.status === 'verified'
+                  ? 'E2EE Verificado'
+                  : callSecurity.status === 'encrypted'
+                  ? callSecurity.mediaEncryptedCount > 0
+                    ? 'E2EE Mídia Ativa'
+                    : 'E2EE Ativo'
+                  : callSecurity.status === 'idle'
+                  ? 'E2EE Pronto'
+                  : undefined
+              }
+              onClick={() =>
+                openSecurityInspection(
+                  callSecurity.primaryPeer ?? {
+                    peerId: localPlayer.id,
+                    displayName: zoneTitle,
+                  }
+                )
+              }
+            />
           </div>
 
           {adminNotice && (

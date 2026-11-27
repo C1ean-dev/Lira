@@ -9,6 +9,11 @@ import { PublicRoomsService } from './publicRoomsService'
 import { FriendsNetwork } from '../p2p/FriendsNetwork'
 import { isUserId, getPlayerUserId, getFriendUserId, findFriendKey } from '../utils/userId'
 import { readRoomInvite } from '../utils/roomInvite'
+import { E2EESessionManager, type E2EEHandshakePayload } from '../crypto/sessionManager'
+import { getConnectionDtlsBinding } from '../crypto/dtlsBinding'
+import { PairwiseRatchetManager, type DirectCipherEnvelope } from '../crypto/ratchet'
+import { encryptAttachment, decryptAttachment } from '../crypto/attachmentCrypto'
+import { useSecurityStore } from '../store/useSecurityStore'
 
 export interface UserPresence {
   userId: string
@@ -91,6 +96,10 @@ export class FriendsPresenceService {
   private sharedPicture: string | undefined = undefined
   private sharedProfile: unknown = undefined
   private recentReceipts: Map<string, number> = new Map()
+  private e2eeSessions = new E2EESessionManager()
+  private pairwiseRatchets = new PairwiseRatchetManager()
+  private e2eeInboundQueues = new Map<string, Promise<unknown>>()
+  private authenticatedFriends: Set<string> = new Set()
 
   private constructor() {
     this.initLocalStorageCache()
@@ -245,35 +254,227 @@ export class FriendsPresenceService {
   }
 
   private handleLinkOpen(userId: string) {
-    if (this.isFriendUser(userId) && this.network?.send(userId, { t: 'presence', presence: this.buildLocalPresence() })) {
-      this.presenceSharedWith.add(userId)
+    const { friends, friendProfiles } = useGameStore.getState()
+    const friendKey = findFriendKey(friends, friendProfiles, [userId])
+    const pinnedKey = friendKey ? friendProfiles[friendKey]?.identityKey : undefined
+
+    void this.initiateFriendHandshake(userId)
+
+    if (!pinnedKey) {
+      if (this.isFriendUser(userId) && this.network?.send(userId, { t: 'presence', presence: this.buildLocalPresence() })) {
+        this.presenceSharedWith.add(userId)
+      }
+      this.flushPendingFor(userId)
     }
-    this.flushPendingFor(userId)
     this.notifyListeners()
   }
 
   private handleLinkClose(userId: string) {
     this.linkPresence.delete(userId)
     this.presenceSharedWith.delete(userId)
+    this.authenticatedFriends.delete(userId)
+    this.e2eeSessions.removePeer(userId)
+    this.pairwiseRatchets.removeSession(userId)
+    this.e2eeInboundQueues.delete(userId)
     const { friends, friendProfiles, updateFriendProfile } = useGameStore.getState()
     const key = findFriendKey(friends, friendProfiles, [userId])
     if (key) updateFriendProfile(key, { lastSeen: Date.now() })
     this.notifyListeners()
   }
 
+  private async initiateFriendHandshake(userId: string) {
+    try {
+      const localUserId = getLocalUserId()
+      const pc = this.network?.getPeerConnection?.(userId) ?? null
+      const payload = await this.e2eeSessions.startHandshake(userId, localUserId, getConnectionDtlsBinding(pc))
+      this.network?.send(userId, { t: 'e2ee-hello', payload })
+    } catch {}
+  }
+
+  private async handleFriendHandshake(userId: string, payload: E2EEHandshakePayload) {
+    try {
+      const localUserId = getLocalUserId()
+      const pc = this.network?.getPeerConnection?.(userId) ?? null
+      const { friends, friendProfiles, updateFriendProfile } = useGameStore.getState()
+      const friendKey = findFriendKey(friends, friendProfiles, [userId])
+      const existingProfile = friendKey ? friendProfiles[friendKey] : undefined
+      const pinnedIdentityPub = existingProfile?.identityKey
+
+      const res = await this.e2eeSessions.handleHandshake(payload, {
+        localId: localUserId,
+        remotePeerId: userId,
+        dtls: getConnectionDtlsBinding(pc),
+        pinnedIdentityPub,
+      })
+
+      if (!res.ok) {
+        this.authenticatedFriends.delete(userId)
+        useSecurityStore.getState().setPeerSecurity(userId, {
+          status: res.reason === 'pinned_key_changed' ? 'key_changed' : 'mitm_blocked',
+          fingerprint: res.remoteFingerprint,
+          publicKey: res.remoteIdentityPub,
+          reason: res.message,
+        })
+        useSecurityStore.getState().recordAlert({
+          peerId: userId,
+          reason: res.reason,
+          message: res.message,
+        })
+        this.network?.disconnectUser?.(userId)
+        return
+      }
+
+      if (res.reply) {
+        this.network?.send(userId, { t: 'e2ee-hello', payload: res.reply })
+      }
+
+      const wasAuthenticated = this.authenticatedFriends.has(userId)
+      this.authenticatedFriends.add(userId)
+
+      if (friendKey && !existingProfile?.identityKey) {
+        updateFriendProfile(friendKey, {
+          identityKey: res.session.remoteIdentityPub,
+          identityKeyFingerprint: res.session.remoteFingerprint,
+        })
+      }
+
+      const isVerified = Boolean(
+        friendKey && useGameStore.getState().friendProfiles[friendKey]?.identityKeyVerified
+      )
+      useSecurityStore.getState().setPeerSecurity(userId, {
+        status: isVerified ? 'verified' : 'encrypted',
+        fingerprint: res.session.remoteFingerprint,
+        publicKey: res.session.remoteIdentityPub,
+        sas: res.session.sas,
+        dtlsBound: res.session.dtlsBound,
+      })
+      this.pairwiseRatchets.initSession(
+        userId,
+        res.session.sendChainKey,
+        res.session.recvChainKey
+      )
+
+      if (!wasAuthenticated && this.network?.isLinked(userId)) {
+        if (
+          this.isFriendUser(userId) &&
+          !this.presenceSharedWith.has(userId) &&
+          this.network.send(userId, { t: 'presence', presence: this.buildLocalPresence() })
+        ) {
+          this.presenceSharedWith.add(userId)
+        }
+        this.flushPendingFor(userId)
+      }
+    } catch {}
+  }
+
+  private isFriendPinned(userId: string): boolean {
+    const { friends, friendProfiles } = useGameStore.getState()
+    const key = findFriendKey(friends, friendProfiles, [userId])
+    return Boolean(key && friendProfiles[key]?.identityKey)
+  }
+
+  private enqueueFriendInbound(userId: string, op: () => Promise<void>): Promise<void> {
+    const prev = this.e2eeInboundQueues.get(userId) ?? Promise.resolve()
+    const next = prev.then(op, op)
+    const settled = next.then(
+      () => undefined,
+      () => undefined
+    )
+    this.e2eeInboundQueues.set(userId, settled)
+    return next
+  }
+
   private handleLinkPacket(userId: string, raw: unknown) {
     const parsed = friendPacketSchema.safeParse(raw)
     if (!parsed.success) return
     const packet = parsed.data
+    if (packet.t === 'e2ee-hello') {
+      void this.enqueueFriendInbound(userId, () =>
+        this.handleFriendHandshake(userId, packet.payload)
+      )
+      return
+    }
+    if (packet.t === 'e2ee') {
+      void this.enqueueFriendInbound(userId, () =>
+        this.handleEncryptedLinkPacket(userId, packet.payload)
+      )
+      return
+    }
     if (packet.t === 'presence') {
       this.handleLinkPresence(userId, packet.presence)
     } else if (packet.t === 'dm') {
+      if (this.authenticatedFriends.has(userId) || this.pairwiseRatchets.hasSession(userId)) {
+        useSecurityStore.getState().recordAlert({
+          peerId: userId,
+          reason: 'plaintext_downgrade',
+          message: `DM sem criptografia bloqueada de ${userId} durante sessão E2EE ativa.`,
+        })
+        return
+      }
       this.handleLinkDirectMessage(userId, packet.message)
     } else if (packet.t === 'receipt') {
+      if (this.authenticatedFriends.has(userId) || this.pairwiseRatchets.hasSession(userId)) {
+        useSecurityStore.getState().recordAlert({
+          peerId: userId,
+          reason: 'plaintext_downgrade',
+          message: `Recibo sem criptografia bloqueado de ${userId} durante sessão E2EE ativa.`,
+        })
+        return
+      }
       const receipt = packet.receipt as MessageStatusReceipt | undefined
       if (receipt && typeof receipt === 'object' && receipt.status) {
         this.applyStatusReceipt({ ...receipt, senderId: userId, senderName: undefined })
       }
+    }
+  }
+
+  private async handleEncryptedLinkPacket(
+    userId: string,
+    payload: { kind: 'dm' | 'receipt'; envelope: DirectCipherEnvelope }
+  ) {
+    if (!this.authenticatedFriends.has(userId) || !this.pairwiseRatchets.hasSession(userId)) {
+      return
+    }
+    try {
+      const localUserId = getLocalUserId()
+      if (payload.envelope.senderId !== userId || payload.envelope.recipientId !== localUserId) {
+        return
+      }
+      const decoded = await this.pairwiseRatchets.decryptJson<any>(userId, payload.envelope)
+      if (payload.kind === 'dm') {
+        let plainMsg = decoded?.message ?? decoded
+        if (plainMsg?.encryptedAttachment) {
+          const attachment = await decryptAttachment(plainMsg.encryptedAttachment)
+          const { encryptedAttachment: _stripped, ...rest } = plainMsg
+          plainMsg = { ...rest, attachment }
+        }
+        const incoming = this.readLinkMessage(userId, plainMsg)
+        if (!incoming) return
+        incoming.encrypted = true
+        const result = this.ingestDirectMessage(incoming)
+        if (result === 'added' || result === 'duplicate') {
+          void this.sendMessageStatusReceipt({
+            senderId: getLocalUserId(),
+            senderName: useGameStore.getState().localPlayer.name,
+            recipientId: userId,
+            messageId: incoming.id,
+            status: 'delivered',
+            timestamp: Date.now(),
+            upToTimestamp: incoming.timestamp,
+          })
+        }
+      } else if (payload.kind === 'receipt') {
+        const receipt = (decoded?.receipt ?? decoded) as MessageStatusReceipt | undefined
+        if (receipt && typeof receipt === 'object' && receipt.status) {
+          this.applyStatusReceipt({ ...receipt, senderId: userId, senderName: undefined })
+        }
+      }
+    } catch {
+      useSecurityStore.getState().recordAlert({
+        peerId: userId,
+        reason: 'invalid_signature',
+        message: `Falha ao verificar/descriptografar pacote E2EE de ${userId}.`,
+      })
     }
   }
 
@@ -366,6 +567,55 @@ export class FriendsPresenceService {
     }
   }
 
+  private async sendDirectToPeerLink(peerUserId: string, message: ChatMessage): Promise<boolean> {
+    if (!this.network) return false
+    if (this.pairwiseRatchets.hasSession(peerUserId)) {
+      let wireMsg: any = message
+      if (message.attachment) {
+        const encryptedAttachment = await encryptAttachment(message.attachment)
+        const { attachment: _stripped, ...rest } = message
+        wireMsg = { ...rest, encryptedAttachment }
+      }
+      const envelope = await this.pairwiseRatchets.encryptJson(
+        peerUserId,
+        getLocalUserId(),
+        peerUserId,
+        { message: wireMsg }
+      )
+      return this.network.send(peerUserId, {
+        t: 'e2ee',
+        payload: { kind: 'dm', envelope },
+      })
+    }
+    if (this.authenticatedFriends.has(peerUserId) || this.isFriendPinned(peerUserId)) {
+      return false
+    }
+    return this.network.send(peerUserId, { t: 'dm', message })
+  }
+
+  private async sendReceiptToPeerLink(
+    peerUserId: string,
+    receipt: MessageStatusReceipt
+  ): Promise<boolean> {
+    if (!this.network) return false
+    if (this.pairwiseRatchets.hasSession(peerUserId)) {
+      const envelope = await this.pairwiseRatchets.encryptJson(
+        peerUserId,
+        getLocalUserId(),
+        peerUserId,
+        { receipt }
+      )
+      return this.network.send(peerUserId, {
+        t: 'e2ee',
+        payload: { kind: 'receipt', envelope },
+      })
+    }
+    if (this.authenticatedFriends.has(peerUserId) || this.isFriendPinned(peerUserId)) {
+      return false
+    }
+    return this.network.send(peerUserId, { t: 'receipt', receipt })
+  }
+
   private flushPendingFor(userId: string) {
     const network = this.network
     if (!network) return
@@ -375,14 +625,14 @@ export class FriendsPresenceService {
     for (const m of chatStore.messages) {
       const req = m.friendRequest
       if (req && req.status !== 'pending' && req.fromUserId === userId && this.isSelf(req.toUserId)) {
-        network.send(userId, { t: 'dm', message: m })
+        void this.sendDirectToPeerLink(userId, m)
       } else if (
         m.recipientId === userId &&
         this.isSelf(m.senderId) &&
         (m.status || 'sent') === 'sent' &&
         now - m.timestamp <= UNDELIVERED_RETRY_WINDOW_MS
       ) {
-        network.send(userId, { t: 'dm', message: m })
+        void this.sendDirectToPeerLink(userId, m)
       }
     }
 
@@ -394,15 +644,12 @@ export class FriendsPresenceService {
       ...identifiers.map((id) => (id ? chatStore.lastReadByPeer[id.trim().toLowerCase()] || 0 : 0))
     )
     if (lastRead > 0) {
-      network.send(userId, {
-        t: 'receipt',
-        receipt: {
-          senderId: getLocalUserId(),
-          recipientId: userId,
-          status: 'read',
-          timestamp: now,
-          upToTimestamp: lastRead,
-        },
+      void this.sendReceiptToPeerLink(userId, {
+        senderId: getLocalUserId(),
+        recipientId: userId,
+        status: 'read',
+        timestamp: now,
+        upToTimestamp: lastRead,
       })
     }
   }
@@ -479,9 +726,7 @@ export class FriendsPresenceService {
       const isForMe =
         incoming.recipientId === local.id ||
         (local.gameId && incoming.recipientId === local.gameId) ||
-        (incoming.channelId && (incoming.channelId.includes(local.id) || (local.gameId && incoming.channelId.includes(local.gameId)))) ||
-        (incoming.recipientName && incoming.recipientName.toLowerCase() === local.name.toLowerCase()) ||
-        (incoming.channelId && incoming.channelId.toLowerCase().includes(local.name.toLowerCase()))
+        (incoming.channelId && (incoming.channelId.includes(local.id) || (local.gameId && incoming.channelId.includes(local.gameId))))
 
       if (isForMe) {
         this.ingestDirectMessage(incoming)
@@ -492,7 +737,6 @@ export class FriendsPresenceService {
       const isForMe =
         receipt.recipientId === local.id ||
         (local.gameId && receipt.recipientId === local.gameId) ||
-        (receipt.recipientName && receipt.recipientName.toLowerCase() === local.name.toLowerCase()) ||
         (receipt.channelId && (receipt.channelId.includes(local.id) || (local.gameId && receipt.channelId.includes(local.gameId))))
 
       if (isForMe && !this.isSelf(receipt.senderId)) {
@@ -740,7 +984,7 @@ export class FriendsPresenceService {
       peerUserId &&
       this.network &&
       !this.isAttachmentCarriedByRoom(message, peerUserId) &&
-      !this.network.send(peerUserId, { t: 'dm', message })
+      !(await this.sendDirectToPeerLink(peerUserId, message))
     ) {
       this.network.syncContacts()
     }
@@ -768,7 +1012,7 @@ export class FriendsPresenceService {
   public async sendMessageStatusReceipt(receipt: MessageStatusReceipt) {
     const peerUserId = this.resolveUserId(receipt.recipientId)
     if (peerUserId && !this.isSelf(peerUserId) && this.network && !this.isRepeatedReceipt(peerUserId, receipt)) {
-      this.network.send(peerUserId, { t: 'receipt', receipt })
+      await this.sendReceiptToPeerLink(peerUserId, receipt)
     }
 
     if (typeof window !== 'undefined' && (window as any).electronAPI?.sendCrossProcessMessage) {
@@ -1007,6 +1251,10 @@ export class FriendsPresenceService {
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer)
     if (this.pruneTimer) clearInterval(this.pruneTimer)
     if (this.messagePollTimer) clearInterval(this.messagePollTimer)
+    this.authenticatedFriends.clear()
+    this.e2eeSessions.clear()
+    this.pairwiseRatchets.clear()
+    this.e2eeInboundQueues.clear()
     this.network?.stop()
     this.network = null
     if (this.broadcastChannel) {

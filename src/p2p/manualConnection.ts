@@ -56,10 +56,11 @@ export class ManualConnection {
     if (this.pc !== pc || !pc.localDescription) throw new Error('Conexão direta cancelada.')
     return { type: pc.localDescription.type, sdp: pc.localDescription.sdp }
   }
-  async offer(room: string): Promise<string> {
+  async offer(room: string, hostKeyFp?: string): Promise<string> {
     const invite: DirectInvite = { version: 1, kind: 'offer', session: crypto.randomUUID(), room,
       host: `lira-${room}-host`, guest: `lira-${room}-peer-${crypto.randomUUID()}`,
-      expiresAt: Date.now() + 10 * 60000, description: { type: 'offer', sdp: '' } }
+      expiresAt: Date.now() + 10 * 60000, description: { type: 'offer', sdp: '' },
+      ...(hostKeyFp ? { hostKeyFp } : {}) }
     const pc = this.begin(invite)
     this.bind(pc.createDataChannel('lira-direct-signaling', { ordered: true }), invite.guest, pc)
     try {

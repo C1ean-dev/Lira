@@ -62,6 +62,62 @@ function isDjMessageSource(msg: NetworkMessage, peerId: string, isHost: boolean)
   return msg.senderId === peerId || (!isHost && peerId === useGameStore.getState().connectionHostId)
 }
 
+function isDmChatMessage(chatMsg: any): boolean {
+  return Boolean(chatMsg?.recipientId) || Boolean(chatMsg?.channelId?.startsWith('dm-'))
+}
+
+function isDmStatusPayload(payload: any): boolean {
+  return Boolean(payload?.recipientId) || Boolean(payload?.channelId?.startsWith('dm-'))
+}
+
+function isPeerIdentityMatch(candidateId: unknown, peerId: string, remote?: Partial<Player>): boolean {
+  if (typeof candidateId !== 'string' || !candidateId) return false
+  return (
+    candidateId === peerId ||
+    (!!remote?.id && candidateId === remote.id) ||
+    (!!remote?.gameId && candidateId === remote.gameId)
+  )
+}
+
+function resolveDmTargetPeerId(
+  recipientId: string | undefined,
+  channelId: string | undefined,
+  senderPeerId: string,
+  myPeerId?: string | null
+): string | null {
+  const state = useGameStore.getState()
+  const local = state.localPlayer
+  const isForHost =
+    (recipientId &&
+      (recipientId === local.id ||
+        (!!local.gameId && recipientId === local.gameId) ||
+        (!!myPeerId && recipientId === myPeerId))) ||
+    (!recipientId &&
+      channelId?.startsWith('dm-') &&
+      (channelId.includes(local.id) ||
+        (!!local.gameId && channelId.includes(local.gameId)) ||
+        (!!myPeerId && channelId.includes(myPeerId))))
+  if (isForHost) return null
+
+  for (const [pid, player] of Object.entries(state.remotePlayers)) {
+    if (pid === senderPeerId) continue
+    if (recipientId) {
+      if (pid === recipientId || player.id === recipientId || player.gameId === recipientId) {
+        return pid
+      }
+    } else if (channelId?.startsWith('dm-')) {
+      if (
+        channelId.includes(pid) ||
+        (player.id && channelId.includes(player.id)) ||
+        (player.gameId && channelId.includes(player.gameId))
+      ) {
+        return pid
+      }
+    }
+  }
+  return null
+}
+
 export function processNetworkMessage(
   raw: unknown,
   peerId: string,
@@ -70,7 +126,8 @@ export function processNetworkMessage(
   removePeer: (peerId: string) => void,
   checkZoneCallEligibility: (remotePlayer: Player) => void,
   myPeerId?: string | null,
-  onDjCallRequest?: (listenerId: string) => void
+  onDjCallRequest?: (listenerId: string) => void,
+  sendToTargetPeer?: (targetPeerId: string, msg: NetworkMessage) => boolean
 ) {
   const msg = parseNetworkMessage(raw)
   if (!msg) return
@@ -260,6 +317,10 @@ export function processNetworkMessage(
         role: isPeerHost ? 'host' : msg.payload.player?.role === 'admin' ? 'admin' : msg.payload.player?.role === 'guest' ? 'guest' : 'member',
       }
       useGameStore.getState().setRemotePlayer(player)
+      PeerManager.getInstance().handlePeerZoneChange(remotePeerId, player.currentZoneId)
+      if (!isHost) {
+        PeerManager.getInstance().ensurePeerE2EESession(remotePeerId)
+      }
       if (useGameStore.getState().callStates[remotePeerId] === 'failed') {
         useGameStore.getState().setCallState(remotePeerId, 'idle')
       }
@@ -384,6 +445,10 @@ export function processNetworkMessage(
         }
         useGameStore.getState().setRemotePlayer(nextPlayer)
         checkZoneCallEligibility(nextPlayer)
+        PeerManager.getInstance().handlePeerZoneChange(existingKey, nextPlayer.currentZoneId)
+        if (!isHost) {
+          PeerManager.getInstance().ensurePeerE2EESession(existingKey)
+        }
         if (updated?.currentZoneId !== undefined) {
           useMapStore.getState().checkAndUnlockEmptyZones()
         }
@@ -413,6 +478,10 @@ export function processNetworkMessage(
           }
           useGameStore.getState().setRemotePlayer(nextPlayer)
           checkZoneCallEligibility(nextPlayer)
+          PeerManager.getInstance().handlePeerZoneChange(fallbackKey, nextPlayer.currentZoneId)
+          if (!isHost) {
+            PeerManager.getInstance().ensurePeerE2EESession(fallbackKey)
+          }
           if (updated.currentZoneId !== undefined) {
             useMapStore.getState().checkAndUnlockEmptyZones()
           }
@@ -545,8 +614,30 @@ export function processNetworkMessage(
     }
 
     case 'CHAT_MESSAGE': {
+      if (PeerManager.getInstance().shouldRejectPlaintextDowngrade(peerId, msg)) return
       const chatMsg = msg.payload.message
-      const local = useGameStore.getState().localPlayer
+      const state = useGameStore.getState()
+      const local = state.localPlayer
+      const isHostSource = peerId.endsWith('-host') || peerId === state.connectionHostId
+
+      if (isHost) {
+        if (msg.senderId !== peerId) return
+        if (chatMsg?.senderId === 'system' || chatMsg?.senderId === 'sistema') return
+        const remote = state.remotePlayers[peerId]
+        const isFriendReply = Boolean(
+          chatMsg?.friendRequest &&
+            (chatMsg.friendRequest.status === 'accepted' || chatMsg.friendRequest.status === 'declined')
+        )
+        const validAuthor =
+          isPeerIdentityMatch(chatMsg?.senderId, peerId, remote) ||
+          (isFriendReply && isPeerIdentityMatch(chatMsg?.friendRequest?.toUserId, peerId, remote))
+        if (!validAuthor) return
+      } else {
+        if (chatMsg?.senderId === 'system') return
+        if (chatMsg?.senderId === 'sistema' && !isHostSource) return
+        if (!isHostSource && msg.senderId !== peerId) return
+      }
+
       if (chatMsg?.recipientId) {
         const isForMe =
           chatMsg.recipientId === local.id ||
@@ -580,6 +671,8 @@ export function processNetworkMessage(
     }
 
     case 'CHAT_MESSAGE_STATUS': {
+      if (PeerManager.getInstance().shouldRejectPlaintextDowngrade(peerId, msg)) return
+      if (isHost && msg.senderId !== peerId) return
       const {
         senderId,
         senderName,
@@ -620,6 +713,7 @@ export function processNetworkMessage(
 
     case 'ROOM_LOCK_TOGGLE': {
       const { zoneId, isLocked, authorizedPeers, members, admins } = msg.payload
+      PeerManager.getInstance().handleZoneLockToggled(zoneId)
       useMapStore.getState().updateZone(zoneId, {
         isLocked,
         ...(Array.isArray(authorizedPeers) ? { authorizedPeers } : {}),
@@ -857,6 +951,28 @@ export function processNetworkMessage(
     msg.type !== 'MAP_SYNC' &&
     msg.type !== 'CHANNELS_SYNC'
   ) {
-    broadcast(msg, peerId)
+    if (msg.type === 'CHAT_MESSAGE' && isDmChatMessage(msg.payload?.message)) {
+      const targetPeerId = resolveDmTargetPeerId(
+        msg.payload.message.recipientId,
+        msg.payload.message.channelId,
+        peerId,
+        myPeerId
+      )
+      if (targetPeerId) {
+        sendToTargetPeer?.(targetPeerId, msg)
+      }
+    } else if (msg.type === 'CHAT_MESSAGE_STATUS' && isDmStatusPayload(msg.payload)) {
+      const targetPeerId = resolveDmTargetPeerId(
+        msg.payload.recipientId,
+        msg.payload.channelId,
+        peerId,
+        myPeerId
+      )
+      if (targetPeerId) {
+        sendToTargetPeer?.(targetPeerId, msg)
+      }
+    } else {
+      broadcast(msg, peerId)
+    }
   }
 }
