@@ -214,6 +214,7 @@ const ChatDrawerInner: React.FC = () => {
     closeDirectMessage,
     sendRoomInvite,
     roomSendNotices,
+    dmHistoryNotice,
   } = useChatStore()
 
   const localPlayer = useLocalPlayerDetails()
@@ -1265,6 +1266,9 @@ const ChatDrawerInner: React.FC = () => {
 
           <form onSubmit={handleSendMessage} className="p-3 border-t border-dashed border-lira-rule/60 bg-lira-sidebar shrink-0">
             <MentionSuggestions candidates={mentionSuggestions} selectedIndex={mentionIndex} onSelect={chooseMention} />
+            {isDmOpen && dmHistoryNotice && (
+              <p role="status" className="px-2 py-1 text-xs text-lira-amber">{dmHistoryNotice}</p>
+            )}
             {uploadError && (
               <div className="mb-2 px-2.5 py-1.5 bg-lira-error/15 border border-lira-error/40 rounded-lg flex items-center justify-between text-xs text-lira-error">
                 <div className="flex items-center gap-1.5">

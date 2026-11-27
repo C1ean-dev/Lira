@@ -25,6 +25,7 @@ interface WorkerLike {
   postMessage: (message: unknown, transfer?: Transferable[]) => void
   terminate: () => void
   onmessage: ((event: MessageEvent<any>) => void) | null
+  onerror?: ((event: ErrorEvent) => void) | null
 }
 
 const DEFAULT_SIGNAL_SKEW_MS = 300_000
@@ -121,6 +122,7 @@ function hasEncodedStreamsApi(): boolean {
  */
 export class MediaE2EEManager {
   private worker: WorkerLike | null = null
+  private workerFailed = false
   private configuredPeers = new Set<string>()
   private configuring = new Map<string, symbol>()
   private transformedSenders = new WeakSet<object>()
@@ -130,7 +132,8 @@ export class MediaE2EEManager {
 
   constructor(
     private readonly workerFactory?: () => WorkerLike,
-    onDecryptError?: (peerId: string, count: number) => void
+    onDecryptError?: (peerId: string, count: number) => void,
+    private readonly onWorkerFailure?: (peers: string[]) => void,
   ) {
     this.onDecryptError = onDecryptError
   }
@@ -143,9 +146,20 @@ export class MediaE2EEManager {
     )
   }
 
+  public isAvailable(): boolean {
+    return !this.workerFailed && this.isSupported()
+  }
+
+  private failWorker(): void {
+    const peers = [...this.configuredPeers]
+    this.workerFailed = true
+    this.dispose()
+    this.onWorkerFailure?.(peers)
+  }
+
   private ensureWorker(): WorkerLike | null {
     if (this.worker) return this.worker
-    if (!this.isSupported()) return null
+    if (!this.isAvailable()) return null
     try {
       const worker = this.workerFactory
         ? this.workerFactory()
@@ -154,13 +168,20 @@ export class MediaE2EEManager {
           }) as unknown as WorkerLike)
       worker.onmessage = (event) => {
         const data = event?.data
-        if (data?.type === 'decrypt-error' && typeof data.peerId === 'string') {
+        if (this.worker !== worker) return
+        if (data?.type === 'key-error') {
+          this.failWorker()
+        } else if (data?.type === 'decrypt-error' && typeof data.peerId === 'string') {
           this.onDecryptError?.(data.peerId, Number(data.count) || 1)
         }
+      }
+      worker.onerror = () => {
+        if (this.worker === worker) this.failWorker()
       }
       this.worker = worker
       return worker
     } catch {
+      this.failWorker()
       return null
     }
   }
@@ -180,7 +201,7 @@ export class MediaE2EEManager {
     this.configuring.delete(peerId)
 
     const worker = this.ensureWorker()
-    if (worker) {
+    if (worker) try {
       worker.postMessage({
         type: 'set-key',
         peerId,
@@ -199,6 +220,8 @@ export class MediaE2EEManager {
         keepPrevious,
       })
       this.configuredPeers.add(peerId)
+    } catch {
+      this.failWorker()
     }
 
     return { send, recv }
@@ -284,6 +307,7 @@ export class MediaE2EEManager {
     pc: RTCPeerConnection | null | undefined,
     peerId: string,
     onFailure?: () => void,
+    onProtected?: () => void,
   ): boolean {
     if (!pc || !peerId || !this.configuredPeers.has(peerId)) return false
     const worker = this.ensureWorker()
@@ -293,35 +317,44 @@ export class MediaE2EEManager {
       const senders = pc.getSenders?.() ?? []
       const receivers = pc.getReceivers?.() ?? []
       const transceivers = pc.getTransceivers?.() ?? []
-      if (senders.length + receivers.length === 0 ||
-          !senders.every(sender => this.attachSender(sender, peerId, worker,
+      if (!senders.every(sender => this.attachSender(sender, peerId, worker,
             sender.track?.kind ?? transceivers.find(t => t.sender === sender)?.receiver.track?.kind)) ||
           !receivers.every(receiver => this.attachReceiver(receiver, peerId, worker))) return false
 
       if (!this.attachedPcs.has(pc)) {
+        if (!pc.addEventListener) return false
+        const fail = () => {
+          pc.close()
+          onFailure?.()
+        }
         if (pc.addTrack) {
           const addTrack = pc.addTrack.bind(pc)
           pc.addTrack = (track, ...streams) => {
             const sender = addTrack(track, ...streams)
             try {
-              if (this.attachSender(sender, peerId, worker)) return sender
+              if (this.attachSender(sender, peerId, worker)) {
+                onProtected?.()
+                return sender
+              }
             } catch {}
-            pc.close()
-            onFailure?.()
+            fail()
             throw new Error('Não foi possível proteger a nova faixa da chamada')
           }
         }
-        pc.addEventListener?.('track', (evt) => {
+        pc.addEventListener('track', (evt) => {
           const trackEvent = evt as RTCTrackEvent
           try {
             const kind = trackEvent.track?.kind === 'video' ? 'video' : 'audio'
-            if (trackEvent.receiver && this.attachReceiver(trackEvent.receiver, peerId, worker, kind)) return
+            if (trackEvent.receiver && this.attachReceiver(trackEvent.receiver, peerId, worker, kind)) {
+              onProtected?.()
+              return
+            }
           } catch {}
-          pc.close()
-          onFailure?.()
+          fail()
         }, true)
         this.attachedPcs.add(pc)
       }
+      if (senders.length + receivers.length > 0) onProtected?.()
       return true
     } catch {
       return false

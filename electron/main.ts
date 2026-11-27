@@ -1887,6 +1887,8 @@ function canEncryptCrossMessages(): boolean {
 
 const CROSS_MESSAGE_TTL_MS = 10 * 60 * 1000
 
+ipcMain.handle('cross-message-storage:available', () => canEncryptCrossMessages())
+
 function writeCrossMessage(file: string, message: Record<string, unknown>): void {
   const ciphertext = safeStorage.encryptString(JSON.stringify(message)).toString('base64')
   const temporary = `${file}.${randomUUID()}.tmp`

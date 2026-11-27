@@ -124,6 +124,7 @@ export interface IElectronAPI extends GStreamerCaptureAPI {
   broadcastPresence?: (presence: any) => Promise<any[]>
   removePresence?: (userId: string) => Promise<void>
   sendCrossProcessMessage?: (message: any) => Promise<boolean>
+  crossMessageStorageAvailable?: () => Promise<boolean>
   fetchCrossProcessMessages?: (payload: { forUserId: string; forUserName?: string }) => Promise<any[]>
   getAppSettings: () => Promise<AppSettings>
   setAppSettings: (settings: Partial<AppSettings>) => Promise<AppSettings>
@@ -282,6 +283,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   broadcastPresence: (presence: any) => ipcRenderer.invoke('broadcast-presence', presence),
   removePresence: (userId: string) => ipcRenderer.invoke('remove-presence', userId),
   sendCrossProcessMessage: (message: any) => ipcRenderer.invoke('send-cross-message', message),
+  crossMessageStorageAvailable: () => ipcRenderer.invoke('cross-message-storage:available'),
   fetchCrossProcessMessages: (payload: { forUserId: string; forUserName?: string }) =>
     ipcRenderer.invoke('fetch-cross-messages', payload),
   getAppSettings: () => ipcRenderer.invoke('get-app-settings'),

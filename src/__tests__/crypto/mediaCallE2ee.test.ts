@@ -104,6 +104,30 @@ describe('Phase 3: Media Calls & Lives E2EE', () => {
   })
 
   describe('MediaE2EEManager & PeerManager E2EE_CALL_SIGNAL', () => {
+    it('protects a receive-only connection when the first track appears after attachment', async () => {
+      class FakeScriptTransform {}
+      vi.stubGlobal('RTCRtpScriptTransform', FakeScriptTransform)
+      const worker = { postMessage: vi.fn(), terminate: vi.fn(), onmessage: null, onerror: null as ((e: ErrorEvent) => void) | null }
+      const workerFailure = vi.fn()
+      const mgr = new MediaE2EEManager(() => worker, undefined, workerFailure)
+      await mgr.configurePeerKeys('bob', 'alice', new Uint8Array(32).fill(5))
+      const protectedMedia = vi.fn()
+      const pc = { getSenders: () => [], getReceivers: () => [], addEventListener: vi.fn(), close: vi.fn() }
+      expect(mgr.attachPeerConnection(pc as any, 'bob', undefined, protectedMedia)).toBe(true)
+      expect(protectedMedia).not.toHaveBeenCalled()
+      const trackListener = pc.addEventListener.mock.calls.find(([event]) => event === 'track')?.[1]
+      const receiver = { transform: null }
+      trackListener({ receiver, track: { kind: 'audio' } })
+      expect(receiver.transform).toBeInstanceOf(FakeScriptTransform)
+      expect(protectedMedia).toHaveBeenCalledOnce()
+      expect(pc.close).not.toHaveBeenCalled()
+
+      worker.onerror?.({} as ErrorEvent)
+      expect(workerFailure).toHaveBeenCalledWith(['bob'])
+      expect(mgr.hasPeerKeys('bob')).toBe(false)
+      expect(mgr.isAvailable()).toBe(false)
+    })
+
     it('attaches RTCRtpScriptTransform without duplicating and verifies/blocks call DTLS signals', async () => {
       const workerMessages: any[] = []
       const fakeWorker = {

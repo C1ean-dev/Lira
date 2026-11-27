@@ -4,6 +4,7 @@ import { MediaCallHandler } from '../../p2p/mediaCalls'
 import { CanvasEngine } from '../../engine/CanvasEngine'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { useGameStore } from '../../store/useGameStore'
+import { useSecurityStore } from '../../store/useSecurityStore'
 vi.mock('../../data/nativeAssets.json', () => ({ default: { categories: [], assets: [] } }))
 vi.mock('peerjs', () => ({ default: class {} }))
 vi.mock('../../engine/physics/collision', () => ({ checkCollision: () => false, checkZonePresence: () => {} }))
@@ -30,10 +31,20 @@ afterEach(() => {
   vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+  useSecurityStore.getState().reset()
   useGameStore.setState(original)
 })
 
 describe('non-blocking zone call negotiation', () => {
+  it.each([[false, 'call_e2ee_unavailable'], [true, 'call_e2ee_legacy_peer']])(
+    'reports unavailable E2EE once when local media support is %s', (available, reason) => {
+      vi.mocked(pm.canStartProtectedCall).mockRestore()
+      vi.spyOn(pm.mediaE2EE, 'isAvailable').mockReturnValue(available)
+      expect(pm.canStartProtectedCall('a', true)).toBe(false)
+      expect(pm.canStartProtectedCall('a', true)).toBe(false)
+      expect(useSecurityStore.getState().alerts.map(alert => alert.reason)).toEqual([reason])
+    },
+  )
   it('waits for protected media before negotiating a call', () => {
     vi.mocked(pm.canStartProtectedCall).mockRestore()
     vi.spyOn(pm.e2eeSessions, 'getSession').mockReturnValue({})

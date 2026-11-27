@@ -4,6 +4,11 @@ import { useSecurityStore } from '../../store/useSecurityStore'
 
 function alertTitleForReason(reason: string): { title: string; isWarning: boolean } {
   switch (reason) {
+    case 'call_e2ee_legacy_peer':
+    case 'call_e2ee_unavailable':
+      return { title: 'Chamada criptografada indisponível', isWarning: true }
+    case 'local_dm_sync_unavailable':
+      return { title: 'Sincronização local de DMs indisponível', isWarning: true }
     case 'pinned_key_changed':
       return { title: 'Chave de identidade alterada', isWarning: true }
     case 'dtls_mismatch':
@@ -60,7 +65,7 @@ export const SecurityAlertBanner: React.FC = () => {
               </button>
             </div>
             <p className="text-[11px] text-lira-ink leading-relaxed break-words">{alert.message}</p>
-            <div className="flex items-center justify-end gap-2">
+            {alert.reason !== 'local_dm_sync_unavailable' && <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => openInspection({ peerId: alert.peerId })}
@@ -68,7 +73,7 @@ export const SecurityAlertBanner: React.FC = () => {
               >
                 Inspecionar
               </button>
-            </div>
+            </div>}
           </div>
         )
       })}

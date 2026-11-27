@@ -128,11 +128,12 @@ scope.onmessage = (event: MessageEvent<MediaTransformControlMessage>) => {
       rawKey: new Uint8Array(msg.rawKey),
       salt: new Uint8Array(msg.salt),
     }
-    if (msg.direction === 'encrypt') {
-      void ctx.setSendKey(material).catch(() => {})
-    } else {
-      void ctx.setRecvKey(material, msg.keepPrevious === true).catch(() => {})
-    }
+    const installKey = msg.direction === 'encrypt'
+      ? ctx.setSendKey(material)
+      : ctx.setRecvKey(material, msg.keepPrevious === true)
+    void installKey.catch(() => {
+      if (contexts.get(msg.peerId) === ctx) scope.postMessage({ type: 'key-error', peerId: msg.peerId })
+    })
     return
   }
 

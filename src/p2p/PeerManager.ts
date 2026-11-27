@@ -291,7 +291,12 @@ export class PeerManager {
   private pendingRoomDms = new Map<string, { peerId: string; send: () => void; timer: ReturnType<typeof setTimeout> }>()
   private lastBroadcastZoneId: string | null | undefined = undefined
   private lastPeerZones = new Map<string, string | null | undefined>()
-  private mediaE2EE = new MediaE2EEManager()
+  private mediaE2EE = new MediaE2EEManager(undefined, undefined, peers => {
+    for (const peerId of peers) {
+      this.reportCallEncryptionUnavailable(peerId)
+      this.endMediaCallWithPeer(peerId)
+    }
+  })
   private pendingCallDtlsSigs = new Map<string, { dtlsFingerprint: string; verifiedAt: number }>()
   private sentCallDtlsSigs = new Map<string, string>()
   private almLiveKeys = new Map<string, { keyRaw: Uint8Array; salt: Uint8Array }>()
@@ -1937,7 +1942,7 @@ export class PeerManager {
         try { call.close() } catch {}
         return
       }
-      if (!this.canStartProtectedCall(call.peer)) {
+      if (!this.canStartProtectedCall(call.peer, true)) {
         this.ensurePeerE2EESession(call.peer, true)
         call.close()
         return
@@ -3066,7 +3071,7 @@ export class PeerManager {
   }
 
   private handleIncomingLiveVoiceCall(call: MediaConnection): void {
-    if (!this.canStartProtectedCall(call.peer)) {
+    if (!this.canStartProtectedCall(call.peer, true)) {
       call.close()
       return
     }
@@ -3288,7 +3293,8 @@ export class PeerManager {
       const remotePlayer = useGameStore.getState().remotePlayers[peerId]
       try {
         if (remotePlayer && this.peer === ownerPeer && !ownerPeer.destroyed && !this.isIntentionalDisconnect) {
-          if (!this.mediaCalls.has(peerId) && !this.canStartProtectedCall(peerId)) return
+          if (!this.mediaCalls.has(peerId) && !this.canStartProtectedCall(peerId,
+            MediaCallHandler.isIncomingCallAuthorized(peerId, this.mediaCalls))) return
           MediaCallHandler.checkZoneCallEligibility(
             remotePlayer, ownerPeer, this.mediaCalls,
             (pid) => this.endMediaCallWithPeer(pid),
@@ -3793,7 +3799,7 @@ export class PeerManager {
         return
       }
 
-      if (!this.canStartProtectedCall(peerId)) return
+      if (!this.canStartProtectedCall(peerId, true)) return
       MediaCallHandler.retryCall(
         remotePlayer,
         this.peer,
@@ -4193,9 +4199,14 @@ export class PeerManager {
           .then(() => {
             if (this.peer !== owner || this.e2eeSessions.getSession(payload.from) !== res.session) return
             const remote = useGameStore.getState().remotePlayers[payload.from]
-            if (remote && this.canStartProtectedCall(remote.id)) this.checkZoneCallEligibility(remote)
+            if (remote) this.checkZoneCallEligibility(remote)
           })
-          .catch(() => {})
+          .catch(() => {
+            if (this.peer === owner && this.e2eeSessions.getSession(payload.from) === res.session &&
+                MediaCallHandler.isIncomingCallAuthorized(payload.from, this.mediaCalls)) {
+              this.reportCallEncryptionUnavailable(payload.from)
+            }
+          })
       }
     } catch {}
   }
@@ -4398,9 +4409,27 @@ export class PeerManager {
     }
   }
 
-  private canStartProtectedCall(peerId: string): boolean {
-    if (peerId.startsWith('dj-') || useGameStore.getState().remotePlayers[peerId]?.isDjBot) return true
-    return Boolean(this.mediaE2EE?.hasPeerKeys(peerId) && this.e2eeSessions?.getSession(peerId))
+  private reportCallEncryptionUnavailable(peerId: string, legacyName?: string): void {
+    const security = useSecurityStore.getState()
+    const reason = legacyName ? 'call_e2ee_legacy_peer' : 'call_e2ee_unavailable'
+    if (security.alerts.some(alert => alert.peerId === peerId && alert.reason === reason)) return
+    security.recordAlert({ peerId, reason, message: legacyName
+      ? `${legacyName} precisa atualizar o Lira para participar de chamadas criptografadas.`
+      : 'A proteção de mídia está indisponível neste ambiente. Abra o Lira no aplicativo desktop ou em um navegador com suporte a chamadas criptografadas.' })
+  }
+
+  private canStartProtectedCall(peerId: string, report = false): boolean {
+    const player = useGameStore.getState().remotePlayers[peerId]
+    if (peerId.startsWith('dj-') || player?.isDjBot) return true
+    const session = this.e2eeSessions?.getSession(peerId)
+    if (session && this.mediaE2EE?.hasPeerKeys(peerId)) return true
+    if (report) {
+      if (!this.mediaE2EE?.isAvailable()) this.reportCallEncryptionUnavailable(peerId)
+      else if (player && (player.e2eeVersion ?? 0) < 1 && !session) {
+        this.reportCallEncryptionUnavailable(peerId, player.name || 'Este participante')
+      }
+    }
+    return false
   }
 
   public attachCallSecurity(
@@ -4413,10 +4442,27 @@ export class PeerManager {
     if (!owner || !peerId || !call) return false
     if (peerId.startsWith('dj-') || useGameStore.getState().remotePlayers[peerId]?.isDjBot) return true
     const pc = explicitPc || ((call as any).peerConnection as RTCPeerConnection | undefined)
-    if (!pc || !this.canStartProtectedCall(peerId) ||
-        !this.mediaE2EE.attachPeerConnection(pc, peerId, () => call.close())) return false
+    if (!this.canStartProtectedCall(peerId, true)) return false
+    if (!pc) {
+      this.reportCallEncryptionUnavailable(peerId)
+      return false
+    }
+    if (kind === 'main' && this.mediaCalls.get(peerId) === call) {
+      useSecurityStore.getState().updatePeerMediaSecurity(peerId, { mediaEncrypted: false })
+    }
+    const onFailure = () => {
+      this.reportCallEncryptionUnavailable(peerId)
+      call.close()
+    }
+    if (!this.mediaE2EE.attachPeerConnection(pc, peerId, onFailure, () => {
+      if (kind === 'main' && this.mediaCalls.get(peerId) === call) {
+        useSecurityStore.getState().updatePeerMediaSecurity(peerId, { mediaEncrypted: true })
+      }
+    })) {
+      this.reportCallEncryptionUnavailable(peerId)
+      return false
+    }
     if (kind === 'main') {
-      useSecurityStore.getState().updatePeerMediaSecurity(peerId, { mediaEncrypted: true })
       const clearMediaStatus = () => {
         if (this.mediaCalls.get(peerId) === call) {
           useSecurityStore.getState().updatePeerMediaSecurity(peerId, { mediaEncrypted: false, callDtlsVerified: false })

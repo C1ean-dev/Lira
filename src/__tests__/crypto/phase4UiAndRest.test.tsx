@@ -167,6 +167,24 @@ describe('Phase 4 — Security UI & Encrypted DM Storage at Rest', () => {
       .toEqual(['earlier-dm', 'incoming-dm'])
   })
 
+  it('preserves an unreadable history and saves new DMs in a new encrypted history', async () => {
+    vi.resetModules()
+    const unreadable = '{invalid-json'
+    localStorage.setItem('lira_saved_dms', unreadable)
+    const { useChatStore, flushDmPersistence } = await import('../../store/useChatStore')
+    useChatStore.getState().addMessage({
+      id: 'after-recovery', senderId: 'u-alice', senderName: 'Alice', recipientId: 'u-bob',
+      channelId: 'dm-u-alice-u-bob', content: 'Nova mensagem', timestamp: Date.now(),
+    })
+    await flushDmPersistence()
+    const backup = Object.keys(localStorage).find(key => key.startsWith('lira_saved_dms_recovery_'))
+    expect(backup).toBeDefined()
+    expect(localStorage.getItem(backup!)).toBe(unreadable)
+    const saved = JSON.parse(localStorage.getItem('lira_saved_dms')!)
+    expect(isEncryptedDmEnvelope(saved)).toBe(true)
+    expect(useChatStore.getState().dmHistoryNotice).toContain('As novas DMs estão sendo salvas')
+  })
+
   it('displays SAS numbers, fingerprints, and verifies friend trust via SafetyNumberModal', () => {
     const peerId = 'u-bob12345678901234567'
     const remotePub = 'bob-pub-b64url'
