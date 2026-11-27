@@ -11,7 +11,9 @@ import {
 import { useSecurityStore, resolvePeerSecurity, aggregatePeersSecurity } from '../../store/useSecurityStore'
 import { useGameStore } from '../../store/useGameStore'
 import { SecurityBadge } from '../../components/security/SecurityBadge'
+import { PeerSecurityIconButton } from '../../components/security/PeerSecurityIconButton'
 import { SafetyNumberModal } from '../../components/security/SafetyNumberModal'
+import { VideoTile } from '../../components/MiniCallOverlay'
 import { SecurityAlertBanner } from '../../components/security/SecurityAlertBanner'
 
 describe('Phase 4 — Security UI & Encrypted DM Storage at Rest', () => {
@@ -173,6 +175,9 @@ describe('Phase 4 — Security UI & Encrypted DM Storage at Rest', () => {
 
     expect(screen.getByTestId('sas-code').textContent).toBe('12345 67890 11111 22222 33333 44444')
     expect(screen.getByText('🔑')).toBeTruthy()
+    expect(screen.queryByTestId('local-fingerprint')).toBeNull()
+    expect(screen.queryByTestId('remote-fingerprint')).toBeNull()
+    fireEvent.click(screen.getByText('Detalhes técnicos'))
     expect(screen.getByTestId('local-fingerprint').textContent).toContain('0011 2233')
     expect(screen.getByTestId('remote-fingerprint').textContent).toContain('ABCD EF01')
     expect(screen.getByText('DTLS autenticado')).toBeTruthy()
@@ -288,5 +293,62 @@ describe('Phase 4 — Security UI & Encrypted DM Storage at Rest', () => {
     )
     expect(agg.status).toBe('encrypted')
     expect(agg.mediaEncryptedCount).toBe(2)
+  })
+
+  it('renders icon-only PeerSecurityIconButton (lock before verify, shield after) and opens modal on click', () => {
+    const peerId = 'u-dave1234567890123456'
+    useSecurityStore.getState().setPeerSecurity(peerId, {
+      status: 'encrypted',
+      publicKey: 'dave-pub',
+      fingerprint: 'aabbccdd'.repeat(8),
+      sas: { code: '11111 22222 33333 44444 55555 66666', emojis: ['🔑', '🛡️', '🌙', '⭐'] },
+    })
+
+    const { rerender } = render(<PeerSecurityIconButton peerId={peerId} displayName="Dave" />)
+    const lockBtn = screen.getByRole('button')
+    expect(lockBtn.getAttribute('data-security-icon')).toBe('encrypted')
+    expect(lockBtn.textContent).toBe('')
+
+    fireEvent.click(lockBtn)
+    expect(useSecurityStore.getState().inspectionTarget?.peerId).toBe(peerId)
+
+    useSecurityStore.getState().setPeerSecurity(peerId, {
+      status: 'verified',
+      publicKey: 'dave-pub',
+      fingerprint: 'aabbccdd'.repeat(8),
+    })
+    rerender(<PeerSecurityIconButton peerId={peerId} displayName="Dave" />)
+    expect(screen.getByRole('button').getAttribute('data-security-icon')).toBe('verified')
+    expect(screen.getByRole('button').textContent).toBe('')
+
+    useSecurityStore.getState().setPeerSecurity(peerId, {
+      status: 'mitm_blocked',
+      reason: 'DTLS mismatch',
+    })
+    rerender(<PeerSecurityIconButton peerId={peerId} displayName="Dave" />)
+    expect(screen.getByRole('button').getAttribute('data-security-icon')).toBe('mitm_blocked')
+    expect(screen.getByRole('button').textContent).toBe('')
+  })
+
+  it('places the icon-only security button in the top-left corner of remote VideoTile only', () => {
+    const peerId = 'peer-eve-1'
+    useSecurityStore.getState().setPeerSecurity(peerId, {
+      status: 'encrypted',
+      publicKey: 'eve-pub',
+      fingerprint: '11223344'.repeat(8),
+    })
+
+    const { container, rerender } = render(<VideoTile id={peerId} name="Eve" stream={null} isLocal={false} />)
+    const topLeft = container.querySelector('.top-1\\.5.left-1\\.5')
+    expect(topLeft).toBeTruthy()
+    const iconBtn = topLeft?.querySelector('[data-security-icon="encrypted"]') as HTMLButtonElement | null
+    expect(iconBtn).toBeTruthy()
+    expect(iconBtn?.textContent).toBe('')
+
+    fireEvent.click(iconBtn!)
+    expect(useSecurityStore.getState().inspectionTarget?.peerId).toBe(peerId)
+
+    rerender(<VideoTile id="local-me" name="Me" stream={null} isLocal={true} />)
+    expect(container.querySelector('[data-security-icon]')).toBeNull()
   })
 })

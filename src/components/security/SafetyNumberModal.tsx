@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import {
   Check,
+  ChevronDown,
+  ChevronUp,
   Copy,
   KeyRound,
   Lock,
@@ -76,6 +78,7 @@ export const SafetyNumberModal: React.FC = () => {
 
   const { remotePlayers, friends, friendProfiles } = useGameStore()
   const [copiedField, setCopiedField] = useState<'local' | 'remote' | null>(null)
+  const [showTechnicalDetails, setShowTechnicalDetails] = useState(false)
 
   useEffect(() => {
     if (!inspectionTarget) return
@@ -99,11 +102,29 @@ export const SafetyNumberModal: React.FC = () => {
     return Array.from(ids).filter(Boolean)
   }, [inspectionTarget])
 
+  const peerState = inspectionTarget ? resolvePeerSecurity(peers, allKnownIds) : null
+  const friendKey = inspectionTarget ? findFriendKey(friends, friendProfiles, allKnownIds) : undefined
+  const friendProfile = friendKey ? friendProfiles[friendKey] : undefined
+  const effectiveStatus: PeerSecurityStatus = peerState
+    ? peerState.status === 'encrypted' && friendProfile?.identityKeyVerified
+      ? 'verified'
+      : peerState.status
+    : friendProfile?.identityKeyVerified
+    ? 'verified'
+    : friendProfile?.identityKey
+    ? 'encrypted'
+    : 'pending'
+  const shouldOpenDetailsByDefault = Boolean(
+    !peerState?.sas || effectiveStatus === 'key_changed' || effectiveStatus === 'mitm_blocked'
+  )
+
+  useEffect(() => {
+    if (!inspectionTarget) return
+    setShowTechnicalDetails(shouldOpenDetailsByDefault)
+  }, [inspectionTarget?.peerId, shouldOpenDetailsByDefault])
+
   if (!inspectionTarget) return null
 
-  const peerState = resolvePeerSecurity(peers, allKnownIds)
-  const friendKey = findFriendKey(friends, friendProfiles, allKnownIds)
-  const friendProfile = friendKey ? friendProfiles[friendKey] : undefined
   const remotePlayer =
     remotePlayers[inspectionTarget.peerId] ||
     Object.values(remotePlayers).find(
@@ -119,16 +140,6 @@ export const SafetyNumberModal: React.FC = () => {
 
   const remoteFingerprint = peerState?.fingerprint || friendProfile?.identityKeyFingerprint || null
   const remotePublicKey = peerState?.publicKey || friendProfile?.identityKey || null
-
-  const effectiveStatus: PeerSecurityStatus = peerState
-    ? peerState.status === 'encrypted' && friendProfile?.identityKeyVerified
-      ? 'verified'
-      : peerState.status
-    : friendProfile?.identityKeyVerified
-    ? 'verified'
-    : friendProfile?.identityKey
-    ? 'encrypted'
-    : 'pending'
 
   const banner = statusBannerInfo(effectiveStatus)
   const BannerIcon = banner.Icon
@@ -247,56 +258,74 @@ export const SafetyNumberModal: React.FC = () => {
             </div>
           )}
 
-          <div className="p-3 rounded-[10px] bg-lira-ground border border-lira-quiet space-y-2.5">
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase tracking-wider font-bold text-lira-muted">
-                  Sua impressão digital (P-256)
-                </span>
-                {localFingerprint && (
-                  <button
-                    type="button"
-                    onClick={() => handleCopy('local', localFingerprint)}
-                    className="inline-flex items-center gap-1 text-[10px] text-lira-accent hover:underline"
-                  >
-                    {copiedField === 'local' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                    {copiedField === 'local' ? 'Copiado' : 'Copiar'}
-                  </button>
-                )}
-              </div>
-              <div
-                data-testid="local-fingerprint"
-                className="text-[11px] leading-relaxed text-lira-ink bg-lira-surface px-2.5 py-1.5 rounded-[6px] border border-lira-quiet break-all select-all"
-              >
-                {localFingerprint ? formatShortFingerprint(localFingerprint) : 'Inicializando identidade local...'}
-              </div>
-            </div>
+          <div className="rounded-[10px] bg-lira-ground border border-lira-quiet overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowTechnicalDetails((prev) => !prev)}
+              aria-expanded={showTechnicalDetails}
+              className="w-full px-3 py-2 flex items-center justify-between text-[11px] font-bold text-lira-muted hover:text-lira-ink hover:bg-lira-surface/60 transition-colors cursor-pointer"
+            >
+              <span>Detalhes técnicos</span>
+              {showTechnicalDetails ? (
+                <ChevronUp className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+              )}
+            </button>
 
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase tracking-wider font-bold text-lira-muted">
-                  Impressão digital de {displayName}
-                </span>
-                {remoteFingerprint && (
-                  <button
-                    type="button"
-                    onClick={() => handleCopy('remote', remoteFingerprint)}
-                    className="inline-flex items-center gap-1 text-[10px] text-lira-accent hover:underline"
+            {showTechnicalDetails && (
+              <div className="px-3 pb-3 pt-1 space-y-2.5 border-t border-dashed border-lira-rule/50">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase tracking-wider font-bold text-lira-muted">
+                      Sua impressão digital (P-256)
+                    </span>
+                    {localFingerprint && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopy('local', localFingerprint)}
+                        className="inline-flex items-center gap-1 text-[10px] text-lira-accent hover:underline"
+                      >
+                        {copiedField === 'local' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                        {copiedField === 'local' ? 'Copiado' : 'Copiar'}
+                      </button>
+                    )}
+                  </div>
+                  <div
+                    data-testid="local-fingerprint"
+                    className="text-[11px] leading-relaxed text-lira-ink bg-lira-surface px-2.5 py-1.5 rounded-[6px] border border-lira-quiet break-words select-all"
                   >
-                    {copiedField === 'remote' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                    {copiedField === 'remote' ? 'Copiado' : 'Copiar'}
-                  </button>
-                )}
+                    {localFingerprint ? formatShortFingerprint(localFingerprint) : 'Inicializando identidade local...'}
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase tracking-wider font-bold text-lira-muted">
+                      Impressão digital de {displayName}
+                    </span>
+                    {remoteFingerprint && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopy('remote', remoteFingerprint)}
+                        className="inline-flex items-center gap-1 text-[10px] text-lira-accent hover:underline"
+                      >
+                        {copiedField === 'remote' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                        {copiedField === 'remote' ? 'Copiado' : 'Copiar'}
+                      </button>
+                    )}
+                  </div>
+                  <div
+                    data-testid="remote-fingerprint"
+                    className="text-[11px] leading-relaxed text-lira-ink bg-lira-surface px-2.5 py-1.5 rounded-[6px] border border-lira-quiet break-words select-all"
+                  >
+                    {remoteFingerprint
+                      ? formatShortFingerprint(remoteFingerprint)
+                      : 'Aguardando handshake do contato...'}
+                  </div>
+                </div>
               </div>
-              <div
-                data-testid="remote-fingerprint"
-                className="text-[11px] leading-relaxed text-lira-ink bg-lira-surface px-2.5 py-1.5 rounded-[6px] border border-lira-quiet break-all select-all"
-              >
-                {remoteFingerprint
-                  ? formatShortFingerprint(remoteFingerprint)
-                  : 'Aguardando handshake do contato...'}
-              </div>
-            </div>
+            )}
           </div>
 
           {peerState && (

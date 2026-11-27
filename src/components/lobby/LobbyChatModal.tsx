@@ -16,6 +16,7 @@ import { getPlayerUserId, getFriendUserId, isSameParticipant } from '../../utils
 import { getRoomInviteState, readRoomInvite } from '../../utils/roomInvite'
 import { useChatPagination } from '../../hooks/useChatPagination'
 import { renderChatContent } from '../../utils/chatLinks'
+import { PeerSecurityIconButton } from '../security/PeerSecurityIconButton'
 
 interface Props {
   friend: FriendProfile
@@ -206,6 +207,12 @@ export const LobbyChatModal: React.FC<Props> = ({ friend, onClose, onJoinRoom })
           </div>
 
           <div className="flex items-center gap-2">
+            <PeerSecurityIconButton
+              size="sm"
+              peerId={friendUserId || friend.actualUserId || friend.id}
+              displayName={friend.name}
+              candidateIds={[friendUserId, friend.actualUserId, friend.gameId, friend.id]}
+            />
             {presence.isOnline && presence.roomCode && onJoinRoom && (
               <Button
                 type="button"

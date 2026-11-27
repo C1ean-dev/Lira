@@ -43,6 +43,7 @@ import { getNameplateStyle, resolveProfile } from '../utils/profileUtils'
 import { buildProfileTargetFromPlayer, useProfileModalStore } from '../store/useProfileModalStore'
 import { getPlayerUserId, findFriendKey } from '../utils/userId'
 import { PeerManager } from '../p2p/PeerManager'
+import { PeerSecurityIconButton } from './security/PeerSecurityIconButton'
 
 export const OnlineUsersMenu: React.FC = () => {
   const isOnlineUsersOpen = useGameStore((s) => s.isOnlineUsersOpen)
@@ -436,6 +437,16 @@ const OnlineUsersMenuInner: React.FC = () => {
                         <Tv className="w-3 h-3 text-lira-accent" />
                       )}
                     </div>
+
+                    {!isLocal && (
+                      <PeerSecurityIconButton
+                        size="sm"
+                        peerId={player.id}
+                        displayName={player.name}
+                        candidateIds={[player.id, player.gameId]}
+                        className="p-1.5 rounded-[6px] border border-lira-quiet bg-lira-surface"
+                      />
+                    )}
 
                     {!isLocal && (() => {
                       const friendUnread = getUnreadCountForFriend({ id: player.id, name: player.name, actualUserId: playerUserId })

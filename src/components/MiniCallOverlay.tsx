@@ -84,11 +84,11 @@ import { useLiveFrameFit } from '../hooks/useLiveFrameFit'
 import { noiseSuppressionDisplay, resolveNoiseProcessorPreference } from '../media/noiseSuppressionStatus'
 import { NoiseSuppressionNotice } from './common/NoiseSuppressionNotice'
 import { useLiveWatchStore } from '../store/useLiveWatchStore'
-import { useSecurityStore, aggregatePeersSecurity } from '../store/useSecurityStore'
-import { SecurityBadge } from './security/SecurityBadge'
+import { PeerSecurityIconButton } from './security/PeerSecurityIconButton'
 
 interface VideoTileProps {
   id?: string
+  gameId?: string
   stream: MediaStream | null
   name: string
   isMuted?: boolean
@@ -116,6 +116,7 @@ interface VideoTileProps {
 
 export const VideoTile: React.FC<VideoTileProps> = ({
   id,
+  gameId,
   stream,
   name,
   isMuted,
@@ -272,50 +273,69 @@ export const VideoTile: React.FC<VideoTileProps> = ({
         <LiveWatchPrompt size="tile" name={name} connecting={liveGate.connecting} onWatch={liveGate.watch} />
       )}
 
-      {(liveInvite === 'watching' || liveInvite === 'local') && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            onFocusLive?.()
-          }}
-          onDoubleClick={(e) => e.stopPropagation()}
-          className={`absolute top-1.5 left-1.5 z-10 flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] text-[8px] font-mono font-bold transition-colors cursor-pointer ${
-            isLiveSelected
-              ? 'bg-lira-error text-lira-ground animate-pulse'
-              : 'bg-lira-error/85 hover:bg-lira-error text-lira-ground'
-          }`}
-          title={
-            liveInvite === 'local'
-              ? 'Mostrar sua tela no mini display'
-              : isLiveSelected
-              ? `Assistindo live de ${name}`
-              : `Mostrar live de ${name} no mini display`
-          }
-        >
-          <Radio className="w-2.5 h-2.5" />
-          <span>{isLiveSelected ? 'AO VIVO' : liveInvite === 'local' ? 'SUA LIVE' : 'VER LIVE'}</span>
-        </button>
-      )}
+      {(liveInvite === 'watching' ||
+        liveInvite === 'local' ||
+        isScreenSharing ||
+        isScreenTrack ||
+        (!isLocal && !isScreenTrack && (callState === 'reconnecting' || callState === 'connecting')) ||
+        (!isLocal && !isScreenTrack && !!id && !id.startsWith('dj-') && !name.includes('DJ'))) && (
+        <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1">
+          {!isLocal && !isScreenTrack && !!id && !id.startsWith('dj-') && !name.includes('DJ') && (
+            <PeerSecurityIconButton
+              size="xs"
+              peerId={id}
+              displayName={name}
+              candidateIds={[id, gameId]}
+              className="bg-lira-panel/95 border border-lira-rule hover:border-lira-accent p-1"
+            />
+          )}
 
-      {(isScreenSharing || isScreenTrack) && (
-        <div className="absolute top-1.5 left-1.5 flex items-center gap-1 px-1.5 py-0.5 bg-lira-error text-lira-ground rounded-[4px] text-[8px] font-mono font-bold">
-          <Radio className="w-2.5 h-2.5" />
-          <span>{isScreenTrack ? 'TELA AO VIVO' : 'AO VIVO'}</span>
-        </div>
-      )}
+          {(liveInvite === 'watching' || liveInvite === 'local') && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onFocusLive?.()
+              }}
+              onDoubleClick={(e) => e.stopPropagation()}
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] text-[8px] font-mono font-bold transition-colors cursor-pointer ${
+                isLiveSelected
+                  ? 'bg-lira-error text-lira-ground animate-pulse'
+                  : 'bg-lira-error/85 hover:bg-lira-error text-lira-ground'
+              }`}
+              title={
+                liveInvite === 'local'
+                  ? 'Mostrar sua tela no mini display'
+                  : isLiveSelected
+                  ? `Assistindo live de ${name}`
+                  : `Mostrar live de ${name} no mini display`
+              }
+            >
+              <Radio className="w-2.5 h-2.5" />
+              <span>{isLiveSelected ? 'AO VIVO' : liveInvite === 'local' ? 'SUA LIVE' : 'VER LIVE'}</span>
+            </button>
+          )}
 
-      {!isLocal && !isScreenTrack && callState === 'reconnecting' && (
-        <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1 px-1.5 py-0.5 bg-lira-amber text-lira-ground rounded-[4px] text-[8px] font-mono font-bold">
-          <span className="w-1.5 h-1.5 rounded-full bg-lira-ground animate-ping" />
-          <span>RECONECTANDO</span>
-        </div>
-      )}
+          {(isScreenSharing || isScreenTrack) && (
+            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-lira-error text-lira-ground rounded-[4px] text-[8px] font-mono font-bold">
+              <Radio className="w-2.5 h-2.5" />
+              <span>{isScreenTrack ? 'TELA AO VIVO' : 'AO VIVO'}</span>
+            </div>
+          )}
 
-      {!isLocal && !isScreenTrack && callState === 'connecting' && (
-        <div className="absolute top-1.5 left-1.5 z-10 flex items-center gap-1 px-1.5 py-0.5 bg-lira-panel border border-lira-accent text-lira-accent rounded-[4px] text-[8px] font-mono font-bold">
-          <span className="w-1.5 h-1.5 rounded-full bg-lira-accent animate-ping" />
-          <span>CONECTANDO</span>
+          {!isLocal && !isScreenTrack && callState === 'reconnecting' && (
+            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-lira-amber text-lira-ground rounded-[4px] text-[8px] font-mono font-bold">
+              <span className="w-1.5 h-1.5 rounded-full bg-lira-ground animate-ping" />
+              <span>RECONECTANDO</span>
+            </div>
+          )}
+
+          {!isLocal && !isScreenTrack && callState === 'connecting' && (
+            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-lira-panel border border-lira-accent text-lira-accent rounded-[4px] text-[8px] font-mono font-bold">
+              <span className="w-1.5 h-1.5 rounded-full bg-lira-accent animate-ping" />
+              <span>CONECTANDO</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -713,14 +733,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
   const mapData = useMapStore((s) => s.mapData)
   const toggleZoneLock = useMapStore((s) => s.toggleZoneLock)
   const watchingLives = useLiveWatchStore((s) => s.watching)
-  const securityPeers = useSecurityStore((s) => s.peers)
-  const openSecurityInspection = useSecurityStore((s) => s.openInspection)
-  const miniCallSecurity = aggregatePeersSecurity(
-    securityPeers,
-    peersInSameZone
-      .filter((p) => !p.isDjBot && !p.id.startsWith('dj-'))
-      .map((p) => ({ id: p.id, gameId: p.gameId, name: p.name }))
-  )
 
   const isChatOpen = useChatStore((state) => state.isChatOpen)
   const activeChannelId = useChatStore((state) => state.activeChannelId)
@@ -1018,20 +1030,6 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                   <span className="w-1.5 h-1.5 rounded-full bg-lira-amber animate-ping" />
                 </span>
               )}
-              <SecurityBadge
-                compact
-                status={miniCallSecurity.status}
-                mediaEncrypted={miniCallSecurity.mediaEncryptedCount > 0}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  openSecurityInspection(
-                    miniCallSecurity.primaryPeer ?? {
-                      peerId: localPlayer.id,
-                      displayName: zoneName,
-                    }
-                  )
-                }}
-              />
             </div>
 
             <div className="flex items-center gap-1 shrink-0">
@@ -1171,6 +1169,7 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                 <VideoTile
                   key={peer.id}
                   id={peer.id}
+                  gameId={peer.gameId}
                   stream={peer.isScreenSharing ? peerVoiceStreams[peer.id] || null : peerStreams[peer.id] || null}
                   name={peer.name}
                   isMuted={peer.isMuted}
