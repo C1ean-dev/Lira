@@ -81,6 +81,7 @@ describe('Corredor Geral proximity calls', () => {
     const pm = new (PeerManager as any)()
     pm.peer = { id: 'local-1', destroyed: false }
     pm.roomCode = 'ROOM'
+    vi.spyOn(pm, 'canStartProtectedCall').mockReturnValue(true)
 
     const checkSpy = vi.spyOn(MediaCallHandler, 'checkZoneCallEligibility').mockImplementation(() => {})
 

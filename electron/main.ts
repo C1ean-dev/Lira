@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, desktopCapturer, session, shell, screen, Notification, powerMonitor, Tray, Menu, nativeImage, clipboard, protocol, safeStorage } from 'electron'
 import { createBoardFontHandler } from './boardFontProtocol'
 import path from 'path'
+import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
 import dgram from 'dgram'
@@ -1879,6 +1880,41 @@ function getMessagesDirectory(): string {
   return dir
 }
 
+function canEncryptCrossMessages(): boolean {
+  return safeStorage.isEncryptionAvailable() &&
+    (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text')
+}
+
+const CROSS_MESSAGE_TTL_MS = 10 * 60 * 1000
+
+ipcMain.handle('cross-message-storage:available', () => canEncryptCrossMessages())
+
+function writeCrossMessage(file: string, message: Record<string, unknown>): void {
+  const ciphertext = safeStorage.encryptString(JSON.stringify(message)).toString('base64')
+  const temporary = `${file}.${randomUUID()}.tmp`
+  try {
+    fs.writeFileSync(temporary, JSON.stringify({ version: 1, ciphertext }), 'utf-8')
+    fs.renameSync(temporary, file)
+  } finally {
+    fs.rmSync(temporary, { force: true })
+  }
+}
+
+function readCrossMessage(file: string, migrateLegacy = false) {
+  const stored = JSON.parse(fs.readFileSync(file, 'utf-8'))
+  if (stored.version === 1 && typeof stored.ciphertext === 'string') {
+    return JSON.parse(safeStorage.decryptString(Buffer.from(stored.ciphertext, 'base64')))
+  }
+  if (migrateLegacy && Number.isFinite(stored.savedAt) && Date.now() - stored.savedAt <= CROSS_MESSAGE_TTL_MS) {
+    writeCrossMessage(file, stored)
+  }
+  return stored
+}
+
+function isCrossMessageId(id: unknown): id is string {
+  return typeof id === 'string' && /^[a-z0-9_-]{1,200}$/i.test(id)
+}
+
 ipcMain.handle('broadcast-presence', async (_event, presence: any) => {
   try {
     if (!presence || !presence.userId) return []
@@ -1922,10 +1958,10 @@ ipcMain.handle('remove-presence', async (_event, userId: string) => {
 
 ipcMain.handle('send-cross-message', async (_event, message: any) => {
   try {
-    if (!message || !message.id) return false
+    if (!isCrossMessageId(message?.id) || !canEncryptCrossMessages()) return false
     const dir = getMessagesDirectory()
     const file = path.join(dir, `msg_${message.id}.json`)
-    fs.writeFileSync(file, JSON.stringify({ ...message, savedAt: Date.now() }), 'utf-8')
+    writeCrossMessage(file, { ...message, savedAt: Date.now() })
 
     if (message.friendRequest?.requestId) {
       try {
@@ -1934,25 +1970,23 @@ ipcMain.handle('send-cross-message', async (_event, message: any) => {
           if (!f.startsWith('msg_') || !f.endsWith('.json') || f === `msg_${message.id}.json`) continue
           const otherPath = path.join(dir, f)
           try {
-            const raw = fs.readFileSync(otherPath, 'utf-8')
-            const data = JSON.parse(raw)
+            const data = readCrossMessage(otherPath)
             if (data.friendRequest?.requestId === message.friendRequest.requestId) {
               data.friendRequest.status = message.friendRequest.status
-              fs.writeFileSync(otherPath, JSON.stringify(data), 'utf-8')
+              writeCrossMessage(otherPath, data)
             }
           } catch (e) {}
         }
       } catch (e) {}
     }
 
-    if (message.targetMessageId && message.status) {
+    if (isCrossMessageId(message.targetMessageId) && message.status) {
       try {
         const targetPath = path.join(dir, `msg_${message.targetMessageId}.json`)
         if (fs.existsSync(targetPath)) {
-          const raw = fs.readFileSync(targetPath, 'utf-8')
-          const data = JSON.parse(raw)
+          const data = readCrossMessage(targetPath)
           data.status = message.status
-          fs.writeFileSync(targetPath, JSON.stringify(data), 'utf-8')
+          writeCrossMessage(targetPath, data)
         }
       } catch (e) {}
     }
@@ -1967,7 +2001,7 @@ ipcMain.handle('send-cross-message', async (_event, message: any) => {
 ipcMain.handle('fetch-cross-messages', async (_event, payload: { forUserId: string; forUserName?: string }) => {
   try {
     const { forUserId, forUserName } = payload || {}
-    if (!forUserId && !forUserName) return []
+    if ((!forUserId && !forUserName) || !canEncryptCrossMessages()) return []
     const dir = getMessagesDirectory()
     const files = fs.readdirSync(dir)
     const now = Date.now()
@@ -1976,9 +2010,8 @@ ipcMain.handle('fetch-cross-messages', async (_event, payload: { forUserId: stri
       if (!f.startsWith('msg_') || !f.endsWith('.json')) continue
       const filePath = path.join(dir, f)
       try {
-        const raw = fs.readFileSync(filePath, 'utf-8')
-        const data = JSON.parse(raw)
-        if (now - data.savedAt > 600000) {
+        const data = readCrossMessage(filePath, true)
+        if (now - data.savedAt > CROSS_MESSAGE_TTL_MS) {
           try { fs.unlinkSync(filePath) } catch (e) {}
           continue
         }

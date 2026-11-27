@@ -283,4 +283,3 @@ export async function deriveChainStep(
     messageKey: material.slice(32, 64),
   }
 }
-

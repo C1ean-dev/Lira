@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AlmLive, type AlmEdge, type AlmLiveDeps } from '../../p2p/almLive'
+import { ALM_CONTROL_VERSION, AlmLive, type AlmEdge, type AlmLiveDeps } from '../../p2p/almLive'
 import { AlmTree } from '../../p2p/almTree'
 import { packetizeFrame, type AlmFrame } from '../../p2p/almPackets'
 
@@ -204,7 +204,7 @@ describe('ALM live delivery over native channel handlers', () => {
     vi.mocked(deps.send).mockClear()
     vi.mocked(deps.rtp).mockClear()
 
-    const envelope = { v: 2, root: 'relay', epoch: 'epoch' }
+    const envelope = { v: ALM_CONTROL_VERSION, root: 'relay', epoch: 'epoch' }
     for (let retry = 0; retry < 3; retry++) {
       await live.receive('viewer', { ...envelope, kind: 'join', h: 4320 })
       await live.receive('viewer', { ...envelope, kind: 'ready' })
@@ -214,6 +214,8 @@ describe('ALM live delivery over native channel handlers', () => {
     expect(deps.send).not.toHaveBeenCalledWith('viewer', expect.objectContaining({ kind: 'config' }))
     expect(deps.rtp).not.toHaveBeenCalledWith('viewer', true)
 
+    await live.receive('legacy-viewer', { ...envelope, v: 2, kind: 'join', h: 4320 })
+    expect(deps.send).not.toHaveBeenCalledWith('legacy-viewer', expect.objectContaining({ kind: 'config' }))
     await live.receive('new-viewer', { ...envelope, kind: 'join', h: 4320 })
     expect(deps.send).toHaveBeenCalledWith('new-viewer', expect.objectContaining({ kind: 'config' }))
   })
@@ -240,7 +242,7 @@ describe('ALM live delivery over native channel handlers', () => {
       { id: 'viewer-leaf', parent: 'viewer', child: 'leaf', maxLayer: 2 },
       { id: 'root-parent', parent: 'relay', child: 'parent', maxLayer: 2 },
     ]
-    const report = { v: 2, root: 'relay', epoch: 'epoch', kind: 'edge-fallback', edge: 'parent-viewer' }
+    const report = { v: ALM_CONTROL_VERSION, root: 'relay', epoch: 'epoch', kind: 'edge-fallback', edge: 'parent-viewer' }
     await live.receive('leaf', report)
     await live.receive('parent', { ...report, epoch: 'old' })
     await live.receive('parent', { ...report, edge: 'retired-edge' })

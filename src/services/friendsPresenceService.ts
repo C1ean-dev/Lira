@@ -89,6 +89,7 @@ export class FriendsPresenceService {
   private messagePollTimer: any = null
 
   private network: FriendsNetwork | null = null
+  private warnedLocalDmStorage = false
   private linkPresence: Map<string, UserPresence> = new Map()
   private presenceSharedWith: Set<string> = new Set()
   private sharedSignature = ''
@@ -300,6 +301,7 @@ export class FriendsPresenceService {
       const existingProfile = friendKey ? friendProfiles[friendKey] : undefined
       const pinnedIdentityPub = existingProfile?.identityKey
 
+      const previousSession = this.e2eeSessions.getSession(userId)
       const res = await this.e2eeSessions.handleHandshake(payload, {
         localId: localUserId,
         remotePeerId: userId,
@@ -348,11 +350,9 @@ export class FriendsPresenceService {
         sas: res.session.sas,
         dtlsBound: res.session.dtlsBound,
       })
-      this.pairwiseRatchets.initSession(
-        userId,
-        res.session.sendChainKey,
-        res.session.recvChainKey
-      )
+      if (previousSession !== res.session) {
+        this.pairwiseRatchets.initSession(userId, res.session.sendChainKey, res.session.recvChainKey)
+      }
 
       if (!wasAuthenticated && this.network?.isLinked(userId)) {
         if (
@@ -989,9 +989,17 @@ export class FriendsPresenceService {
       this.network.syncContacts()
     }
 
-    if (typeof window !== 'undefined' && (window as any).electronAPI?.sendCrossProcessMessage) {
+    const electron = typeof window !== 'undefined' ? window.electronAPI : undefined
+    if (electron?.sendCrossProcessMessage) {
       try {
-        await (window as any).electronAPI.sendCrossProcessMessage(message)
+        const synced = await electron.sendCrossProcessMessage(message)
+        if (!synced && !this.warnedLocalDmStorage && (await electron.crossMessageStorageAvailable?.()) === false) {
+          this.warnedLocalDmStorage = true
+          useSecurityStore.getState().recordAlert({
+            peerId: getLocalUserId(), reason: 'local_dm_sync_unavailable',
+            message: 'O armazenamento seguro do sistema está indisponível. A troca de DMs entre instâncias locais do Lira fica desativada até ele voltar.',
+          })
+        }
       } catch (e) {
       }
     }

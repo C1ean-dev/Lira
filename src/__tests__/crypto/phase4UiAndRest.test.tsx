@@ -43,7 +43,8 @@ describe('Phase 4 — Security UI & Encrypted DM Storage at Rest', () => {
     const decrypted = await decryptDmPayload(envelope)
     expect(decrypted).toBe(payload)
 
-    const tampered = { ...envelope, ciphertext: envelope.ciphertext.slice(0, -2) + 'AA' }
+    const first = envelope.ciphertext[0] === 'A' ? 'B' : 'A'
+    const tampered = { ...envelope, ciphertext: first + envelope.ciphertext.slice(1) }
     await expect(decryptDmPayload(tampered)).rejects.toThrow()
   })
 
@@ -135,6 +136,53 @@ describe('Phase 4 — Security UI & Encrypted DM Storage at Rest', () => {
     const migratedRaw = localStorage.getItem('lira_saved_dms')
     expect(migratedRaw).not.toContain(legacyText)
     expect(isEncryptedDmEnvelope(JSON.parse(migratedRaw!))).toBe(true)
+  })
+
+  it('preserves history when a DM arrives before startup has decrypted it', async () => {
+    vi.resetModules()
+    const message = {
+      id: 'earlier-dm', senderId: 'u-alice', senderName: 'Alice', recipientId: 'u-bob',
+      channelId: 'dm-u-alice-u-bob', content: 'Histórico', timestamp: 1000,
+    }
+    const saved = JSON.stringify({ __liraEncV: 1, mode: 'safeStorage', ciphertext: 'previous' })
+    localStorage.setItem('lira_saved_dms', saved)
+    let release: (value: string) => void = () => {}
+    const delayedRead = new Promise<string>(resolve => { release = resolve })
+    const encrypt = vi.fn(async (_plaintext: string) => 'updated')
+    Object.defineProperty(window, 'electronAPI', { configurable: true, value: {
+      secureStorageAvailable: async () => true,
+      secureStorageDecrypt: () => delayedRead,
+      secureStorageEncrypt: encrypt,
+    } })
+    const { useChatStore, flushDmPersistence } = await import('../../store/useChatStore')
+    useChatStore.getState().addMessage({ ...message, id: 'incoming-dm', timestamp: 1001 })
+    await Promise.resolve()
+    expect(localStorage.getItem('lira_saved_dms')).toBe(saved)
+    expect(encrypt).not.toHaveBeenCalled()
+
+    release(JSON.stringify([message]))
+    await flushDmPersistence()
+    expect(encrypt).toHaveBeenCalledOnce()
+    expect(JSON.parse(String(encrypt.mock.calls[0]?.[0])).map((entry: { id: string }) => entry.id))
+      .toEqual(['earlier-dm', 'incoming-dm'])
+  })
+
+  it('preserves an unreadable history and saves new DMs in a new encrypted history', async () => {
+    vi.resetModules()
+    const unreadable = '{invalid-json'
+    localStorage.setItem('lira_saved_dms', unreadable)
+    const { useChatStore, flushDmPersistence } = await import('../../store/useChatStore')
+    useChatStore.getState().addMessage({
+      id: 'after-recovery', senderId: 'u-alice', senderName: 'Alice', recipientId: 'u-bob',
+      channelId: 'dm-u-alice-u-bob', content: 'Nova mensagem', timestamp: Date.now(),
+    })
+    await flushDmPersistence()
+    const backup = Object.keys(localStorage).find(key => key.startsWith('lira_saved_dms_recovery_'))
+    expect(backup).toBeDefined()
+    expect(localStorage.getItem(backup!)).toBe(unreadable)
+    const saved = JSON.parse(localStorage.getItem('lira_saved_dms')!)
+    expect(isEncryptedDmEnvelope(saved)).toBe(true)
+    expect(useChatStore.getState().dmHistoryNotice).toContain('As novas DMs estão sendo salvas')
   })
 
   it('displays SAS numbers, fingerprints, and verifies friend trust via SafetyNumberModal', () => {
