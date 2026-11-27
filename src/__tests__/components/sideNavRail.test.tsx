@@ -8,6 +8,7 @@ import { useGameStore } from '../../store/useGameStore'
 import { useMediaStore } from '../../store/useMediaStore'
 import { useChatStore } from '../../store/useChatStore'
 import { useMapStore } from '../../store/useMapStore'
+import { useProfileModalStore } from '../../store/useProfileModalStore'
 
 vi.mock('../../hooks/useRoomPublication', () => ({ useRoomPublication: () => [] }))
 
@@ -15,6 +16,7 @@ const initialGame = useGameStore.getState()
 const initialMedia = useMediaStore.getState()
 const initialChat = useChatStore.getState()
 const initialMap = useMapStore.getState()
+const initialProfileModal = useProfileModalStore.getState()
 
 const AVATAR_DATA_URL =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
@@ -47,6 +49,7 @@ describe('side navigation icon rail', () => {
     })
     useMediaStore.setState({ ...initialMedia, isGridCallOpen: false, isSettingsModalOpen: false })
     useChatStore.setState({ ...initialChat, isChatOpen: false })
+    useProfileModalStore.setState({ ...initialProfileModal, isOpen: false, target: null, mode: 'view', editorSection: null })
   })
 
   afterEach(() => {
@@ -56,6 +59,7 @@ describe('side navigation icon rail', () => {
     useMediaStore.setState(initialMedia)
     useChatStore.setState(initialChat)
     useMapStore.setState(initialMap)
+    useProfileModalStore.setState(initialProfileModal)
   })
 
   it('renders an icon-only left navigation rail without text labels inside buttons', () => {
@@ -105,8 +109,10 @@ describe('side navigation icon rail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Configurações de Áudio e Chamada' }))
     expect(useMediaStore.getState().isSettingsModalOpen).toBe(true)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Editar perfil: Alice' }))
-    expect(onOpenAvatarModal).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole('button', { name: 'Ver / Editar perfil: Alice' }))
+    expect(useProfileModalStore.getState().isOpen).toBe(true)
+    expect(useProfileModalStore.getState().target?.isLocal).toBe(true)
+    expect(useProfileModalStore.getState().mode).toBe('view')
 
     const reportBtn = screen.getByRole('button', { name: 'Reportar erro' })
     fireEvent.click(reportBtn)

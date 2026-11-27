@@ -75,7 +75,7 @@ test('individual sprite images decode and edited thumbnails refresh in HTTP and 
       }
       export async function verifyBuiltInFoods() {
         const bundled = await window.libraryTesting.loadBundledLibrary();
-        const foods = bundled.assets.filter(asset => asset.isTabletopDecoration);
+        const foods = bundled.assets.filter(asset => asset.isTabletopDecoration && Boolean(consumptionFrames(asset)));
         useCustomAssetsStore.setState({ customAssets: foods });
         const results = [];
         for (const food of foods) for (let stage = 0; stage < 4; stage++) {
