@@ -151,4 +151,40 @@ ${verify}
     expect(result.FilesCopied).toBe(1)
     expect(statSync(path.join(destination, 'empty.json')).size).toBe(0)
   })
+
+  it('retries PublishFile through a transient destination lock and still throws on a persistent lock', () => {
+    writeFileSync(path.join(root, 'dst.txt'), 'old')
+    writeFileSync(path.join(root, 'tmp.txt'), 'new')
+    writeFileSync(path.join(root, 'dst2.txt'), 'keep')
+    writeFileSync(path.join(root, 'tmp2.txt'), 'blocked')
+    execute(`
+$dst = Join-Path $Root 'dst.txt'
+$tmp = Join-Path $Root 'tmp.txt'
+$ready = New-Object Threading.ManualResetEventSlim($false)
+$ps = [PowerShell]::Create()
+$null = $ps.AddScript('param($p, $r) $s = [IO.File]::Open($p, "Open", "Read", "Read"); try { $r.Set(); [Threading.Thread]::Sleep(80) } finally { $s.Dispose() }').AddArgument($dst).AddArgument($ready)
+$async = $ps.BeginInvoke()
+try {
+  $ready.Wait()
+  [LiraUpdateIO]::PublishFile($tmp, $dst)
+  $ps.EndInvoke($async)
+} finally {
+  $ps.Dispose()
+  $ready.Dispose()
+}
+`, [])
+    expect(readFileSync(path.join(root, 'dst.txt'), 'utf8')).toBe('new')
+    expect(existsSync(path.join(root, 'tmp.txt'))).toBe(false)
+    expect(() => execute(`
+$dst2 = Join-Path $Root 'dst2.txt'
+$tmp2 = Join-Path $Root 'tmp2.txt'
+$stream = [IO.File]::Open($dst2, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
+try {
+  [LiraUpdateIO]::PublishFile($tmp2, $dst2)
+} finally {
+  $stream.Dispose()
+}
+`, [])).toThrow()
+    expect(readFileSync(path.join(root, 'dst2.txt'), 'utf8')).toBe('keep')
+  }, 60000)
 })

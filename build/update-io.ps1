@@ -63,9 +63,25 @@ public static class LiraUpdateIO {
   private static int ReadParallelism() {
     return Math.Min(4, Math.Max(2, Environment.ProcessorCount));
   }
+  private static bool IsTransientPublishError(Exception error) {
+    if (error is UnauthorizedAccessException) return true;
+    var io = error as IOException;
+    if (io == null) return false;
+    int code = io.HResult & 0xFFFF;
+    return code == 2 || code == 5 || code == 32 || code == 33 || code == 183 || code == 1175 || code == 1176 || code == 1177;
+  }
   public static void PublishFile(string temporary, string destination) {
-    if (File.Exists(destination)) File.Replace(temporary, destination, null);
-    else File.Move(temporary, destination);
+    int[] delaysMs = { 20, 40, 80, 150, 250, 400 };
+    for (int attempt = 0; ; attempt++) {
+      try {
+        if (File.Exists(destination)) File.Replace(temporary, destination, null);
+        else File.Move(temporary, destination);
+        return;
+      } catch (Exception error) {
+        if (attempt >= delaysMs.Length || !File.Exists(temporary) || !IsTransientPublishError(error)) throw;
+        Thread.Sleep(delaysMs[attempt]);
+      }
+    }
   }
   public static void WriteDurableText(string file, string text) {
     byte[] bytes = new System.Text.UTF8Encoding(false).GetBytes(text);
