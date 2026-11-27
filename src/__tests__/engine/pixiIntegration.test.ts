@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { Container, type Application } from 'pixi.js'
+import { Container, GlobalResourceRegistry, type Application } from 'pixi.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { PixiWorldRenderer } from '../../engine/pixi/PixiWorldRenderer'
 import { addBuiltInFurniture } from '../../assets/builtInFurniture'
 import { readSpriteFrame } from '../../assets/spriteFrame'
 import { createVillagePackAssets } from '../../assets/villagePackAssets'
@@ -370,5 +371,33 @@ describe('PixiJS integration & buildable Village/Halloween/Interiors assets', ()
     expect(lighting.overlaySprite.visualBounds.maxY).toBe(1080)
 
     lighting.destroy()
+  })
+
+  it('disposes PixiJS Application without releasing global resource pools (prevents DefaultBatcher.break null textures crash)', () => {
+    const releaseSpy = vi.spyOn(GlobalResourceRegistry, 'release')
+    try {
+      const host = { clientWidth: 800, clientHeight: 600 } as unknown as HTMLElement
+      const renderer = new PixiWorldRenderer(host)
+      const destroyMock = vi.fn()
+      ;(renderer as unknown as { app: { destroy: typeof destroyMock } | null }).app = {
+        destroy: destroyMock,
+      }
+
+      renderer.dispose()
+      renderer.dispose()
+
+      expect(destroyMock).toHaveBeenCalledTimes(1)
+      expect(destroyMock).toHaveBeenCalledWith(
+        { removeView: true, releaseGlobalResources: false },
+        { children: true }
+      )
+      expect(releaseSpy).not.toHaveBeenCalled()
+
+      const pixiWorldSrc = readFileSync('src/engine/pixi/PixiWorldRenderer.ts', 'utf8')
+      expect(pixiWorldSrc).not.toContain('app.destroy(true')
+      expect(pixiWorldSrc).not.toContain('app?.destroy(true')
+    } finally {
+      releaseSpy.mockRestore()
+    }
   })
 })

@@ -129,7 +129,7 @@ test('dois usuários percorrem o Lira pela interface com mídia P2P real', {
       await ana.getByRole('heading', { name: /Pessoas no Espaço/ }).locator('../../..').getByRole('button').click()
       // A solicitação abre a conversa do remetente; o destinatário deve abri-la.
       await bruno.getByRole('button', { name: 'Abrir Chat e Canais', exact: true }).click()
-      await bruno.getByRole('button', { name: /Ana E2E/ }).last().click()
+      await bruno.getByRole('region', { name: 'No espaço', exact: true }).getByRole('button', { name: /Ana E2E/ }).click()
       await bruno.getByTitle('Aceitar amizade', { exact: true }).click()
       await ana.getByText('Amizade Confirmada', { exact: true }).waitFor()
       await bruno.getByText('Amizade Confirmada', { exact: true }).waitFor()

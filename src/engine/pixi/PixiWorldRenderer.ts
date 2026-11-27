@@ -102,7 +102,7 @@ export class PixiWorldRenderer {
       })
 
       if (this.disposed) {
-        app.destroy(true, { children: true })
+        app.destroy({ removeView: true, releaseGlobalResources: false }, { children: true })
         return
       }
 
@@ -264,6 +264,7 @@ export class PixiWorldRenderer {
   }
 
   public dispose(): void {
+    if (this.disposed) return
     this.disposed = true
     this.floorLayer.destroy()
     this.wallLayer.destroy()
@@ -273,7 +274,9 @@ export class PixiWorldRenderer {
     this.auraSystem?.destroy()
     this.lighting?.destroy()
     this.textures.destroy()
-    this.app?.destroy(true, { children: true })
+    // Keep PixiJS global pools intact across room switches / remounts:
+    // releaseGlobalResources: true destroys Batch objects still referenced in batchPool.
+    this.app?.destroy({ removeView: true, releaseGlobalResources: false }, { children: true })
     this.auraSystem = null
     this.lighting = null
     this.app = null
