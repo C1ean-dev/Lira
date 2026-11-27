@@ -35,7 +35,7 @@ describe('embedded dual stack signaling', () => {
   }
   it('listens on IPv6 with IPv4 compatibility and only advertises readiness after listening', () => {
     const f = fixture()
-    expect(f.attempts[0].options).toMatchObject({ host: '::', port: 9000 })
+    expect(f.attempts[0].options).toMatchObject({ host: '::', port: 9000, allow_discovery: false })
     expect(f.ready).not.toHaveBeenCalled()
     f.attempts[0].listening()
     expect(f.ready).toHaveBeenCalledWith({ port: 9000, ipv6: true })

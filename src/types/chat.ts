@@ -38,6 +38,7 @@ export interface FriendRequestData {
 export interface RoomInviteData {
   roomCode: string
   roomName: string
+  hostKeyFp?: string
 }
 
 export type MessageDeliveryStatus = 'sent' | 'delivered' | 'read'
@@ -66,5 +67,7 @@ export interface ChatMessage {
   roomInvite?: RoomInviteData
   status?: MessageDeliveryStatus
   mentions?: ChatMention[]
+  zoneId?: string
+  encrypted?: boolean
 }
 

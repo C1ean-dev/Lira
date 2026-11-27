@@ -318,6 +318,8 @@ export interface Player {
   appVersion?: string
   minCompatibleVersion?: string
   isOutdated?: boolean
+  identityKey?: string
+  e2eeVersion?: number
 }
 
 export type ConnectionStatus = 'connected' | 'connecting' | 'reconnecting' | 'disconnected'
@@ -389,4 +391,7 @@ export interface FriendProfile {
   lastRoomCode?: string
   lastRoomName?: string
   isOnline?: boolean
+  identityKey?: string
+  identityKeyFingerprint?: string
+  identityKeyVerified?: boolean
 }

@@ -20,6 +20,8 @@ import { markStartup, reportStartupAfterPaint } from './utils/startupTrace'
 import { callNotificationService } from './services/callNotificationService'
 import { handleBedInteractionShortcut } from './services/bedInteraction'
 import { spaceInviteRoom } from './utils/spaceInviteLink'
+import { SafetyNumberModal } from './components/security/SafetyNumberModal'
+import { SecurityAlertBanner } from './components/security/SecurityAlertBanner'
 
 const loadSpaceShell = () => import('./components/SpaceShell').then((m) => ({ default: m.SpaceShell }))
 const loadAvatarCustomizerModal = () =>
@@ -219,6 +221,9 @@ export const App: React.FC = () => {
       {(isUpdateScreenOpen || updateStatus === 'installing') && (
         <AppUpdateScreen />
       )}
+
+      <SecurityAlertBanner />
+      <SafetyNumberModal />
     </div>
   )
 }

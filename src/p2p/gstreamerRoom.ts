@@ -6,6 +6,22 @@ const VIEW_TIMEOUT_MS = 30_000
 const OFFER_TIMEOUT_MS = 8_000
 const MAX_VIEWERS = 32
 
+export interface GStreamerRoomE2EE {
+  signSdp?: (
+    to: string,
+    session: string,
+    type: 'offer' | 'answer',
+    sdp: string
+  ) => Promise<string | null>
+  verifySdp?: (
+    from: string,
+    session: string,
+    type: 'offer' | 'answer',
+    sdp: string,
+    sig?: string
+  ) => Promise<boolean>
+}
+
 interface Dependencies {
   rtc: RTCConfiguration
   send: (peerId: string, signal: GStreamerSignal) => void
@@ -13,6 +29,7 @@ interface Dependencies {
   watching: (peerId: string) => boolean
   stream: (peerId: string, track: MediaStreamTrack, present: boolean) => void
   rtp: (peerId: string, nativePlaying: boolean) => void
+  e2ee?: GStreamerRoomE2EE
 }
 
 interface Subscription {
@@ -35,6 +52,19 @@ export class GStreamerRoom {
 
   constructor(private readonly deps: Dependencies) {}
 
+  private sendSignal(peerId: string, signal: GStreamerSignal): void {
+    if (signal.kind === 'sdp' && this.deps.e2ee?.signSdp) {
+      const signSdp = this.deps.e2ee.signSdp
+      void signSdp(peerId, signal.session, signal.description.type, signal.description.sdp)
+        .then((sig) => {
+          this.deps.send(peerId, sig ? { ...signal, dtlsSig: sig } : signal)
+        })
+        .catch(() => {})
+      return
+    }
+    this.deps.send(peerId, signal)
+  }
+
   setCapture(capture?: Capture): void {
     const previous = this.capture
     if (capture === previous) return
@@ -45,7 +75,7 @@ export class GStreamerRoom {
         if (viewer.session !== signal.session) continue
         if (!this.deps.eligible(id)) this.endViewer(id, true)
         else {
-          this.deps.send(id, signal)
+          this.sendSignal(id, signal)
           if (signal.kind === 'end') this.endViewer(id, false)
         }
         break
@@ -78,17 +108,33 @@ export class GStreamerRoom {
         return
       }
       if (signal.kind === 'ice' && !sub.receiver && sub.ice.length < 100) sub.ice.push(signal)
-      if (signal.kind === 'sdp' && signal.description.type === 'offer' && !sub.receiver) {
-        try {
-          sub.receiver = new GStreamerReceiver(sub.session, this.deps.rtc, reply => this.deps.send(id, reply), stream => {
-            const track = stream.getVideoTracks()[0]
-            if (!track || !this.deps.watching(id)) { this.endSubscription(id, true); return }
-            sub.track = track
-            this.deps.stream(id, track, true)
-            this.deps.send(id, { kind: 'ready', session: sub.session })
-          }, () => this.endSubscription(id, true))
-          for (const ice of sub.ice.splice(0)) sub.receiver.receive(ice)
-        } catch { this.endSubscription(id, true); return }
+      if (signal.kind === 'sdp' && signal.description.type === 'offer') {
+        if (this.deps.e2ee?.verifySdp) {
+          const valid = await this.deps.e2ee.verifySdp(
+            id,
+            signal.session,
+            signal.description.type,
+            signal.description.sdp,
+            signal.dtlsSig
+          )
+          if (!valid) {
+            this.endSubscription(id, true)
+            return
+          }
+          if (this.subscriptions.get(id) !== sub) return
+        }
+        if (!sub.receiver) {
+          try {
+            sub.receiver = new GStreamerReceiver(sub.session, this.deps.rtc, reply => this.sendSignal(id, reply), stream => {
+              const track = stream.getVideoTracks()[0]
+              if (!track || !this.deps.watching(id)) { this.endSubscription(id, true); return }
+              sub.track = track
+              this.deps.stream(id, track, true)
+              this.deps.send(id, { kind: 'ready', session: sub.session })
+            }, () => this.endSubscription(id, true))
+            for (const ice of sub.ice.splice(0)) sub.receiver.receive(ice)
+          } catch { this.endSubscription(id, true); return }
+        }
       }
       sub.receiver?.receive(signal)
       return
@@ -118,7 +164,23 @@ export class GStreamerRoom {
       else if (signal.kind === 'ready' && !existing.playing) {
         existing.playing = true
         this.deps.rtp(id, true)
-      } else if (signal.kind === 'sdp' || signal.kind === 'ice') await capture.signal(signal)
+      } else if (signal.kind === 'sdp') {
+        if (this.deps.e2ee?.verifySdp) {
+          const valid = await this.deps.e2ee.verifySdp(
+            id,
+            signal.session,
+            signal.description.type,
+            signal.description.sdp,
+            signal.dtlsSig
+          )
+          if (!valid) {
+            this.endViewer(id, true)
+            return
+          }
+          if (this.viewers.get(id) !== existing || this.capture !== capture) return
+        }
+        await capture.signal(signal)
+      } else if (signal.kind === 'ice') await capture.signal(signal)
     }
   }
 

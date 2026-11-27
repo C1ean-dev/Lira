@@ -40,7 +40,8 @@ export const attachmentSchema = z.object({ id, name: text, size: finite.nonnegat
   dataUrl: text.startsWith('data:') }).passthrough()
 const chatWireSchema = z.object({ id, senderId: id, senderName: text, channelId: id,
   content: text, timestamp: finite.nonnegative(), attachment: attachmentSchema.optional(),
-  recipientId: text.optional(), status: z.enum(['sent', 'delivered', 'read']).optional(),
+  recipientId: text.optional(), zoneId: text.optional(), encrypted: z.boolean().optional(),
+  status: z.enum(['sent', 'delivered', 'read']).optional(),
   mentions: z.array(z.object({ kind: z.enum(['person', 'pet']), id, name: text,
     start: finite.int().nonnegative(), end: finite.int().nonnegative() })).optional(),
 }).passthrough()
@@ -117,6 +118,7 @@ export const playerSchema = domain<Partial<Player>>(z.object({
   callState: z.enum(['idle', 'connecting', 'connected', 'reconnecting', 'failed']).optional(),
   spotifyActivity: z.object({ track: text, artist: text, isPlaying: z.boolean(), startedAt: optionalFinite }).optional(),
   isDjBot: optionalBool, djOwnerId: text.optional(), appVersion: text.optional(), minCompatibleVersion: text.optional(), isOutdated: optionalBool,
+  identityKey: text.max(256).optional(), e2eeVersion: optionalFinite,
 }).passthrough())
 const furnitureLightSchema = z.object({
   enabled: z.boolean(),
@@ -194,6 +196,65 @@ const djPayload = z.object({ ...sessionEnvelope, query: text.optional(), recipie
 }).passthrough()
 const boardBase = { roomId: id, schemaVersion: z.literal(2) }
 
+export const e2eeHandshakeSchema = z.object({
+  v: z.literal(1),
+  to: id,
+  from: id,
+  phase: z.enum(['init', 'ack']),
+  sessionNonce: z.string().min(8).max(128),
+  peerNonce: z.string().min(8).max(128).optional(),
+  identityPub: z.string().min(32).max(256),
+  ephemeralPub: z.string().min(32).max(256),
+  dtlsFingerprint: z.string().max(512).optional(),
+  remoteDtlsFingerprint: z.string().max(512).optional(),
+  timestamp: finite,
+  signature: z.string().min(32).max(256),
+})
+
+export const senderKeyDistributionSchema = z.object({
+  version: z.literal(1),
+  senderId: id,
+  scope: id,
+  epoch: finite.int().positive(),
+  seq: finite.int().nonnegative(),
+  chainKeyB64: text,
+  senderPubB64: z.string().min(32).max(256),
+  signature: z.string().min(32).max(256),
+})
+
+export const directCipherEnvelopeSchema = z.object({
+  version: z.literal(1),
+  senderId: id,
+  recipientId: id,
+  seq: finite.int().nonnegative(),
+  iv: text,
+  ciphertext: text,
+})
+
+export const groupCipherEnvelopeSchema = z.object({
+  version: z.literal(1),
+  senderId: id,
+  scope: id,
+  epoch: finite.int().positive(),
+  seq: finite.int().nonnegative(),
+  iv: text,
+  ciphertext: text,
+  signature: z.string().min(32).max(256),
+  attachmentDigest: text.optional(),
+})
+
+export const almLiveKeyDistributionSchema = z.object({
+  version: z.literal(1),
+  kind: z.literal('alm-live-key'),
+  root: id,
+  almEpoch: id,
+  keyGeneration: finite.int().positive(),
+  keyB64: text,
+  saltB64: text,
+  senderPubB64: z.string().min(32).max(256),
+  signature: z.string().min(32).max(256),
+})
+
 export const networkPayloadSchemas = {
   PLAYER_JOIN: z.object({ player: playerSchema }),
   PLAYER_UPDATE: z.object({ player: playerSchema }),
@@ -241,6 +302,25 @@ export const networkPayloadSchemas = {
   WHITEBOARD_REQUEST: z.object({ ...boardBase, fileIds: z.array(id).max(1000).optional() }),
   WHITEBOARD_STATE: z.object({ ...boardBase, to: id, operations: z.array(whiteboardOperationSchema).max(16), complete: optionalBool }),
   WHITEBOARD_POINTER: z.object({ ...boardBase, point: z.object({ x: finite, y: finite }).nullable(), seq: finite.int().nonnegative() }),
+  E2EE_HANDSHAKE: e2eeHandshakeSchema,
+  E2EE_KEY_DISTRIBUTION: z.object({
+    to: id,
+    scope: id,
+    epoch: finite.int().positive(),
+    envelope: directCipherEnvelopeSchema,
+  }).passthrough(),
+  E2EE_DIRECT_ENVELOPE: directCipherEnvelopeSchema.extend({
+    kind: z.enum(['dm', 'dm-receipt']).optional(),
+  }),
+  E2EE_GROUP_ENVELOPE: groupCipherEnvelopeSchema,
+  E2EE_CALL_SIGNAL: z.object({
+    to: id,
+    connectionId: id,
+    dtlsFingerprint: text,
+    signature: text,
+    timestamp: finite,
+    kind: z.enum(['main', 'live-voice']).optional(),
+  }).passthrough(),
 } as const
 
 export type ValidatedNetworkMessage = { [K in keyof typeof networkPayloadSchemas]: {
@@ -279,4 +359,12 @@ export const friendPacketSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('presence'), presence: userPresenceSchema.partial().nullable() }),
   z.object({ t: z.literal('dm'), message: chatWireSchema.partial().required({ id: true }) }),
   z.object({ t: z.literal('receipt'), receipt: receiptSchema.partial().required({ status: true }) }),
+  z.object({ t: z.literal('e2ee-hello'), payload: e2eeHandshakeSchema }),
+  z.object({
+    t: z.literal('e2ee'),
+    payload: z.object({
+      kind: z.enum(['dm', 'receipt']),
+      envelope: directCipherEnvelopeSchema,
+    }),
+  }),
 ])

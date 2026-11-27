@@ -84,6 +84,8 @@ import { useLiveFrameFit } from '../hooks/useLiveFrameFit'
 import { noiseSuppressionDisplay, resolveNoiseProcessorPreference } from '../media/noiseSuppressionStatus'
 import { NoiseSuppressionNotice } from './common/NoiseSuppressionNotice'
 import { useLiveWatchStore } from '../store/useLiveWatchStore'
+import { useSecurityStore, aggregatePeersSecurity } from '../store/useSecurityStore'
+import { SecurityBadge } from './security/SecurityBadge'
 
 interface VideoTileProps {
   id?: string
@@ -711,6 +713,14 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
   const mapData = useMapStore((s) => s.mapData)
   const toggleZoneLock = useMapStore((s) => s.toggleZoneLock)
   const watchingLives = useLiveWatchStore((s) => s.watching)
+  const securityPeers = useSecurityStore((s) => s.peers)
+  const openSecurityInspection = useSecurityStore((s) => s.openInspection)
+  const miniCallSecurity = aggregatePeersSecurity(
+    securityPeers,
+    peersInSameZone
+      .filter((p) => !p.isDjBot && !p.id.startsWith('dj-'))
+      .map((p) => ({ id: p.id, gameId: p.gameId, name: p.name }))
+  )
 
   const isChatOpen = useChatStore((state) => state.isChatOpen)
   const activeChannelId = useChatStore((state) => state.activeChannelId)
@@ -1008,6 +1018,20 @@ const MiniCallOverlayInner: React.FC<{ suppressAudio?: boolean }> = ({ suppressA
                   <span className="w-1.5 h-1.5 rounded-full bg-lira-amber animate-ping" />
                 </span>
               )}
+              <SecurityBadge
+                compact
+                status={miniCallSecurity.status}
+                mediaEncrypted={miniCallSecurity.mediaEncryptedCount > 0}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  openSecurityInspection(
+                    miniCallSecurity.primaryPeer ?? {
+                      peerId: localPlayer.id,
+                      displayName: zoneName,
+                    }
+                  )
+                }}
+              />
             </div>
 
             <div className="flex items-center gap-1 shrink-0">

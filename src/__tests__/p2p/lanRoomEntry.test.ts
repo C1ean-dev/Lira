@@ -97,7 +97,9 @@ describe('activating LAN inside the space', () => {
     expect(localPeer.options).toMatchObject({ host: '127.0.0.1', port: 9002 })
     expect(originalPeer.destroyed).toBe(false)
     localPeer.emit('open')
-    expect((await switching).map(decodeLanInvite)).toEqual([{ room: 'ROOM', host: '[2001:db8::20]', port: 9002 }])
+    expect((await switching).map(decodeLanInvite)).toEqual([
+      expect.objectContaining({ room: 'ROOM', host: '[2001:db8::20]', port: 9002, hostKeyFp: expect.stringMatching(/^[a-f0-9]{64}$/) }),
+    ])
     expect(originalPeer.destroyed).toBe(true)
     expect(useGameStore.getState()).toMatchObject({ roomId: 'ROOM', roomName: 'Escritório', signalingTier: 'local' })
   })

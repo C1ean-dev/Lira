@@ -66,6 +66,13 @@ import { goToPlayer } from '../utils/goToPlayer'
 import { createRoomChannel, deleteRoomChannel, renameRoomChannel } from '../services/roomChannelsService'
 import { useRoomJoinStore } from '../store/useRoomJoinStore'
 import { useChatPagination } from '../hooks/useChatPagination'
+import {
+  aggregatePeersSecurity,
+  resolvePeerSecurity,
+  useSecurityStore,
+  type PeerSecurityStatus,
+} from '../store/useSecurityStore'
+import { SecurityBadge } from './security/SecurityBadge'
 
 const MENU_ICON = 'w-4 h-4 shrink-0'
 
@@ -217,6 +224,8 @@ const ChatDrawerInner: React.FC = () => {
   const isOwner = useGameStore((s) => s.isOwner)
   const removeFriend = useGameStore((s) => s.removeFriend)
   const isGridCallOpen = useMediaStore((s) => s.isGridCallOpen)
+  const securityPeers = useSecurityStore((s) => s.peers)
+  const openSecurityInspection = useSecurityStore((s) => s.openInspection)
 
   const [inputMessage, setInputMessage] = useState('')
   const [selectedMentions, setSelectedMentions] = useState<ChatMention[]>([])
@@ -341,6 +350,10 @@ const ChatDrawerInner: React.FC = () => {
     setTimeout(() => { messageInputRef.current?.focus(); messageInputRef.current?.setSelectionRange(result.caret, result.caret) }, 0)
   }
   const filteredMessages = messages.filter((m) => {
+    if (activeChannel?.type === 'zone') {
+      if (!localPlayer.currentZoneId) return false
+      return m.channelId === activeChannelId && (!m.zoneId || m.zoneId === localPlayer.currentZoneId)
+    }
     if (m.channelId === activeChannelId) return true
     if (activeChannel?.type === 'dm' && activeChannel.recipientId) {
       const recId = activeChannel.recipientId
@@ -498,6 +511,7 @@ const ChatDrawerInner: React.FC = () => {
     }
 
     const sendChatMessageWithContent = (text: string) => {
+      if (activeChannel?.type === 'zone' && !localPlayer.currentZoneId) return
       const newMsg: ChatMessage = {
         id: 'msg-' + Math.random().toString(36).substring(2, 9),
         senderId: isDm ? getPlayerUserId(localPlayer) : localPlayer.id,
@@ -507,6 +521,9 @@ const ChatDrawerInner: React.FC = () => {
         timestamp: Date.now(),
         avatarConfig: localPlayer.avatar,
         recipientId: isDm ? activeChannel.recipientId : undefined,
+        ...(activeChannel?.type === 'zone' && localPlayer.currentZoneId
+          ? { zoneId: localPlayer.currentZoneId }
+          : {}),
         status: 'sent',
       }
       addMessage(newMsg)
@@ -652,6 +669,10 @@ const ChatDrawerInner: React.FC = () => {
       return
     }
 
+    if (activeChannel?.type === 'zone' && !localPlayer.currentZoneId) {
+      return
+    }
+
     const newMsg: ChatMessage = {
       id: 'msg-' + Math.random().toString(36).substring(2, 9),
       senderId: isDm ? getPlayerUserId(localPlayer) : localPlayer.id,
@@ -662,6 +683,9 @@ const ChatDrawerInner: React.FC = () => {
       avatarConfig: localPlayer.avatar,
       attachment: pendingAttachment || undefined,
       recipientId: isDm ? activeChannel.recipientId : undefined,
+      ...(activeChannel?.type === 'zone' && localPlayer.currentZoneId
+        ? { zoneId: localPlayer.currentZoneId }
+        : {}),
       status: 'sent',
       mentions: prepared.mentions.length ? prepared.mentions : undefined,
     }
@@ -862,13 +886,74 @@ const ChatDrawerInner: React.FC = () => {
               )}
               <span className="text-xs font-display font-bold text-lira-ink truncate">{activeChannel.name}</span>
             </div>
-            {activeChannel.type === 'dm' ? (
-              <DmHeaderStatus person={activeDmPerson} fallbackName={activeChannel.name} />
-            ) : (
-              <span className="text-[10px] text-lira-muted truncate max-w-[50%]">
-                {activeChannel.description}
-              </span>
-            )}
+            {activeChannel.type === 'dm' ? (() => {
+              const dmCandidateIds = [
+                activeChannel.recipientId,
+                activeDmPerson?.contactId,
+                activeDmPerson?.playerId,
+                activeDmPerson?.friendKey,
+              ].filter((id): id is string => Boolean(id))
+              const dmPeerSec = resolvePeerSecurity(securityPeers, dmCandidateIds)
+              const matchedFriendKey = findFriendKey(friends, friendProfiles, dmCandidateIds)
+              const matchedFriend = matchedFriendKey ? friendProfiles[matchedFriendKey] : undefined
+              const dmSecStatus: PeerSecurityStatus = dmPeerSec
+                ? dmPeerSec.status === 'encrypted' && matchedFriend?.identityKeyVerified
+                  ? 'verified'
+                  : dmPeerSec.status
+                : matchedFriend?.identityKeyVerified
+                ? 'verified'
+                : matchedFriend?.identityKey
+                ? 'encrypted'
+                : 'pending'
+              const inspectPeerId =
+                dmPeerSec?.peerId ||
+                activeChannel.recipientId ||
+                activeDmPerson?.contactId ||
+                activeDmPerson?.playerId ||
+                activeChannel.name
+
+              return (
+                <div className="flex items-center gap-1.5 shrink-0 min-w-0">
+                  <SecurityBadge
+                    compact
+                    status={dmSecStatus}
+                    onClick={() =>
+                      openSecurityInspection({
+                        peerId: inspectPeerId,
+                        displayName: activeChannel.name,
+                        candidateIds: dmCandidateIds,
+                      })
+                    }
+                  />
+                  <DmHeaderStatus person={activeDmPerson} fallbackName={activeChannel.name} />
+                </div>
+              )
+            })() : (() => {
+              const roomPeerList = Object.values(remotePlayers)
+                .filter((p) => !p.isDjBot && !p.id.startsWith('dj-'))
+                .map((p) => ({ id: p.id, gameId: p.gameId, name: p.name }))
+              const roomSec = aggregatePeersSecurity(securityPeers, roomPeerList)
+              return (
+                <div className="flex items-center gap-2 min-w-0 max-w-[60%]">
+                  <span className="text-[10px] text-lira-muted truncate">
+                    {activeChannel.description}
+                  </span>
+                  <SecurityBadge
+                    compact
+                    status={roomSec.status}
+                    mediaEncrypted={roomSec.mediaEncryptedCount > 0}
+                    onClick={() =>
+                      openSecurityInspection(
+                        roomSec.primaryPeer ?? {
+                          peerId: localPlayer.id,
+                          displayName: activeChannel.name,
+                        }
+                      )
+                    }
+                  />
+                </div>
+              )
+            })()}
           </div>
 
           <div ref={pagination.messagesRef} onScroll={pagination.onScroll} onWheel={pagination.onWheel} onTouchStart={pagination.onTouchStart} onTouchMove={pagination.onTouchMove} className="flex-1 min-h-0 p-3 overflow-y-auto">
@@ -1035,6 +1120,14 @@ const ChatDrawerInner: React.FC = () => {
                         </span>
                       </button>
                       <div className="flex items-center gap-1 shrink-0">
+                        {msg.encrypted && (
+                          <span
+                            title="Mensagem criptografada ponta a ponta (E2EE)"
+                            className="inline-flex items-center text-lira-online/80"
+                          >
+                            <Lock className="w-2.5 h-2.5" />
+                          </span>
+                        )}
                         <span className="text-[10px] font-mono text-lira-muted">
                           {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>

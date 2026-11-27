@@ -58,6 +58,11 @@ export type NetworkMessageType =
   | 'SPOTIFY_DJ_SEARCH_RESULT'
   | 'DJ_CALL_REQUEST'
   | 'VOICE_RELAY_CONTROL'
+  | 'E2EE_HANDSHAKE'
+  | 'E2EE_KEY_DISTRIBUTION'
+  | 'E2EE_DIRECT_ENVELOPE'
+  | 'E2EE_GROUP_ENVELOPE'
+  | 'E2EE_CALL_SIGNAL'
 
 export type NetworkMessage<T extends NetworkMessageType = NetworkMessageType> = Extract<import('../validation/schemas').ValidatedNetworkMessage, { type: T }>
 

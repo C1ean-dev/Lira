@@ -35,7 +35,7 @@ export function startLocalSignalingServer(create: CreateServer, callbacks: {
       else callbacks.onError(error)
     }
     try {
-      const server = create({ host, port, path: '/', allow_discovery: true }, httpServer => {
+      const server = create({ host, port, path: '/', allow_discovery: false }, httpServer => {
         if (stopped || ticket !== generation) { httpServer.close(); return }
         listening = true
         bound = httpServer

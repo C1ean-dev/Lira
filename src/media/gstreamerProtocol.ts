@@ -8,6 +8,7 @@ export const gstreamerSignalSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('sdp'), session,
     description: z.object({ type: z.enum(['offer', 'answer']), sdp: z.string().min(1).max(131072) }),
+    dtlsSig: z.string().min(32).max(256).optional(),
   }),
   z.object({
     kind: z.literal('ice'), session,

@@ -2,10 +2,18 @@ import { diagLog } from '../utils/diagnosticLogger'
 import { MediaCallHandler } from './mediaCalls'
 import { useMediaStore } from '../store/useMediaStore'
 import { useGameStore } from '../store/useGameStore'
+import { useSecurityStore } from '../store/useSecurityStore'
 import { PeerManager } from './PeerManager'
+import { utf8Bytes } from '../crypto/primitives'
+import {
+  decryptRawMediaPayload,
+  deriveMediaKeyMaterial,
+  encryptRawMediaPayload,
+} from '../crypto/sframe'
 
 export const VOICE_RELAY_CHANNEL_LABEL = 'lira-voice-relay'
 export const MAGIC_BYTE = 0x56 // 'V'
+export const MAGIC_BYTE_E2EE = 0x57 // 'W'
 export const RECOVERY_EVALUATION_INTERVAL_MS = 1500
 export const RECOVERY_MIN_STABLE_SAMPLES = 3
 export const RECOVERY_MAX_LOSS = 0.01 // 1%
@@ -65,6 +73,8 @@ export class SuperPeerVoiceRelay {
   private sequence = 0
   private textEncoder = new TextEncoder()
   private textDecoder = new TextDecoder()
+  private txQueues = new Map<string, Promise<void>>()
+  private rxQueues = new Map<string, Promise<void>>()
 
   private constructor() {}
 
@@ -91,6 +101,8 @@ export class SuperPeerVoiceRelay {
     this.relayChannels.clear()
     this.peerConnections.clear()
     this.activeHostRelays.clear()
+    this.txQueues.clear()
+    this.rxQueues.clear()
     this.sequence = 0
   }
 
@@ -307,8 +319,15 @@ export class SuperPeerVoiceRelay {
    * Routes control messages received through the signaling/state channel.
    */
   public handleControlMessage(msg: VoiceRelayControlMessage, senderPeerId: string): void {
-    const isHost = PeerManager.getInstance().isHost
+    const peerMgr = PeerManager.getInstance()
+    const isHost = peerMgr.isHost
     const myId = useGameStore.getState().localPlayer.id
+    const roomCode = peerMgr.getRoomCode()
+    const expectedHostId =
+      useGameStore.getState().connectionHostId || (roomCode ? `lira-${roomCode}-host` : '')
+    const isFromHost = Boolean(
+      senderPeerId && (senderPeerId === expectedHostId || (!expectedHostId && senderPeerId.endsWith('-host')))
+    )
 
     switch (msg.type) {
       case 'VOICE_RELAY_REQUEST': {
@@ -316,10 +335,21 @@ export class SuperPeerVoiceRelay {
         const { sourcePeer, targetPeer } = msg
         const hostPeerId = myId
 
+        if (targetPeer !== senderPeerId) return
         // Regra 2: Validar se host não é uma das pontas e ambas as conexões estão ativas
         if (sourcePeer === hostPeerId || targetPeer === hostPeerId) return
-        const sourceConn = PeerManager.getInstance().getConnection(sourcePeer)
-        const targetConn = PeerManager.getInstance().getConnection(targetPeer)
+        const remotePlayers = useGameStore.getState().remotePlayers
+        const sourcePlayer = remotePlayers[sourcePeer]
+        const targetPlayer = remotePlayers[targetPeer]
+        if (
+          sourcePlayer &&
+          targetPlayer &&
+          (sourcePlayer.currentZoneId == null || sourcePlayer.currentZoneId !== targetPlayer.currentZoneId)
+        ) {
+          return
+        }
+        const sourceConn = peerMgr.getConnection(sourcePeer)
+        const targetConn = peerMgr.getConnection(targetPeer)
 
         if (!sourceConn?.open || !targetConn?.open) {
           console.warn(`[VoiceRelay] Super-Peer recusou relay ${sourcePeer} -> ${targetPeer} (conexões incompletas)`)
@@ -333,12 +363,12 @@ export class SuperPeerVoiceRelay {
         diagLog('p2p', 'voice-relay.relay-accepted', { sourcePeer, targetPeer })
 
         // Instruir emissor A e aceitar no receptor B
-        PeerManager.getInstance().sendVoiceRelayControl(sourcePeer, {
+        peerMgr.sendVoiceRelayControl(sourcePeer, {
           type: 'VOICE_RELAY_INSTRUCT_START',
           sourcePeer,
           targetPeer,
         })
-        PeerManager.getInstance().sendVoiceRelayControl(targetPeer, {
+        peerMgr.sendVoiceRelayControl(targetPeer, {
           type: 'VOICE_RELAY_ACCEPT',
           sourcePeer,
           targetPeer,
@@ -347,6 +377,7 @@ export class SuperPeerVoiceRelay {
       }
 
       case 'VOICE_RELAY_INSTRUCT_START': {
+        if (!isFromHost) return
         // Emissor A recebe ordem do Super-Peer para transmitir áudio para targetPeer
         console.log(`[VoiceRelay] Emissor iniciando transmissão via Super-Peer para ${msg.targetPeer}`)
         diagLog('p2p', 'voice-relay.transmitter-started', { targetPeer: msg.targetPeer })
@@ -355,6 +386,7 @@ export class SuperPeerVoiceRelay {
       }
 
       case 'VOICE_RELAY_ACCEPT': {
+        if (!isFromHost) return
         // Receptor B recebe confirmação do Super-Peer e prepara o receptor de áudio
         console.log(`[VoiceRelay] Receptor preparando canal de voz para ${msg.sourcePeer}`)
         diagLog('p2p', 'voice-relay.receiver-prepared', { sourcePeer: msg.sourcePeer })
@@ -365,13 +397,14 @@ export class SuperPeerVoiceRelay {
       case 'VOICE_RELAY_STOP': {
         if (!isHost) return
         const { sourcePeer, targetPeer } = msg
+        if (targetPeer !== senderPeerId) return
         const relayKey = `${sourcePeer}->${targetPeer}`
         this.activeHostRelays.delete(relayKey)
 
         console.log(`[VoiceRelay] Super-Peer encerrou túnel de voz: ${sourcePeer} -> ${targetPeer}`)
         diagLog('p2p', 'voice-relay.relay-stopped', { sourcePeer, targetPeer })
 
-        PeerManager.getInstance().sendVoiceRelayControl(sourcePeer, {
+        peerMgr.sendVoiceRelayControl(sourcePeer, {
           type: 'VOICE_RELAY_INSTRUCT_STOP',
           sourcePeer,
           targetPeer,
@@ -380,6 +413,7 @@ export class SuperPeerVoiceRelay {
       }
 
       case 'VOICE_RELAY_INSTRUCT_STOP': {
+        if (!isFromHost) return
         console.log(`[VoiceRelay] Emissor encerrando transmissão via Super-Peer para ${msg.targetPeer}`)
         diagLog('p2p', 'voice-relay.transmitter-stopped', { targetPeer: msg.targetPeer })
         this.stopTransmitter(msg.targetPeer)
@@ -388,13 +422,30 @@ export class SuperPeerVoiceRelay {
     }
   }
 
+  private getPeerE2EESession(peerId: string) {
+    try {
+      return PeerManager.getInstance().getE2EESessionManager?.()?.getSession(peerId)
+    } catch {
+      return undefined
+    }
+  }
+
+  private getLocalPeerId(): string {
+    return PeerManager.getInstance().getPeerId?.() || useGameStore.getState().localPlayer.id
+  }
+
+  private buildRelayAad(senderId: string, recipientId: string, seq: number, timestamp: number): Uint8Array {
+    return utf8Bytes(`lira-voice-relay-v1|${senderId}|${recipientId}|${seq}|${timestamp}`)
+  }
+
   /**
    * Handles incoming binary voice frames on the dedicated non-ordered RTCDataChannel.
    */
   private handleBinaryMessage(fromPeerId: string, data: ArrayBuffer, isHost: boolean): void {
     if (!data || data.byteLength < 9) return
     const view = new DataView(data)
-    if (view.getUint8(0) !== MAGIC_BYTE) return
+    const magic = view.getUint8(0)
+    if (magic !== MAGIC_BYTE && magic !== MAGIC_BYTE_E2EE) return
 
     const seq = view.getUint16(1)
     const timestamp = view.getUint32(3)
@@ -415,11 +466,11 @@ export class SuperPeerVoiceRelay {
 
       const targetChannel = this.relayChannels.get(targetPeerId)
       if (targetChannel && targetChannel.readyState === 'open') {
-        // Reescreve o cabeçalho identificando sourcePeerId para o receptor
+        // Reescreve o cabeçalho identificando sourcePeerId para o receptor preservando o magic byte
         const sourceBytes = this.textEncoder.encode(sourcePeerId)
         const forwardBuffer = new ArrayBuffer(8 + sourceBytes.length + payload.length)
         const forwardView = new DataView(forwardBuffer)
-        forwardView.setUint8(0, MAGIC_BYTE)
+        forwardView.setUint8(0, magic)
         forwardView.setUint16(1, seq)
         forwardView.setUint32(3, timestamp)
         forwardView.setUint8(7, sourceBytes.length)
@@ -434,9 +485,56 @@ export class SuperPeerVoiceRelay {
       // Receiver B: O headerPeerId contém o sourcePeerId
       const sourcePeerId = headerPeerId
       const receiver = this.activeReceivers.get(sourcePeerId)
-      if (receiver) {
-        this.processReceiverPacket(sourcePeerId, receiver, seq, timestamp, payload)
+      if (!receiver) return
+
+      const session = this.getPeerE2EESession(sourcePeerId)
+      if (session && magic === MAGIC_BYTE) {
+        useSecurityStore.getState().recordAlert({
+          peerId: sourcePeerId,
+          reason: 'plaintext_downgrade',
+          message: `Frame de relay de voz sem E2EE bloqueado de ${sourcePeerId}.`,
+        })
+        return
       }
+
+      if (magic === MAGIC_BYTE_E2EE) {
+        if (!session) return
+        const recipientId = this.getLocalPeerId()
+        const payloadCopy = new Uint8Array(payload)
+        const prev = this.rxQueues.get(sourcePeerId) ?? Promise.resolve()
+        const next = prev
+          .then(async () => {
+            const active = this.activeReceivers.get(sourcePeerId)
+            if (!active) return
+            const material = await deriveMediaKeyMaterial(
+              session.rootKey,
+              sourcePeerId,
+              recipientId,
+              0,
+              'lira-voice-relay-v1'
+            )
+            const aad = this.buildRelayAad(sourcePeerId, recipientId, seq, timestamp)
+            const plain = await decryptRawMediaPayload(
+              material.rawKey,
+              material.salt,
+              seq,
+              aad,
+              payloadCopy
+            )
+            this.processReceiverPacket(sourcePeerId, active, seq, timestamp, plain)
+          })
+          .catch(() => {
+            useSecurityStore.getState().recordAlert({
+              peerId: sourcePeerId,
+              reason: 'invalid_signature',
+              message: `Frame cifrado de relay de voz inválido rejeitado de ${sourcePeerId}.`,
+            })
+          })
+        this.rxQueues.set(sourcePeerId, next)
+        return
+      }
+
+      this.processReceiverPacket(sourcePeerId, receiver, seq, timestamp, payload)
     }
   }
 
@@ -462,16 +560,55 @@ export class SuperPeerVoiceRelay {
       }
 
       this.sequence = (this.sequence + 1) & 0xffff
+      const seq = this.sequence
       const now = Date.now() & 0xffffffff
       const targetBytes = this.textEncoder.encode(targetPeerId)
-
-      // Payload placeholder: synthetic 20ms frame or Opus slice
       const dummyPayload = new Uint8Array(160) // 20ms Opus frame equivalent
+      const session = this.getPeerE2EESession(targetPeerId)
+
+      if (session) {
+        const senderId = this.getLocalPeerId()
+        const prev = this.txQueues.get(targetPeerId) ?? Promise.resolve()
+        const next = prev
+          .then(async () => {
+            const currentChannel = this.relayChannels.get(hostPeerId)
+            if (!currentChannel || currentChannel.readyState !== 'open') return
+            const material = await deriveMediaKeyMaterial(
+              session.rootKey,
+              senderId,
+              targetPeerId,
+              0,
+              'lira-voice-relay-v1'
+            )
+            const aad = this.buildRelayAad(senderId, targetPeerId, seq, now)
+            const encryptedPayload = await encryptRawMediaPayload(
+              material.rawKey,
+              material.salt,
+              seq,
+              aad,
+              dummyPayload
+            )
+            const buffer = new ArrayBuffer(8 + targetBytes.length + encryptedPayload.byteLength)
+            const view = new DataView(buffer)
+            view.setUint8(0, MAGIC_BYTE_E2EE)
+            view.setUint16(1, seq)
+            view.setUint32(3, now)
+            view.setUint8(7, targetBytes.length)
+            new Uint8Array(buffer, 8, targetBytes.length).set(targetBytes)
+            new Uint8Array(buffer, 8 + targetBytes.length).set(encryptedPayload)
+            try {
+              currentChannel.send(buffer)
+            } catch {}
+          })
+          .catch(() => {})
+        this.txQueues.set(targetPeerId, next)
+        return
+      }
 
       const buffer = new ArrayBuffer(8 + targetBytes.length + dummyPayload.length)
       const view = new DataView(buffer)
       view.setUint8(0, MAGIC_BYTE)
-      view.setUint16(1, this.sequence)
+      view.setUint16(1, seq)
       view.setUint32(3, now)
       view.setUint8(7, targetBytes.length)
       new Uint8Array(buffer, 8, targetBytes.length).set(targetBytes)

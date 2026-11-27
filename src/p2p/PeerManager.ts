@@ -45,10 +45,44 @@ import { diagLog, summarizeStream } from '../utils/diagnosticLogger'
 import { reportError } from '../utils/logger'
 import { registerReportContext } from '../utils/reportContext'
 import { sanitizeRoomCode } from '../utils/roomCode'
-import { getPlayerUserId } from '../utils/userId'
+import { getPlayerUserId, findFriendKey } from '../utils/userId'
 import { getRoomChannels } from '../utils/roomChannels'
 import { restoreRoomChannels } from '../services/roomChannelsService'
 import { useSpotifyJamStore } from '../store/useSpotifyJamStore'
+import { E2EESessionManager, type E2EEHandshakePayload } from '../crypto/sessionManager'
+import { getLocalIdentity, type LocalIdentity } from '../crypto/identityStore'
+import { getConnectionDtlsBinding } from '../crypto/dtlsBinding'
+import { PairwiseRatchetManager, type DirectCipherEnvelope } from '../crypto/ratchet'
+import {
+  SenderKeyManager,
+  type GroupCipherEnvelope,
+  type SenderKeyDistributionPayload,
+} from '../crypto/senderKeys'
+import {
+  encryptAttachment,
+  decryptAttachment,
+  type EncryptedAttachmentDescriptor,
+} from '../crypto/attachmentCrypto'
+import {
+  importIdentityPublicKey,
+  signData,
+  toBase64Url,
+  fromBase64Url,
+  utf8Bytes,
+  verifySignature,
+} from '../crypto/primitives'
+import {
+  MediaE2EEManager,
+  signCallDtlsSignal,
+  verifyCallDtlsSignal,
+  type CallDtlsSignalPayload,
+} from '../crypto/mediaE2ee'
+import {
+  senderKeyDistributionSchema,
+  chatMessageSchema,
+  almLiveKeyDistributionSchema,
+} from '../validation/schemas'
+import { useSecurityStore } from '../store/useSecurityStore'
 import { buildIceServers } from './rtcIceServers'
 import { loadCloudflareIceServers } from './cloudflareTurn'
 import {
@@ -248,6 +282,20 @@ export class PeerManager {
   private almSession?: AlmLive
   private nativeLive?: GStreamerRoom
   private nativeCapture?: NativeGStreamerCapture
+  private e2eeSessions = new E2EESessionManager()
+  private pairwiseRatchets = new PairwiseRatchetManager()
+  private senderKeys = new SenderKeyManager()
+  private e2eeInboundQueues = new Map<string, Promise<unknown>>()
+  private outboundScopeQueues = new Map<string, Promise<unknown>>()
+  private lastBroadcastZoneId: string | null | undefined = undefined
+  private lastPeerZones = new Map<string, string | null | undefined>()
+  private mediaE2EE = new MediaE2EEManager()
+  private pendingCallDtlsSigs = new Map<string, { dtlsFingerprint: string; verifiedAt: number }>()
+  private sentCallDtlsSigs = new Map<string, string>()
+  private almLiveKeys = new Map<string, { keyRaw: Uint8Array; salt: Uint8Array }>()
+  private attachedCallSecurityPcs = new WeakSet<RTCPeerConnection>()
+  private expectedHostKeyFp: string | null = null
+  private localIdentity: LocalIdentity | null = null
   private get gstreamer(): GStreamerRoom {
     return this.nativeLive ??= new GStreamerRoom({
       rtc: { ...SHARED_RTC_CONFIG, iceServers: SHARED_RTC_CONFIG.iceServers?.filter(server =>
@@ -270,6 +318,44 @@ export class PeerManager {
         const sender = pc && findVideoSender(pc)
         if (sender) syncScreenCaps(sender, id)
         MediaCallHandler.syncViewerAudio(this.mediaCalls, id)
+      },
+      e2ee: {
+        signSdp: async (to, session, type, sdp) => {
+          const owner = this.peer
+          if (!owner || !this.e2eeSessions?.getSession(to)) return null
+          const identity = await this.ensureLocalIdentity()
+          return signData(
+            identity.privateKey,
+            utf8Bytes(`lira-e2ee-gst-v1|${owner.id}|${to}|${session}|${type}|${sdp}`)
+          )
+        },
+        verifySdp: async (from, session, type, sdp, sig) => {
+          const owner = this.peer
+          const peerSession = this.e2eeSessions?.getSession(from)
+          if (!owner || !peerSession) return true
+          if (!sig) {
+            useSecurityStore.getState().recordAlert({
+              peerId: from,
+              reason: 'plaintext_downgrade',
+              message: `SDP GStreamer sem assinatura rejeitado de ${from}.`,
+            })
+            return false
+          }
+          const pubKey = await importIdentityPublicKey(peerSession.remoteIdentityPub)
+          const ok = await verifySignature(
+            pubKey,
+            sig,
+            utf8Bytes(`lira-e2ee-gst-v1|${from}|${owner.id}|${session}|${type}|${sdp}`)
+          )
+          if (!ok) {
+            useSecurityStore.getState().recordAlert({
+              peerId: from,
+              reason: 'invalid_signature',
+              message: `Assinatura SDP GStreamer inválida de ${from}.`,
+            })
+          }
+          return ok
+        },
       },
     })
   }
@@ -349,6 +435,87 @@ export class PeerManager {
       MediaCallHandler.syncViewerAudio(this.mediaCalls, viewer)
     },
     log: (event, data) => diagLog('screenshare', `alm-${event}`, data),
+    e2ee: {
+      signSignal: async (to, root, epoch, edgeId, sdp) => {
+        const owner = this.peer
+        if (!owner || !this.e2eeSessions?.getSession(to)) return null
+        const identity = await this.ensureLocalIdentity()
+        return signData(
+          identity.privateKey,
+          utf8Bytes(`lira-e2ee-alm-v1|${owner.id}|${to}|${root}|${epoch}|${edgeId}|${sdp}`)
+        )
+      },
+      verifySignal: async (from, root, epoch, edgeId, sdp, sig) => {
+        const owner = this.peer
+        const peerSession = this.e2eeSessions?.getSession(from)
+        if (!owner || !peerSession) return true
+        if (!sig) {
+          useSecurityStore.getState().recordAlert({
+            peerId: from,
+            reason: 'plaintext_downgrade',
+            message: `Sinalização ALM sem assinatura rejeitada de ${from}.`,
+          })
+          return false
+        }
+        const pubKey = await importIdentityPublicKey(peerSession.remoteIdentityPub)
+        const ok = await verifySignature(
+          pubKey,
+          sig,
+          utf8Bytes(`lira-e2ee-alm-v1|${from}|${owner.id}|${root}|${epoch}|${edgeId}|${sdp}`)
+        )
+        if (!ok) {
+          useSecurityStore.getState().recordAlert({
+            peerId: from,
+            reason: 'invalid_signature',
+            message: `Assinatura ALM inválida de ${from}.`,
+          })
+        }
+        return ok
+      },
+      distributeLiveKey: async (viewerId, root, epoch, keyRaw, salt, generation) => {
+        const owner = this.peer
+        if (!owner || !this.pairwiseRatchets?.hasSession(viewerId)) return false
+        const identity = await this.ensureLocalIdentity()
+        const keyB64 = toBase64Url(keyRaw)
+        const saltB64 = toBase64Url(salt)
+        const sig = await signData(
+          identity.privateKey,
+          utf8Bytes(`lira-e2ee-alm-key-v1|${root}|${epoch}|${generation}|${keyB64}|${saltB64}`)
+        )
+        const payload = {
+          version: 1 as const,
+          kind: 'alm-live-key' as const,
+          root,
+          almEpoch: epoch,
+          keyGeneration: generation,
+          keyB64,
+          saltB64,
+          senderPubB64: identity.publicKeyB64,
+          signature: sig,
+        }
+        const scope = `alm:${root}:${epoch}`
+        const envelope = await this.pairwiseRatchets.encryptJson(
+          viewerId,
+          owner.id,
+          viewerId,
+          payload
+        )
+        return this.sendUnicastViaTopology(viewerId, {
+          type: 'E2EE_KEY_DISTRIBUTION',
+          senderId: owner.id,
+          payload: {
+            to: viewerId,
+            scope,
+            epoch: generation,
+            envelope,
+          },
+          timestamp: Date.now(),
+        })
+      },
+      getLiveKey: (root, epoch, generation) => {
+        return this.almLiveKeys?.get(`${root}::${epoch}::${generation}`) ?? null
+      },
+    },
   }) }
 
   private handleNetworkOnline = () => {
@@ -574,6 +741,70 @@ export class PeerManager {
     return this.connections.get(peerId)
   }
 
+  public async ensureLocalIdentity(): Promise<LocalIdentity> {
+    if (!this.localIdentity) {
+      this.localIdentity = await getLocalIdentity()
+    }
+    return this.localIdentity
+  }
+
+  public getRoomHostKeyFp(): string | null {
+    if (this.isHost) {
+      return this.localIdentity?.fingerprint ?? null
+    }
+    if (!this.roomCode) return this.expectedHostKeyFp ?? null
+    const hostPeerId = `lira-${this.roomCode}-host`
+    return this.e2eeSessions?.getSession(hostPeerId)?.remoteFingerprint ?? this.expectedHostKeyFp ?? null
+  }
+
+  public getE2EESessionManager(): E2EESessionManager {
+    return this.e2eeSessions
+  }
+
+  public getPairwiseRatchetManager(): PairwiseRatchetManager {
+    return this.pairwiseRatchets
+  }
+
+  public getSenderKeyManager(): SenderKeyManager {
+    return this.senderKeys
+  }
+
+  public getMediaE2EEManager(): MediaE2EEManager {
+    return this.mediaE2EE
+  }
+
+  public hasPairwiseE2EESession(peerId: string): boolean {
+    return this.pairwiseRatchets?.hasSession(peerId) ?? false
+  }
+
+  private clearCallDtlsForPeer(peerId: string) {
+    const prefix = `${peerId}::`
+    if (this.pendingCallDtlsSigs) {
+      for (const k of Array.from(this.pendingCallDtlsSigs.keys())) {
+        if (k.startsWith(prefix)) this.pendingCallDtlsSigs.delete(k)
+      }
+    }
+    if (this.sentCallDtlsSigs) {
+      for (const k of Array.from(this.sentCallDtlsSigs.keys())) {
+        if (k.startsWith(prefix)) this.sentCallDtlsSigs.delete(k)
+      }
+    }
+  }
+
+  private clearE2EEState() {
+    this.e2eeSessions?.clear()
+    this.pairwiseRatchets?.clear()
+    this.senderKeys?.clear()
+    this.e2eeInboundQueues?.clear()
+    this.outboundScopeQueues?.clear()
+    this.lastPeerZones?.clear()
+    this.mediaE2EE?.clearAll()
+    this.pendingCallDtlsSigs?.clear()
+    this.sentCallDtlsSigs?.clear()
+    this.almLiveKeys?.clear()
+    this.lastBroadcastZoneId = undefined
+  }
+
   public sendVoiceRelayControl(targetPeerId: string, payload: any): void {
     const conn = this.connections.get(targetPeerId)
     if (conn?.open) {
@@ -677,7 +908,9 @@ export class PeerManager {
     if (!this.isHost || !room || !owner) return []
     const config = await window.electronAPI?.getSignalingConfig?.()
     if (!config || this.peer !== owner || (this.currentSignalingTier !== 'local' && getDirectSignaling(owner)?.getLanPort() !== config.port)) return []
-    return (config.addresses || []).map(host => encodeLanInvite({ room, host, port: config.port }))
+    const identity = await this.ensureLocalIdentity().catch(() => null)
+    const hostKeyFp = identity?.fingerprint
+    return (config.addresses || []).map(host => encodeLanInvite({ room, host, port: config.port, ...(hostKeyFp ? { hostKeyFp } : {}) }))
   }
 
   private async registerLanPeer(room: string, port: number): Promise<Peer> {
@@ -722,8 +955,12 @@ export class PeerManager {
     const config = await window.electronAPI?.getSignalingConfig?.()
     if (!config?.addresses?.length) throw new Error('Nenhum endereço de rede disponível. Verifique a conexão deste computador.')
     if (this.peer !== owner || this.roomCode !== room || !this.isHost) throw new Error('O espaço mudou. Abra Convites individuais novamente.')
-    const invites = config.addresses.map(host => encodeLanInvite({ room, host, port: config.port }))
-    if (this.currentSignalingTier === 'local' || getDirectSignaling(owner)?.getLanPort() === config.port) return invites
+    const buildLanInvites = async () => {
+      const identity = await this.ensureLocalIdentity().catch(() => null)
+      const hostKeyFp = identity?.fingerprint
+      return config.addresses.map(host => encodeLanInvite({ room, host, port: config.port, ...(hostKeyFp ? { hostKeyFp } : {}) }))
+    }
+    if (this.currentSignalingTier === 'local' || getDirectSignaling(owner)?.getLanPort() === config.port) return buildLanInvites()
 
     const ensureRoomIsEmpty = () => {
       if (this.connections.size || Object.values(owner.connections || {}).some(connections => connections.length)
@@ -759,7 +996,7 @@ export class PeerManager {
     state.setSignalingTier('local')
     state.setConnected(true)
     state.setIsRoomPublic(false)
-    return invites
+    return buildLanInvites()
   }
 
   private async newManualConnection(onEnd?: () => void): Promise<ManualConnection> {
@@ -793,13 +1030,16 @@ export class PeerManager {
     if (!this.isHost || !this.roomCode) throw new Error('Somente o anfitrião pode gerar um convite direto.')
     this.cancelDirectInvite()
     const generation = this.manualGeneration
-    const session = await this.newManualConnection()
+    const [session, identity] = await Promise.all([
+      this.newManualConnection(),
+      this.ensureLocalIdentity().catch(() => null),
+    ])
     if (generation !== this.manualGeneration) {
       session.close(); this.manualConnections.delete(session)
       throw new Error('Convite direto cancelado.')
     }
     this.pendingManualInvite = session
-    return session.offer(this.roomCode)
+    return session.offer(this.roomCode, identity?.fingerprint)
   }
   public async acceptDirectAnswer(answer: string): Promise<void> {
     const { session } = decodeDirectInvite(answer)
@@ -809,7 +1049,10 @@ export class PeerManager {
     this.sharedManualInvites?.delete(session)
   }
 
-  private async createSharedDirectOffer(room: string) {
+  private async createSharedDirectOffer(
+    room: string,
+    hostKeyFp?: string | Promise<string | undefined>
+  ) {
     const generation = this.sharedInviteGeneration
     const invites = this.sharedManualInvites ??= new Map()
     if (invites.size >= 25) return
@@ -817,7 +1060,8 @@ export class PeerManager {
     const session = await this.newManualConnection(() => { if (id) invites.delete(id) })
     try {
       if (generation !== this.sharedInviteGeneration) throw new Error('Convite direto expirado pelo anfitrião.')
-      const offer = decodeDirectInvite(await session.offer(room))
+      const resolvedHostKeyFp = await hostKeyFp
+      const offer = decodeDirectInvite(await session.offer(room, resolvedHostKeyFp))
       if (!this.manualConnections.has(session)) throw new Error('O espaço mudou. Copie o convite novamente.')
       id = offer.session
       invites.set(id, session)
@@ -834,35 +1078,46 @@ export class PeerManager {
     const room = this.roomCode
     if (!owner || !room || !this.isHost) throw new Error('Somente o anfitrião pode gerar um convite completo.')
     const generation = this.sharedInviteGeneration
-    const [ipv6, direct] = await Promise.allSettled([this.prepareIpv6Invite(owner, room), this.createSharedDirectOffer(room)])
+    const identityPromise = this.ensureLocalIdentity().catch(() => null)
+    const [ipv6, direct, identity] = await Promise.allSettled([
+      this.prepareIpv6Invite(owner, room),
+      this.createSharedDirectOffer(room, identityPromise.then((id) => id?.fingerprint)),
+      identityPromise,
+    ])
     if (this.peer !== owner || this.roomCode !== room || !this.isHost) throw new Error('O espaço mudou. Copie o convite novamente.')
+    const hostKeyFp = identity.status === 'fulfilled' ? identity.value?.fingerprint : undefined
     const tier = this.currentSignalingTier
     const invite: AllInvite = {
       version: 1, room,
       signaling: tier === 'render' || tier === 'public' ? tier : undefined,
       ipv6: ipv6.status === 'fulfilled' ? ipv6.value : undefined,
       direct: generation === this.sharedInviteGeneration && direct.status === 'fulfilled' ? direct.value : undefined,
+      ...(hostKeyFp ? { hostKeyFp } : {}),
     }
     if (!invite.signaling && !invite.ipv6 && !invite.direct) throw new Error('Não foi possível gerar um convite. Verifique sua conexão e tente novamente.')
     return encodeAllInvite(invite)
   }
 
   public async joinAllInvite(invite: AllInvite, player: Player): Promise<string | undefined> {
+    const hostKeyFp = invite.hostKeyFp ?? invite.direct?.hostKeyFp
     const routes = []
     if (invite.signaling) routes.push({ code: invite.room, tier: invite.signaling })
     if (invite.ipv6) {
       const { addresses, port } = invite.ipv6
-      for (const host of addresses) routes.push({ code: encodeLanInvite({ room: invite.room, host, port }), tier: 'local' as const })
+      for (const host of addresses) routes.push({ code: encodeLanInvite({ room: invite.room, host, port, ...(hostKeyFp ? { hostKeyFp } : {}) }), tier: 'local' as const })
     }
     for (const { code, tier } of routes) {
       try {
-        await this.joinRoom(code, player, SIGNALING_TIERS.indexOf(tier), 0, undefined, true)
+        await this.joinRoom(code, player, SIGNALING_TIERS.indexOf(tier), 0, undefined, true, hostKeyFp)
         return
       } catch (error) {
         if (this.isIntentionalDisconnect) throw error
       }
     }
-    if (invite.direct && invite.direct.expiresAt > Date.now()) return encodeDirectInvite(invite.direct)
+    if (invite.direct && invite.direct.expiresAt > Date.now()) {
+      this.expectedHostKeyFp = hostKeyFp ?? null
+      return encodeDirectInvite(invite.direct)
+    }
     throw new Error('Nenhuma rota do convite conectou. Peça ao anfitrião um novo convite.')
   }
   public cancelDirectInvite() {
@@ -890,7 +1145,7 @@ export class PeerManager {
   public async prepareDirectJoin(text: string, player: Player): Promise<{ answer: string; connected: Promise<void> }> {
     const invite = decodeDirectInvite(text)
     if (invite.kind !== 'offer') throw new Error('Cole o convite enviado pelo anfitrião.')
-    const connected = this.joinRoom(invite.room, player, SIGNALING_TIERS.indexOf('direct'), 0, invite.guest)
+    const connected = this.joinRoom(invite.room, player, SIGNALING_TIERS.indexOf('direct'), 0, invite.guest, false, invite.hostKeyFp)
     const owner = this.peer
     void connected.catch(() => {})
     try {
@@ -936,6 +1191,9 @@ export class PeerManager {
     this.clearPendingZoneCalls()
     this.roomCode = sanitizeRoomCode(roomCode)
     this.isHost = true
+    this.expectedHostKeyFp = null
+    this.clearE2EEState()
+    void this.ensureLocalIdentity().catch(() => {})
     this.isIntentionalDisconnect = false
     if (this.signalingReconnectTimer) {
       clearTimeout(this.signalingReconnectTimer)
@@ -1157,14 +1415,26 @@ export class PeerManager {
     retryCount: number = 0,
     directPeerId?: string,
     onlyTier = false,
+    expectedHostKeyFp?: string,
   ): Promise<void> {
     this.clearManualConnections()
+    let lanHostKeyFp: string | undefined
     if (roomCode.trim().startsWith('LIRA-LAN:')) {
       const invite = decodeLanInvite(roomCode)
       this.lanEndpoint = { host: invite.host, port: invite.port }
+      lanHostKeyFp = invite.hostKeyFp
       roomCode = invite.room
       tierIndex = SIGNALING_TIERS.indexOf('local')
     } else if (tierIndex === 0) this.lanEndpoint = undefined
+    if (expectedHostKeyFp !== undefined) {
+      this.expectedHostKeyFp = expectedHostKeyFp
+    } else if (lanHostKeyFp !== undefined) {
+      this.expectedHostKeyFp = lanHostKeyFp
+    } else if (tierIndex === 0) {
+      this.expectedHostKeyFp = null
+    }
+    this.clearE2EEState()
+    void this.ensureLocalIdentity().catch(() => {})
     if (SIGNALING_TIERS[tierIndex] === 'direct' && !directPeerId) {
       useGameStore.getState().setConnected(false)
       useGameStore.getState().setConnectionStatus('disconnected')
@@ -1652,6 +1922,15 @@ export class PeerManager {
         try { call.close() } catch {}
         return
       }
+      if (!MediaCallHandler.isIncomingCallAuthorized(call.peer, this.mediaCalls)) {
+        console.warn(`[P2P Media] Chamada não autorizada recusada de ${call.peer}.`)
+        diagLog('p2p', 'call.incoming-rejected-unauthorized', {
+          fromPeer: call.peer,
+          kind: (call.metadata as { kind?: string } | undefined)?.kind ?? 'main',
+        })
+        try { call.close() } catch {}
+        return
+      }
       if ((call.metadata as { kind?: string } | undefined)?.kind === 'live-voice') {
         this.handleIncomingLiveVoiceCall(call)
         return
@@ -1662,6 +1941,10 @@ export class PeerManager {
         mediaCalls: this.mediaCalls,
         endMediaCallWithPeer: (pid) => this.endMediaCallWithPeer(pid),
         onCallConnected: (pid) => this.onMediaCallConnected(pid),
+        enforceAuthorization: true,
+        onPeerConnectionReady: (pid, pc, activeCall) => {
+          this.attachCallSecurity(pid, activeCall, 'main', pc)
+        },
         attemptRedialIfEligible: () => {
           const remotePlayer = useGameStore.getState().remotePlayers[call.peer]
           if (remotePlayer) {
@@ -1718,10 +2001,14 @@ export class PeerManager {
             liveOptIn: true,
             appVersion: CURRENT_LIRA_VERSION,
             minCompatibleVersion: MIN_COMPATIBLE_VERSION,
+            ...(this.localIdentity ? { identityKey: this.localIdentity.publicKeyB64 } : {}),
+            e2eeVersion: 1,
           },
         },
         timestamp: Date.now(),
       })
+
+      void this.initiateE2EEHandshake(conn.peer, conn)
 
       if (this.isHost) {
         const currentMap = useMapStore.getState().mapData
@@ -1900,6 +2187,16 @@ export class PeerManager {
   }
 
   private removePeer(peerId: string) {
+    this.e2eeSessions?.removePeer(peerId)
+    this.pairwiseRatchets?.removeSession(peerId)
+    this.senderKeys?.unmarkPeer(peerId)
+    this.senderKeys?.clearRemotePeer(peerId)
+    this.senderKeys?.rotateAllActiveScopes()
+    this.e2eeInboundQueues?.delete(peerId)
+    this.lastPeerZones?.delete(peerId)
+    this.mediaE2EE?.clearPeer(peerId)
+    this.clearCallDtlsForPeer(peerId)
+    useSecurityStore.getState().clearPeer(peerId)
     SuperPeerVoiceRelay.getInstance().stopRelay(peerId)
     MediaCallHandler.clearVideoPreference(this.mediaCalls, peerId)
     this.alm.peerLeft(peerId)
@@ -2465,6 +2762,105 @@ export class PeerManager {
         SuperPeerVoiceRelay.getInstance().handleControlMessage(msg.payload, peerId)
         return
       }
+      if (msg.type === 'E2EE_HANDSHAKE') {
+        const host = useGameStore.getState().connectionHostId
+        if (this.isHost) {
+          if (msg.senderId !== peerId || msg.payload.from !== peerId) return
+        } else if (peerId !== host && msg.senderId !== peerId) {
+          return
+        }
+        if (msg.payload.to === this.peer?.id) {
+          void this.enqueueE2EEInbound(msg.payload.from, () =>
+            this.handleIncomingE2EEHandshake(msg.payload, peerId)
+          )
+        } else if (this.isHost) {
+          const targetConn = this.connections.get(msg.payload.to)
+          if (targetConn?.open) {
+            this.sendToPeer(targetConn, msg)
+          }
+        }
+        return
+      }
+      if (msg.type === 'E2EE_KEY_DISTRIBUTION') {
+        const host = useGameStore.getState().connectionHostId
+        if (this.isHost) {
+          if (msg.senderId !== peerId || msg.payload.envelope.senderId !== peerId) return
+        } else if (peerId !== host && msg.senderId !== peerId) {
+          return
+        } else if (msg.payload.envelope.senderId !== msg.senderId) {
+          return
+        }
+        if (msg.payload.to === this.peer?.id) {
+          void this.enqueueE2EEInbound(msg.senderId, () =>
+            this.handleIncomingKeyDistribution(msg.senderId, msg.payload)
+          )
+        } else if (this.isHost) {
+          const targetConn = this.connections.get(msg.payload.to)
+          if (targetConn?.open) {
+            this.sendToPeer(targetConn, msg)
+          }
+        }
+        return
+      }
+      if (msg.type === 'E2EE_DIRECT_ENVELOPE') {
+        const host = useGameStore.getState().connectionHostId
+        if (this.isHost) {
+          if (msg.senderId !== peerId || msg.payload.senderId !== peerId) return
+        } else if (peerId !== host && msg.senderId !== peerId) {
+          return
+        } else if (msg.payload.senderId !== msg.senderId) {
+          return
+        }
+        if (msg.payload.recipientId === this.peer?.id) {
+          void this.enqueueE2EEInbound(msg.senderId, () =>
+            this.handleIncomingDirectEnvelope(msg.senderId, msg.payload)
+          )
+        } else if (this.isHost) {
+          const targetConn = this.resolveTargetConnection(msg.payload.recipientId)
+          if (targetConn?.open && targetConn.peer !== peerId) {
+            this.sendToPeer(targetConn, msg)
+          }
+        }
+        return
+      }
+      if (msg.type === 'E2EE_GROUP_ENVELOPE') {
+        const host = useGameStore.getState().connectionHostId
+        if (this.isHost) {
+          if (msg.senderId !== peerId || msg.payload.senderId !== peerId) return
+        } else if (peerId !== host && msg.senderId !== peerId) {
+          return
+        } else if (msg.payload.senderId !== msg.senderId) {
+          return
+        }
+        if (this.isHost) {
+          this.relayGroupEnvelope(msg, peerId)
+        }
+        if (msg.senderId !== this.peer?.id) {
+          void this.enqueueE2EEInbound(msg.senderId, () =>
+            this.handleIncomingGroupEnvelope(msg.senderId, msg.payload)
+          )
+        }
+        return
+      }
+      if (msg.type === 'E2EE_CALL_SIGNAL') {
+        const host = useGameStore.getState().connectionHostId
+        if (this.isHost) {
+          if (msg.senderId !== peerId) return
+        } else if (peerId !== host && msg.senderId !== peerId) {
+          return
+        }
+        if (msg.payload.to === this.peer?.id) {
+          void this.enqueueE2EEInbound(msg.senderId, () =>
+            this.handleIncomingCallSignal(msg.senderId, msg.payload)
+          )
+        } else if (this.isHost) {
+          const targetConn = this.connections.get(msg.payload.to)
+          if (targetConn?.open) {
+            this.sendToPeer(targetConn, msg)
+          }
+        }
+        return
+      }
       if (msg.type === 'LIVE_ALM') {
         // Room clients may relay only through the authenticated room host.
         const host = useGameStore.getState().connectionHostId
@@ -2568,8 +2964,22 @@ export class PeerManager {
         this.peer ? this.peer.id : null,
         (listenerId) => {
           if (this.isDjBotRunning()) this.redialDjToPeer(listenerId)
-        }
+        },
+        (targetPeerId, m) => this.sendToTargetPeer(targetPeerId, m)
       )
+      if (!this.isHost && msg.type === 'PLAYER_JOIN') {
+        const joinedId = msg.senderId || msg.payload?.player?.id
+        const hostPeerId = this.roomCode ? `lira-${this.roomCode}-host` : null
+        if (
+          joinedId &&
+          joinedId !== this.peer?.id &&
+          joinedId !== hostPeerId &&
+          !joinedId.startsWith('dj-') &&
+          (msg.payload?.player?.e2eeVersion ?? 0) >= 1
+        ) {
+          void this.initiatePeerToPeerHandshake(joinedId)
+        }
+      }
       const transfer = this.hostTransfer
       if (transfer?.released && transfer.roomCode === this.roomCode && msg.type === 'PLAYER_JOIN' &&
         peerId === transfer.hostPeerId && msg.senderId === peerId) {
@@ -2649,6 +3059,7 @@ export class PeerManager {
     this.incomingLiveVoiceCalls.set(call.peer, call)
     const silent = silentAudioTrack()
     call.answer(silent ? new MediaStream([silent]) : new MediaStream())
+    this.attachCallSecurity(call.peer, call, 'live-voice')
     call.on('stream', (stream) => {
       if (this.incomingLiveVoiceCalls.get(call.peer) === call) {
         useMediaStore.getState().setPeerVoiceStream(call.peer, stream)
@@ -2692,6 +3103,7 @@ export class PeerManager {
     if (!call) { retry(); return }
     const voiceCall = call
     this.liveVoiceCalls.set(peerId, call)
+    this.attachCallSecurity(peerId, voiceCall, 'live-voice')
     const clearReadyTimer = () => {
       clearTimeout(this.liveVoiceReadyTimers.get(peerId))
       this.liveVoiceReadyTimers.delete(peerId)
@@ -2852,7 +3264,8 @@ export class PeerManager {
           MediaCallHandler.checkZoneCallEligibility(
             remotePlayer, ownerPeer, this.mediaCalls,
             (pid) => this.endMediaCallWithPeer(pid),
-            (pid) => this.onMediaCallConnected(pid)
+            (pid) => this.onMediaCallConnected(pid),
+            (pid, pc, call) => this.attachCallSecurity(pid, call, 'main', pc)
           )
           if (this.isDjBotRunning()) this.recheckDjCalls()
         }
@@ -3331,6 +3744,7 @@ export class PeerManager {
     this.pendingZoneCalls.delete(peerId)
     this.endLiveVoiceCallsWithPeer(peerId)
     MediaCallHandler.endMediaCall(this.mediaCalls, peerId)
+    this.clearCallDtlsForPeer(peerId)
   }
 
   public retryZoneCall(peerId: string) {
@@ -3356,7 +3770,8 @@ export class PeerManager {
         this.peer,
         this.mediaCalls,
         (pid) => this.endMediaCallWithPeer(pid),
-        (pid) => this.onMediaCallConnected(pid)
+        (pid) => this.onMediaCallConnected(pid),
+        (pid, pc, call) => this.attachCallSecurity(pid, call, 'main', pc)
       )
     }
   }
@@ -3480,6 +3895,15 @@ export class PeerManager {
 
   public sendPlayerUpdate(player: Partial<Player>) {
     if (!this.peer) return
+    if (player.currentZoneId !== undefined && player.currentZoneId !== this.lastBroadcastZoneId) {
+      if (this.lastBroadcastZoneId) {
+        this.senderKeys?.rotateScope(`zone:${this.lastBroadcastZoneId}`)
+        for (const pid of this.connections?.keys() ?? []) {
+          this.senderKeys?.clearRemotePeer(pid, `zone:${this.lastBroadcastZoneId}`)
+        }
+      }
+      this.lastBroadcastZoneId = player.currentZoneId ?? null
+    }
     const msg: NetworkMessage = {
       type: 'PLAYER_UPDATE',
       senderId: this.peer.id,
@@ -3599,15 +4023,870 @@ export class PeerManager {
     if (msg) this.broadcast(msg)
   }
 
-  public sendChatMessage(message: any) {
-    if (!this.peer) return
-    const msg: NetworkMessage = {
-      type: 'CHAT_MESSAGE',
-      senderId: this.peer.id,
-      payload: { message },
-      timestamp: Date.now(),
+  private async initiateE2EEHandshake(targetPeerId: string, conn: DataConnection) {
+    const owner = this.peer
+    try {
+      if (!owner || !conn.open || this.connections.get(conn.peer) !== conn) return
+      await this.ensureLocalIdentity()
+      if (this.peer !== owner || !conn.open || this.connections.get(conn.peer) !== conn) return
+      const dtls = getConnectionDtlsBinding((conn as any).peerConnection)
+      const payload = await this.e2eeSessions.startHandshake(targetPeerId, owner.id, dtls)
+      if (this.peer !== owner || !conn.open || this.connections.get(conn.peer) !== conn) return
+      this.sendToPeer(conn, {
+        type: 'E2EE_HANDSHAKE',
+        senderId: owner.id,
+        payload,
+        timestamp: Date.now(),
+      })
+    } catch {}
+  }
+
+  private async initiatePeerToPeerHandshake(targetPeerId: string) {
+    const owner = this.peer
+    const roomCode = this.roomCode
+    if (!owner || !roomCode || this.isHost) return
+    const hostPeerId = `lira-${roomCode}-host`
+    const hostConn = this.connections.get(hostPeerId)
+    if (!hostConn?.open) return
+    try {
+      await this.ensureLocalIdentity()
+      if (this.peer !== owner || !hostConn.open) return
+      const payload = await this.e2eeSessions.startHandshake(targetPeerId, owner.id)
+      if (this.peer !== owner || !hostConn.open) return
+      this.sendToPeer(hostConn, {
+        type: 'E2EE_HANDSHAKE',
+        senderId: owner.id,
+        payload,
+        timestamp: Date.now(),
+      })
+    } catch {}
+  }
+
+  private async handleIncomingE2EEHandshake(payload: E2EEHandshakePayload, transportPeerId: string) {
+    const owner = this.peer
+    if (!owner) return
+    const isDirect = payload.from === transportPeerId
+    const directConn = isDirect ? this.connections.get(transportPeerId) : undefined
+    const dtls = isDirect ? getConnectionDtlsBinding((directConn as any)?.peerConnection) : undefined
+    const hostPeerId = this.roomCode ? `lira-${this.roomCode}-host` : null
+    const expectedFingerprint =
+      !this.isHost && hostPeerId && payload.from === hostPeerId
+        ? this.expectedHostKeyFp ?? undefined
+        : undefined
+
+    const gameState = useGameStore.getState()
+    const remotePlayer = gameState.remotePlayers[payload.from]
+    const friendKey = findFriendKey(gameState.friends, gameState.friendProfiles, [
+      remotePlayer?.gameId,
+      payload.from,
+    ])
+    const friendProfile = friendKey ? gameState.friendProfiles[friendKey] : undefined
+    const pinnedIdentityPub = friendProfile?.identityKey
+
+    try {
+      const res = await this.e2eeSessions.handleHandshake(payload, {
+        localId: owner.id,
+        remotePeerId: payload.from,
+        dtls,
+        expectedFingerprint,
+        pinnedIdentityPub,
+      })
+
+      if (this.peer !== owner) return
+
+      if (!res.ok) {
+        const status =
+          res.reason === 'pinned_key_changed' || res.reason === 'host_key_mismatch'
+            ? 'key_changed'
+            : 'mitm_blocked'
+        useSecurityStore.getState().setPeerSecurity(payload.from, {
+          status,
+          fingerprint: res.remoteFingerprint,
+          publicKey: res.remoteIdentityPub,
+          reason: res.message,
+        })
+        useSecurityStore.getState().recordAlert({
+          peerId: payload.from,
+          reason: res.reason,
+          message: res.message,
+        })
+        diagLog('p2p', 'e2ee.handshake-failed', { peerId: payload.from, reason: res.reason })
+        if (isDirect) {
+          try { directConn?.close() } catch {}
+        }
+        if (!this.isHost && res.reason === 'host_key_mismatch') {
+          this.disconnect()
+        }
+        return
+      }
+
+      const isVerifiedFriend = Boolean(
+        friendProfile?.identityKeyVerified && friendProfile.identityKey === res.session.remoteIdentityPub
+      )
+      useSecurityStore.getState().setPeerSecurity(payload.from, {
+        status: isVerifiedFriend ? 'verified' : 'encrypted',
+        fingerprint: res.session.remoteFingerprint,
+        publicKey: res.session.remoteIdentityPub,
+        sas: res.session.sas,
+        dtlsBound: res.session.dtlsBound,
+      })
+      this.pairwiseRatchets.initSession(
+        payload.from,
+        res.session.sendChainKey,
+        res.session.recvChainKey
+      )
+      if (this.mediaE2EE) {
+        void this.mediaE2EE
+          .configurePeerKeys(payload.from, owner.id, res.session.rootKey, 0)
+          .then(() => {
+            if (this.peer !== owner) return
+            const mainCall = this.mediaCalls?.get(payload.from)
+            if (mainCall) this.attachCallSecurity(payload.from, mainCall, 'main')
+            const outVoice = this.liveVoiceCalls?.get(payload.from)
+            if (outVoice) this.attachCallSecurity(payload.from, outVoice, 'live-voice')
+            const inVoice = this.incomingLiveVoiceCalls?.get(payload.from)
+            if (inVoice) this.attachCallSecurity(payload.from, inVoice, 'live-voice')
+          })
+          .catch(() => {})
+      }
+
+      if (res.reply) {
+        const replyConn = isDirect
+          ? directConn
+          : hostPeerId
+            ? this.connections.get(hostPeerId)
+            : undefined
+        if (replyConn?.open) {
+          this.sendToPeer(replyConn, {
+            type: 'E2EE_HANDSHAKE',
+            senderId: owner.id,
+            payload: res.reply,
+            timestamp: Date.now(),
+          })
+        }
+      }
+    } catch {}
+  }
+
+  private enqueueE2EEInbound(peerId: string, op: () => Promise<void>): Promise<void> {
+    const prev = this.e2eeInboundQueues.get(peerId) ?? Promise.resolve()
+    const next = prev.then(op, op)
+    const settled = next.then(
+      () => undefined,
+      () => undefined
+    )
+    this.e2eeInboundQueues.set(peerId, settled)
+    return next
+  }
+
+  private enqueueOutboundScope<T>(scope: string, op: () => Promise<T>): Promise<T> {
+    const prev = this.outboundScopeQueues.get(scope) ?? Promise.resolve()
+    const next = prev.then(op, op)
+    const settled = next.then(
+      () => undefined,
+      () => undefined
+    )
+    this.outboundScopeQueues.set(scope, settled)
+    return next
+  }
+
+  private getHostPeerId(): string | undefined {
+    const fromStore = useGameStore.getState().connectionHostId
+    if (fromStore && this.connections.get(fromStore)?.open) return fromStore
+    if (this.roomCode) {
+      const candidate = `lira-${this.roomCode}-host`
+      if (this.connections.get(candidate)?.open) return candidate
     }
-    this.broadcast(msg)
+    for (const [pid, conn] of this.connections.entries()) {
+      if (conn.open && pid.endsWith('-host')) return pid
+    }
+    return undefined
+  }
+
+  private resolveTargetPeerId(recipientId?: string, channelId?: string): string | undefined {
+    if (recipientId && this.connections.get(recipientId)?.open) {
+      return recipientId
+    }
+    const remotePlayers = useGameStore.getState().remotePlayers
+    for (const [pid, player] of Object.entries(remotePlayers)) {
+      if (recipientId) {
+        if (pid === recipientId || player.id === recipientId || player.gameId === recipientId) {
+          return pid
+        }
+      } else if (channelId?.startsWith('dm-')) {
+        if (
+          channelId.includes(pid) ||
+          (player.id && channelId.includes(player.id)) ||
+          (player.gameId && channelId.includes(player.gameId))
+        ) {
+          return pid
+        }
+      }
+    }
+    if (recipientId && this.pairwiseRatchets?.hasSession(recipientId)) {
+      return recipientId
+    }
+    return undefined
+  }
+
+  private hasAnyActiveRatchets(): boolean {
+    if (!this.pairwiseRatchets) return false
+    for (const pid of this.connections?.keys() ?? []) {
+      if (this.pairwiseRatchets.hasSession(pid)) return true
+    }
+    for (const pid of Object.keys(useGameStore.getState().remotePlayers)) {
+      if (this.pairwiseRatchets.hasSession(pid)) return true
+    }
+    return false
+  }
+
+  private sendUnicastViaTopology(targetPeerId: string, msg: NetworkMessage): boolean {
+    if (this.isHost) {
+      return this.sendToTargetPeer(targetPeerId, msg)
+    }
+    const hostPeerId = this.getHostPeerId()
+    if (!hostPeerId) return false
+    return this.sendToTargetPeer(hostPeerId, msg)
+  }
+
+  private isPeerEligibleForScope(peerId: string, scope: string): boolean {
+    if (!peerId || peerId === this.peer?.id || peerId.startsWith('dj-')) return false
+    if (this.isHost) {
+      const conn = this.connections.get(peerId)
+      if (!conn?.open) return false
+    }
+    if (scope === 'room') return true
+    if (!scope.startsWith('zone:')) return false
+    const zoneId = scope.slice(5)
+    const remote = useGameStore.getState().remotePlayers[peerId]
+    if (!remote || remote.currentZoneId !== zoneId) return false
+    return useMapStore.getState().isPeerAuthorizedForZone(zoneId, remote.id, remote.name)
+  }
+
+  private getEligiblePeersForScope(scope: string): string[] {
+    const candidates = new Set<string>()
+    if (this.isHost) {
+      for (const [pid, conn] of this.connections.entries()) {
+        if (conn.open) candidates.add(pid)
+      }
+    } else {
+      const hostPeerId = this.getHostPeerId()
+      if (hostPeerId) candidates.add(hostPeerId)
+      for (const pid of Object.keys(useGameStore.getState().remotePlayers)) {
+        candidates.add(pid)
+      }
+    }
+    return Array.from(candidates).filter((pid) => this.isPeerEligibleForScope(pid, scope))
+  }
+
+  private relayGroupEnvelope(msg: NetworkMessage<'E2EE_GROUP_ENVELOPE'>, excludePeerId: string) {
+    const scope = msg.payload.scope
+    if (scope === 'room') {
+      for (const [pid, conn] of this.connections.entries()) {
+        if (pid !== excludePeerId && !pid.startsWith('dj-') && conn.open) {
+          this.sendToPeer(conn, msg)
+        }
+      }
+      return
+    }
+    if (scope.startsWith('zone:')) {
+      for (const [pid, conn] of this.connections.entries()) {
+        if (pid !== excludePeerId && conn.open && this.isPeerEligibleForScope(pid, scope)) {
+          this.sendToPeer(conn, msg)
+        }
+      }
+    }
+  }
+
+  private async handleIncomingKeyDistribution(
+    senderPeerId: string,
+    payload: { to: string; scope: string; epoch: number; envelope: DirectCipherEnvelope }
+  ) {
+    const owner = this.peer
+    if (!owner || payload.to !== owner.id) return
+    if (!this.pairwiseRatchets.hasSession(senderPeerId)) return
+    const session = this.e2eeSessions.getSession(senderPeerId)
+    if (!session) return
+    try {
+      const rawDist = await this.pairwiseRatchets.decryptJson<any>(
+        senderPeerId,
+        payload.envelope
+      )
+      if (payload.scope.startsWith('alm:')) {
+        const parsedAlm = almLiveKeyDistributionSchema.safeParse(rawDist)
+        if (!parsedAlm.success) return
+        const dist = parsedAlm.data
+        if (
+          dist.root !== senderPeerId ||
+          payload.scope !== `alm:${dist.root}:${dist.almEpoch}` ||
+          dist.keyGeneration !== payload.epoch ||
+          dist.senderPubB64 !== session.remoteIdentityPub
+        ) {
+          return
+        }
+        const pubKey = await importIdentityPublicKey(session.remoteIdentityPub)
+        const sigOk = await verifySignature(
+          pubKey,
+          dist.signature,
+          utf8Bytes(
+            `lira-e2ee-alm-key-v1|${dist.root}|${dist.almEpoch}|${dist.keyGeneration}|${dist.keyB64}|${dist.saltB64}`
+          )
+        )
+        if (!sigOk) {
+          useSecurityStore.getState().recordAlert({
+            peerId: senderPeerId,
+            reason: 'invalid_signature',
+            message: `Chave de transmissão ALM inválida de ${senderPeerId}.`,
+          })
+          return
+        }
+        const keyRaw = fromBase64Url(dist.keyB64)
+        const salt = fromBase64Url(dist.saltB64)
+        if (keyRaw.byteLength !== 32 || salt.byteLength !== 12) return
+        this.almLiveKeys ??= new Map()
+        this.almLiveKeys.set(`${dist.root}::${dist.almEpoch}::${dist.keyGeneration}`, {
+          keyRaw,
+          salt,
+        })
+        return
+      }
+      const parsed = senderKeyDistributionSchema.safeParse(rawDist)
+      if (!parsed.success) return
+      const dist = parsed.data
+      if (dist.senderId !== senderPeerId || dist.scope !== payload.scope || dist.epoch !== payload.epoch) {
+        return
+      }
+      await this.senderKeys.acceptDistribution(dist, session.remoteIdentityPub)
+    } catch {
+      useSecurityStore.getState().recordAlert({
+        peerId: senderPeerId,
+        reason: 'invalid_signature',
+        message: `Distribuição de Sender Key inválida rejeitada de ${senderPeerId}.`,
+      })
+    }
+  }
+
+  public attachCallSecurity(
+    peerId: string,
+    call: MediaConnection,
+    kind: 'main' | 'live-voice' = 'main',
+    explicitPc?: RTCPeerConnection
+  ): void {
+    const owner = this.peer
+    if (!owner || !peerId || !call) return
+    if (peerId.startsWith('dj-') || useGameStore.getState().remotePlayers[peerId]?.isDjBot) return
+    const pc = explicitPc || ((call as any).peerConnection as RTCPeerConnection | undefined)
+    if (!pc) return
+
+    if (this.mediaE2EE?.hasPeerKeys(peerId)) {
+      const mediaEncrypted = this.mediaE2EE.attachPeerConnection(pc, peerId)
+      if (mediaEncrypted) {
+        useSecurityStore.getState().updatePeerMediaSecurity(peerId, { mediaEncrypted: true })
+      }
+    } else if (!this.isHost) {
+      this.ensurePeerE2EESession(peerId, true)
+    }
+
+    const syncDtls = async () => {
+      if (this.peer !== owner || !call.connectionId) return
+      const binding = getConnectionDtlsBinding(pc)
+      const sigKey = `${peerId}::${call.connectionId}`
+      if (binding.local && this.e2eeSessions?.getSession(peerId)) {
+        this.sentCallDtlsSigs ??= new Map()
+        if (this.sentCallDtlsSigs.get(sigKey) !== binding.local) {
+          this.sentCallDtlsSigs.set(sigKey, binding.local)
+          try {
+            const identity = await this.ensureLocalIdentity()
+            if (this.peer !== owner) return
+            const payload = await signCallDtlsSignal(
+              identity,
+              owner.id,
+              peerId,
+              call.connectionId,
+              binding.local,
+              kind
+            )
+            this.sendUnicastViaTopology(peerId, {
+              type: 'E2EE_CALL_SIGNAL',
+              senderId: owner.id,
+              payload,
+              timestamp: Date.now(),
+            })
+          } catch {}
+        }
+      }
+      if (binding.remote && this.e2eeSessions?.getSession(peerId)) {
+        const expected = this.pendingCallDtlsSigs?.get(sigKey)
+        if (expected) {
+          this.verifyMatchedDtls(peerId, binding.remote, expected.dtlsFingerprint)
+        }
+      }
+    }
+
+    this.attachedCallSecurityPcs ??= new WeakSet()
+    if (!this.attachedCallSecurityPcs.has(pc)) {
+      this.attachedCallSecurityPcs.add(pc)
+      try {
+        pc.addEventListener?.('signalingstatechange', () => { void syncDtls() })
+        pc.addEventListener?.('iceconnectionstatechange', () => { void syncDtls() })
+        pc.addEventListener?.('connectionstatechange', () => { void syncDtls() })
+      } catch {}
+    }
+
+    void syncDtls()
+  }
+
+  private verifyMatchedDtls(peerId: string, remoteDtls: string, expectedDtls: string): boolean {
+    if (remoteDtls !== expectedDtls) {
+      useSecurityStore.getState().setPeerSecurity(peerId, {
+        status: 'mitm_blocked',
+        reason: 'Fingerprint DTLS da chamada não confere com a assinatura do par.',
+      })
+      useSecurityStore.getState().recordAlert({
+        peerId,
+        reason: 'dtls_mismatch',
+        message: `Possível ataque MITM bloqueado na chamada com ${peerId}: fingerprint DTLS adulterado.`,
+      })
+      this.endMediaCallWithPeer(peerId)
+      return false
+    }
+    useSecurityStore.getState().updatePeerMediaSecurity(peerId, { callDtlsVerified: true })
+    return true
+  }
+
+  private async handleIncomingCallSignal(
+    senderPeerId: string,
+    payload: CallDtlsSignalPayload
+  ): Promise<void> {
+    const owner = this.peer
+    if (!owner || payload.to !== owner.id) return
+    const session = this.e2eeSessions?.getSession(senderPeerId)
+    if (!session) return
+
+    const ok = await verifyCallDtlsSignal(senderPeerId, payload, session.remoteIdentityPub)
+    if (!ok) {
+      useSecurityStore.getState().setPeerSecurity(senderPeerId, {
+        status: 'mitm_blocked',
+        reason: 'Sinalização DTLS de chamada com assinatura inválida.',
+      })
+      useSecurityStore.getState().recordAlert({
+        peerId: senderPeerId,
+        reason: 'invalid_signature',
+        message: `Assinatura DTLS de chamada inválida bloqueada de ${senderPeerId}.`,
+      })
+      this.endMediaCallWithPeer(senderPeerId)
+      return
+    }
+
+    this.pendingCallDtlsSigs ??= new Map()
+    this.pendingCallDtlsSigs.set(`${senderPeerId}::${payload.connectionId}`, {
+      dtlsFingerprint: payload.dtlsFingerprint,
+      verifiedAt: Date.now(),
+    })
+
+    const calls = [
+      this.mediaCalls?.get(senderPeerId),
+      this.liveVoiceCalls?.get(senderPeerId),
+      this.incomingLiveVoiceCalls?.get(senderPeerId),
+    ]
+    for (const activeCall of calls) {
+      if (!activeCall || activeCall.connectionId !== payload.connectionId) continue
+      const pc = (activeCall as any).peerConnection as RTCPeerConnection | undefined
+      const remoteDtls = getConnectionDtlsBinding(pc).remote
+      if (remoteDtls) {
+        this.verifyMatchedDtls(senderPeerId, remoteDtls, payload.dtlsFingerprint)
+      }
+    }
+  }
+
+  private async handleIncomingDirectEnvelope(
+    senderPeerId: string,
+    envelope: DirectCipherEnvelope & { kind?: 'dm' | 'dm-receipt' }
+  ) {
+    const owner = this.peer
+    if (!owner || envelope.recipientId !== owner.id || envelope.senderId !== senderPeerId) return
+    if (!this.pairwiseRatchets.hasSession(senderPeerId)) return
+    try {
+      const decoded = await this.pairwiseRatchets.decryptJson<{
+        kind?: 'dm' | 'dm-receipt'
+        message?: any
+        receipt?: any
+      }>(senderPeerId, envelope)
+
+      const kind = envelope.kind || decoded.kind || (decoded.receipt ? 'dm-receipt' : 'dm')
+      const remote = useGameStore.getState().remotePlayers[senderPeerId]
+      if (kind === 'dm-receipt' && decoded.receipt) {
+        const { senderId, senderName, recipientId, messageId, status, upToTimestamp } =
+          decoded.receipt
+        const validAuthor =
+          senderId === senderPeerId ||
+          (remote && (senderId === remote.id || senderId === remote.gameId))
+        if (!validAuthor || !status) return
+        const local = useGameStore.getState().localPlayer
+        const isForMe =
+          !recipientId ||
+          recipientId === local.id ||
+          (local.gameId && recipientId === local.gameId) ||
+          recipientId === owner.id
+        if (!isForMe) return
+        const chatStore = useChatStore.getState()
+        if (messageId) chatStore.updateMessageStatus(messageId, status)
+        if (senderId) chatStore.updateMessagesStatusForPeer(senderId, status, upToTimestamp)
+        if (senderName) chatStore.updateMessagesStatusForPeer(senderName, status, upToTimestamp)
+        return
+      }
+
+      if (decoded.message) {
+        let chatMsg = decoded.message
+        const isFriendReply = Boolean(
+          chatMsg?.friendRequest &&
+            (chatMsg.friendRequest.status === 'accepted' ||
+              chatMsg.friendRequest.status === 'declined')
+        )
+        const validAuthor =
+          chatMsg.senderId === senderPeerId ||
+          (remote && (chatMsg.senderId === remote.id || chatMsg.senderId === remote.gameId)) ||
+          (isFriendReply &&
+            (chatMsg.friendRequest?.toUserId === senderPeerId ||
+              (remote &&
+                (chatMsg.friendRequest?.toUserId === remote.id ||
+                  chatMsg.friendRequest?.toUserId === remote.gameId))))
+        if (!validAuthor) return
+
+        if (chatMsg.encryptedAttachment) {
+          const decryptedAtt = await decryptAttachment(
+            chatMsg.encryptedAttachment as EncryptedAttachmentDescriptor
+          )
+          const { encryptedAttachment: _stripped, ...rest } = chatMsg
+          chatMsg = { ...rest, attachment: decryptedAtt }
+        }
+        const validated = chatMessageSchema.safeParse(chatMsg)
+        if (!validated.success) return
+        useChatStore.getState().addMessage({ ...validated.data, encrypted: true })
+      }
+    } catch {
+      useSecurityStore.getState().recordAlert({
+        peerId: senderPeerId,
+        reason: 'invalid_signature',
+        message: `Falha ao verificar/descriptografar DM E2EE de ${senderPeerId}.`,
+      })
+    }
+  }
+
+  private async handleIncomingGroupEnvelope(
+    senderPeerId: string,
+    envelope: GroupCipherEnvelope
+  ) {
+    const owner = this.peer
+    if (!owner || envelope.senderId !== senderPeerId) return
+    const session = this.e2eeSessions.getSession(senderPeerId)
+    if (!session) return
+
+    if (envelope.scope.startsWith('zone:')) {
+      const zoneId = envelope.scope.slice(5)
+      const local = useGameStore.getState().localPlayer
+      if (local.currentZoneId !== zoneId) return
+      if (!useMapStore.getState().isPeerAuthorizedForZone(zoneId, local.id, local.name)) {
+        return
+      }
+    }
+
+    try {
+      const decoded = await this.senderKeys.decryptGroupJson<{ message: any }>(
+        envelope,
+        session.remoteIdentityPub
+      )
+      if (!decoded?.message) return
+      let chatMsg = decoded.message
+      const remote = useGameStore.getState().remotePlayers[senderPeerId]
+      const validAuthor =
+        chatMsg.senderId === senderPeerId ||
+        (remote && (chatMsg.senderId === remote.id || chatMsg.senderId === remote.gameId))
+      if (!validAuthor) return
+
+      if (chatMsg.encryptedAttachment) {
+        const desc = chatMsg.encryptedAttachment as EncryptedAttachmentDescriptor
+        if (envelope.attachmentDigest && desc.digestB64 !== envelope.attachmentDigest) {
+          throw new Error('Encrypted attachment digest mismatch')
+        }
+        const decryptedAtt = await decryptAttachment(desc)
+        const { encryptedAttachment: _stripped, ...rest } = chatMsg
+        chatMsg = { ...rest, attachment: decryptedAtt }
+      }
+
+      if (envelope.scope.startsWith('zone:')) {
+        chatMsg = {
+          ...chatMsg,
+          channelId: 'current-zone',
+          zoneId: envelope.scope.slice(5),
+        }
+      }
+
+      const validated = chatMessageSchema.safeParse(chatMsg)
+      if (!validated.success) return
+      useChatStore.getState().addMessage({ ...validated.data, encrypted: true })
+    } catch {
+      useSecurityStore.getState().recordAlert({
+        peerId: senderPeerId,
+        reason: 'invalid_signature',
+        message: `Mensagem de grupo inválida ou adulterada rejeitada de ${senderPeerId}.`,
+      })
+    }
+  }
+
+  public handlePeerZoneChange(peerId: string, nextZoneId: string | null | undefined) {
+    if (!this.lastPeerZones) {
+      this.lastPeerZones = new Map()
+    }
+    const prevZoneId = this.lastPeerZones.get(peerId)
+    if (prevZoneId === nextZoneId) return
+    this.lastPeerZones.set(peerId, nextZoneId ?? null)
+    if (prevZoneId) {
+      this.senderKeys?.unmarkPeer(peerId)
+      this.senderKeys?.clearRemotePeer(peerId, `zone:${prevZoneId}`)
+      this.senderKeys?.rotateScope(`zone:${prevZoneId}`)
+    }
+  }
+
+  public handleZoneLockToggled(zoneId: string) {
+    if (!zoneId) return
+    this.senderKeys?.rotateScope(`zone:${zoneId}`)
+  }
+
+  public shouldRejectPlaintextDowngrade(peerId: string, msg: NetworkMessage): boolean {
+    if (msg.type !== 'CHAT_MESSAGE' && msg.type !== 'CHAT_MESSAGE_STATUS') return false
+    if (!this.pairwiseRatchets) return false
+    const msgSender = msg.type === 'CHAT_MESSAGE' ? msg.payload?.message?.senderId : undefined
+    const isHostSource = peerId.endsWith('-host') || peerId === useGameStore.getState().connectionHostId
+    if ((msgSender === 'sistema' || msgSender === 'system') && isHostSource) {
+      return false
+    }
+    const authorId = msg.senderId || peerId
+    const activeE2EE =
+      this.pairwiseRatchets.hasSession(authorId) || this.pairwiseRatchets.hasSession(peerId)
+    if (!activeE2EE) return false
+    useSecurityStore.getState().recordAlert({
+      peerId: authorId,
+      reason: 'plaintext_downgrade',
+      message: `Downgrade para texto plano bloqueado de ${authorId} durante sessão E2EE ativa.`,
+    })
+    return true
+  }
+
+  public ensurePeerE2EESession(targetPeerId: string, force = false) {
+    if (!this.peer || this.isHost || !this.e2eeSessions) return
+    if (
+      !targetPeerId ||
+      targetPeerId === this.peer.id ||
+      targetPeerId.startsWith('dj-') ||
+      targetPeerId.endsWith('-host')
+    ) {
+      return
+    }
+    if (this.e2eeSessions.getSession(targetPeerId)) return
+    if (force || this.peer.id < targetPeerId) {
+      void this.initiatePeerToPeerHandshake(targetPeerId)
+    }
+  }
+
+  private resolveTargetConnection(recipientId?: string, channelId?: string): DataConnection | undefined {
+    if (recipientId) {
+      const direct = this.connections.get(recipientId)
+      if (direct?.open) return direct
+    }
+    const remotePlayers = useGameStore.getState().remotePlayers
+    for (const [pid, player] of Object.entries(remotePlayers)) {
+      const conn = this.connections.get(pid)
+      if (!conn?.open) continue
+      if (recipientId) {
+        if (pid === recipientId || player.id === recipientId || player.gameId === recipientId) {
+          return conn
+        }
+      } else if (channelId?.startsWith('dm-')) {
+        if (
+          channelId.includes(pid) ||
+          (player.id && channelId.includes(player.id)) ||
+          (player.gameId && channelId.includes(player.gameId))
+        ) {
+          return conn
+        }
+      }
+    }
+    return undefined
+  }
+
+  private sendToTargetPeer(targetPeerId: string, msg: NetworkMessage): boolean {
+    const conn = this.connections.get(targetPeerId)
+    if (!conn?.open) return false
+    this.sendToPeer(conn, msg)
+    return true
+  }
+
+  public sendChatMessage(message: any) {
+    void this.sendChatMessageEncrypted(message)
+  }
+
+  private async sendChatMessageEncrypted(message: any) {
+    const owner = this.peer
+    if (!owner) return
+    if (message?.senderId === 'sistema' || message?.senderId === 'system') {
+      const msg: NetworkMessage = {
+        type: 'CHAT_MESSAGE',
+        senderId: owner.id,
+        payload: { message },
+        timestamp: Date.now(),
+      }
+      this.broadcast(msg)
+      return
+    }
+
+    const isDm = Boolean(message?.recipientId) || Boolean(message?.channelId?.startsWith('dm-'))
+    if (isDm) {
+      const targetPeerId = this.resolveTargetPeerId(message.recipientId, message.channelId)
+      if (targetPeerId && this.pairwiseRatchets?.hasSession(targetPeerId)) {
+        let wireMessage: any = message
+        if (message.attachment) {
+          const encryptedAttachment = await encryptAttachment(message.attachment)
+          const { attachment: _stripped, ...rest } = message
+          wireMessage = { ...rest, encryptedAttachment }
+        }
+        const envelope = await this.pairwiseRatchets.encryptJson(
+          targetPeerId,
+          owner.id,
+          targetPeerId,
+          { kind: 'dm', message: wireMessage }
+        )
+        const netMsg: NetworkMessage = {
+          type: 'E2EE_DIRECT_ENVELOPE',
+          senderId: owner.id,
+          payload: { ...envelope, kind: 'dm' },
+          timestamp: Date.now(),
+        }
+        this.sendUnicastViaTopology(targetPeerId, netMsg)
+        return
+      }
+      if (targetPeerId) {
+        this.ensurePeerE2EESession(targetPeerId, true)
+      }
+      const hasE2EEContext =
+        Boolean(
+          targetPeerId &&
+            (this.e2eeSessions?.getSession(targetPeerId) ||
+              useSecurityStore.getState().peers[targetPeerId])
+        ) || this.hasAnyActiveRatchets()
+      if (hasE2EEContext) {
+        return
+      }
+      const fallbackMsg: NetworkMessage = {
+        type: 'CHAT_MESSAGE',
+        senderId: owner.id,
+        payload: { message },
+        timestamp: Date.now(),
+      }
+      if (this.isHost) {
+        const targetConn = this.resolveTargetConnection(message.recipientId, message.channelId)
+        if (targetConn) this.sendToPeer(targetConn, fallbackMsg)
+        return
+      }
+      this.broadcast(fallbackMsg)
+      return
+    }
+
+    const isZone = message?.channelId === 'current-zone' || Boolean(message?.zoneId)
+    const zoneId = isZone
+      ? message.zoneId || useGameStore.getState().localPlayer.currentZoneId
+      : undefined
+    if (isZone && !zoneId) return
+    const scope = zoneId ? `zone:${zoneId}` : 'room'
+
+    const runGroup = async () => {
+      if (this.peer !== owner) return
+      const eligiblePeers = this.getEligiblePeersForScope(scope)
+      const encryptedPeers = eligiblePeers.filter((pid) => this.pairwiseRatchets?.hasSession(pid))
+      const unpairedPeers = eligiblePeers.filter((pid) => !this.pairwiseRatchets?.hasSession(pid))
+
+      for (const pid of unpairedPeers) {
+        this.ensurePeerE2EESession(pid, true)
+      }
+
+      if (encryptedPeers.length === 0) {
+        if (this.hasAnyActiveRatchets()) {
+          return
+        }
+        this.broadcast({
+          type: 'CHAT_MESSAGE',
+          senderId: owner.id,
+          payload: { message },
+          timestamp: Date.now(),
+        })
+        return
+      }
+
+      const localIdentity = await this.ensureLocalIdentity()
+      if (this.peer !== owner) return
+
+      for (const pid of encryptedPeers) {
+        if (this.senderKeys.needsDistribution(scope, pid)) {
+          const dist = await this.senderKeys.exportDistribution(scope, owner.id, localIdentity)
+          const distEnv = await this.pairwiseRatchets.encryptJson(pid, owner.id, pid, dist)
+          const distMsg: NetworkMessage = {
+            type: 'E2EE_KEY_DISTRIBUTION',
+            senderId: owner.id,
+            payload: {
+              to: pid,
+              scope,
+              epoch: dist.epoch,
+              envelope: distEnv,
+            },
+            timestamp: Date.now(),
+          }
+          if (this.sendUnicastViaTopology(pid, distMsg)) {
+            this.senderKeys.markDistributed(scope, pid)
+            if (zoneId) {
+              this.lastPeerZones.set(pid, zoneId)
+            }
+          }
+        }
+      }
+
+      let wireMessage: any = zoneId ? { ...message, channelId: 'current-zone', zoneId } : message
+      let attachmentDigest: string | undefined
+      if (message.attachment) {
+        const encryptedAttachment = await encryptAttachment(message.attachment)
+        attachmentDigest = encryptedAttachment.digestB64
+        const { attachment: _stripped, ...rest } = wireMessage
+        wireMessage = { ...rest, encryptedAttachment }
+      }
+
+      const groupEnv = await this.senderKeys.encryptGroupJson(
+        scope,
+        owner.id,
+        localIdentity,
+        { message: wireMessage },
+        attachmentDigest
+      )
+      const netMsg: NetworkMessage = {
+        type: 'E2EE_GROUP_ENVELOPE',
+        senderId: owner.id,
+        payload: groupEnv,
+        timestamp: Date.now(),
+      }
+      if (this.isHost) {
+        for (const pid of encryptedPeers) {
+          this.sendToTargetPeer(pid, netMsg)
+        }
+      } else {
+        const hostPeerId = this.getHostPeerId()
+        if (hostPeerId) {
+          this.sendToTargetPeer(hostPeerId, netMsg)
+        }
+      }
+    }
+    if (this.outboundScopeQueues) {
+      await this.enqueueOutboundScope(scope, runGroup)
+    } else {
+      await runGroup()
+    }
   }
 
   public sendRoomChannels(channels: RoomChannel[]) {
@@ -3628,24 +4907,71 @@ export class PeerManager {
     messageId?: string,
     upToTimestamp?: number
   ) {
-    if (!this.peer) return
+    void this.sendMessageStatusEncrypted(recipientId, channelId, status, messageId, upToTimestamp)
+  }
+
+  private async sendMessageStatusEncrypted(
+    recipientId?: string,
+    channelId?: string,
+    status: MessageDeliveryStatus = 'delivered',
+    messageId?: string,
+    upToTimestamp?: number
+  ) {
+    const owner = this.peer
+    if (!owner) return
     const local = useGameStore.getState().localPlayer
-    const msg: NetworkMessage = {
-      type: 'CHAT_MESSAGE_STATUS',
-      senderId: this.peer.id,
-      payload: {
-        senderId: getPlayerUserId(local),
-        senderName: local.name,
-        recipientId,
-        channelId,
-        messageId,
-        status,
-        upToTimestamp: upToTimestamp || Date.now(),
-        timestamp: Date.now(),
-      },
+    const receipt = {
+      senderId: getPlayerUserId(local),
+      senderName: local.name,
+      recipientId,
+      channelId,
+      messageId,
+      status,
+      upToTimestamp: upToTimestamp || Date.now(),
       timestamp: Date.now(),
     }
-    this.broadcast(msg)
+    const isDm = Boolean(recipientId) || Boolean(channelId?.startsWith('dm-'))
+    if (isDm) {
+      const targetPeerId = this.resolveTargetPeerId(recipientId, channelId)
+      if (targetPeerId && this.pairwiseRatchets?.hasSession(targetPeerId)) {
+        const envelope = await this.pairwiseRatchets.encryptJson(
+          targetPeerId,
+          owner.id,
+          targetPeerId,
+          { kind: 'dm-receipt', receipt }
+        )
+        this.sendUnicastViaTopology(targetPeerId, {
+          type: 'E2EE_DIRECT_ENVELOPE',
+          senderId: owner.id,
+          payload: { ...envelope, kind: 'dm-receipt' },
+          timestamp: Date.now(),
+        })
+        return
+      }
+      if (this.hasAnyActiveRatchets()) return
+      const msg: NetworkMessage = {
+        type: 'CHAT_MESSAGE_STATUS',
+        senderId: owner.id,
+        payload: receipt,
+        timestamp: Date.now(),
+      }
+      if (this.isHost) {
+        const targetConn = this.resolveTargetConnection(recipientId, channelId)
+        if (targetConn) {
+          this.sendToPeer(targetConn, msg)
+        }
+        return
+      }
+      this.broadcast(msg)
+      return
+    }
+    if (this.hasAnyActiveRatchets()) return
+    this.broadcast({
+      type: 'CHAT_MESSAGE_STATUS',
+      senderId: owner.id,
+      payload: receipt,
+      timestamp: Date.now(),
+    })
   }
 
   public sendReaction(reaction: any) {
@@ -3660,6 +4986,7 @@ export class PeerManager {
   }
 
   public sendRoomLockToggle(zoneId: string, isLocked: boolean) {
+    this.handleZoneLockToggled(zoneId)
     const senderId = this.peer ? this.peer.id : useGameStore.getState().localPlayer.id
     const zone = useMapStore.getState().mapData.zones.find((candidate) => candidate.id === zoneId)
     const msg: NetworkMessage = {
@@ -3784,6 +5111,9 @@ export class PeerManager {
   }
 
   public disconnect() {
+    this.clearE2EEState()
+    this.expectedHostKeyFp = null
+    useSecurityStore.getState().clearRoomPeers()
     SuperPeerVoiceRelay.getInstance().reset()
     this.clearManualConnections()
     this.lanEndpoint = undefined

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, desktopCapturer, session, shell, screen, Notification, powerMonitor, Tray, Menu, nativeImage, clipboard, protocol } from 'electron'
+import { app, BrowserWindow, ipcMain, desktopCapturer, session, shell, screen, Notification, powerMonitor, Tray, Menu, nativeImage, clipboard, protocol, safeStorage } from 'electron'
 import { createBoardFontHandler } from './boardFontProtocol'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -2178,6 +2178,36 @@ ipcMain.handle('get-app-settings', () => {
 
 ipcMain.handle('set-app-settings', (_event, partial: Partial<AppSettings>) => {
   return trayManager?.updateSettings(partial) || { ...DEFAULT_APP_SETTINGS }
+})
+
+ipcMain.handle('secure-storage:available', () => {
+  try {
+    return safeStorage.isEncryptionAvailable()
+  } catch {
+    return false
+  }
+})
+
+ipcMain.handle('secure-storage:encrypt', (_event, plaintext: string) => {
+  try {
+    if (typeof plaintext !== 'string' || !safeStorage.isEncryptionAvailable()) {
+      return null
+    }
+    return safeStorage.encryptString(plaintext).toString('base64')
+  } catch {
+    return null
+  }
+})
+
+ipcMain.handle('secure-storage:decrypt', (_event, ciphertextB64: string) => {
+  try {
+    if (typeof ciphertextB64 !== 'string' || !safeStorage.isEncryptionAvailable()) {
+      return null
+    }
+    return safeStorage.decryptString(Buffer.from(ciphertextB64, 'base64'))
+  } catch {
+    return null
+  }
 })
 
 ipcMain.handle('minimize-to-tray', () => {
