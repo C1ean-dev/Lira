@@ -4,7 +4,8 @@ const path = require('node:path')
 const crypto = require('node:crypto')
 const zlib = require('node:zlib')
 
-const INCREMENTAL_FORMAT_VERSION = 2
+// Bump to 3 forces broken pre-PR #231 clients (FormatVersion <= 2) onto the full NSIS installer once.
+const INCREMENTAL_FORMAT_VERSION = 3
 const INCREMENTAL_MANIFEST_NAME = 'lira-win-x64-incremental.json.gz'
 const INCREMENTAL_PACK_NAME = 'lira-win-x64-payload.pack'
 const ASAR_RELATIVE_NAME = 'resources\\app.asar'
