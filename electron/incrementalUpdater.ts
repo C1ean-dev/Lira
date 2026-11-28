@@ -30,7 +30,8 @@ export const rawFs: typeof nodeFs = loadRawFs()
 const fs = rawFs
 const fsp = rawFs.promises
 
-export const INCREMENTAL_FORMAT_VERSION = 2
+// FormatVersion 3 forces broken pre-PR #231 clients (which accept <= 2) to fall back to the full NSIS installer once.
+export const INCREMENTAL_FORMAT_VERSION = 3
 export const INCREMENTAL_MANIFEST_NAME = 'lira-win-x64-incremental.json.gz'
 export const INCREMENTAL_PACK_NAME = 'lira-win-x64-payload.pack'
 export const ASAR_RELATIVE_NAME = 'resources\\app.asar'
@@ -210,7 +211,7 @@ export function assertSafeRelativePath(name: string): void {
 export function validateIncrementalManifest(raw: unknown, expectedVersion?: string): IncrementalManifest {
   if (!raw || typeof raw !== 'object') throw new Error('Invalid incremental manifest')
   const m = raw as IncrementalManifest
-  if (m.FormatVersion !== 1 && m.FormatVersion !== INCREMENTAL_FORMAT_VERSION) {
+  if (m.FormatVersion !== 1 && m.FormatVersion !== 2 && m.FormatVersion !== INCREMENTAL_FORMAT_VERSION) {
     throw new Error('Unsupported incremental manifest format')
   }
   if (m.Platform !== 'win32' || m.Arch !== 'x64') throw new Error('Incompatible incremental manifest platform')

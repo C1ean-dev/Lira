@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import zlib from 'node:zlib'
 import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import type { AddressInfo } from 'node:net'
@@ -11,6 +12,7 @@ import { createPackage } from '@electron/asar'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   ASAR_RELATIVE_NAME,
+  INCREMENTAL_FORMAT_VERSION,
   INCREMENTAL_MANIFEST_NAME,
   INCREMENTAL_PACK_NAME,
   indexLocalAsar,
@@ -544,5 +546,34 @@ describe('incremental ASAR + file pack updater', () => {
         '1.0.1',
       ),
     ).toThrow(/Invalid update entry/)
+    expect(() => validateIncrementalManifest({ FormatVersion: 4 })).toThrow(/Unsupported incremental manifest format/)
+    expect(() => validateIncrementalManifest({ FormatVersion: 99 })).toThrow(/Unsupported incremental manifest format/)
+  })
+
+  it('emits FormatVersion 3 in release artifacts and accepts FormatVersion 1, 2, and 3', async () => {
+    expect(INCREMENTAL_FORMAT_VERSION).toBe(3)
+    const root = makeTempDir('lira-inc-format-v3-')
+    const releaseDir = path.join(root, 'release')
+    const v2 = await createSyntheticAppInstall(root, '1.0.1', { mainCode: 'console.log("v2");\n' })
+    const artifacts = await buildIncrementalReleaseArtifacts({
+      appOutDir: v2.appDir,
+      outputDir: releaseDir,
+      version: '1.0.1',
+      manifest: v2.manifest,
+    })
+
+    const manifestObj = JSON.parse(zlib.gunzipSync(fs.readFileSync(artifacts.manifestPath)).toString('utf8'))
+    expect(manifestObj.FormatVersion).toBe(3)
+
+    for (const supportedVersion of [1, 2, 3]) {
+      const validated = validateIncrementalManifest({ ...manifestObj, FormatVersion: supportedVersion }, '1.0.1')
+      expect(validated.FormatVersion).toBe(supportedVersion)
+    }
+
+    for (const unsupportedVersion of [4, 99]) {
+      expect(() => validateIncrementalManifest({ ...manifestObj, FormatVersion: unsupportedVersion }, '1.0.1')).toThrow(
+        /Unsupported incremental manifest format/,
+      )
+    }
   })
 })
